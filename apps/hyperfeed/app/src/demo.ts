@@ -40,9 +40,21 @@ const GUARDS: [string, boolean][] = [
 
 export const NO_ASK: Ask = { kind: "", prompt: "", options: [], draft: "" };
 
-/** The contract's limits on a message and on a title. */
+/** The contract's limits on a message, a long one with a headline, a headline and a title. */
 const MAX_MESSAGE = 2_000;
+const MAX_LONG_MESSAGE = 32_000;
+const MAX_HEADLINE = 80;
 const MAX_TITLE = 200;
+
+/** The contract's `check_message`: the headline to keep, or "" for none. A headline lets the text run long. */
+function checkMessage(text: string, headline = ""): string {
+  const h = headline.trim();
+  if (h && [...h].length > MAX_HEADLINE) throw new Error(`headline is ${[...h].length} characters, limit is ${MAX_HEADLINE}`);
+  if (/[\r\n]/.test(h)) throw new Error("headline must be one line");
+  const max = h ? MAX_LONG_MESSAGE : MAX_MESSAGE;
+  if (new TextEncoder().encode(text).length > max) throw new Error(`text is longer than ${max} bytes`);
+  return h;
+}
 
 /** A message's first line, cut to a title's length (the contract's `headline`). */
 export function headline(text: string): string {
@@ -434,7 +446,7 @@ export class DemoBackend implements FeedBackend {
 
   async say(chain: string, text: string, attachments: Attachment[] = []): Promise<FeedItem> {
     if (!text.trim() && attachments.length === 0) throw new Error("text must not be empty");
-    if (new TextEncoder().encode(text).length > MAX_MESSAGE) throw new Error(`text is longer than ${MAX_MESSAGE} bytes`);
+    checkMessage(text);
     if (attachments.length > MAX_ATTACHMENTS) throw new Error(`${attachments.length} attachments, limit is ${MAX_ATTACHMENTS}`);
     for (const a of attachments) {
       const refused = refuseImage({ name: a.name, type: a.mime, size: a.size }, 0);
@@ -489,7 +501,7 @@ export class DemoBackend implements FeedBackend {
       if (!s.id.trim() || !s.title.trim()) throw new Error("a step needs an id and a title");
       if (!["running", "waiting", "done", "failed"].includes(s.status)) throw new Error(`step status ${s.status}`);
     }
-    if (new TextEncoder().encode(draft).length > MAX_MESSAGE) throw new Error(`draft is longer than ${MAX_MESSAGE} bytes`);
+    if (new TextEncoder().encode(draft).length > MAX_LONG_MESSAGE) throw new Error(`draft is longer than ${MAX_LONG_MESSAGE} bytes`);
     const stored = this.items.get(id)!;
     stored.steps = steps.map((s) => ({ ...s }));
     stored.draft = m.status === "thinking" ? draft : "";
@@ -509,9 +521,10 @@ export class DemoBackend implements FeedBackend {
     return item;
   }
 
-  /** The agent's side of a conversation, as `agent_say` would take it. */
-  agentSay(chain: string, replyTo: string, text: string, ask?: Ask): FeedItem {
+  /** The agent's side of a conversation, as `agent_say` would take it; a long answer comes with a `headline`. */
+  agentSay(chain: string, replyTo: string, text: string, ask?: Ask, headline = ""): FeedItem {
     if (!text.trim()) throw new Error("text must not be empty");
+    const kept = checkMessage(text, headline);
     if (ask && ask.kind !== "reply" && ask.kind !== "choose") throw new Error("ask.kind must be one of reply, choose");
     if (ask?.kind === "choose" && ask.options.length < 2) throw new Error("a choose ask needs at least 2 options");
     if (!replyTo) {
@@ -522,14 +535,14 @@ export class DemoBackend implements FeedBackend {
       if (asked.chain !== chain) throw new Error(`message ${replyTo} is in chain ${asked.chain}, not ${chain}`);
       if (asked.status !== "answered") this.step(asked, "answered");
     }
-    const said = this.post(chain, "agent", text, replyTo, ask ? "asked" : "said", ask);
+    const said = this.post(chain, "agent", text, replyTo, ask ? "asked" : "said", ask, [], kept);
     this.changed();
     return said;
   }
 
   /** The agent asks you something back, as `agent_ask` would take it. */
-  agentAsk(chain: string, replyTo: string, text: string, ask: Ask): FeedItem {
-    return this.agentSay(chain, replyTo, text, ask);
+  agentAsk(chain: string, replyTo: string, text: string, ask: Ask, headline = ""): FeedItem {
+    return this.agentSay(chain, replyTo, text, ask, headline);
   }
 
   private chainExists(chain: string): boolean {
@@ -544,13 +557,15 @@ export class DemoBackend implements FeedBackend {
     status: string,
     ask: Ask = NO_ASK,
     attachments: Attachment[] = [],
+    headlineText = "",
   ): FeedItem {
     const id = `demo-${this.nextId++}`;
     const t = this.tick();
     const images = attachments.length;
     return this.put({
       ...blank(id, "message", "", t, chain || id, ask),
-      title: text || images === 0 ? headline(text) : images === 1 ? "Sent an image" : `Sent ${images} images`,
+      title: headlineText || (text || images === 0 ? headline(text) : images === 1 ? "Sent an image" : `Sent ${images} images`),
+      headline: headlineText,
       body: text,
       from,
       reply_to: replyTo,
@@ -986,6 +1001,6 @@ function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chai
     attachments: [],
     steps: [],
     draft: "",
-    stop_at: 0,
+    stop_at: 0, headline: "",
   };
 }

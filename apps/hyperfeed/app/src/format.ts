@@ -140,12 +140,65 @@ export function plainMethod(method: string): string {
   return `${said} ${article}${thing}`;
 }
 
+/** How long a headline the app derives may be: the contract's limit on one the agent writes. */
+export const HEADLINE_MAX = 80;
+/** A first sentence shorter than this says too little alone: the next one joins it. */
+const SHORT_SENTENCE = 24;
+
+/**
+ * A text's first sentence, as a headline of at most {@link HEADLINE_MAX}
+ * characters: its first line that says anything, without markdown's heading
+ * and list marks or emphasis, up to the first full stop, question or
+ * exclamation mark (with the next sentence when the first is a word or two,
+ * "Posted."), cut at a word with "…" when still too long.
+ */
+export function firstSentence(text: string, max = HEADLINE_MAX): string {
+  const line =
+    text
+      .split("\n")
+      .map((l) => l.replace(/^\s*(#{1,6}\s+|[-*+]\s+|>\s*|\d+[.)]\s+)/, "").replace(/[*_`]{1,3}/g, "").trim())
+      .find((l) => l) ?? "";
+  // Sentences of the line, in order; a short first one ("Posted.") takes the next while they fit.
+  const sentences = line.split(/(?<=[.!?])\s+/).filter(Boolean);
+  let sentence = sentences[0] ?? line;
+  for (const next of sentences.slice(1)) {
+    if ([...sentence].length >= SHORT_SENTENCE || [...`${sentence} ${next}`].length > max) break;
+    sentence = `${sentence} ${next}`;
+  }
+  if ([...sentence].length <= max) return sentence;
+  const cut = [...sentence].slice(0, max - 1).join("");
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/**
+ * A message's headline: the one your agent (or you) wrote with it, else its
+ * first sentence. Any other row's title, as it is.
+ */
+export function headlineOfMessage(item: FeedItem): string {
+  if (item.kind !== "message") return item.title;
+  if (item.headline) return item.headline;
+  return firstSentence(item.body) || item.title;
+}
+
+/**
+ * Whether a message says more than its headline: then the row shows the
+ * headline, and the body is behind "More".
+ */
+export function saysMore(item: FeedItem): boolean {
+  if (item.kind !== "message") return false;
+  const body = item.body.trim();
+  return Boolean(body) && body !== headlineOfMessage(item).replace(/…$/, "").trim();
+}
+
 /**
  * A row's title. Your agent's older rows were titled with the bare method
  * ("set summary in issue-tracker"): those are said in plain words, "Set the
- * summary in Issue tracker". Every other title is the row's own.
+ * summary in Issue tracker". A message's title is its headline (see
+ * {@link headlineOfMessage}). Every other title is the row's own.
  */
 export function rowTitle(item: FeedItem, appName: (key: string) => string): string {
+  if (item.kind === "message") return headlineOfMessage(item);
   if (item.kind !== "action" || !item.method) return item.title;
   const bare = item.method.replace(/_/g, " ");
   if (item.title === `${bare} on the node`) return `${plainMethod(item.method)} on the node`;
@@ -221,7 +274,9 @@ export function stepsOf(item: FeedItem, appName: string): FlowStep[] {
     const note = step.note;
     if (item.kind === "message") {
       const mine = item.from === "you";
-      if (i === 0) add(i, mine ? "you" : "agent", mine ? "You" : "Your agent", item.body, "", step.at, mine ? "plain" : "good");
+      // A long message, written with a headline, is told by it: its row and the chat have the whole text.
+      if (i === 0 && item.headline) add(i, mine ? "you" : "agent", mine ? "You" : "Your agent", item.headline, quoteOf(item.body), step.at, mine ? "plain" : "good");
+      else if (i === 0) add(i, mine ? "you" : "agent", mine ? "You" : "Your agent", item.body, "", step.at, mine ? "plain" : "good");
       // Picking it up only matters while nothing else has happened; the
       // answer is a message of its own.
       else if (step.status === "thinking" && i === item.history.length - 1)

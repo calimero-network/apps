@@ -1,5 +1,5 @@
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { fieldsOf, laneOf, rowTitle } from "./format";
+import { fieldsOf, headlineOfMessage, laneOf, rowTitle } from "./format";
 
 /**
  * The team view: the feed told the way a workplace feed tells it. People
@@ -51,10 +51,10 @@ export function headlineOf(item: FeedItem, appName: (key: string) => string): He
     return { who, initials: initialsOf(who), verb: asVerb(item.title), object, person: Boolean(text(f.from) || item.from) };
   }
   if (item.kind === "message") {
-    if (item.from === "you") return { who: "You", initials: "You", verb: "asked your agent", object: line(item.body || item.title), person: false };
+    if (item.from === "you") return { who: "You", initials: "You", verb: "asked your agent", object: headlineOfMessage(item), person: false };
     // A question still open asks; anything else it said answered you.
     const verb = item.status === "asked" ? "asks you" : "answered";
-    return { who: "Your agent", initials: "AI", verb, object: line(item.body || item.title), person: false };
+    return { who: "Your agent", initials: "AI", verb, object: headlineOfMessage(item), person: false };
   }
   // An action's title is already its sentence ("Prepared the NDA for your
   // signature"); where it stands is the status pill beside it.

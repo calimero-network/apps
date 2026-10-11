@@ -14,6 +14,7 @@ import {
   progressLine,
   resolvable,
   rowTitle,
+  saysMore,
   statusOf,
   timeLabel,
   TYPE_LABELS,
@@ -715,12 +716,34 @@ function CommandDetails({ command }: { command: string }) {
   );
 }
 
-/** The body, when it says more than the title it starts with. */
+/** The body, when it says more than the title it starts with (a message's: its headline). */
 function extraBody(item: FeedItem): string {
   const body = item.body.trim();
+  if (item.kind === "message") return saysMore(item) ? body : "";
   const title = item.title.replace(/…$/, "").trim();
   if (!body || body === title) return "";
   return body;
+}
+
+/**
+ * A message's whole text, behind "More": the row already says its headline,
+ * and a long answer must not push the buttons out of reach.
+ */
+function MoreBody({ body }: { body: string }) {
+  const [more, setMore] = useState(false);
+  const id = useId();
+  return (
+    <div className="more-body">
+      <button type="button" className="link small" aria-expanded={more} aria-controls={id} onClick={() => setMore((v) => !v)}>
+        {more ? "Less" : "More"}
+      </button>
+      {more && (
+        <p id={id} className="quote more-text">
+          {body}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -795,7 +818,14 @@ function Row({
           {command ? (
             <CommandDetails command={command} />
           ) : (
-            body && (item.kind === "action" ? <p>{body}</p> : <p className="quote">{body}</p>)
+            body &&
+            (item.kind === "action" ? (
+              <p>{body}</p>
+            ) : item.kind === "message" && saysMore(item) ? (
+              <MoreBody key={item.id} body={body} />
+            ) : (
+              <p className="quote">{body}</p>
+            ))
           )}
           <Typed item={item} />
           {item.breach && <p className="breach">Your agent {item.breach}.</p>}

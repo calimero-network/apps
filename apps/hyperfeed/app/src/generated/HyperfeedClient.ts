@@ -342,6 +342,12 @@ export interface FeedItem {
    * When you asked your agent to stop working on it; 0 if you did not.
    */
   stop_at: number;
+  /**
+   * The headline the message was written with, which is also its `title`;
+   * `""` when it has none, and for every other row. Without one, `title`
+   * is the message's first line and a client may derive a shorter one.
+   */
+  headline: string;
 }
 
 export interface FeedPage {
@@ -370,6 +376,15 @@ export interface Guard {
 export interface GuardView {
   category: string;
   enabled: boolean;
+}
+
+/**
+ * A message's headline: one line for the feed row, its text behind "more".
+ * Kept beside the message, keyed by its id, so messages written before
+ * headlines keep their layout.
+ */
+export interface Headline {
+  text: string;
 }
 
 export interface Hyperfeed {
@@ -419,6 +434,10 @@ export interface Hyperfeed {
    * Your requests to stop a turn, by message id.
    */
   stops: Record<string, StopRequest>;
+  /**
+   * Headlines of messages written with one, by the message's id.
+   */
+  headlines: Record<string, Headline>;
 }
 
 /**
@@ -767,9 +786,11 @@ export class HyperfeedClient {
    * Use it whenever the work is not finished without you, so a chain is
    * only done when it is.
    *
+   * Takes a `headline` as [`Self::agent_say`] does.
+   *
    * @intent mutating
    */
-  public async agentAsk(params: { chain: string; reply_to: string; text: string; ask: Ask }): Promise<FeedItem> {
+  public async agentAsk(params: { chain: string; reply_to: string; text: string; ask: Ask; headline: string | null }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_ask', argsJson: params });
     return response as FeedItem;
   }
@@ -795,9 +816,14 @@ export class HyperfeedClient {
    * messages (`reply_to`, which marks it answered), or, with `reply_to`
    * empty, a note of its own in a chain that exists.
    *
+   * A long answer takes a `headline`: one line of at most 80 characters,
+   * which the feed row shows, with `text` (up to 32 KB) behind "more" and
+   * in full in the chat. Without one, `text` keeps to 2000 bytes. Older
+   * agents omit it.
+   *
    * @intent mutating
    */
-  public async agentSay(params: { chain: string; reply_to: string; text: string }): Promise<FeedItem> {
+  public async agentSay(params: { chain: string; reply_to: string; text: string; headline: string | null }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_say', argsJson: params });
     return response as FeedItem;
   }
@@ -1100,9 +1126,12 @@ export class HyperfeedClient {
    * anything (`chain` empty, which starts a new chain). Your agent picks it
    * up, answers in the chain, and may propose or act there under your rules.
    *
+   * A long message takes a `headline`, as [`Self::agent_say`] does. Older
+   * clients omit it.
+   *
    * @intent mutating
    */
-  public async say(params: { chain: string; text: string }): Promise<FeedItem> {
+  public async say(params: { chain: string; text: string; headline: string | null }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'say', argsJson: params });
     return response as FeedItem;
   }
@@ -1115,7 +1144,7 @@ export class HyperfeedClient {
    *
    * @intent mutating
    */
-  public async sayWith(params: { chain: string; text: string; attachments: Attachment[] }): Promise<FeedItem> {
+  public async sayWith(params: { chain: string; text: string; attachments: Attachment[]; headline: string | null }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'say_with', argsJson: params });
     return response as FeedItem;
   }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { rowTitle } from "./format";
-import { headlineOf, line } from "./team";
+import { headlineOfMessage, rowTitle } from "./format";
+import { headlineOf } from "./team";
 
 /**
  * People-first rows: each row read as who did what, "Agent in Mero Bot ran
@@ -150,7 +150,7 @@ export function sentenceOf(item: FeedItem, appName: (key: string) => string, roo
   if (root && root.id !== item.id && answersYou(item, root)) return sentenceOf(root, appName);
   if (item.kind === "action") return actionSentence(item, appName);
   if (item.kind === "message") {
-    const what = line(item.body || item.title);
+    const what = headlineOfMessage(item);
     if (item.from === "you") return { actor: "you", who: "You", initials: "", verb: "asked your agent", what };
     if (item.status === "asked") return { actor: "agent", who: "Agent", initials: "", verb: "asks you", what };
     if (item.status === "answered") return { actor: "agent", who: "Agent", initials: "", verb: "asked you", what };

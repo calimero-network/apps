@@ -524,6 +524,26 @@ steps:
       - 'json_subset({{answer}}, {"output": {"kind": "message", "from": "agent", "chain": "{{mention_id}}", "reply_to": "{{question_id}}"}})'
       - 'json_subset({{question_after}}, {"output": {"status": "answered"}})'
 
+  - name: The agent adds a long note with a headline, which titles its row
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_say
+    args:
+      chain: "{{mention_id}}"
+      reply_to: ""
+      text: "The numbers, slide by slide: revenue, churn, pipeline, and what changed since Q2."
+      headline: "The Q3 numbers"
+    outputs:
+      headlined: result
+
+  - name: Assert the headline is the row's title, the text its body
+    type: json_assert
+    statements:
+      - 'json_subset({{headlined}}, {"output": {"kind": "message", "headline": "The Q3 numbers", "title": "The Q3 numbers", "status": "said"}})'
+      - 'json_subset({{answer}}, {"output": {"headline": ""}})'
+
   - name: The agent asks the owner something back
     type: call
     node: feed-node-1

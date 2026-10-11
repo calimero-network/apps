@@ -111,7 +111,13 @@ const MAX_FIELDS: usize = 4_000;
 /// version, read on every event.
 const MAX_LENS: usize = 32_000;
 /// One message to or from your agent: a question, an instruction, an answer.
+/// A message with a headline may run to [`MAX_LONG_MESSAGE`].
 const MAX_MESSAGE: usize = 2_000;
+/// A message's headline: one line the feed row shows, in characters.
+const MAX_HEADLINE: usize = 80;
+/// A message's text when it has a headline: a long answer, a report, a list.
+/// The row shows the headline; the text is behind "more" and in the chat.
+const MAX_LONG_MESSAGE: usize = 32_000;
 /// Images on one message of yours. The bytes are node blobs; the feed keeps
 /// only what points at them.
 const MAX_ATTACHMENTS: usize = 4;
@@ -457,6 +463,27 @@ impl Mergeable for Asked {
         // Written once with its message, never changed.
         if borsh::to_vec(other).unwrap_or_default() > borsh::to_vec(self).unwrap_or_default() {
             *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+/// A message's headline: one line for the feed row, its text behind "more".
+/// Kept beside the message, keyed by its id, so messages written before
+/// headlines keep their layout.
+#[app::mergeable(id = "hyperfeed::Headline")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Headline {
+    pub text: String,
+}
+
+impl Mergeable for Headline {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Written once with its message, never changed.
+        if other.text > self.text {
+            self.text = other.text.clone();
         }
         Ok(())
     }
@@ -887,6 +914,12 @@ pub struct FeedItem {
     /// When you asked your agent to stop working on it; 0 if you did not.
     #[serde(default)]
     pub stop_at: u64,
+    // ── messages with a headline ──
+    /// The headline the message was written with, which is also its `title`;
+    /// `""` when it has none, and for every other row. Without one, `title`
+    /// is the message's first line and a client may derive a shorter one.
+    #[serde(default)]
+    pub headline: String,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -994,6 +1027,8 @@ pub struct Hyperfeed {
     work: UnorderedMap<String, Work>,
     /// Your requests to stop a turn, by message id.
     stops: UnorderedMap<String, StopRequest>,
+    /// Headlines of messages written with one, by the message's id.
+    headlines: UnorderedMap<String, Headline>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1069,6 +1104,7 @@ impl Hyperfeed {
             attachments: UnorderedMap::new(),
             work: UnorderedMap::new(),
             stops: UnorderedMap::new(),
+            headlines: UnorderedMap::new(),
         }
     }
 
@@ -1326,6 +1362,7 @@ impl Hyperfeed {
             steps: Vec::new(),
             draft: String::new(),
             stop_at: 0,
+            headline: String::new(),
         }
     }
 
@@ -1377,6 +1414,7 @@ impl Hyperfeed {
             steps: Vec::new(),
             draft: String::new(),
             stop_at: 0,
+            headline: String::new(),
         }
     }
 
@@ -1406,9 +1444,13 @@ impl Hyperfeed {
         if let Some(s) = self.stops.get(&m.id)? {
             item.stop_at = s.at;
         }
+        if let Some(h) = self.headlines.get(&m.id)? {
+            item.headline = h.text.clone();
+            item.title = h.text.clone();
+        }
         if let Some(a) = self.attachments.get(&m.id)? {
             item.attachments = a.items.clone();
-            if item.body.is_empty() {
+            if item.body.is_empty() && item.headline.is_empty() {
                 let n = item.attachments.len();
                 item.title = if n == 1 {
                     "Sent an image".to_owned()
@@ -1462,6 +1504,7 @@ impl Hyperfeed {
             steps: Vec::new(),
             draft: String::new(),
             stop_at: 0,
+            headline: String::new(),
         }
     }
 
@@ -1492,6 +1535,37 @@ impl Hyperfeed {
             }
         }
         Ok(())
+    }
+
+    /// A message's text and headline within their limits, and the headline
+    /// to keep: `None` for none. A headline is one line of at most
+    /// [`MAX_HEADLINE`] characters, and lets the text run to
+    /// [`MAX_LONG_MESSAGE`] bytes; without one the text keeps to
+    /// [`MAX_MESSAGE`]. An empty headline is no headline, so a caller can
+    /// always pass the field.
+    fn check_message(
+        text: &str,
+        headline: Option<String>,
+        required: bool,
+    ) -> app::Result<Option<String>> {
+        let headline = headline
+            .map(|h| h.trim().to_owned())
+            .filter(|h| !h.is_empty());
+        let Some(h) = headline else {
+            Self::check_len("text", text, MAX_MESSAGE, required)?;
+            return Ok(None);
+        };
+        let chars = h.chars().count();
+        if chars > MAX_HEADLINE {
+            return Err(AppError::msg(format!(
+                "headline is {chars} characters, limit is {MAX_HEADLINE}"
+            )));
+        }
+        if h.contains(['\n', '\r']) {
+            return Err(AppError::msg("headline must be one line"));
+        }
+        Self::check_len("text", text, MAX_LONG_MESSAGE, required)?;
+        Ok(Some(h))
     }
 
     fn check_ask(ask: &Ask) -> app::Result<()> {
@@ -1690,6 +1764,7 @@ impl Hyperfeed {
         status: &str,
         ask: Option<Ask>,
         attachments: Vec<Attachment>,
+        headline: Option<String>,
     ) -> app::Result<FeedItem> {
         let now = now_ms();
         let id = Self::fresh_id();
@@ -1712,6 +1787,9 @@ impl Hyperfeed {
         if !attachments.is_empty() {
             self.attachments
                 .insert(m.id.clone(), Attachments { items: attachments })?;
+        }
+        if let Some(text) = headline {
+            self.headlines.insert(m.id.clone(), Headline { text })?;
         }
         let item = self.message_row(&m)?;
         self.messages.insert(m.id.clone(), m)?;
@@ -1904,13 +1982,19 @@ impl Hyperfeed {
     /// The agent says something in a chain: an answer to one of your
     /// messages (`reply_to`, which marks it answered), or, with `reply_to`
     /// empty, a note of its own in a chain that exists.
+    ///
+    /// A long answer takes a `headline`: one line of at most 80 characters,
+    /// which the feed row shows, with `text` (up to 32 KB) behind "more" and
+    /// in full in the chat. Without one, `text` keeps to 2000 bytes. Older
+    /// agents omit it.
     pub fn agent_say(
         &mut self,
         chain: String,
         reply_to: String,
         text: String,
+        headline: Option<String>,
     ) -> app::Result<FeedItem> {
-        self.agent_post(chain, reply_to, text, None)
+        self.agent_post(chain, reply_to, text, None, headline)
     }
 
     /// [`Self::agent_say`] that leaves something to you: a question to
@@ -1918,16 +2002,19 @@ impl Hyperfeed {
     /// do, until you say something in its chain; your words are its answer.
     /// Use it whenever the work is not finished without you, so a chain is
     /// only done when it is.
+    ///
+    /// Takes a `headline` as [`Self::agent_say`] does.
     pub fn agent_ask(
         &mut self,
         chain: String,
         reply_to: String,
         text: String,
         ask: Ask,
+        headline: Option<String>,
     ) -> app::Result<FeedItem> {
         Self::check_ask(&ask)?;
         Self::check_one_of("ask.kind", &ask.kind, &["reply", "choose"])?;
-        self.agent_post(chain, reply_to, text, Some(ask))
+        self.agent_post(chain, reply_to, text, Some(ask), headline)
     }
 
     fn agent_post(
@@ -1936,10 +2023,11 @@ impl Hyperfeed {
         reply_to: String,
         text: String,
         ask: Option<Ask>,
+        headline: Option<String>,
     ) -> app::Result<FeedItem> {
         self.require_owner()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
-        Self::check_len("text", &text, MAX_MESSAGE, true)?;
+        let headline = Self::check_message(&text, headline, true)?;
         Self::check_len("reply_to", &reply_to, MAX_KEY, false)?;
         if reply_to.is_empty() {
             if !self.chain_exists(&chain)? {
@@ -1968,7 +2056,16 @@ impl Hyperfeed {
         } else {
             STATUS_SAID
         };
-        self.post_message(chain, FROM_AGENT, text, reply_to, status, ask, Vec::new())
+        self.post_message(
+            chain,
+            FROM_AGENT,
+            text,
+            reply_to,
+            status,
+            ask,
+            Vec::new(),
+            headline,
+        )
     }
 
     /// You said something in a chain: whatever your agent asked you there is
@@ -2069,8 +2166,16 @@ impl Hyperfeed {
     /// Talk to your agent: about a chain (`chain` = its id), or about
     /// anything (`chain` empty, which starts a new chain). Your agent picks it
     /// up, answers in the chain, and may propose or act there under your rules.
-    pub fn say(&mut self, chain: String, text: String) -> app::Result<FeedItem> {
-        self.say_with(chain, text, Vec::new())
+    ///
+    /// A long message takes a `headline`, as [`Self::agent_say`] does. Older
+    /// clients omit it.
+    pub fn say(
+        &mut self,
+        chain: String,
+        text: String,
+        headline: Option<String>,
+    ) -> app::Result<FeedItem> {
+        self.say_with(chain, text, Vec::new(), headline)
     }
 
     /// [`Self::say`] with images: up to four, each a blob you uploaded to your
@@ -2080,10 +2185,11 @@ impl Hyperfeed {
         chain: String,
         text: String,
         attachments: Vec<Attachment>,
+        headline: Option<String>,
     ) -> app::Result<FeedItem> {
         self.require_owner()?;
         Self::check_len("chain", &chain, MAX_KEY, false)?;
-        Self::check_len("text", &text, MAX_MESSAGE, attachments.is_empty())?;
+        let headline = Self::check_message(&text, headline, attachments.is_empty())?;
         Self::check_attachments(&attachments)?;
         if !chain.is_empty() && !self.chain_exists(&chain)? {
             return Err(AppError::msg(format!("no chain {chain}")));
@@ -2099,6 +2205,7 @@ impl Hyperfeed {
             STATUS_WAITING,
             None,
             attachments,
+            headline,
         )
     }
 
@@ -2490,7 +2597,8 @@ impl Hyperfeed {
             Self::check_len("step title", &s.title, MAX_TITLE, true)?;
             Self::check_one_of("step status", &s.status, &STEP_STATUSES)?;
         }
-        Self::check_len("draft", &draft, MAX_MESSAGE, false)?;
+        // A long answer, written with a headline, streams as a long draft.
+        Self::check_len("draft", &draft, MAX_LONG_MESSAGE, false)?;
         let m = self.get_message(&id)?;
         if m.from != FROM_YOU {
             return Err(AppError::msg(format!("message {id} is the agent's own")));

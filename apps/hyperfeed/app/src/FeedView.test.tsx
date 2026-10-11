@@ -40,7 +40,7 @@ const noRow: FeedItem = {
   id: "", kind: "notification", chain: "", chain_len: 1, chain_at: 0, app: "", source_context: "ctx", source_label: "", title: "", body: "",
   at: 0, needs_you: false, status: "received", status_at: 0, note: "", ask: { kind: "", prompt: "", options: [], draft: "" }, history: [],
   method: "", category: "", why: "", intent_hash: "", executor: "", undoable: false, breach: "", reviewed_at: 0, from: "", event: "",
-  seen: true, reply_to: "", item_type: "", fields: "", reply_call: "", doing: "", doing_at: 0, attachments: [], steps: [], draft: "", stop_at: 0,
+  seen: true, reply_to: "", item_type: "", fields: "", reply_call: "", doing: "", doing_at: 0, attachments: [], steps: [], draft: "", stop_at: 0, headline: "",
 };
 
 /** A feed that only shows these rows. */
@@ -55,6 +55,20 @@ function staticFeed(items: FeedItem[]): Feed {
     markSeen: async () => undefined,
     loadChain: async () => [],
   } as unknown as Feed;
+}
+
+/** A notification nothing is asked of: its chain leads with whatever your agent says in it last. */
+const mention = (key: string) => ({
+  key, app: "chat", source_context: "ctx", source_label: "#launch", from: "Maya", title: "Mentioned you", body: "How did the deploy go?",
+  event: "MessageSent", needs_you: false, chain: "", ask: { kind: "", prompt: "", options: [], draft: "" }, item_type: "", fields: "", reply_call: "",
+});
+
+/** Your agent's own rows are folded into its digest: open it. */
+async function showAgentRows() {
+  const show = await screen.findByRole("button", { name: /Show it/ });
+  await act(async () => {
+    fireEvent.click(show);
+  });
 }
 
 /** A chain's row, by its title: a task post may share it, but it is not a row. */
@@ -328,6 +342,41 @@ describe("FeedView", () => {
       const button = within(row).getAllByRole("button", { name }).find((b) => !flow.contains(b))!;
       expect(button.compareDocumentPosition(flow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
+  });
+
+  it("shows a long answer by its headline, with the whole body behind More", async () => {
+    const backend = new DemoBackend(false, 0);
+    const n = await backend.recordNotification(mention("k-ideas"));
+    const body = `Here they are.\n${Array.from({ length: 300 }, (_, i) => `${i + 1}. An idea worth trying, with its reasons.`).join("\n")}`;
+    expect(new TextEncoder().encode(body).length).toBeGreaterThan(2_000);
+    backend.agentSay(n.chain, "", body, undefined, "Ten ideas for the feed");
+    render(<Harness backend={backend} />);
+    await showAgentRows();
+    const row = await openRow(/Ten ideas for the feed/);
+    expect(row.querySelector(".row-title")).toHaveTextContent(/^Ten ideas for the feed$/);
+    expect(within(row).queryByText(/300\. An idea worth trying/)).not.toBeInTheDocument();
+    const more = within(row).getByRole("button", { name: "More" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    await act(async () => {
+      fireEvent.click(more);
+    });
+    expect(within(row).getByText(/300\. An idea worth trying/)).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Less" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("titles an answer without a headline by its first sentence", async () => {
+    const backend = new DemoBackend(false, 0);
+    const n = await backend.recordNotification(mention("k-deploy"));
+    backend.agentSay(n.chain, "", "The deploy is green and live on every node now. It took four minutes, and nothing failed.");
+    render(<Harness backend={backend} />);
+    await showAgentRows();
+    const row = await openRow(/The deploy is green and live on every node now\./);
+    expect(row.querySelector(".row-title")).toHaveTextContent(/^The deploy is green and live on every node now\.$/);
+    expect(row.querySelector(".more-text")).toBeNull();
+    await act(async () => {
+      fireEvent.click(within(row).getByRole("button", { name: "More" }));
+    });
+    expect(row.querySelector(".more-text")).toHaveTextContent(/It took four minutes, and nothing failed\.$/);
   });
 
   it("puts your agent's question in the strip, and one tap on an option answers it, unopened", async () => {

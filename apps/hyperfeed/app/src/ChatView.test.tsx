@@ -75,6 +75,18 @@ describe("chat with your agent", () => {
     expect(within(list()).getAllByRole("button", { name: /Shorter, please/ })).toHaveLength(1);
   });
 
+  it("shows a long answer whole in its bubble, and its headline in the chat list", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Write me the report");
+    const body = `${"A paragraph of the report, as long as it needs to be. ".repeat(60)}The end.`;
+    expect(new TextEncoder().encode(body).length).toBeGreaterThan(2_000);
+    backend.agentSay(q.chain, q.id, body, undefined, "The report");
+    render(<Harness backend={backend} start={q.chain} />);
+    const bubble = await within(await screen.findByRole("log")).findByText(/The end\.$/);
+    expect(bubble.textContent).toBe(body);
+    expect(within(list()).getByRole("button", { name: /The report/ })).toBeInTheDocument();
+  });
+
   it("says mero-bot isn't connected when nothing picks your message up and no agent reports in", async () => {
     let now = Date.now();
     const backend = new DemoBackend(false, 0, () => now);
