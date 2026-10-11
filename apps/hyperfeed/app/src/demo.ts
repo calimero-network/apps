@@ -10,6 +10,7 @@ import type {
   PolicyView,
   SettingsView,
   Step,
+  TurnStep,
   Verdict,
 } from "./generated/HyperfeedClient";
 import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter, type NotificationMode } from "./backend";
@@ -54,6 +55,8 @@ type Listener = () => void;
 const MINUTE = 60_000;
 /** Mirrors the contract's `SESSION_GRANT` and `GRANT_WINDOW_MS`. */
 const SESSION_GRANT = "Allow for this session";
+/** The note on a message whose turn you stopped, as the contract writes it. */
+export const STOPPED_BY_YOU = "Stopped by you";
 const GRANT_WINDOW_MS = 12 * 60 * MINUTE;
 
 export class DemoBackend implements FeedBackend {
@@ -160,6 +163,8 @@ export class DemoBackend implements FeedBackend {
     if (stored.kind === "message" && stored.status !== "thinking") {
       stored.doing = "";
       stored.doing_at = 0;
+      // The steps stay with the message; the answer replaces the draft.
+      stored.draft = "";
     }
     this.items.set(stored.id, stored);
     return copy(stored);
@@ -472,6 +477,36 @@ export class DemoBackend implements FeedBackend {
     stored.doing_at = Math.max(this.now(), stored.doing_at + 1);
     this.changed();
     return copy(stored);
+  }
+
+  /** The agent's turn on a message so far, as `agent_work` would take it: every step, and the answer as written. */
+  agentWork(id: string, steps: TurnStep[], draft = ""): FeedItem {
+    const m = this.get(id, "message");
+    if (m.from !== "you") throw new Error(`message ${id} is the agent's own`);
+    if (m.status === "waiting") throw new Error(`message ${id} is waiting; take it up with agent_ack first`);
+    if (steps.length > 64) throw new Error(`${steps.length} steps, limit is 64`);
+    for (const s of steps) {
+      if (!s.id.trim() || !s.title.trim()) throw new Error("a step needs an id and a title");
+      if (!["running", "waiting", "done", "failed"].includes(s.status)) throw new Error(`step status ${s.status}`);
+    }
+    if (new TextEncoder().encode(draft).length > MAX_MESSAGE) throw new Error(`draft is longer than ${MAX_MESSAGE} bytes`);
+    const stored = this.items.get(id)!;
+    stored.steps = steps.map((s) => ({ ...s }));
+    stored.draft = m.status === "thinking" ? draft : "";
+    this.changed();
+    return copy(stored);
+  }
+
+  /** You ask your agent to stop, as `stop` takes it: a message not taken up yet closes at once. */
+  async stop(id: string): Promise<FeedItem> {
+    const m = this.get(id, "message");
+    if (m.from !== "you") throw new Error(`message ${id} is the agent's own; stop one of yours`);
+    if (m.status !== "waiting" && m.status !== "thinking") throw new Error(`message ${id} is ${m.status}; there is no turn to stop`);
+    const stored = this.items.get(id)!;
+    if (stored.stop_at === 0) stored.stop_at = this.now();
+    const item = m.status === "waiting" ? this.step(stored, "failed", STOPPED_BY_YOU) : copy(stored);
+    this.changed();
+    return item;
   }
 
   /** The agent's side of a conversation, as `agent_say` would take it. */
@@ -949,5 +984,8 @@ function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chai
     doing: "",
     doing_at: 0,
     attachments: [],
+    steps: [],
+    draft: "",
+    stop_at: 0,
   };
 }

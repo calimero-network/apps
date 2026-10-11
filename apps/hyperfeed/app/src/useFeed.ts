@@ -38,6 +38,8 @@ export interface Feed {
   say: (chain: string, text: string, attachments?: Attachment[]) => Promise<FeedItem | null>;
   /** Where images on your messages are kept; null when this feed can't hold them. */
   images: BlobStore | null;
+  /** Ask your agent to stop working on one of your messages: it ends the turn, "Stopped by you". */
+  stop: (id: string) => Promise<void>;
   /**
    * Your chats with your agent, newest first: the chains whose latest row is a
    * message. Each comes as that latest message. A read, like `loadChain`.
@@ -191,6 +193,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       [run],
     ),
     images: backend?.images ?? null,
+    stop: useCallback((id) => run((b) => b.stop(id)), [run]),
     chats: useCallback(
       async () => (backend ? (await backend.feed("agent", "")).items.filter((i) => i.kind === "message") : []),
       [backend],

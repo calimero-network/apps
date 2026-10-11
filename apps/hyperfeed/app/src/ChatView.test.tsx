@@ -114,9 +114,79 @@ describe("chat with your agent", () => {
     backend.agentProgress(q.id, "Running the tests");
     now += 12_000;
     render(<Harness backend={backend} start={q.chain} clock={() => now} />);
-    const status = await screen.findByText(/Your agent is on it…/);
-    expect(status).toHaveTextContent("Your agent is on it… Running the tests · 12 s ago");
+    // An agent from before work reports: its latest step, in the collapsed block.
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Running the tests · 12 s ago");
+    expect(within(thread()).getByText("Working…")).toBeInTheDocument();
     expect(within(thread()).queryByText(/Reading ChatView/)).not.toBeInTheDocument();
+  });
+
+  it("lists the turn's steps in a Working… block, streams the answer, and keeps the steps after", async () => {
+    let now = Date.now();
+    const backend = new DemoBackend(false, 0, () => now);
+    const q = await backend.say("", "Fix the chat list");
+    backend.agentAck(q.id);
+    const t0 = now;
+    backend.agentWork(q.id, [
+      { id: "t1", title: "Reading ChatView.tsx", status: "done", at: t0 },
+      { id: "t2", title: "Running the tests", status: "running", at: t0 + 3_000 },
+    ], "The list now hides");
+    now += 15_000;
+    render(<Harness backend={backend} start={q.chain} clock={() => now} />);
+    await screen.findByRole("log");
+
+    // Collapsed: the latest step only.
+    const toggle = await within(thread()).findByRole("button", { name: /Working…/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(thread()).getByRole("status")).toHaveTextContent("Running the tests · running · 12 s ago");
+    expect(within(thread()).queryByText("Reading ChatView.tsx")).not.toBeInTheDocument();
+    // The answer as it is written.
+    expect(within(thread()).getByText("The list now hides")).toBeInTheDocument();
+
+    // Open: every step, with its status and time.
+    fireEvent.click(toggle);
+    const steps = within(thread()).getByRole("list", { name: "Steps" });
+    const rows = within(steps).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("Reading ChatView.tsx");
+    expect(rows[0]).toHaveTextContent("done · 15 s ago");
+    expect(rows[1]).toHaveTextContent("Running the tests");
+
+    // The draft streams in as the agent writes more.
+    await act(async () => void backend.agentWork(q.id, [
+      { id: "t1", title: "Reading ChatView.tsx", status: "done", at: t0 },
+      { id: "t2", title: "Running the tests", status: "done", at: t0 + 3_000 },
+    ], "The list now hides finished chats."));
+    expect(await within(thread()).findByText("The list now hides finished chats.")).toBeInTheDocument();
+
+    // Answered: the draft goes, the steps stay, folded away.
+    await act(async () => void backend.agentSay(q.chain, q.id, "Done: finished chats are hidden."));
+    expect(await within(thread()).findByText("Done: finished chats are hidden.")).toBeInTheDocument();
+    expect(within(thread()).queryByText("The list now hides finished chats.")).not.toBeInTheDocument();
+    expect(within(thread()).getByRole("button", { name: /Worked · 2 steps/ })).toBeInTheDocument();
+    expect(within(thread()).queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
+  });
+
+  it("stops a turn: Stop records the request, and your agent's stop shows as stopped by you", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Refactor everything");
+    backend.agentAck(q.id);
+    backend.agentWork(q.id, [{ id: "t1", title: "Reading the repo", status: "running", at: Date.now() }]);
+    render(<Harness backend={backend} start={q.chain} />);
+    await screen.findByRole("log");
+
+    await act(async () => {
+      fireEvent.click(await within(thread()).findByRole("button", { name: "Stop" }));
+    });
+    expect((await backend.chain(q.chain))[0]!.stop_at).toBeGreaterThan(0);
+    const stopping = await within(thread()).findByRole("button", { name: "Stopping…" });
+    expect(stopping).toBeDisabled();
+
+    // mero-bot sees the request, interrupts the turn and closes the message.
+    await act(async () => void backend.agentAck(q.id, "failed", "Stopped by you"));
+    expect(await within(thread()).findByText("Stopped by you.")).toBeInTheDocument();
+    expect(within(thread()).queryByRole("button", { name: /Stop/ })).not.toBeInTheDocument();
+    expect(within(thread()).queryByText(/couldn't answer/)).not.toBeInTheDocument();
   });
 
   it("opens a chat from the list, and starts a new one", async () => {

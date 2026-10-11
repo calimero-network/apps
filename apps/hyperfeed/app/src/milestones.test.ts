@@ -11,7 +11,7 @@ function row(over: Partial<FeedItem>): FeedItem {
     title: "", body: "", at, needs_you: false, status, status_at: at, note: "", ask: { kind: "", prompt: "", options: [], draft: "" },
     history: [{ status, note: "", at }], method: "", category: "", why: "", intent_hash: "", executor: "", undoable: false, breach: "",
     reviewed_at: 0, from: "", event: "", seen: true, reply_to: "", item_type: "", fields: "", reply_call: "", doing: "", doing_at: 0,
-    attachments: [], ...over,
+    attachments: [], steps: [], draft: "", stop_at: 0, ...over,
   };
 }
 

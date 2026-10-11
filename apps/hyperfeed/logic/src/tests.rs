@@ -1055,6 +1055,120 @@ fn attachments_outside_their_limits_are_refused() {
     assert!(r.is_err(), "at most four");
 }
 
+fn turn_step(id: &str, title: &str, status: &str) -> TurnStep {
+    TurnStep {
+        id: id.to_owned(),
+        title: title.to_owned(),
+        status: status.to_owned(),
+        at: 1,
+    }
+}
+
+#[test]
+fn your_agent_attaches_its_steps_and_draft_to_your_message_without_adding_rows() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Fix the chat list");
+    let early = app.call(|s| s.agent_work(q.id.clone(), vec![], String::new()));
+    assert!(early.is_err(), "nothing to attach before it is taken up");
+
+    app.call(|s| s.agent_ack(q.id.clone(), STATUS_THINKING.to_owned(), String::new()))
+        .unwrap();
+    app.call(|s| {
+        s.agent_work(
+            q.id.clone(),
+            vec![turn_step("t1", "Reading ChatView.tsx", "running")],
+            String::new(),
+        )
+    })
+    .unwrap();
+    let row = app
+        .call(|s| {
+            s.agent_work(
+                q.id.clone(),
+                vec![
+                    turn_step("t1", "Reading ChatView.tsx", "done"),
+                    turn_step("t2", "Running the tests", "running"),
+                ],
+                "The list now".to_owned(),
+            )
+        })
+        .unwrap();
+    assert_eq!(row.steps.len(), 2, "each report replaces the last");
+    assert_eq!(row.steps[0].status, "done");
+    assert_eq!(row.draft, "The list now");
+    assert_eq!(row.history.len(), 2, "steps are not history");
+    assert_eq!(
+        feed(&app, "all").items.len(),
+        1,
+        "the turn adds no rows to the feed"
+    );
+
+    app.call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Fixed.".to_owned()))
+        .unwrap();
+    let answered = app.view(|s| s.item(q.id.clone())).unwrap().unwrap();
+    assert_eq!(answered.steps.len(), 2, "the steps stay with the message");
+    assert_eq!(answered.draft, "", "the answer replaces the draft");
+
+    let odd = vec![turn_step("t9", "Something", "sleeping")];
+    assert!(app
+        .call(|s| s.agent_work(q.id.clone(), odd.clone(), String::new()))
+        .is_err());
+    let too_many: Vec<TurnStep> = (0..=MAX_HISTORY)
+        .map(|i| turn_step(&format!("t{i}"), "Step", "done"))
+        .collect();
+    assert!(app
+        .call(|s| s.agent_work(q.id.clone(), too_many.clone(), String::new()))
+        .is_err());
+}
+
+#[test]
+fn you_stop_a_turn_your_agent_is_working_on() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Refactor everything");
+    app.call(|s| s.agent_ack(q.id.clone(), STATUS_THINKING.to_owned(), String::new()))
+        .unwrap();
+    let asked = app.call(|s| s.stop(q.id.clone())).unwrap();
+    assert_eq!(asked.status, STATUS_THINKING, "your agent ends the turn");
+    assert!(asked.stop_at > 0);
+    let again = app.call(|s| s.stop(q.id.clone())).unwrap();
+    assert_eq!(again.stop_at, asked.stop_at, "asking twice changes nothing");
+
+    let stopped = app
+        .call(|s| {
+            s.agent_ack(
+                q.id.clone(),
+                STATUS_FAILED.to_owned(),
+                STOPPED_BY_YOU.to_owned(),
+            )
+        })
+        .unwrap();
+    assert_eq!(stopped.status, STATUS_FAILED);
+    assert_eq!(stopped.note, STOPPED_BY_YOU);
+    assert!(
+        app.call(|s| s.stop(q.id.clone())).is_err(),
+        "nothing left to stop"
+    );
+}
+
+#[test]
+fn stopping_a_message_not_taken_up_yet_closes_it() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Never mind");
+    let row = app.call(|s| s.stop(q.id.clone())).unwrap();
+    assert_eq!(row.status, STATUS_FAILED);
+    assert_eq!(row.note, STOPPED_BY_YOU);
+    assert!(row.stop_at > 0);
+    assert!(app.view(|s| s.open_questions()).unwrap().is_empty());
+
+    let note = app
+        .call(|s| s.agent_say(q.chain.clone(), String::new(), "Okay.".to_owned()))
+        .unwrap();
+    assert!(
+        app.call(|s| s.stop(note.id.clone())).is_err(),
+        "only your own messages"
+    );
+}
+
 #[test]
 fn the_agent_picks_a_question_up_and_answers_it() {
     let mut app = TestHost::new(Hyperfeed::init);

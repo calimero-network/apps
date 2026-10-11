@@ -1,0 +1,106 @@
+/* ── your agent's turn on a message: WorkBlock.tsx ─────────────────────────── */
+
+.work {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.work-head {
+  align-self: flex-start;
+  max-width: 85%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 4px 6px 4px 10px;
+  background: var(--surface);
+}
+
+.work-toggle {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.work-toggle:disabled {
+  cursor: default;
+}
+
+.work.working .work-label {
+  color: var(--busy-ink);
+}
+
+.work-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.work-latest {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-stop {
+  flex: none;
+}
+
+.work-steps {
+  align-self: flex-start;
+  max-width: 85%;
+  margin: 0;
+  padding: 6px 10px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  border-left: 2px solid var(--line);
+}
+
+.work-step {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.work-step-mark {
+  width: 1em;
+  color: var(--muted);
+}
+
+.work-step.done .work-step-mark {
+  color: var(--good-ink);
+}
+
+.work-step.failed .work-step-mark {
+  color: var(--bad-ink);
+}
+
+.work-step.waiting .work-step-mark {
+  color: var(--wait-ink);
+}
+
+.work-step-title {
+  overflow-wrap: anywhere;
+}
+
+.work-step-meta {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.work-draft {
+  opacity: 0.85;
+}
