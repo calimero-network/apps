@@ -161,6 +161,29 @@ test("you create your feed and answer a notification in place", async ({ page })
   const asked = await mero.rpc.execute<{ status: string } | null>({ contextId, method: "item", argsJson: { id: question.id } });
   expect(asked?.status).toBe("answered");
 
+  // ── your agent sends your reply to Maya, and the chain settles ─────────────
+  // Until it does, your answer is still being carried and the chain stays in
+  // progress; the archive test below needs it settled, in Done.
+  await mero.rpc.execute({
+    contextId,
+    method: "complete_answer",
+    argsJson: { id: recorded.id, outcome: "delivered", note: "Sent in #launch" },
+  });
+  await expect
+    .poll(async () => {
+      const rows = await mero.rpc.execute<{ items: { chain: string; kind: string; status: string }[] }>({
+        contextId,
+        method: "feed",
+        argsJson: { filter: "all", app_key: "", limit: 50, before: 0 },
+      });
+      const lead = rows.items.find((r) => r.chain === question.chain);
+      return lead && `${lead.kind}:${lead.status}`;
+    })
+    .not.toBe("notification:answered");
+  expect((await mero.rpc.execute<{ status: string } | null>({ contextId, method: "item", argsJson: { id: recorded.id } }))?.status).toBe(
+    "delivered",
+  );
+
   expect(errors, "an unhandled error escaped to the page").toEqual([]);
 });
 
