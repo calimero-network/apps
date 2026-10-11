@@ -1326,6 +1326,65 @@ thead th {
   overflow-wrap: anywhere;
 }
 
+.bubble-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bubble-body ul,
+.bubble-body ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.bubble-body li {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bubble-body li + li {
+  margin-top: 2px;
+}
+
+.bubble-body :not(pre) > code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(127, 127, 127, 0.16);
+}
+
+.bubble.from-you .bubble-body a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.md-code {
+  position: relative;
+  border-radius: 8px;
+  background: var(--sunken);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.md-code pre {
+  margin: 0;
+  padding: 10px 12px;
+  padding-right: 64px;
+  overflow-x: auto;
+}
+
+.md-code pre code {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.md-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
 .bubble.from-you {
   align-self: flex-end;
   background: var(--accent-solid);
