@@ -12,6 +12,7 @@ import {
   localCommand,
   noRetryLine,
   progressLine,
+  REPLACED,
   resolvable,
   rowTitle,
   saysMore,
@@ -625,7 +626,7 @@ export function Resolver({ item, feed }: { item: FeedItem; feed: Feed }) {
   const isAction = item.kind === "action";
   const submit = async (answer: string) => {
     if (isAction) return feed.resolve(item.id, "approve", answer);
-    if (item.kind === "message") return void (await feed.say(item.chain, answer));
+    if (item.kind === "message") return feed.answerAsk(item, answer);
     return feed.answer(item.id, answer);
   };
   const { kind, prompt, options } = item.ask;
@@ -692,6 +693,11 @@ export function Resolver({ item, feed }: { item: FeedItem; feed: Feed }) {
       </div>
     </form>
   );
+}
+
+/** A question a newer one replaced before you answered it: its buttons are gone. */
+function replaced(item: FeedItem): boolean {
+  return Boolean(item.superseded_by) && (item.status === "asked" || item.status === "received");
 }
 
 /** What was said on the latest step, as a line under the row. */
@@ -831,6 +837,7 @@ function Row({
           {item.breach && <p className="breach">Your agent {item.breach}.</p>}
           {item.why && item.kind === "action" && <p className="why">Why: {item.why}</p>}
           {item.note && <p className="note">{answerLine(item)}</p>}
+          {replaced(item) && <p className="note replaced">{REPLACED}</p>}
           {noRetry && <p className="note">{noRetry}</p>}
           <LateHint item={item} live={agentLive(feed.settings?.agents)} />
           {!card && resolvable(item) && (
@@ -1087,6 +1094,7 @@ function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }
             </div>
             <p className={s.first ? "flow-title" : ""}>{s.text}</p>
             {s.detail && <p className="flow-detail">{s.detail}</p>}
+            {replaced(s.item) && lastStepOf.get(s.item.id) === s.key && <p className="flow-detail replaced">{REPLACED}</p>}
             {s.first && localCommand(s.item) && <CommandDetails command={localCommand(s.item)} />}
             {s.item.id !== lead && s.item.needs_you && lastStepOf.get(s.item.id) === s.key && (
               <div className="flow-settle">

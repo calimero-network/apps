@@ -36,6 +36,8 @@ export interface Feed {
    * message, so the caller can open its chain; null when the node refused it.
    */
   say: (chain: string, text: string, attachments?: Attachment[]) => Promise<FeedItem | null>;
+  /** Answer one of your agent's questions from its buttons: your next message in its chain. */
+  answerAsk: (item: FeedItem, text: string) => Promise<void>;
   /** Where images on your messages are kept; null when this feed can't hold them. */
   images: BlobStore | null;
   /** Ask your agent to stop working on one of your messages: it ends the turn, "Stopped by you". */
@@ -192,6 +194,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       },
       [run],
     ),
+    answerAsk: useCallback((item, text) => run((b) => b.answerAsk(item.id, item.chain, text)), [run]),
     images: backend?.images ?? null,
     stop: useCallback((id) => run((b) => b.stop(id)), [run]),
     chats: useCallback(

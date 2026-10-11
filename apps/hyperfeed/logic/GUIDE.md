@@ -67,6 +67,7 @@ Watch the feed's events, or read with `item`:
 
 - `ActionChanged` with `approved`, `retrying` or `undo_requested`: do it (use the `note` exactly when there is one), then `complete_action` with `done` or `failed` and a one-line `note`.
 - `NotificationChanged` with `answered`: the `note` is the user's answer. Send the reply, cast the vote, or confirm in the source app, then `complete_answer` with `delivered` or `failed`.
+- A row with `superseded_by` set is a question a newer one in its chain replaced before the user answered it. If an answer still reaches it (a notification `answered` with `superseded_by`, or a message of theirs with `answers_superseded: true`), they answered an old question: confirm against where things stand now before acting on it.
 
 ### Answer the user's messages
 
@@ -80,7 +81,7 @@ The user talks to you from the feed, about one chain or about anything.
 - The user can press Stop: `StopRequested { id }` (and the message's `stop_at`) means end the turn at once and mark the message with `agent_ack` (`status: "failed"`, `note: "Stopped by you"`).
 - Answer with `agent_say`: the message's `chain`, its `id` as `reply_to`, and your answer as `text`.
 - A long answer (a report, a list, more than a few lines) takes a `headline`: one line of at most 80 characters saying what it is. The feed row shows the headline with the text behind "More", the chat shows the whole text, and `text` may then run to 32 KB. Without a headline `text` keeps to 2000 bytes. `agent_ask` takes a `headline` too.
-- If your answer leaves something to the user (a question, a choice of next steps, "want me to…?"), answer with `agent_ask` instead: the same arguments plus an `ask` of kind `choose` (2 to 8 `options`) or `reply` (a `prompt`). The chain then stays in the user's To do until they answer, and their answer arrives as their next message in the chain. Use `agent_say` only when the work is done.
+- If your answer leaves something to the user (a question, a choice of next steps, "want me to…?"), answer with `agent_ask` instead: the same arguments plus an `ask` of kind `choose` (2 to 8 `options`) or `reply` (a `prompt`). The chain then stays in the user's To do until they answer, and their answer arrives as their next message in the chain. Use `agent_say` only when the work is done. Asking again in the chain replaces your earlier open question there: its buttons go, and only the newest one waits on the user.
 - If they want something done, do it the way you do anything: `check_action` first, then act or propose, with `chain` set to the message's chain so it shows in the same conversation.
 - If you cannot answer, `agent_ack` with `status: "failed"` and a one-line `note` saying why.
 - When you start, `open_questions` lists the messages still waiting on you.

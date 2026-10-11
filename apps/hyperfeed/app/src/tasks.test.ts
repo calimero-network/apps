@@ -10,7 +10,7 @@ function row(over: Partial<FeedItem>): FeedItem {
     at: NOW - 60_000, needs_you: false, status: "waiting", status_at: NOW - 60_000, note: "", ask: { kind: "", prompt: "", options: [], draft: "" },
     history: [{ status: "waiting", note: "", at: NOW - 60_000 }], method: "", category: "", why: "", intent_hash: "", executor: "", undoable: false,
     breach: "", reviewed_at: 0, from: "you", event: "", seen: true, reply_to: "", item_type: "", fields: "", reply_call: "", doing: "", doing_at: 0,
-    attachments: [], steps: [], draft: "", stop_at: 0, headline: "", ...over,
+    attachments: [], steps: [], draft: "", stop_at: 0, headline: "", superseded_by: "", answers: "", answers_superseded: false, ...over,
   };
 }
 

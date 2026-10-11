@@ -2056,3 +2056,218 @@ fn an_answer_being_delivered_leads_its_chain() {
         (mention.id.as_str(), STATUS_ANSWERED)
     );
 }
+
+// ── stale questions ──────────────────────────────────────────────────────────
+
+fn agent_asks(
+    app: &mut TestHost<Hyperfeed>,
+    chain: &str,
+    text: &str,
+    options: &[&str],
+) -> FeedItem {
+    app.call(|s| {
+        s.agent_ask(
+            chain.to_owned(),
+            String::new(),
+            text.to_owned(),
+            choose(options),
+            None,
+        )
+    })
+    .unwrap()
+}
+
+fn row(app: &TestHost<Hyperfeed>, id: &str) -> FeedItem {
+    app.view(|s| s.item(id.to_owned())).unwrap().unwrap()
+}
+
+#[test]
+fn a_new_question_replaces_the_open_ones_in_its_chain() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Tidy up #launch");
+    let first = agent_asks(
+        &mut app,
+        &q.chain,
+        "Delete the duplicate?",
+        &["Delete", "Keep"],
+    );
+    assert!(first.superseded_by.is_empty());
+    let second = agent_asks(
+        &mut app,
+        &q.chain,
+        "Archive the channel?",
+        &["Archive", "Leave it"],
+    );
+
+    let old = row(&app, &first.id);
+    assert_eq!(
+        old.superseded_by, second.id,
+        "the newer question replaced it"
+    );
+    assert!(!old.needs_you, "a replaced question no longer waits on you");
+    assert_eq!(old.status, STATUS_ASKED, "it was never answered");
+    let new = row(&app, &second.id);
+    assert!(new.superseded_by.is_empty());
+    assert!(new.needs_you);
+
+    // One question waits on you, and it leads the chain.
+    let page = feed(&app, "needs_you");
+    assert_eq!(page.counts.needs_you, 1);
+    assert_eq!(page.items[0].id, second.id);
+
+    // A plain answer in the chain answers the question in front of you, not the old one.
+    say(&mut app, &q.chain, "Archive");
+    assert_eq!(row(&app, &second.id).status, STATUS_ANSWERED);
+    assert_eq!(row(&app, &first.id).status, STATUS_ASKED);
+    assert_eq!(feed(&app, "needs_you").counts.needs_you, 0);
+}
+
+#[test]
+fn a_question_elsewhere_or_already_answered_is_not_replaced() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let a = say(&mut app, "", "one");
+    let b = say(&mut app, "", "two");
+    let in_a = agent_asks(&mut app, &a.chain, "A?", &["Yes", "No"]);
+    say(&mut app, &a.chain, "Yes");
+    let in_b = agent_asks(&mut app, &b.chain, "B?", &["Yes", "No"]);
+    agent_asks(&mut app, &a.chain, "A again?", &["Yes", "No"]);
+    assert!(
+        row(&app, &in_a.id).superseded_by.is_empty(),
+        "answered before the new one"
+    );
+    assert!(
+        row(&app, &in_b.id).superseded_by.is_empty(),
+        "another chain"
+    );
+    // A plain answer replaces nothing.
+    let note = app
+        .call(|s| s.agent_say(b.chain.clone(), String::new(), "FYI".to_owned(), None))
+        .unwrap();
+    assert!(note.superseded_by.is_empty());
+    assert!(row(&app, &in_b.id).superseded_by.is_empty());
+}
+
+#[test]
+fn a_notification_with_a_question_replaces_and_is_replaced() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let mut poll = notification("poll-1", "chat", true);
+    poll.ask = choose(&["Tue", "Wed"]);
+    let poll = app.call(|s| s.record_notification(poll)).unwrap();
+    assert!(poll.needs_you);
+
+    // Your agent asks in the same chain: the poll's buttons go.
+    let asked = agent_asks(
+        &mut app,
+        &poll.chain,
+        "Want me to vote Wed?",
+        &["Yes", "No"],
+    );
+    let old = row(&app, &poll.id);
+    assert_eq!(old.superseded_by, asked.id);
+    assert!(!old.needs_you);
+
+    // A newer notification with a question in the chain replaces your agent's.
+    let mut again = notification("poll-2", "chat", true);
+    again.chain = poll.chain.clone();
+    again.ask = choose(&["Thu", "Fri"]);
+    let again = app.call(|s| s.record_notification(again)).unwrap();
+    assert_eq!(row(&app, &asked.id).superseded_by, again.id);
+    assert_eq!(
+        row(&app, &poll.id).superseded_by,
+        asked.id,
+        "the first replacement stands"
+    );
+
+    // An answer that still reaches the replaced poll is taken, and shows it was replaced.
+    let answered = app
+        .call(|s| s.answer_notification(poll.id.clone(), "Wed".to_owned()))
+        .unwrap();
+    assert_eq!(answered.status, STATUS_ANSWERED);
+    assert_eq!(answered.superseded_by, asked.id);
+}
+
+#[test]
+fn answering_a_question_from_its_buttons_goes_to_your_agent() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Tidy up #launch");
+    let asked = agent_asks(
+        &mut app,
+        &q.chain,
+        "Delete the duplicate?",
+        &["Delete", "Keep"],
+    );
+    let answer = app
+        .call(|s| s.answer_ask(asked.id.clone(), "Delete".to_owned()))
+        .unwrap();
+    assert_eq!(answer.from, FROM_YOU);
+    assert_eq!(answer.status, STATUS_WAITING);
+    assert_eq!(answer.chain, q.chain);
+    assert_eq!(answer.answers, asked.id);
+    assert!(!answer.answers_superseded);
+    assert_eq!(row(&app, &asked.id).status, STATUS_ANSWERED);
+    assert_eq!(row(&app, &asked.id).note, "Delete");
+    assert!(app
+        .view(|s| s.open_questions())
+        .unwrap()
+        .iter()
+        .any(|m| m.id == answer.id));
+
+    // Answered once is answered.
+    assert!(app
+        .call(|s| s.answer_ask(asked.id.clone(), "Keep".to_owned()))
+        .is_err());
+    // Only your agent's questions, only by you.
+    assert!(app
+        .call(|s| s.answer_ask(q.id.clone(), "x".to_owned()))
+        .is_err());
+    let plain = app
+        .call(|s| s.agent_say(q.chain.clone(), String::new(), "FYI".to_owned(), None))
+        .unwrap();
+    assert!(app
+        .call(|s| s.answer_ask(plain.id.clone(), "x".to_owned()))
+        .is_err());
+    let open = agent_asks(&mut app, &q.chain, "Again?", &["Yes", "No"]);
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s
+            .answer_ask(open.id.clone(), "Yes".to_owned()))
+        .is_err());
+}
+
+#[test]
+fn an_answer_that_reaches_a_replaced_question_is_flagged() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Tidy up #launch");
+    let first = agent_asks(
+        &mut app,
+        &q.chain,
+        "Delete the duplicate?",
+        &["Delete", "Keep"],
+    );
+    let second = agent_asks(
+        &mut app,
+        &q.chain,
+        "Archive the channel?",
+        &["Archive", "Leave it"],
+    );
+
+    // A screen that had not caught up taps the old question's button.
+    let late = app
+        .call(|s| s.answer_ask(first.id.clone(), "Delete".to_owned()))
+        .unwrap();
+    assert_eq!(late.answers, first.id);
+    assert!(
+        late.answers_superseded,
+        "your agent is told it answers an old question"
+    );
+    assert!(
+        row(&app, &late.id).answers_superseded,
+        "and reads it so later too"
+    );
+    assert_eq!(row(&app, &first.id).status, STATUS_ANSWERED);
+    let current = row(&app, &second.id);
+    assert_eq!(
+        current.status, STATUS_ASKED,
+        "the newer question stays open"
+    );
+    assert!(current.needs_you);
+}

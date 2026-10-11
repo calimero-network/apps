@@ -143,6 +143,25 @@ describe("chat with your agent", () => {
     expect(within(thread()).queryByRole("group", { name: "Delete one?" })).not.toBeInTheDocument();
   });
 
+  it("retires an older question when your agent asks a newer one", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Clean up #calimero");
+    const first = backend.agentAsk(q.chain, q.id, "Two hellos there. Delete one?", { kind: "choose", prompt: "Delete one?", options: ["Delete it", "Keep both"], draft: "" });
+    backend.agentAsk(q.chain, "", "Actually, archive the channel?", { kind: "choose", prompt: "Archive it?", options: ["Archive", "Leave it"], draft: "" });
+    render(<Harness backend={backend} start={q.chain} />);
+    // Only the newer question has buttons; the old one says why it has none.
+    const options = await screen.findByRole("group", { name: "Archive it?" });
+    expect(within(thread()).queryByRole("group", { name: "Delete one?" })).not.toBeInTheDocument();
+    expect(within(thread()).queryByRole("button", { name: "Delete it" })).not.toBeInTheDocument();
+    expect(within(thread()).getByText("Replaced by a newer question")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(options).getByRole("button", { name: "Archive" }));
+    });
+    const chain = await backend.chain(q.chain);
+    expect(chain.at(-1)).toMatchObject({ from: "you", body: "Archive", answers: expect.any(String), answers_superseded: false });
+    expect(chain.find((i) => i.id === first.id)).toMatchObject({ status: "asked", needs_you: false, superseded_by: expect.any(String) });
+  });
+
   it("shows your agent's latest step while it works, not a log", async () => {
     let now = Date.now();
     const backend = new DemoBackend(false, 0, () => now);

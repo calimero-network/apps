@@ -9,7 +9,7 @@ const row: FeedItem = {
   id: "r", kind: "action", chain: "c", chain_len: 1, chain_at: 1, app: "chat", source_context: "ctx", source_label: "", title: "", body: "",
   at: 1, needs_you: false, status: "done", status_at: 1, note: "", ask: { kind: "", prompt: "", options: [], draft: "" }, history: [],
   method: "", category: "", why: "", intent_hash: "", executor: "", undoable: false, breach: "", reviewed_at: 0, from: "", event: "",
-  seen: true, reply_to: "", item_type: "", fields: "", reply_call: "", doing: "", doing_at: 0, attachments: [], steps: [], draft: "", stop_at: 0, headline: "",
+  seen: true, reply_to: "", item_type: "", fields: "", reply_call: "", doing: "", doing_at: 0, attachments: [], steps: [], draft: "", stop_at: 0, headline: "", superseded_by: "", answers: "", answers_superseded: false,
 };
 
 const said = (item: Partial<FeedItem>, root?: FeedItem) => sentenceText(sentenceOf({ ...row, ...item }, appName, root));

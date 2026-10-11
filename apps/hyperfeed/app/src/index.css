@@ -2643,6 +2643,14 @@ body {
   color: var(--muted);
 }
 
+/* A question a newer one replaced: no buttons, just why. */
+.bubble-asks.bubble-replaced,
+.note.replaced,
+.flow-detail.replaced {
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* ── team view ───────────────────────────────────────────────────────────── */
 
 .view-switch {

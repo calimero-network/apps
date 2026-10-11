@@ -40,7 +40,7 @@ const noRow: FeedItem = {
   id: "", kind: "notification", chain: "", chain_len: 1, chain_at: 0, app: "", source_context: "ctx", source_label: "", title: "", body: "",
   at: 0, needs_you: false, status: "received", status_at: 0, note: "", ask: { kind: "", prompt: "", options: [], draft: "" }, history: [],
   method: "", category: "", why: "", intent_hash: "", executor: "", undoable: false, breach: "", reviewed_at: 0, from: "", event: "",
-  seen: true, reply_to: "", item_type: "", fields: "", reply_call: "", doing: "", doing_at: 0, attachments: [], steps: [], draft: "", stop_at: 0, headline: "",
+  seen: true, reply_to: "", item_type: "", fields: "", reply_call: "", doing: "", doing_at: 0, attachments: [], steps: [], draft: "", stop_at: 0, headline: "", superseded_by: "", answers: "", answers_superseded: false,
 };
 
 /** A feed that only shows these rows. */
@@ -402,6 +402,33 @@ describe("FeedView", () => {
     expect(chain.at(-1)).toMatchObject({ from: "you", body: "Keep both", status: "waiting" });
     expect(chain.find((i) => i.status === "answered" && i.from === "agent")).toMatchObject({ note: "Keep both" });
     expect(within(needs()).queryByRole("button", { name: /two hellos/ })).not.toBeInTheDocument();
+  });
+
+  it("hides a replaced question's buttons and says a newer one replaced it", async () => {
+    const backend = new DemoBackend(false, 0);
+    const poll = await backend.recordNotification({
+      ...mention("poll-1"),
+      title: "Pick a slot",
+      needs_you: true,
+      ask: { kind: "choose", prompt: "Pick a slot", options: ["Tue", "Wed"], draft: "" },
+    });
+    backend.agentAsk(poll.chain, "", "Maya moved the meeting. Want me to pick Thu?", {
+      kind: "choose",
+      prompt: "Pick Thu?",
+      options: ["Pick Thu", "Not now"],
+      draft: "",
+    });
+    render(<Harness backend={backend} />);
+    // One card waits on you: the newer question, with its buttons.
+    const row = await rowFor(/Want me to pick Thu/);
+    expect(needs()).toContainElement(row);
+    expect(within(row).getByRole("button", { name: "Pick Thu" })).toBeInTheDocument();
+    const open = await openRow(/Want me to pick Thu/);
+    const flow = within(open).getByRole("list", { name: "The whole flow" });
+    // The old poll is in the flow without its buttons, and says why.
+    expect(within(flow).queryByRole("button", { name: "Tue" })).not.toBeInTheDocument();
+    expect(within(flow).getByText("Replaced by a newer question")).toBeInTheDocument();
+    expect((await backend.chain(poll.chain))[0]).toMatchObject({ needs_you: false, superseded_by: expect.any(String) });
   });
 
   it("opens a chain's whole flow in place and settles a step from inside it", async () => {

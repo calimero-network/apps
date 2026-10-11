@@ -238,6 +238,8 @@ export function choicesFor(item: FeedItem): { approve?: string; decline: boolean
 /** Whether the row should show its in-place resolver right now. */
 export function resolvable(item: FeedItem): boolean {
   if (!item.ask.kind) return false;
+  // A newer question replaced it: its buttons are gone.
+  if (item.superseded_by && item.status !== "failed") return false;
   if (item.kind === "action") return item.status === "pending";
   // Your agent's question: open until you say something in its chain.
   if (item.kind === "message") return item.status === "asked";
@@ -473,3 +475,6 @@ export function laneOf(item: FeedItem): Lane {
   if (item.kind === "notification") return item.status === "answered" ? "progress" : "done";
   return "done";
 }
+
+/** What a question a newer one replaced says where its buttons were. */
+export const REPLACED = "Replaced by a newer question";

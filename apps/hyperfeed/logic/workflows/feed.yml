@@ -585,6 +585,86 @@ steps:
       - 'json_subset({{agent_question}}, {"output": {"kind": "message", "from": "agent", "status": "asked", "ask": {"kind": "choose"}}})'
       - 'json_subset({{agent_question_after}}, {"output": {"status": "answered", "note": "Send it"}})'
 
+  # Stale questions: the agent asks twice before the owner answers. The first
+  # question is replaced by the second; an answer that still reaches it (a
+  # screen that had not caught up) goes to the agent flagged, and the second
+  # question stays open until it is answered from its own buttons.
+  - name: The agent asks a first question
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_ask
+    args:
+      chain: "{{mention_id}}"
+      reply_to: ""
+      text: "Share the deck with the whole channel?"
+      ask: { kind: "choose", prompt: "Share it?", options: ["Share", "Only Maya"], draft: "" }
+    outputs:
+      stale_question_id: result.output.id
+
+  - name: The agent asks again before the owner answers
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_ask
+    args:
+      chain: "{{mention_id}}"
+      reply_to: ""
+      text: "Maya left the channel. DM her the deck instead?"
+      ask: { kind: "choose", prompt: "DM it?", options: ["DM her", "Not now"], draft: "" }
+    outputs:
+      newer_question_id: result.output.id
+
+  - name: Owner reads the first question after the second
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: item
+    args: { id: "{{stale_question_id}}" }
+    outputs:
+      stale_question: result
+
+  - name: An answer still reaches the replaced question
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: answer_ask
+    args: { id: "{{stale_question_id}}", text: "Share" }
+    outputs:
+      stale_answer: result
+
+  - name: Owner reads the newer question after the stale answer
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: item
+    args: { id: "{{newer_question_id}}" }
+    outputs:
+      newer_question: result
+
+  - name: Owner answers the newer question from its buttons
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: answer_ask
+    args: { id: "{{newer_question_id}}", text: "DM her" }
+    outputs:
+      current_answer: result
+
+  - name: Assert the first question was replaced and its late answer is flagged
+    type: json_assert
+    statements:
+      - 'json_subset({{stale_question}}, {"output": {"status": "asked", "needs_you": false, "superseded_by": "{{newer_question_id}}"}})'
+      - 'json_subset({{stale_answer}}, {"output": {"from": "you", "status": "waiting", "answers": "{{stale_question_id}}", "answers_superseded": true}})'
+      - 'json_subset({{newer_question}}, {"output": {"status": "asked", "needs_you": true, "superseded_by": ""}})'
+      - 'json_subset({{current_answer}}, {"output": {"from": "you", "answers": "{{newer_question_id}}", "answers_superseded": false}})'
+
   # Stop: the owner asks something, the agent takes it up, the owner presses
   # Stop. The request is kept on the message for the agent, which ends its
   # turn and closes the message "Stopped by you".
