@@ -30,7 +30,7 @@ test("in the demo, a choice is answered in place and the agent delivers it", asy
 
   await page.goto("/demo");
   const vote = page.locator("li.row", { hasText: 'Vote: "Offsite location"' });
-  await vote.locator(".row-line").click();
+  await vote.locator(".row-line, .need-line").click();
   await vote.getByRole("button", { name: "Lisbon" }).click();
   // Answered, then the pretend agent reports it delivered: it moves to done.
   await expect(vote.locator(".note")).toContainText("Lisbon");
@@ -41,7 +41,7 @@ test("in the demo, a choice is answered in place and the agent delivers it", asy
 
 test("in the demo, a chain expands into its whole flow", async ({ page }) => {
   await page.goto("/demo");
-  await page.locator("li.row", { hasText: "Vendor NDA" }).locator(".row-line").click();
+  await page.locator("li.row", { hasText: "Vendor NDA" }).locator(".row-line, .need-line").click();
   await expect(page.getByRole("list", { name: "The whole flow" }).first()).toBeVisible();
 });
 
@@ -61,7 +61,7 @@ test("in the demo, you ask your agent and the pretend agent answers in the same 
   const agent = page.getByRole("region", { name: "Your agent today" });
   await agent.getByRole("button", { name: /^Show/ }).click();
   const answer = agent.locator("li.row", { hasText: "pretend agent" });
-  await answer.locator(".row-line").click();
+  await answer.locator(".row-line, .need-line").click();
   await expect(answer.getByRole("list", { name: "The whole flow" })).toContainText("What's left before the board meeting?");
 });
 
@@ -119,7 +119,7 @@ for (const [device, size] of [
 
 test("in the demo, the feed is three lanes, light or dark, and done things archive away", async ({ page }) => {
   await page.goto("/demo");
-  for (const lane of ["To do", "In progress", "Done"]) await expect(page.getByRole("region", { name: lane })).toBeVisible();
+  for (const lane of ["Needs you", "In progress", "Done"]) await expect(page.getByRole("region", { name: lane })).toBeVisible();
   await expect(page.getByText("Agent live")).toBeVisible();
   await page.getByRole("button", { name: /Use (dark|light) theme/ }).click();
   const theme = await page.evaluate(() => document.documentElement.dataset.theme);

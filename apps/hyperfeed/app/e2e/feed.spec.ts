@@ -39,7 +39,7 @@ async function login(page: Page) {
 async function openFeed(page: Page) {
   await login(page);
   await page.getByRole("button", { name: /^Open feed / }).first().click();
-  await expect(page.getByRole("region", { name: "To do" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible({ timeout: 60_000 });
 }
 
 /** A feed's id as the header shows it (src/format.ts `short`). */
@@ -49,7 +49,7 @@ const short = (id: string) => (id.length > 16 ? `${id.slice(0, 8)}…${id.slice(
 async function openRow(page: Page, text: string) {
   const row = page.locator("li.row", { hasText: text });
   await expect(row).toBeVisible();
-  const line = row.locator(".row-line");
+  const line = row.locator(".row-line, .need-line");
   if ((await line.getAttribute("aria-expanded")) !== "true") await line.click();
   return row;
 }
@@ -74,7 +74,7 @@ test("you create your feed and answer a notification in place", async ({ page })
 
   // ── your feed ──────────────────────────────────────────────────────────────
   await page.getByRole("button", { name: "Create my feed" }).click();
-  await expect(page.getByRole("region", { name: "To do" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("Nothing needs you.")).toBeVisible();
 
   // ── an app's notification arrives ──────────────────────────────────────────
@@ -105,7 +105,7 @@ test("you create your feed and answer a notification in place", async ({ page })
   // The feed's own event refreshes the page; no reload.
   const card = await openRow(page, "Mentioned you");
   await expect(card.getByText("Can your agent pull the numbers?")).toBeVisible();
-  await expect(page.getByRole("region", { name: "To do" })).toContainText("Mentioned you");
+  await expect(page.getByRole("region", { name: "Needs you" })).toContainText("Mentioned you");
 
   // ── you answer it where it is ──────────────────────────────────────────────
   await card.getByLabel("Reply in #launch").fill("Numbers are in the deck.");
