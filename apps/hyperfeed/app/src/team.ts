@@ -1,5 +1,5 @@
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { fieldsOf, laneOf } from "./format";
+import { fieldsOf, laneOf, rowTitle } from "./format";
 
 /**
  * The team view: the feed told the way a workplace feed tells it. People
@@ -52,11 +52,13 @@ export function headlineOf(item: FeedItem, appName: (key: string) => string): He
   }
   if (item.kind === "message") {
     if (item.from === "you") return { who: "You", initials: "You", verb: "asked your agent", object: line(item.body || item.title), person: false };
-    return { who: "Your agent", initials: "AI", verb: "answered", object: line(item.body), person: false };
+    // A question still open asks; anything else it said answered you.
+    const verb = item.status === "asked" ? "asks you" : "answered";
+    return { who: "Your agent", initials: "AI", verb, object: line(item.body || item.title), person: false };
   }
   // An action's title is already its sentence ("Prepared the NDA for your
   // signature"); where it stands is the status pill beside it.
-  return { who: "Your agent", initials: "AI", verb: "", object: line(item.title), person: false };
+  return { who: "Your agent", initials: "AI", verb: "", object: line(rowTitle(item, appName)), person: false };
 }
 
 /**

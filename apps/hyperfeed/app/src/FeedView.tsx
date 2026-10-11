@@ -19,7 +19,7 @@ import {
   typedFacts,
   type Lane,
 } from "./format";
-import { agentDigest, digestLine, isAgent } from "./team";
+import { agentDigest, digestLine, headlineOf, isAgent } from "./team";
 import { TASKS_SHOWN, taskCandidates, taskOf, type TaskPost } from "./tasks";
 
 const appName = (key: string) => appLook(key).name;
@@ -30,8 +30,8 @@ export const LATER_MS = 3 * 60 * 60 * 1000;
 /** How many done rows show before "Show all". */
 const DONE_SHOWN = 5;
 
+/** The lanes under what needs you: what is underway, what is done. */
 const LANES: { id: Lane; label: string; empty: string }[] = [
-  { id: "todo", label: "To do", empty: "Nothing needs you." },
   { id: "progress", label: "In progress", empty: "Nothing underway." },
   { id: "done", label: "Done", empty: "Nothing finished yet." },
 ];
@@ -55,12 +55,15 @@ export function NewFeedButton({ newFeed }: { newFeed: NewFeed }) {
 }
 
 /**
- * The feed as three lanes: what needs you, what is underway, what is done.
+ * The feed: what needs you on top as a strip of cards, then what is underway
+ * and what is done.
  *
- * One row per chain, except your agent's: what it did and said that does not
- * need you is one digest card after To do, which opens into its chains. The
- * row you are on opens in place with everything about it (the thread, the
- * answer, the actions); nothing is shown twice. Done rows are archived out of
+ * Each card in the strip carries its buttons (Approve, the options, a reply),
+ * so you settle it without opening it. One row per chain, except your
+ * agent's: what it did and said that does not need you is one digest card
+ * after the strip, which opens into its chains. The row or card you are on
+ * opens in place with everything about it (the thread, the answer, the
+ * actions); nothing is shown twice. Done rows are archived out of
  * the way, one at a time or all at once, and come back on their own when
  * something new happens in them.
  */
@@ -95,7 +98,7 @@ export function FeedView({
     );
   }, [page, query]);
 
-  // Your agent's chains that need you stay in To do; the rest go in its digest.
+  // Your agent's chains that need you stay in the strip; the rest go in its digest.
   const { lanes, agent } = useMemo(() => {
     const by: Record<Lane, FeedItem[]> = { todo: [], progress: [], done: [] };
     const agent: FeedItem[] = [];
@@ -250,10 +253,52 @@ export function FeedView({
                 setOpen(chain);
               }}
             />
+            <section className="needs-strip" aria-label="Needs you">
+              <header className="lane-head needs-head">
+                <h2>Needs you</h2>
+                <span className="lane-count">{lanes.todo.length}</span>
+              </header>
+              {lanes.todo.length === 0 ? (
+                <p className="needs-clear">You're clear. Nothing is waiting on you.</p>
+              ) : (
+                <ul className="needs-cards">
+                  {lanes.todo.map((item) => (
+                    <Row
+                      key={item.chain}
+                      item={item}
+                      lane="todo"
+                      card
+                      expanded={open === item.chain}
+                      onToggle={() => setOpen(open === item.chain ? null : item.chain)}
+                      {...rowProps}
+                    />
+                  ))}
+                </ul>
+              )}
+            </section>
+            <AgentDigestCard
+              line={digestLine(digest)}
+              chains={agent}
+              expanded={digestOpen}
+              onToggle={() => {
+                if (digestOpen && agent.some((i) => i.chain === open)) setOpen(null);
+                setDigestShown(!digestOpen);
+              }}
+              renderRow={(item) => (
+                <Row
+                  key={item.chain}
+                  item={item}
+                  lane={laneOf(item)}
+                  expanded={open === item.chain}
+                  onToggle={() => setOpen(open === item.chain ? null : item.chain)}
+                  {...rowProps}
+                />
+              )}
+            />
             {LANES.map((lane) => {
               const rows = lanes[lane.id];
               const shown = lane.id === "done" && !allDone ? rows.slice(0, DONE_SHOWN) : rows;
-              const section = (
+              return (
                 <section key={lane.id} className={`lane lane-${lane.id}`} aria-label={lane.label}>
                   <header className="lane-head">
                     <h2>{lane.label}</h2>
@@ -292,30 +337,6 @@ export function FeedView({
                   )}
                 </section>
               );
-              if (lane.id !== "todo") return section;
-              return [
-                section,
-                <AgentDigestCard
-                  key="agent"
-                  line={digestLine(digest)}
-                  chains={agent}
-                  expanded={digestOpen}
-                  onToggle={() => {
-                    if (digestOpen && agent.some((i) => i.chain === open)) setOpen(null);
-                    setDigestShown(!digestOpen);
-                  }}
-                  renderRow={(item) => (
-                    <Row
-                      key={item.chain}
-                      item={item}
-                      lane={laneOf(item)}
-                      expanded={open === item.chain}
-                      onToggle={() => setOpen(open === item.chain ? null : item.chain)}
-                      {...rowProps}
-                    />
-                  )}
-                />,
-              ];
             })}
             <footer className="feed-foot">
               <button type="button" className="link small" onClick={() => feed.setFilter("archived")}>
@@ -385,7 +406,7 @@ export function Badge({ app, size = "md" }: { app: string; size?: "sm" | "md" })
 
 /**
  * Your agent's day as one card: what it did, what is underway, and how many of
- * its rows wait on you (those are in To do, not here). It opens into its
+ * its rows wait on you (those are in the strip on top, not here). It opens into its
  * chains, each a row like any other.
  */
 function AgentDigestCard({
@@ -682,10 +703,17 @@ function extraBody(item: FeedItem): string {
   return body;
 }
 
+/**
+ * One chain: a line that opens in place, or with `card` a card in the strip of
+ * what needs you, which says who wants what and carries its buttons, so it is
+ * settled without opening. Opened, either shows the rest: the body, the flow,
+ * Open in its app, Later and Archive.
+ */
 function Row({
   item,
   lane,
   archived,
+  card,
   expanded,
   onToggle,
   feed,
@@ -697,6 +725,7 @@ function Row({
   item: FeedItem;
   lane: Lane;
   archived?: boolean;
+  card?: boolean;
   expanded: boolean;
   onToggle: () => void;
   feed: Feed;
@@ -714,17 +743,25 @@ function Row({
   const command = localCommand(item);
   const openable = Boolean(onOpenApp) && canOpen(item);
   return (
-    <li ref={ref} className={`row ${expanded ? "open" : ""} ${item.needs_you ? "needs" : ""}`}>
-      <button type="button" className="row-line" aria-expanded={expanded} aria-controls={bodyId} onClick={onToggle}>
-        <RowBadge item={item} />
-        <span className="row-text">
-          <span className="row-title">{rowTitle(item, appName)}</span>
-          <span className="row-where">{progressLine(item) ? `Working: ${progressLine(item)}` : whereOf(item)}</span>
-        </span>
-        <Status item={item} />
-        {item.chain_len > 1 && <span className="row-steps">{item.chain_len}</span>}
-        <span className="row-time">{timeLabel(item.chain_at || item.at)}</span>
+    <li ref={ref} className={`row ${card ? "need" : ""} ${expanded ? "open" : ""} ${item.needs_you ? "needs" : ""}`}>
+      <button type="button" className={card ? "need-line" : "row-line"} aria-expanded={expanded} aria-controls={bodyId} onClick={onToggle}>
+        {card ? (
+          <NeedHead item={item} />
+        ) : (
+          <>
+            <RowBadge item={item} />
+            <span className="row-text">
+              <span className="row-title">{rowTitle(item, appName)}</span>
+              <span className="row-where">{progressLine(item) ? `Working: ${progressLine(item)}` : whereOf(item)}</span>
+            </span>
+            <Status item={item} />
+            {item.chain_len > 1 && <span className="row-steps">{item.chain_len}</span>}
+            <span className="row-time">{timeLabel(item.chain_at || item.at)}</span>
+          </>
+        )}
       </button>
+      {/* On a card the answer is always there: the reason the strip exists. */}
+      {card && <Settle item={item} feed={feed} />}
       {expanded && (
         <div id={bodyId} className="row-body">
           {command ? (
@@ -737,14 +774,14 @@ function Row({
           {item.why && item.kind === "action" && <p className="why">Why: {item.why}</p>}
           {item.note && <p className="note">{answerLine(item)}</p>}
           <LateHint item={item} live={agentLive(feed.settings?.agents)} />
-          {resolvable(item) && (
+          {!card && resolvable(item) && (
             <div className="row-answer">
               <Resolver key={item.id} item={item} feed={feed} />
             </div>
           )}
           {/* The decision comes before the flow: a long history must not push Approve out of reach. */}
           <div className="actions">
-            <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
+            {!card && <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />}
             {openable && (
               <button type="button" className="ghost small" onClick={() => onOpenApp?.(item)}>
                 Open in {appName(item.app)}
@@ -786,6 +823,56 @@ function Row({
         </div>
       )}
     </li>
+  );
+}
+
+/** A card's head: who wants what, as a sentence, with where and when under it. */
+function NeedHead({ item }: { item: FeedItem }) {
+  const h = headlineOf(item, appName);
+  const working = progressLine(item);
+  return (
+    <>
+      {h.person ? (
+        <span className="badge badge-sm badge-person" title={h.who} aria-hidden="true">
+          {h.initials}
+        </span>
+      ) : item.kind === "notification" ? (
+        <Badge app={item.app} size="sm" />
+      ) : (
+        <span className="badge badge-sm badge-agent" aria-hidden="true">
+          <Spark />
+        </span>
+      )}
+      <span className="need-text">
+        <span className="need-sentence">
+          <strong>{h.who}</strong> {h.verb}
+          {h.object && <span className="need-object">{h.object}</span>}
+        </span>
+        <span className="need-where">
+          {working
+            ? `Working: ${working}`
+            : `${item.app ? appName(item.app) : "Your agent"}${item.source_label ? ` · ${item.source_label}` : ""} · ${timeLabel(item.chain_at || item.at)}`}
+        </span>
+      </span>
+      <Status item={item} />
+    </>
+  );
+}
+
+/** What settles a card, right on it: the reply, the options, Approve and Decline. */
+function Settle({ item, feed }: { item: FeedItem; feed: Feed }) {
+  const c = choicesFor(item);
+  const decides = Boolean(c.approve) || c.decline || c.keep || c.undo;
+  if (!resolvable(item) && !decides) return null;
+  return (
+    <div className="need-settle">
+      {resolvable(item) && <Resolver key={item.id} item={item} feed={feed} />}
+      {decides && (
+        <div className="actions">
+          <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
+        </div>
+      )}
+    </div>
   );
 }
 
