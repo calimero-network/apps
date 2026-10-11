@@ -1751,6 +1751,103 @@ body {
   font-size: 13px;
 }
 
+/* What you asked your agent to do: one post per task, on top. */
+.tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.task {
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  border-left: 3px solid var(--line);
+  overflow: hidden;
+}
+
+.task.tone-busy {
+  border-left-color: var(--busy-ink);
+}
+
+.task.tone-wait {
+  border-left-color: var(--wait-ink);
+}
+
+.task.tone-bad {
+  border-left-color: var(--bad-ink);
+}
+
+.task.tone-good {
+  border-left-color: var(--good-ink);
+}
+
+.task-line {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-line:hover {
+  background: var(--sunken);
+}
+
+.task-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-head .row-time {
+  margin-left: auto;
+}
+
+.task-faces {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.task-faces .badge-you {
+  width: auto;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.badge-person {
+  background: var(--plain-bg);
+  color: var(--ink);
+}
+
+.task-goal {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.task-live {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.task.tone-busy .task-live {
+  color: var(--busy-ink);
+}
+
+.task-apps {
+  display: flex;
+  gap: 4px;
+}
+
 /* Your agent's day: one line, opening into its chains. */
 .lane-digest {
   margin: 0;
