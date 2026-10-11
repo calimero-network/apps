@@ -46,7 +46,8 @@
 //! the agent answers it by pulling numbers into a sheet and preparing an NDA
 //! (actions recorded with that notification's id as their `chain`); you approve
 //! the NDA; the agent reports it signed. [`Hyperfeed::feed`] returns one row
-//! per chain, led by whatever in it needs you, and [`Hyperfeed::chain`] returns
+//! per chain, led by whatever in it needs you (else whatever is still underway),
+//! and [`Hyperfeed::chain`] returns
 //! the whole flow. Every row keeps its full **history** of steps, so the flow
 //! shows each decision and outcome, not just where it ended.
 //!
@@ -2409,9 +2410,12 @@ impl Hyperfeed {
     /// The feed: one row per chain, newest activity first.
     ///
     /// A row is the chain's **lead**: the latest step that needs you if any
-    /// does, otherwise the latest row. Its `chain_len` says how many rows the
-    /// chain holds and `needs_you` whether any of them needs you; read them all
-    /// with [`Hyperfeed::chain`].
+    /// does, otherwise the latest still underway (an action approved, retrying
+    /// or being undone; your message waiting or being answered; your answer
+    /// being delivered), otherwise the latest row. So a chain is settled only
+    /// when everything in it is. Its `chain_len` says how many rows the chain
+    /// holds and `needs_you` whether any of them needs you; read them all with
+    /// [`Hyperfeed::chain`].
     ///
     /// `filter` keeps chains holding an action (`agent`), a notification
     /// (`notifications`), or something that needs you (`needs_you`); `app_key`
@@ -2470,6 +2474,7 @@ impl Hyperfeed {
                 .iter()
                 .filter(|i| i.needs_you)
                 .max_by(by_time)
+                .or_else(|| items.iter().filter(|i| underway(i)).max_by(by_time))
                 .or_else(|| items.iter().max_by(by_time))
                 .expect("a chain has at least one row");
             let mut lead = lead.clone();
@@ -2655,6 +2660,24 @@ fn headline(text: &str) -> String {
         end -= 1;
     }
     format!("{}…", &line[..end])
+}
+
+/// Whether a row is still being carried: an action you approved, asked to
+/// retry or to undo; a message of yours waiting for your agent or being
+/// answered; a notification you answered, being delivered.
+fn underway(item: &FeedItem) -> bool {
+    match item.kind.as_str() {
+        KIND_ACTION => matches!(
+            item.status.as_str(),
+            STATUS_APPROVED | STATUS_RETRYING | STATUS_UNDO_REQUESTED
+        ),
+        KIND_MESSAGE => {
+            item.from == FROM_YOU
+                && matches!(item.status.as_str(), STATUS_WAITING | STATUS_THINKING)
+        }
+        KIND_NOTIFICATION => item.status == STATUS_ANSWERED,
+        _ => false,
+    }
 }
 
 fn outcome_status(outcome: &str) -> &'static str {
