@@ -1,31 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { z } from 'zod';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Config } from './config.ts';
 import type { ResolvedTarget } from './rpc.ts';
 import {
-  createIssueShape,
-  listIssuesShape,
-  getIssueShape,
-  addCommentShape,
-  assignIssueShape,
-  setStatusShape,
-  setPriorityShape,
-  deleteIssueShape,
-  getFixPromptShape,
-  listReposShape,
-  addRepoShape,
-  createIssue,
-  listIssues,
-  getIssue,
-  addComment,
-  assignIssue,
-  setStatus,
-  setPriority,
-  deleteIssue,
-  getFixPrompt,
-  listRepos,
-  addRepo,
+  shapes,
+  createCard,
+  listCards,
+  moveCard,
+  moveList,
+  setCard,
+  listFolders,
+  addFolder,
   createServer,
 } from './index.ts';
 
@@ -40,370 +28,255 @@ function withFetch<T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> {
   });
 }
 
-function jsonrpcOk(output: unknown): typeof fetch {
-  return (async () =>
-    new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output } }), { status: 200 })) as typeof fetch;
+interface SentCall {
+  method: string;
+  args: Record<string, unknown>;
+  contextId: string;
+  executorPublicKey: string;
 }
 
-// ---- Schema validation ----
+/**
+ * A mocked /jsonrpc endpoint: records every app method call and answers each
+ * from `outputs` (keyed by method name; a function gets the call's args).
+ */
+function jsonrpcMock(outputs: Record<string, unknown | ((args: Record<string, unknown>) => unknown)> = {}) {
+  const calls: SentCall[] = [];
+  const impl = (async (url: string | URL, init?: RequestInit) => {
+    assert.ok(String(url).endsWith('/jsonrpc'), `unexpected fetch: ${String(url)}`);
+    const { params } = JSON.parse(String(init?.body));
+    calls.push({
+      method: params.method,
+      args: params.argsJson,
+      contextId: params.contextId,
+      executorPublicKey: params.executorPublicKey,
+    });
+    const out = outputs[params.method];
+    const output = typeof out === 'function' ? (out as (a: Record<string, unknown>) => unknown)(params.argsJson) : out ?? null;
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output } }), { status: 200 });
+  }) as typeof fetch;
+  return { impl, calls };
+}
 
-test('create_issue schema rejects a missing required section', () => {
-  const schema = z.object(createIssueShape);
-  const result = schema.safeParse({ title: 'Bug', summary: 'x', impact: 'x', repro: 'x' });
-  assert.equal(result.success, false);
+// A board with two lists: todo [a(i), b(r)] and doing [d(i)].
+const board = {
+  board: { id: 'board-1' },
+  lists: [
+    { id: 'todo', rank: 'i' },
+    { id: 'doing', rank: 'r' },
+  ],
+  cards: [
+    { id: 'a', list_id: 'todo', rank: 'i' },
+    { id: 'b', list_id: 'todo', rank: 'r' },
+    { id: 'd', list_id: 'doing', rank: 'i' },
+  ],
+};
+
+// ---- Schemas ----
+
+test('create_card schema requires board_id, list_id and title; labels default to []', () => {
+  const schema = z.object(shapes.createCard);
+  assert.equal(schema.safeParse({ board_id: 'b', title: 'T' }).success, false);
+  const parsed = schema.parse({ board_id: 'b', list_id: 'l', title: 'T' });
+  assert.deepEqual(parsed.labels, []);
+  assert.equal(schema.safeParse({ board_id: 'b', list_id: 'l', title: 'x'.repeat(65) }).success, false);
 });
 
-test('create_issue schema rejects an empty required field', () => {
-  const schema = z.object(createIssueShape);
-  const result = schema.safeParse({
-    title: '',
-    summary: 'x',
-    impact: 'x',
-    repro: 'x',
-    resolution_criteria: 'x',
-  });
-  assert.equal(result.success, false);
+test('move_card schema accepts top, bottom and after:<id> only', () => {
+  const schema = z.object(shapes.moveCard);
+  for (const position of ['top', 'bottom', 'after:card-1']) {
+    assert.equal(schema.safeParse({ card_id: 'c', list_id: 'l', position }).success, true, position);
+  }
+  for (const position of ['middle', 'after:', 'Top']) {
+    assert.equal(schema.safeParse({ card_id: 'c', list_id: 'l', position }).success, false, position);
+  }
 });
 
-test('create_issue schema fills in priority=medium and labels=[] when omitted', () => {
-  const schema = z.object(createIssueShape);
-  const result = schema.parse({
-    title: 'Bug',
-    summary: 'S',
-    impact: 'I',
-    repro: 'R',
-    resolution_criteria: 'C',
-  });
-  assert.equal(result.priority, 'medium');
-  assert.deepEqual(result.labels, []);
-});
-
-test('create_issue schema rejects an out-of-enum priority', () => {
-  const schema = z.object(createIssueShape);
-  const result = schema.safeParse({
-    title: 'Bug',
-    summary: 'S',
-    impact: 'I',
-    repro: 'R',
-    resolution_criteria: 'C',
-    priority: 'critical',
-  });
-  assert.equal(result.success, false);
-});
-
-test('list_issues schema allows an empty object (all filters optional)', () => {
-  const schema = z.object(listIssuesShape);
-  const result = schema.safeParse({});
-  assert.equal(result.success, true);
-});
-
-test('get_issue schema requires a non-empty id', () => {
-  const schema = z.object(getIssueShape);
-  assert.equal(schema.safeParse({}).success, false);
-  assert.equal(schema.safeParse({ id: '' }).success, false);
-  assert.equal(schema.safeParse({ id: 'issue-1' }).success, true);
-});
-
-test('add_comment schema requires issue_id and body', () => {
-  const schema = z.object(addCommentShape);
-  assert.equal(schema.safeParse({ issue_id: 'i1' }).success, false);
-  assert.equal(schema.safeParse({ issue_id: 'i1', body: 'hi' }).success, true);
-});
-
-test('assign_issue schema requires issue_id and assignee', () => {
-  const schema = z.object(assignIssueShape);
-  assert.equal(schema.safeParse({ issue_id: 'i1' }).success, false);
-  assert.equal(schema.safeParse({ issue_id: 'i1', assignee: 'bob' }).success, true);
-});
-
-test('set_status schema requires issue_id and an in-enum status', () => {
-  const schema = z.object(setStatusShape);
-  assert.equal(schema.safeParse({ issue_id: 'i1' }).success, false);
-  assert.equal(schema.safeParse({ issue_id: 'i1', status: 'Nope' }).success, false);
-  assert.equal(schema.safeParse({ issue_id: 'i1', status: 'In progress' }).success, true);
-});
-
-test('set_priority schema requires issue_id and an in-enum priority', () => {
-  const schema = z.object(setPriorityShape);
-  assert.equal(schema.safeParse({ issue_id: 'i1' }).success, false);
-  assert.equal(schema.safeParse({ issue_id: 'i1', priority: 'critical' }).success, false);
-  assert.equal(schema.safeParse({ issue_id: 'i1', priority: 'urgent' }).success, true);
-});
-
-test('delete_issue schema requires a non-empty issue_id', () => {
-  const schema = z.object(deleteIssueShape);
-  assert.equal(schema.safeParse({}).success, false);
-  assert.equal(schema.safeParse({ issue_id: '' }).success, false);
-  assert.equal(schema.safeParse({ issue_id: 'issue-1' }).success, true);
-});
-
-test('delete_issue schema accepts an optional repo param', () => {
-  const schema = z.object(deleteIssueShape);
-  const result = schema.safeParse({ issue_id: 'issue-1', repo: 'some-other-repo' });
-  assert.equal(result.success, true);
-});
-
-test('get_fix_prompt schema requires a non-empty id', () => {
-  const schema = z.object(getFixPromptShape);
-  assert.equal(schema.safeParse({}).success, false);
-  assert.equal(schema.safeParse({ id: 'issue-1' }).success, true);
+test('set_card schema distinguishes null (clear) from omitted', () => {
+  const schema = z.object(shapes.setCard);
+  const cleared = schema.parse({ card_id: 'c', assignee: null, due_at: null });
+  assert.equal(cleared.assignee, null);
+  assert.equal(cleared.due_at, null);
+  const omitted = schema.parse({ card_id: 'c' });
+  assert.equal('assignee' in omitted ? omitted.assignee : undefined, undefined);
+  assert.equal('due_at' in omitted ? omitted.due_at : undefined, undefined);
 });
 
 // ---- Request shaping ----
 
-test('createIssue calls create_issue with all seven fields', async () => {
-  let captured: unknown;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      captured = JSON.parse(String(init?.body)).params.argsJson;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: 'issue-1' } }), { status: 200 });
-    }) as typeof fetch,
-    () =>
-      createIssue(cfg, target, {
-        title: 'Bug',
-        summary: 'S',
-        impact: 'I',
-        repro: 'R',
-        resolution_criteria: 'C',
-        priority: 'high',
-        labels: ['ui'],
-      }),
+test('createCard sends create_card with rank null and nulls for omitted optionals', async () => {
+  const { impl, calls } = jsonrpcMock({ create_card: 'card-1' });
+  const id = await withFetch(impl, () =>
+    createCard(cfg, target, { board_id: 'board-1', list_id: 'todo', title: 'Write it', labels: [] }),
   );
-  assert.deepEqual(captured, {
-    title: 'Bug',
-    summary: 'S',
-    impact: 'I',
-    repro: 'R',
-    resolution_criteria: 'C',
-    priority: 'high',
-    labels: ['ui'],
+  assert.equal(id, 'card-1');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, 'create_card');
+  assert.equal(calls[0].contextId, 'ctx-1');
+  assert.equal(calls[0].executorPublicKey, 'exec-1');
+  assert.deepEqual(calls[0].args, {
+    board_id: 'board-1',
+    list_id: 'todo',
+    title: 'Write it',
+    description: null,
+    assignee: null,
+    due_at: null,
+    labels: [],
+    rank: null,
   });
 });
 
-test('listIssues sends null for omitted filters (matches the nullable rpc signature)', async () => {
-  let captured: unknown;
-  let method: unknown;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      const params = JSON.parse(String(init?.body)).params;
-      method = params.method;
-      captured = params.argsJson;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: [] } }), { status: 200 });
-    }) as typeof fetch,
-    () => listIssues(cfg, target, { status: 'open' }),
-  );
-  assert.equal(method, 'list_issues');
-  assert.deepEqual(captured, { status: 'open', assignee: null, label: null });
-});
-
-test('getIssue maps tool arg "id" to rpc arg "issue_id"', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: {} } }), { status: 200 });
-    }) as typeof fetch,
-    () => getIssue(cfg, target, { id: 'issue-9' }),
-  );
-  assert.equal(params.method, 'get_issue');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9' });
-});
-
-test('addComment forwards issue_id and body to add_comment', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: 'comment-1' } }), {
-        status: 200,
-      });
-    }) as typeof fetch,
-    () => addComment(cfg, target, { issue_id: 'issue-9', body: 'looks good' }),
-  );
-  assert.equal(params.method, 'add_comment');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9', body: 'looks good' });
-});
-
-test('assignIssue calls set_assignee with issue_id and assignee', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
-    }) as typeof fetch,
-    () => assignIssue(cfg, target, { issue_id: 'issue-9', assignee: 'alice.near' }),
-  );
-  assert.equal(params.method, 'set_assignee');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9', assignee: 'alice.near' });
-});
-
-test('setStatus calls set_status with issue_id and status', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
-    }) as typeof fetch,
-    () => setStatus(cfg, target, { issue_id: 'issue-9', status: 'In progress' }),
-  );
-  assert.equal(params.method, 'set_status');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9', status: 'In progress' });
-});
-
-test('setPriority calls set_priority with issue_id and priority', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
-    }) as typeof fetch,
-    () => setPriority(cfg, target, { issue_id: 'issue-9', priority: 'urgent' }),
-  );
-  assert.equal(params.method, 'set_priority');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9', priority: 'urgent' });
-});
-
-test('deleteIssue calls delete_issue with issue_id', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
-    }) as typeof fetch,
-    () => deleteIssue(cfg, target, { issue_id: 'issue-9' }),
-  );
-  assert.equal(params.method, 'delete_issue');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9' });
-});
-
-test('deleteIssue resolves against the repo passed in target (repo override)', async () => {
-  let params: any;
-  const otherTarget: ResolvedTarget = { contextId: 'ctx-2', executorPublicKey: 'exec-2' };
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
-    }) as typeof fetch,
-    () => deleteIssue(cfg, otherTarget, { issue_id: 'issue-9' }),
-  );
-  assert.equal(params.contextId, 'ctx-2');
-  assert.equal(params.executorPublicKey, 'exec-2');
-});
-
-test('getFixPrompt fetches the issue then builds the filled prompt', async () => {
-  const prompt = await withFetch(
-    jsonrpcOk({
-      issue: {
-        id: 'issue-9',
-        title: 'Bug',
-        summary: 'S',
-        impact: 'I',
-        repro: 'R',
-        resolution_criteria: 'C',
-      },
-      comments: [],
+test('createCard forwards provided optionals as given', async () => {
+  const { impl, calls } = jsonrpcMock({ create_card: 'card-1' });
+  await withFetch(impl, () =>
+    createCard(cfg, target, {
+      board_id: 'board-1',
+      list_id: 'todo',
+      title: 'Write it',
+      description: 'Draft',
+      assignee: 'acct',
+      due_at: 1767225600000,
+      labels: ['marketing'],
     }),
-    () => getFixPrompt(cfg, target, { id: 'issue-9' }),
   );
-  assert.match(prompt, /Issue issue-9: Bug/);
-  assert.match(prompt, /## Summary\nS/);
-  assert.match(prompt, /## Resolution criteria\nC/);
+  assert.deepEqual(calls[0].args, {
+    board_id: 'board-1',
+    list_id: 'todo',
+    title: 'Write it',
+    description: 'Draft',
+    assignee: 'acct',
+    due_at: 1767225600000,
+    labels: ['marketing'],
+    rank: null,
+  });
 });
 
-test('getFixPrompt includes the Repository line filled from get_repo_info', async () => {
-  const prompt = await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      const { method, argsJson } = JSON.parse(String(init?.body)).params;
-      if (method === 'get_issue') {
-        return new Response(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            result: {
-              output: {
-                issue: {
-                  id: argsJson.issue_id,
-                  title: 'Bug',
-                  summary: 'S',
-                  impact: 'I',
-                  repro: 'R',
-                  resolution_criteria: 'C',
-                },
-                comments: [],
-              },
-            },
-          }),
-          { status: 200 },
-        );
-      }
-      return new Response(
-        JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: { repo_url: 'https://github.com/acme/frontend' } } }),
-        { status: 200 },
-      );
-    }) as typeof fetch,
-    () => getFixPrompt(cfg, target, { id: 'issue-9' }),
+test('listCards sends null for omitted filters and include_archived as given', async () => {
+  const { impl, calls } = jsonrpcMock({ list_cards: [] });
+  await withFetch(impl, () => listCards(cfg, target, { assignee: 'acct', include_archived: true }));
+  assert.equal(calls[0].method, 'list_cards');
+  assert.deepEqual(calls[0].args, {
+    board_id: null,
+    list_id: null,
+    assignee: 'acct',
+    label: null,
+    include_archived: true,
+  });
+});
+
+test('moveCard reads get_card then get_board, then sends move_card with a rank between the neighbours', async () => {
+  const { impl, calls } = jsonrpcMock({
+    get_card: { card: { id: 'd', list_id: 'doing', rank: 'i', board_id: 'board-1' } },
+    get_board: board,
+  });
+  const result = await withFetch(impl, () => moveCard(cfg, target, { card_id: 'd', list_id: 'todo', position: 'after:a' }));
+  assert.deepEqual(
+    calls.map((c) => c.method),
+    ['get_card', 'get_board', 'move_card'],
   );
-  assert.match(prompt, /Issue issue-9: Bug\nRepository: https:\/\/github\.com\/acme\/frontend\n/);
+  assert.deepEqual(calls[0].args, { card_id: 'd' });
+  assert.deepEqual(calls[1].args, { board_id: 'board-1' });
+  const rank = calls[2].args.rank as string;
+  assert.ok(rank > 'i' && rank < 'r', `rank ${rank} not between a(i) and b(r)`);
+  assert.deepEqual(calls[2].args, { card_id: 'd', list_id: 'todo', rank });
+  assert.deepEqual(result, { card_id: 'd', list_id: 'todo', rank });
 });
 
-test('get_issue schema accepts an optional repo param', () => {
-  const schema = z.object(getIssueShape);
-  const result = schema.safeParse({ id: 'issue-1', repo: 'frontend' });
-  assert.equal(result.success, true);
+test('moveCard to top of a list ranks before its first card', async () => {
+  const { impl, calls } = jsonrpcMock({
+    get_card: { card: { id: 'd', list_id: 'doing', rank: 'i', board_id: 'board-1' } },
+    get_board: board,
+  });
+  await withFetch(impl, () => moveCard(cfg, target, { card_id: 'd', list_id: 'todo', position: 'top' }));
+  assert.ok((calls[2].args.rank as string) < 'i');
 });
 
-test('list_repos schema accepts an empty object', () => {
-  const schema = z.object(listReposShape);
-  assert.equal(schema.safeParse({}).success, true);
-});
-
-test('add_repo schema requires name and an http(s) github_url', () => {
-  const schema = z.object(addRepoShape);
-  assert.equal(schema.safeParse({ name: 'frontend' }).success, false);
-  assert.equal(schema.safeParse({ name: 'frontend', github_url: '' }).success, false);
-  assert.equal(schema.safeParse({ name: 'frontend', github_url: 'ftp://acme/frontend' }).success, false);
-  assert.equal(schema.safeParse({ name: 'frontend', github_url: 'not-a-url' }).success, false);
-  assert.equal(schema.safeParse({ name: 'frontend', github_url: 'https://github.com/acme/frontend' }).success, true);
-});
-
-// ---- listRepos (list_repos tool) ----
-
-test('listRepos fetches repo_url per repo via get_repo_info on each repo\'s own context', async () => {
-  const namespaceRepos = [
-    { contextId: 'ctx-1', name: 'frontend' },
-    { contextId: 'ctx-2', name: 'backend' },
-  ];
-  const result = await withFetch(
-    (async (url: string | URL, init?: RequestInit) => {
-      const u = String(url);
-      if (u.includes('/identities-owned')) {
-        const identity = u.includes('ctx-1') ? 'exec-1' : 'exec-2';
-        return new Response(JSON.stringify({ data: { identities: [identity] } }), { status: 200 });
-      }
-      const { contextId } = JSON.parse(String(init?.body)).params;
-      const repoUrl = contextId === 'ctx-1' ? 'https://github.com/acme/frontend' : 'https://github.com/acme/backend';
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: { repo_url: repoUrl } } }), {
-        status: 200,
-      });
-    }) as typeof fetch,
-    () => listRepos(cfg, namespaceRepos),
+test('moveCard with after: naming a card in another list rejects without sending move_card', async () => {
+  const { impl, calls } = jsonrpcMock({
+    get_card: { card: { id: 'a', list_id: 'todo', rank: 'i', board_id: 'board-1' } },
+    get_board: board,
+  });
+  await assert.rejects(
+    () => withFetch(impl, () => moveCard(cfg, target, { card_id: 'a', list_id: 'todo', position: 'after:d' })),
+    /not in list todo/,
   );
-  assert.deepEqual(result, [
-    { name: 'frontend', repo_url: 'https://github.com/acme/frontend' },
-    { name: 'backend', repo_url: 'https://github.com/acme/backend' },
+  assert.ok(!calls.some((c) => c.method === 'move_card'));
+});
+
+test('moveCard to a list on another board rejects without sending move_card', async () => {
+  const { impl, calls } = jsonrpcMock({
+    get_card: { card: { id: 'a', list_id: 'todo', rank: 'i', board_id: 'board-1' } },
+    get_board: board,
+  });
+  await assert.rejects(
+    () => withFetch(impl, () => moveCard(cfg, target, { card_id: 'a', list_id: 'elsewhere', position: 'top' })),
+    /not on the card's board/,
+  );
+  assert.ok(!calls.some((c) => c.method === 'move_card'));
+});
+
+test('moveList finds the board of the list and sends move_list with a rank among its lists', async () => {
+  const other = { board: { id: 'board-0' }, lists: [{ id: 'x', rank: 'i' }], cards: [] };
+  const { impl, calls } = jsonrpcMock({
+    list_boards: [{ id: 'board-0' }, { id: 'board-1' }],
+    get_board: (args: Record<string, unknown>) => (args.board_id === 'board-1' ? board : other),
+  });
+  const result = await withFetch(impl, () => moveList(cfg, target, { list_id: 'doing', position: 'top' }));
+  assert.deepEqual(calls[0], { method: 'list_boards', args: { include_archived: true }, contextId: 'ctx-1', executorPublicKey: 'exec-1' });
+  const last = calls[calls.length - 1];
+  assert.equal(last.method, 'move_list');
+  const rank = last.args.rank as string;
+  assert.ok(rank < 'i', `rank ${rank} not before todo(i)`);
+  assert.deepEqual(last.args, { list_id: 'doing', rank });
+  assert.deepEqual(result, { list_id: 'doing', rank });
+});
+
+test('moveList with after: naming a list on another board rejects without sending move_list', async () => {
+  const { impl, calls } = jsonrpcMock({ list_boards: [{ id: 'board-1' }], get_board: board });
+  await assert.rejects(
+    () => withFetch(impl, () => moveList(cfg, target, { list_id: 'doing', position: 'after:x' })),
+    /not another list on the same board/,
+  );
+  assert.ok(!calls.some((c) => c.method === 'move_list'));
+});
+
+test('setCard with only archived sends exactly one set_card_archived call, then reads the card', async () => {
+  const { impl, calls } = jsonrpcMock({ get_card: { card: { id: 'c' } } });
+  await withFetch(impl, () => setCard(cfg, target, { card_id: 'c', archived: true }));
+  const writes = calls.filter((c) => c.method !== 'get_card');
+  assert.deepEqual(writes.map((c) => [c.method, c.args]), [['set_card_archived', { card_id: 'c', archived: true }]]);
+});
+
+test('setCard sends null to clear assignee and due_at, and skips omitted fields', async () => {
+  const { impl, calls } = jsonrpcMock({ get_card: { card: { id: 'c' } } });
+  await withFetch(impl, () => setCard(cfg, target, { card_id: 'c', title: 'New', assignee: null, due_at: null }));
+  assert.deepEqual(
+    calls.map((c) => [c.method, c.args]),
+    [
+      ['set_card_title', { card_id: 'c', title: 'New' }],
+      ['set_card_assignee', { card_id: 'c', assignee: null }],
+      ['set_card_due', { card_id: 'c', due_at: null }],
+      ['get_card', { card_id: 'c' }],
+    ],
+  );
+});
+
+test('listFolders maps namespace folders to name + context_id', () => {
+  assert.deepEqual(listFolders([{ contextId: 'ctx-1', name: 'marketing' }]), [
+    { name: 'marketing', context_id: 'ctx-1' },
   ]);
 });
 
-// ---- addRepo (add_repo tool) ----
+// ---- addFolder (add_folder tool) ----
 
 const nsCfg: Config = { nodeUrl: 'http://localhost:2428', namespaceRaw: 'my-team', serviceName: 'board' };
 
-/** A mock fetch covering add_repo's full call graph; `existingContexts` seeds the duplicate check. */
-function addRepoFetch(
+/** A mock fetch covering add_folder's full call graph; `existingContexts` seeds the duplicate check. */
+function addFolderFetch(
   existingContexts: Array<{ contextId: string; name?: string }> = [],
   opts: { aliasFails?: boolean } = {},
-): { impl: typeof fetch; calls: string[] } {
+): { impl: typeof fetch; calls: string[]; createBody: () => unknown } {
   const calls: string[] = [];
+  let createBody: unknown;
   const impl = (async (url: string | URL, init?: RequestInit) => {
     const u = String(url);
     calls.push(`${init?.method ?? 'GET'} ${u}`);
@@ -420,13 +293,10 @@ function addRepoFetch(
       return new Response(JSON.stringify({ data: { aliases: [] } }), { status: 200 });
     }
     if (u.endsWith('/admin-api/contexts') && init?.method === 'POST') {
-      return new Response(
-        JSON.stringify({ data: { contextId: 'ctx-new', memberPublicKey: 'member-key' } }),
-        { status: 200 },
-      );
-    }
-    if (u.endsWith('/jsonrpc')) {
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
+      createBody = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ data: { contextId: 'ctx-new', memberPublicKey: 'member-key' } }), {
+        status: 200,
+      });
     }
     if (u.endsWith('/admin-api/alias/create/context')) {
       return opts.aliasFails
@@ -435,41 +305,31 @@ function addRepoFetch(
     }
     throw new Error(`unexpected fetch: ${u}`);
   }) as typeof fetch;
-  return { impl, calls };
+  return { impl, calls, createBody: () => createBody };
 }
 
-test('addRepo creates the context, sets repo_url as the returned memberPublicKey, aliases it, and returns the new repo', async () => {
-  const { impl, calls } = addRepoFetch();
-  let setRepoUrlParams: any;
-  const wrapped = (async (url: string | URL, init?: RequestInit) => {
-    if (String(url).endsWith('/jsonrpc')) setRepoUrlParams = JSON.parse(String(init?.body)).params;
-    return impl(url, init);
-  }) as typeof fetch;
-
-  const result = await withFetch(wrapped, () =>
-    addRepo(nsCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' }),
-  );
-
-  assert.deepEqual(result, { contextId: 'ctx-new', name: 'frontend', url: 'https://github.com/acme/frontend' });
-  assert.equal(setRepoUrlParams.method, 'set_repo_url');
-  assert.deepEqual(setRepoUrlParams.argsJson, { url: 'https://github.com/acme/frontend' });
-  assert.equal(setRepoUrlParams.contextId, 'ctx-new');
-  assert.equal(setRepoUrlParams.executorPublicKey, 'member-key');
-  assert.ok(calls.some((c) => c === 'POST http://localhost:2428/admin-api/contexts'));
+test('addFolder creates a board context in the namespace, aliases it, and makes no app call', async () => {
+  const { impl, calls, createBody } = addFolderFetch();
+  const result = await withFetch(impl, () => addFolder(nsCfg, { name: ' marketing ' }));
+  assert.deepEqual(result, { contextId: 'ctx-new', name: 'marketing' });
+  assert.deepEqual(createBody(), {
+    applicationId: 'app-1',
+    groupId: 'ns-1',
+    serviceName: 'board',
+    name: 'marketing',
+    initializationParams: [],
+  });
   assert.ok(calls.some((c) => c.endsWith('/admin-api/alias/create/context')));
+  assert.ok(!calls.some((c) => c.endsWith('/jsonrpc')));
 });
 
-test('addRepo rejects a duplicate repo name without calling createContext', async () => {
-  const { impl, calls } = addRepoFetch([{ contextId: 'ctx-1', name: 'frontend' }]);
-  await assert.rejects(
-    () => withFetch(impl, () => addRepo(nsCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' })),
-    /"frontend" already exists/,
-  );
+test('addFolder rejects a duplicate folder name without calling createContext', async () => {
+  const { impl, calls } = addFolderFetch([{ contextId: 'ctx-1', name: 'marketing' }]);
+  await assert.rejects(() => withFetch(impl, () => addFolder(nsCfg, { name: 'marketing' })), /"marketing" already exists/);
   assert.ok(!calls.some((c) => c.endsWith('/admin-api/contexts') && c.startsWith('POST')));
 });
 
-test('addRepo rejects when TRACKER_NAMESPACE is unset (context-pin mode)', async () => {
-  const pinCfg: Config = { nodeUrl: 'http://localhost:2428', contextRaw: 'ctx', serviceName: 'board' };
+test('addFolder rejects when BOARD_NAMESPACE is unset (context-pin mode)', async () => {
   let fetchCalled = false;
   await assert.rejects(
     () =>
@@ -478,22 +338,63 @@ test('addRepo rejects when TRACKER_NAMESPACE is unset (context-pin mode)', async
           fetchCalled = true;
           throw new Error('should not be called');
         }) as typeof fetch,
-        () => addRepo(pinCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' }),
+        () => addFolder(cfg, { name: 'marketing' }),
       ),
-    /TRACKER_NAMESPACE/,
+    /BOARD_NAMESPACE/,
   );
   assert.equal(fetchCalled, false);
 });
 
-test('addRepo succeeds even when alias creation fails (best-effort)', async () => {
-  const { impl } = addRepoFetch([], { aliasFails: true });
-  const result = await withFetch(impl, () =>
-    addRepo(nsCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' }),
-  );
-  assert.deepEqual(result, { contextId: 'ctx-new', name: 'frontend', url: 'https://github.com/acme/frontend' });
+test('addFolder succeeds even when alias creation fails (best-effort)', async () => {
+  const { impl } = addFolderFetch([], { aliasFails: true });
+  const originalError = console.error;
+  const logged: string[] = [];
+  console.error = (msg: string) => void logged.push(msg);
+  try {
+    const result = await withFetch(impl, () => addFolder(nsCfg, { name: 'marketing' }));
+    assert.deepEqual(result, { contextId: 'ctx-new', name: 'marketing' });
+    assert.match(logged.join('\n'), /alias creation for "marketing" failed/);
+  } finally {
+    console.error = originalError;
+  }
 });
 
-// ---- Server construction ----
+// ---- Server ----
+
+const EXPECTED_TOOLS = [
+  'list_folders',
+  'add_folder',
+  'list_boards',
+  'create_board',
+  'rename_board',
+  'archive_board',
+  'delete_board',
+  'get_board',
+  'create_list',
+  'rename_list',
+  'move_list',
+  'delete_list',
+  'create_card',
+  'list_cards',
+  'get_card',
+  'move_card',
+  'set_card',
+  'add_label',
+  'remove_label',
+  'add_checklist_item',
+  'set_checklist_item_done',
+  'add_comment',
+  'delete_card',
+];
+
+async function connectedClient() {
+  const server = createServer(cfg);
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  const client = new Client({ name: 'test', version: '0' });
+  await client.connect(clientTransport);
+  return client;
+}
 
 test('createServer builds without resolving context/executor (no network call)', () => {
   let fetchCalled = false;
@@ -503,10 +404,56 @@ test('createServer builds without resolving context/executor (no network call)',
     throw new Error('should not be called at construction time');
   }) as typeof fetch;
   try {
-    const server = createServer(cfg);
-    assert.ok(server);
+    assert.ok(createServer(cfg));
     assert.equal(fetchCalled, false);
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test('the server registers exactly the board tools', async () => {
+  const client = await connectedClient();
+  const { tools } = await client.listTools();
+  assert.deepEqual(tools.map((t) => t.name).sort(), [...EXPECTED_TOOLS].sort());
+  for (const t of tools) {
+    if (t.name === 'list_folders' || t.name === 'add_folder') continue;
+    assert.ok(t.inputSchema.properties && 'folder' in t.inputSchema.properties, `${t.name} takes no folder`);
+  }
+  await client.close();
+});
+
+test('pass-through tools drop folder and send the contract args (create_board passes rank null)', async () => {
+  // Pinned context: the resolver looks up the alias and owned identities first.
+  const sent: SentCall[] = [];
+  const impl = (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    if (u.includes('/alias/lookup/context/')) {
+      return new Response(JSON.stringify({ data: { value: 'ctx-1' } }), { status: 200 });
+    }
+    if (u.includes('/identities-owned')) {
+      return new Response(JSON.stringify({ data: { identities: ['exec-1'] } }), { status: 200 });
+    }
+    const { params } = JSON.parse(String(init?.body));
+    sent.push({ method: params.method, args: params.argsJson, contextId: params.contextId, executorPublicKey: params.executorPublicKey });
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: 'board-9' } }), { status: 200 });
+  }) as typeof fetch;
+
+  await withFetch(impl, async () => {
+    const client = await connectedClient();
+    const created = await client.callTool({ name: 'create_board', arguments: { name: 'Q4' } });
+    assert.deepEqual(JSON.parse((created.content as Array<{ text: string }>)[0].text), { id: 'board-9' });
+    await client.callTool({ name: 'archive_board', arguments: { board_id: 'board-9', archived: true } });
+    await client.callTool({ name: 'set_checklist_item_done', arguments: { item_id: 'item-1', done: true } });
+    await client.close();
+  });
+
+  assert.deepEqual(
+    sent.map((c) => [c.method, c.args]),
+    [
+      ['create_board', { name: 'Q4', rank: null }],
+      ['set_board_archived', { board_id: 'board-9', archived: true }],
+      ['set_checklist_item_done', { item_id: 'item-1', done: true }],
+    ],
+  );
+  assert.ok(sent.every((c) => c.contextId === 'ctx-1' && c.executorPublicKey === 'exec-1'));
 });

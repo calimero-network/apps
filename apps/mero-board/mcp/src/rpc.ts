@@ -18,10 +18,10 @@ export interface ResolvedTarget {
   executorPublicKey: string;
 }
 
-/** A repo (an aliased context) inside a namespace. */
-export interface NamespaceRepo {
+/** A folder (an aliased context) inside a namespace. */
+export interface NamespaceFolder {
   contextId: string;
-  /** The context alias - the repo's name. */
+  /** The context alias - the folder's name. */
   name: string;
 }
 
@@ -32,14 +32,14 @@ function headers(cfg: Config): Record<string, string> {
 }
 
 /**
- * Resolves TRACKER_CONTEXT to a context id. Tries the alias registry first;
+ * Resolves BOARD_CONTEXT to a context id. Tries the alias registry first;
  * any failure (not found, bad auth, network) falls back to treating the
  * configured value as a raw context id, per the brief's contract.
  */
 export async function resolveContextId(cfg: Config): Promise<string> {
   const contextRaw = cfg.contextRaw;
   if (!contextRaw) {
-    throw new Error('TRACKER_CONTEXT is not set.');
+    throw new Error('BOARD_CONTEXT is not set.');
   }
   try {
     const res = await fetch(
@@ -52,12 +52,12 @@ export async function resolveContextId(cfg: Config): Promise<string> {
     } else {
       // stderr only - stdout is reserved for the MCP protocol stream.
       console.error(
-        `[issue-tracker-mcp] alias lookup for "${contextRaw}" returned ${res.status}; treating it as a raw context id.`,
+        `[board-mcp] alias lookup for "${contextRaw}" returned ${res.status}; treating it as a raw context id.`,
       );
     }
   } catch (err) {
     console.error(
-      `[issue-tracker-mcp] alias lookup for "${contextRaw}" failed (${err instanceof Error ? err.message : String(err)}); treating it as a raw context id.`,
+      `[board-mcp] alias lookup for "${contextRaw}" failed (${err instanceof Error ? err.message : String(err)}); treating it as a raw context id.`,
     );
   }
   return contextRaw;
@@ -73,7 +73,7 @@ interface NamespaceRecord {
 async function findNamespace(cfg: Config): Promise<NamespaceRecord> {
   const namespaceRaw = cfg.namespaceRaw;
   if (!namespaceRaw) {
-    throw new Error('TRACKER_NAMESPACE is not set.');
+    throw new Error('BOARD_NAMESPACE is not set.');
   }
   const res = await fetch(`${cfg.nodeUrl}/admin-api/namespaces`, { headers: headers(cfg) });
   if (!res.ok) {
@@ -89,12 +89,12 @@ async function findNamespace(cfg: Config): Promise<NamespaceRecord> {
   return match;
 }
 
-/** Resolves TRACKER_NAMESPACE (a namespace id or name) to a namespace id via the admin API's namespace list. */
+/** Resolves BOARD_NAMESPACE (a namespace id or name) to a namespace id via the admin API's namespace list. */
 export async function resolveNamespaceId(cfg: Config): Promise<string> {
   return (await findNamespace(cfg)).namespaceId;
 }
 
-/** Resolves TRACKER_NAMESPACE to both its id and the application it targets, for add_repo's createContext call. */
+/** Resolves BOARD_NAMESPACE to both its id and the application it targets, for add_folder's createContext call. */
 export async function resolveNamespaceApp(cfg: Config): Promise<{ namespaceId: string; applicationId: string }> {
   const match = await findNamespace(cfg);
   if (!match.targetApplicationId) {
@@ -119,8 +119,8 @@ export function parseAliasEntries(json: unknown): Array<{ name: string; value: s
   return [];
 }
 
-/** Lists the repos (aliased contexts) inside a namespace: each context's id plus its repo name. */
-export async function listNamespaceRepos(cfg: Config, namespaceId: string): Promise<NamespaceRepo[]> {
+/** Lists the folders (aliased contexts) inside a namespace: each context's id plus its folder name. */
+export async function listNamespaceFolders(cfg: Config, namespaceId: string): Promise<NamespaceFolder[]> {
   const [contextsRes, aliasesRes] = await Promise.all([
     fetch(`${cfg.nodeUrl}/admin-api/groups/${encodeURIComponent(namespaceId)}/contexts`, { headers: headers(cfg) }),
     fetch(`${cfg.nodeUrl}/admin-api/alias/list/context`, { headers: headers(cfg) }),
@@ -142,32 +142,32 @@ export async function listNamespaceRepos(cfg: Config, namespaceId: string): Prom
     aliasNameByContextId.set(a.value, a.name);
   }
 
-  const repos: NamespaceRepo[] = [];
+  const folders: NamespaceFolder[] = [];
   for (const c of contexts) {
     const name = c.name?.trim() || aliasNameByContextId.get(c.contextId);
-    if (name) repos.push({ contextId: c.contextId, name });
+    if (name) folders.push({ contextId: c.contextId, name });
   }
-  return repos;
+  return folders;
 }
 
 /**
- * Picks a repo from a namespace's repo list per the resolution order: an
- * explicit `wanted` name (repo param or TRACKER_REPO), else the namespace's
- * only repo, else a helpful error listing what's available.
+ * Picks a folder from a namespace's folder list per the resolution order: an
+ * explicit `wanted` name (folder param or BOARD_FOLDER), else the namespace's
+ * only folder, else a helpful error listing what's available.
  */
-export function pickRepo(repos: NamespaceRepo[], wanted?: string): NamespaceRepo {
+export function pickFolder(folders: NamespaceFolder[], wanted?: string): NamespaceFolder {
   if (wanted) {
-    const match = repos.find((r) => r.name === wanted);
+    const match = folders.find((r) => r.name === wanted);
     if (match) return match;
-    const available = repos.map((r) => r.name).join(', ') || '(none)';
-    throw new Error(`Repo "${wanted}" not found. Available repos: ${available}`);
+    const available = folders.map((r) => r.name).join(', ') || '(none)';
+    throw new Error(`Folder "${wanted}" not found. Available folders: ${available}`);
   }
-  if (repos.length === 1) return repos[0];
-  if (repos.length === 0) {
-    throw new Error('No repos found in this namespace. Create a context and alias it to use as a repo.');
+  if (folders.length === 1) return folders[0];
+  if (folders.length === 0) {
+    throw new Error('No folders found in this namespace. Create a context and alias it to use as a folder.');
   }
-  const available = repos.map((r) => r.name).join(', ');
-  throw new Error(`Multiple repos exist; pass "repo" or set TRACKER_REPO. Available repos: ${available}`);
+  const available = folders.map((r) => r.name).join(', ');
+  throw new Error(`Multiple folders exist; pass "folder" or set BOARD_FOLDER. Available folders: ${available}`);
 }
 
 /** A newly created context, per mero-js's CreateContextResponseData (POST /admin-api/contexts). */
@@ -176,7 +176,7 @@ export interface CreatedContext {
   memberPublicKey: string;
 }
 
-/** Creates a context in a namespace, mirroring useWorkspace.ts's addRepo -> mero.admin.createContext. */
+/** Creates a context in a namespace, as the app's workspaceOps does via mero.admin.createContext. */
 export async function createContext(
   cfg: Config,
   params: { applicationId: string; groupId: string; serviceName: string; name: string },
@@ -197,7 +197,7 @@ export async function createContext(
   return json.data;
 }
 
-/** Aliases a context to a name, mirroring useWorkspace.ts's best-effort mero.admin.createContextAlias. */
+/** Aliases a context to a name, as the app's workspaceOps does (best-effort) via mero.admin.createContextAlias. */
 export async function createContextAlias(cfg: Config, alias: string, contextId: string): Promise<void> {
   const res = await fetch(`${cfg.nodeUrl}/admin-api/alias/create/context`, {
     method: 'POST',
@@ -210,7 +210,7 @@ export async function createContextAlias(cfg: Config, alias: string, contextId: 
   }
 }
 
-/** Resolves the executor identity: TRACKER_EXECUTOR if set, else the node's first owned identity for the context. */
+/** Resolves the executor identity: BOARD_EXECUTOR if set, else the node's first owned identity for the context. */
 export async function resolveExecutor(cfg: Config, contextId: string): Promise<string> {
   if (cfg.executorOverride) return cfg.executorOverride;
 
@@ -224,12 +224,12 @@ export async function resolveExecutor(cfg: Config, contextId: string): Promise<s
   const json = (await res.json()) as { data?: { identities?: string[] } };
   const identities = json?.data?.identities ?? [];
   if (identities.length === 0) {
-    throw new Error(`No owned identity found for context ${contextId}. Set TRACKER_EXECUTOR to override.`);
+    throw new Error(`No owned identity found for context ${contextId}. Set BOARD_EXECUTOR to override.`);
   }
   return identities[0];
 }
 
-/** Resolves both the context id and executor identity for the TRACKER_CONTEXT direct pin. Not cached. */
+/** Resolves both the context id and executor identity for the BOARD_CONTEXT direct pin. Not cached. */
 export async function resolveTarget(cfg: Config): Promise<ResolvedTarget> {
   const contextId = await resolveContextId(cfg);
   const executorPublicKey = await resolveExecutor(cfg, contextId);
@@ -237,12 +237,12 @@ export async function resolveTarget(cfg: Config): Promise<ResolvedTarget> {
 }
 
 /**
- * Returns a resolver that caches namespace + repo-list lookups for the process
+ * Returns a resolver that caches namespace + folder-list lookups for the process
  * lifetime, but only on success - a rejected promise must not stick, or one
  * transient startup failure (node not up yet, network blip) bricks every
  * later call.
  */
-export function createRepoLister(cfg: Config): () => Promise<NamespaceRepo[]> {
+export function createFolderLister(cfg: Config): () => Promise<NamespaceFolder[]> {
   let namespaceCached: Promise<string> | null = null;
   const resolveNamespace = () =>
     (namespaceCached ??= resolveNamespaceId(cfg).catch((err) => {
@@ -250,31 +250,31 @@ export function createRepoLister(cfg: Config): () => Promise<NamespaceRepo[]> {
       throw err;
     }));
 
-  let reposCached: Promise<NamespaceRepo[]> | null = null;
+  let foldersCached: Promise<NamespaceFolder[]> | null = null;
   return () =>
-    (reposCached ??= resolveNamespace()
-      .then((namespaceId) => listNamespaceRepos(cfg, namespaceId))
+    (foldersCached ??= resolveNamespace()
+      .then((namespaceId) => listNamespaceFolders(cfg, namespaceId))
       .catch((err) => {
-        reposCached = null;
+        foldersCached = null;
         throw err;
       }));
 }
 
 /**
- * Returns a per-call target resolver. When TRACKER_CONTEXT is set it pins a
- * single context directly (backward compat, repo param ignored). Otherwise it
- * resolves `repoParam` against the TRACKER_NAMESPACE's repos, per pickRepo's
- * order. Caches per resolved repo name for the process lifetime, only on
- * success (see createRepoLister).
+ * Returns a per-call target resolver. When BOARD_CONTEXT is set it pins a
+ * single context directly (folder param ignored). Otherwise it
+ * resolves `folderParam` against the BOARD_NAMESPACE's folders, per pickFolder's
+ * order. Caches per resolved folder name for the process lifetime, only on
+ * success (see createFolderLister).
  */
-export function createTargetResolver(cfg: Config): (repoParam?: string) => Promise<ResolvedTarget> {
+export function createTargetResolver(cfg: Config): (folderParam?: string) => Promise<ResolvedTarget> {
   if (cfg.contextRaw) {
     let cached: Promise<ResolvedTarget> | null = null;
-    return (repoParam) => {
-      if (repoParam) {
+    return (folderParam) => {
+      if (folderParam) {
         // stderr only - stdout is reserved for the MCP protocol stream.
         console.error(
-          `[issue-tracker-mcp] repo "${repoParam}" ignored - TRACKER_CONTEXT pins a single context directly.`,
+          `[board-mcp] folder "${folderParam}" ignored - BOARD_CONTEXT pins a single context directly.`,
         );
       }
       return (cached ??= resolveTarget(cfg).catch((err) => {
@@ -284,17 +284,17 @@ export function createTargetResolver(cfg: Config): (repoParam?: string) => Promi
     };
   }
 
-  const listRepos = createRepoLister(cfg);
+  const listFolders = createFolderLister(cfg);
   const targetCache = new Map<string, Promise<ResolvedTarget>>();
-  return (repoParam) => {
-    const key = repoParam ?? '';
+  return (folderParam) => {
+    const key = folderParam ?? '';
     let cached = targetCache.get(key);
     if (!cached) {
       cached = (async () => {
-        const repos = await listRepos();
-        const repo = pickRepo(repos, repoParam?.trim() || cfg.repoDefault);
-        const executorPublicKey = await resolveExecutor(cfg, repo.contextId);
-        return { contextId: repo.contextId, executorPublicKey };
+        const folders = await listFolders();
+        const folder = pickFolder(folders, folderParam?.trim() || cfg.folderDefault);
+        const executorPublicKey = await resolveExecutor(cfg, folder.contextId);
+        return { contextId: folder.contextId, executorPublicKey };
       })().catch((err) => {
         targetCache.delete(key);
         throw err;

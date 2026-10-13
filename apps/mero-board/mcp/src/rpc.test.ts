@@ -1,26 +1,30 @@
-import { test } from 'node:test';
+import { test, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Config } from './config.ts';
 import {
   callMethod,
   createContext,
   createContextAlias,
-  createRepoLister,
+  createFolderLister,
   createTargetResolver,
   decodeFunctionCallErrorData,
-  listNamespaceRepos,
-  pickRepo,
+  listNamespaceFolders,
+  pickFolder,
   resolveContextId,
   resolveExecutor,
   resolveNamespaceApp,
   resolveNamespaceId,
   RpcError,
-  type NamespaceRepo,
+  type NamespaceFolder,
 } from './rpc.ts';
+
+// The resolvers log expected fallbacks (alias lookup misses, ignored folder params) to stderr; keep test output clean.
+before(() => mock.method(console, 'error', () => {}));
+after(() => mock.restoreAll());
 
 const baseConfig: Config = {
   nodeUrl: 'http://localhost:2428',
-  contextRaw: 'my-tracker',
+  contextRaw: 'my-board',
   serviceName: 'board',
 };
 
@@ -46,14 +50,14 @@ test('callMethod posts the exact jsonrpc envelope and returns result.output', as
       capturedUrl = String(url);
       capturedInit = init;
       return new Response(
-        JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: 'issue-123' } }),
+        JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: 'card-123' } }),
         { status: 200 },
       );
     }) as typeof fetch,
     async () => {
       const target = { contextId: 'ctx-1', executorPublicKey: 'exec-1' };
-      const out = await callMethod(baseConfig, target, 'create_issue', { title: 'Bug' });
-      assert.equal(out, 'issue-123');
+      const out = await callMethod(baseConfig, target, 'create_card', { title: 'Fix it' });
+      assert.equal(out, 'card-123');
     },
   );
 
@@ -65,8 +69,8 @@ test('callMethod posts the exact jsonrpc envelope and returns result.output', as
     method: 'execute',
     params: {
       contextId: 'ctx-1',
-      method: 'create_issue',
-      argsJson: { title: 'Bug' },
+      method: 'create_card',
+      argsJson: { title: 'Fix it' },
       executorPublicKey: 'exec-1',
     },
   });
@@ -83,7 +87,7 @@ test('callMethod sends a bearer token when configured', async () => {
       headers = init?.headers as Record<string, string>;
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
     }) as typeof fetch,
-    () => callMethod(cfg, { contextId: 'c', executorPublicKey: 'e' }, 'list_issues', {}),
+    () => callMethod(cfg, { contextId: 'c', executorPublicKey: 'e' }, 'list_cards', {}),
   );
   assert.equal(headers.Authorization, 'Bearer tok-abc');
 });
@@ -94,14 +98,14 @@ test('callMethod throws RpcError on a jsonrpc-level error', async () => {
       withFetch(
         (async () =>
           new Response(
-            JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'issue not found' } }),
+            JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'card not found' } }),
             { status: 200 },
           )) as typeof fetch,
-        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'get_issue', { issue_id: 'x' }),
+        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'get_card', { card_id: 'x' }),
       ),
     (err: unknown) => {
       assert.ok(err instanceof RpcError);
-      assert.match(err.message, /issue not found/);
+      assert.match(err.message, /card not found/);
       return true;
     },
   );
@@ -123,7 +127,7 @@ test('callMethod decodes a FunctionCallError data byte array into the real guest
             }),
             { status: 200 },
           )) as typeof fetch,
-        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'create_issue', {}),
+        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'create_card', {}),
       ),
     (err: unknown) => {
       assert.ok(err instanceof RpcError);
@@ -142,7 +146,7 @@ test('callMethod falls back to the error type when data is not a decodable byte 
             JSON.stringify({ jsonrpc: '2.0', id: 1, error: { type: 'FunctionCallError', data: 'opaque' } }),
             { status: 200 },
           )) as typeof fetch,
-        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'create_issue', {}),
+        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'create_card', {}),
       ),
     /FunctionCallError/,
   );
@@ -169,7 +173,7 @@ test('callMethod throws on non-2xx HTTP status', async () => {
     () =>
       withFetch(
         (async () => new Response('server exploded', { status: 500 })) as typeof fetch,
-        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'get_issue', { issue_id: 'x' }),
+        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'get_card', { card_id: 'x' }),
       ),
     /500/,
   );
@@ -187,7 +191,7 @@ test('resolveContextId uses the alias lookup value when found', async () => {
     () => resolveContextId(baseConfig),
   );
   assert.equal(contextId, 'ctx-resolved');
-  assert.equal(capturedUrl, 'http://localhost:2428/admin-api/alias/lookup/context/my-tracker');
+  assert.equal(capturedUrl, 'http://localhost:2428/admin-api/alias/lookup/context/my-board');
   assert.equal(capturedInit?.method, 'POST');
 });
 
@@ -196,7 +200,7 @@ test('resolveContextId falls back to the raw value when the alias lookup 404s', 
     (async () => new Response('not found', { status: 404 })) as typeof fetch,
     () => resolveContextId(baseConfig),
   );
-  assert.equal(contextId, 'my-tracker');
+  assert.equal(contextId, 'my-board');
 });
 
 test('resolveContextId falls back to the raw value on a network error', async () => {
@@ -206,7 +210,7 @@ test('resolveContextId falls back to the raw value on a network error', async ()
     }) as typeof fetch,
     () => resolveContextId(baseConfig),
   );
-  assert.equal(contextId, 'my-tracker');
+  assert.equal(contextId, 'my-board');
 });
 
 test('resolveExecutor returns the override without calling fetch', async () => {
@@ -286,8 +290,8 @@ function namespacesFetch(
   }) as typeof fetch;
 }
 
-test('resolveNamespaceId throws when TRACKER_NAMESPACE is not set', async () => {
-  await assert.rejects(() => resolveNamespaceId(baseConfig), /TRACKER_NAMESPACE/);
+test('resolveNamespaceId throws when BOARD_NAMESPACE is not set', async () => {
+  await assert.rejects(() => resolveNamespaceId(baseConfig), /BOARD_NAMESPACE/);
 });
 
 test('resolveNamespaceId matches by namespace id', async () => {
@@ -437,9 +441,9 @@ test('createContextAlias throws on non-2xx HTTP status', async () => {
   );
 });
 
-// ---- listNamespaceRepos ----
+// ---- listNamespaceFolders ----
 
-function reposFetch(
+function foldersFetch(
   contexts: Array<{ contextId: string; name?: string }>,
   aliases: Array<{ name: string; value: string }>,
 ): typeof fetch {
@@ -453,22 +457,22 @@ function reposFetch(
   }) as typeof fetch;
 }
 
-test('listNamespaceRepos joins contexts with their alias and drops unaliased contexts', async () => {
-  const repos = await withFetch(
-    reposFetch(
+test('listNamespaceFolders joins contexts with their alias and drops unaliased contexts', async () => {
+  const folders = await withFetch(
+    foldersFetch(
       [{ contextId: 'ctx-1' }, { contextId: 'ctx-2' }, { contextId: 'ctx-3' }],
       [{ name: 'frontend', value: 'ctx-1' }, { name: 'backend', value: 'ctx-2' }],
     ),
-    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+    () => listNamespaceFolders(namespaceConfig, 'ns-1'),
   );
-  assert.deepEqual(repos, [
+  assert.deepEqual(folders, [
     { contextId: 'ctx-1', name: 'frontend' },
     { contextId: 'ctx-2', name: 'backend' },
   ]);
 });
 
-test('listNamespaceRepos parses the real node flat-map alias shape', async () => {
-  const repos = await withFetch(
+test('listNamespaceFolders parses the real node flat-map alias shape', async () => {
+  const folders = await withFetch(
     (async (url: string | URL) => {
       const u = String(url);
       if (u.includes('/contexts')) {
@@ -479,34 +483,34 @@ test('listNamespaceRepos parses the real node flat-map alias shape', async () =>
       }
       throw new Error(`unexpected fetch: ${url}`);
     }) as typeof fetch,
-    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+    () => listNamespaceFolders(namespaceConfig, 'ns-1'),
   );
-  assert.deepEqual(repos, [{ contextId: 'ctx-1', name: 'frontend' }]);
+  assert.deepEqual(folders, [{ contextId: 'ctx-1', name: 'frontend' }]);
 });
 
-test('listNamespaceRepos prefers the group-entry name over the alias when both are present', async () => {
-  const repos = await withFetch(
-    reposFetch(
+test('listNamespaceFolders prefers the group-entry name over the alias when both are present', async () => {
+  const folders = await withFetch(
+    foldersFetch(
       [{ contextId: 'ctx-1', name: 'core' }],
       [{ name: 'stale-alias', value: 'ctx-1' }],
     ),
-    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+    () => listNamespaceFolders(namespaceConfig, 'ns-1'),
   );
-  assert.deepEqual(repos, [{ contextId: 'ctx-1', name: 'core' }]);
+  assert.deepEqual(folders, [{ contextId: 'ctx-1', name: 'core' }]);
 });
 
-test('listNamespaceRepos dedupes when two aliases point at the same context', async () => {
-  const repos = await withFetch(
-    reposFetch(
+test('listNamespaceFolders dedupes when two aliases point at the same context', async () => {
+  const folders = await withFetch(
+    foldersFetch(
       [{ contextId: 'ctx-1' }],
       [{ name: 'first', value: 'ctx-1' }, { name: 'second', value: 'ctx-1' }],
     ),
-    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+    () => listNamespaceFolders(namespaceConfig, 'ns-1'),
   );
-  assert.deepEqual(repos, [{ contextId: 'ctx-1', name: 'first' }]);
+  assert.deepEqual(folders, [{ contextId: 'ctx-1', name: 'first' }]);
 });
 
-test('listNamespaceRepos throws when the contexts fetch fails', async () => {
+test('listNamespaceFolders throws when the contexts fetch fails', async () => {
   await assert.rejects(
     () =>
       withFetch(
@@ -514,45 +518,45 @@ test('listNamespaceRepos throws when the contexts fetch fails', async () => {
           String(url).includes('/contexts')
             ? new Response('nope', { status: 500 })
             : new Response(JSON.stringify({ data: { aliases: [] } }), { status: 200 })) as typeof fetch,
-        () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+        () => listNamespaceFolders(namespaceConfig, 'ns-1'),
       ),
     /500/,
   );
 });
 
-// ---- pickRepo ----
+// ---- pickFolder ----
 
-const repos: NamespaceRepo[] = [
+const folders: NamespaceFolder[] = [
   { contextId: 'ctx-1', name: 'frontend' },
   { contextId: 'ctx-2', name: 'backend' },
 ];
 
-test('pickRepo returns the named match when wanted is set', () => {
-  assert.deepEqual(pickRepo(repos, 'backend'), { contextId: 'ctx-2', name: 'backend' });
+test('pickFolder returns the named match when wanted is set', () => {
+  assert.deepEqual(pickFolder(folders, 'backend'), { contextId: 'ctx-2', name: 'backend' });
 });
 
-test('pickRepo throws a helpful error listing available repos when the wanted name is not found', () => {
-  assert.throws(() => pickRepo(repos, 'missing'), /"missing" not found.*frontend.*backend/s);
+test('pickFolder throws a helpful error listing available folders when the wanted name is not found', () => {
+  assert.throws(() => pickFolder(folders, 'missing'), /"missing" not found.*frontend.*backend/s);
 });
 
-test('pickRepo returns the only repo when none is wanted', () => {
-  assert.deepEqual(pickRepo([repos[0]]), repos[0]);
+test('pickFolder returns the only folder when none is wanted', () => {
+  assert.deepEqual(pickFolder([folders[0]]), folders[0]);
 });
 
-test('pickRepo throws when multiple repos exist and none is wanted', () => {
-  assert.throws(() => pickRepo(repos), /Multiple repos exist.*frontend.*backend/s);
+test('pickFolder throws when multiple folders exist and none is wanted', () => {
+  assert.throws(() => pickFolder(folders), /Multiple folders exist.*frontend.*backend/s);
 });
 
-test('pickRepo throws when no repos exist', () => {
-  assert.throws(() => pickRepo([]), /No repos found/);
+test('pickFolder throws when no folders exist', () => {
+  assert.throws(() => pickFolder([]), /No folders found/);
 });
 
-// ---- createRepoLister ----
+// ---- createFolderLister ----
 
-test('createRepoLister caches across calls and does not re-fetch', async () => {
+test('createFolderLister caches across calls and does not re-fetch', async () => {
   let namespaceFetches = 0;
-  let reposFetches = 0;
-  const listRepos = createRepoLister(namespaceConfig);
+  let foldersFetches = 0;
+  const listFolders = createFolderLister(namespaceConfig);
 
   const impl = (async (url: string | URL) => {
     const u = String(url);
@@ -561,7 +565,7 @@ test('createRepoLister caches across calls and does not re-fetch', async () => {
       return new Response(JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team' }] }), { status: 200 });
     }
     if (u.includes('/contexts')) {
-      reposFetches += 1;
+      foldersFetches += 1;
       return new Response(JSON.stringify({ data: [{ contextId: 'ctx-1' }] }), { status: 200 });
     }
     if (u.includes('/alias/list/context')) {
@@ -572,28 +576,28 @@ test('createRepoLister caches across calls and does not re-fetch', async () => {
     throw new Error(`unexpected fetch: ${url}`);
   }) as typeof fetch;
 
-  const first = await withFetch(impl, () => listRepos());
-  const second = await withFetch(impl, () => listRepos());
+  const first = await withFetch(impl, () => listFolders());
+  const second = await withFetch(impl, () => listFolders());
 
   assert.deepEqual(first, [{ contextId: 'ctx-1', name: 'frontend' }]);
   assert.deepEqual(second, first);
   assert.equal(namespaceFetches, 1);
-  assert.equal(reposFetches, 1);
+  assert.equal(foldersFetches, 1);
 });
 
-test('createRepoLister does not cache a rejected resolution', async () => {
+test('createFolderLister does not cache a rejected resolution', async () => {
   let attempt = 0;
-  const listRepos = createRepoLister(namespaceConfig);
+  const listFolders = createFolderLister(namespaceConfig);
 
   await withFetch(
     (async () => {
       attempt += 1;
       return new Response('nope', { status: 500 });
     }) as typeof fetch,
-    () => assert.rejects(() => listRepos(), /500/),
+    () => assert.rejects(() => listFolders(), /500/),
   );
 
-  const repos2 = await withFetch(
+  const folders2 = await withFetch(
     (async (url: string | URL) => {
       const u = String(url);
       if (u.endsWith('/admin-api/namespaces')) {
@@ -609,9 +613,9 @@ test('createRepoLister does not cache a rejected resolution', async () => {
       }
       throw new Error(`unexpected fetch: ${url}`);
     }) as typeof fetch,
-    () => listRepos(),
+    () => listFolders(),
   );
-  assert.deepEqual(repos2, [{ contextId: 'ctx-1', name: 'frontend' }]);
+  assert.deepEqual(folders2, [{ contextId: 'ctx-1', name: 'frontend' }]);
   assert.equal(attempt, 1);
 });
 
@@ -645,21 +649,21 @@ function fullNamespaceFetch(): typeof fetch {
   }) as typeof fetch;
 }
 
-test('createTargetResolver resolves the explicit repo param over TRACKER_REPO', async () => {
-  const cfg: Config = { ...namespaceConfig, repoDefault: 'backend' };
+test('createTargetResolver resolves the explicit folder param over BOARD_FOLDER', async () => {
+  const cfg: Config = { ...namespaceConfig, folderDefault: 'backend' };
   const target = createTargetResolver(cfg);
   const resolved = await withFetch(fullNamespaceFetch(), () => target('frontend'));
   assert.deepEqual(resolved, { contextId: 'ctx-1', executorPublicKey: 'exec-frontend' });
 });
 
-test('createTargetResolver falls back to TRACKER_REPO when no repo param is given', async () => {
-  const cfg: Config = { ...namespaceConfig, repoDefault: 'backend' };
+test('createTargetResolver falls back to BOARD_FOLDER when no folder param is given', async () => {
+  const cfg: Config = { ...namespaceConfig, folderDefault: 'backend' };
   const target = createTargetResolver(cfg);
   const resolved = await withFetch(fullNamespaceFetch(), () => target());
   assert.deepEqual(resolved, { contextId: 'ctx-2', executorPublicKey: 'exec-backend' });
 });
 
-test('createTargetResolver infers the single repo when neither repo param nor TRACKER_REPO is set', async () => {
+test('createTargetResolver infers the single folder when neither folder param nor BOARD_FOLDER is set', async () => {
   const target = createTargetResolver(namespaceConfig);
   const impl = (async (url: string | URL) => {
     const u = String(url);
@@ -683,7 +687,7 @@ test('createTargetResolver infers the single repo when neither repo param nor TR
   assert.deepEqual(resolved, { contextId: 'ctx-1', executorPublicKey: 'exec-1' });
 });
 
-test('createTargetResolver rejects with a helpful error when the repo param does not match', async () => {
+test('createTargetResolver rejects with a helpful error when the folder param does not match', async () => {
   const target = createTargetResolver(namespaceConfig);
   await assert.rejects(
     () => withFetch(fullNamespaceFetch(), () => target('nope')),
@@ -691,7 +695,7 @@ test('createTargetResolver rejects with a helpful error when the repo param does
   );
 });
 
-test('createTargetResolver resolves a repo param against the real node flat-map alias shape', async () => {
+test('createTargetResolver resolves a folder param against the real node flat-map alias shape', async () => {
   const target = createTargetResolver(namespaceConfig);
   const impl = (async (url: string | URL) => {
     const u = String(url);
@@ -716,7 +720,7 @@ test('createTargetResolver resolves a repo param against the real node flat-map 
   assert.deepEqual(resolved, { contextId: 'ctx-2', executorPublicKey: 'exec-1' });
 });
 
-test('createTargetResolver ignores the repo param when TRACKER_CONTEXT pins a context directly', async () => {
+test('createTargetResolver ignores the folder param when BOARD_CONTEXT pins a context directly', async () => {
   const target = createTargetResolver(baseConfig);
   const resolved = await withFetch(
     (async (url: string | URL) => {
@@ -725,5 +729,5 @@ test('createTargetResolver ignores the repo param when TRACKER_CONTEXT pins a co
     }) as typeof fetch,
     () => target('frontend'),
   );
-  assert.deepEqual(resolved, { contextId: 'my-tracker', executorPublicKey: 'exec-1' });
+  assert.deepEqual(resolved, { contextId: 'my-board', executorPublicKey: 'exec-1' });
 });
