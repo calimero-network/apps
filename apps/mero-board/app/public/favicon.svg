@@ -1,0 +1,10 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mero Issue Tracker logo">
+  <defs>
+    <linearGradient id="g" x1="16" y1="44" x2="48" y2="18" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b6ff5e"/>
+      <stop offset="1" stop-color="#a4ff11"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0e140f"/>
+  <path d="M19 32 L27.5 41 L46 20" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
