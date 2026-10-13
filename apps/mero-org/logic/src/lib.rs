@@ -202,21 +202,22 @@ pub struct GroupView {
 pub const APP_READY: &str = "ready";
 pub const APP_PENDING_ADMIN: &str = "pending_admin";
 pub const ENROL_NOT: &str = "not_enrolled";
-pub const ENROL_PENDING: &str = "invitation_pending";
-pub const ENROL_JOINED: &str = "joined";
+/// In the app namespace's root, not yet in every subgroup it is placed in.
+pub const ENROL_ADDED: &str = "added";
 pub const ENROL_PLACED: &str = "placed";
 pub const ENROL_REMOVED: &str = "removed";
 pub const ENROL_FAILED: &str = "failed";
 pub const ENROL_STATES: &[&str] = &[
     ENROL_NOT,
-    ENROL_PENDING,
-    ENROL_JOINED,
+    ENROL_ADDED,
     ENROL_PLACED,
     ENROL_REMOVED,
     ENROL_FAILED,
 ];
-/// An encoded SignedGroupOpenInvitation is a few KB of JSON.
-pub const MAX_INVITATION: usize = 16_384;
+/// The most addresses an app advertises for its admin node.
+pub const MAX_PEER_ADDRS: usize = 16;
+/// The longest one, as core bounds a follow's `peerAddrs`.
+pub const MAX_PEER_ADDR: usize = 512;
 
 #[app::mergeable(id = "mero_org::App")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize)]
@@ -230,11 +231,19 @@ pub struct App {
     pub admin_account: String,
     pub status: LwwRegister<String>,
     pub registered_at: u64,
+    /// The application the namespace runs, 64 hex: what a member's node needs
+    /// to follow it.
+    pub application_id: String,
+    /// Multiaddrs of the admin's node, from its `externalAddrs`: where a
+    /// member's node follows the namespace from. Kept current by the
+    /// reconciler.
+    pub peer_addrs: LwwRegister<Vec<String>>,
 }
 impl Mergeable for App {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         self.label.merge(&other.label);
         self.status.merge(&other.status);
+        self.peer_addrs.merge(&other.peer_addrs);
         Ok(())
     }
 }
@@ -264,9 +273,6 @@ pub struct Enrolment {
     pub account: String,
     pub app: String,
     pub state: LwwRegister<String>,
-    /// JSON of the SignedGroupOpenInvitation while `invitation_pending`, else "".
-    pub invitation: LwwRegister<String>,
-    pub invitation_expires: LwwRegister<u64>,
     /// Mirrored subgroup ids the member is placed in.
     pub subgroups: LwwRegister<Vec<String>>,
     pub note: LwwRegister<String>,
@@ -275,8 +281,6 @@ pub struct Enrolment {
 impl Mergeable for Enrolment {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         self.state.merge(&other.state);
-        self.invitation.merge(&other.invitation);
-        self.invitation_expires.merge(&other.invitation_expires);
         self.subgroups.merge(&other.subgroups);
         self.note.merge(&other.note);
         self.updated_at.merge(&other.updated_at);
@@ -294,6 +298,8 @@ pub struct AppView {
     pub status: String,
     pub registered_at: u64,
     pub group_count: u32,
+    pub application_id: String,
+    pub peer_addrs: Vec<String>,
 }
 #[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
 #[serde(crate = "calimero_sdk::serde")]
@@ -309,8 +315,6 @@ pub struct EnrolmentView {
     pub account: String,
     pub app: String,
     pub state: String,
-    pub invitation: String,
-    pub invitation_expires: u64,
     pub subgroups: Vec<String>,
     pub note: String,
     pub updated_at: u64,
@@ -589,6 +593,8 @@ impl Org {
             status: a.status.get().clone(),
             registered_at: a.registered_at,
             group_count,
+            application_id: a.application_id.clone(),
+            peer_addrs: a.peer_addrs.get().clone(),
         })
     }
 
@@ -598,9 +604,13 @@ impl Org {
         package: String,
         label: String,
         status: String,
+        application_id: String,
+        peer_addrs: Vec<String>,
     ) -> app::Result<AppView> {
         self.require_admin()?;
         Self::parse_account("namespace_id", &namespace_id)?; // 64 hex, same shape
+        Self::parse_account("application_id", &application_id)?;
+        Self::check_peer_addrs(&peer_addrs)?;
         Self::check_len("package", &package, MAX_SHORT, true)?;
         Self::check_len("label", &label, MAX_NAME, true)?;
         if status != APP_READY && status != APP_PENDING_ADMIN {
@@ -616,6 +626,8 @@ impl Org {
             admin_account: Self::caller(),
             status: LwwRegister::new(status),
             registered_at: Self::now(),
+            application_id,
+            peer_addrs: LwwRegister::new(peer_addrs),
         };
         self.apps.insert(namespace_id.clone(), a.clone())?;
         self.record("app_registered", &namespace_id, "", "")?;
@@ -634,6 +646,38 @@ impl Org {
             .ok_or_else(|| AppError::msg(format!("no app {id}")))?;
         a.status.set(status);
         self.apps.insert(id, a)?;
+        Ok(())
+    }
+
+    /// Where members' nodes follow the app namespace from. Only the admin who
+    /// registered the app sets it: theirs is the node that administers it.
+    pub fn set_app_peers(&mut self, id: String, peer_addrs: Vec<String>) -> app::Result<()> {
+        self.require_admin()?;
+        Self::check_peer_addrs(&peer_addrs)?;
+        let mut a = self
+            .apps
+            .get(&id)?
+            .map(|v| v.clone())
+            .ok_or_else(|| AppError::msg(format!("no app {id}")))?;
+        if a.admin_account != Self::caller() {
+            return Err(AppError::msg(
+                "only the admin who registered the app sets where it is followed from",
+            ));
+        }
+        a.peer_addrs.set(peer_addrs);
+        self.apps.insert(id, a)?;
+        Ok(())
+    }
+
+    fn check_peer_addrs(peer_addrs: &[String]) -> app::Result<()> {
+        if peer_addrs.len() > MAX_PEER_ADDRS {
+            return Err(AppError::msg(format!(
+                "at most {MAX_PEER_ADDRS} peer addresses"
+            )));
+        }
+        for addr in peer_addrs {
+            Self::check_len("peer_addrs", addr, MAX_PEER_ADDR, true)?;
+        }
         Ok(())
     }
 
@@ -715,14 +759,11 @@ impl Org {
     }
 
     /// Written by the reconciler (an admin session) after each governance op.
-    #[allow(clippy::too_many_arguments)]
     pub fn record_enrolment(
         &mut self,
         account: String,
         app_id: String,
         state: String,
-        invitation: String,
-        invitation_expires: u64,
         subgroups: Vec<String>,
         note: String,
     ) -> app::Result<()> {
@@ -730,7 +771,6 @@ impl Org {
         if !ENROL_STATES.contains(&state.as_str()) {
             return Err(AppError::msg(format!("unknown enrolment state {state:?}")));
         }
-        Self::check_len("invitation", &invitation, MAX_INVITATION, false)?;
         Self::check_len("note", &note, MAX_LONG, false)?;
         if !self.members.contains(&account)? {
             return Err(AppError::msg(format!("no member {account}")));
@@ -745,8 +785,6 @@ impl Org {
                 account: account.clone(),
                 app: app_id.clone(),
                 state: LwwRegister::new(state.clone()),
-                invitation: LwwRegister::new(invitation),
-                invitation_expires: LwwRegister::new(invitation_expires),
                 subgroups: LwwRegister::new(subgroups),
                 note: LwwRegister::new(note),
                 updated_at: LwwRegister::new(now),
@@ -802,8 +840,6 @@ impl Org {
             account: e.account.clone(),
             app: e.app.clone(),
             state: e.state.get().clone(),
-            invitation: e.invitation.get().clone(),
-            invitation_expires: *e.invitation_expires.get(),
             subgroups: e.subgroups.get().clone(),
             note: e.note.get().clone(),
             updated_at: *e.updated_at.get(),

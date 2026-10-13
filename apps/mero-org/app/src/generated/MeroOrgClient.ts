@@ -53,6 +53,17 @@ export interface App {
   admin_account: string;
   status: string;
   registered_at: number;
+  /**
+   * The application the namespace runs, 64 hex: what a member's node needs
+   * to follow it.
+   */
+  application_id: string;
+  /**
+   * Multiaddrs of the admin's node, from its `externalAddrs`: where a
+   * member's node follows the namespace from. Kept current by the
+   * reconciler.
+   */
+  peer_addrs: string[];
 }
 
 export interface AppView {
@@ -63,17 +74,14 @@ export interface AppView {
   status: string;
   registered_at: number;
   group_count: number;
+  application_id: string;
+  peer_addrs: string[];
 }
 
 export interface Enrolment {
   account: string;
   app: string;
   state: string;
-  /**
-   * JSON of the SignedGroupOpenInvitation while `invitation_pending`, else "".
-   */
-  invitation: string;
-  invitation_expires: number;
   /**
    * Mirrored subgroup ids the member is placed in.
    */
@@ -86,8 +94,6 @@ export interface EnrolmentView {
   account: string;
   app: string;
   state: string;
-  invitation: string;
-  invitation_expires: number;
   subgroups: string[];
   note: string;
   updated_at: number;
@@ -447,7 +453,7 @@ export class MeroOrgClient {
    *
    * @intent mutating
    */
-  public async recordEnrolment(params: { account: string; app_id: string; state: string; invitation: string; invitation_expires: number; subgroups: string[]; note: string }): Promise<void> {
+  public async recordEnrolment(params: { account: string; app_id: string; state: string; subgroups: string[]; note: string }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'record_enrolment', argsJson: params });
     return response as void;
   }
@@ -457,7 +463,7 @@ export class MeroOrgClient {
    *
    * @intent mutating
    */
-  public async registerApp(params: { namespace_id: string; package: string; label: string; status: string }): Promise<AppView> {
+  public async registerApp(params: { namespace_id: string; package: string; label: string; status: string; application_id: string; peer_addrs: string[] }): Promise<AppView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'register_app', argsJson: params });
     return response as AppView;
   }
@@ -519,6 +525,19 @@ export class MeroOrgClient {
    */
   public async setAccess(params: { group: string; app_id: string; capabilities: number }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'set_access', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_app_peers
+   *
+   * Where members' nodes follow the app namespace from. Only the admin who
+   * registered the app sets it: theirs is the node that administers it.
+   *
+   * @intent mutating
+   */
+  public async setAppPeers(params: { id: string; peer_addrs: string[] }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_app_peers', argsJson: params });
     return response as void;
   }
 

@@ -221,6 +221,8 @@ fn deleting_a_group_cascades_memberships_and_children() {
 }
 
 const DRIVE_NS: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+const APP_ID: &str = "2222222222222222222222222222222222222222222222222222222222222222";
+const PEER: &str = "/ip4/10.0.0.1/udp/2528/quic-v1/p2p/12D3KooWAdmin";
 
 #[test]
 fn access_goes_to_groups_and_placements_follow_memberships() {
@@ -238,6 +240,8 @@ fn access_goes_to_groups_and_placements_follow_memberships() {
                 "com.calimero.mero-drive-docs".to_owned(),
                 "Drive".to_owned(),
                 APP_READY.to_owned(),
+                APP_ID.to_owned(),
+                vec![PEER.to_owned()],
             )
         })
         .unwrap();
@@ -276,6 +280,8 @@ fn the_reconciler_records_enrolment_and_the_member_reads_their_own() {
             "p".to_owned(),
             "Drive".to_owned(),
             APP_READY.to_owned(),
+            APP_ID.to_owned(),
+            vec![PEER.to_owned()],
         )
     })
     .unwrap();
@@ -283,9 +289,7 @@ fn the_reconciler_records_enrolment_and_the_member_reads_their_own() {
         s.record_enrolment(
             hex32(ANA),
             DRIVE_NS.to_owned(),
-            ENROL_PENDING.to_owned(),
-            "{\"inv\":1}".to_owned(),
-            99,
+            ENROL_ADDED.to_owned(),
             vec![],
             String::new(),
         )
@@ -293,7 +297,7 @@ fn the_reconciler_records_enrolment_and_the_member_reads_their_own() {
     .unwrap();
     let mine = app.view_as(ANA, |s| s.my_enrolments()).unwrap();
     assert_eq!(mine.len(), 1);
-    assert_eq!(mine[0].state, ENROL_PENDING);
+    assert_eq!(mine[0].state, ENROL_ADDED);
     assert!(app.view_as(BOB, |s| s.my_enrolments()).unwrap().is_empty());
     let err = app
         .call_as_account(ANA, ANA, |s| {
@@ -301,8 +305,6 @@ fn the_reconciler_records_enrolment_and_the_member_reads_their_own() {
                 hex32(ANA),
                 DRIVE_NS.to_owned(),
                 ENROL_PLACED.to_owned(),
-                String::new(),
-                0,
                 vec![],
                 String::new(),
             )
@@ -323,6 +325,8 @@ fn deleting_a_group_drops_its_access_rows() {
             "p".to_owned(),
             "Drive".to_owned(),
             APP_READY.to_owned(),
+            APP_ID.to_owned(),
+            vec![PEER.to_owned()],
         )
     })
     .unwrap();
@@ -412,4 +416,76 @@ fn a_first_membership_activates_and_the_last_one_going_reverts_to_enrolled() {
     app.call(|s| s.set_membership(ops.id.clone(), hex32(ANA), ROLE_MEMBER.to_owned()))
         .unwrap();
     assert_eq!(status(&mut app), STATUS_SUSPENDED);
+}
+
+#[test]
+fn an_app_carries_what_a_member_follows_it_with() {
+    let mut app = founded();
+    let drive = app
+        .call(|s| {
+            s.register_app(
+                DRIVE_NS.to_owned(),
+                "p".to_owned(),
+                "Drive".to_owned(),
+                APP_READY.to_owned(),
+                APP_ID.to_owned(),
+                vec![PEER.to_owned()],
+            )
+        })
+        .unwrap();
+    assert_eq!(drive.application_id, APP_ID);
+    assert_eq!(drive.peer_addrs, vec![PEER.to_owned()]);
+
+    let moved = "/ip4/10.0.0.2/udp/2528/quic-v1/p2p/12D3KooWAdmin".to_owned();
+    app.call(|s| s.set_app_peers(DRIVE_NS.to_owned(), vec![moved.clone()]))
+        .unwrap();
+    let apps = app.view(|s| s.apps()).unwrap();
+    assert_eq!(apps[0].peer_addrs, vec![moved]);
+}
+
+#[test]
+fn only_the_admin_who_registered_an_app_moves_its_peers() {
+    let mut app = founded();
+    enrolled(&mut app, ANA, "ana");
+    app.call(|s| s.grant_admin(hex32(ANA))).unwrap();
+    app.call(|s| {
+        s.register_app(
+            DRIVE_NS.to_owned(),
+            "p".to_owned(),
+            "Drive".to_owned(),
+            APP_READY.to_owned(),
+            APP_ID.to_owned(),
+            vec![],
+        )
+    })
+    .unwrap();
+    let err = app
+        .call_as_account(ANA, ANA, |s| {
+            s.set_app_peers(DRIVE_NS.to_owned(), vec![PEER.to_owned()])
+        })
+        .unwrap_err();
+    assert!(format!("{err:?}").contains("registered the app"), "{err:?}");
+}
+
+#[test]
+fn an_app_is_refused_a_bad_application_id_or_too_many_peers() {
+    let mut app = founded();
+    let register = |app: &mut TestHost<Org>, application_id: &str, peers: Vec<String>| {
+        app.call(|s| {
+            s.register_app(
+                DRIVE_NS.to_owned(),
+                "p".to_owned(),
+                "Drive".to_owned(),
+                APP_READY.to_owned(),
+                application_id.to_owned(),
+                peers,
+            )
+        })
+    };
+    assert!(register(&mut app, "abcd", vec![]).is_err());
+    let too_many = vec![PEER.to_owned(); MAX_PEER_ADDRS + 1];
+    assert!(register(&mut app, APP_ID, too_many).is_err());
+    let too_long = vec!["a".repeat(MAX_PEER_ADDR + 1)];
+    assert!(register(&mut app, APP_ID, too_long).is_err());
+    assert!(register(&mut app, APP_ID, vec![PEER.to_owned()]).is_ok());
 }

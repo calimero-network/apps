@@ -199,6 +199,28 @@
           "type": {
             "kind": "u64"
           }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The application the namespace runs, 64 hex: what a member's node needs\nto follow it."
+        },
+        {
+          "name": "peer_addrs",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "list",
+              "items": {
+                "kind": "string"
+              }
+            }
+          },
+          "doc": "Multiaddrs of the admin's node, from its `externalAddrs`: where a\nmember's node follows the namespace from. Kept current by the\nreconciler."
         }
       ]
     },
@@ -246,6 +268,21 @@
           "type": {
             "kind": "u32"
           }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peer_addrs",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
         }
       ]
     },
@@ -272,29 +309,6 @@
             "crdt_type": "lww_register",
             "inner_type": {
               "kind": "string"
-            }
-          }
-        },
-        {
-          "name": "invitation",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          },
-          "doc": "JSON of the SignedGroupOpenInvitation while `invitation_pending`, else \"\"."
-        },
-        {
-          "name": "invitation_expires",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
             }
           }
         },
@@ -356,18 +370,6 @@
           "name": "state",
           "type": {
             "kind": "string"
-          }
-        },
-        {
-          "name": "invitation",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "invitation_expires",
-          "type": {
-            "kind": "u64"
           }
         },
         {
@@ -1256,18 +1258,6 @@
           }
         },
         {
-          "name": "invitation",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "invitation_expires",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
           "name": "subgroups",
           "type": {
             "kind": "list",
@@ -1313,6 +1303,21 @@
           "name": "status",
           "type": {
             "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peer_addrs",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
           }
         }
       ],
@@ -1433,6 +1438,31 @@
           "name": "capabilities",
           "type": {
             "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_app_peers",
+      "doc": "Where members' nodes follow the app namespace from. Only the admin who\nregistered the app sets it: theirs is the node that administers it.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peer_addrs",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
           }
         }
       ],

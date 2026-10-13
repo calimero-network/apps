@@ -12,11 +12,10 @@ function admin(): Executor {
     addGroupMembers: vi.fn(async () => {}),
     setMemberCapabilities: vi.fn(async () => {}),
     removeGroupMembers: vi.fn(async () => {}),
-    createNamespaceInvitation: vi.fn(async () => ({ invitation: { invitation: { group_id: DRIVE }, inviter_signature: "sig" } })),
   } as unknown as Executor;
 }
 function backend(): OrgBackend {
-  return { enrolments: vi.fn(async () => []), recordEnrolment: vi.fn(async () => {}) } as unknown as OrgBackend;
+  return { enrolments: vi.fn(async () => []), recordEnrolment: vi.fn(async () => {}), setAppPeers: vi.fn(async () => {}) } as unknown as OrgBackend;
 }
 
 describe("execute", () => {
@@ -28,13 +27,33 @@ describe("execute", () => {
     expect(a.setGroupMetadata).toHaveBeenCalledWith("sg1", { name: "Engineering", data: { "org-group": "g-eng", org: ORG } });
   });
 
-  it("mints an invitation and stores it on the enrolment", async () => {
+  it("adds an account at the app namespace root as a Member", async () => {
     const a = admin(); const b = backend();
-    await execute([{ kind: "mint-invitation", app: DRIVE, account: ANA }], a, b, ORG);
-    const call = (b.recordEnrolment as ReturnType<typeof vi.fn>).mock.calls[0]![0];
-    expect(call.state).toBe("invitation_pending");
-    expect(JSON.parse(call.invitation).inviter_signature).toBe("sig");
-    expect(call.invitationExpires).toBeGreaterThan(Date.now());
+    const r = await execute([{ kind: "add-root-member", app: DRIVE, account: ANA }], a, b, ORG);
+    expect(r.applied).toBe(1);
+    expect(a.addGroupMembers).toHaveBeenCalledWith(DRIVE, { members: [{ identity: ANA, role: "Member" }] });
+  });
+
+  it("stores where members follow the app from", async () => {
+    const a = admin(); const b = backend();
+    const peers = ["/ip4/10.0.0.1/udp/2528/quic-v1/p2p/12D3KooWAdmin"];
+    await execute([{ kind: "set-app-peers", app: DRIVE, peerAddrs: peers }], a, b, ORG);
+    expect(b.setAppPeers).toHaveBeenCalledWith(DRIVE, peers);
+    expect(b.recordEnrolment).not.toHaveBeenCalled();
+  });
+
+  it("stops a person's ops for an app at their first failure, so the root cause is what is recorded", async () => {
+    const a = admin(); const b = backend();
+    (a.addGroupMembers as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("root add refused"));
+    const r = await execute([
+      { kind: "add-root-member", app: DRIVE, account: ANA },
+      { kind: "add-member", app: DRIVE, subgroupId: "sg1", orgGroupId: "g-eng", account: ANA, capabilities: 7 },
+      { kind: "record", account: ANA, app: DRIVE, state: "added", subgroups: [], note: "" },
+    ], a, b, ORG);
+    expect(r.failed).toHaveLength(1);
+    expect(a.addGroupMembers).toHaveBeenCalledTimes(1);
+    expect(b.recordEnrolment).toHaveBeenCalledTimes(1);
+    expect(b.recordEnrolment).toHaveBeenCalledWith(expect.objectContaining({ state: "failed", note: "root add refused" }));
   });
 
   it("adds, sets capabilities, and records a failure without stopping", async () => {
@@ -48,18 +67,6 @@ describe("execute", () => {
     expect(r.applied).toBe(1);
     expect(b.recordEnrolment).toHaveBeenCalledWith(expect.objectContaining({ account: ANA, state: "failed", note: "boom" }));
     expect(a.removeGroupMembers).toHaveBeenCalledWith("sg1", { members: ["b".repeat(64)] });
-  });
-
-  it("keeps the minted invitation through a following record op", async () => {
-    const a = admin(); const b = backend();
-    await execute([
-      { kind: "mint-invitation", app: DRIVE, account: ANA },
-      { kind: "record", account: ANA, app: DRIVE, state: "invitation_pending", subgroups: [], note: "" },
-    ], a, b, ORG);
-    const calls = (b.recordEnrolment as ReturnType<typeof vi.fn>).mock.calls;
-    const last = calls[calls.length - 1]![0];
-    expect(JSON.parse(last.invitation).inviter_signature).toBe("sig");
-    expect(last.invitationExpires).toBeGreaterThan(Date.now());
   });
 
   it("sets capabilities on a placed member", async () => {
@@ -76,13 +83,13 @@ describe("execute", () => {
     const rows = new Map<string, EnrolmentView>();
     const b = {
       enrolments: vi.fn(async () => [...rows.values()]),
-      recordEnrolment: vi.fn(async (e: { account: string; app: string; state: string; invitation: string; invitationExpires: number; subgroups: string[]; note: string }) => {
-        rows.set(`${e.account}:${e.app}`, { account: e.account, app: e.app, state: e.state, invitation: e.invitation, invitation_expires: e.invitationExpires, subgroups: e.subgroups, note: e.note, updated_at: 0 });
+      recordEnrolment: vi.fn(async (e: { account: string; app: string; state: string; subgroups: string[]; note: string }) => {
+        rows.set(`${e.account}:${e.app}`, { account: e.account, app: e.app, state: e.state, subgroups: e.subgroups, note: e.note, updated_at: 0 });
       }),
     } as unknown as OrgBackend;
     const ops: PlannedOp[] = [
       { kind: "add-member", app: DRIVE, subgroupId: "sg1", orgGroupId: "g-eng", account: ANA, capabilities: 7 },
-      { kind: "record", account: ANA, app: DRIVE, state: "joined", subgroups: [], note: "" },
+      { kind: "record", account: ANA, app: DRIVE, state: "added", subgroups: [], note: "" },
     ];
     await execute(ops, a, b, ORG);
     await execute(ops, a, b, ORG);

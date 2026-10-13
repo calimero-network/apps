@@ -18,6 +18,11 @@ export function plan(input: PlanInput): PlannedOp[] {
     // accounts with a governance op this round: a stored `failed` row stays until that op succeeds
     const retrying = new Set<string>();
 
+    // 0. members' nodes follow the namespace from this node: keep its addresses current
+    if (input.peerAddrs && !sameList(input.peerAddrs, app.peer_addrs)) {
+      ops.push({ kind: "set-app-peers", app: app.id, peerAddrs: input.peerAddrs });
+    }
+
     // 1. missing subgroups
     const wantedGroups = [...new Set(placements.map((p) => p.group))].sort();
     const creating = new Set<string>();
@@ -27,17 +32,15 @@ export function plan(input: PlanInput): PlannedOp[] {
 
     // 2-3. per account
     const accounts = [...new Set(placements.map((p) => p.account))].sort();
-    const minted = new Set<string>();
     const stateFor = new Map<string, { state: string; subgroups: string[] }>();
     for (const account of accounts) {
       const mine = placements.filter((p) => p.account === account);
       const key = `${account}:${app.id}`;
-      const stored = enrolment.get(key);
+      // Added at the root directly: the account's node follows the namespace, so no invitation.
+      // The subgroup adds below run after it in the same pass.
       if (!observed.rootMembers.has(account)) {
-        const live = stored?.state === "invitation_pending" && stored.invitation_expires > input.now;
-        if (!live && !minted.has(account)) { minted.add(account); retrying.add(key); ops.push({ kind: "mint-invitation", app: app.id, account }); }
-        stateFor.set(key, { state: "invitation_pending", subgroups: [] });
-        continue;
+        retrying.add(key);
+        ops.push({ kind: "add-root-member", app: app.id, account });
       }
       const placedIn: string[] = [];
       let allPlaced = true;
@@ -58,7 +61,7 @@ export function plan(input: PlanInput): PlannedOp[] {
         ops.push({ kind: "add-member", app: app.id, subgroupId: sg.groupId, orgGroupId: p.group, account, capabilities: p.capabilities });
         allPlaced = false;
       }
-      stateFor.set(key, { state: allPlaced && !creating.size ? "placed" : "joined", subgroups: placedIn.sort() });
+      stateFor.set(key, { state: allPlaced && !creating.size ? "placed" : "added", subgroups: placedIn.sort() });
     }
 
     // 4. removals
@@ -102,4 +105,8 @@ export function plan(input: PlanInput): PlannedOp[] {
     }
   }
   return ops;
+}
+
+function sameList(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
 }

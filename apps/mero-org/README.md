@@ -14,10 +14,11 @@ Without it, people are invited app by app, groups are created app by app, and no
 | | |
 | --- | --- |
 | Package | `com.calimero.mero-org` |
-| Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 14 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
+| Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 20 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/org.yml`](logic/workflows/org.yml): every contract method on real nodes, a newcomer claiming on a second node and refused every admin write, and the org state converging |
 | Frontend | [`app/`](app): Vite, React and mero-react. People, Groups, Apps, a person's page, Me, Activity and Settings; `/join` handles the invitation link |
 | Browser suite | [`app/e2e/org.spec.ts`](app/e2e/org.spec.ts): the admin's side through the UI against a real node |
+| Needs | a merod with namespace follow (calimero-network/core#4563) and mero-js with `followNamespace` (calimero-network/mero-js#272) for a member to join an app |
 
 ## Model
 
@@ -64,15 +65,20 @@ as well. An org admin cannot be suspended or removed; revoke admin first.
 ### Enrolment, per (member, app)
 
 ```
-invitation_pending ──member redeems──▶ joined ──reconciler adds to subgroup──▶ placed
-        │ expired (24 h): re-mint                                              │
-        └──────────────────────────────────────────────────────────────────────┘
+not_enrolled ──reconciler adds to the namespace root──▶ added ──adds to every subgroup──▶ placed
 placed ──access removed──▶ removed ──access granted again──▶ placed
 ```
 
-`invitation_pending` is the app-namespace invitation the reconciler minted under an admin's
-account, stored in the org context so the member finds it on any device. `joined` is detected by
-listing the app namespace's members.
+There is no second invitation. The reconciler adds the account straight to the app namespace's
+root (`MemberAdded`, signed by the admin who registered the app), and then to its mirrored
+subgroups. The member's node joins the namespace with a **follow** (core's
+`POST /admin-api/namespaces/:id/follow`): Me lists every app the account was added to that this
+node does not hold yet, and Join follows it from the admin node's addresses with the namespace's
+application. Both live on the app row: `application_id` is read from the namespace when the app is
+registered, and `peer_addrs` is the admin node's `externalAddrs`, which the reconciler rewrites when
+they move. A follow is answered by an anchor of the namespace (its admin, or a TEE replica), so it
+needs the admin's node, or a replica, online. Following needs a node: an account signed in through
+a relay cannot follow yet, and Join says so.
 
 ### Mirrored subgroups
 
@@ -95,10 +101,10 @@ admin and records the outcome in `enrolments` and `activity`. Each admin's tab r
 namespace id count as mirrored (another org sharing the app namespace keeps its own). For each:
 
 1. **Create missing subgroups** for each org group that has access and no mirrored subgroup yet.
-2. **Mint an invitation** for a person who should reach the app but is not in its namespace, unless
-   a live, unexpired one is already stored.
+2. **Add to the namespace root** a person who should reach the app but is not in its namespace.
+   Their node follows it from Me; nothing waits on that.
 3. **Add to the subgroup**, with the access row's capabilities, a person who is in the namespace
-   but not yet in the subgroup. Someone already in the namespace needs no ceremony. A placed
+   but not yet in the subgroup, in the same pass as the root add. A placed
    member whose capabilities differ from the access row's is set to the row's value (org admins
    are never re-capped).
 4. **Remove** members of a mirrored subgroup whom no group placement wants (app admins are never
@@ -106,7 +112,10 @@ namespace id count as mirrored (another org sharing the app namespace keeps its 
    namespace root.
 5. **Record** each enrolment's new state, and mark enrolments nobody wants any more `removed`. A
    failed operation writes one `failed` row (not one per round) and the row stays while the retry
-   is pending.
+   is pending. A person's later operations for that app are skipped once one fails, so the row
+   names the first error.
+6. **Keep the app's follow addresses current**: when this node's `externalAddrs` differ from the
+   app row's `peer_addrs`, rewrite them.
 
 It is idempotent: every operation comes from a diff, so re-running it changes nothing once the
 namespace matches the org. Two admins' tabs can each create a subgroup for the same org group if
@@ -129,9 +138,10 @@ its namespace; until then it is `pending_admin`.
 - **Enrolment rows are written by an admin's session.** The reconciler runs in an admin's browser,
   not in the contract, so an enrolment row says what that admin's session saw and did, not
   something every peer proved.
-- **Invitations are bearer-ish.** An invitation stored in the org context, or in a link, lets
-  whoever holds it plus a device join as themselves. The org context is members-only and the
-  invitation expires in 24 hours, so this is no worse than mailing it.
+- **The org invitation is bearer-ish.** The org invitation link lets whoever holds it plus a
+  device join the org as themselves; it expires in 24 hours, so this is no worse than mailing it.
+  App namespaces take no invitation: the admin's root add is the authority, and a follow only
+  proves the follower holds the account that was added.
 - **The contract cannot see governance.** It does not know who is in an app namespace; only the
   reconciler observes that. Group membership, subgroup keys and capabilities in each app namespace
   are enforced by core at apply time; Mero Org only requests them.

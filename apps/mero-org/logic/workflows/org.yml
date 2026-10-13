@@ -317,7 +317,7 @@ steps:
     context_id: "{{context_id}}"
     executor_public_key: "{{owner_key}}"
     method: register_app
-    args: { namespace_id: "1111111111111111111111111111111111111111111111111111111111111111", package: "com.calimero.mero-drive-docs", label: "Drive", status: "ready" }
+    args: { namespace_id: "1111111111111111111111111111111111111111111111111111111111111111", package: "com.calimero.mero-drive-docs", label: "Drive", status: "ready", application_id: "2222222222222222222222222222222222222222222222222222222222222222", peer_addrs: ["/ip4/127.0.0.1/udp/2528/quic-v1/p2p/12D3KooWStandIn"] }
     outputs:
       drive: result
 
@@ -380,13 +380,13 @@ steps:
       - 'json_subset({{eng_access}}, {"group": "{{eng_id}}", "capabilities": 7})'
       - 'json_subset({{placement}}, {"account": "{{ana}}", "group": "{{eng_id}}", "capabilities": 7})'
 
-  - name: The reconciler records a pending invitation
+  - name: The reconciler records that it added Ana to Drive's namespace
     type: call
     node: org-node-1
     context_id: "{{context_id}}"
     executor_public_key: "{{owner_key}}"
     method: record_enrolment
-    args: { account: "{{ana}}", app_id: "1111111111111111111111111111111111111111111111111111111111111111", state: "invitation_pending", invitation: "{}", invitation_expires: 4102444800000, subgroups: [], note: "" }
+    args: { account: "{{ana}}", app_id: "1111111111111111111111111111111111111111111111111111111111111111", state: "added", subgroups: [], note: "" }
 
   - name: Founder lists the enrolments
     type: call
@@ -421,8 +421,8 @@ steps:
   - name: Assert the enrolment converged
     type: json_assert
     statements:
-      - 'json_subset({{enrolment_1}}, {"account": "{{ana}}", "state": "invitation_pending"})'
-      - 'json_subset({{mine}}, {"account": "{{ana}}", "state": "invitation_pending"})'
+      - 'json_subset({{enrolment_1}}, {"account": "{{ana}}", "state": "added"})'
+      - 'json_subset({{mine}}, {"account": "{{ana}}", "state": "added"})'
 
   # ─── admins and teardown of the graph ─────────────────────────────────────
 

@@ -1,39 +1,54 @@
 import { useEffect, useState } from "react";
-import { useJoinInvitation } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-network/mero-react";
 import type { EnrolmentView } from "../backend";
+import { appsToFollow, followApp, type ToFollow } from "../follow";
 import { messageOf } from "../useOrg";
 import { type PageProps } from "./Shell";
 
-type JoinNote = { tone: "good" | "bad"; text: string };
+type JoinNote = { tone: "good" | "wait" | "bad"; text: string; final?: boolean };
 
 export function MePage({ state, myAccount }: PageProps) {
-  const { joinInvitation } = useJoinInvitation();
+  const { admin } = useMero();
   const me = state.members.find((m) => m.account === myAccount);
   const [profile, setProfile] = useState({ displayName: "", avatar: "" });
   const [mine, setMine] = useState<EnrolmentView[]>([]);
+  const [held, setHeld] = useState<Set<string> | null>(null);
   const [notes, setNotes] = useState<Record<string, JoinNote>>({});
   const [joining, setJoining] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [heldTick, setHeldTick] = useState(0);
 
   useEffect(() => { if (me) setProfile({ displayName: me.display_name, avatar: me.avatar }); }, [me?.display_name, me?.avatar]);
 
-  // Re-read when the org's enrolment table moves (the reconciler records a fresh invitation there).
+  // Re-read when the org's enrolment table moves (the reconciler records an app the account was added to).
   useEffect(() => {
     let live = true;
     state.backend.myEnrolments().then((rows) => { if (live) { setMine(rows); setError(null); } }, (e: unknown) => { if (live) setError(messageOf(e)); });
     return () => { live = false; };
   }, [state.backend, state.enrolments]);
 
-  const waiting = mine.filter((e) => e.state === "invitation_pending" && e.invitation);
-  const label = (id: string) => state.apps.find((a) => a.id === id)?.label ?? id.slice(0, 8);
+  // The namespaces this node already holds: nothing to follow there.
+  useEffect(() => {
+    if (!admin) return;
+    let live = true;
+    admin.listNamespaces().then((ns) => { if (live) setHeld(new Set(ns.map((n) => n.namespaceId))); }, (e: unknown) => { if (live) setError(messageOf(e)); });
+    return () => { live = false; };
+  }, [admin, state.enrolments, heldTick]);
 
-  async function join(e: EnrolmentView) {
-    setJoining(e.app);
+  // A follow done in this session stays listed with its outcome, even once the node holds the namespace.
+  const waiting: ToFollow[] = held === null ? [] : appsToFollow(mine, state.apps, held);
+  const shown = [...waiting, ...appsToFollow(mine, state.apps, new Set()).filter((t) => notes[t.app.id] && !waiting.some((w) => w.app.id === t.app.id))];
+
+  async function join(t: ToFollow) {
+    if (!admin) return;
+    setJoining(t.app.id);
     try {
-      const out = await joinInvitation({ namespaceId: e.app, invitation: JSON.parse(e.invitation) });
-      setNotes((n) => ({ ...n, [e.app]: out.ok ? { tone: "good", text: "joined, placement follows" } : { tone: "bad", text: out.reason } }));
-    } catch (err) {
-      setNotes((n) => ({ ...n, [e.app]: { tone: "bad", text: messageOf(err) } }));
+      const out = await followApp(admin, t.app);
+      const note: JoinNote = out.ok
+        ? out.keyReady ? { tone: "good", text: "joined" } : { tone: "wait", text: "joined, the key is on its way: press Join again in a moment" }
+        : { tone: "bad", text: out.reason, final: out.final };
+      setNotes((n) => ({ ...n, [t.app.id]: note }));
+      if (out.ok) setHeldTick((x) => x + 1);
     } finally { setJoining(null); }
   }
 
@@ -51,15 +66,18 @@ export function MePage({ state, myAccount }: PageProps) {
 
       <h2>Waiting for you</h2>
       {error && <p className="err" role="alert">{error}</p>}
-      {waiting.length === 0 ? <p className="muted">Nothing waiting. New app access shows up here.</p> : (
+      {shown.length === 0 ? <p className="muted">Nothing waiting. New app access shows up here.</p> : (
         <ul className="waiting">
-          {waiting.map((e) => (
-            <li key={e.app} className="card">
-              <span className="grow">{label(e.app)}</span>
-              {notes[e.app] ? <span className={notes[e.app]?.tone === "good" ? "pill pill-good" : "err"}>{notes[e.app]?.text}</span> : null}
-              {notes[e.app]?.tone !== "good" && <button type="button" className="primary small" disabled={joining !== null} onClick={() => void join(e)}>Join</button>}
-            </li>
-          ))}
+          {shown.map((t) => {
+            const note = notes[t.app.id];
+            return (
+              <li key={t.app.id} className="card">
+                <span className="grow">{t.app.label}</span>
+                {note ? <span className={note.tone === "good" ? "pill pill-good" : note.tone === "wait" ? "pill pill-wait" : "err"}>{note.text}</span> : null}
+                {note?.tone !== "good" && !note?.final && <button type="button" className="primary small" disabled={joining !== null} onClick={() => void join(t)}>{joining === t.app.id ? "Joining…" : "Join"}</button>}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

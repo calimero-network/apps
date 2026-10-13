@@ -43,22 +43,15 @@ export function PersonPage({ state, isAdmin }: PageProps) {
       {enrolments.length === 0 ? <p className="muted">Not enrolled in any app yet.</p> : (
         <div className="table-scroll">
           <table>
-            <thead><tr><th>App</th><th>State</th><th>Subgroups</th><th>Note</th><th>Updated</th>{isAdmin && <th><span className="sr-only">Actions</span></th>}</tr></thead>
+            <thead><tr><th>App</th><th>State</th><th>Subgroups</th><th>Note</th><th>Updated</th></tr></thead>
             <tbody>
               {enrolments.map((e) => (
                 <tr key={e.app}>
                   <td>{appLabel(e.app)}</td>
-                  <td><span className={`pill ${e.state === "placed" ? "pill-good" : e.state === "failed" ? "pill-bad" : e.state === "invitation_pending" ? "pill-wait" : ""}`}>{e.state}</span></td>
+                  <td><span className={`pill ${e.state === "placed" ? "pill-good" : e.state === "failed" ? "pill-bad" : e.state === "added" ? "pill-wait" : ""}`}>{e.state}</span></td>
                   <td>{e.subgroups.length}</td>
                   <td className="muted">{e.note}</td>
                   <td className="muted">{when(e.updated_at)}</td>
-                  {isAdmin && (
-                    <td>
-                      {/* Back to not_enrolled: the reconciler's next run mints a fresh invitation. */}
-                      <button type="button" className="small" disabled={state.busy}
-                        onClick={() => void state.run((b) => b.recordEnrolment({ account, app: e.app, state: "not_enrolled", invitation: "", invitationExpires: 0, subgroups: e.subgroups, note: "" }))}>Re-mint</button>
-                    </td>
-                  )}
                 </tr>
               ))}
             </tbody>

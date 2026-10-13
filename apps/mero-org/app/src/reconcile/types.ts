@@ -24,7 +24,10 @@ export interface ObservedApp {
 
 export type PlannedOp =
   | { kind: "create-subgroup"; app: string; orgGroupId: string; name: string }
-  | { kind: "mint-invitation"; app: string; account: string }
+  /** put the account in the app namespace's root; its node then follows the namespace */
+  | { kind: "add-root-member"; app: string; account: string }
+  /** where members' nodes follow this app from: the admin node's dialable addresses */
+  | { kind: "set-app-peers"; app: string; peerAddrs: string[] }
   | { kind: "add-member"; app: string; subgroupId: string; orgGroupId: string; account: string; capabilities: number }
   | { kind: "remove-member"; app: string; subgroupId: string; orgGroupId: string; account: string }
   | { kind: "set-capabilities"; app: string; subgroupId: string; orgGroupId: string; account: string; capabilities: number }
@@ -44,4 +47,6 @@ export interface PlanInput {
   orgRootMembers: Set<string>;
   /** org admins: never removed, never re-capped */
   orgAdmins: string[];
+  /** this admin node's dialable addresses, or null when they could not be read */
+  peerAddrs: string[] | null;
 }

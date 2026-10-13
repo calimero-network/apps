@@ -37,7 +37,10 @@ export function useReconciler(backend: OrgBackend | null, orgNamespaceId: string
         let orgRootMembers = new Set<string>();
         try { orgRootMembers = new Set((await admin.listGroupMembers(orgNamespaceId)).members.map((m) => m.identity)); } catch (e) { console.warn("mero-org reconciler: could not list the org namespace members", e); }
         const leftAccounts = members.filter((m) => m.status === "left").map((m) => m.account);
-        const ops = plan({ orgNamespaceId, now: Date.now(), placements, enrolments, groups, apps, observed, leftAccounts, orgRootMembers, orgAdmins: org.admins });
+        // Where members' nodes follow from. Unread (an older node, a blip) leaves the stored addresses be.
+        let peerAddrs: string[] | null = null;
+        try { peerAddrs = (await admin.getNodeIdentity()).externalAddrs ?? null; } catch (e) { console.warn("mero-org reconciler: could not read this node's addresses", e); }
+        const ops = plan({ orgNamespaceId, now: Date.now(), placements, enrolments, groups, apps, observed, leftAccounts, orgRootMembers, orgAdmins: org.admins, peerAddrs });
         const result = ops.length ? await execute(ops, admin, backend, orgNamespaceId) : { applied: 0, failed: [] };
         setLastResult(result); setLastRun(Date.now());
       } while (again.current);

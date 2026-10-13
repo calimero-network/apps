@@ -27,12 +27,13 @@ export interface OrgBackend {
   deleteGroup(id: string): Promise<void>;
   setMembership(group: string, account: string, role: "lead" | "member"): Promise<void>;
   removeMembership(group: string, account: string): Promise<void>;
-  registerApp(a: { namespaceId: string; package: string; label: string; status: "ready" | "pending_admin" }): Promise<AppView>;
+  registerApp(a: { namespaceId: string; package: string; label: string; status: "ready" | "pending_admin"; applicationId: string; peerAddrs: string[] }): Promise<AppView>;
   setAppStatus(id: string, status: "ready" | "pending_admin"): Promise<void>;
+  setAppPeers(id: string, peerAddrs: string[]): Promise<void>;
   removeApp(id: string): Promise<void>;
   setAccess(group: string, app: string, capabilities: number): Promise<void>;
   removeAccess(group: string, app: string): Promise<void>;
-  recordEnrolment(e: { account: string; app: string; state: string; invitation: string; invitationExpires: number; subgroups: string[]; note: string }): Promise<void>;
+  recordEnrolment(e: { account: string; app: string; state: string; subgroups: string[]; note: string }): Promise<void>;
   grantAdmin(account: string): Promise<void>;
   revokeAdmin(account: string): Promise<void>;
   setSettings(name: string, icon: string): Promise<void>;
@@ -62,12 +63,13 @@ export function nodeBackend(client: MeroOrgClient): OrgBackend {
     deleteGroup: (id) => client.deleteGroup({ id }),
     setMembership: (group, account, role) => client.setMembership({ group, account, role }),
     removeMembership: (group, account) => client.removeMembership({ group, account }),
-    registerApp: (a) => client.registerApp({ namespace_id: a.namespaceId, package: a.package, label: a.label, status: a.status }),
+    registerApp: (a) => client.registerApp({ namespace_id: a.namespaceId, package: a.package, label: a.label, status: a.status, application_id: a.applicationId, peer_addrs: a.peerAddrs }),
     setAppStatus: (id, status) => client.setAppStatus({ id, status }),
+    setAppPeers: (id, peerAddrs) => client.setAppPeers({ id, peer_addrs: peerAddrs }),
     removeApp: (id) => client.removeApp({ id }),
     setAccess: (group, app, capabilities) => client.setAccess({ group, app_id: app, capabilities }),
     removeAccess: (group, app) => client.removeAccess({ group, app_id: app }),
-    recordEnrolment: (e) => client.recordEnrolment({ account: e.account, app_id: e.app, state: e.state, invitation: e.invitation, invitation_expires: e.invitationExpires, subgroups: e.subgroups, note: e.note }),
+    recordEnrolment: (e) => client.recordEnrolment({ account: e.account, app_id: e.app, state: e.state, subgroups: e.subgroups, note: e.note }),
     grantAdmin: (account) => client.grantAdmin({ account }),
     revokeAdmin: (account) => client.revokeAdmin({ account }),
     setSettings: (name, icon) => client.setSettings({ name, icon }),

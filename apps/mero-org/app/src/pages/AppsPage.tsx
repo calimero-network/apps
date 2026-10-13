@@ -31,8 +31,11 @@ export function AppsPage({ state, myAccount, isAdmin }: PageProps) {
     try {
       const f = { namespaceId: form.namespaceId.trim(), package: form.package.trim(), label: form.label.trim() };
       const ready = await isNamespaceAdmin(admin, f.namespaceId, myAccount);
+      // What a member's node follows the namespace with: its application, and where this node is.
+      const { targetApplicationId: applicationId } = await admin.getNamespace(f.namespaceId);
+      const peerAddrs = (await admin.getNodeIdentity()).externalAddrs ?? [];
       setOpen(false); setForm(EMPTY);
-      const out = await state.run((b) => b.registerApp({ ...f, status: ready ? "ready" : "pending_admin" }));
+      const out = await state.run((b) => b.registerApp({ ...f, status: ready ? "ready" : "pending_admin", applicationId, peerAddrs }));
       if (out) setNotice(ready ? null : `You are not an admin of ${f.label}'s namespace yet. Ask its admin to make you one, then press Recheck; until then the org cannot place anyone there.`);
     } catch (e) { setNotice(messageOf(e)); } finally { setChecking(false); }
   }
