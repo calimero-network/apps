@@ -68,7 +68,7 @@ export function PeoplePage({ state, orgNamespaceId, isAdmin }: PageProps) {
                   {isAdmin && (
                     <td className="row-actions">
                       {m.status !== "suspended" && m.status !== "left" && <button type="button" className="small" disabled={state.busy} onClick={() => void state.run((b) => b.setMemberStatus(m.account, "suspended"))}>Suspend</button>}
-                      {m.status === "suspended" && <button type="button" className="small" disabled={state.busy} onClick={() => void state.run((b) => b.setMemberStatus(m.account, "active"))}>Reactivate</button>}
+                      {m.status === "suspended" && <button type="button" className="small" disabled={state.busy} onClick={() => void state.run((b) => b.setMemberStatus(m.account, m.groups.length ? "active" : "enrolled"))}>Reactivate</button>}
                       {m.status !== "left" && <button type="button" className="small" disabled={state.busy} onClick={() => setRemoving(m.account)}>Remove</button>}
                     </td>
                   )}

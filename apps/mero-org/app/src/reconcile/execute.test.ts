@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { execute, type Executor } from "./execute";
-import type { OrgBackend } from "../backend";
+import type { EnrolmentView, OrgBackend } from "../backend";
+import type { PlannedOp } from "./types";
 
 const ORG = "f".repeat(64); const DRIVE = "1".repeat(64); const ANA = "a".repeat(64);
 
@@ -59,5 +60,43 @@ describe("execute", () => {
     const last = calls[calls.length - 1]![0];
     expect(JSON.parse(last.invitation).inviter_signature).toBe("sig");
     expect(last.invitationExpires).toBeGreaterThan(Date.now());
+  });
+
+  it("sets capabilities on a placed member", async () => {
+    const a = admin(); const b = backend();
+    const r = await execute([{ kind: "set-capabilities", app: DRIVE, subgroupId: "sg1", orgGroupId: "g-eng", account: ANA, capabilities: 4 }], a, b, ORG);
+    expect(r.applied).toBe(1);
+    expect(a.setMemberCapabilities).toHaveBeenCalledWith("sg1", ANA, { capabilities: 4 });
+    expect(a.addGroupMembers).not.toHaveBeenCalled();
+  });
+
+  it("a persistent failure writes at most one failed row across two runs", async () => {
+    const a = admin();
+    (a.addGroupMembers as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("boom"));
+    const rows = new Map<string, EnrolmentView>();
+    const b = {
+      enrolments: vi.fn(async () => [...rows.values()]),
+      recordEnrolment: vi.fn(async (e: { account: string; app: string; state: string; invitation: string; invitationExpires: number; subgroups: string[]; note: string }) => {
+        rows.set(`${e.account}:${e.app}`, { account: e.account, app: e.app, state: e.state, invitation: e.invitation, invitation_expires: e.invitationExpires, subgroups: e.subgroups, note: e.note, updated_at: 0 });
+      }),
+    } as unknown as OrgBackend;
+    const ops: PlannedOp[] = [
+      { kind: "add-member", app: DRIVE, subgroupId: "sg1", orgGroupId: "g-eng", account: ANA, capabilities: 7 },
+      { kind: "record", account: ANA, app: DRIVE, state: "joined", subgroups: [], note: "" },
+    ];
+    await execute(ops, a, b, ORG);
+    await execute(ops, a, b, ORG);
+    const calls = (b.recordEnrolment as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0].state);
+    expect(calls).toEqual(["failed"]);
+    expect(rows.get(`${ANA}:${DRIVE}`)?.state).toBe("failed");
+  });
+
+  it("removes a member from the org namespace root without writing an enrolment row on failure", async () => {
+    const a = admin(); const b = backend();
+    (a.removeGroupMembers as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("nope"));
+    const r = await execute([{ kind: "remove-member", app: ORG, subgroupId: ORG, orgGroupId: "", account: ANA }], a, b, ORG);
+    expect(r.failed).toHaveLength(1);
+    expect(a.removeGroupMembers).toHaveBeenCalledWith(ORG, { members: [ANA] });
+    expect(b.recordEnrolment).not.toHaveBeenCalled();
   });
 });

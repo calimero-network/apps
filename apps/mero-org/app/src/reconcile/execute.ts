@@ -10,7 +10,10 @@ const INVITATION_TTL_S = 24 * 60 * 60;
 export async function execute(ops: PlannedOp[], admin: Executor, backend: OrgBackend, orgNamespaceId: string): Promise<ExecuteResult> {
   const result: ExecuteResult = { applied: 0, failed: [] };
   const stored = new Map((await backend.enrolments()).map((e) => [`${e.account}:${e.app}`, e]));
+  // keys whose governance op failed this run: their later `record` ops would overwrite the failure
+  const failedKeys = new Set<string>();
   for (const op of ops) {
+    if (op.kind === "record" && failedKeys.has(`${op.account}:${op.app}`)) continue;
     try {
       switch (op.kind) {
         case "create-subgroup": {
@@ -32,6 +35,9 @@ export async function execute(ops: PlannedOp[], admin: Executor, backend: OrgBac
           await admin.addGroupMembers(op.subgroupId, { members: [{ identity: op.account, role: "Member" }] });
           await admin.setMemberCapabilities(op.subgroupId, op.account, { capabilities: op.capabilities });
           break;
+        case "set-capabilities":
+          await admin.setMemberCapabilities(op.subgroupId, op.account, { capabilities: op.capabilities });
+          break;
         case "remove-member":
           await admin.removeGroupMembers(op.subgroupId, { members: [op.account] });
           break;
@@ -46,8 +52,18 @@ export async function execute(ops: PlannedOp[], admin: Executor, backend: OrgBac
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
       result.failed.push({ op, error });
-      if ("account" in op && op.kind !== "record") {
-        try { await backend.recordEnrolment({ account: op.account, app: op.app, state: "failed", invitation: "", invitationExpires: 0, subgroups: [], note: error }); } catch { /* reported in `failed` already */ }
+      // The org namespace root is not an app: there is no enrolment row to mark.
+      if (op.kind !== "record" && op.kind !== "create-subgroup" && op.app !== orgNamespaceId) {
+        const key = `${op.account}:${op.app}`;
+        failedKeys.add(key);
+        const prev = stored.get(key);
+        // A persistent failure writes its row once, not every round.
+        if (prev?.state !== "failed" || prev.note !== error) {
+          try {
+            await backend.recordEnrolment({ account: op.account, app: op.app, state: "failed", invitation: "", invitationExpires: 0, subgroups: [], note: error });
+            stored.set(key, { ...(prev ?? { account: op.account, app: op.app, updated_at: 0 }), state: "failed", invitation: "", invitation_expires: 0, subgroups: [], note: error });
+          } catch { /* reported in `failed` already */ }
+        }
       }
     }
   }

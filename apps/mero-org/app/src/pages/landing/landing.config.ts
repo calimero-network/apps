@@ -22,7 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
-  trust: ["Admin writes are merge-enforced", "Profiles belong to their owner", "Every change is on the chain"],
+  trust: ["The admin list is merge-enforced", "Profiles belong to their owner", "Every change is on the chain"],
   explainer: [
     "Mero Org is the company directory and its governance graph: members, a tree of groups, the applications the company uses, and which groups reach which app. It is one context every member replicates.",
     "Each application is its own namespace on Calimero. Mero Org does not replace that; a reconciler running in the admin's browser turns the graph into membership and capabilities inside each app namespace, one private subgroup per group, and records what it managed to do.",

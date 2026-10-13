@@ -8,8 +8,12 @@ import type { ObservedApp } from "./types";
 
 const PERIOD_MS = 30_000;
 
-/** Runs plan → execute while the admin's tab is open. One run at a time; a run requested mid-run queues one more. */
-export function useReconciler(backend: OrgBackend | null, orgNamespaceId: string, enabled: boolean) {
+/**
+ * Runs plan → execute while an admin's tab is open. Each tab reconciles only the
+ * apps whose namespace its account administers. One run at a time; a run
+ * requested mid-run queues one more.
+ */
+export function useReconciler(backend: OrgBackend | null, orgNamespaceId: string, enabled: boolean, myAccount: string) {
   const { admin } = useMero();
   const [lastRun, setLastRun] = useState<number | null>(null);
   const [lastResult, setLastResult] = useState<ExecuteResult | null>(null);
@@ -18,24 +22,27 @@ export function useReconciler(backend: OrgBackend | null, orgNamespaceId: string
   const again = useRef(false);
 
   const runNow = useCallback(async () => {
-    if (!backend || !admin || !enabled) return;
+    if (!backend || !admin || !enabled || !myAccount) return;
     if (busy.current) { again.current = true; return; }
     busy.current = true; setRunning(true);
     try {
       do {
         again.current = false;
-        const [placements, enrolments, groups, apps, members] = await Promise.all([backend.desiredPlacements(), backend.enrolments(), backend.groups(), backend.apps(), backend.members()]);
+        const [placements, enrolments, groups, allApps, members, org] = await Promise.all([backend.desiredPlacements(), backend.enrolments(), backend.groups(), backend.apps(), backend.members(), backend.org()]);
+        const apps = allApps.filter((x) => x.status === "ready" && x.admin_account === myAccount);
         const observed: ObservedApp[] = [];
-        for (const a of apps.filter((x) => x.status === "ready")) {
-          try { observed.push(await observeApp(admin, a.id)); } catch (e) { console.warn("mero-org reconciler: observe failed, skipping app this round", a.id, e); }
+        for (const a of apps) {
+          try { observed.push(await observeApp(admin, a.id, orgNamespaceId)); } catch (e) { console.warn("mero-org reconciler: observe failed, skipping app this round", a.id, e); }
         }
+        let orgRootMembers = new Set<string>();
+        try { orgRootMembers = new Set((await admin.listGroupMembers(orgNamespaceId)).members.map((m) => m.identity)); } catch (e) { console.warn("mero-org reconciler: could not list the org namespace members", e); }
         const leftAccounts = members.filter((m) => m.status === "left").map((m) => m.account);
-        const ops = plan({ orgNamespaceId, now: Date.now(), placements, enrolments, groups, apps, observed, leftAccounts });
+        const ops = plan({ orgNamespaceId, now: Date.now(), placements, enrolments, groups, apps, observed, leftAccounts, orgRootMembers, orgAdmins: org.admins });
         const result = ops.length ? await execute(ops, admin, backend, orgNamespaceId) : { applied: 0, failed: [] };
         setLastResult(result); setLastRun(Date.now());
       } while (again.current);
     } finally { busy.current = false; setRunning(false); }
-  }, [backend, admin, enabled, orgNamespaceId]);
+  }, [backend, admin, enabled, orgNamespaceId, myAccount]);
 
   useEffect(() => { if (!enabled) return; void runNow(); const t = setInterval(() => void runNow(), PERIOD_MS); return () => clearInterval(t); }, [enabled, runNow]);
 

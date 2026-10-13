@@ -56,8 +56,10 @@ membership the same way.
 enrolled ──▶ active ──▶ suspended ──▶ left
 ```
 
-Enrolled: joined and claimed. Active: at least one group membership. Suspended: out of every app
-subgroup, kept in the directory. Left: out of every app namespace root as well.
+Enrolled: joined and claimed. Active: at least one group membership; the contract moves `enrolled`
+to `active` on the first membership and back when the last one goes. Suspended: out of every app
+subgroup, kept in the directory. Left: out of every app namespace root and the org namespace root
+as well. An org admin cannot be suspended or removed; revoke admin first.
 
 ### Enrolment, per (member, app)
 
@@ -88,18 +90,28 @@ Contract timestamps are nanoseconds.
 A pure function, `plan` in [`app/src/reconcile/plan.ts`](app/src/reconcile/plan.ts), from (org
 state, observed app namespace state) to a list of operations; an executor in
 [`execute.ts`](app/src/reconcile/execute.ts) runs them through the signed-in admin's account-aware
-admin and records the outcome in `enrolments` and `activity`. For every app that is `ready`:
+admin and records the outcome in `enrolments` and `activity`. Each admin's tab reconciles only the
+`ready` apps whose namespace that admin registered, and only subgroups stamped with this org's
+namespace id count as mirrored (another org sharing the app namespace keeps its own). For each:
 
 1. **Create missing subgroups** for each org group that has access and no mirrored subgroup yet.
 2. **Mint an invitation** for a person who should reach the app but is not in its namespace, unless
    a live, unexpired one is already stored.
 3. **Add to the subgroup**, with the access row's capabilities, a person who is in the namespace
-   but not yet in the subgroup. Someone already in the namespace needs no ceremony.
+   but not yet in the subgroup. Someone already in the namespace needs no ceremony. A placed
+   member whose capabilities differ from the access row's is set to the row's value (org admins
+   are never re-capped).
 4. **Remove** members of a mirrored subgroup whom no group placement wants (app admins are never
-   removed), and remove people who left the org from the namespace root.
-5. **Record** each enrolment's new state, and mark enrolments nobody wants any more `removed`.
+   removed), and remove people who left the org from the app namespace root and from the org
+   namespace root.
+5. **Record** each enrolment's new state, and mark enrolments nobody wants any more `removed`. A
+   failed operation writes one `failed` row (not one per round) and the row stays while the retry
+   is pending.
 
-It is idempotent: every operation comes from a diff, so two admins running it at once converge. It
+It is idempotent: every operation comes from a diff, so re-running it changes nothing once the
+namespace matches the org. Two admins' tabs can each create a subgroup for the same org group if
+they race; the planner then uses whichever one it observes, and the other is left behind (a known
+follow-up). It
 runs in the admin's browser while the app is open (on every admin action, on a timer, and from
 "Run now"); there is no server. An app is reconciled only once the registering admin holds Admin in
 its namespace; until then it is `pending_admin`.
