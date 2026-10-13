@@ -3,9 +3,17 @@ use calimero_sdk::testing::TestHost;
 
 use super::*;
 
+trait ViewAs<S> {
+    fn view_as<R>(&mut self, who: [u8; 32], f: impl FnOnce(&S) -> R) -> R;
+}
+impl ViewAs<Org> for TestHost<Org> {
+    fn view_as<R>(&mut self, who: [u8; 32], f: impl FnOnce(&Org) -> R) -> R {
+        self.call_as_account(who, who, |s| f(s))
+    }
+}
+
 pub const FOUNDER: [u8; 32] = [0xA1; 32];
 pub const ANA: [u8; 32] = [0xB2; 32];
-#[allow(dead_code)] // used by later tasks
 pub const BOB: [u8; 32] = [0xC3; 32];
 pub const STRANGER: [u8; 32] = [0xE0; 32];
 
@@ -210,4 +218,116 @@ fn deleting_a_group_cascades_memberships_and_children() {
         .unwrap()
         .groups
         .is_empty());
+}
+
+const DRIVE_NS: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+
+#[test]
+fn access_goes_to_groups_and_placements_follow_memberships() {
+    let mut app = founded();
+    enrolled(&mut app, ANA, "ana");
+    let eng = app
+        .call(|s| s.create_group("Engineering".to_owned(), String::new()))
+        .unwrap();
+    app.call(|s| s.set_membership(eng.id.clone(), hex32(ANA), ROLE_MEMBER.to_owned()))
+        .unwrap();
+    let drive = app
+        .call(|s| {
+            s.register_app(
+                DRIVE_NS.to_owned(),
+                "com.calimero.mero-drive-docs".to_owned(),
+                "Drive".to_owned(),
+                APP_READY.to_owned(),
+            )
+        })
+        .unwrap();
+    assert_eq!(drive.id, DRIVE_NS);
+    app.call(|s| s.set_access(eng.id.clone(), DRIVE_NS.to_owned(), 7))
+        .unwrap();
+    let want = app.view(|s| s.desired_placements()).unwrap();
+    assert_eq!(want.len(), 1);
+    assert_eq!(
+        (
+            want[0].account.as_str(),
+            want[0].app.as_str(),
+            want[0].group.as_str(),
+            want[0].capabilities
+        ),
+        (hex32(ANA).as_str(), DRIVE_NS, eng.id.as_str(), 7)
+    );
+    assert_eq!(
+        app.view(|s| s.member(hex32(ANA))).unwrap().unwrap().apps,
+        vec![DRIVE_NS.to_owned()]
+    );
+    // A suspended member is not placed anywhere.
+    app.call(|s| s.set_member_status(hex32(ANA), STATUS_SUSPENDED.to_owned()))
+        .unwrap();
+    assert!(app.view(|s| s.desired_placements()).unwrap().is_empty());
+}
+
+#[test]
+fn the_reconciler_records_enrolment_and_the_member_reads_their_own() {
+    let mut app = founded();
+    enrolled(&mut app, ANA, "ana");
+    enrolled(&mut app, BOB, "bob");
+    app.call(|s| {
+        s.register_app(
+            DRIVE_NS.to_owned(),
+            "p".to_owned(),
+            "Drive".to_owned(),
+            APP_READY.to_owned(),
+        )
+    })
+    .unwrap();
+    app.call(|s| {
+        s.record_enrolment(
+            hex32(ANA),
+            DRIVE_NS.to_owned(),
+            ENROL_PENDING.to_owned(),
+            "{\"inv\":1}".to_owned(),
+            99,
+            vec![],
+            String::new(),
+        )
+    })
+    .unwrap();
+    let mine = app.view_as(ANA, |s| s.my_enrolments()).unwrap();
+    assert_eq!(mine.len(), 1);
+    assert_eq!(mine[0].state, ENROL_PENDING);
+    assert!(app.view_as(BOB, |s| s.my_enrolments()).unwrap().is_empty());
+    let err = app
+        .call_as_account(ANA, ANA, |s| {
+            s.record_enrolment(
+                hex32(ANA),
+                DRIVE_NS.to_owned(),
+                ENROL_PLACED.to_owned(),
+                String::new(),
+                0,
+                vec![],
+                String::new(),
+            )
+        })
+        .unwrap_err();
+    assert!(format!("{err:?}").contains("admin"), "{err:?}");
+}
+
+#[test]
+fn deleting_a_group_drops_its_access_rows() {
+    let mut app = founded();
+    let eng = app
+        .call(|s| s.create_group("Engineering".to_owned(), String::new()))
+        .unwrap();
+    app.call(|s| {
+        s.register_app(
+            DRIVE_NS.to_owned(),
+            "p".to_owned(),
+            "Drive".to_owned(),
+            APP_READY.to_owned(),
+        )
+    })
+    .unwrap();
+    app.call(|s| s.set_access(eng.id.clone(), DRIVE_NS.to_owned(), 7))
+        .unwrap();
+    app.call(|s| s.delete_group(eng.id.clone())).unwrap();
+    assert!(app.view(|s| s.access_rows()).unwrap().is_empty());
 }

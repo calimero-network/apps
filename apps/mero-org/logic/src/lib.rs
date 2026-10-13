@@ -197,43 +197,129 @@ pub struct GroupView {
     pub created_at: u64,
 }
 
+pub const APP_READY: &str = "ready";
+pub const APP_PENDING_ADMIN: &str = "pending_admin";
+pub const ENROL_NOT: &str = "not_enrolled";
+pub const ENROL_PENDING: &str = "invitation_pending";
+pub const ENROL_JOINED: &str = "joined";
+pub const ENROL_PLACED: &str = "placed";
+pub const ENROL_REMOVED: &str = "removed";
+pub const ENROL_FAILED: &str = "failed";
+pub const ENROL_STATES: &[&str] = &[
+    ENROL_NOT,
+    ENROL_PENDING,
+    ENROL_JOINED,
+    ENROL_PLACED,
+    ENROL_REMOVED,
+    ENROL_FAILED,
+];
+/// An encoded SignedGroupOpenInvitation is a few KB of JSON.
+pub const MAX_INVITATION: usize = 16_384;
+
 #[app::mergeable(id = "mero_org::App")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
 pub struct App {
+    /// The app namespace id, 64 hex. One row per namespace.
     pub id: String,
+    pub package: String,
+    pub label: LwwRegister<String>,
+    /// The org admin account that holds Admin in that namespace.
+    pub admin_account: String,
+    pub status: LwwRegister<String>,
+    pub registered_at: u64,
 }
 impl Mergeable for App {
-    fn merge(&mut self, _: &Self) -> Result<(), MergeError> {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        self.label.merge(&other.label);
+        self.status.merge(&other.status);
         Ok(())
     }
 }
 
 #[app::mergeable(id = "mero_org::Access")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
 pub struct Access {
     pub group: String,
+    pub app: String,
+    /// Core capability bitmask given to each placed member in the mirrored subgroup.
+    pub capabilities: LwwRegister<u32>,
+    pub enabled: LwwRegister<bool>,
 }
 impl Mergeable for Access {
-    fn merge(&mut self, _: &Self) -> Result<(), MergeError> {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        self.capabilities.merge(&other.capabilities);
+        self.enabled.merge(&other.enabled);
         Ok(())
     }
 }
 
 #[app::mergeable(id = "mero_org::Enrolment")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
 pub struct Enrolment {
     pub account: String,
+    pub app: String,
+    pub state: LwwRegister<String>,
+    /// JSON of the SignedGroupOpenInvitation while `invitation_pending`, else "".
+    pub invitation: LwwRegister<String>,
+    pub invitation_expires: LwwRegister<u64>,
+    /// Mirrored subgroup ids the member is placed in.
+    pub subgroups: LwwRegister<Vec<String>>,
+    pub note: LwwRegister<String>,
+    pub updated_at: LwwRegister<u64>,
 }
 impl Mergeable for Enrolment {
-    fn merge(&mut self, _: &Self) -> Result<(), MergeError> {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        self.state.merge(&other.state);
+        self.invitation.merge(&other.invitation);
+        self.invitation_expires.merge(&other.invitation_expires);
+        self.subgroups.merge(&other.subgroups);
+        self.note.merge(&other.note);
+        self.updated_at.merge(&other.updated_at);
         Ok(())
     }
+}
+
+#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AppView {
+    pub id: String,
+    pub package: String,
+    pub label: String,
+    pub admin_account: String,
+    pub status: String,
+    pub registered_at: u64,
+    pub group_count: u32,
+}
+#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AccessView {
+    pub group: String,
+    pub app: String,
+    pub capabilities: u32,
+    pub enabled: bool,
+}
+#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct EnrolmentView {
+    pub account: String,
+    pub app: String,
+    pub state: String,
+    pub invitation: String,
+    pub invitation_expires: u64,
+    pub subgroups: Vec<String>,
+    pub note: String,
+    pub updated_at: u64,
+}
+#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct PlacementView {
+    pub account: String,
+    pub app: String,
+    pub group: String,
+    pub capabilities: u32,
 }
 
 #[app::mergeable(id = "mero_org::ActivityRow")]
@@ -274,7 +360,7 @@ impl Org {
         AccountId::from(env::account_id()).to_string()
     }
 
-    #[allow(dead_code)] // used by Tasks 2-5
+    #[allow(dead_code)] // used by Task 5
     fn caller_account() -> AccountId {
         AccountId::from(env::account_id())
     }
@@ -408,9 +494,338 @@ impl Org {
         Ok(out)
     }
 
-    /// Filled in Task 4; returns an empty list until then.
-    fn apps_of(&self, _account: &str) -> app::Result<Vec<String>> {
-        Ok(Vec::new())
+    fn access_key(group: &str, app: &str) -> String {
+        format!("{group}:{app}")
+    }
+    fn enrolment_key(account: &str, app: &str) -> String {
+        format!("{account}:{app}")
+    }
+
+    fn apps_of(&self, account: &str) -> app::Result<Vec<String>> {
+        let groups = self.groups_of(account)?;
+        let mut out: Vec<String> = self
+            .access
+            .entries()?
+            .filter(|(_, a)| *a.enabled.get() && groups.contains(&a.group))
+            .map(|(_, a)| a.app.clone())
+            .collect();
+        out.sort();
+        out.dedup();
+        Ok(out)
+    }
+
+    fn remove_access_rows_for_group(&mut self, group: &str) -> app::Result<()> {
+        let keys: Vec<(String, String)> = self
+            .access
+            .entries()?
+            .filter(|(_, a)| a.group == group)
+            .map(|(k, a)| (k, a.app.clone()))
+            .collect();
+        for (k, app_id) in keys {
+            self.access.remove(&k)?;
+            self.record("access_removed", group, &app_id, "")?;
+            app::emit!(Event::AccessChanged {
+                group,
+                app: &app_id
+            });
+        }
+        Ok(())
+    }
+
+    fn app_view(&self, a: &App) -> app::Result<AppView> {
+        let group_count = self
+            .access
+            .entries()?
+            .filter(|(_, x)| x.app == a.id && *x.enabled.get())
+            .count() as u32;
+        Ok(AppView {
+            id: a.id.clone(),
+            package: a.package.clone(),
+            label: a.label.get().clone(),
+            admin_account: a.admin_account.clone(),
+            status: a.status.get().clone(),
+            registered_at: a.registered_at,
+            group_count,
+        })
+    }
+
+    pub fn register_app(
+        &mut self,
+        namespace_id: String,
+        package: String,
+        label: String,
+        status: String,
+    ) -> app::Result<AppView> {
+        self.require_admin()?;
+        Self::parse_account("namespace_id", &namespace_id)?; // 64 hex, same shape
+        Self::check_len("package", &package, MAX_SHORT, true)?;
+        Self::check_len("label", &label, MAX_NAME, true)?;
+        if status != APP_READY && status != APP_PENDING_ADMIN {
+            return Err(AppError::msg("status must be ready or pending_admin"));
+        }
+        if self.apps.contains(&namespace_id)? {
+            return Err(AppError::msg("that namespace is already registered"));
+        }
+        let a = App {
+            id: namespace_id.clone(),
+            package,
+            label: LwwRegister::new(label),
+            admin_account: Self::caller(),
+            status: LwwRegister::new(status),
+            registered_at: Self::now(),
+        };
+        self.apps.insert(namespace_id.clone(), a.clone())?;
+        self.record("app_registered", &namespace_id, "", "")?;
+        self.app_view(&a)
+    }
+
+    pub fn set_app_status(&mut self, id: String, status: String) -> app::Result<()> {
+        self.require_admin()?;
+        if status != APP_READY && status != APP_PENDING_ADMIN {
+            return Err(AppError::msg("status must be ready or pending_admin"));
+        }
+        let mut a = self
+            .apps
+            .get(&id)?
+            .map(|v| v.clone())
+            .ok_or_else(|| AppError::msg(format!("no app {id}")))?;
+        a.status.set(status);
+        self.apps.insert(id, a)?;
+        Ok(())
+    }
+
+    pub fn remove_app(&mut self, id: String) -> app::Result<()> {
+        self.require_admin()?;
+        self.apps
+            .remove(&id)?
+            .ok_or_else(|| AppError::msg(format!("no app {id}")))?;
+        let keys: Vec<(String, String)> = self
+            .access
+            .entries()?
+            .filter(|(_, a)| a.app == id)
+            .map(|(k, a)| (k, a.group.clone()))
+            .collect();
+        for (k, group) in keys {
+            self.access.remove(&k)?;
+            app::emit!(Event::AccessChanged {
+                group: &group,
+                app: &id
+            });
+        }
+        let ekeys: Vec<String> = self
+            .enrolments
+            .entries()?
+            .filter(|(_, e)| e.app == id)
+            .map(|(k, _)| k)
+            .collect();
+        for k in ekeys {
+            self.enrolments.remove(&k)?;
+        }
+        self.record("app_removed", &id, "", "")?;
+        Ok(())
+    }
+
+    pub fn set_access(
+        &mut self,
+        group: String,
+        app_id: String,
+        capabilities: u32,
+    ) -> app::Result<()> {
+        self.require_admin()?;
+        if !self.groups.contains(&group)? {
+            return Err(AppError::msg(format!("no group {group}")));
+        }
+        if !self.apps.contains(&app_id)? {
+            return Err(AppError::msg(format!("no app {app_id}")));
+        }
+        if capabilities >= 1 << 10 {
+            return Err(AppError::msg("capabilities uses bits 0..=9 only"));
+        }
+        self.access.insert(
+            Self::access_key(&group, &app_id),
+            Access {
+                group: group.clone(),
+                app: app_id.clone(),
+                capabilities: LwwRegister::new(capabilities),
+                enabled: LwwRegister::new(true),
+            },
+        )?;
+        self.record("access_set", &group, &app_id, &capabilities.to_string())?;
+        app::emit!(Event::AccessChanged {
+            group: &group,
+            app: &app_id
+        });
+        Ok(())
+    }
+
+    pub fn remove_access(&mut self, group: String, app_id: String) -> app::Result<()> {
+        self.require_admin()?;
+        self.access
+            .remove(&Self::access_key(&group, &app_id))?
+            .ok_or_else(|| AppError::msg("no such access row"))?;
+        self.record("access_removed", &group, &app_id, "")?;
+        app::emit!(Event::AccessChanged {
+            group: &group,
+            app: &app_id
+        });
+        Ok(())
+    }
+
+    /// Written by the reconciler (an admin session) after each governance op.
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_enrolment(
+        &mut self,
+        account: String,
+        app_id: String,
+        state: String,
+        invitation: String,
+        invitation_expires: u64,
+        subgroups: Vec<String>,
+        note: String,
+    ) -> app::Result<()> {
+        self.require_admin()?;
+        if !ENROL_STATES.contains(&state.as_str()) {
+            return Err(AppError::msg(format!("unknown enrolment state {state:?}")));
+        }
+        Self::check_len("invitation", &invitation, MAX_INVITATION, false)?;
+        Self::check_len("note", &note, MAX_LONG, false)?;
+        if !self.members.contains(&account)? {
+            return Err(AppError::msg(format!("no member {account}")));
+        }
+        if !self.apps.contains(&app_id)? {
+            return Err(AppError::msg(format!("no app {app_id}")));
+        }
+        let now = Self::now();
+        self.enrolments.insert(
+            Self::enrolment_key(&account, &app_id),
+            Enrolment {
+                account: account.clone(),
+                app: app_id.clone(),
+                state: LwwRegister::new(state.clone()),
+                invitation: LwwRegister::new(invitation),
+                invitation_expires: LwwRegister::new(invitation_expires),
+                subgroups: LwwRegister::new(subgroups),
+                note: LwwRegister::new(note),
+                updated_at: LwwRegister::new(now),
+            },
+        )?;
+        self.record("enrolment", &account, &app_id, &state)?;
+        app::emit!(Event::EnrolmentChanged {
+            account: &account,
+            app: &app_id,
+            state: &state
+        });
+        Ok(())
+    }
+
+    pub fn apps(&self) -> app::Result<Vec<AppView>> {
+        let mut out = Vec::new();
+        for (_, a) in self.apps.entries()? {
+            out.push(self.app_view(&a)?);
+        }
+        out.sort_by(|a, b| a.label.cmp(&b.label));
+        Ok(out)
+    }
+
+    fn access_view(a: &Access) -> AccessView {
+        AccessView {
+            group: a.group.clone(),
+            app: a.app.clone(),
+            capabilities: *a.capabilities.get(),
+            enabled: *a.enabled.get(),
+        }
+    }
+
+    pub fn access_rows(&self) -> app::Result<Vec<AccessView>> {
+        let mut out: Vec<AccessView> = self
+            .access
+            .entries()?
+            .map(|(_, a)| Self::access_view(&a))
+            .collect();
+        out.sort_by(|a, b| a.group.cmp(&b.group).then_with(|| a.app.cmp(&b.app)));
+        Ok(out)
+    }
+
+    pub fn access_for(&self, group: String) -> app::Result<Vec<AccessView>> {
+        Ok(self
+            .access_rows()?
+            .into_iter()
+            .filter(|a| a.group == group)
+            .collect())
+    }
+
+    fn enrolment_view(e: &Enrolment) -> EnrolmentView {
+        EnrolmentView {
+            account: e.account.clone(),
+            app: e.app.clone(),
+            state: e.state.get().clone(),
+            invitation: e.invitation.get().clone(),
+            invitation_expires: *e.invitation_expires.get(),
+            subgroups: e.subgroups.get().clone(),
+            note: e.note.get().clone(),
+            updated_at: *e.updated_at.get(),
+        }
+    }
+
+    pub fn enrolments(&self) -> app::Result<Vec<EnrolmentView>> {
+        let mut out: Vec<EnrolmentView> = self
+            .enrolments
+            .entries()?
+            .map(|(_, e)| Self::enrolment_view(&e))
+            .collect();
+        out.sort_by(|a, b| a.account.cmp(&b.account).then_with(|| a.app.cmp(&b.app)));
+        Ok(out)
+    }
+
+    pub fn my_enrolments(&self) -> app::Result<Vec<EnrolmentView>> {
+        let me = Self::caller();
+        Ok(self
+            .enrolments()?
+            .into_iter()
+            .filter(|e| e.account == me)
+            .collect())
+    }
+
+    /// Every (member, app, group, capabilities) the graph implies, for members
+    /// that are enrolled or active, through enabled access rows of ready apps.
+    pub fn desired_placements(&self) -> app::Result<Vec<PlacementView>> {
+        let ready: Vec<String> = self
+            .apps
+            .entries()?
+            .filter(|(_, a)| a.status.get() == APP_READY)
+            .map(|(k, _)| k.clone())
+            .collect();
+        let mut out = Vec::new();
+        for (_, m) in self.members.entries()? {
+            let st = m.status.get();
+            if st != STATUS_ENROLLED && st != STATUS_ACTIVE {
+                continue;
+            }
+            for g in self.groups_of(&m.account)? {
+                for (_, a) in self
+                    .access
+                    .entries()?
+                    .filter(|(_, a)| a.group == g && *a.enabled.get())
+                {
+                    if !ready.contains(&a.app) {
+                        continue;
+                    }
+                    out.push(PlacementView {
+                        account: m.account.clone(),
+                        app: a.app.clone(),
+                        group: g.clone(),
+                        capabilities: *a.capabilities.get(),
+                    });
+                }
+            }
+        }
+        out.sort_by(|a, b| {
+            a.account
+                .cmp(&b.account)
+                .then_with(|| a.app.cmp(&b.app))
+                .then_with(|| a.group.cmp(&b.group))
+        });
+        Ok(out)
     }
 
     /// The newcomer's first write. Reaching this method at all proves namespace
@@ -654,11 +1069,6 @@ impl Org {
         self.groups.remove(id)?;
         self.record("group_deleted", id, "", "")?;
         app::emit!(Event::GroupChanged { group: id });
-        Ok(())
-    }
-
-    /// Filled in Task 4; nothing to remove until access rows exist.
-    fn remove_access_rows_for_group(&mut self, _group: &str) -> app::Result<()> {
         Ok(())
     }
 
