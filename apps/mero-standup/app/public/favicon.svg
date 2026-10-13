@@ -1,0 +1,9 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mero Standup logo">
+  <rect width="64" height="64" rx="14" fill="#14161c"/>
+  <rect x="12" y="16" width="8" height="8" rx="4" fill="#f59e0b"/>
+  <rect x="24" y="16" width="28" height="8" rx="4" fill="#3a3f4b"/>
+  <rect x="12" y="28" width="8" height="8" rx="4" fill="#f59e0b"/>
+  <rect x="24" y="28" width="22" height="8" rx="4" fill="#3a3f4b"/>
+  <rect x="12" y="40" width="8" height="8" rx="4" fill="#f59e0b" fill-opacity="0.4"/>
+  <rect x="24" y="40" width="16" height="8" rx="4" fill="#3a3f4b"/>
+</svg>

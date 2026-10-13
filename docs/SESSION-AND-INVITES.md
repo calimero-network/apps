@@ -42,6 +42,7 @@ reimplements one gets its own behaviour, and nothing notices.
 | mero-pass | MeroProvider | ✅ | ✅ | ✅ | |
 | mero-pixart | MeroProvider | ✅ | ✅ | ✅ | |
 | mero-sheets | MeroProvider | ✅ | ✅ | ✅ | |
+| mero-standup | MeroProvider | ✅ | ✅ | ✅ | kv-store's shell |
 | mero-sign | **CalimeroProvider** | ❌ | ❌ | ❌ | legacy SDK — see §5 |
 | mero-stream | MeroProvider | ✅ | ✅ | ✅ | |
 | merraria | *none* | — | — | — | vanilla TS; reimplements the modal |
@@ -155,6 +156,7 @@ node calls** and **the link format**.
 | mero-pixart | app-local `generateInvite` | mero-platform | `encodeInvitation` |
 | mero-sheets | `createNamespaceInvitation` + `joinNamespace` | — | `encodeInvitation` (2.3 KB stub) |
 | mero-sign | **none** (baked `CONTEXT_ID`) | — | `saveInvitationToStorage` |
+| mero-standup | `createNamespaceInvitation` + `joinNamespace` | mero-platform | `encodeInvitationPayload` |
 | mero-stream | `createNamespaceInvitation`, `joinNamespace`, `joinGroup`, `admit` | mero-platform | `encodeInvite` |
 | merraria | raw `/admin-api/*` `fetch` | mero-platform | `encodeInvite` |
 | scaffolding-e2e | `createNamespaceInvitation` + `joinNamespace` | — | *(none)* |
@@ -167,7 +169,7 @@ Same purpose, five different exported surfaces:
 |---|---|---|
 | `encodeInvitation` | `encodeInvitation` / `decodeInvitation` / `invitationLink` / `invitationFromRaw` / `urlWithoutInvitation` | mero-calendar, mero-design, mero-pixart |
 | `encodeInvite` | `encodeInvite` / `decodeInvite` / `inviteLink` / `inviteFromRaw` / `urlWithoutInvite` | mero-blocks, merraria, mero-stream |
-| `encodeInvitationPayload` | `encodeInvitationPayload` / `decodeInvitationPayload` / `generateInvitationUrl` / `generateInvitationDeepLink` | kv-store, mero-issue-tracker |
+| `encodeInvitationPayload` | `encodeInvitationPayload` / `decodeInvitationPayload` / `generateInvitationUrl` / `generateInvitationDeepLink` | kv-store, mero-issue-tracker, mero-standup |
 | stub | `encodeInvitation` / `decodeInvitation` only | mero-sheets |
 | legacy | `saveInvitationToStorage` / `generateInvitationUrl` / `extractInvitationFromUrl` | mero-sign |
 

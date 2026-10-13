@@ -109,6 +109,7 @@ keep them that way, and republish the bundle if a domain changes.
 | `mero-crm` | `mero-crm` (to create) | `apps/mero-crm/app` | `dist` | https://mero-crm.vercel.app |
 | `mero-issue-tracker` | `mero-issue-tracker-app` | `apps/mero-issue-tracker/app` | `dist` | https://mero-issue-tracker-app.vercel.app |
 | `mero-sign` | `mero-sign` | `apps/mero-sign/app` | `dist` | https://mero-sign.vercel.app |
+| `mero-standup` | `mero-standup` | `apps/mero-standup/app` | `dist` | https://mero-standup.vercel.app ⚠️ not created yet |
 | `mero-stream` | `mero-stream-neon` | `apps/mero-stream/app` | `dist` | https://mero-stream-neon.vercel.app |
 | `mero-design` | `mero-design` | `apps/mero-design/app` | `dist` | https://mero-design.vercel.app/ |
 | `mero-pass` | `mero-pass` | `apps/mero-pass/app` | `dist` | https://mero-pass.vercel.app |
@@ -191,6 +192,7 @@ exceptions, noted below:
 | `mero-crm` | `com.calimero.mero-crm` |
 | `mero-issue-tracker` | `com.calimero.mero-issue-tracker` |
 | `mero-sign` | `com.calimero.mero-sign` |
+| `mero-standup` | `com.calimero.mero-standup` |
 | `mero-stream` | `com.calimero.mero-stream` |
 | `mero-design` | `com.calimero.mero-design` |
 | `mero-pass` | `com.calimero.mero-pass` |
