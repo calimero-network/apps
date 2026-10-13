@@ -738,6 +738,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "The PRs your tasks link to, as your agent's runtime last saw them on\nGitHub, by `owner/name#number`. See [`prs`]."
+        },
+        {
+          "name": "action_subjects",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Subject"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "What each action touched, by the action's id."
+        },
+        {
+          "name": "subject_chains",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Subject"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "The chain that last touched each subject, by its key."
         }
       ]
     },
@@ -1262,6 +1290,30 @@
       "kind": "record",
       "doc": "You asked your agent to stop working on one of your messages.",
       "fields": [
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Subject": {
+      "kind": "record",
+      "doc": "What a row is about in another app, as a key: `<app>:<context>`, plus\n`:<id>` for one thing in it (an issue, a doc, a thread). Kept two ways: by\nthe action's id (what it touched), and by the key (the chain that touched\nit last), so a notification about the same thing joins that chain. See\n[`subject_key`].",
+      "fields": [
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
         {
           "name": "at",
           "type": {

@@ -20,6 +20,7 @@ import type {
 import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter, type NotificationMode } from "./backend";
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
 import { mergeWatchInput, moveWatch, newWatch } from "./watches";
+import { replySubject } from "./subject";
 import type { PrInput, PrView, WatchInput, WatchView } from "./generated/HyperfeedClient";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
@@ -93,6 +94,8 @@ export class DemoBackend implements FeedBackend {
   /** Chains put away: the chain's latest activity then, and when "later" brings it back (0: never). */
   private archivedChains = new Map<string, { at: number; until: number }>();
   private lensRows = new Map<string, LensView>();
+  /** The chain that last touched each subject, by its key; see `subject.ts`. */
+  private subjectChains = new Map<string, string>();
   /** What the feed sent into other apps, newest last: the demo's stand-in for them. */
   readonly sent: { contextId: string; method: string; args: Record<string, unknown> }[] = [];
   private listeners = new Set<Listener>();
@@ -891,8 +894,13 @@ export class DemoBackend implements FeedBackend {
     }
     const t = this.tick(at);
     this.flagged.set(input.key, input.needs_you);
+    // About something a task of yours touched: it joins that task's chain, unless you put the task away.
+    const subject = input.item_type ? replySubject(input.app, input.source_context, input.reply_call) : "";
+    const task = subject ? this.subjectChains.get(subject) : undefined;
+    const joins = !input.chain && task && !this.archivedChains.has(task) ? task : "";
     const item = this.put({
-      ...blank(input.key, "notification", input.app, t, input.chain || input.key, input.ask),
+      ...blank(input.key, "notification", input.app, t, input.chain || joins || input.key, input.ask),
+      subject,
       source_context: input.source_context,
       source_label: input.source_label,
       title: input.title,
@@ -945,7 +953,9 @@ export class DemoBackend implements FeedBackend {
       executor: input.executor,
       undoable: input.undoable,
       history: [{ status, note: input.note, at: t }],
+      subject: input.subject ?? "",
     });
+    if (item.subject) this.subjectChains.set(item.subject, item.chain);
     this.changed();
     return item;
   }
@@ -1176,6 +1186,7 @@ function action(input: Partial<ActionInput>): ActionInput {
     chain: "",
     ask: NO_ASK,
     grant: "",
+    subject: "",
     ...input,
   };
 }
@@ -1260,6 +1271,6 @@ function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chai
     stop_at: 0, headline: "",
     superseded_by: "",
     answers: "",
-    answers_superseded: false, held_by: "", held_since: 0,
+    answers_superseded: false, held_by: "", held_since: 0, subject: "",
   };
 }

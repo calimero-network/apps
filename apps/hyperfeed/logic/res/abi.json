@@ -246,6 +246,13 @@
             "kind": "string"
           },
           "doc": "For an outcome: the id of a proposal in the same app you approved with\n\"Allow for this session\" (see [`SESSION_GRANT`]) in the last 12 hours.\nUnder the app's Ask mode, it is recorded without a breach. Older agents\nomit it."
+        },
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What it touched in the app, as [`subject_key`] makes it (`\"\"` for\nnothing in particular). A notification about the same thing, with no\nchain of its own, joins this action's chain. Older agents omit it."
         }
       ]
     },
@@ -1189,6 +1196,13 @@
             "kind": "u64"
           },
           "doc": "Since when that session has held the chain; 0 when nobody does."
+        },
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "On an action, what it touched; on a notification, what its reply goes\nto; see [`subject_key`]. `\"\"` for nothing in particular."
         }
       ]
     },
@@ -1626,6 +1640,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "The PRs your tasks link to, as your agent's runtime last saw them on\nGitHub, by `owner/name#number`. See [`prs`]."
+        },
+        {
+          "name": "action_subjects",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Subject"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "What each action touched, by the action's id."
+        },
+        {
+          "name": "subject_chains",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Subject"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "The chain that last touched each subject, by its key."
         }
       ]
     },
@@ -2718,6 +2760,30 @@
       "kind": "record",
       "doc": "You asked your agent to stop working on one of your messages.",
       "fields": [
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Subject": {
+      "kind": "record",
+      "doc": "What a row is about in another app, as a key: `<app>:<context>`, plus\n`:<id>` for one thing in it (an issue, a doc, a thread). Kept two ways: by\nthe action's id (what it touched), and by the key (the chain that touched\nit last), so a notification about the same thing joins that chain. See\n[`subject_key`].",
+      "fields": [
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
         {
           "name": "at",
           "type": {
@@ -4216,6 +4282,28 @@
       ],
       "returns": {
         "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "touch_subject",
+      "doc": "Your agent touched `subject` (see [`subject_key`]) for the task in\n`chain` with a write that has no row of its own: a step of its turn on\na message of yours. A notification about it then joins `chain`, as\nfor an action that names it.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       },
       "intent": "mutating"
     },

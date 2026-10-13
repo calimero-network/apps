@@ -5,6 +5,7 @@ import { FeedView, type NewFeed } from "./FeedView";
 import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
 import type { FeedItem } from "./generated/HyperfeedClient";
+import { subjectKey } from "./subject";
 
 function Harness({
   backend,
@@ -40,7 +41,7 @@ const noRow: FeedItem = {
   id: "", kind: "notification", chain: "", chain_len: 1, chain_at: 0, app: "", source_context: "ctx", source_label: "", title: "", body: "",
   at: 0, needs_you: false, status: "received", status_at: 0, note: "", ask: { kind: "", prompt: "", options: [], draft: "" }, history: [],
   method: "", category: "", why: "", intent_hash: "", executor: "", undoable: false, breach: "", reviewed_at: 0, from: "", event: "",
-  seen: true, reply_to: "", item_type: "", fields: "", reply_call: "", doing: "", doing_at: 0, attachments: [], steps: [], draft: "", stop_at: 0, headline: "", superseded_by: "", answers: "", answers_superseded: false, held_by: "", held_since: 0,
+  seen: true, reply_to: "", item_type: "", fields: "", reply_call: "", doing: "", doing_at: 0, attachments: [], steps: [], draft: "", stop_at: 0, headline: "", superseded_by: "", answers: "", answers_superseded: false, held_by: "", held_since: 0, subject: "",
 };
 
 /** A feed that only shows these rows. */
@@ -294,7 +295,7 @@ describe("FeedView", () => {
     await backend.recordAction({
       app: "sheets", source_context: "ctx", source_label: "", method: "update", category: "", writes: true, undoable: false,
       title: "Pulled the numbers into a sheet", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-      chain: mention.chain, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "",
+      chain: mention.chain, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "",
     });
     render(<Harness backend={backend} />);
     const row = await rowFor(/can you share the numbers/i);
@@ -319,7 +320,7 @@ describe("FeedView", () => {
     await backend.recordAction({
       app: "sheets", source_context: "", source_label: "", method: "update", category: "", writes: true, undoable: false,
       title: "Pulled the numbers into a sheet", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-      chain: mention.id, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "",
+      chain: mention.id, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "",
     });
     render(<Harness backend={backend} />);
     // Your reply is still being delivered: the chain is in progress, not done.
@@ -429,6 +430,35 @@ describe("FeedView", () => {
     expect(within(flow).queryByRole("button", { name: "Tue" })).not.toBeInTheDocument();
     expect(within(flow).getByText("Replaced by a newer question")).toBeInTheDocument();
     expect((await backend.chain(poll.chain))[0]).toMatchObject({ needs_you: false, superseded_by: expect.any(String) });
+  });
+
+  it("shows a teammate's comment on an issue the task touched as a step of the task", async () => {
+    const backend = new DemoBackend(false, 0);
+    await backend.setPolicy("issue-tracker", "act", "feed");
+    const blankAsk = { kind: "", prompt: "", options: [], draft: "" };
+    const task = await backend.recordNotification({
+      key: "mero-bot:task", app: "mero-bot", source_context: "", source_label: "", from: "", title: "Fix the sync bug",
+      body: "", event: "Prompt", needs_you: false, chain: "", ask: blankAsk, item_type: "", fields: "", reply_call: "",
+    });
+    await backend.recordAction({
+      app: "issue-tracker", source_context: "repo", source_label: "", method: "set_status", category: "", writes: true, undoable: false,
+      title: "Moved the sync bug to In progress", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
+      chain: task.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"),
+    });
+    const comment = await backend.recordNotification({
+      key: "repo:a>b:0", app: "issue-tracker", source_context: "repo", source_label: "", from: "Xabi", title: "Commented on your issue Sync bug",
+      body: "", event: "CommentAdded", needs_you: false, chain: "", ask: { kind: "reply", prompt: "Reply in the thread", options: [], draft: "" },
+      item_type: "message", fields: JSON.stringify({ from: "Xabi", text: "Repro attached", where: "Sync bug", is_dm: false }),
+      reply_call: JSON.stringify({ method: "add_comment", args: { issue_id: "issue-7", body: "=answer" } }),
+    });
+    expect(comment.chain).toBe(task.chain);
+    render(<Harness backend={backend} />);
+    // openRow insists on exactly one row: the task's, not one for the comment beside it.
+    const row = await openRow(/commented on your issue Sync bug/i);
+    const flow = within(row).getByRole("list", { name: "The whole flow" });
+    expect(flow).toHaveTextContent("Moved the sync bug to In progress");
+    expect(flow).toHaveTextContent(/commented on your issue Sync bug/i);
+    expect((await backend.chain(task.chain)).map((i) => i.id)).toEqual(expect.arrayContaining([task.id, comment.id]));
   });
 
   it("opens a chain's whole flow in place and settles a step from inside it", async () => {

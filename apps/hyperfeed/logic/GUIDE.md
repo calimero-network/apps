@@ -51,6 +51,15 @@ Set `chain` to the id of whatever led to this (the notification you are answerin
   "chain": "<notification id>", "ask": { "kind": "", "prompt": "", "options": [], "draft": "" } } }
 ```
 
+Optionally name what the action touched as `subject`: `<app>:<context id>`, plus `:<id>` when the call's args name one thing by `issue_id`, `doc_id` or `thread_id` (the first of those it has).
+A notification about the same thing (its reply goes to the same issue, chat or board) then joins your chain instead of starting its own, so a teammate's comment on the issue you moved shows in the same task. A chain the user put away is not reopened this way.
+
+```json
+"subject": "issue-tracker:<context id>:issue-1727000000000-1a2b3c4d"
+```
+
+A write that has no row of its own (a step you report with `agent_work` on the user's message) names its subject with `touch_subject(chain, subject)`.
+
 ### Propose something the user resolves in one tap
 
 Use an `ask` on a proposal:
