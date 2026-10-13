@@ -11,7 +11,7 @@ export async function observeApp(admin: Observer, appId: string): Promise<Observ
   const subgroups: ObservedSubgroup[] = [];
   for (const e of entries) {
     const [meta, members] = await Promise.all([admin.getGroupMetadata(e.groupId), admin.listGroupMembers(e.groupId)]);
-    subgroups.push({ groupId: e.groupId, name: meta?.name ?? "", orgGroupId: meta?.data[ORG_GROUP_KEY] ?? null, members: new Set(members.members.map((m) => m.identity)) });
+    subgroups.push({ groupId: e.groupId, name: meta?.name ?? "", orgGroupId: meta?.data?.[ORG_GROUP_KEY] ?? null, members: new Set(members.members.map((m) => m.identity)) });
   }
   return { appId, rootMembers, subgroups };
 }

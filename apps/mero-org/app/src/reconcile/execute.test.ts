@@ -48,4 +48,16 @@ describe("execute", () => {
     expect(b.recordEnrolment).toHaveBeenCalledWith(expect.objectContaining({ account: ANA, state: "failed", note: "boom" }));
     expect(a.removeGroupMembers).toHaveBeenCalledWith("sg1", { members: ["b".repeat(64)] });
   });
+
+  it("keeps the minted invitation through a following record op", async () => {
+    const a = admin(); const b = backend();
+    await execute([
+      { kind: "mint-invitation", app: DRIVE, account: ANA },
+      { kind: "record", account: ANA, app: DRIVE, state: "invitation_pending", subgroups: [], note: "" },
+    ], a, b, ORG);
+    const calls = (b.recordEnrolment as ReturnType<typeof vi.fn>).mock.calls;
+    const last = calls[calls.length - 1]![0];
+    expect(JSON.parse(last.invitation).inviter_signature).toBe("sig");
+    expect(last.invitationExpires).toBeGreaterThan(Date.now());
+  });
 });

@@ -22,7 +22,10 @@ export async function execute(ops: PlannedOp[], admin: Executor, backend: OrgBac
           const expiresS = Math.floor(Date.now() / 1000) + INVITATION_TTL_S;
           const res = await admin.createNamespaceInvitation(op.app, { expirationTimestamp: expiresS });
           if (!("invitation" in res)) throw new Error("recursive invitation returned where a single one was asked");
-          await backend.recordEnrolment({ account: op.account, app: op.app, state: "invitation_pending", invitation: JSON.stringify(res.invitation), invitationExpires: expiresS * 1000, subgroups: [], note: "" });
+          const invitation = JSON.stringify(res.invitation);
+          await backend.recordEnrolment({ account: op.account, app: op.app, state: "invitation_pending", invitation, invitationExpires: expiresS * 1000, subgroups: [], note: "" });
+          const key = `${op.account}:${op.app}`;
+          stored.set(key, { ...(stored.get(key) ?? { account: op.account, app: op.app, subgroups: [], note: "", updated_at: 0 }), state: "invitation_pending", invitation, invitation_expires: expiresS * 1000 });
           break;
         }
         case "add-member":

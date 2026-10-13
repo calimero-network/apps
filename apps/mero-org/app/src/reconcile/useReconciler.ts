@@ -27,7 +27,7 @@ export function useReconciler(backend: OrgBackend | null, orgNamespaceId: string
         const [placements, enrolments, groups, apps, members] = await Promise.all([backend.desiredPlacements(), backend.enrolments(), backend.groups(), backend.apps(), backend.members()]);
         const observed: ObservedApp[] = [];
         for (const a of apps.filter((x) => x.status === "ready")) {
-          try { observed.push(await observeApp(admin, a.id)); } catch { /* unreachable namespace this round: skipped, not failed */ }
+          try { observed.push(await observeApp(admin, a.id)); } catch (e) { console.warn("mero-org reconciler: observe failed, skipping app this round", a.id, e); }
         }
         const leftAccounts = members.filter((m) => m.status === "left").map((m) => m.account);
         const ops = plan({ orgNamespaceId, now: Date.now(), placements, enrolments, groups, apps, observed, leftAccounts });
