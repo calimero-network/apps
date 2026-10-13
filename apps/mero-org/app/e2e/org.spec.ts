@@ -48,26 +48,18 @@ test("found the org, invite, group, register an app and watch the reconciler pla
   await login(page);
 
   await page.getByRole("button", { name: "Create org" }).click();
+
+  // The founder is the org's admin but not yet one of its people: the app
+  // asks them who they are before the org's screens.
+  await expect(page.getByRole("heading", { name: "Welcome. Who are you?" })).toBeVisible({ timeout: 60_000 });
+  await page.getByLabel("Name", { exact: true }).fill("Founder");
+  await page.getByLabel("Handle", { exact: true }).fill("founder");
+  await page.getByRole("button", { name: "Join", exact: true }).click();
   const nav = page.getByRole("navigation", { name: "Sections" });
   await expect(nav.getByRole("link", { name: "People" })).toBeVisible({ timeout: 60_000 });
 
   const mero = node();
   const s = readState();
-  const [orgNs] = await mero.admin.listNamespacesForApplication(s.applicationId);
-  expect(orgNs).toBeDefined();
-  const [orgCtx] = await mero.admin.listGroupContexts(orgNs!.namespaceId);
-  expect(orgCtx).toBeDefined();
-
-  // The founder is the org's admin but not yet one of its people: an invitee
-  // claims on the join page, and the founder has no invitation to open. The
-  // claim is the same contract call the join page makes, from the same session.
-  await mero.rpc.execute({
-    contextId: orgCtx!.contextId,
-    method: "claim_membership",
-    argsJson: { display_name: "Founder", handle: "founder" },
-  });
-  await page.reload();
-  await expect(nav.getByRole("link", { name: "People" })).toBeVisible({ timeout: 60_000 });
 
   // A group.
   await nav.getByRole("link", { name: "Groups" }).click();

@@ -15,6 +15,7 @@ import { AppsPage } from "./pages/AppsPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { MePage } from "./pages/MePage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ClaimPage, needsClaim } from "./pages/ClaimPage";
 
 export function App() {
   return (
@@ -66,6 +67,9 @@ function Loaded({ backend, nudge, orgNamespaceId, onSwitchOrg }: { backend: OrgB
   const ready = myAccount !== null && state.org !== null;
   const isAdmin = !!myAccount && !!state.org?.admins.includes(myAccount);
   const props: PageProps = { state, orgNamespaceId, myAccount: myAccount ?? "", isAdmin };
+
+  // Signed in, inside the org, but no member row (the founder, or anyone who never claimed): claim first.
+  if (ready && needsClaim(state.members, myAccount ?? "")) return <ClaimPage state={state} onSwitchOrg={onSwitchOrg} />;
 
   return (
     <Shell {...props} onSwitchOrg={onSwitchOrg}>
