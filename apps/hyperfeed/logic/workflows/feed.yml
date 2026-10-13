@@ -1357,7 +1357,39 @@ steps:
     method: watches
     args: { chain: "{{mention_id}}" }
     outputs:
-      listed_watches: result
+      listed_watch: result.output.0
+
+  - name: The agent sets a notify-on-merge watch
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_watch
+    args:
+      input: { chain: "{{mention_id}}", condition: "pr_merged", repo: "calimero-network/apps", pr: 435, branch: "", action: "notify", text: "#435 merged", agent: "mero-bot@studio" }
+    outputs:
+      notify_watch_id: result.output.id
+
+  - name: Owner cancels the notify watch
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: cancel_watch
+    args: { id: "{{notify_watch_id}}", note: "No longer needed" }
+    outputs:
+      cancelled: result
+
+  - name: A watch that already fired cannot be cancelled
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: cancel_watch
+    args: { id: "{{watch_id}}" }
+    expected_failure: true
+    outputs:
+      cancel_fired_error: error
 
   - name: node-2 cannot set a watch
     type: call
@@ -1378,10 +1410,12 @@ steps:
       - 'json_subset({{watch_seen}}, {"output": {"seen": "3 of 5 checks passed, 2 running"}})'
       - 'json_subset({{fired}}, {"output": {"status": "firing", "fired_by": "studio-1"}})'
       - 'json_subset({{finished}}, {"output": {"status": "done", "note": "Merged #434 into main"}})'
-      - 'json_subset({{listed_watches}}, {"output": [{"id": "{{watch_id}}", "status": "done"}]})'
+      - 'json_subset({{listed_watch}}, {"id": "{{watch_id}}", "status": "done"})'
+      - 'json_subset({{cancelled}}, {"output": {"id": "{{notify_watch_id}}", "status": "cancelled"}})'
 
   - name: Assert the refused watch calls
     type: assert
     statements:
       - "is_set({{second_fire_error}})"
+      - "is_set({{cancel_fired_error}})"
       - "is_set({{intruder_watch_error}})"
