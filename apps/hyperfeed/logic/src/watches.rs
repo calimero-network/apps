@@ -200,7 +200,7 @@ fn one_line(field: &str, value: &str, max: usize) -> app::Result<String> {
 }
 
 /// `owner/name`, as GitHub spells them.
-fn check_repo(repo: &str) -> app::Result<()> {
+pub(crate) fn check_repo(repo: &str) -> app::Result<()> {
     Hyperfeed::check_len("repo", repo, MAX_REPO, true)?;
     let ok = |s: &str| {
         !s.is_empty()

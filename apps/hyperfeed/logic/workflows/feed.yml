@@ -1419,3 +1419,62 @@ steps:
       - "is_set({{second_fire_error}})"
       - "is_set({{cancel_fired_error}})"
       - "is_set({{intruder_watch_error}})"
+
+  # ── PRs: what the runtime saw on GitHub, for the PR card's merge button ─
+  - name: The runtime records a PR the mention's chain links to, checks red
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_pr
+    args:
+      input: { chain: "{{mention_id}}", repo: "calimero-network/apps", pr: 429, title: "Safe merge button", state: "open", draft: false, base: "master", default_branch: "master", conflicts: false, head_sha: "abc123", checks: "red", checks_total: 5, checks_passed: 4, checks_pending: 0, failing: ["E2E (hyperfeed / feed)"], stacked_on: 0, stacked_merged: false }
+    outputs:
+      recorded_pr: result
+
+  - name: The runtime records a PR stacked on it
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_pr
+    args:
+      input: { chain: "{{mention_id}}", repo: "calimero-network/apps", pr: 430, title: "Stacked follow-up", state: "open", draft: false, base: "mero-bot/chain-429", default_branch: "master", conflicts: false, head_sha: "def456", checks: "green", checks_total: 5, checks_passed: 5, checks_pending: 0, failing: [], stacked_on: 429, stacked_merged: false }
+    outputs:
+      stacked_pr: result
+
+  - name: The PR card reads the chain's PRs
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: prs
+    args: { chain: "{{mention_id}}" }
+    outputs:
+      listed_pr: result.output.0
+      listed_pr_2: result.output.1
+
+  - name: node-2 cannot record a PR
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: record_pr
+    args:
+      input: { chain: "", repo: "calimero-network/apps", pr: 431, title: "x", state: "open", draft: false, base: "master", default_branch: "master", conflicts: false, head_sha: "", checks: "green", checks_total: 0, checks_passed: 0, checks_pending: 0, failing: [], stacked_on: 0, stacked_merged: false }
+    expected_failure: true
+    outputs:
+      intruder_pr_error: error
+
+  - name: Assert the recorded PRs
+    type: json_assert
+    statements:
+      - 'json_subset({{recorded_pr}}, {"output": {"chain": "{{mention_id}}", "pr": 429, "checks": "red", "failing": ["E2E (hyperfeed / feed)"]}})'
+      - 'json_subset({{stacked_pr}}, {"output": {"pr": 430, "base": "mero-bot/chain-429", "stacked_on": 429, "stacked_merged": false}})'
+      - 'json_subset({{listed_pr}}, {"repo": "calimero-network/apps", "chain": "{{mention_id}}"})'
+      - 'json_subset({{listed_pr_2}}, {"repo": "calimero-network/apps", "chain": "{{mention_id}}"})'
+
+  - name: Assert the refused PR record
+    type: assert
+    statements:
+      - "is_set({{intruder_pr_error}})"

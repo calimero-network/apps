@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { clearGithubCache, findRefs, FRESH_MS, mergeOffer, readPr, readRun, Unavailable, type PullRequest } from "./github";
+import { clearGithubCache, findRefs, fromSeen, FRESH_MS, mergeOffer, pickPr, prKey, readPr, readRun, Unavailable, type PullRequest, type SeenPr } from "./github";
 import {
   fakeGitHub,
   greenRuns,
@@ -161,8 +161,15 @@ describe("the merge button's rules", () => {
       label: "Base merged: retarget to main",
       request: `retarget PR ${PR_URL} to main`,
     });
-    expect(mergeOffer({ ...stacked, stackedOn: { number: 431, url: "u", merged: false } })).toMatchObject({ kind: "blocked", why: expect.stringMatching(/Stacked on #431/) });
-    expect(mergeOffer({ ...stacked, stackedOn: null })).toMatchObject({ kind: "blocked", why: "Its base is fix/hyperfeed-session-grant, not main" });
+    // Its base PR not merged yet: no merge button, only that it is stacked and can't merge into main.
+    expect(mergeOffer({ ...stacked, stackedOn: { number: 431, url: "u", merged: false } })).toEqual({
+      kind: "stacked",
+      why: "Stacked on #431, so it can't merge into main: merge #431 first, then retarget this to main",
+    });
+    expect(mergeOffer({ ...stacked, stackedOn: null })).toEqual({
+      kind: "stacked",
+      why: "Its base is fix/hyperfeed-session-grant, not main, so it can't merge into main",
+    });
   });
 
   it("offers nothing on a merged or closed PR, and holds a draft or a conflicted one", () => {
@@ -174,6 +181,54 @@ describe("the merge button's rules", () => {
 
   it("reads the open base of the recorded stack as not merged", async () => {
     const pr = await readPr(pr433, fakeGitHub(prRoutes(openStacked(), greenRuns(), undefined, openBase())));
-    expect(mergeOffer(pr)).toMatchObject({ kind: "blocked" });
+    expect(mergeOffer(pr)).toMatchObject({ kind: "stacked" });
+  });
+});
+
+describe("what your agent's runtime saw, from the feed", () => {
+  const seen: SeenPr = {
+    repo: "calimero-network/secret",
+    pr: 7,
+    title: "",
+    state: "open",
+    draft: false,
+    base: "main",
+    default_branch: "main",
+    conflicts: false,
+    head_sha: "abc",
+    checks: "red",
+    checks_total: 4,
+    checks_passed: 3,
+    checks_pending: 0,
+    failing: ["E2E"],
+    stacked_on: 0,
+    stacked_merged: false,
+    seen_at: 2_000,
+  };
+
+  it("reads a recorded PR as the card's PR, and keys it case-blind", () => {
+    const pr = fromSeen(seen);
+    expect(pr).toMatchObject({ title: "calimero-network/secret#7", url: "https://github.com/calimero-network/secret/pull/7", defaultBranch: "main", stackedOn: null });
+    expect(pr.checks).toEqual({ state: "red", total: 4, passed: 3, pending: 0, failing: ["E2E"] });
+    expect(mergeOffer(pr)).toMatchObject({ kind: "blocked", why: "Checks failed: E2E" });
+    expect(fromSeen({ ...seen, base: "feat/x", stacked_on: 6, stacked_merged: true }).stackedOn).toEqual({
+      number: 6,
+      url: "https://github.com/calimero-network/secret/pull/6",
+      merged: true,
+    });
+    expect(prKey("Calimero-Network/Apps", 435)).toBe(prKey("calimero-network/apps", 435));
+  });
+
+  it("shows the newer of the browser's read and the runtime's record", () => {
+    const read = { ...fromSeen(seen), title: "From GitHub", checks: { state: "green" as const, total: 4, passed: 4, pending: 0, failing: [] } };
+    expect(pickPr(undefined, 0, undefined)).toBeUndefined();
+    expect(pickPr(read, 1_000, undefined)).toEqual({ pr: read, from: "github" });
+    expect(pickPr(undefined, 0, seen)?.from).toBe("feed");
+    // The record is newer: its checks, GitHub's title.
+    const newer = pickPr(read, 1_000, seen)!;
+    expect(newer.from).toBe("feed");
+    expect(newer.pr.checks.state).toBe("red");
+    expect(newer.pr.title).toBe("From GitHub");
+    expect(pickPr(read, 3_000, seen)).toEqual({ pr: read, from: "github" });
   });
 });

@@ -321,6 +321,10 @@ export interface Event_NotificationsSeen {
   count: number;
 }
 
+export interface Event_PrChanged {
+  key: string;
+}
+
 export interface Event_StopRequested {
   id: string;
 }
@@ -582,6 +586,11 @@ export interface Hyperfeed {
    * Where each task stands, as your agent last wrote it, by chain id.
    */
   checkpoints: Record<string, Checkpoint>;
+  /**
+   * The PRs your tasks link to, as your agent's runtime last saw them on
+   * GitHub, by `owner/name#number`. See [`prs`].
+   */
+  prs: Record<string, PrSeen>;
 }
 
 /**
@@ -763,6 +772,113 @@ export interface PolicyView {
   app: string;
   agent: string;
   notifications: string;
+}
+
+/**
+ * What [`crate::Hyperfeed::record_pr`] takes: the PR as GitHub shows it now.
+ */
+export interface PrInput {
+  /**
+   * The chain (task) that links to it; `""` keeps the one already recorded.
+   */
+  chain: string;
+  /**
+   * `owner/name`.
+   */
+  repo: string;
+  pr: number;
+  title: string;
+  /**
+   * `open`, `merged` or `closed`.
+   */
+  state: string;
+  draft: boolean;
+  /**
+   * The branch it merges into.
+   */
+  base: string;
+  /**
+   * The repository's default branch.
+   */
+  default_branch: string;
+  /**
+   * GitHub found conflicts with the base.
+   */
+  conflicts: boolean;
+  /**
+   * The head commit the checks are on.
+   */
+  head_sha: string;
+  /**
+   * `green` (every check passed), `red` (one failed) or `pending`.
+   */
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  /**
+   * The failing checks' names, at most [`MAX_FAILING`].
+   */
+  failing: string[];
+  /**
+   * When `base` is another PR's branch, that PR's number; 0 otherwise.
+   */
+  stacked_on: number;
+  /**
+   * Whether the PR it is stacked on is merged (its branch is dead).
+   */
+  stacked_merged: boolean;
+}
+
+/**
+ * One PR as the runtime last saw it, kept by `owner/name#number`.
+ */
+export interface PrSeen {
+  chain: string;
+  repo: string;
+  pr: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  base: string;
+  default_branch: string;
+  conflicts: boolean;
+  head_sha: string;
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  failing: string[];
+  stacked_on: number;
+  stacked_merged: boolean;
+  seen_at: number;
+}
+
+/**
+ * A PR as [`crate::Hyperfeed::prs`] returns it.
+ */
+export interface PrView {
+  chain: string;
+  repo: string;
+  pr: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  base: string;
+  default_branch: string;
+  conflicts: boolean;
+  head_sha: string;
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  failing: string[];
+  stacked_on: number;
+  stacked_merged: boolean;
+  /**
+   * When the runtime looked (ms).
+   */
+  seen_at: number;
 }
 
 /**
@@ -1078,6 +1194,7 @@ export interface Work {
 
 
 
+
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }
   | { name: "ActionRecorded"; payload: Event_ActionRecorded }
@@ -1120,6 +1237,14 @@ export type AbiEvent =
   | { name: "NotificationChanged"; payload: Event_NotificationChanged }
   | { name: "NotificationRecorded"; payload: Event_NotificationRecorded }
   | { name: "NotificationsSeen"; payload: Event_NotificationsSeen }
+  | {
+    /**
+     * Your agent's runtime saw a PR change on GitHub (`owner/name#number`):
+     * re-read `prs`.
+     */
+    name: "PrChanged";
+    payload: Event_PrChanged;
+  }
   | { name: "SettingsChanged" }
   | {
     /**
@@ -1625,6 +1750,19 @@ export class HyperfeedClient {
   }
 
   /**
+   * prs
+   *
+   * The PRs the runtime recorded for `chain` (`""`: every chain), the most
+   * recently seen first.
+   *
+   * @intent read_only
+   */
+  public async prs(params: { chain: string }): Promise<PrView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'prs', argsJson: params });
+    return response as PrView[];
+  }
+
+  /**
    * record_action
    *
    * Record an action: a proposal for you to approve, or an outcome.
@@ -1657,6 +1795,21 @@ export class HyperfeedClient {
   public async recordNotification(params: { input: NotificationInput }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'record_notification', argsJson: params });
     return response as FeedItem;
+  }
+
+  /**
+   * record_pr
+   *
+   * Your agent's runtime records a PR a task links to as GitHub shows it
+   * now: state, base and default branch, conflicts, head commit, checks
+   * (the failing ones named) and the PR it is stacked on. Owner only; one
+   * row per PR, the oldest of [`MAX_PRS`] dropped to make room.
+   *
+   * @intent mutating
+   */
+  public async recordPr(params: { input: PrInput }): Promise<PrView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'record_pr', argsJson: params });
+    return response as PrView;
   }
 
   /**

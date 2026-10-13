@@ -90,3 +90,20 @@ export function moveWatch(w: WatchView, to: "cancelled" | "firing" | "done" | "f
   if (w.status !== from) throw new Error(`watch ${w.id} is ${w.status}${to === "firing" ? ", not watching: it fires once" : ""}`);
   return { ...w, status: to, note, ...(to === "firing" ? { fired_by: note, fired_at: now, note: "" } : {}), updated_at: Math.max(now, w.updated_at + 1) };
 }
+
+/**
+ * The merge button's watch: "merge this PR when every check passed", on the
+ * task's chain. Your agent's runtime fires it (right away when the checks are
+ * already green) and merges by the safe-merge rules as GitHub stands then.
+ */
+export function mergeWatchInput(chain: string, repo: string, pr: number): WatchInput {
+  return { chain, condition: "pr_green", repo, pr, branch: "", action: "merge", text: "", agent: "" };
+}
+
+/** The latest merge watch on a PR that was not cancelled: what its card says about the merge. */
+export function mergeWatchFor(watches: WatchView[], repo: string, pr: number): WatchView | undefined {
+  const name = repo.toLowerCase();
+  return watches
+    .filter((w) => w.action === "merge" && w.pr === pr && w.repo.toLowerCase() === name && w.status !== "cancelled")
+    .sort((a, b) => b.created_at - a.created_at || b.updated_at - a.updated_at)[0];
+}

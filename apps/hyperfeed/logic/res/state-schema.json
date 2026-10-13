@@ -724,6 +724,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Where each task stands, as your agent last wrote it, by chain id."
+        },
+        {
+          "name": "prs",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "PrSeen"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "The PRs your tasks link to, as your agent's runtime last saw them on\nGitHub, by `owner/name#number`. See [`prs`]."
         }
       ]
     },
@@ -991,6 +1005,123 @@
         },
         {
           "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PrSeen": {
+      "kind": "record",
+      "doc": "One PR as the runtime last saw it, kept by `owner/name#number`.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "repo",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pr",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "state",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "draft",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "base",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "default_branch",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "conflicts",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "head_sha",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "checks",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "checks_total",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "checks_passed",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "checks_pending",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "failing",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "stacked_on",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "stacked_merged",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "seen_at",
           "type": {
             "kind": "u64"
           }

@@ -19,8 +19,8 @@ import type {
 } from "./generated/HyperfeedClient";
 import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter, type NotificationMode } from "./backend";
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
-import { moveWatch, newWatch } from "./watches";
-import type { WatchInput, WatchView } from "./generated/HyperfeedClient";
+import { mergeWatchInput, moveWatch, newWatch } from "./watches";
+import type { PrInput, PrView, WatchInput, WatchView } from "./generated/HyperfeedClient";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 
@@ -674,6 +674,40 @@ export class DemoBackend implements FeedBackend {
 
   async cancelWatch(id: string): Promise<WatchView> {
     return this.moveWatch(id, "cancelled");
+  }
+
+  async mergeWhenGreen(chain: string, repo: string, pr: number): Promise<WatchView> {
+    return this.addWatch(mergeWatchInput(chain, repo, pr));
+  }
+
+  /** PRs as the runtime last saw them on GitHub, as `record_pr` keeps them: by `owner/name#number`. */
+  private prRows = new Map<string, PrView>();
+
+  /** The runtime records a PR, as `record_pr` takes it; `chain` "" keeps the one recorded. */
+  recordPr(input: PrInput): PrView {
+    if (input.chain && !this.chainExists(input.chain)) throw new Error(`no chain ${input.chain}`);
+    if (!/^[\w.-]+\/[\w.-]+$/.test(input.repo.trim()) || !input.pr) throw new Error("repo must be owner/name, and pr its number");
+    if ((input.checks === "red") !== input.failing.length > 0) throw new Error("checks is red exactly when failing names a check");
+    const key = `${input.repo.trim()}#${input.pr}`;
+    const prior = this.prRows.get(key);
+    const view: PrView = {
+      ...input,
+      repo: input.repo.trim(),
+      chain: input.chain || prior?.chain || "",
+      failing: [...input.failing],
+      stacked_merged: input.stacked_on !== 0 && input.stacked_merged,
+      seen_at: Math.max(this.now(), (prior?.seen_at ?? 0) + 1),
+    };
+    this.prRows.set(key, view);
+    this.changed();
+    return { ...view, failing: [...view.failing] };
+  }
+
+  async prs(chain: string): Promise<PrView[]> {
+    return [...this.prRows.values()]
+      .filter((p) => !chain || p.chain === chain)
+      .sort((a, b) => b.seen_at - a.seen_at)
+      .map((p) => ({ ...p, failing: [...p.failing] }));
   }
 
   /** The runtime fires a watch, then says how it went, as `fire_watch` and `finish_watch` do. */
