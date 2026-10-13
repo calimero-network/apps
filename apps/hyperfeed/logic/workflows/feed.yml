@@ -1556,8 +1556,62 @@ steps:
     outputs:
       subject_comment: result.output
 
+  - name: A step of the task's turn touches a doc, with no row of its own
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: touch_subject
+    args:
+      chain: "{{subject_task}}"
+      subject: "drive-docs:ctx-docs:doc-1"
+
+  - name: The client records a teammate's comment on that doc
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_notification
+    args:
+      input:
+        key: "ctx-docs:d1>d2:0"
+        app: "drive-docs"
+        source_context: "ctx-docs"
+        source_label: ""
+        from: "Maya"
+        title: "Commented on your doc"
+        body: ""
+        event: "CommentAdded"
+        needs_you: false
+        chain: ""
+        ask: { kind: "reply", prompt: "Reply in the doc", options: [], draft: "" }
+        item_type: "message"
+        fields: '{"text":"Typo in section 2"}'
+        reply_call: '{"method":"add_comment","args":{"doc_id":"doc-1","body":"=answer"}}'
+    outputs:
+      touched_comment: result.output
+
+  - name: node-2 cannot touch a subject
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: touch_subject
+    args:
+      chain: "{{subject_task}}"
+      subject: "drive-docs:ctx-docs:doc-1"
+    expected_failure: true
+    outputs:
+      intruder_touch_error: error
+
   - name: Assert the comment joined the task's chain
     type: json_assert
     statements:
       - 'json_subset({{subject_write}}, {"chain": "{{subject_task}}", "subject": "issue-tracker:ctx-repo:issue-7"})'
       - 'json_subset({{subject_comment}}, {"chain": "{{subject_task}}", "subject": "issue-tracker:ctx-repo:issue-7"})'
+      - 'json_subset({{touched_comment}}, {"chain": "{{subject_task}}", "subject": "drive-docs:ctx-docs:doc-1"})'
+
+  - name: Assert the refused touch
+    type: assert
+    statements:
+      - "is_set({{intruder_touch_error}})"
