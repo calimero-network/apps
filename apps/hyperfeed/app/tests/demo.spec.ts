@@ -75,6 +75,30 @@ test("in the demo, the chat page holds your chats with your agent", async ({ pag
   await expect(page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: /pretend agent/ })).toBeVisible();
 });
 
+test("on a computer, a long chat scrolls inside its thread, and the page and the composer stay put", async ({ page }) => {
+  const explain = watch(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/demo/chat");
+  const box = page.getByLabel("Message your agent");
+  const thread = page.getByRole("log");
+  for (let i = 1; i <= 8; i++) {
+    await box.fill(`Message ${i}: ${"a long line about the plan for this week, ".repeat(8)}`);
+    await box.press("Enter");
+    // Each one answered before the next: the pretend agent is one turn at a time.
+    await explain(expect(thread.getByText(/pretend agent/)).toHaveCount(i, { timeout: 15_000 }));
+  }
+  const layout = await page.evaluate(() => {
+    const t = document.querySelector(".chat-thread")!;
+    const composer = document.querySelector(".chat-composer")!.getBoundingClientRect();
+    return {
+      pageScrolls: document.documentElement.scrollHeight > window.innerHeight + 1,
+      threadScrolls: t.scrollHeight > t.clientHeight,
+      composerOnScreen: composer.bottom <= window.innerHeight + 1,
+    };
+  });
+  expect(layout).toEqual({ pageScrolls: false, threadScrolls: true, composerOnScreen: true });
+});
+
 test("on a phone, the chat list and the open chat take turns", async ({ page }) => {
   const explain = watch(page);
   await page.setViewportSize({ width: 360, height: 740 });
