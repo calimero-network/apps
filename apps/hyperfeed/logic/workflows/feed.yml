@@ -1673,3 +1673,98 @@ steps:
     type: assert
     statements:
       - "is_set({{intruder_link_error}})"
+
+  # ── Push to your phone: the runtime's key, and the devices it wakes ──
+
+  - name: Your agent's runtime keeps its push key
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_push_key
+    args: { public_key: "BKey-runtime_1", by: "mero-bot" }
+
+  - name: Your phone subscribes with it
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_push_device
+    args:
+      input:
+        endpoint: "https://push.example.com/send/phone-1"
+        p256dh: "BPhonePublicKey"
+        auth: "phoneAuth"
+        name: "Phone"
+        quiet: false
+        key: "BKey-runtime_1"
+    outputs:
+      push_device: result.output
+
+  - name: The key and the devices read back
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: push_key
+    outputs:
+      push_key_view: result.output
+
+  - name: The devices to push to
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: push_devices
+    outputs:
+      push_first: result.output.0
+
+  - name: You take the phone off
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: remove_push_device
+    args: { endpoint: "https://push.example.com/send/phone-1" }
+
+  - name: node-2 cannot add a device
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: add_push_device
+    args:
+      input:
+        endpoint: "https://push.example.com/send/intruder"
+        p256dh: "BIntruder"
+        auth: "intruderAuth"
+        name: ""
+        quiet: false
+        key: "BKey-runtime_1"
+    expected_failure: true
+    outputs:
+      intruder_push_error: error
+
+  - name: node-2 cannot set the push key
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: set_push_key
+    args: { public_key: "BIntruderKey", by: "intruder" }
+    expected_failure: true
+    outputs:
+      intruder_push_key_error: error
+
+  - name: Assert push
+    type: json_assert
+    statements:
+      - 'json_subset({{push_device}}, {"endpoint": "https://push.example.com/send/phone-1", "name": "Phone", "quiet": false})'
+      - 'json_subset({{push_key_view}}, {"public_key": "BKey-runtime_1", "by": "mero-bot"})'
+      - 'json_subset({{push_first}}, {"endpoint": "https://push.example.com/send/phone-1", "p256dh": "BPhonePublicKey", "auth": "phoneAuth"})'
+
+  - name: Assert the refused push writes
+    type: assert
+    statements:
+      - "is_set({{intruder_push_error}})"
+      - "is_set({{intruder_push_key_error}})"

@@ -780,6 +780,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Each task's links, by `<chain>|<subject>`. See [`links`]."
+        },
+        {
+          "name": "push_devices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "PushDevice"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Devices to push to, by endpoint. See [`push`]."
+        },
+        {
+          "name": "push_keys",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "PushKey"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "The runtime's VAPID public key, under `vapid`."
         }
       ]
     },
@@ -1242,6 +1270,93 @@
         },
         {
           "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PushDevice": {
+      "kind": "record",
+      "doc": "One device, kept by its endpoint. Taking it off keeps the row with\n`removed: true`, so a device that synced late does not bring it back.",
+      "fields": [
+        {
+          "name": "endpoint",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "p256dh",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "auth",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "quiet",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Say only \"Something needs you\": no title, no text leaves your node."
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The VAPID public key it subscribed with."
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "removed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PushKey": {
+      "kind": "record",
+      "doc": "The runtime's VAPID public key.",
+      "fields": [
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The runtime that holds its private half, by name."
+        },
+        {
+          "name": "updated_at",
           "type": {
             "kind": "u64"
           }

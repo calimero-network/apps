@@ -102,3 +102,52 @@ describe("Controls: standing rules", () => {
     expect((await backend.settings()).rules).toEqual([]);
   });
 });
+
+describe("Controls: phone alerts", () => {
+  const section = () => screen.findByRole("region", { name: "Phone alerts" });
+  const device = (endpoint: string, name: string, quiet = false) => ({
+    endpoint,
+    p256dh: "BKey",
+    auth: "auth",
+    name,
+    quiet,
+    added_at: 1,
+  });
+
+  class PushDemo extends DemoBackend {
+    key = "";
+    devices = [device("https://push.example/a", "iPhone"), device("https://push.example/b", "Android", true)];
+    pushKey = async () => ({ public_key: this.key, by: "mero-bot", updated_at: 1 });
+    pushDevices = async () => this.devices;
+    removePushDevice = async (endpoint: string) => {
+      this.devices = this.devices.filter((d) => d.endpoint !== endpoint);
+    };
+  }
+
+  it("is not there on a feed that predates push", async () => {
+    render(<Harness backend={new DemoBackend(true, 0)} />);
+    await screen.findByRole("region", { name: "Standing rules" });
+    expect(screen.queryByRole("region", { name: "Phone alerts" })).toBeNull();
+  });
+
+  it("says to start your agent's runtime before there is a key", async () => {
+    render(<Harness backend={new PushDemo(true, 0)} />);
+    expect(await within(await section()).findByText(/Start mero-bot against this feed first/)).toBeInTheDocument();
+  });
+
+  it("lists the devices pushed to, and takes one off", async () => {
+    const backend = new PushDemo(true, 0);
+    backend.key = "BRuntimeKey";
+    render(<Harness backend={backend} />);
+    const panel = await section();
+    const list = await within(panel).findByRole("list", { name: "Devices your agent pushes to" });
+    expect(within(list).getAllByRole("listitem").map((li) => li.firstChild?.textContent)).toEqual(["iPhone", "Android · quiet"]);
+    // jsdom has no service workers: this browser can't subscribe itself.
+    expect(within(panel).getByText(/This browser can't take pushes/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(list).getByRole("button", { name: "Stop pushing to iPhone" }));
+    });
+    expect(within(list).queryByText("iPhone")).toBeNull();
+    expect(backend.devices.map((d) => d.name)).toEqual(["Android"]);
+  });
+});

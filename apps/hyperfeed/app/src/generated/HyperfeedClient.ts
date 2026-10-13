@@ -618,6 +618,14 @@ export interface Hyperfeed {
    * Each task's links, by `<chain>|<subject>`. See [`links`].
    */
   links: Record<string, Link>;
+  /**
+   * Devices to push to, by endpoint. See [`push`].
+   */
+  push_devices: Record<string, PushDevice>;
+  /**
+   * The runtime's VAPID public key, under `vapid`.
+   */
+  push_keys: Record<string, PushKey>;
 }
 
 /**
@@ -986,6 +994,80 @@ export interface Progress {
 }
 
 /**
+ * One device, kept by its endpoint. Taking it off keeps the row with
+ * `removed: true`, so a device that synced late does not bring it back.
+ */
+export interface PushDevice {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  name: string;
+  /**
+   * Say only "Something needs you": no title, no text leaves your node.
+   */
+  quiet: boolean;
+  /**
+   * The VAPID public key it subscribed with.
+   */
+  key: string;
+  added_at: number;
+  removed: boolean;
+  updated_at: number;
+}
+
+/**
+ * What [`crate::Hyperfeed::add_push_device`] takes: the browser's
+ * `PushSubscription.toJSON()`, a name, and how much it may say.
+ */
+export interface PushDeviceInput {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  /**
+   * "Sandi's iPhone"; `""` is named "A device".
+   */
+  name: string;
+  quiet: boolean;
+  /**
+   * The key it subscribed with: refused unless it is the current one.
+   */
+  key: string;
+}
+
+/**
+ * A device as [`crate::Hyperfeed::push_devices`] returns it.
+ */
+export interface PushDeviceView {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  name: string;
+  quiet: boolean;
+  added_at: number;
+}
+
+/**
+ * The runtime's VAPID public key.
+ */
+export interface PushKey {
+  public_key: string;
+  /**
+   * The runtime that holds its private half, by name.
+   */
+  by: string;
+  updated_at: number;
+}
+
+/**
+ * The key as [`crate::Hyperfeed::push_key`] returns it; empty before a runtime set one.
+ */
+export interface PushKeyView {
+  public_key: string;
+  by: string;
+  updated_at: number;
+}
+
+/**
  * One of your standing rules: a short line your agent keeps to on every
  * turn ("Never push to main", "Answer in English"). Only you add or remove
  * one; removing keeps the row with `removed`, so the latest decision wins on
@@ -1296,6 +1378,7 @@ export interface Work {
 
 
 
+
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }
   | { name: "ActionRecorded"; payload: Event_ActionRecorded }
@@ -1353,6 +1436,12 @@ export type AbiEvent =
     name: "PrChanged";
     payload: Event_PrChanged;
   }
+  | {
+    /**
+     * A device to push to, or the push key, changed: re-read `push_devices`.
+     */
+    name: "PushChanged";
+  }
   | { name: "SettingsChanged" }
   | {
     /**
@@ -1398,6 +1487,20 @@ export class HyperfeedClient {
   public async addLink(params: { chain: string; input: LinkInput }): Promise<LinkView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'add_link', argsJson: params });
     return response as LinkView;
+  }
+
+  /**
+   * add_push_device
+   *
+   * A phone (or any browser) to push to: its push subscription, a name,
+   * and `quiet` to say only "Something needs you". Owner only; adding one
+   * again updates it. At most [`MAX_PUSH_DEVICES`]; the oldest makes room.
+   *
+   * @intent mutating
+   */
+  public async addPushDevice(params: { input: PushDeviceInput }): Promise<PushDeviceView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add_push_device', argsJson: params });
+    return response as PushDeviceView;
   }
 
   /**
@@ -1899,6 +2002,30 @@ export class HyperfeedClient {
   }
 
   /**
+   * push_devices
+   *
+   * The devices to push to, newest first.
+   *
+   * @intent read_only
+   */
+  public async pushDevices(): Promise<PushDeviceView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'push_devices', argsJson: {} });
+    return response as PushDeviceView[];
+  }
+
+  /**
+   * push_key
+   *
+   * The key phones subscribe with; empty before a runtime set one.
+   *
+   * @intent read_only
+   */
+  public async pushKey(): Promise<PushKeyView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'push_key', argsJson: {} });
+    return response as PushKeyView;
+  }
+
+  /**
    * record_action
    *
    * Record an action: a proposal for you to approve, or an outcome.
@@ -1971,6 +2098,19 @@ export class HyperfeedClient {
    */
   public async removeLink(params: { chain: string; subject: string }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'remove_link', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * remove_push_device
+   *
+   * Stop pushing to a device: you took it off, or its push service said
+   * it is gone.
+   *
+   * @intent mutating
+   */
+  public async removePushDevice(params: { endpoint: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'remove_push_device', argsJson: params });
     return response as void;
   }
 
@@ -2090,6 +2230,20 @@ export class HyperfeedClient {
   public async setPolicy(params: { app_key: string; agent: string; notifications: string }): Promise<PolicyView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'set_policy', argsJson: params });
     return response as PolicyView;
+  }
+
+  /**
+   * set_push_key
+   *
+   * Your agent's runtime keeps its VAPID public key here, for phones to
+   * subscribe with; `by` names the runtime that holds the private half.
+   * Owner only. A different key drops every device: each subscribes again.
+   *
+   * @intent mutating
+   */
+  public async setPushKey(params: { public_key: string; by: string }): Promise<PushKeyView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_push_key', argsJson: params });
+    return response as PushKeyView;
   }
 
   /**

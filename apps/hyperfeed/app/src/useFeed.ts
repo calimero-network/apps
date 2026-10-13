@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Attachment, CheckpointView, FeedItem, FeedPage, LensView, LinkView, PrView, SettingsView, WatchView } from "./generated/HyperfeedClient";
+import type {
+  Attachment,
+  CheckpointView,
+  FeedItem,
+  FeedPage,
+  LensView,
+  LinkView,
+  PrView,
+  PushDeviceInput,
+  PushDeviceView,
+  PushKeyView,
+  SettingsView,
+  WatchView,
+} from "./generated/HyperfeedClient";
 import { fillReplyCall } from "./lens/lens";
 import type { AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
 import type { BlobStore } from "./attachments";
@@ -67,6 +80,12 @@ export interface Feed {
   addLink?: (chain: string, subject: string, label: string) => Promise<void>;
   /** Take a link off a task. */
   removeLink?: (chain: string, subject: string) => Promise<void>;
+  /** Push to your phone: the runtime's key and the devices it wakes; null when the feed predates push. A read. */
+  loadPush?: () => Promise<PushState | null>;
+  /** Push to this device; absent when the feed predates push. */
+  addPushDevice?: (input: PushDeviceInput) => Promise<void>;
+  /** Stop pushing to a device. */
+  removePushDevice?: (endpoint: string) => Promise<void>;
   markSeen: (ids: string[]) => Promise<void>;
   markAllSeen: () => Promise<void>;
   setPolicy: (appKey: string, agent: AgentMode, notifications: NotificationMode) => Promise<void>;
@@ -85,6 +104,12 @@ export interface Feed {
   /** The last thing you put away, with its undo, until the next one or a few seconds pass. */
   toast: { text: string; undo: () => void } | null;
   dismissToast: () => void;
+}
+
+/** Where push to your phone stands: the key to subscribe with, and the devices already subscribed. */
+export interface PushState {
+  key: PushKeyView;
+  devices: PushDeviceView[];
 }
 
 /** How long the undo for something you put away stays offered. */
@@ -194,6 +219,20 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     (chain: string, subject: string) => run((b) => (b.removeLink ? b.removeLink(chain, subject) : Promise.resolve())),
     [run],
   );
+  const addPushDevice = useCallback(
+    (input: PushDeviceInput) => run((b) => (b.addPushDevice ? b.addPushDevice(input) : Promise.resolve())),
+    [run],
+  );
+  const removePushDevice = useCallback(
+    (endpoint: string) => run((b) => (b.removePushDevice ? b.removePushDevice(endpoint) : Promise.resolve())),
+    [run],
+  );
+  const loadPush = useCallback(async (): Promise<PushState | null> => {
+    if (!backend?.pushKey || !backend.pushDevices) return null;
+    const key = await backend.pushKey();
+    if (!key) return null;
+    return { key, devices: await backend.pushDevices() };
+  }, [backend]);
 
   return {
     page,
@@ -252,6 +291,9 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     loadLinks: useCallback(async (chain: string) => (backend?.links ? backend.links(chain) : []), [backend]),
     addLink: backend?.addLink ? addLink : undefined,
     removeLink: backend?.removeLink ? removeLink : undefined,
+    loadPush: backend?.pushKey ? loadPush : undefined,
+    addPushDevice: backend?.addPushDevice ? addPushDevice : undefined,
+    removePushDevice: backend?.removePushDevice ? removePushDevice : undefined,
     markSeen: useCallback((ids) => run((b) => b.markSeen(ids)), [run]),
     markAllSeen: useCallback(() => run((b) => b.markAllSeen()), [run]),
     setPolicy: useCallback((k, agent, notifications) => run((b) => b.setPolicy(k, agent, notifications)), [run]),
