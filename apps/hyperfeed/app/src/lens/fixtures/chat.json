@@ -36,7 +36,7 @@
         { "as": "role", "call": "get_member_role", "args": { "identity": "=event" } },
         { "as": "info", "call": "get_info", "args": {} }
       ],
-      "show_if": "=mine(event)",
+      "show_if": "=mine(event) && !mine(info.creator)",
       "fields": {
         "what": "Your role changed",
         "state": "='You are now ' + role + (info.context_type == 'Dm' ? ' in this DM' : ' in #' + info.name)",

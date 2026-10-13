@@ -52,7 +52,7 @@ describe("expressions", () => {
 });
 
 /** mero-chat as the lens sees it, answering the methods it calls. */
-function chatHost(messages: Record<string, unknown>[], { dm = false } = {}): LensHost & { calls: string[] } {
+function chatHost(messages: Record<string, unknown>[], { dm = false, creator = "maya" } = {}): LensHost & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
@@ -69,7 +69,7 @@ function chatHost(messages: Record<string, unknown>[], { dm = false } = {}): Len
           case "get_messages_from":
             return { messages: messages.slice(args.start as number, (args.start as number) + 1) };
           case "get_info":
-            return { name: "launch", context_type: dm ? "Dm" : "Channel" };
+            return { name: "launch", context_type: dm ? "Dm" : "Channel", creator };
           case "get_member_role":
             return "Mod";
         }
@@ -141,10 +141,16 @@ describe("the Chat lens", () => {
     expect(host.calls).toEqual([]);
   });
 
-  it("tells you when your role changes, and nobody else's", async () => {
+  it("tells you when your role changes in someone else's channel, and nobody else's", async () => {
     const mine = await runLens(lens, "RoleUpdated", "me-b58", SOURCE, chatHost([]));
     expect(mine.kind === "recorded" && mine.reading).toMatchObject({ item_type: "status", body: "You are now Mod in #launch", needs_you: false });
     expect((await runLens(lens, "RoleUpdated", "maya", SOURCE, chatHost([]))).kind).toBe("skipped");
+  });
+
+  it("skips your role in a channel you made: chat sets it for your own actions there", async () => {
+    // Posting in your own channel re-asserts you as its admin: "You are now Admin" was noise.
+    const own = await runLens(lens, "RoleUpdated", "me-b58", SOURCE, chatHost([], { creator: "me-hex" }));
+    expect(own).toEqual({ kind: "skipped", why: "not for you" });
   });
 
   it("drops an event whose reads fail, and says why", async () => {
