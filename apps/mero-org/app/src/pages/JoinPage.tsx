@@ -14,13 +14,21 @@ export interface JoinDeps {
 }
 export type JoinOutcome = { ok: true; contextId: string; account: string } | { ok: false; final: boolean; reason: string };
 
-/** Steps 3–5 of the join flow, transport-free so they can be tested. */
-export async function runJoin(link: InviteLink, profile: { displayName: string; handle: string }, deps: JoinDeps): Promise<JoinOutcome> {
-  const joined = await deps.join({ namespaceId: link.namespaceId, invitation: link.invitation });
-  if (!joined.ok) return { ok: false, final: joined.final, reason: joined.reason };
+/**
+ * Steps 3–5 of the join flow, transport-free so they can be tested.
+ * `alreadyJoined` skips the namespace join on a retry after it succeeded; `onJoined` reports that success
+ * (before the context lookup or the claim can fail) so the caller can pass it on the next attempt.
+ */
+export async function runJoin(link: InviteLink, profile: { displayName: string; handle: string }, deps: JoinDeps, opts: { alreadyJoined?: boolean; onJoined?: () => void } = {}): Promise<JoinOutcome> {
+  if (!opts.alreadyJoined) {
+    const joined = await deps.join({ namespaceId: link.namespaceId, invitation: link.invitation });
+    if (!joined.ok) return { ok: false, final: joined.final, reason: joined.reason };
+    opts.onJoined?.();
+  }
   const contexts = await deps.listGroupContexts(link.namespaceId);
   const first = contexts[0];
-  if (!first) return { ok: false, final: true, reason: "The org has no context yet; ask the admin." };
+  // Through a relay the join can take a moment to become visible to the caller-scoped listing: retryable.
+  if (!first) return { ok: false, final: false, reason: "The org has no context yet; wait a moment and retry, or ask the admin." };
   try {
     const member = await deps.claim(first.contextId, profile.displayName, profile.handle);
     return { ok: true, contextId: first.contextId, account: member.account };
@@ -46,6 +54,8 @@ export function JoinPage() {
   const [submitted, setSubmitted] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const started = useRef(false);
+  // Held across attempts: once the namespace join succeeded, a Retry must not join again.
+  const joinedRef = useRef(false);
 
   // The name form comes first (step 5 needs it), then join + claim run together.
   useEffect(() => {
@@ -55,7 +65,7 @@ export function JoinPage() {
       join: joinInvitation,
       listGroupContexts: (ns) => admin.listGroupContexts(ns),
       claim: (ctx, displayName, handle) => nodeBackend(new MeroOrgClient(mero, ctx)).claimMembership(displayName, handle),
-    })
+    }, { alreadyJoined: joinedRef.current, onJoined: () => { joinedRef.current = true; } })
       .catch((e: unknown): JoinOutcome => ({ ok: false, final: false, reason: e instanceof Error ? e.message : String(e) }))
       .then((o) => {
         setOutcome(o);
