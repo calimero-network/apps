@@ -2927,8 +2927,10 @@ fn a_task_takes_a_bounded_number_of_links() {
 
 // ── push to your phone ───────────────────────────────────────────────────────
 
-const VAPID: &str = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U";
-const VAPID_2: &str = "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM";
+const VAPID: &str =
+    "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U";
+const VAPID_2: &str =
+    "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM";
 
 fn phone(endpoint: &str, key: &str) -> PushDeviceInput {
     PushDeviceInput {
@@ -3026,7 +3028,8 @@ fn only_the_owner_sets_the_key_or_adds_devices() {
         .is_err());
     // The owner's phone is the owner.
     assert!(app
-        .call_as(PHONE, |s| s.add_push_device(phone("https://push.example/p", VAPID)))
+        .call_as(PHONE, |s| s
+            .add_push_device(phone("https://push.example/p", VAPID)))
         .is_ok());
 }
 

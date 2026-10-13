@@ -126,13 +126,20 @@ fn base64url(field: &str, value: &str) -> app::Result<()> {
 }
 
 impl Hyperfeed {
-    pub(crate) fn push_key_set(&mut self, public_key: String, by: String) -> app::Result<PushKeyView> {
+    pub(crate) fn push_key_set(
+        &mut self,
+        public_key: String,
+        by: String,
+    ) -> app::Result<PushKeyView> {
         self.require_owner()?;
         base64url("public_key", &public_key)?;
         Self::check_len("by", &by, MAX_KEY, true)?;
         let now = now_ms();
         let old = self.push_keys.get(KEY_ID)?.map(|k| k.clone());
-        if old.as_ref().is_some_and(|k| k.public_key == public_key && k.by == by) {
+        if old
+            .as_ref()
+            .is_some_and(|k| k.public_key == public_key && k.by == by)
+        {
             return self.push_key_get();
         }
         let updated_at = old.as_ref().map_or(now, |k| now.max(k.updated_at + 1));
@@ -174,7 +181,10 @@ impl Hyperfeed {
             .unwrap_or_default())
     }
 
-    pub(crate) fn push_device_add(&mut self, input: PushDeviceInput) -> app::Result<PushDeviceView> {
+    pub(crate) fn push_device_add(
+        &mut self,
+        input: PushDeviceInput,
+    ) -> app::Result<PushDeviceView> {
         self.require_owner()?;
         let endpoint = input.endpoint.trim().to_owned();
         Self::check_len("endpoint", &endpoint, MAX_PUSH_ENDPOINT, true)?;
@@ -216,10 +226,17 @@ impl Hyperfeed {
             endpoint: endpoint.clone(),
             p256dh: input.p256dh,
             auth: input.auth,
-            name: if name.is_empty() { "A device".to_owned() } else { name },
+            name: if name.is_empty() {
+                "A device".to_owned()
+            } else {
+                name
+            },
             quiet: input.quiet,
             key: current,
-            added_at: old.as_ref().filter(|d| !d.removed).map_or(now, |d| d.added_at),
+            added_at: old
+                .as_ref()
+                .filter(|d| !d.removed)
+                .map_or(now, |d| d.added_at),
             removed: false,
             updated_at: old.as_ref().map_or(now, |d| now.max(d.updated_at + 1)),
         };
