@@ -69,6 +69,7 @@ Start here. These exist to be read, not shipped.
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
+| [mero-org](apps/mero-org) | [↗](https://mero-org.vercel.app) | Organisation management — invite people once, place them in groups, grant groups access to apps; a reconciler mirrors the graph into every app namespace and a hash-chained log records each change. | `com.calimero.mero-org` |
 | [mero-design](apps/mero-design) | [↗](https://mero-design.vercel.app/) | Figma-style infinite canvas — shapes, text, images, SVG blobs, real-time multi-member editing. | `com.calimero.mero-design` |
 | [mero-pixart](apps/mero-pixart) | [↗](https://mero-pixart.vercel.app/) | Photoshop-style image editor — layers, folders, masks, adjustments, free transform, collaborative. | `com.calimero.mero-pixart` |
 | [mero-sheets](apps/mero-sheets) | [↗](https://mero-sheets.vercel.app) | Collaborative spreadsheet — CRDT inputs, derive-on-read recalc, formula autocomplete, live cursors, CSV download. | `com.calimero.mero-sheets` |
