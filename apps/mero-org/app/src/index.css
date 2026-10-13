@@ -3097,3 +3097,247 @@ body {
 .watch-cancel {
   margin-left: auto;
 }
+
+/* ── org pages (Task 10) ─────────────────────────────────────────────────── */
+
+.org-page {
+  max-width: 1080px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stack h1 {
+  font-family: var(--display);
+  font-size: 26px;
+  letter-spacing: -0.01em;
+}
+
+.stack h2 {
+  font-size: 17px;
+  margin-top: 8px;
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.page-head h1 {
+  margin-right: auto;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card-form {
+  max-width: 520px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+
+.form label,
+.invite label,
+.row label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.org-page input:not([type="checkbox"]),
+.org-page select,
+.dialog input:not([type="checkbox"]),
+.dialog select,
+.join input {
+  font: inherit;
+  font-weight: 400;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  min-width: 0;
+}
+
+.org-page input[readonly] {
+  background: var(--sunken);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.invite {
+  align-items: flex-end;
+}
+
+.invite input {
+  width: 100%;
+}
+
+/* Dialog: a labelled region over a dimmed page. */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10vh 16px 16px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+
+.dialog h2 {
+  font-family: var(--display);
+  font-size: 20px;
+}
+
+/* Groups: the tree is the cards' left margin. */
+.group-card {
+  flex-direction: column;
+  gap: 10px;
+}
+
+.group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.group-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.group-head .row-actions {
+  margin-left: auto;
+}
+
+.ticks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.ticks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.access-tick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.access-tick select,
+.caps-input {
+  min-height: 32px !important;
+  font-size: 13px !important;
+}
+
+.caps-input {
+  width: 80px;
+}
+
+.facts-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.facts-list dt {
+  color: var(--muted);
+}
+
+.facts-list dd {
+  margin: 0;
+}
+
+.activity,
+.waiting,
+.admins {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.activity li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.waiting .card,
+.admins .card {
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 8px 16px;
+  }
+  .page {
+    padding: 16px;
+  }
+  .topnav {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  .group-card {
+    margin-left: 0 !important;
+  }
+}
