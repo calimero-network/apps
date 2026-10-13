@@ -131,6 +131,22 @@ describe("chat with your agent", () => {
     expect(within(list()).queryByRole("button", { name: /Show done chats/ })).not.toBeInTheDocument();
   });
 
+  it("keeps a chat out of Done while one of its watches still waits", async () => {
+    const backend = new DemoBackend(false, 0);
+    const asked = await backend.say("", "Merge #57 when green, after #459");
+    backend.agentSay(asked.chain, asked.id, "Set. It merges itself when #459 is green.");
+    const w = backend.addWatch({ chain: asked.chain, condition: "pr_green", repo: "calimero-network/apps", pr: 459, branch: "", action: "merge", text: "", agent: "mero-bot@studio" });
+    render(<Harness backend={backend} />);
+    const row = await within(list()).findByRole("button", { name: /Set\. It merges itself/ });
+    expect(within(row).getByText("Watching 1 thing")).toBeInTheDocument();
+    expect(within(list()).queryByRole("button", { name: /Show done chats/ })).not.toBeInTheDocument();
+
+    // Once nothing is left to wait for, it is done.
+    await act(async () => void (await backend.cancelWatch(w.id)));
+    await waitFor(() => expect(within(list()).queryByRole("button", { name: /Set\. It merges itself/ })).not.toBeInTheDocument());
+    expect(within(list()).getByRole("button", { name: "Show done chats (1)" })).toBeInTheDocument();
+  });
+
   it("answers your agent's question from its options in the chat", async () => {
     const backend = new DemoBackend(false, 0);
     const q = await backend.say("", "Clean up #calimero");
