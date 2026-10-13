@@ -137,7 +137,7 @@
               "$ref": "CardView"
             }
           },
-          "doc": "Unarchived cards, sorted by rank."
+          "doc": "Every card of the board, archived ones included, sorted by rank;\nfilter `archived` for the board view."
         }
       ]
     },
@@ -1269,7 +1269,7 @@
     },
     {
       "name": "get_board",
-      "doc": "A board with its lists and unarchived cards, both sorted by rank. One\ncall renders a board.\n\n# Examples\n```json\n{\"board_id\":\"<board id>\"}\n```",
+      "doc": "A board with its lists and every card (archived ones included, each\nflagged `archived`), both sorted by rank. One call renders a board;\nfilter `archived` for the board view.\n\n# Examples\n```json\n{\"board_id\":\"<board id>\"}\n```",
       "params": [
         {
           "name": "board_id",
@@ -1590,7 +1590,7 @@
     },
     {
       "name": "set_card_archived",
-      "doc": "Archive or unarchive a card. Archived cards leave the board view.\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"archived\":true}\n```",
+      "doc": "Archive or unarchive a card. Archived cards stay in `get_board`, flagged\n`archived`, and are hidden from the board view by clients.\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"archived\":true}\n```",
       "params": [
         {
           "name": "card_id",

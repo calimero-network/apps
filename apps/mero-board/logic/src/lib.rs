@@ -14,6 +14,12 @@
 //! Shared rows are public on purpose, exactly like the tracker's triage state:
 //! a patched node can rewrite or remove them, as an honest member could. A
 //! removed shared row reads back as a default row (see `*Row::missing`).
+//!
+//! Known limit, inherited from the tracker's `Authored` per-owner keys: a
+//! patched node can insert its own header at an existing card or board id.
+//! Honest readers pick the lowest account's header, so creator attribution and
+//! delete rights are enforced for honest members only. A follow-up binds ids to
+//! their creators; the data model is unchanged here.
 
 use std::collections::BTreeSet;
 
@@ -113,7 +119,8 @@ pub struct BoardDetail {
     pub board: BoardView,
     /// Sorted by rank.
     pub lists: Vec<ListView>,
-    /// Unarchived cards, sorted by rank.
+    /// Every card of the board, archived ones included, sorted by rank;
+    /// filter `archived` for the board view.
     pub cards: Vec<CardView>,
 }
 
@@ -473,6 +480,9 @@ impl Board {
         rank: Option<String>,
     ) -> app::Result<String> {
         validate_name("title", &title)?;
+        if !self.board_exists(&board_id)? {
+            app::bail!(Error::NotFound(board_id));
+        }
         let list_board = self.require_list(&list_id)?;
         if list_board != board_id {
             app::bail!(Error::Invalid("list is not on this board".into()));
@@ -624,7 +634,8 @@ impl Board {
         Ok(())
     }
 
-    /// Archive or unarchive a card. Archived cards leave the board view.
+    /// Archive or unarchive a card. Archived cards stay in `get_board`, flagged
+    /// `archived`, and are hidden from the board view by clients.
     ///
     /// # Examples
     /// ```json
@@ -974,8 +985,9 @@ impl Board {
         Ok(())
     }
 
-    /// A board with its lists and unarchived cards, both sorted by rank. One
-    /// call renders a board.
+    /// A board with its lists and every card (archived ones included, each
+    /// flagged `archived`), both sorted by rank. One call renders a board;
+    /// filter `archived` for the board view.
     ///
     /// # Examples
     /// ```json
@@ -988,7 +1000,7 @@ impl Board {
         Ok(BoardDetail {
             board,
             lists: self.lists_of_board(&board_id)?,
-            cards: self.cards_of_board(&board_id, false)?,
+            cards: self.cards_of_board(&board_id, true)?,
         })
     }
 
@@ -1669,6 +1681,24 @@ mod tests {
                 None
             ))
             .is_err());
+        let missing_board = app
+            .call(|s| {
+                s.create_card(
+                    "board-nope".into(),
+                    l.clone(),
+                    "x".into(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            })
+            .unwrap_err();
+        assert!(
+            format!("{missing_board:?}").contains("board-nope"),
+            "a missing board is reported as NotFound before the list check: {missing_board:?}"
+        );
         let c1 = new_card(&mut app, &b, &l, "One");
         let c2 = new_card(&mut app, &b, &l, "Two");
         let me = app.view(|_| caller());
@@ -1854,6 +1884,31 @@ mod tests {
     }
 
     #[test]
+    fn a_label_row_at_a_forged_key_is_not_a_label() {
+        let mut app = host();
+        let (b, l) = board_with_list(&mut app);
+        let c = new_card(&mut app, &b, &l, "One");
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.labels.insert(
+                "forged".into(),
+                LabelTag {
+                    card_id: LwwRegister::new(c.clone()),
+                    label: LwwRegister::new("x".into()),
+                    added_at: LwwRegister::new(0),
+                },
+            )
+        })
+        .unwrap();
+        let labels = app.view(|s| s.get_card(c.clone())).unwrap().card.labels;
+        assert!(!labels.contains(&"x".to_string()), "{labels:?}");
+        assert_eq!(labels, vec!["bug".to_string()]);
+        assert!(app
+            .view(|s| s.list_cards(None, None, None, Some("x".into()), true))
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
     fn checklist_roundtrip_counts_and_order() {
         let mut app = host();
         let (b, l) = board_with_list(&mut app);
@@ -2017,7 +2072,7 @@ mod tests {
     }
 
     #[test]
-    fn get_board_returns_lists_and_live_cards_by_rank() {
+    fn get_board_returns_lists_and_every_card_by_rank() {
         let mut app = host();
         let (b, todo) = board_with_list(&mut app);
         let doing = app
@@ -2028,13 +2083,23 @@ mod tests {
         let c3 = new_card(&mut app, &b, &doing, "Three");
         app.call(|s| s.move_card(c2.clone(), todo.clone(), "a".into()))
             .unwrap();
+        app.call(|s| s.move_card(c3.clone(), doing.clone(), "b".into()))
+            .unwrap();
         app.call(|s| s.set_card_archived(c3.clone(), true)).unwrap();
         let d = app.view(|s| s.get_board(b.clone())).unwrap();
         assert_eq!(d.board.id, b);
         assert_eq!(d.lists.len(), 2);
         assert_eq!(
-            d.cards.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
-            vec![c2.as_str(), c1.as_str()]
+            d.cards
+                .iter()
+                .map(|c| (c.id.as_str(), c.archived))
+                .collect::<Vec<_>>(),
+            vec![
+                (c2.as_str(), false),
+                (c3.as_str(), true),
+                (c1.as_str(), false)
+            ],
+            "the archived card is included, flagged, and sorted by rank"
         );
         assert!(app.view(|s| s.get_board("board-nope".into())).is_err());
     }

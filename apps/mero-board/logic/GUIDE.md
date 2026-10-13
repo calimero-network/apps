@@ -50,7 +50,7 @@ To invite a teammate, `invite_to_namespace` for the workspace and hand over the 
 
 ### Read a board
 
-`get_board` with `{"board_id": "<board id>"}` returns `{board, lists, cards}`: lists by rank and the unarchived cards by rank, each card with its `list_id`, `labels` and `checklist_done` / `checklist_total`. Group cards by `list_id` to draw the columns.
+`get_board` with `{"board_id": "<board id>"}` returns `{board, lists, cards}`: lists by rank and every card of the board by rank, archived ones included, each card with its `list_id`, `archived`, `labels` and `checklist_done` / `checklist_total`. Group cards by `list_id` to draw the columns and skip the ones with `archived: true` for the board view. A card whose `list_id` is empty or names no list of the board has lost its list; `move_card` puts it back.
 
 ### Add a card
 
@@ -62,7 +62,7 @@ To invite a teammate, `invite_to_namespace` for the workspace and hand over the 
 
 ### Move a card
 
-`move_card` with the target list (must be on the same board) and a rank between the new neighbours. To put a card last in a list, use a rank after the last card's rank; to put it first, use a rank before the first card's.
+`move_card` with the target list (must be on the same board) and a rank between the new neighbours. The neighbours come from `get_board.cards` with that `list_id`, archived ones included, so a rank never collides with a hidden card. To put a card last in a list, use a rank after the last card's rank; to put it first, use a rank before the first card's.
 
 ```json
 {"card_id": "<card id>", "list_id": "<list id>", "rank": "n"}
@@ -96,6 +96,7 @@ To invite a teammate, `invite_to_namespace` for the workspace and hand over the 
 
 - `name` and `title`: 1 to 64 characters. Labels: 1 to 32 characters. Comment bodies and checklist text must not be empty.
 - A `rank` must be non-empty, use only `0-9a-z`, and not end in `0`.
-- `move_card` and `create_card` reject a list that is not on the card's board. A card belongs to one board: to move it across boards, create it again and delete the original.
+- `move_card` and `create_card` reject a list that is not on the card's board. A card stays on its board; moving across boards is not supported.
 - Adding a label twice keeps one; removing a missing label succeeds.
-- Archiving hides; deleting removes. Archived boards and cards still answer `get_board` / `get_card` and `include_archived: true` queries.
+- Archiving hides; deleting removes. Archived boards and cards still answer `get_board` / `get_card` and `include_archived: true` queries; `get_board` always returns archived cards, flagged.
+- Creator rights are enforced for honest members only. A board or card is owned through its creator's header, and a patched node can insert its own header at an existing board or card id. Honest readers pick the lowest account's header, so such a node can take over creator attribution and delete rights. A follow-up binds ids to their creators.

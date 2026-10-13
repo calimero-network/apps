@@ -388,11 +388,11 @@ steps:
     method: get_board
     args: { board_id: '{{board_id}}' }
     outputs:
-      cards_after_archive: result.output.cards
+      archived_card_0: result.output.cards.0
   - type: json_assert
-    name: the archived card left the board view
+    name: the archived card stays on the board, flagged archived
     statements:
-      - 'json_equal({{cards_after_archive}}, [])'
+      - 'json_subset({{archived_card_0}}, {"id": "{{card_id}}", "archived": true})'
   - type: call
     name: delete_card by the creator
     node: app-node-1
