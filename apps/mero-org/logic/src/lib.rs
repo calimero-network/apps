@@ -1,11 +1,13 @@
 //! Mero Org — the company's directory, group tree, app registry and
 //! enrolment state, in one context every member replicates.
 //!
-//! Admin writes are gated by [`AccessControl`]: the admin tier is the writer
-//! set of its backing storage, so a non-admin's forged grant is refused at
-//! merge, not only on nodes that execute this code. Profiles live in an
-//! [`AuthoredMap`], so each person edits only their own row. Everything else
-//! is admin-written and replaced whole per key.
+//! The admin LIST is merge-enforced: [`AccessControl`] makes the admin tier the
+//! writer set of its backing storage, so a non-admin's forged grant is refused
+//! at merge, not only on nodes that execute this code. Every other
+//! admin-written table (groups, memberships, apps, access, enrolments, member
+//! status) is checked by `require_admin` in this code, which binds honest nodes
+//! only. Profiles live in an [`AuthoredMap`], so each person edits only their
+//! own row.
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
@@ -494,6 +496,32 @@ impl Org {
         })
     }
 
+    fn is_admin(&self, account: &str) -> bool {
+        self.roles.admins().iter().any(|a| a.to_string() == account)
+    }
+
+    /// `enrolled` becomes `active` with the first membership; `active` falls
+    /// back to `enrolled` when the last one goes. Other statuses are left alone.
+    fn sync_activity_status(&mut self, account: &str) -> app::Result<()> {
+        let Some(mut m) = self.members.get(account)?.map(|v| v.clone()) else {
+            return Ok(());
+        };
+        let has_groups = !self.groups_of(account)?.is_empty();
+        let next = match (m.status.get().as_str(), has_groups) {
+            (STATUS_ENROLLED, true) => STATUS_ACTIVE,
+            (STATUS_ACTIVE, false) => STATUS_ENROLLED,
+            _ => return Ok(()),
+        };
+        m.status.set(next.to_owned());
+        self.members.insert(account.to_owned(), m)?;
+        self.record("status", account, next, "")?;
+        app::emit!(Event::MemberChanged {
+            account,
+            status: next
+        });
+        Ok(())
+    }
+
     fn membership_key(group: &str, account: &str) -> String {
         format!("{group}:{account}")
     }
@@ -889,6 +917,11 @@ impl Org {
             .get(&account)?
             .map(|v| v.clone())
             .ok_or_else(|| AppError::msg(format!("no member {account}")))?;
+        if (status == STATUS_SUSPENDED || status == STATUS_LEFT) && self.is_admin(&account) {
+            return Err(AppError::msg(
+                "revoke admin first: an org admin cannot be suspended or removed",
+            ));
+        }
         m.status.set(status.clone());
         self.members.insert(account.clone(), m)?;
         self.record("status", &account, &status, "")?;
@@ -1079,6 +1112,7 @@ impl Org {
         for (k, account) in keys {
             self.memberships.remove(&k)?;
             self.record("membership_removed", &account, id, "")?;
+            self.sync_activity_status(&account)?;
         }
         self.remove_access_rows_for_group(id)?;
         self.groups.remove(id)?;
@@ -1119,6 +1153,7 @@ impl Org {
             },
         )?;
         self.record("membership_set", &account, &group, &role)?;
+        self.sync_activity_status(&account)?;
         app::emit!(Event::GroupChanged { group: &group });
         Ok(())
     }
@@ -1130,6 +1165,7 @@ impl Org {
             .remove(&key)?
             .ok_or_else(|| AppError::msg("no such membership"))?;
         self.record("membership_removed", &account, &group, "")?;
+        self.sync_activity_status(&account)?;
         app::emit!(Event::GroupChanged { group: &group });
         Ok(())
     }

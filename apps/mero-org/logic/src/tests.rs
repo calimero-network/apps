@@ -352,3 +352,64 @@ fn activity_is_hash_chained_and_pages_newest_first() {
     assert_eq!(page.rows.len(), 1);
     assert_eq!(page.rows[0].index, 0);
 }
+
+#[test]
+fn an_admin_cannot_be_suspended_or_removed_until_revoked() {
+    let mut app = founded();
+    claim(&mut app, ANA, "Ana");
+    app.call(|s| s.grant_admin(hex32(ANA))).unwrap();
+    for status in [STATUS_SUSPENDED, STATUS_LEFT] {
+        let err = app
+            .call(|s| s.set_member_status(hex32(ANA), status.to_owned()))
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("revoke admin first"), "{err:?}");
+    }
+    assert_eq!(
+        app.view(|s| s.member(hex32(ANA))).unwrap().unwrap().status,
+        STATUS_ENROLLED
+    );
+    app.call(|s| s.revoke_admin(hex32(ANA))).unwrap();
+    app.call(|s| s.set_member_status(hex32(ANA), STATUS_LEFT.to_owned()))
+        .unwrap();
+    assert_eq!(
+        app.view(|s| s.member(hex32(ANA))).unwrap().unwrap().status,
+        STATUS_LEFT
+    );
+}
+
+#[test]
+fn a_first_membership_activates_and_the_last_one_going_reverts_to_enrolled() {
+    let mut app = founded();
+    claim(&mut app, ANA, "Ana");
+    let status =
+        |app: &mut TestHost<Org>| app.view(|s| s.member(hex32(ANA))).unwrap().unwrap().status;
+    let eng = app
+        .call(|s| s.create_group("Engineering".to_owned(), String::new()))
+        .unwrap();
+    let ops = app
+        .call(|s| s.create_group("Ops".to_owned(), String::new()))
+        .unwrap();
+    app.call(|s| s.set_membership(eng.id.clone(), hex32(ANA), ROLE_MEMBER.to_owned()))
+        .unwrap();
+    assert_eq!(status(&mut app), STATUS_ACTIVE);
+    app.call(|s| s.set_membership(ops.id.clone(), hex32(ANA), ROLE_MEMBER.to_owned()))
+        .unwrap();
+    app.call(|s| s.remove_membership(eng.id.clone(), hex32(ANA)))
+        .unwrap();
+    assert_eq!(status(&mut app), STATUS_ACTIVE, "one membership remains");
+    app.call(|s| s.remove_membership(ops.id.clone(), hex32(ANA)))
+        .unwrap();
+    assert_eq!(status(&mut app), STATUS_ENROLLED);
+    // The cascade in delete_group reverts too.
+    app.call(|s| s.set_membership(eng.id.clone(), hex32(ANA), ROLE_MEMBER.to_owned()))
+        .unwrap();
+    assert_eq!(status(&mut app), STATUS_ACTIVE);
+    app.call(|s| s.delete_group(eng.id.clone())).unwrap();
+    assert_eq!(status(&mut app), STATUS_ENROLLED);
+    // A suspended member stays suspended when memberships change.
+    app.call(|s| s.set_member_status(hex32(ANA), STATUS_SUSPENDED.to_owned()))
+        .unwrap();
+    app.call(|s| s.set_membership(ops.id.clone(), hex32(ANA), ROLE_MEMBER.to_owned()))
+        .unwrap();
+    assert_eq!(status(&mut app), STATUS_SUSPENDED);
+}

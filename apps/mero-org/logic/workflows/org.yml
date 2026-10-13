@@ -492,7 +492,7 @@ steps:
     method: set_member_status
     args: { account: "{{ana}}", status: "active" }
 
-  - name: Founder takes Ana out of Eng
+  - name: Founder takes Ana out of Eng (her last group, so she reverts to enrolled)
     type: call
     node: org-node-1
     context_id: "{{context_id}}"
@@ -577,7 +577,7 @@ steps:
     statements:
       - 'json_subset({{parked}}, {"status": "pending_admin"})'
       - 'json_subset({{org_3}}, {"output": {"member_count": 1, "group_count": 1, "app_count": 0}})'
-      - 'json_subset({{ana_after}}, {"output": {"status": "active"}})'
+      - 'json_subset({{ana_after}}, {"output": {"status": "enrolled"}})'
       - 'json_equal({{placements_after}}, {"output": []})'
 
   # ─── the activity chain ───────────────────────────────────────────────────
