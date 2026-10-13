@@ -21,7 +21,7 @@ import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
 import { mergeWatchInput, moveWatch, newWatch } from "./watches";
 import { replySubject, splitSubject } from "./subject";
-import type { LinkView, PrInput, PrView, WatchInput, WatchView } from "./generated/HyperfeedClient";
+import type { AccessView, Folder, LinkView, PrInput, PrView, ReachLine, ReachView, WatchInput, WatchView } from "./generated/HyperfeedClient";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 
@@ -92,6 +92,9 @@ export class DemoBackend implements FeedBackend {
   private paused = false;
   /** Your standing rules, oldest first, and the ones the pretend agent suggested. Nothing is seeded. */
   private rules: RuleView[] = [];
+  /** What each agent may reach, and what each reported it can, by agent name. */
+  private access = new Map<string, AccessView>();
+  private reach = new Map<string, ReachView>();
   private ruleProposals: RuleProposalView[] = [];
   /** Chains put away: the chain's latest activity then, and when "later" brings it back (0: never). */
   private archivedChains = new Map<string, { at: number; until: number }>();
@@ -309,6 +312,8 @@ export class DemoBackend implements FeedBackend {
         .sort((a, b) => b.created_at - a.created_at)
         .map((p) => ({ ...p })),
       message_modes: [...MESSAGE_MODES],
+      access: [...this.access.values()].map((a) => ({ ...a, folders: a.folders.map((f) => ({ ...f })) })).sort((a, b) => a.agent.localeCompare(b.agent)),
+      reach: [...this.reach.values()].map((r) => ({ ...r, lines: r.lines.map((l) => ({ ...l })) })).sort((a, b) => a.agent.localeCompare(b.agent)),
     };
   }
 
@@ -964,6 +969,23 @@ export class DemoBackend implements FeedBackend {
 
   async setPaused(paused: boolean): Promise<void> {
     this.paused = paused;
+    this.changed();
+  }
+
+  async setAccess(agent: string, folders: Folder[], shell: boolean, web: boolean): Promise<void> {
+    if (!agent.trim()) throw new Error("agent must not be empty");
+    if (folders.length > 20) throw new Error(`${folders.length} folders, limit is 20`);
+    for (const f of folders) {
+      if (!(f.path.startsWith("/") || f.path === "~" || f.path.startsWith("~/"))) throw new Error(`folder must be absolute or under ~, got "${f.path}"`);
+      if (f.path.split("/").includes("..")) throw new Error(`folder must be one path with no '..', got "${f.path}"`);
+    }
+    this.access.set(agent, { agent, folders: folders.map((f) => ({ ...f })), shell, web, updated_at: this.now() });
+    this.changed();
+  }
+
+  /** What an agent reports it can reach, as mero-bot's runtime does with `agent_reach`. */
+  agentReach(name: string, lines: ReachLine[]): void {
+    this.reach.set(name, { agent: name, lines: lines.map((l) => ({ ...l })), at: this.now() });
     this.changed();
   }
 

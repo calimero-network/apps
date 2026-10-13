@@ -41,6 +41,8 @@ same warrant path it uses everywhere else.
 | **Pause** | you | while paused, every write the agent wants to make becomes a proposal |
 | **Archived** | you | per chain: put away, with the chain's latest activity then and an optional return time ("later"). It is out of the feed until something new happens in it or that time passes |
 | **Presence** | your agent | per agent name: when it last reported in. The app shows "Agent live" for 90 seconds after a report |
+| **Access** | you | per agent name: what it may reach on its computer besides your Calimero apps: folders (each read only, or read and write), a shell, the web. Last-writer-wins. The agent's runtime enforces it before every tool call and refuses `set_access` to the agent |
+| **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (mode, model, attested or not, folders, shell, web). Controls shows it beside your Access |
 | **Link** | your agent, or you | per task: a subject it works on (`<app>:<context>[:<id>]`) with a label, shown as a chip on the task's post. Your agent's writes add them; you add one from its address or take one off, and a link you took off stays off. The chip counts and groups what teammates did there, and opens it in its app beside the feed |
 | **Subject** | your agent | what an action touched in another app, as `<app>:<context>[:<id>]` (the id from its `issue_id`, `doc_id` or `thread_id` arg), kept beside the action by id, and the chain that last touched each subject. A typed notification whose reply call goes to the same subject, recorded with no chain of its own, joins that chain unless you put it away: one thread per task, teammates' comments included |
 
@@ -359,7 +361,7 @@ stays in "Needs you" until you keep it or undo it. Events the contract emits: `A
 **The owner's methods**, which the app calls: `resolve_action(id, decision, answer)` with
 `approve`, `decline`, `undo` or `keep` (`answer` is `""` except for approving a proposal with an
 ask); `answer_notification(id, answer)`; `set_policy(app_key, agent, notifications)`;
-`set_guard(category, enabled)`; `set_paused(paused)`; `record_notification(input)`;
+`set_guard(category, enabled)`; `set_paused(paused)`; `set_access(agent, folders, shell, web)`; `record_notification(input)`;
 `say(chain, text, headline, mode)`; `decide_lens(app_key, application_id, decision)`; `mark_seen(ids)` and
 `mark_all_seen()`; `archive(chains, until)` (`until` 0 = until something new happens, else ms
 for "later") and `unarchive(chains)`; `feed("archived", …)` lists what is put away. An agent kit can call them too, since it

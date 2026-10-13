@@ -3297,3 +3297,57 @@ body {
   font-size: 10px;
   line-height: 16px;
 }
+
+/* What your agents can reach: one block per agent. */
+.agent-access {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent-access h3 {
+  font-size: 13px;
+  margin: 0;
+}
+
+.reach-lines,
+.folders {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.folder {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.folder .mono {
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+
+.folder-add {
+  display: flex;
+  gap: 8px;
+}
+
+.folder-add input {
+  flex: 1;
+  min-width: 0;
+}
+
+.error-inline {
+  color: var(--danger, #c0392b);
+  font-size: 12px;
+  margin: 0;
+}

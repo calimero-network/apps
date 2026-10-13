@@ -4,7 +4,7 @@ import { messageOf, type Feed, type PushState } from "./useFeed";
 import { Badge, NewFeedButton, type NewFeed } from "./FeedView";
 import { DEFAULT_APPS, appLook } from "./apps";
 import { GUARD_LABELS, TYPE_LABELS } from "./format";
-import type { LensView, RuleProposalView } from "./generated/HyperfeedClient";
+import type { Folder, LensView, ReachLine, RuleProposalView } from "./generated/HyperfeedClient";
 import type { Preview, PreviewRow } from "./preview";
 import { currentEndpoint, deviceName, inputOf, pushSupported, subscribe, unsubscribe } from "./push";
 
@@ -172,6 +172,9 @@ export function ControlsView({
 
         {feed.loadPush && <PhoneAlerts feed={feed} />}
 
+        {/* A feed made before access has no `access` in its settings, and no setter. */}
+        {feed.setAccess && Array.isArray(settings.access) && <AgentReach feed={feed} />}
+
         <section className="panel" aria-labelledby="h-agent">
           <h2 id="h-agent">Connect your agent</h2>
           <p className="muted">
@@ -338,6 +341,144 @@ function PhoneAlerts({ feed }: { feed: Feed }) {
  * add or remove them. One your agent suggests after you corrected it waits
  * here with one-tap Approve, which adds it as yours.
  */
+/** One line of what an agent reported it can reach: its profile, and where it reaches besides your apps. */
+function reachLabel(l: ReachLine): string {
+  const who = `${l.profile}${l.model ? ` (${l.model})` : ""}${l.attested ? ", attested" : ""}`;
+  const where = [
+    ...l.folders.map((f) => `${f.path}${f.write ? "" : " (read only)"}`),
+    ...(l.shell ? ["shell"] : []),
+    ...(l.web ? ["web"] : []),
+  ];
+  return `${who}: Calimero apps${where.length ? `, ${where.join(", ")}` : " only"}`;
+}
+
+const SERVES: Record<string, string> = { default: "Default", private: "Private", public: "Public" };
+
+/**
+ * What each agent can reach on its computer besides your apps: what it
+ * reported, and the folders, shell and web you let it use. Only you set these;
+ * mero-bot refuses `set_access` to the agent and checks every tool call
+ * against them.
+ */
+function AgentReach({ feed }: { feed: Feed }) {
+  const settings = feed.settings!;
+  const names = [
+    ...new Set([...(settings.reach ?? []).map((r) => r.agent), ...(settings.access ?? []).map((a) => a.agent), ...settings.agents.map((a) => a.name)]),
+  ].filter((n) => n.startsWith("mero-bot@") || (settings.access ?? []).some((a) => a.agent === n) || (settings.reach ?? []).some((r) => r.agent === n));
+  return (
+    <section className="panel" aria-labelledby="h-reach">
+      <h2 id="h-reach">What your agents can reach</h2>
+      <p className="muted">
+        Besides your Calimero apps: folders on the agent's computer, a shell and the web. Only you can change these, and
+        the agent's runtime checks every call against them.
+      </p>
+      {names.length === 0 ? (
+        <p className="muted">No agent has reported in yet. Start mero-bot and it shows up here.</p>
+      ) : (
+        names.map((name) => <AgentAccess key={name} feed={feed} agent={name} />)
+      )}
+    </section>
+  );
+}
+
+function AgentAccess({ feed, agent }: { feed: Feed; agent: string }) {
+  const id = useId();
+  const settings = feed.settings!;
+  const set = (settings.access ?? []).find((a) => a.agent === agent);
+  const reach = (settings.reach ?? []).find((r) => r.agent === agent);
+  // What it reported for its local profile is what it uses now; start editing from that, or from nothing.
+  const reported = reach?.lines.find((l) => l.folders.length > 0 || l.shell || l.web);
+  const start = set ?? (reported ? { folders: reported.folders, shell: reported.shell, web: reported.web } : { folders: [], shell: false, web: false });
+  const [folders, setFolders] = useState<Folder[]>(start.folders.map((f) => ({ ...f })));
+  const [shell, setShell] = useState(start.shell);
+  const [web, setWeb] = useState(start.web);
+  const [path, setPath] = useState("");
+  const [refused, setRefused] = useState<string | null>(null);
+  const dirty =
+    JSON.stringify({ folders, shell, web }) !== JSON.stringify({ folders: start.folders.map((f) => ({ path: f.path, write: f.write })), shell: start.shell, web: start.web });
+
+  const add = () => {
+    const p = path.trim().replace(/\/+$/, "") || path.trim();
+    if (!p) return;
+    if (!(p.startsWith("/") || p === "~" || p.startsWith("~/"))) return setRefused("A folder is an absolute path, or one under ~ (like ~/workspace).");
+    if (p.split("/").includes("..")) return setRefused("A folder can't contain '..'.");
+    if (folders.some((f) => f.path === p)) return setRefused(`${p} is already listed.`);
+    setFolders([...folders, { path: p, write: false }]);
+    setPath("");
+    setRefused(null);
+  };
+
+  return (
+    <div className="agent-access" aria-label={`What ${agent} can reach`} role="group">
+      <h3 className="mono">{agent}</h3>
+      {reach && (
+        <ul className="reach-lines" aria-label={`What ${agent} reports`}>
+          {reach.lines.map((l) => (
+            <li key={`${l.serves}:${l.profile}`}>
+              <strong>{SERVES[l.serves] ?? l.serves}</strong> · {reachLabel(l)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!set && (
+        <p className="muted">
+          Not set by you: it uses its own default (the folder mero-bot sits in, read and write, with shell and web on).
+        </p>
+      )}
+      <ul className="folders" aria-label={`Folders ${agent} may use`}>
+        {folders.length === 0 && <li className="muted">No folders: your Calimero apps only.</li>}
+        {folders.map((f) => (
+          <li key={f.path} className="folder">
+            <span className="mono">{f.path}</span>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={f.write}
+                onChange={() => setFolders(folders.map((x) => (x.path === f.path ? { ...x, write: !x.write } : x)))}
+              />
+              <span>Can write</span>
+            </label>
+            <button type="button" className="ghost small" aria-label={`Remove ${f.path}`} onClick={() => setFolders(folders.filter((x) => x.path !== f.path))}>
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form
+        className="folder-add"
+        onSubmit={(e) => {
+          e.preventDefault();
+          add();
+        }}
+      >
+        <label htmlFor={`${id}-folder`} className="sr-only">
+          Add a folder
+        </label>
+        <input id={`${id}-folder`} value={path} placeholder="Add a folder, like ~/workspace" onChange={(e) => setPath(e.target.value)} />
+        <button type="submit" className="ghost small" disabled={!path.trim()}>
+          Add
+        </button>
+      </form>
+      {refused && (
+        <p className="error-inline" role="alert">
+          {refused}
+        </p>
+      )}
+      <label className="check">
+        <input type="checkbox" checked={shell} onChange={() => setShell(!shell)} />
+        <span>Shell: runs commands as you, and is not limited to these folders</span>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={web} onChange={() => setWeb(!web)} />
+        <span>Web: fetch pages and search</span>
+      </label>
+      <button type="button" className="primary small" disabled={feed.busy || !dirty} onClick={() => void feed.setAccess?.(agent, folders, shell, web)}>
+        Save
+      </button>
+    </div>
+  );
+}
+
 function StandingRules({ feed }: { feed: Feed }) {
   const id = useId();
   const [text, setText] = useState("");

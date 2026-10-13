@@ -198,6 +198,11 @@ pub const DEFAULT_AGENT_MODE: &str = "ask";
 /// repositories and tools, say). Your agent's runtime maps each to an agent.
 /// Not [`AGENT_MODES`], which say how freely the agent may act in an app.
 pub const MESSAGE_MODES: &[&str] = &["private", "public"];
+/// Folders one agent may be given, and the length of one folder's path.
+const MAX_FOLDERS: usize = 20;
+const MAX_PATH: usize = 1_024;
+/// Lines in one agent's report of what it can reach: one per agent profile it runs.
+const MAX_REACH: usize = 16;
 
 /// Where an app's notifications go: the feed and a push, the feed only, or
 /// nowhere (still recorded, so un-muting brings them back).
@@ -816,6 +821,98 @@ impl Mergeable for Presence {
     }
 }
 
+/// A folder an agent may use on its computer: an absolute path, or one under
+/// `~`, and whether it may write there too.
+#[derive(
+    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Folder {
+    pub path: String,
+    pub write: bool,
+}
+
+/// What you let one agent reach on its computer, beyond your Calimero apps:
+/// these folders, a shell, the web. Yours to set (`set_access`); the agent's
+/// runtime enforces it before any tool runs, and an agent with none set keeps
+/// its runtime's default.
+#[app::mergeable(id = "hyperfeed::Access")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Access {
+    pub folders: Vec<Folder>,
+    pub shell: bool,
+    pub web: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for Access {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
+        Ok(())
+    }
+}
+
+/// One agent profile an agent runs, as it reports it: which mode or route
+/// it serves, its model, whether its model is attested, and what it can reach
+/// besides your Calimero apps.
+#[derive(
+    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ReachLine {
+    /// What it runs: a message mode (`private`, `public`) or `default`.
+    pub serves: String,
+    pub profile: String,
+    pub model: String,
+    pub attested: bool,
+    pub folders: Vec<Folder>,
+    pub shell: bool,
+    pub web: bool,
+}
+
+/// What one agent reported it can reach, latest report wins.
+#[app::mergeable(id = "hyperfeed::Reach")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Reach {
+    pub lines: Vec<ReachLine>,
+    pub at: u64,
+}
+
+impl Mergeable for Reach {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.at;
+        lww(self, at, other, other.at);
+        Ok(())
+    }
+}
+
+/// What you let one agent reach, as settings shows it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AccessView {
+    pub agent: String,
+    pub folders: Vec<Folder>,
+    pub shell: bool,
+    pub web: bool,
+    pub updated_at: u64,
+}
+
+/// What one agent reported it can reach, as settings shows it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ReachView {
+    pub agent: String,
+    pub lines: Vec<ReachLine>,
+    pub at: u64,
+}
+
 /// What your agent is doing right now for one of your messages: its latest
 /// step, replaced by the next one. Kept beside the message by id, never in its
 /// history, so a long turn adds no rows.
@@ -1292,6 +1389,13 @@ pub struct SettingsView {
     /// Empty on a feed made before modes, which refuses a `mode` argument.
     #[serde(default)]
     pub message_modes: Vec<String>,
+    /// What you let each agent reach on its computer, by agent name. An agent
+    /// with no entry keeps its runtime's default.
+    #[serde(default)]
+    pub access: Vec<AccessView>,
+    /// What each agent last reported it can reach, by agent name.
+    #[serde(default)]
+    pub reach: Vec<ReachView>,
 }
 
 /// One of your standing rules, as settings shows it.
@@ -1369,6 +1473,10 @@ pub struct Hyperfeed {
     headlines: UnorderedMap<String, Headline>,
     /// Which agent each of your messages sent with a mode is for, by the message's id.
     modes: UnorderedMap<String, MessageMode>,
+    /// What you let each agent reach on its computer, by agent name.
+    access: UnorderedMap<String, Access>,
+    /// What each agent last reported it can reach, by agent name.
+    reach: UnorderedMap<String, Reach>,
     /// Questions a newer one in their chain replaced, by the question's id.
     superseded: UnorderedMap<String, Superseded>,
     /// The question each of your messages sent from its buttons answers, by
@@ -1500,6 +1608,8 @@ impl Hyperfeed {
             stops: UnorderedMap::new(),
             headlines: UnorderedMap::new(),
             modes: UnorderedMap::new(),
+            access: UnorderedMap::new(),
+            reach: UnorderedMap::new(),
             superseded: UnorderedMap::new(),
             answers: UnorderedMap::new(),
             leases: UnorderedMap::new(),
@@ -3848,6 +3958,90 @@ impl Hyperfeed {
         Ok(())
     }
 
+    /// What `agent` (its name, as it reports in) may reach on its computer
+    /// besides your Calimero apps: `folders` (each with or without writes),
+    /// a `shell`, and the `web`. It replaces what was set before. Your
+    /// agent's runtime refuses this method to the agent, so only you widen
+    /// or narrow it.
+    pub fn set_access(
+        &mut self,
+        agent: String,
+        folders: Vec<Folder>,
+        shell: bool,
+        web: bool,
+    ) -> app::Result<()> {
+        self.require_owner()?;
+        Self::check_len("agent", &agent, MAX_KEY, true)?;
+        Self::check_folders(&folders)?;
+        let updated_at = match self.access.get(&agent)? {
+            Some(a) => now_ms().max(a.updated_at + 1),
+            None => now_ms(),
+        };
+        self.access.insert(
+            agent,
+            Access {
+                folders,
+                shell,
+                web,
+                updated_at,
+            },
+        )?;
+        app::emit!(Event::SettingsChanged);
+        Ok(())
+    }
+
+    /// An agent saying what it can reach: one line per agent profile it runs.
+    /// Shown to you in Controls beside what you set with `set_access`.
+    pub fn agent_reach(&mut self, name: String, lines: Vec<ReachLine>) -> app::Result<()> {
+        self.require_owner()?;
+        Self::check_len("name", &name, MAX_KEY, true)?;
+        if lines.len() > MAX_REACH {
+            return Err(AppError::msg(format!(
+                "{} reach lines, limit is {MAX_REACH}",
+                lines.len()
+            )));
+        }
+        for l in &lines {
+            Self::check_len("serves", &l.serves, MAX_SHORT, true)?;
+            Self::check_len("profile", &l.profile, MAX_SHORT, true)?;
+            Self::check_len("model", &l.model, MAX_SHORT, false)?;
+            Self::check_folders(&l.folders)?;
+        }
+        let at = match self.reach.get(&name)? {
+            Some(r) => now_ms().max(r.at + 1),
+            None => now_ms(),
+        };
+        self.reach.insert(name, Reach { lines, at })?;
+        app::emit!(Event::SettingsChanged);
+        Ok(())
+    }
+
+    /// Folders within their limits: absolute or under `~`, one line each.
+    fn check_folders(folders: &[Folder]) -> app::Result<()> {
+        if folders.len() > MAX_FOLDERS {
+            return Err(AppError::msg(format!(
+                "{} folders, limit is {MAX_FOLDERS}",
+                folders.len()
+            )));
+        }
+        for f in folders {
+            Self::check_len("folder", &f.path, MAX_PATH, true)?;
+            if !(f.path.starts_with('/') || f.path == "~" || f.path.starts_with("~/")) {
+                return Err(AppError::msg(format!(
+                    "folder must be absolute or under ~, got {:?}",
+                    f.path
+                )));
+            }
+            if f.path.contains('\n') || f.path.split('/').any(|part| part == "..") {
+                return Err(AppError::msg(format!(
+                    "folder must be one path with no '..', got {:?}",
+                    f.path
+                )));
+            }
+        }
+        Ok(())
+    }
+
     pub fn set_paused(&mut self, paused: bool) -> app::Result<()> {
         self.require_owner()?;
         let updated_at = match self.agent.get("main")? {
@@ -4114,6 +4308,28 @@ impl Hyperfeed {
             })
             .collect();
         agents.sort_by(|a, b| b.seen_at.cmp(&a.seen_at).then_with(|| a.name.cmp(&b.name)));
+        let mut access: Vec<AccessView> = self
+            .access
+            .entries()?
+            .map(|(agent, a)| AccessView {
+                agent,
+                folders: a.folders,
+                shell: a.shell,
+                web: a.web,
+                updated_at: a.updated_at,
+            })
+            .collect();
+        access.sort_by(|a, b| a.agent.cmp(&b.agent));
+        let mut reach: Vec<ReachView> = self
+            .reach
+            .entries()?
+            .map(|(agent, r)| ReachView {
+                agent,
+                lines: r.lines,
+                at: r.at,
+            })
+            .collect();
+        reach.sort_by(|a, b| a.agent.cmp(&b.agent));
         Ok(SettingsView {
             owner: self.owner.get().clone(),
             paused: self.is_paused()?,
@@ -4123,6 +4339,8 @@ impl Hyperfeed {
             rules: self.active_rules()?,
             rule_proposals: self.waiting_rule_proposals()?,
             message_modes: MESSAGE_MODES.iter().map(|m| (*m).to_owned()).collect(),
+            access,
+            reach,
         })
     }
 }

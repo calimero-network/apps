@@ -1,6 +1,78 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "Access": {
+      "kind": "record",
+      "doc": "What you let one agent reach on its computer, beyond your Calimero apps:\nthese folders, a shell, the web. Yours to set (`set_access`); the agent's\nruntime enforces it before any tool runs, and an agent with none set keeps\nits runtime's default.",
+      "fields": [
+        {
+          "name": "folders",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Folder"
+            }
+          }
+        },
+        {
+          "name": "shell",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "web",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AccessView": {
+      "kind": "record",
+      "doc": "What you let one agent reach, as settings shows it.",
+      "fields": [
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "folders",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Folder"
+            }
+          }
+        },
+        {
+          "name": "shell",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "web",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Action": {
       "kind": "record",
       "doc": "One thing your agent did, or wants to do, on your behalf.\n\nEverything but `history` and `reviewed` is written once. `history` merges as\na union of steps, and `reviewed` only ever turns on.",
@@ -1261,6 +1333,24 @@
         }
       ]
     },
+    "Folder": {
+      "kind": "record",
+      "doc": "A folder an agent may use on its computer: an absolute path, or one under\n`~`, and whether it may write there too.",
+      "fields": [
+        {
+          "name": "path",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "write",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
     "Guard": {
       "kind": "record",
       "doc": "One \"always ask me before\" switch.",
@@ -1560,6 +1650,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Which agent each of your messages sent with a mode is for, by the message's id."
+        },
+        {
+          "name": "access",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Access"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "What you let each agent reach on its computer, by agent name."
+        },
+        {
+          "name": "reach",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Reach"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "What each agent last reported it can reach, by agent name."
         },
         {
           "name": "superseded",
@@ -2952,6 +3070,106 @@
         }
       ]
     },
+    "Reach": {
+      "kind": "record",
+      "doc": "What one agent reported it can reach, latest report wins.",
+      "fields": [
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ReachLine"
+            }
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ReachLine": {
+      "kind": "record",
+      "doc": "One agent profile an agent runs, as it reports it: which mode or route\nit serves, its model, whether its model is attested, and what it can reach\nbesides your Calimero apps.",
+      "fields": [
+        {
+          "name": "serves",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What it runs: a message mode (`private`, `public`) or `default`."
+        },
+        {
+          "name": "profile",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "model",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attested",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "folders",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Folder"
+            }
+          }
+        },
+        {
+          "name": "shell",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "web",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "ReachView": {
+      "kind": "record",
+      "doc": "What one agent reported it can reach, as settings shows it.",
+      "fields": [
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ReachLine"
+            }
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Rule": {
       "kind": "record",
       "doc": "One of your standing rules: a short line your agent keeps to on every\nturn (\"Never push to main\", \"Answer in English\"). Only you add or remove\none; removing keeps the row with `removed`, so the latest decision wins on\nevery device.",
@@ -3165,6 +3383,26 @@
             }
           },
           "doc": "The modes a message of yours may be sent with ([`MESSAGE_MODES`]).\nEmpty on a feed made before modes, which refuses a `mode` argument."
+        },
+        {
+          "name": "access",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AccessView"
+            }
+          },
+          "doc": "What you let each agent reach on its computer, by agent name. An agent\nwith no entry keeps its runtime's default."
+        },
+        {
+          "name": "reach",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ReachView"
+            }
+          },
+          "doc": "What each agent last reported it can reach, by agent name."
         }
       ]
     },
@@ -3793,6 +4031,31 @@
       ],
       "returns": {
         "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "agent_reach",
+      "doc": "An agent saying what it can reach: one line per agent profile it runs.\nShown to you in Controls beside what you set with `set_access`.",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ReachLine"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       },
       "intent": "mutating"
     },
@@ -4739,6 +5002,43 @@
       ],
       "returns": {
         "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_access",
+      "doc": "What `agent` (its name, as it reports in) may reach on its computer\nbesides your Calimero apps: `folders` (each with or without writes),\na `shell`, and the `web`. It replaces what was set before. Your\nagent's runtime refuses this method to the agent, so only you widen\nor narrow it.",
+      "params": [
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "folders",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Folder"
+            }
+          }
+        },
+        {
+          "name": "shell",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "web",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       },
       "intent": "mutating"
     },
