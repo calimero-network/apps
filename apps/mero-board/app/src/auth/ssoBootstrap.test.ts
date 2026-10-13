@@ -145,7 +145,7 @@ describe('invitation capture (via bootstrapSsoAndInvitation)', () => {
   // MUST run before React mounts, because App.tsx redirects a signed-in visitor
   // off `/` with `<Navigate replace>`, which rewrites the URL query and all.
   it('captures ?invitation= at boot and strips it from the address bar', () => {
-    locate('issue-tracker?invitation=PAYLOAD');
+    locate('board?invitation=PAYLOAD');
     bootstrapSsoAndInvitation();
     expect(peekInvitation()?.token).toBe('PAYLOAD');
     // Sticky: reading it does not consume it, so the route gate and the

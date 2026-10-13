@@ -82,14 +82,14 @@ describe('createWorkspaceContext', () => {
     const id = await createWorkspaceContext(admin, {
       applicationId: 'app-1',
       groupId: NS,
-      serviceName: 'issue_tracker',
+      serviceName: 'board',
       name: 'Q3 repo',
     });
     expect(id).toBe(CTX);
     expect(createContext).toHaveBeenCalledWith({
       applicationId: 'app-1',
       groupId: NS,
-      serviceName: 'issue_tracker',
+      serviceName: 'board',
       initializationParams: [],
       name: 'Q3 repo',
     });

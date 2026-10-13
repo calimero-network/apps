@@ -6,9 +6,9 @@
  * paths (picker/create/join, SSO-callback resolution) populate these keys.
  * The pre-versioning key is never read, only dropped on load.
  */
-const LEGACY_ACTIVE_NS_KEY = 'issue-tracker:activeNs';
-const ACTIVE_NS_KEY = 'issue-tracker:activeNs:v2';
-const activeRepoKey = (nsId: string) => `issue-tracker:activeRepo:v2:${nsId}`;
+const LEGACY_ACTIVE_NS_KEY = 'mero-board:activeNs';
+const ACTIVE_NS_KEY = 'mero-board:activeNs:v2';
+const activeRepoKey = (nsId: string) => `mero-board:activeRepo:v2:${nsId}`;
 
 function readLs(key: string): string | null {
   try {
@@ -49,7 +49,7 @@ export function clearPersistedWorkspace(): void {
   try {
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
-      if (k && (k.startsWith('issue-tracker:activeRepo:') || k.startsWith('issue-tracker:alias-set:'))) {
+      if (k && (k.startsWith('mero-board:activeRepo:') || k.startsWith('mero-board:alias-set:'))) {
         localStorage.removeItem(k);
       }
     }

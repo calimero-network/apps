@@ -1,6 +1,6 @@
 {
-  "name": "Mero Issue Tracker",
-  "short_name": "MeroIssues",
+  "name": "Mero Board",
+  "short_name": "Mero Board",
   "description": "Issue tracking on Calimero — peer-to-peer projects, issues and comments with no central server.",
   "start_url": "/",
   "display": "standalone",

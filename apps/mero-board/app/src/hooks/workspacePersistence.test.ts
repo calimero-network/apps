@@ -26,7 +26,7 @@ beforeEach(() => {
 
 describe('readActiveNs', () => {
   it('ignores a legacy unversioned key: an old build never auto-enters', () => {
-    localStorage.setItem('issue-tracker:activeNs', 'old-namespace-id');
+    localStorage.setItem('mero-board:activeNs', 'old-namespace-id');
     expect(readActiveNs()).toBeNull();
   });
 
@@ -36,9 +36,9 @@ describe('readActiveNs', () => {
   });
 
   it('dropLegacyActiveNs removes the old key without ever reading it', () => {
-    localStorage.setItem('issue-tracker:activeNs', 'old-namespace-id');
+    localStorage.setItem('mero-board:activeNs', 'old-namespace-id');
     dropLegacyActiveNs();
-    expect(localStorage.getItem('issue-tracker:activeNs')).toBeNull();
+    expect(localStorage.getItem('mero-board:activeNs')).toBeNull();
     expect(readActiveNs()).toBeNull();
   });
 });
@@ -55,10 +55,10 @@ describe('clearPersistedWorkspace', () => {
   it('drops the active namespace and every per-namespace repo/alias key', () => {
     writeActiveNs('ns-1');
     writeActiveRepo('ns-1', 'repo-a');
-    localStorage.setItem('issue-tracker:alias-set:ns-1', '1');
+    localStorage.setItem('mero-board:alias-set:ns-1', '1');
     clearPersistedWorkspace();
     expect(readActiveNs()).toBeNull();
     expect(readActiveRepo('ns-1')).toBeNull();
-    expect(localStorage.getItem('issue-tracker:alias-set:ns-1')).toBeNull();
+    expect(localStorage.getItem('mero-board:alias-set:ns-1')).toBeNull();
   });
 });

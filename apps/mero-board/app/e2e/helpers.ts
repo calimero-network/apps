@@ -691,13 +691,13 @@ export async function clearAuth(page: Page) {
         'mero:node_url', 'mero:application_id', 'mero:context_id',
         'mero:context_identity',
         'pending-invitation',
-        'issue-tracker:activeNs',
-        'issue-tracker:activeNs:v2',
+        'mero-board:activeNs',
+        'mero-board:activeNs:v2',
       ].forEach((k) => localStorage.removeItem(k));
       // Per-namespace repo selection + alias-gate markers.
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith('issue-tracker:activeRepo:') || k.startsWith('issue-tracker:alias-set:'))) {
+        if (k && (k.startsWith('mero-board:activeRepo:') || k.startsWith('mero-board:alias-set:'))) {
           localStorage.removeItem(k);
         }
       }

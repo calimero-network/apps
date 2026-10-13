@@ -4,7 +4,7 @@ import { tokens as t } from '../theme';
 import { Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
 
 const MAX_NAME = 64;
-const MARKER_PREFIX = 'issue-tracker:alias-set:';
+const MARKER_PREFIX = 'mero-board:alias-set:';
 const markerKey = (ns: string, id: string) => `${MARKER_PREFIX}${ns}:${id}`;
 
 function readMarker(key: string | null): boolean {
