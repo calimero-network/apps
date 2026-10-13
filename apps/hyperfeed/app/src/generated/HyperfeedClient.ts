@@ -97,6 +97,12 @@ export interface ActionInput {
    * omit it.
    */
   grant: string;
+  /**
+   * What it touched in the app, as [`subject_key`] makes it (`""` for
+   * nothing in particular). A notification about the same thing, with no
+   * chain of its own, joins this action's chain. Older agents omit it.
+   */
+  subject: string;
 }
 
 /**
@@ -467,6 +473,11 @@ export interface FeedItem {
    * Since when that session has held the chain; 0 when nobody does.
    */
   held_since: number;
+  /**
+   * On an action, what it touched; on a notification, what its reply goes
+   * to; see [`subject_key`]. `""` for nothing in particular.
+   */
+  subject: string;
 }
 
 export interface FeedPage {
@@ -591,6 +602,14 @@ export interface Hyperfeed {
    * GitHub, by `owner/name#number`. See [`prs`].
    */
   prs: Record<string, PrSeen>;
+  /**
+   * What each action touched, by the action's id.
+   */
+  action_subjects: Record<string, Subject>;
+  /**
+   * The chain that last touched each subject, by its key.
+   */
+  subject_chains: Record<string, Subject>;
 }
 
 /**
@@ -990,6 +1009,19 @@ export interface Step {
  * You asked your agent to stop working on one of your messages.
  */
 export interface StopRequest {
+  at: number;
+}
+
+/**
+ * What a row is about in another app, as a key: `<app>:<context>`, plus
+ * `:<id>` for one thing in it (an issue, a doc, a thread). Kept two ways: by
+ * the action's id (what it touched), and by the key (the chain that touched
+ * it last), so a notification about the same thing joins that chain. See
+ * [`subject_key`].
+ */
+export interface Subject {
+  subject: string;
+  chain: string;
   at: number;
 }
 
@@ -1971,6 +2003,21 @@ export class HyperfeedClient {
   public async stop(params: { id: string }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'stop', argsJson: params });
     return response as FeedItem;
+  }
+
+  /**
+   * touch_subject
+   *
+   * Your agent touched `subject` (see [`subject_key`]) for the task in
+   * `chain` with a write that has no row of its own: a step of its turn on
+   * a message of yours. A notification about it then joins `chain`, as
+   * for an action that names it.
+   *
+   * @intent mutating
+   */
+  public async touchSubject(params: { chain: string; subject: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'touch_subject', argsJson: params });
+    return response as void;
   }
 
   /**

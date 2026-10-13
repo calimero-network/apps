@@ -26,6 +26,7 @@ fn action(app: &str, outcome: &str) -> ActionInput {
         chain: String::new(),
         ask: Ask::default(),
         grant: String::new(),
+        subject: String::new(),
     }
 }
 
@@ -2569,5 +2570,180 @@ fn a_suggested_rule_can_be_dismissed() {
     assert!(app.call(|s| s.approve_rule(proposal.id.clone())).is_err());
     assert!(app
         .call(|s| s.propose_rule("x".to_owned(), String::new(), "no-chain".to_owned()))
+        .is_err());
+}
+
+// ── one thread per task ──────────────────────────────────────────────────────
+
+/// A teammate's comment on an issue, as the issue tracker's lens records it.
+fn comment_on(issue: &str, key: &str) -> NotificationInput {
+    let mut n = notification(key, "issue-tracker", false);
+    n.source_context = "repo-ctx".to_owned();
+    n.event = "CommentAdded".to_owned();
+    n.item_type = "message".to_owned();
+    n.fields = r#"{"text":"Looks good"}"#.to_owned();
+    n.reply_call =
+        format!(r#"{{"method":"add_comment","args":{{"issue_id":"{issue}","body":"=answer"}}}}"#);
+    n
+}
+
+/// The agent's write on an issue, in the task's chain.
+fn touched(app: &mut TestHost<Hyperfeed>, chain: &str, issue: &str) -> FeedItem {
+    let mut a = action("issue-tracker", "done");
+    a.source_context = "repo-ctx".to_owned();
+    a.method = "set_status".to_owned();
+    a.chain = chain.to_owned();
+    a.subject = subject_key("issue-tracker", "repo-ctx", issue);
+    app.call(|s| s.record_action(a)).unwrap()
+}
+
+#[test]
+fn a_subject_key_names_the_app_the_context_and_the_thing() {
+    assert_eq!(
+        subject_key("issue-tracker", "ctx", "issue-1"),
+        "issue-tracker:ctx:issue-1"
+    );
+    assert_eq!(subject_key("chat", "ctx", ""), "chat:ctx");
+    assert_eq!(subject_key("chat", "", "x"), "");
+    assert_eq!(subject_key("chat", "ctx", &"x".repeat(300)), "");
+    assert_eq!(
+        reply_subject(
+            "issue-tracker",
+            "ctx",
+            r#"{"method":"add_comment","args":{"issue_id":"issue-1","body":"=answer"}}"#
+        ),
+        "issue-tracker:ctx:issue-1"
+    );
+    // No id among the args: the whole context (a chat, a board).
+    assert_eq!(reply_subject("chat", "ctx", REPLY), "chat:ctx");
+    assert_eq!(reply_subject("chat", "ctx", ""), "");
+}
+
+#[test]
+fn a_comment_on_an_issue_a_task_touched_joins_the_tasks_chain() {
+    let mut app = acting_in("issue-tracker");
+    let task = app
+        .call(|s| s.record_notification(notification("mero-bot:task", "mero-bot", false)))
+        .unwrap();
+    let write = touched(&mut app, &task.chain, "issue-7");
+    assert_eq!(write.subject, "issue-tracker:repo-ctx:issue-7");
+
+    let comment = app
+        .call(|s| s.record_notification(comment_on("issue-7", "repo-ctx:a>b:0")))
+        .unwrap();
+    assert_eq!(comment.chain, task.chain, "joined the task");
+    assert_eq!(comment.subject, "issue-tracker:repo-ctx:issue-7");
+
+    let flow = app.view(|s| s.chain(task.chain.clone())).unwrap();
+    assert_eq!(flow.len(), 3);
+    assert!(flow.iter().any(|i| i.id == comment.id));
+    // The task is one row in the feed, not two.
+    let page = feed(&app, "all");
+    assert_eq!(
+        page.items.iter().filter(|i| i.chain == task.chain).count(),
+        1
+    );
+    // And the write keeps what it touched when read back.
+    let read = app.view(|s| s.item(write.id.clone())).unwrap().unwrap();
+    assert_eq!(read.subject, write.subject);
+}
+
+#[test]
+fn a_comment_on_another_issue_starts_its_own_chain() {
+    let mut app = acting_in("issue-tracker");
+    let task = app
+        .call(|s| s.record_notification(notification("mero-bot:task", "mero-bot", false)))
+        .unwrap();
+    touched(&mut app, &task.chain, "issue-7");
+    let other = app
+        .call(|s| s.record_notification(comment_on("issue-8", "repo-ctx:a>b:0")))
+        .unwrap();
+    assert_eq!(other.chain, other.id);
+    // Nor does one the lens did not make (no reply to tell what it is about).
+    let mut plain = comment_on("issue-7", "repo-ctx:b>c:0");
+    plain.item_type = String::new();
+    plain.fields = String::new();
+    plain.reply_call = String::new();
+    let plain = app.call(|s| s.record_notification(plain)).unwrap();
+    assert_eq!(plain.chain, plain.id);
+}
+
+#[test]
+fn the_latest_task_to_touch_a_subject_gets_its_notifications() {
+    let mut app = acting_in("issue-tracker");
+    let first = app
+        .call(|s| s.record_notification(notification("mero-bot:one", "mero-bot", false)))
+        .unwrap();
+    let second = app
+        .call(|s| s.record_notification(notification("mero-bot:two", "mero-bot", false)))
+        .unwrap();
+    touched(&mut app, &first.chain, "issue-7");
+    touched(&mut app, &second.chain, "issue-7");
+    let comment = app
+        .call(|s| s.record_notification(comment_on("issue-7", "repo-ctx:a>b:0")))
+        .unwrap();
+    assert_eq!(comment.chain, second.chain);
+}
+
+#[test]
+fn a_chain_named_by_the_client_wins_and_a_put_away_task_is_not_reopened() {
+    let mut app = acting_in("issue-tracker");
+    let task = app
+        .call(|s| s.record_notification(notification("mero-bot:task", "mero-bot", false)))
+        .unwrap();
+    let elsewhere = app
+        .call(|s| s.record_notification(notification("mero-bot:else", "mero-bot", false)))
+        .unwrap();
+    touched(&mut app, &task.chain, "issue-7");
+
+    let mut named = comment_on("issue-7", "repo-ctx:a>b:0");
+    named.chain = elsewhere.chain.clone();
+    let named = app.call(|s| s.record_notification(named)).unwrap();
+    assert_eq!(named.chain, elsewhere.chain);
+
+    app.call(|s| s.archive(vec![task.chain.clone()], 0))
+        .unwrap();
+    let later = app
+        .call(|s| s.record_notification(comment_on("issue-7", "repo-ctx:b>c:0")))
+        .unwrap();
+    assert_eq!(later.chain, later.id, "a chain you put away stays away");
+}
+
+#[test]
+fn a_subject_that_does_not_fit_is_refused() {
+    let mut app = acting_in("issue-tracker");
+    let mut a = action("issue-tracker", "done");
+    a.subject = "x".repeat(MAX_KEY + 1);
+    assert!(app.call(|s| s.record_action(a)).is_err());
+}
+
+#[test]
+fn a_step_of_a_turn_touches_a_subject_without_a_row() {
+    let mut app = acting_in("issue-tracker");
+    let task = app
+        .call(|s| s.record_notification(notification("mero-bot:task", "mero-bot", false)))
+        .unwrap();
+    let subject = subject_key("issue-tracker", "repo-ctx", "issue-7");
+    app.call(|s| s.touch_subject(task.chain.clone(), subject.clone()))
+        .unwrap();
+    assert_eq!(
+        app.view(|s| s.chain(task.chain.clone())).unwrap().len(),
+        1,
+        "no row"
+    );
+    let comment = app
+        .call(|s| s.record_notification(comment_on("issue-7", "repo-ctx:a>b:0")))
+        .unwrap();
+    assert_eq!(comment.chain, task.chain);
+    // Only into a chain that exists, and only from the owner.
+    assert!(app
+        .call(|s| s.touch_subject("no-such-chain".to_owned(), subject.clone()))
+        .is_err());
+    assert!(app
+        .call(|s| s.touch_subject(task.chain.clone(), String::new()))
+        .is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s
+            .touch_subject(task.chain.clone(), subject.clone()))
         .is_err());
 }

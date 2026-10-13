@@ -696,6 +696,72 @@ impl Mergeable for Archived {
     }
 }
 
+/// What a row is about in another app, as a key: `<app>:<context>`, plus
+/// `:<id>` for one thing in it (an issue, a doc, a thread). Kept two ways: by
+/// the action's id (what it touched), and by the key (the chain that touched
+/// it last), so a notification about the same thing joins that chain. See
+/// [`subject_key`].
+#[app::mergeable(id = "hyperfeed::Subject")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Subject {
+    pub subject: String,
+    pub chain: String,
+    pub at: u64,
+}
+
+impl Mergeable for Subject {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.at;
+        lww(self, at, other, other.at);
+        Ok(())
+    }
+}
+
+/// The args that name the one thing a call is about, first match wins. A call
+/// with none of them is about its whole context (a chat, a board). mero-bot
+/// keys the agent's writes with the same list: change both or neither.
+pub const SUBJECT_ARGS: &[&str] = &["issue_id", "doc_id", "thread_id"];
+
+/// The subject key for `id` in `app`'s `context`; `""` with no context, or
+/// when the key would not fit.
+pub fn subject_key(app: &str, context: &str, id: &str) -> String {
+    if app.is_empty() || context.is_empty() {
+        return String::new();
+    }
+    let key = if id.is_empty() {
+        format!("{app}:{context}")
+    } else {
+        format!("{app}:{context}:{id}")
+    };
+    if key.len() > MAX_KEY {
+        String::new()
+    } else {
+        key
+    }
+}
+
+/// What a notification is about: the thing its reply goes to. One you cannot
+/// answer from the feed has none, and starts a chain of its own.
+fn reply_subject(app: &str, context: &str, reply_call: &str) -> String {
+    let Ok(calimero_sdk::serde_json::Value::Object(call)) =
+        calimero_sdk::serde_json::from_str::<calimero_sdk::serde_json::Value>(reply_call)
+    else {
+        return String::new();
+    };
+    let args = call.get("args").and_then(|a| a.as_object());
+    let id = SUBJECT_ARGS
+        .iter()
+        .find_map(|k| {
+            args.and_then(|a| a.get(*k))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or("");
+    subject_key(app, context, id)
+}
+
 /// When an agent last said it was running, by its name.
 #[app::mergeable(id = "hyperfeed::Presence")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -952,6 +1018,11 @@ pub struct ActionInput {
     /// omit it.
     #[serde(default)]
     pub grant: String,
+    /// What it touched in the app, as [`subject_key`] makes it (`""` for
+    /// nothing in particular). A notification about the same thing, with no
+    /// chain of its own, joins this action's chain. Older agents omit it.
+    #[serde(default)]
+    pub subject: String,
 }
 
 /// What your client saw for one notification.
@@ -1094,6 +1165,11 @@ pub struct FeedItem {
     /// Since when that session has held the chain; 0 when nobody does.
     #[serde(default)]
     pub held_since: u64,
+    // ── what it is about ──
+    /// On an action, what it touched; on a notification, what its reply goes
+    /// to; see [`subject_key`]. `""` for nothing in particular.
+    #[serde(default)]
+    pub subject: String,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1261,6 +1337,10 @@ pub struct Hyperfeed {
     /// The PRs your tasks link to, as your agent's runtime last saw them on
     /// GitHub, by `owner/name#number`. See [`prs`].
     prs: UnorderedMap<String, PrSeen>,
+    /// What each action touched, by the action's id.
+    action_subjects: UnorderedMap<String, Subject>,
+    /// The chain that last touched each subject, by its key.
+    subject_chains: UnorderedMap<String, Subject>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1365,6 +1445,8 @@ impl Hyperfeed {
             rule_proposals: UnorderedMap::new(),
             checkpoints: UnorderedMap::new(),
             prs: UnorderedMap::new(),
+            action_subjects: UnorderedMap::new(),
+            subject_chains: UnorderedMap::new(),
         }
     }
 
@@ -1628,7 +1710,32 @@ impl Hyperfeed {
             answers_superseded: false,
             held_by: String::new(),
             held_since: 0,
+            subject: String::new(),
         }
+    }
+
+    /// An action as a row, with what it touched.
+    fn action_row(&self, a: &Action) -> app::Result<FeedItem> {
+        let mut item = Self::action_item(a);
+        if let Some(s) = self.action_subjects.get(&a.id)? {
+            item.subject = s.subject.clone();
+        }
+        Ok(item)
+    }
+
+    /// The chain that last touched `subject`, if it is still in your feed: a
+    /// chain you put away is not brought back by a notification about it.
+    fn chain_for_subject(&self, subject: &str) -> app::Result<Option<String>> {
+        if subject.is_empty() {
+            return Ok(None);
+        }
+        let Some(seen) = self.subject_chains.get(subject)?.map(|s| s.chain.clone()) else {
+            return Ok(None);
+        };
+        if self.archived.get(&seen)?.is_some_and(|a| a.archived) {
+            return Ok(None);
+        }
+        Ok(Some(seen))
     }
 
     /// A notification as a row, with what a lens made of it.
@@ -1693,6 +1800,9 @@ impl Hyperfeed {
             answers_superseded: false,
             held_by: String::new(),
             held_since: 0,
+            subject: typed
+                .map(|t| reply_subject(&n.app, &n.source_context, &t.reply_call))
+                .unwrap_or_default(),
         }
     }
 
@@ -1802,6 +1912,7 @@ impl Hyperfeed {
             answers_superseded: false,
             held_by: String::new(),
             held_since: 0,
+            subject: String::new(),
         }
     }
 
@@ -1977,7 +2088,7 @@ impl Hyperfeed {
             note,
             at,
         });
-        let item = Self::action_item(&action);
+        let item = self.action_row(&action)?;
         self.actions.insert(action.id.clone(), action)?;
         app::emit!(Event::ActionChanged {
             id: &item.id,
@@ -2143,6 +2254,7 @@ impl Hyperfeed {
                 "a grant belongs on a done or failed action; a proposal waits for you",
             ));
         }
+        Self::check_len("subject", &input.subject, MAX_KEY, false)?;
 
         let now = now_ms();
         let verdict = self.verdict(&input.app, &input.category, input.writes)?;
@@ -2193,13 +2305,45 @@ impl Hyperfeed {
                 at: now,
             }],
         };
-        let item = Self::action_item(&action);
+        let mut item = Self::action_item(&action);
+        if !input.subject.is_empty() {
+            let seen = Subject {
+                subject: input.subject,
+                chain: action.chain.clone(),
+                at: now,
+            };
+            self.action_subjects
+                .insert(action.id.clone(), seen.clone())?;
+            self.subject_chains
+                .insert(seen.subject.clone(), seen.clone())?;
+            item.subject = seen.subject;
+        }
         self.actions.insert(action.id.clone(), action)?;
         app::emit!(Event::ActionRecorded {
             id: &item.id,
             status: &item.status,
         });
         Ok(item)
+    }
+
+    /// Your agent touched `subject` (see [`subject_key`]) for the task in
+    /// `chain` with a write that has no row of its own: a step of its turn on
+    /// a message of yours. A notification about it then joins `chain`, as
+    /// for an action that names it.
+    pub fn touch_subject(&mut self, chain: String, subject: String) -> app::Result<()> {
+        self.require_owner()?;
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        Self::check_len("subject", &subject, MAX_KEY, true)?;
+        if !self.chain_exists(&chain)? {
+            return Err(AppError::msg(format!("no chain {chain}")));
+        }
+        let seen = Subject {
+            subject,
+            chain,
+            at: now_ms(),
+        };
+        self.subject_chains.insert(seen.subject.clone(), seen)?;
+        Ok(())
     }
 
     /// The agent reports what happened after you approved, asked for a retry,
@@ -2618,7 +2762,7 @@ impl Hyperfeed {
             }
             action.reviewed = true;
             action.reviewed_at = Self::next_at(&action.history);
-            let item = Self::action_item(&action);
+            let item = self.action_row(&action)?;
             self.actions.insert(action.id.clone(), action)?;
             app::emit!(Event::ActionChanged {
                 id: &item.id,
@@ -2709,8 +2853,18 @@ impl Hyperfeed {
             Occurrence::Seen(existing) => return self.notification_row(&existing),
             Occurrence::New(id) => id,
         };
+        // About something a task of yours touched: it joins that task's chain.
+        let joins = if input.chain.is_empty() && !input.item_type.is_empty() {
+            self.chain_for_subject(&reply_subject(
+                &input.app,
+                &input.source_context,
+                &input.reply_call,
+            ))?
+        } else {
+            None
+        };
         let n = Notification {
-            chain: Self::chain_of(&input.chain, &id)?,
+            chain: Self::chain_of(joins.as_deref().unwrap_or(&input.chain), &id)?,
             id,
             app: input.app,
             source_context: input.source_context,
@@ -3515,11 +3669,10 @@ impl Hyperfeed {
                 .map(|(k, _)| k)
                 .collect()
         };
-        let mut all: Vec<FeedItem> = self
-            .actions
-            .entries()?
-            .map(|(_, a)| Self::action_item(&a))
-            .collect();
+        let mut all: Vec<FeedItem> = Vec::new();
+        for (_, a) in self.actions.entries()? {
+            all.push(self.action_row(&a)?);
+        }
         for (_, n) in self.notifications.entries()? {
             if !muted.contains(&n.app) {
                 all.push(self.notification_row(&n)?);
@@ -3693,7 +3846,7 @@ impl Hyperfeed {
     /// One row, by id, whichever kind it is.
     pub fn item(&self, id: String) -> app::Result<Option<FeedItem>> {
         if let Some(a) = self.actions.get(&id)? {
-            return Ok(Some(Self::action_item(&a)));
+            return Ok(Some(self.action_row(&a)?));
         }
         if let Some(n) = self.notifications.get(&id)? {
             return Ok(Some(self.notification_row(&n)?));

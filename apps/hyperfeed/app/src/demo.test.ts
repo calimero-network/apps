@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DemoBackend, NO_ASK } from "./demo";
+import { replySubject, subjectKey } from "./subject";
 import type { ActionInput, Ask, NotificationInput } from "./generated/HyperfeedClient";
 
 // The demo stands in for the contract, so it is held to the cases
@@ -28,6 +29,7 @@ function action(app: string, outcome: string, extra: Partial<ActionInput> = {}):
     chain: "",
     ask: NO_ASK,
     grant: "",
+    subject: "",
     ...extra,
   };
 }
@@ -348,5 +350,40 @@ describe("stale questions", () => {
     const chain = await b.chain(q.chain);
     expect(chain.find((i) => i.id === second.id)).toMatchObject({ status: "asked", needs_you: true });
     await expect(b.answerAsk(first.id, q.chain, "Keep")).rejects.toThrow(/already answered/);
+  });
+});
+
+describe("one thread per task", () => {
+  const comment = (issue: string, key: string): NotificationInput => ({
+    key, app: "issue-tracker", source_context: "repo", source_label: "", from: "Xabi", title: "Commented on your issue",
+    body: "", event: "CommentAdded", needs_you: false, chain: "", ask: NO_ASK,
+    item_type: "message", fields: "{}", reply_call: JSON.stringify({ method: "add_comment", args: { issue_id: issue, body: "=answer" } }),
+  });
+  const task = (b: DemoBackend, key: string) =>
+    b.recordNotification({
+      key, app: "mero-bot", source_context: "", source_label: "", from: "", title: "Task", body: "", event: "Prompt",
+      needs_you: false, chain: "", ask: NO_ASK, item_type: "", fields: "", reply_call: "",
+    });
+
+  it("joins a comment to the chain whose write touched the same issue, as the contract does", async () => {
+    const b = fresh();
+    await b.setPolicy("issue-tracker", "act", "feed");
+    const t = await task(b, "mero-bot:t");
+    await b.recordAction(action("issue-tracker", "done", { source_context: "repo", chain: t.chain, subject: subjectKey("issue-tracker", "repo", "issue-7") }));
+    const joined = await b.recordNotification(comment("issue-7", "repo:a>b:0"));
+    expect(joined).toMatchObject({ chain: t.chain, subject: "issue-tracker:repo:issue-7" });
+    const other = await b.recordNotification(comment("issue-8", "repo:b>c:0"));
+    expect(other.chain).toBe(other.id);
+    await b.archive([t.chain], 0);
+    const later = await b.recordNotification(comment("issue-7", "repo:c>d:0"));
+    expect(later.chain).toBe(later.id);
+  });
+
+  it("keys subjects as the contract does", () => {
+    expect(subjectKey("chat", "ctx", "")).toBe("chat:ctx");
+    expect(subjectKey("chat", "", "x")).toBe("");
+    expect(replySubject("issue-tracker", "ctx", JSON.stringify({ method: "add_comment", args: { issue_id: "i-1" } }))).toBe("issue-tracker:ctx:i-1");
+    expect(replySubject("chat", "ctx", JSON.stringify({ method: "send_message", args: { message: "=answer" } }))).toBe("chat:ctx");
+    expect(replySubject("chat", "ctx", "")).toBe("");
   });
 });
