@@ -86,31 +86,64 @@ pub enum Event<'a> {
     },
 }
 
-// Placeholders filled by Tasks 2–5; they exist so the state compiles now.
+// Placeholders filled by Tasks 3–5; they exist so the state compiles now.
+pub const STATUS_ENROLLED: &str = "enrolled";
+pub const STATUS_ACTIVE: &str = "active";
+pub const STATUS_SUSPENDED: &str = "suspended";
+pub const STATUS_LEFT: &str = "left";
+pub const STATUSES: &[&str] = &[
+    STATUS_ENROLLED,
+    STATUS_ACTIVE,
+    STATUS_SUSPENDED,
+    STATUS_LEFT,
+];
+
 #[app::mergeable(id = "mero_org::Member")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
 pub struct Member {
     pub account: String,
+    pub status: LwwRegister<String>,
+    pub joined_at: u64,
 }
 impl Mergeable for Member {
-    fn merge(&mut self, _: &Self) -> Result<(), MergeError> {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        self.status.merge(&other.status);
         Ok(())
     }
 }
 
 #[app::mergeable(id = "mero_org::Profile")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
 pub struct Profile {
-    pub display_name: String,
+    pub display_name: LwwRegister<String>,
+    /// Frozen at claim.
+    pub handle: String,
+    /// Hex blob id or "".
+    pub avatar: LwwRegister<String>,
+    pub updated_at: LwwRegister<u64>,
 }
 impl Mergeable for Profile {
-    fn merge(&mut self, _: &Self) -> Result<(), MergeError> {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        self.display_name.merge(&other.display_name);
+        self.avatar.merge(&other.avatar);
+        self.updated_at.merge(&other.updated_at);
         Ok(())
     }
+}
+
+#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct MemberView {
+    pub account: String,
+    pub status: String,
+    pub display_name: String,
+    pub handle: String,
+    pub avatar: String,
+    pub joined_at: u64,
+    pub groups: Vec<String>,
+    pub apps: Vec<String>,
 }
 
 #[app::mergeable(id = "mero_org::Group")]
@@ -212,7 +245,6 @@ impl Org {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    #[allow(dead_code)] // used by Tasks 2-5
     fn caller() -> String {
         AccountId::from(env::account_id()).to_string()
     }
@@ -235,7 +267,6 @@ impl Org {
         hex::encode(buffer)
     }
 
-    #[allow(dead_code)] // used by Tasks 2-5
     fn now() -> u64 {
         env::time_now()
     }
@@ -311,6 +342,158 @@ impl Org {
             .revoke_admin(&who)
             .map_err(|e| AppError::msg(format!("revoke_admin: {e}")))?;
         app::emit!(Event::SettingsChanged);
+        Ok(())
+    }
+
+    // ── members and profiles ─────────────────────────────────────────────────
+
+    fn member_view(&self, m: &Member) -> app::Result<MemberView> {
+        // Key-only reads on an AuthoredMap see the caller's own entry; name the owner.
+        let owner = Self::parse_account("account", &m.account)?;
+        let p = self.profiles.get_by(&owner, &m.account)?;
+        Ok(MemberView {
+            account: m.account.clone(),
+            status: m.status.get().clone(),
+            display_name: p
+                .as_ref()
+                .map(|p| p.display_name.get().clone())
+                .unwrap_or_default(),
+            handle: p.as_ref().map(|p| p.handle.clone()).unwrap_or_default(),
+            avatar: p
+                .as_ref()
+                .map(|p| p.avatar.get().clone())
+                .unwrap_or_default(),
+            joined_at: m.joined_at,
+            groups: self.groups_of(&m.account)?,
+            apps: self.apps_of(&m.account)?,
+        })
+    }
+
+    /// Filled in Task 3; returns an empty list until then.
+    fn groups_of(&self, _account: &str) -> app::Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+
+    /// Filled in Task 4; returns an empty list until then.
+    fn apps_of(&self, _account: &str) -> app::Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+
+    /// The newcomer's first write. Reaching this method at all proves namespace
+    /// membership, which is the only credential the org relies on.
+    pub fn claim_membership(
+        &mut self,
+        display_name: String,
+        handle: String,
+    ) -> app::Result<MemberView> {
+        Self::check_len("display_name", &display_name, MAX_NAME, true)?;
+        Self::check_len("handle", &handle, MAX_NAME, true)?;
+        let account = Self::caller();
+        if self.members.contains(&account)? {
+            return Err(AppError::msg("this account is already a member"));
+        }
+        let member = Member {
+            account: account.clone(),
+            status: LwwRegister::new(STATUS_ENROLLED.to_owned()),
+            joined_at: Self::now(),
+        };
+        self.members.insert(account.clone(), member.clone())?;
+        self.profiles.insert(
+            account.clone(),
+            Profile {
+                display_name: LwwRegister::new(display_name),
+                handle,
+                avatar: LwwRegister::new(String::new()),
+                updated_at: LwwRegister::new(Self::now()),
+            },
+        )?;
+        self.record("enrolled", &account, "", "")?;
+        app::emit!(Event::MemberChanged {
+            account: &account,
+            status: STATUS_ENROLLED
+        });
+        self.member_view(&member)
+    }
+
+    pub fn set_member_status(&mut self, account: String, status: String) -> app::Result<()> {
+        self.require_admin()?;
+        if !STATUSES.contains(&status.as_str()) {
+            return Err(AppError::msg(format!("unknown status {status:?}")));
+        }
+        let mut m = self
+            .members
+            .get(&account)?
+            .map(|v| v.clone())
+            .ok_or_else(|| AppError::msg(format!("no member {account}")))?;
+        m.status.set(status.clone());
+        self.members.insert(account.clone(), m)?;
+        self.record("status", &account, &status, "")?;
+        app::emit!(Event::MemberChanged {
+            account: &account,
+            status: &status
+        });
+        Ok(())
+    }
+
+    pub fn update_profile(&mut self, display_name: String, avatar: String) -> app::Result<()> {
+        let account = Self::caller();
+        self.update_profile_of(account, display_name, avatar)
+    }
+
+    /// `update` on an AuthoredMap re-signs as the caller and storage refuses
+    /// anyone but the owner; the explicit check gives a readable error first.
+    pub fn update_profile_of(
+        &mut self,
+        account: String,
+        display_name: String,
+        avatar: String,
+    ) -> app::Result<()> {
+        if account != Self::caller() {
+            return Err(AppError::msg("you can only edit your own profile"));
+        }
+        Self::check_len("display_name", &display_name, MAX_NAME, true)?;
+        Self::check_len("avatar", &avatar, 64, false)?;
+        let mut p = self
+            .profiles
+            .get(&account)?
+            .ok_or_else(|| AppError::msg("no profile yet"))?;
+        p.display_name.set(display_name);
+        p.avatar.set(avatar);
+        p.updated_at.set(Self::now());
+        self.profiles
+            .update(&account, p)
+            .map_err(|e| AppError::msg(format!("profile update refused: {e}")))?;
+        Ok(())
+    }
+
+    pub fn members(&self) -> app::Result<Vec<MemberView>> {
+        let mut out = Vec::new();
+        for (_, m) in self.members.entries()? {
+            out.push(self.member_view(&m)?);
+        }
+        out.sort_by(|a, b| {
+            a.display_name
+                .cmp(&b.display_name)
+                .then_with(|| a.account.cmp(&b.account))
+        });
+        Ok(out)
+    }
+
+    pub fn member(&self, account: String) -> app::Result<Option<MemberView>> {
+        match self.members.get(&account)? {
+            Some(m) => Ok(Some(self.member_view(&m)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Activity is implemented in Task 5; until then a no-op so earlier tasks compile.
+    fn record(
+        &mut self,
+        _verb: &str,
+        _subject: &str,
+        _object: &str,
+        _note: &str,
+    ) -> app::Result<()> {
         Ok(())
     }
 }
