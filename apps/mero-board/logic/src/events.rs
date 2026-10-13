@@ -1,28 +1,59 @@
-//! Events emitted by the issue-tracker service. Borrowed `&'a str` fields keep
-//! emission allocation-free (the SDK serialises them before the borrow ends).
+//! Events emitted by the board service. Borrowed fields keep emission
+//! allocation-free.
 
 #[calimero_sdk::app::event]
 pub enum Event<'a> {
-    /// A new issue was created on the board.
-    IssueCreated { id: &'a str, created_by: &'a str },
-    /// One of an issue's text sections changed (summary/impact/repro/resolution).
-    IssueEdited { id: &'a str },
-    /// An issue was deleted, along with its labels and the deleter's own comments.
-    IssueDeleted { id: &'a str },
-    /// An issue's status changed (moved columns).
-    IssueStatusChanged { id: &'a str, status: &'a str },
-    /// An issue's priority changed.
-    IssuePriorityChanged { id: &'a str, priority: &'a str },
-    /// An issue's assignee changed.
-    IssueAssigneeChanged { id: &'a str },
-    /// A label was added to or removed from an issue.
-    IssueLabelsChanged { id: &'a str },
-    /// A comment was posted to an issue's thread.
-    CommentAdded { id: &'a str, issue_id: &'a str },
-    /// A comment was edited by its author.
-    CommentEdited { id: &'a str },
-    /// A comment was deleted by its author.
-    CommentDeleted { id: &'a str },
-    /// The repository URL this context tracks was set or changed.
-    RepoUrlChanged { url: &'a str },
+    BoardCreated {
+        id: &'a str,
+        created_by: &'a str,
+    },
+    BoardChanged {
+        id: &'a str,
+    },
+    BoardDeleted {
+        id: &'a str,
+    },
+    ListCreated {
+        id: &'a str,
+        board_id: &'a str,
+    },
+    ListChanged {
+        id: &'a str,
+        board_id: &'a str,
+    },
+    ListDeleted {
+        id: &'a str,
+        board_id: &'a str,
+    },
+    CardCreated {
+        id: &'a str,
+        board_id: &'a str,
+        created_by: &'a str,
+    },
+    CardMoved {
+        id: &'a str,
+        board_id: &'a str,
+        list_id: &'a str,
+    },
+    CardChanged {
+        id: &'a str,
+        board_id: &'a str,
+    },
+    CardDeleted {
+        id: &'a str,
+        board_id: &'a str,
+    },
+    ChecklistChanged {
+        card_id: &'a str,
+    },
+    CommentAdded {
+        id: &'a str,
+        card_id: &'a str,
+    },
+    CommentEdited {
+        id: &'a str,
+    },
+    CommentDeleted {
+        id: &'a str,
+    },
 }

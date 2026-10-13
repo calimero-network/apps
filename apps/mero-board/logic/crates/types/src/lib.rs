@@ -78,6 +78,22 @@ pub fn validate_label(field: &str, label: &str) -> Result<(), Error> {
     Ok(())
 }
 
+/// Maximum length of a card label.
+pub const MAX_TAG_LEN: usize = 32;
+
+/// Validate a card label: non-empty after trim, at most `MAX_TAG_LEN` chars.
+pub fn validate_tag(label: &str) -> Result<(), Error> {
+    if label.trim().is_empty() {
+        return Err(Error::Invalid("label must not be empty".into()));
+    }
+    if label.chars().count() > MAX_TAG_LEN {
+        return Err(Error::Invalid(format!(
+            "label must be at most {MAX_TAG_LEN} characters"
+        )));
+    }
+    Ok(())
+}
+
 /// Generate an id from a prefix, timestamp, and 4 random bytes.
 /// Format: `{prefix}-{timestamp}-{hex}`.
 pub fn generate_id(prefix: &str, timestamp: u64, nonce: &[u8; 4]) -> String {
@@ -143,5 +159,12 @@ mod tests {
     fn generate_id_has_expected_shape() {
         let id = generate_id("item", 1700000000000, &[0xde, 0xad, 0xbe, 0xef]);
         assert_eq!(id, "item-1700000000000-deadbeef");
+    }
+
+    #[test]
+    fn validate_tag_bounds() {
+        assert!(validate_tag("bug").is_ok());
+        assert!(validate_tag(" ").is_err());
+        assert!(validate_tag(&"a".repeat(MAX_TAG_LEN + 1)).is_err());
     }
 }
