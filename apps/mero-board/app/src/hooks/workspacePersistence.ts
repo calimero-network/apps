@@ -9,6 +9,9 @@
 const LEGACY_ACTIVE_NS_KEY = 'mero-board:activeNs';
 const ACTIVE_NS_KEY = 'mero-board:activeNs:v2';
 const activeFolderKey = (nsId: string) => `mero-board:activeFolder:v2:${nsId}`;
+// The SSO callback context that was current when the folder pick was made
+// (see hooks/activeFolder). Same prefix, so the clears below drop it too.
+const folderCallbackKey = (nsId: string) => `mero-board:activeFolder:callback:v2:${nsId}`;
 
 function readLs(key: string): string | null {
   try {
@@ -42,6 +45,13 @@ export function readActiveFolder(nsId: string): string | null {
 }
 export function writeActiveFolder(nsId: string, id: string | null): void {
   writeLs(activeFolderKey(nsId), id);
+}
+
+export function readFolderCallback(nsId: string): string | null {
+  return readLs(folderCallbackKey(nsId));
+}
+export function writeFolderCallback(nsId: string, id: string | null): void {
+  writeLs(folderCallbackKey(nsId), id);
 }
 
 export function clearPersistedWorkspace(): void {

@@ -750,6 +750,8 @@ export async function dragCard(page: Page, cardTitle: string, toListName: string
   await page.mouse.down();
   await page.mouse.move(x0 + 12, y0 + 12, { steps: 6 });
   await page.mouse.move(to.x + to.width / 2, to.y + Math.min(60, to.height / 2), { steps: 20 });
+  // A last few px inside the column: dnd-kit resolves the drop target on pointer MOVE, so the
+  // pointer has to move once more over the target before mouse.up or the drop lands on the source.
   await page.mouse.move(to.x + to.width / 2, to.y + Math.min(64, to.height / 2), { steps: 2 });
   await page.mouse.up();
   await expect(target.getByTestId('item-card').filter({ hasText: cardTitle })).toBeVisible({ timeout: 15_000 });

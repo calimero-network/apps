@@ -40,6 +40,7 @@ import { redeemInviteCode } from '../utils/redeemInvite';
 import { createWorkspaceContext, foundWorkspace, publishContextName } from '../utils/workspaceOps';
 import { useApplicationId } from './useApplicationId';
 import { decideActiveNs, useAnswered } from './activeNamespace';
+import { decideCallbackFolder } from './activeFolder';
 import { useMemberRoles, type UseMemberRolesReturn } from './useMemberRoles';
 import { buildAliasMap } from './useAliases';
 import {
@@ -48,6 +49,8 @@ import {
   dropLegacyActiveNs,
   readActiveFolder,
   writeActiveFolder,
+  readFolderCallback,
+  writeFolderCallback,
   clearPersistedWorkspace,
 } from './workspacePersistence';
 import { markNamespaceJustJoined, useJoinSync } from '@calimero-apps/join-sync';
@@ -319,19 +322,26 @@ export function useWorkspace(): UseWorkspaceReturn {
   // Prefer the SSO callback context; otherwise auto-select the persisted folder
   // if it still exists, else the first folder, else none (add-folder empty state).
   useEffect(() => {
-    // The callback context is where an SSO session LANDS, not a pin: once the
-    // user picks another folder (or adds one, which selects it), that choice
-    // wins, and it is persisted so a reload keeps it instead of snapping back to
-    // the callback folder under a board URL that belongs to the chosen one.
+    // SSO / desktop callback: see hooks/activeFolder for the precedence (a
+    // callback on this load beats an older pick; a pick made after it, in the
+    // same session and across a reload, beats the callback).
     if (callbackContextId && !userSelectedFolder.current) {
-      const chosen = activeNs ? readActiveFolder(activeNs) : null;
-      if (chosen && chosen !== callbackContextId && folders.some((f) => f.contextId === chosen)) {
-        userSelectedFolder.current = true;
-        setActiveFolder(chosen);
+      const decision = decideCallbackFolder({
+        callbackContextId,
+        nsKnown: !!activeNs,
+        pick: activeNs ? readActiveFolder(activeNs) : null,
+        pickCallback: activeNs ? readFolderCallback(activeNs) : null,
+        folderIds: folders.map((f) => f.contextId),
+      });
+      if (decision) {
+        if (decision.userPick) userSelectedFolder.current = true;
+        if (decision.persist && activeNs) {
+          writeActiveFolder(activeNs, callbackContextId);
+          writeFolderCallback(activeNs, callbackContextId);
+        }
+        setActiveFolder(decision.folder);
         return;
       }
-      setActiveFolder(callbackContextId);
-      return;
     }
     if (!activeNs) { setActiveFolder(null); return; }
     if (userSelectedFolder.current && activeFolder && folders.some((f) => f.contextId === activeFolder)) {
@@ -349,8 +359,11 @@ export function useWorkspace(): UseWorkspaceReturn {
   const selectFolder = useCallback((contextId: string) => {
     userSelectedFolder.current = true;
     setActiveFolder(contextId);
-    if (activeNs) writeActiveFolder(activeNs, contextId);
-  }, [activeNs]);
+    if (activeNs) {
+      writeActiveFolder(activeNs, contextId);
+      writeFolderCallback(activeNs, callbackContextId ?? null);
+    }
+  }, [activeNs, callbackContextId]);
 
   // --- Executor identity for the active folder context (for RPC) ---
   const [executorPublicKey, setExecutorPublicKey] = useState<string | null>(
