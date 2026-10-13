@@ -9,6 +9,8 @@ export type Workspace = { contextId: string | null; executorPublicKey: string | 
 export interface UseBoardsReturn extends Omit<LiveRead<BoardView[]>, 'data' | 'patch'> {
   boards: BoardView[];
   ready: boolean;
+  /** True once the current read (including the archived filter) has returned data. */
+  loaded: boolean;
   createBoard: (name: string) => Promise<string | null>;
   renameBoard: (boardId: string, name: string) => Promise<void>;
   archiveBoard: (boardId: string, archived: boolean) => Promise<void>;
@@ -43,6 +45,7 @@ export function useBoards(ws: Workspace, includeArchived = false): UseBoardsRetu
     warmingUp: live.warmingUp,
     refresh: live.refresh,
     ready: client !== null,
+    loaded: live.data !== null,
     createBoard,
     renameBoard: useCallback((board_id: string, name: string) => after(client!.renameBoard({ board_id, name })), [client, after]),
     archiveBoard: useCallback((board_id: string, archived: boolean) => after(client!.setBoardArchived({ board_id, archived })), [client, after]),

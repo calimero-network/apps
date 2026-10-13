@@ -11,10 +11,13 @@ interface Props {
   onCancel?: () => void;
   autoFocus?: boolean;
   initial?: string;
+  /** Override the derived `${testId}-input` / `${testId}-submit` ids. */
+  inputTestId?: string;
+  submitTestId?: string;
 }
 
 /** A one-field form: Enter submits, Escape cancels, errors show inline. */
-export default function InlineForm({ placeholder, submitLabel, testId, onSubmit, onCancel, autoFocus = true, initial = '' }: Props): React.ReactElement {
+export default function InlineForm({ placeholder, submitLabel, testId, onSubmit, onCancel, autoFocus = true, initial = '', inputTestId, submitTestId }: Props): React.ReactElement {
   const [value, setValue] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +40,7 @@ export default function InlineForm({ placeholder, submitLabel, testId, onSubmit,
   return (
     <Form onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <input
-        data-testid={`${testId}-input`}
+        data-testid={inputTestId ?? `${testId}-input`}
         value={value}
         placeholder={placeholder}
         autoFocus={autoFocus}
@@ -45,7 +48,7 @@ export default function InlineForm({ placeholder, submitLabel, testId, onSubmit,
         onKeyDown={(e) => { if (e.key === 'Escape') onCancel?.(); }}
       />
       <div className="row">
-        <button type="submit" className="primary" data-testid={`${testId}-submit`} disabled={busy || !value.trim()}>{submitLabel}</button>
+        <button type="submit" className="primary" data-testid={submitTestId ?? `${testId}-submit`} disabled={busy || !value.trim()}>{submitLabel}</button>
         {onCancel && <button type="button" className="ghost" onClick={onCancel}>Cancel</button>}
       </div>
       {error && <p className="err" data-testid={`${testId}-error`}>{error}</p>}

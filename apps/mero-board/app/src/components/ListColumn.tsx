@@ -7,6 +7,7 @@ import { tokens as t } from '../theme';
 import CardTile from './CardTile';
 import InlineForm from './InlineForm';
 import type { UseAliasesReturn } from '../hooks/useAliases';
+import { describeError } from '../utils/errors';
 
 interface Props {
   list: ListView;
@@ -37,7 +38,7 @@ export default function ListColumn({ list, cards, aliases, onOpenCard, onCreateC
             <details className="menu" data-testid="list-menu">
               <summary aria-label="List actions">…</summary>
               <button type="button" data-testid="list-rename" onClick={() => setRenaming(true)}>Rename</button>
-              <button type="button" data-testid="list-delete" onClick={() => { setError(null); onDelete().catch((e) => setError(String(e?.message ?? e))); }}>Delete list</button>
+              <button type="button" data-testid="list-delete" onClick={() => { setError(null); onDelete().catch((e) => setError(describeError(e))); }}>Delete list</button>
             </details>
           </>
         )}

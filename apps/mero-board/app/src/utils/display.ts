@@ -68,3 +68,16 @@ export function formatDate(value: number): string {
     month: 'short', day: 'numeric', year: 'numeric',
   });
 }
+
+/** Epoch millis -> `YYYY-MM-DD` for an `<input type="date">` (UTC day). Empty for none. */
+export function toDateInput(ms: number | null): string {
+  return ms === null ? '' : new Date(ms).toISOString().slice(0, 10);
+}
+
+/** `YYYY-MM-DD` from a date input -> epoch millis at noon UTC (so the local day
+ *  rendering is the same day in every timezone within ±12h). Null when empty. */
+export function fromDateInput(v: string): number | null {
+  if (!v) return null;
+  const ms = Date.parse(`${v}T12:00:00Z`);
+  return Number.isNaN(ms) ? null : ms;
+}

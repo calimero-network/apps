@@ -21,7 +21,11 @@ export default function CardTile({ card, aliases, onOpen }: Props): React.ReactE
   const style = { transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   return (
     <Tile ref={setNodeRef} style={style} {...attributes} {...listeners}
-      data-testid="item-card" data-card-id={card.id} onClick={onOpen}>
+      data-testid="item-card" data-card-id={card.id} onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); }
+      }}>
       <CardFace card={card} aliases={aliases} testIds />
     </Tile>
   );

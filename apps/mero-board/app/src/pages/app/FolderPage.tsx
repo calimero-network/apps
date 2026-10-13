@@ -44,7 +44,7 @@ export default function FolderPage(): React.ReactElement {
           <button className="new add" data-testid="board-create-btn" onClick={() => setCreating(true)} disabled={!data.ready}>+ New board</button>
         )}
       </Grid>
-      {!data.boards.length && !creating && !data.warmingUp && (
+      {data.loaded && !data.boards.length && !creating && !data.warmingUp && (
         <p className="muted" data-testid="folder-empty">No boards yet. Create one to start.</p>
       )}
     </Wrap>

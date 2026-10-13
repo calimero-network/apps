@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { avatarColor, labelColor, initial, truncateKey, relativeTime, formatDate } from './display';
+import { avatarColor, labelColor, initial, truncateKey, relativeTime, formatDate, toDateInput, fromDateInput } from './display';
 
 describe('display helpers', () => {
   it('avatarColor is deterministic and a hex swatch', () => {
@@ -37,5 +37,14 @@ describe('display helpers', () => {
   it('formatDate handles empty', () => {
     expect(formatDate(0)).toBe('-');
     expect(formatDate(1_700_000_000_000)).toMatch(/\d{4}/);
+  });
+
+  it('toDateInput / fromDateInput round-trip a day', () => {
+    expect(toDateInput(null)).toBe('');
+    expect(fromDateInput('')).toBeNull();
+    expect(fromDateInput('not-a-date')).toBeNull();
+    const ms = fromDateInput('2026-10-13');
+    expect(ms).toBe(Date.UTC(2026, 9, 13, 12));
+    expect(toDateInput(ms)).toBe('2026-10-13');
   });
 });
