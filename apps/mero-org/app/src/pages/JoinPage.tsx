@@ -14,12 +14,18 @@ export interface JoinDeps {
 }
 export type JoinOutcome = { ok: true; contextId: string; account: string } | { ok: false; final: boolean; reason: string };
 
+/** How long a claim waits for the org context's state to arrive after the join. */
+const STATE_WAIT_MS = 30_000;
+const STATE_WAIT_STEP_MS = 1_500;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 /**
  * Steps 3–5 of the join flow, transport-free so they can be tested.
  * `alreadyJoined` skips the namespace join on a retry after it succeeded; `onJoined` reports that success
  * (before the context lookup or the claim can fail) so the caller can pass it on the next attempt.
  */
-export async function runJoin(link: InviteLink, profile: { displayName: string; handle: string }, deps: JoinDeps, opts: { alreadyJoined?: boolean; onJoined?: () => void } = {}): Promise<JoinOutcome> {
+export async function runJoin(link: InviteLink, profile: { displayName: string; handle: string }, deps: JoinDeps, opts: { alreadyJoined?: boolean; onJoined?: () => void; sleep?: (ms: number) => Promise<void> } = {}): Promise<JoinOutcome> {
+  const wait = opts.sleep ?? sleep;
   if (!opts.alreadyJoined) {
     const joined = await deps.join({ namespaceId: link.namespaceId, invitation: link.invitation });
     if (!joined.ok) return { ok: false, final: joined.final, reason: joined.reason };
@@ -29,14 +35,22 @@ export async function runJoin(link: InviteLink, profile: { displayName: string; 
   const first = contexts[0];
   // Through a relay the join can take a moment to become visible to the caller-scoped listing: retryable.
   if (!first) return { ok: false, final: false, reason: "The org has no context yet; wait a moment and retry, or ask the admin." };
-  try {
-    const member = await deps.claim(first.contextId, profile.displayName, profile.handle);
-    return { ok: true, contextId: first.contextId, account: member.account };
-  } catch (e) {
-    const reason = e instanceof Error ? e.message : String(e);
-    // A second device of someone already in: the namespace join succeeded and the row exists.
-    if (/already a member/.test(reason)) return { ok: true, contextId: first.contextId, account: "" };
-    return { ok: false, final: /display_name|handle/.test(reason), reason };
+  // The context is listed as soon as the join lands, but its state arrives by sync a moment later;
+  // until it does the contract reads as uninitialized, so the claim waits for it.
+  for (let waited = 0; ; waited += STATE_WAIT_STEP_MS) {
+    try {
+      const member = await deps.claim(first.contextId, profile.displayName, profile.handle);
+      return { ok: true, contextId: first.contextId, account: member.account };
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      // A second device of someone already in: the namespace join succeeded and the row exists.
+      if (/already a member/.test(reason)) return { ok: true, contextId: first.contextId, account: "" };
+      if (/uninitiali[sz]ed/i.test(reason)) {
+        if (waited < STATE_WAIT_MS) { await wait(STATE_WAIT_STEP_MS); continue; }
+        return { ok: false, final: false, reason: "The org has not reached this node yet; wait a moment and retry." };
+      }
+      return { ok: false, final: /display_name|handle/.test(reason), reason };
+    }
   }
 }
 

@@ -25,6 +25,24 @@ describe("runJoin", () => {
     expect(out).toEqual({ ok: false, final: false, reason: "The org has no context yet; wait a moment and retry, or ask the admin." });
   });
 
+  it("waits for the org context's state before claiming, then gives up retryably", async () => {
+    const join = vi.fn(async () => ({ ok: true as const }));
+    const listGroupContexts = vi.fn(async () => [{ contextId: "ctx1" }]);
+    const sleep = vi.fn(async () => {});
+    let calls = 0;
+    const claim = vi.fn(async () => {
+      calls += 1;
+      if (calls < 3) throw new Error("Uninitialized");
+      return { account: "a".repeat(64), status: "enrolled" };
+    });
+    expect(await runJoin(link, profile, { join, listGroupContexts, claim }, { sleep })).toEqual({ ok: true, contextId: "ctx1", account: "a".repeat(64) });
+    expect(sleep).toHaveBeenCalledTimes(2);
+
+    const never = vi.fn(async () => { throw new Error("Uninitialized"); });
+    const out = await runJoin(link, profile, { join, listGroupContexts, claim: never }, { sleep });
+    expect(out).toEqual({ ok: false, final: false, reason: "The org has not reached this node yet; wait a moment and retry." });
+  });
+
   it("a retry after the join succeeded does not join again", async () => {
     const join = vi.fn(async () => ({ ok: true as const }));
     const claim = vi.fn(async () => ({ account: "a".repeat(64), status: "enrolled" }));
