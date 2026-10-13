@@ -3,6 +3,8 @@ import type {
   AppCount,
   Ask,
   Attachment,
+  CheckpointInput,
+  CheckpointView,
   FeedItem,
   FeedPage,
   LensView,
@@ -17,6 +19,8 @@ import type {
 } from "./generated/HyperfeedClient";
 import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter, type NotificationMode } from "./backend";
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
+import { moveWatch, newWatch } from "./watches";
+import type { WatchInput, WatchView } from "./generated/HyperfeedClient";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 
@@ -605,6 +609,43 @@ export class DemoBackend implements FeedBackend {
     return true;
   }
 
+  /** Where each task stands, as `set_checkpoint` keeps it: one per chain, the latest replacing the last. */
+  private checkpoints = new Map<string, CheckpointView>();
+
+  /** The agent writes where a task stands, as `set_checkpoint` takes it (same limits). */
+  setCheckpoint(chain: string, input: CheckpointInput): CheckpointView {
+    if (!this.chainExists(chain)) throw new Error(`no chain ${chain}`);
+    const done = input.done.trim();
+    const next = input.next.trim();
+    if (!done && !next) throw new Error("a checkpoint says what is done or what is next");
+    if (done.length > 1_000 || next.length > 1_000) throw new Error("done and next are 1000 bytes at most");
+    const list = (field: string, values: string[]) => {
+      const kept = values.map((v) => v.trim()).filter(Boolean);
+      if (kept.length > 10 || kept.some((v) => v.length > 300 || /[\r\n]/.test(v))) throw new Error(`${field}: up to 10 one-line entries of 300 bytes`);
+      return kept;
+    };
+    const prior = this.checkpoints.get(chain);
+    const view: CheckpointView = {
+      chain,
+      done,
+      next,
+      branches: list("branches", input.branches),
+      worktrees: list("worktrees", input.worktrees),
+      prs: list("prs", input.prs),
+      questions: list("questions", input.questions),
+      author: input.author.trim().slice(0, 120),
+      updated_at: Math.max(this.now(), (prior?.updated_at ?? 0) + 1),
+    };
+    this.checkpoints.set(chain, view);
+    this.changed();
+    return { ...view };
+  }
+
+  async checkpoint(chain: string): Promise<CheckpointView | null> {
+    const c = this.checkpoints.get(chain);
+    return c ? { ...c, branches: [...c.branches], worktrees: [...c.worktrees], prs: [...c.prs], questions: [...c.questions] } : null;
+  }
+
   private markHeld(chain: string, agent: string, since: number) {
     for (const i of this.items.values()) {
       if (i.chain === chain && i.kind === "message") {
@@ -613,6 +654,36 @@ export class DemoBackend implements FeedBackend {
       }
     }
     this.changed();
+  }
+
+  /** Watches ("when X, do Y"), as `add_watch` keeps them; see watches.ts for the rules. */
+  private watchRows = new Map<string, WatchView>();
+
+  /** The agent sets a watch, as `add_watch` takes it. */
+  addWatch(input: WatchInput): WatchView {
+    if (!this.chainExists(input.chain)) throw new Error(`no chain ${input.chain}`);
+    const w = newWatch(input, `watch-${this.nextId++}`, this.now());
+    this.watchRows.set(w.id, w);
+    this.changed();
+    return { ...w };
+  }
+
+  async watches(chain: string): Promise<WatchView[]> {
+    return [...this.watchRows.values()].filter((w) => !chain || w.chain === chain).map((w) => ({ ...w }));
+  }
+
+  async cancelWatch(id: string): Promise<WatchView> {
+    return this.moveWatch(id, "cancelled");
+  }
+
+  /** The runtime fires a watch, then says how it went, as `fire_watch` and `finish_watch` do. */
+  moveWatch(id: string, to: "cancelled" | "firing" | "done" | "failed", note = ""): WatchView {
+    const w = this.watchRows.get(id);
+    if (!w) throw new Error(`no watch ${id}`);
+    const moved = moveWatch(w, to, this.now(), note);
+    this.watchRows.set(id, moved);
+    this.changed();
+    return { ...moved };
   }
 
   /** The agent's side of a conversation, as `agent_ack` would take it. */

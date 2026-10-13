@@ -3024,3 +3024,76 @@ body {
 .chat-rules {
   margin: 0 12px 8px;
 }
+
+/* Where a task stands, as your agent last wrote it: behind a disclosure on the task. */
+.checkpoint {
+  border-top: 1px solid var(--line);
+  padding: 8px 14px 10px;
+  font-size: 13px;
+}
+
+.checkpoint > summary {
+  cursor: pointer;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.checkpoint-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.checkpoint-section dt {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.checkpoint-section dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.checkpoint-by {
+  margin: 8px 0 0;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+/* Watches ("merge #434 when green") on a task and in its chat: where each stands, with Cancel. */
+.watches {
+  list-style: none;
+  margin: 0 12px 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task .watches {
+  margin: 0;
+  padding: 6px 14px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.watch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 13px;
+}
+
+.watch-what {
+  overflow-wrap: anywhere;
+}
+
+.watch-seen {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.watch-cancel {
+  margin-left: auto;
+}

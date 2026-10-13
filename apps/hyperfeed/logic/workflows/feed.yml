@@ -1247,3 +1247,175 @@ steps:
     statements:
       - "is_set({{add_rule_error}})"
       - "is_set({{remove_rule_error}})"
+
+  # ── Checkpoints: where a task stands, for the next session ──────────────
+  - name: The agent writes a checkpoint on the mention's chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_checkpoint
+    args:
+      chain: "{{mention_id}}"
+      input: { done: "Drafted the reply", next: "Send it once approved", branches: [], worktrees: [], prs: [], questions: ["Formal or casual?"], author: "mero-bot@studio" }
+    outputs:
+      checkpoint: result
+
+  - name: A fresh session reads the latest checkpoint
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: checkpoint
+    args: { chain: "{{mention_id}}" }
+    outputs:
+      read_checkpoint: result
+
+  - name: node-2 cannot write a checkpoint
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: set_checkpoint
+    args:
+      chain: "{{mention_id}}"
+      input: { done: "x", next: "", branches: [], worktrees: [], prs: [], questions: [], author: "x" }
+    expected_failure: true
+    outputs:
+      intruder_checkpoint_error: error
+
+  - name: Assert the checkpoint
+    type: json_assert
+    statements:
+      - 'json_subset({{checkpoint}}, {"output": {"chain": "{{mention_id}}", "next": "Send it once approved", "author": "mero-bot@studio"}})'
+      - 'json_subset({{read_checkpoint}}, {"output": {"done": "Drafted the reply", "questions": ["Formal or casual?"]}})'
+
+  - name: Assert the refused checkpoint
+    type: assert
+    statements:
+      - "is_set({{intruder_checkpoint_error}})"
+
+  # ── Watches: "when X, do Y", fired once by the agent's runtime ──────────
+  - name: The agent sets a merge-when-green watch on the mention's chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_watch
+    args:
+      input: { chain: "{{mention_id}}", condition: "pr_green", repo: "calimero-network/apps", pr: 434, branch: "", action: "merge", text: "", agent: "mero-bot@studio" }
+    outputs:
+      watch_id: result.output.id
+      watch: result
+
+  - name: The runtime notes where the checks stand
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: watch_seen
+    args: { id: "{{watch_id}}", seen: "3 of 5 checks passed, 2 running" }
+    outputs:
+      watch_seen: result
+
+  - name: The runtime fires it once its checks are green
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: fire_watch
+    args: { id: "{{watch_id}}", session: "studio-1" }
+    outputs:
+      fired: result
+
+  - name: Another session is refused the same watch
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: fire_watch
+    args: { id: "{{watch_id}}", session: "laptop-1" }
+    expected_failure: true
+    outputs:
+      second_fire_error: error
+
+  - name: The runtime reports the merge
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: finish_watch
+    args: { id: "{{watch_id}}", outcome: "done", note: "Merged #434 into main" }
+    outputs:
+      finished: result
+
+  - name: Owner reads the chain's watches
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: watches
+    args: { chain: "{{mention_id}}" }
+    outputs:
+      listed_watch: result.output.0
+
+  - name: The agent sets a notify-on-merge watch
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_watch
+    args:
+      input: { chain: "{{mention_id}}", condition: "pr_merged", repo: "calimero-network/apps", pr: 435, branch: "", action: "notify", text: "#435 merged", agent: "mero-bot@studio" }
+    outputs:
+      notify_watch_id: result.output.id
+
+  - name: Owner cancels the notify watch
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: cancel_watch
+    args: { id: "{{notify_watch_id}}", note: "No longer needed" }
+    outputs:
+      cancelled: result
+
+  - name: A watch that already fired cannot be cancelled
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: cancel_watch
+    args: { id: "{{watch_id}}" }
+    expected_failure: true
+    outputs:
+      cancel_fired_error: error
+
+  - name: node-2 cannot set a watch
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: add_watch
+    args:
+      input: { chain: "{{mention_id}}", condition: "pr_merged", repo: "calimero-network/apps", pr: 434, branch: "", action: "notify", text: "x", agent: "x" }
+    expected_failure: true
+    outputs:
+      intruder_watch_error: error
+
+  - name: Assert the watch fired once
+    type: json_assert
+    statements:
+      - 'json_subset({{watch}}, {"output": {"chain": "{{mention_id}}", "condition": "pr_green", "action": "merge", "status": "watching"}})'
+      - 'json_subset({{watch_seen}}, {"output": {"seen": "3 of 5 checks passed, 2 running"}})'
+      - 'json_subset({{fired}}, {"output": {"status": "firing", "fired_by": "studio-1"}})'
+      - 'json_subset({{finished}}, {"output": {"status": "done", "note": "Merged #434 into main"}})'
+      - 'json_subset({{listed_watch}}, {"id": "{{watch_id}}", "status": "done"})'
+      - 'json_subset({{cancelled}}, {"output": {"id": "{{notify_watch_id}}", "status": "cancelled"}})'
+
+  - name: Assert the refused watch calls
+    type: assert
+    statements:
+      - "is_set({{second_fire_error}})"
+      - "is_set({{cancel_fired_error}})"
+      - "is_set({{intruder_watch_error}})"

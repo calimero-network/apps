@@ -2,6 +2,7 @@ import type { BlobStore } from "./attachments";
 import type {
   ActionInput,
   Attachment,
+  CheckpointView,
   FeedItem,
   FeedPage,
   HyperfeedClient,
@@ -11,6 +12,7 @@ import type {
   RuleProposalView,
   RuleView,
   SettingsView,
+  WatchView,
 } from "./generated/HyperfeedClient";
 
 export type Filter = "all" | "agent" | "notifications" | "needs_you" | "archived";
@@ -43,6 +45,12 @@ export interface FeedBackend {
   decideLens(appKey: string, applicationId: string, decision: "approve" | "reject"): Promise<LensView>;
   /** Every row in a chain, oldest first. */
   chain(chain: string): Promise<FeedItem[]>;
+  /** Where the task in a chain stands, as your agent last wrote it; null when it wrote none, or the feed predates checkpoints. */
+  checkpoint?(chain: string): Promise<CheckpointView | null>;
+  /** The watches in a chain ("when X, do Y"), oldest first; [] when the feed predates watches. */
+  watches?(chain: string): Promise<WatchView[]>;
+  /** Cancel a watch that has not fired yet. */
+  cancelWatch?(id: string): Promise<WatchView>;
   /**
    * Talk to your agent about a chain, or about anything with `chain` "" (a new
    * chain). With images (uploaded with {@link FeedBackend.images}), `text` may be empty.
@@ -98,6 +106,20 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
     decideLens: (appKey, applicationId, decision) =>
       client.decideLens({ app_key: appKey, application_id: applicationId, decision }),
     chain: (chain) => client.chain({ chain }),
+    checkpoint: (chain) =>
+      client.checkpoint({ chain }).then(
+        (c) => (c ? c : null),
+        (e: unknown) => {
+          if (lacksMethod(e, "checkpoint")) return null;
+          throw e;
+        },
+      ),
+    watches: (chain) =>
+      client.watches({ chain }).catch((e: unknown) => {
+        if (lacksMethod(e, "watches")) return [];
+        throw e;
+      }),
+    cancelWatch: (id) => client.cancelWatch({ id, note: null }),
     // Text alone keeps to `say`, which every feed has; only images need `say_with`.
     // No `headline` key: a feed made before headlines refuses any argument it does not know.
     say: (chain, text, attachments = []) =>

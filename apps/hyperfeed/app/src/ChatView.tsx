@@ -9,6 +9,7 @@ import { Markdown } from "./markdown";
 import { RefCards } from "./RefCards";
 import { agentLive, notPickedUp } from "./theme";
 import { WorkBlock } from "./WorkBlock";
+import { WatchList } from "./WatchList";
 
 /**
  * Chats with your agent.
@@ -190,6 +191,8 @@ export function ChatView({
           onPick={(m, o) => void feed.answerAsk(m, o)}
           onStop={(id) => void feed.stop(id)}
         />
+        {/* What your agent is watching for in this chat ("merge #434 when green"), with Cancel. */}
+        {chain && <WatchList feed={feed} chain={chain} />}
         {/* A rule your agent suggested after you corrected it here: one tap makes it yours. */}
         {chain && (feed.settings?.rule_proposals ?? []).some((p) => p.chain === chain) && (
           <ul className="rule-suggestions chat-rules" aria-label="Rules your agent suggests">
