@@ -2925,6 +2925,108 @@ fn a_task_takes_a_bounded_number_of_links() {
     assert_eq!(links_of(&app, &task.chain).len(), MAX_LINKS);
 }
 
+#[test]
+fn a_task_started_from_a_chat_gets_its_own_chain_and_both_link_each_other() {
+    let mut app = acting_in("issue-tracker");
+    let chat = app
+        .call(|s| {
+            s.say(
+                String::new(),
+                "Plan the roadmap\nwatches, safe merge, checkpoints".to_owned(),
+                None,
+            )
+        })
+        .unwrap();
+    let task = app
+        .call(|s| {
+            s.start_task(
+                chat.chain.clone(),
+                "Build safe merge: merge only green PRs on main.".to_owned(),
+                Some("Safe merge".to_owned()),
+            )
+        })
+        .unwrap();
+    // Your message opens a chain of its own, waiting for your agent.
+    assert_eq!(task.chain, task.id);
+    assert_ne!(task.chain, chat.chain);
+    assert_eq!(
+        (task.from.as_str(), task.status.as_str()),
+        ("you", "waiting")
+    );
+    let open = app.view(|s| s.open_questions()).unwrap();
+    assert!(open.iter().any(|m| m.id == task.id));
+
+    let on_chat = links_of(&app, &chat.chain);
+    assert_eq!(on_chat.len(), 1);
+    assert_eq!(
+        (
+            on_chat[0].subject.as_str(),
+            on_chat[0].app.as_str(),
+            on_chat[0].context.as_str(),
+            on_chat[0].label.as_str()
+        ),
+        (
+            format!("{TASK_SUBJECT}{}", task.chain).as_str(),
+            "hyperfeed",
+            "task",
+            "Safe merge"
+        )
+    );
+    let on_task = links_of(&app, &task.chain);
+    assert_eq!(on_task.len(), 1);
+    assert_eq!(
+        (
+            on_task[0].context.as_str(),
+            on_task[0].item.as_str(),
+            on_task[0].label.as_str()
+        ),
+        ("from", chat.chain.as_str(), "Plan the roadmap")
+    );
+
+    // Without a headline the task is named by its first line.
+    let second = app
+        .call(|s| s.start_task(chat.chain.clone(), "Checkpoints\nper task".to_owned(), None))
+        .unwrap();
+    let on_chat = links_of(&app, &chat.chain);
+    assert_eq!(on_chat.len(), 2);
+    assert!(on_chat
+        .iter()
+        .any(|l| l.item == second.chain && l.label == "Checkpoints"));
+}
+
+#[test]
+fn a_task_needs_a_real_chat_a_message_and_the_owner() {
+    let mut app = acting_in("issue-tracker");
+    let chat = app
+        .call(|s| s.say(String::new(), "Plan".to_owned(), None))
+        .unwrap();
+    assert!(app
+        .call(|s| s.start_task("no-such-chain".to_owned(), "X".to_owned(), None))
+        .is_err());
+    assert!(app
+        .call(|s| s.start_task(chat.chain.clone(), String::new(), None))
+        .is_err());
+    assert!(app
+        .call(|s| s.start_task(chat.chain.clone(), "X".to_owned(), Some("a\nb".to_owned())))
+        .is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s.start_task(
+            chat.chain.clone(),
+            "X".to_owned(),
+            None
+        ))
+        .is_err());
+    // A chat full of links starts no task, and writes nothing.
+    for n in 0..MAX_LINKS {
+        add(&mut app, &chat.chain, &format!("chat:ctx-{n}"), "", "you").unwrap();
+    }
+    let before = app.view(|s| s.open_questions()).unwrap().len();
+    assert!(app
+        .call(|s| s.start_task(chat.chain.clone(), "One more".to_owned(), None))
+        .is_err());
+    assert_eq!(app.view(|s| s.open_questions()).unwrap().len(), before);
+}
+
 // ── push to your phone ───────────────────────────────────────────────────────
 
 const VAPID: &str =

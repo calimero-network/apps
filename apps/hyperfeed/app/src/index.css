@@ -3240,3 +3240,19 @@ body {
   color: var(--ink-2);
   font-size: 13px;
 }
+
+/* A one-line pointer to a task started from this chat, or the chat a task came from. */
+.chat-pointer {
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chat-pointer:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.link-chain .link-main {
+  padding: 0 10px;
+}

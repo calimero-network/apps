@@ -784,4 +784,27 @@ describe("chat with your agent", () => {
       expect(screen.getByRole("img", { name: "b.png" })).toBeInTheDocument();
     });
   });
+
+  it("points from a chat to the task started from it, and back", async () => {
+    const backend = new DemoBackend(false, 0);
+    const chat = await backend.say("", "Plan the roadmap");
+    backend.agentSay(chat.chain, chat.id, "Three features: watches, safe merge, checkpoints");
+    const task = backend.startTask(chat.chain, "Build safe merge: merge only green PRs", "Safe merge");
+    render(<Harness backend={backend} start={chat.chain} />);
+
+    // The chat keeps one line for it, after where it was started.
+    const started = await screen.findByRole("button", { name: "Started: Safe merge →" });
+    await act(async () => {
+      fireEvent.click(started);
+    });
+    // The task is a chat of its own: your message, and a line back to where it came from.
+    expect(await screen.findByText("Build safe merge: merge only green PRs")).toBeInTheDocument();
+    const back = await screen.findByRole("button", { name: "From: Plan the roadmap ←" });
+    expect(within(thread()).queryByRole("button", { name: /Started:/ })).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(back);
+    });
+    expect(await screen.findByRole("button", { name: "Started: Safe merge →" })).toBeInTheDocument();
+    expect(task.chain).not.toBe(chat.chain);
+  });
 });

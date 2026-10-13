@@ -1674,6 +1674,52 @@ steps:
     statements:
       - "is_set({{intruder_link_error}})"
 
+  - name: You start a task from the chat, in a chain of its own
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: start_task
+    args:
+      from: "{{subject_task}}"
+      text: "Build safe merge: merge only green PRs on main."
+      headline: "Safe merge"
+    outputs:
+      started_task: result.output
+      started_chain: result.output.chain
+
+  - name: The task links back to the chat it came from
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: links
+    args: { chain: "{{started_chain}}" }
+    outputs:
+      started_back: result.output.0
+
+  - name: node-2 cannot start a task
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: start_task
+    args: { from: "{{subject_task}}", text: "Not yours", headline: null }
+    expected_failure: true
+    outputs:
+      intruder_task_error: error
+
+  - name: Assert the started task
+    type: json_assert
+    statements:
+      - 'json_subset({{started_task}}, {"kind": "message", "from": "you", "status": "waiting"})'
+      - 'json_subset({{started_back}}, {"app": "hyperfeed", "context": "from", "item": "{{subject_task}}", "by": "you"})'
+
+  - name: Assert the refused task
+    type: assert
+    statements:
+      - "is_set({{intruder_task_error}})"
+
   # ── Push to your phone: the runtime's key, and the devices it wakes ──
 
   - name: Your agent's runtime keeps its push key

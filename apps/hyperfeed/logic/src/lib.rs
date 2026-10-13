@@ -104,7 +104,9 @@ mod prs;
 pub use prs::{PrInput, PrSeen, PrView, CHECK_STATES, MAX_FAILING, MAX_PRS, PR_STATES};
 
 mod links;
-pub use links::{split_subject, Link, LinkInput, LinkView, LINK_BY, MAX_LINKS};
+pub use links::{
+    split_subject, Link, LinkInput, LinkView, FROM_SUBJECT, LINK_BY, MAX_LINKS, TASK_SUBJECT,
+};
 
 mod push;
 pub use push::{
@@ -3712,6 +3714,21 @@ impl Hyperfeed {
     /// teammates did there (its notifications in the task).
     pub fn links(&self, chain: String) -> app::Result<Vec<LinkView>> {
         self.link_list(&chain)
+    }
+
+    /// Spin a task off the chat in `from`: `text` is your message that opens
+    /// it, in a chain of its own, with its own post, workspace, checkpoint
+    /// and PRs. The chat keeps a link to the task (`hyperfeed:task:<chain>`)
+    /// and the task one back (`hyperfeed:from:<chain>`). Takes a `headline`
+    /// as [`Self::say`] does, which names the task's link. Returns the
+    /// task's first message; its chain is the task.
+    pub fn start_task(
+        &mut self,
+        from: String,
+        text: String,
+        headline: Option<String>,
+    ) -> app::Result<FeedItem> {
+        self.task_start(from, text, headline)
     }
 
     // ── Push: wake your phone when something needs you ───────────────────────

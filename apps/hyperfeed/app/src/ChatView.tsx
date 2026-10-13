@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Attachment, FeedItem, PrView, WatchView } from "./generated/HyperfeedClient";
+import type { Attachment, FeedItem, LinkView, PrView, WatchView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
 import { NewFeedButton, type NewFeed } from "./FeedView";
@@ -12,6 +12,7 @@ import { agentLive, notPickedUp } from "./theme";
 import { WorkBlock } from "./WorkBlock";
 import { WatchList } from "./WatchList";
 import { isActive } from "./watches";
+import { chainLink } from "./links";
 
 /**
  * Chats with your agent.
@@ -89,6 +90,25 @@ export function ChatView({
       live = false;
     };
   }, [loadWatches, loadPrs, chain, page]);
+  // Tasks started from this chat, and the chat this one came from: pointers in the thread.
+  const [links, setLinks] = useState<LinkView[]>([]);
+  const { loadLinks } = feed;
+  useEffect(() => {
+    let live = true;
+    if (!chain || !loadLinks) setLinks([]);
+    else void loadLinks(chain).then((l) => live && setLinks(l), () => live && setLinks([]));
+    return () => {
+      live = false;
+    };
+  }, [loadLinks, chain, page]);
+  const pointers = useMemo(
+    () =>
+      links.flatMap((l) => {
+        const to = chainLink(l);
+        return to ? [{ ...to, at: l.added_at }] : [];
+      }),
+    [links],
+  );
   // How many watches each chat still waits on, in every chain: a chat with
   // one ("merge #57 after #459") isn't done, whatever its last answer said.
   const [waiting, setWaiting] = useState<Map<string, number>>(new Map());
@@ -280,6 +300,8 @@ export function ChatView({
           onPick={(m, o) => void feed.answerAsk(m, o)}
           onStop={(id) => void feed.stop(id)}
           merge={merge}
+          pointers={pointers}
+          onOpenChat={onOpen}
         />
         {/* What your agent is watching for in this chat ("merge #434 when green"), with Cancel. */}
         {chain && <WatchList feed={feed} chain={chain} watches={watches} />}
@@ -354,6 +376,8 @@ function Thread({
   onPick,
   onStop,
   merge,
+  pointers = [],
+  onOpenChat,
 }: {
   items: FeedItem[];
   clock: () => number;
@@ -368,6 +392,9 @@ function Thread({
   onStop: (id: string) => void;
   /** What the PR cards' merge control goes by, in this chat. */
   merge?: MergeContext;
+  /** Tasks started from this chat, and the chat it came from, as one-line pointers. */
+  pointers?: Pointer[];
+  onOpenChat?: (chain: string) => void;
 }) {
   const end = useRef<HTMLDivElement>(null);
   const last = items[items.length - 1];
@@ -385,11 +412,21 @@ function Thread({
       </div>
     );
   }
+  // Where this chat came from goes first; each task started from it, after the row it followed.
+  const after = (i: number) => pointers.filter((p) => p.started && p.at >= (i < 0 ? 0 : items[i]!.at) && (i + 1 >= items.length || p.at < items[i + 1]!.at));
+  const pointer = (p: Pointer) => (
+    <button key={`${p.started}:${p.chain}`} type="button" className="chat-event chat-pointer" disabled={!onOpenChat} onClick={() => onOpenChat?.(p.chain)}>
+      {p.label} {p.started ? "→" : "←"}
+    </button>
+  );
   return (
     <div className="chat-thread" role="log" aria-live="polite">
-      {items.map((m) =>
-        m.kind === "message" ? (
-          <Fragment key={m.id}>
+      {pointers.filter((p) => !p.started).map(pointer)}
+      {after(-1).map(pointer)}
+      {items.map((m, i) => (
+        <Fragment key={m.id}>
+          {m.kind === "message" ? (
+          <Fragment>
             <div className={`bubble ${m.from === "agent" ? "from-agent" : "from-you"}`}>
               <span className="sr-only">{m.from === "agent" ? "Your agent:" : "You:"}</span>
               {m.attachments?.length > 0 && <BubbleImages attachments={m.attachments} store={images} />}
@@ -416,15 +453,25 @@ function Thread({
             <WorkBlock item={m} clock={clock} busy={busy} onStop={onStop} />
           </Fragment>
         ) : (
-          <div key={m.id} className="chat-event">
+          <div className="chat-event">
             {m.title} · {statusOf(m).label}
           </div>
-        ),
-      )}
+          )}
+          {after(i).map(pointer)}
+        </Fragment>
+      ))}
       {last && <Waiting last={last} clock={clock} live={live} />}
       <div ref={end} />
     </div>
   );
+}
+
+/** A one-line pointer to another chat: a task started from this one, or the chat it came from. */
+interface Pointer {
+  chain: string;
+  started: boolean;
+  label: string;
+  at: number;
 }
 
 /** Where your latest message stands while your agent hasn't answered it. */

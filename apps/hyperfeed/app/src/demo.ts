@@ -867,6 +867,19 @@ export class DemoBackend implements FeedBackend {
     return this.agentSay(chain, replyTo, text, ask, headline);
   }
 
+  /** A task spun off the chat in `from`, as `start_task` makes it: your message in a chain of its own, and a link each way. */
+  startTask(from: string, text: string, headlineText = ""): FeedItem {
+    if (!this.chainExists(from)) throw new Error(`no chain ${from}`);
+    if (!text.trim()) throw new Error("text must not be empty");
+    const kept = checkMessage(text, headlineText);
+    const first = [...this.items.values()].filter((i) => i.chain === from && i.kind === "message").sort((a, b) => a.at - b.at)[0];
+    const task = this.post("", "you", text, "", "waiting", NO_ASK, [], kept);
+    this.link(from, `hyperfeed:task:${task.chain}`, kept || headline(text), "you");
+    this.link(task.chain, `hyperfeed:from:${from}`, first?.title ?? "", "you");
+    this.changed();
+    return task;
+  }
+
   private chainExists(chain: string): boolean {
     return [...this.items.values()].some((i) => i.chain === chain);
   }

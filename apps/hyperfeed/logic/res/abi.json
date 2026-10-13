@@ -4802,6 +4802,35 @@
       "intent": "read_only"
     },
     {
+      "name": "start_task",
+      "doc": "Spin a task off the chat in `from`: `text` is your message that opens\nit, in a chain of its own, with its own post, workspace, checkpoint\nand PRs. The chat keeps a link to the task (`hyperfeed:task:<chain>`)\nand the task one back (`hyperfeed:from:<chain>`). Takes a `headline`\nas [`Self::say`] does, which names the task's link. Returns the\ntask's first message; its chain is the task.",
+      "params": [
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "headline",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "stop",
       "doc": "You ask your agent to stop working on one of your messages. One it has\nnot taken up yet is closed at once, \"Stopped by you\"; one it is working\non (`thinking`) keeps the request, and your agent ends its turn and\nmarks the message failed, \"Stopped by you\". Asking twice changes\nnothing.",
       "params": [

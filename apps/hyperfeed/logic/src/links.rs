@@ -20,10 +20,17 @@ use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::Mergeable;
 
-use crate::{lww, now_ms, reply_subject, Event, Hyperfeed, MAX_KEY, MAX_TITLE};
+use crate::{
+    headline, lww, now_ms, reply_subject, Event, FeedItem, Hyperfeed, FROM_YOU, MAX_KEY, MAX_TITLE,
+    STATUS_WAITING,
+};
 
 /// Links kept on one task; the agent's past that are not added.
 pub const MAX_LINKS: usize = 30;
+/// A task started from a chat, as the chat's link to it: `hyperfeed:task:<chain>`.
+pub const TASK_SUBJECT: &str = "hyperfeed:task:";
+/// The chat a task was started from, as the task's link back: `hyperfeed:from:<chain>`.
+pub const FROM_SUBJECT: &str = "hyperfeed:from:";
 /// Who added a link: your agent (by touching it) or you.
 pub const LINK_BY: &[&str] = &["agent", "you"];
 
@@ -204,6 +211,68 @@ impl Hyperfeed {
             .into_iter()
             .find(|l| l.subject == subject)
             .ok_or_else(|| AppError::msg("the link was not kept"))
+    }
+
+    /// Start a task from the chat in `from`: your message `text` opens a
+    /// chain of its own, and each links to the other, so the chat keeps a
+    /// pointer to the task and the task knows where it came from.
+    pub(crate) fn task_start(
+        &mut self,
+        from: String,
+        text: String,
+        title: Option<String>,
+    ) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        Self::check_len("from", &from, MAX_KEY, true)?;
+        if !self.chain_exists(&from)? {
+            return Err(AppError::msg(format!("no chain {from}")));
+        }
+        let title = Self::check_message(&text, title, true)?;
+        // The chat takes one more link, or nothing is written.
+        let on = self
+            .links
+            .entries()?
+            .filter(|(_, l)| l.chain == from && !l.removed)
+            .count();
+        if on >= MAX_LINKS {
+            return Err(AppError::msg(format!(
+                "a chat has at most {MAX_LINKS} links; take one off first"
+            )));
+        }
+        let chat = self.chain_goal(&from)?;
+        let goal = title.clone().unwrap_or_else(|| headline(&text));
+        let item = self.post_message(
+            String::new(),
+            FROM_YOU,
+            text,
+            String::new(),
+            STATUS_WAITING,
+            None,
+            Vec::new(),
+            title,
+        )?;
+        let task = item.chain.clone();
+        self.link_subject(&from, &format!("{TASK_SUBJECT}{task}"), &goal, "you", true)?;
+        self.link_subject(&task, &format!("{FROM_SUBJECT}{from}"), &chat, "you", true)?;
+        Ok(item)
+    }
+
+    /// What a chain is about, as one line: the headline or first line of its
+    /// first message; `""` for a chain that starts with something else.
+    fn chain_goal(&self, chain: &str) -> app::Result<String> {
+        let first = self
+            .messages
+            .entries()?
+            .filter(|(_, m)| m.chain == chain)
+            .min_by(|(_, a), (_, b)| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)))
+            .map(|(_, m)| m.clone());
+        let Some(m) = first else {
+            return Ok(String::new());
+        };
+        Ok(match self.headlines.get(&m.id)? {
+            Some(h) => h.text.clone(),
+            None => headline(&m.text),
+        })
     }
 
     pub(crate) fn link_remove(&mut self, chain: String, subject: String) -> app::Result<()> {
