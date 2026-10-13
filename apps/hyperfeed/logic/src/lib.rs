@@ -2142,6 +2142,26 @@ impl Hyperfeed {
             .ok_or_else(|| AppError::msg(format!("no message {id}")))
     }
 
+    /// When the newest row in `chain` was made; 0 for none.
+    fn chain_last_at(&self, chain: &str) -> app::Result<u64> {
+        let actions = self
+            .actions
+            .entries()?
+            .filter(|(_, a)| a.chain == chain)
+            .map(|(_, a)| a.created_at);
+        let notes = self
+            .notifications
+            .entries()?
+            .filter(|(_, n)| n.chain == chain)
+            .map(|(_, n)| n.created_at);
+        let messages = self
+            .messages
+            .entries()?
+            .filter(|(_, m)| m.chain == chain)
+            .map(|(_, m)| m.created_at);
+        Ok(actions.chain(notes).chain(messages).max().unwrap_or(0))
+    }
+
     /// Whether any row lives in `chain`: a message goes into a chain that
     /// exists, or starts its own.
     fn chain_exists(&self, chain: &str) -> app::Result<bool> {
@@ -2184,7 +2204,12 @@ impl Hyperfeed {
         attachments: Vec<Attachment>,
         headline: Option<String>,
     ) -> app::Result<FeedItem> {
-        let now = now_ms();
+        // Strictly after what it follows in its chain: a message posted in the
+        // same millisecond as the row it answers still reads after it.
+        let mut now = now_ms();
+        if !chain.is_empty() {
+            now = now.max(self.chain_last_at(&chain)? + 1);
+        }
         let id = Self::fresh_id();
         let m = Message {
             chain: Self::chain_of(&chain, &id)?,
@@ -3432,7 +3457,9 @@ impl Hyperfeed {
                 "you have {MAX_RULES} rules, the limit; remove one first"
             )));
         }
-        let now = now_ms();
+        // Strictly after the newest rule: two added in one millisecond keep
+        // their order, instead of falling back to their random ids.
+        let now = now_ms().max(rules.iter().map(|r| r.created_at + 1).max().unwrap_or(0));
         let id = Self::fresh_id();
         self.rules.insert(
             id.clone(),
