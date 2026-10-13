@@ -453,6 +453,13 @@ export interface FeedItem {
    */
   headline: string;
   /**
+   * On a message of yours sent with a mode: `private` or `public` (see
+   * [`MESSAGE_MODES`]). `""` when it was sent without one, and for every
+   * other row; your agent's runtime then decides, usually by the chain's
+   * last message that had one.
+   */
+  mode: string;
+  /**
    * On a question (your agent's, or a notification's) that a newer one in
    * its chain replaced before you answered it: the newer one's id. Its
    * buttons are gone. `""` otherwise.
@@ -572,6 +579,10 @@ export interface Hyperfeed {
    * Headlines of messages written with one, by the message's id.
    */
   headlines: Record<string, Headline>;
+  /**
+   * Which agent each of your messages sent with a mode is for, by the message's id.
+   */
+  modes: Record<string, MessageMode>;
   /**
    * Questions a newer one in their chain replaced, by the question's id.
    */
@@ -784,6 +795,15 @@ export interface Message {
   reply_to: string;
   created_at: number;
   history: Step[];
+}
+
+/**
+ * How private a message of yours is: one of [`MESSAGE_MODES`].
+ * Kept beside the message, keyed by its id, so messages written before
+ * modes keep their layout.
+ */
+export interface MessageMode {
+  mode: string;
 }
 
 /**
@@ -1140,6 +1160,11 @@ export interface SettingsView {
    * Rules your agent suggested that wait for you, newest first.
    */
   rule_proposals: RuleProposalView[];
+  /**
+   * The modes a message of yours may be sent with ([`MESSAGE_MODES`]).
+   * Empty on a feed made before modes, which refuses a `mode` argument.
+   */
+  message_modes: string[];
 }
 
 /**
@@ -2167,9 +2192,13 @@ export class HyperfeedClient {
    * A long message takes a `headline`, as [`Self::agent_say`] does. Older
    * clients omit it.
    *
+   * `mode` says how private it is, and so which of your agents takes it:
+   * `private` or `public` (see [`MESSAGE_MODES`]). Omitted or empty, it
+   * has none, and your agent's runtime decides. Older clients omit it.
+   *
    * @intent mutating
    */
-  public async say(params: { chain: string; text: string; headline: string | null }): Promise<FeedItem> {
+  public async say(params: { chain: string; text: string; headline: string | null; mode: string | null }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'say', argsJson: params });
     return response as FeedItem;
   }
@@ -2182,7 +2211,7 @@ export class HyperfeedClient {
    *
    * @intent mutating
    */
-  public async sayWith(params: { chain: string; text: string; attachments: Attachment[]; headline: string | null }): Promise<FeedItem> {
+  public async sayWith(params: { chain: string; text: string; attachments: Attachment[]; headline: string | null; mode: string | null }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'say_with', argsJson: params });
     return response as FeedItem;
   }

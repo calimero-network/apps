@@ -808,3 +808,56 @@ describe("chat with your agent", () => {
     expect(task.chain).not.toBe(chat.chain);
   });
 });
+
+describe("how private a message is", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fakeGitHub([]));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearGithubCache();
+  });
+
+  it("sends with the privacy you pick, and the chat keeps it for the next message", async () => {
+    const backend = new DemoBackend(false, 0);
+    render(<Harness backend={backend} />);
+    const picker = await screen.findByRole("radiogroup", { name: "How private" });
+    expect(within(picker).getByRole("radio", { name: "Private" })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(within(picker).getByRole("radio", { name: "Public" }));
+    await say("Fix the flaky test");
+    const [first] = (await backend.feed("agent", "")).items;
+    expect(first!.mode).toBe("public");
+    expect(await within(thread()).findByText("Public")).toBeInTheDocument();
+
+    // The chat now opens on Public: the next message goes there unless you switch.
+    await waitFor(() =>
+      expect(within(screen.getByRole("radiogroup", { name: "How private" })).getByRole("radio", { name: "Public" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      ),
+    );
+    await say("And open a PR");
+    const flow = await backend.chain(first!.chain);
+    expect(flow.map((m) => m.mode)).toEqual(["public", "public"]);
+  });
+
+  it("on a feed made before modes, shows no picker and sends no mode", async () => {
+    class OlderFeed extends DemoBackend {
+      modesSent: (string | undefined)[] = [];
+      override async settings() {
+        return { ...(await super.settings()), message_modes: [] };
+      }
+      override async say(chain: string, text: string, attachments = [] as Parameters<DemoBackend["say"]>[2], mode?: string) {
+        this.modesSent.push(mode);
+        return super.say(chain, text, attachments);
+      }
+    }
+    const backend = new OlderFeed(false, 0);
+    render(<Harness backend={backend} />);
+    await within(list()).findByText(/No chats yet/);
+    expect(screen.queryByRole("radiogroup", { name: "How private" })).not.toBeInTheDocument();
+    await say("Hello");
+    expect(backend.modesSent).toEqual([undefined]);
+  });
+});

@@ -285,7 +285,7 @@ mod tests {
     const STRANGER: [u8; 32] = [0xE0; 32];
 
     fn task(app: &mut TestHost<Hyperfeed>) -> String {
-        app.call(|s| s.say(String::new(), "Ship #434".to_owned(), None))
+        app.call(|s| s.say(String::new(), "Ship #434".to_owned(), None, None))
             .expect("say")
             .chain
     }

@@ -250,6 +250,7 @@ impl Hyperfeed {
             None,
             Vec::new(),
             title,
+            None,
         )?;
         let task = item.chain.clone();
         self.link_subject(&from, &format!("{TASK_SUBJECT}{task}"), &goal, "you", true)?;

@@ -8,7 +8,7 @@ function row(over: Partial<FeedItem>): FeedItem {
     at: 0, needs_you: false, status: "waiting", status_at: 0, note: "", ask: { kind: "", prompt: "", options: [], draft: "" },
     history: [], method: "", category: "", why: "", intent_hash: "", executor: "", undoable: false,
     breach: "", reviewed_at: 0, from: "you", event: "", seen: true, reply_to: "", item_type: "", fields: "", reply_call: "", doing: "", doing_at: 0,
-    attachments: [], steps: [], draft: "", stop_at: 0, headline: "", superseded_by: "", answers: "", answers_superseded: false, held_by: "", held_since: 0, subject: "", ...over,
+    attachments: [], steps: [], draft: "", stop_at: 0, headline: "", mode: "", superseded_by: "", answers: "", answers_superseded: false, held_by: "", held_since: 0, subject: "", ...over,
   };
 }
 

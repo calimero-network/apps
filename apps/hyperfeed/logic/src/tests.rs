@@ -782,7 +782,7 @@ fn keeping_a_breach_is_stamped() {
 // ── talking to your agent ───────────────────────────────────────────────────
 
 fn say(app: &mut TestHost<Hyperfeed>, chain: &str, text: &str) -> FeedItem {
-    app.call(|s| s.say(chain.to_owned(), text.to_owned(), None))
+    app.call(|s| s.say(chain.to_owned(), text.to_owned(), None, None))
         .expect("say")
 }
 
@@ -822,12 +822,72 @@ fn a_question_from_nowhere_starts_its_own_chain() {
 #[test]
 fn a_question_into_a_chain_that_does_not_exist_is_refused() {
     let mut app = TestHost::new(Hyperfeed::init);
-    let r = app.call(|s| s.say("nope".to_owned(), "hi".to_owned(), None));
+    let r = app.call(|s| s.say("nope".to_owned(), "hi".to_owned(), None, None));
     assert!(r.is_err());
-    let r = app.call(|s| s.say(String::new(), "  ".to_owned(), None));
+    let r = app.call(|s| s.say(String::new(), "  ".to_owned(), None, None));
     assert!(r.is_err(), "an empty message is refused");
-    let r = app.call(|s| s.say(String::new(), "x".repeat(MAX_MESSAGE + 1), None));
+    let r = app.call(|s| s.say(String::new(), "x".repeat(MAX_MESSAGE + 1), None, None));
     assert!(r.is_err(), "an oversized message is refused");
+}
+
+#[test]
+fn a_message_says_how_private_it_is() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let public = app
+        .call(|s| {
+            s.say(
+                String::new(),
+                "Fix the flaky test".to_owned(),
+                None,
+                Some("public".to_owned()),
+            )
+        })
+        .unwrap();
+    assert_eq!(public.mode, "public");
+    let next = app
+        .call(|s| {
+            s.say(
+                public.chain.clone(),
+                "And open a PR".to_owned(),
+                None,
+                Some("private".to_owned()),
+            )
+        })
+        .unwrap();
+    assert_eq!(next.mode, "private", "each message keeps its own");
+
+    let plain = say(&mut app, "", "What happened today?");
+    assert_eq!(plain.mode, "", "a message sent without a mode has none");
+    let empty = app
+        .call(|s| s.say(String::new(), "Hi".to_owned(), None, Some(String::new())))
+        .unwrap();
+    assert_eq!(empty.mode, "", "an empty mode is none");
+
+    let flow = app.view(|s| s.chain(public.chain.clone())).unwrap();
+    let modes: Vec<&str> = flow.iter().map(|i| i.mode.as_str()).collect();
+    assert_eq!(
+        modes,
+        ["public", "private"],
+        "read back the same in the chain"
+    );
+    assert_eq!(
+        app.view(|s| s.settings()).unwrap().message_modes,
+        ["private", "public"],
+        "settings name the modes, so a client knows this feed takes them"
+    );
+
+    let r = app.call(|s| s.say(String::new(), "Hi".to_owned(), None, Some("act".to_owned())));
+    assert!(r.is_err(), "a mode outside MESSAGE_MODES is refused");
+    let r = app.call(|s| {
+        s.say_with(
+            String::new(),
+            "look".to_owned(),
+            vec![image(&"ab".repeat(32))],
+            None,
+            Some("PRIVATE".to_owned()),
+        )
+    });
+    assert!(r.is_err(), "modes are exact");
 }
 
 fn choose(options: &[&str]) -> Ask {
@@ -988,6 +1048,7 @@ fn a_message_carries_its_images_wherever_it_is_read() {
                 "What is this error?".to_owned(),
                 vec![image(&"ab".repeat(32)), image(&"cd".repeat(32))],
                 None,
+                None,
             )
         })
         .unwrap();
@@ -1021,20 +1082,22 @@ fn an_image_alone_is_a_message() {
                 String::new(),
                 vec![image(&"ab".repeat(32))],
                 None,
+                None,
             )
         })
         .unwrap();
     assert_eq!(q.title, "Sent an image");
     assert_eq!(q.body, "");
-    let r = app.call(|s| s.say_with(String::new(), String::new(), Vec::new(), None));
+    let r = app.call(|s| s.say_with(String::new(), String::new(), Vec::new(), None, None));
     assert!(r.is_err(), "no text and no image is still empty");
 }
 
 #[test]
 fn attachments_outside_their_limits_are_refused() {
     let mut app = TestHost::new(Hyperfeed::init);
-    let mut try_one =
-        |a: Attachment| app.call(|s| s.say_with(String::new(), "look".to_owned(), vec![a], None));
+    let mut try_one = |a: Attachment| {
+        app.call(|s| s.say_with(String::new(), "look".to_owned(), vec![a], None, None))
+    };
     let pdf = Attachment {
         mime: "application/pdf".to_owned(),
         ..image("ab")
@@ -1060,6 +1123,7 @@ fn attachments_outside_their_limits_are_refused() {
             String::new(),
             "look".to_owned(),
             vec![image("ab"); MAX_ATTACHMENTS + 1],
+            None,
             None,
         )
     });
@@ -1346,6 +1410,7 @@ fn only_the_owner_talks_to_the_agent() {
         .call_as_account(STRANGER, STRANGER, |s| s.say(
             String::new(),
             "hi".to_owned(),
+            None,
             None
         ))
         .is_err());
@@ -1486,11 +1551,18 @@ fn your_message_and_an_agent_question_take_a_headline_too() {
     let mut app = TestHost::new(Hyperfeed::init);
     let log = "error: something broke\n".repeat(200); // ~4.6 KB
     let q = app
-        .call(|s| s.say(String::new(), log.clone(), Some("The CI log".to_owned())))
+        .call(|s| {
+            s.say(
+                String::new(),
+                log.clone(),
+                Some("The CI log".to_owned()),
+                None,
+            )
+        })
         .unwrap();
     assert_eq!(q.title, "The CI log");
     assert!(app
-        .call(|s| s.say(String::new(), log.clone(), None))
+        .call(|s| s.say(String::new(), log.clone(), None, None))
         .is_err());
     let with_image = app
         .call(|s| {
@@ -1499,6 +1571,7 @@ fn your_message_and_an_agent_question_take_a_headline_too() {
                 log.clone(),
                 vec![image(&"ab".repeat(32))],
                 Some("The log, and a screenshot".to_owned()),
+                None,
             )
         })
         .unwrap();
@@ -1751,7 +1824,7 @@ fn an_archived_chain_leaves_the_feed_until_something_new_happens_in_it() {
     assert_eq!(archived.items[0].chain, n.chain);
 
     // You say something in it: it is back.
-    app.call(|s| s.say(n.chain.clone(), "About this…".to_owned(), None))
+    app.call(|s| s.say(n.chain.clone(), "About this…".to_owned(), None, None))
         .unwrap();
     assert_eq!(feed(&app, "all").items.len(), 2);
     assert!(feed(&app, "archived").items.is_empty());
@@ -2934,6 +3007,7 @@ fn a_task_started_from_a_chat_gets_its_own_chain_and_both_link_each_other() {
                 String::new(),
                 "Plan the roadmap\nwatches, safe merge, checkpoints".to_owned(),
                 None,
+                None,
             )
         })
         .unwrap();
@@ -2998,7 +3072,7 @@ fn a_task_started_from_a_chat_gets_its_own_chain_and_both_link_each_other() {
 fn a_task_needs_a_real_chat_a_message_and_the_owner() {
     let mut app = acting_in("issue-tracker");
     let chat = app
-        .call(|s| s.say(String::new(), "Plan".to_owned(), None))
+        .call(|s| s.say(String::new(), "Plan".to_owned(), None, None))
         .unwrap();
     assert!(app
         .call(|s| s.start_task("no-such-chain".to_owned(), "X".to_owned(), None))

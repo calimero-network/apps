@@ -43,7 +43,7 @@ function row(over: Partial<FeedItem>): FeedItem {
     reply_call: "",
     doing: "",
     doing_at: 0,
-    attachments: [], steps: [], draft: "", stop_at: 0, headline: "", superseded_by: "", answers: "", answers_superseded: false, held_by: "", held_since: 0, subject: "",
+    attachments: [], steps: [], draft: "", stop_at: 0, headline: "", mode: "", superseded_by: "", answers: "", answers_superseded: false, held_by: "", held_since: 0, subject: "",
     ...over,
   };
 }

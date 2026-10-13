@@ -52,6 +52,8 @@ const MAX_MESSAGE = 2_000;
 const MAX_LONG_MESSAGE = 32_000;
 const MAX_HEADLINE = 80;
 const MAX_TITLE = 200;
+/** How private a message of yours is, as the contract's `MESSAGE_MODES`. */
+const MESSAGE_MODES = ["private", "public"];
 
 /** The contract's `check_message`: the headline to keep, or "" for none. A headline lets the text run long. */
 function checkMessage(text: string, headline = ""): string {
@@ -306,6 +308,7 @@ export class DemoBackend implements FeedBackend {
         .filter((p) => p.status === "proposed")
         .sort((a, b) => b.created_at - a.created_at)
         .map((p) => ({ ...p })),
+      message_modes: [...MESSAGE_MODES],
     };
   }
 
@@ -526,7 +529,8 @@ export class DemoBackend implements FeedBackend {
   };
   private blobs = new Map<string, Blob>();
 
-  async say(chain: string, text: string, attachments: Attachment[] = []): Promise<FeedItem> {
+  async say(chain: string, text: string, attachments: Attachment[] = [], mode = ""): Promise<FeedItem> {
+    if (mode && !MESSAGE_MODES.includes(mode)) throw new Error(`mode must be one of ${MESSAGE_MODES.join(", ")}, not ${mode}`);
     if (!text.trim() && attachments.length === 0) throw new Error("text must not be empty");
     checkMessage(text);
     if (attachments.length > MAX_ATTACHMENTS) throw new Error(`${attachments.length} attachments, limit is ${MAX_ATTACHMENTS}`);
@@ -536,7 +540,7 @@ export class DemoBackend implements FeedBackend {
     }
     if (chain && !this.chainExists(chain)) throw new Error(`no chain ${chain}`);
     if (chain) this.answerAsks(chain, text);
-    const posted = this.post(chain, "you", text, "", "waiting", NO_ASK, attachments);
+    const posted = this.post(chain, "you", text, "", "waiting", NO_ASK, attachments, "", mode);
     this.changed();
     this.agentTakesUp(posted.id);
     return posted;
@@ -893,6 +897,7 @@ export class DemoBackend implements FeedBackend {
     ask: Ask = NO_ASK,
     attachments: Attachment[] = [],
     headlineText = "",
+    mode = "",
   ): FeedItem {
     const id = `demo-${this.nextId++}`;
     const t = this.tick();
@@ -901,6 +906,7 @@ export class DemoBackend implements FeedBackend {
       ...blank(id, "message", "", t, chain || id, ask),
       title: headlineText || (text || images === 0 ? headline(text) : images === 1 ? "Sent an image" : `Sent ${images} images`),
       headline: headlineText,
+      mode,
       body: text,
       from,
       reply_to: replyTo,
@@ -1349,7 +1355,7 @@ function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chai
     attachments: [],
     steps: [],
     draft: "",
-    stop_at: 0, headline: "",
+    stop_at: 0, headline: "", mode: "",
     superseded_by: "",
     answers: "",
     answers_superseded: false, held_by: "", held_since: 0, subject: "",

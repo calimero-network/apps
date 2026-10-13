@@ -48,7 +48,7 @@ export interface Feed {
    * Talk to your agent about a chain ("" starts a new one). Resolves to your
    * message, so the caller can open its chain; null when the node refused it.
    */
-  say: (chain: string, text: string, attachments?: Attachment[]) => Promise<FeedItem | null>;
+  say: (chain: string, text: string, attachments?: Attachment[], mode?: string) => Promise<FeedItem | null>;
   /** Answer one of your agent's questions from its buttons: your next message in its chain. */
   answerAsk: (item: FeedItem, text: string) => Promise<void>;
   /** Where images on your messages are kept; null when this feed can't hold them. */
@@ -261,10 +261,10 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       [run],
     ),
     say: useCallback(
-      async (chain, text, attachments) => {
+      async (chain, text, attachments, mode) => {
         let posted: FeedItem | null = null;
         await run(async (b) => {
-          posted = await b.say(chain, text, attachments);
+          posted = await b.say(chain, text, attachments, mode);
         });
         return posted;
       },
