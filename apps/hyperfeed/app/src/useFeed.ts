@@ -4,6 +4,7 @@ import type {
   CheckpointView,
   FeedItem,
   FeedPage,
+  Folder,
   LensView,
   LinkView,
   PrView,
@@ -90,6 +91,8 @@ export interface Feed {
   markAllSeen: () => Promise<void>;
   setPolicy: (appKey: string, agent: AgentMode, notifications: NotificationMode) => Promise<void>;
   setGuard: (category: string, enabled: boolean) => Promise<void>;
+  /** Only on a feed that keeps what each agent may reach. */
+  setAccess?: (agent: string, folders: Folder[], shell: boolean, web: boolean) => Promise<void>;
   setPaused: (paused: boolean) => Promise<void>;
   /** Your standing rules: add one, remove one, or approve or dismiss one your agent suggested. */
   addRule: (text: string) => Promise<void>;
@@ -210,6 +213,11 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     (chain: string, repo: string, pr: number) => run((b) => (b.mergeWhenGreen ? b.mergeWhenGreen(chain, repo, pr) : Promise.resolve())),
     [run],
   );
+  const setAccess = useCallback(
+    (agent: string, folders: Folder[], shell: boolean, web: boolean) =>
+      run((b) => (b.setAccess ? b.setAccess(agent, folders, shell, web) : Promise.resolve())),
+    [run],
+  );
   const addLink = useCallback(
     (chain: string, subject: string, label: string) =>
       run((b) => (b.addLink ? b.addLink(chain, subject, label).then(() => undefined) : Promise.resolve())),
@@ -298,6 +306,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     markAllSeen: useCallback(() => run((b) => b.markAllSeen()), [run]),
     setPolicy: useCallback((k, agent, notifications) => run((b) => b.setPolicy(k, agent, notifications)), [run]),
     setGuard: useCallback((category, enabled) => run((b) => b.setGuard(category, enabled)), [run]),
+    setAccess: backend?.setAccess ? setAccess : undefined,
     setPaused: useCallback((paused) => run((b) => b.setPaused(paused)), [run]),
     addRule: useCallback((text) => run((b) => b.addRule(text)), [run]),
     removeRule: useCallback((id) => run((b) => b.removeRule(id)), [run]),

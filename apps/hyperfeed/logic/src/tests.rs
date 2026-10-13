@@ -890,6 +890,72 @@ fn a_message_says_how_private_it_is() {
     assert!(r.is_err(), "modes are exact");
 }
 
+#[test]
+fn you_set_what_an_agent_reaches_and_it_reports_what_it_can() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let agent = "mero-bot@laptop".to_owned();
+    let work = Folder {
+        path: "~/workspace/calimero".to_owned(),
+        write: true,
+    };
+    let docs = Folder {
+        path: "/Users/me/Documents".to_owned(),
+        write: false,
+    };
+    app.call(|s| s.set_access(agent.clone(), vec![work.clone(), docs.clone()], true, false))
+        .unwrap();
+    let set = app.view(|s| s.settings()).unwrap().access;
+    assert_eq!(set.len(), 1);
+    assert_eq!(set[0].agent, agent);
+    assert_eq!(set[0].folders, [work.clone(), docs]);
+    assert!(set[0].shell && !set[0].web);
+
+    // The latest write wins: narrowing replaces the folders.
+    app.call(|s| s.set_access(agent.clone(), vec![work.clone()], false, false))
+        .unwrap();
+    let set = app.view(|s| s.settings()).unwrap().access;
+    assert_eq!(set[0].folders, std::slice::from_ref(&work));
+    assert!(!set[0].shell);
+
+    for bad in ["relative/path", "~user/x", "/a/../b", ""] {
+        let f = Folder {
+            path: bad.to_owned(),
+            write: false,
+        };
+        let r = app.call(|s| s.set_access(agent.clone(), vec![f], false, false));
+        assert!(r.is_err(), "{bad:?} is refused");
+    }
+    let many = (0..=MAX_FOLDERS)
+        .map(|i| Folder {
+            path: format!("/f{i}"),
+            write: false,
+        })
+        .collect();
+    assert!(app
+        .call(|s| s.set_access(agent.clone(), many, false, false))
+        .is_err());
+
+    let line = ReachLine {
+        serves: "public".to_owned(),
+        profile: "claude".to_owned(),
+        model: String::new(),
+        attested: false,
+        folders: vec![work],
+        shell: false,
+        web: false,
+    };
+    app.call(|s| s.agent_reach(agent.clone(), vec![line.clone()]))
+        .unwrap();
+    let reach = app.view(|s| s.settings()).unwrap().reach;
+    assert_eq!(reach.len(), 1);
+    assert_eq!(reach[0].lines, [line]);
+
+    let r = app.call_as_account(STRANGER, STRANGER, |s| {
+        s.set_access(agent.clone(), Vec::new(), true, true)
+    });
+    assert!(r.is_err(), "only the owner sets what an agent reaches");
+}
+
 fn choose(options: &[&str]) -> Ask {
     Ask {
         kind: "choose".to_owned(),

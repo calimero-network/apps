@@ -87,6 +87,31 @@ steps:
     method: set_guard
     args: { category: "invite", enabled: true }
 
+  # What the agent may reach on its computer: set by the owner, and what
+  # mero-bot reports it can reach.
+  - name: Owner sets what mero-bot may reach
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_access
+    args:
+      agent: "mero-bot@laptop"
+      folders: [{ path: "~/workspace", write: true }, { path: "/srv/specs", write: false }]
+      shell: false
+      web: true
+
+  - name: The agent reports what it can reach
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_reach
+    args:
+      name: "mero-bot@laptop"
+      lines:
+        - { serves: "private", profile: "near", model: "glm", attested: true, folders: [], shell: false, web: false }
+
   - name: Owner reads the settings
     type: call
     node: feed-node-1
@@ -96,11 +121,19 @@ steps:
     args: {}
     outputs:
       settings_1: result
+      # `json_subset` compares lists whole, so the access entry and the reach
+      # line (each carrying a timestamp) are pulled out and checked on their own.
+      access_1: result.output.access.0
+      reach_1: result.output.reach.0
+      reach_line_1: result.output.reach.0.lines.0
 
   - name: Assert the policy and the guard are stored
     type: json_assert
     statements:
       - 'json_subset({{settings_1}}, {"output": {"paused": false, "policies": [{"app": "chat", "agent": "act", "notifications": "push"}], "message_modes": ["private", "public"]}})'
+      - 'json_subset({{access_1}}, {"agent": "mero-bot@laptop", "folders": [{"path": "~/workspace", "write": true}, {"path": "/srv/specs", "write": false}], "shell": false, "web": true})'
+      - 'json_subset({{reach_1}}, {"agent": "mero-bot@laptop"})'
+      - 'json_subset({{reach_line_1}}, {"serves": "private", "profile": "near", "attested": true, "folders": [], "shell": false, "web": false})'
 
   - name: The agent checks before acting in chat
     type: call
@@ -953,6 +986,17 @@ steps:
     outputs:
       lens_error: error
 
+  - name: node-2 tries to widen what the owner's agent may reach
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: set_access
+    args: { agent: "mero-bot@laptop", folders: [{ path: "/", write: true }], shell: true, web: true }
+    expected_failure: true
+    outputs:
+      access_error: error
+
   - name: node-2 reads the lenses
     type: call
     node: feed-node-2
@@ -970,6 +1014,7 @@ steps:
       - "is_set({{unpause_error}})"
       - "is_set({{say_error}})"
       - "is_set({{lens_error}})"
+      - "is_set({{access_error}})"
 
   - name: Assert node-2 holds the approved lens
     type: json_assert

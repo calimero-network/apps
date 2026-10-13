@@ -151,3 +151,68 @@ describe("Controls: phone alerts", () => {
     expect(backend.devices.map((d) => d.name)).toEqual(["Android"]);
   });
 });
+
+describe("Controls: what your agents can reach", () => {
+  const section = () => screen.findByRole("region", { name: "What your agents can reach" });
+  const AGENT = "mero-bot@laptop";
+  const reported = (b: DemoBackend) =>
+    b.agentReach(AGENT, [
+      { serves: "private", profile: "near", model: "z-ai/glm-5.3-flash", attested: true, folders: [], shell: false, web: false },
+      { serves: "public", profile: "claude", model: "", attested: false, folders: [{ path: "~/workspace/calimero", write: true }], shell: true, web: true },
+    ]);
+
+  it("shows what each agent reports, then narrows it to what you set", async () => {
+    const backend = new DemoBackend(true, 0);
+    reported(backend);
+    render(<Harness backend={backend} />);
+    const agent = within(await section()).getByRole("group", { name: `What ${AGENT} can reach` });
+    expect(within(agent).getByRole("list", { name: `What ${AGENT} reports` })).toHaveTextContent(
+      "Private · near (z-ai/glm-5.3-flash), attested: Calimero apps only",
+    );
+    expect(within(agent).getByText(/Public/).closest("li")).toHaveTextContent("claude: Calimero apps, ~/workspace/calimero, shell, web");
+    expect(within(agent).getByText(/Not set by you/)).toBeInTheDocument();
+
+    // Starts from what it reported: the workspace, read and write, shell and web on.
+    const folders = within(agent).getByRole("list", { name: `Folders ${AGENT} may use` });
+    expect(folders).toHaveTextContent("~/workspace/calimero");
+    expect(within(agent).getByRole("button", { name: "Save" })).toBeDisabled();
+
+    fireEvent.change(within(agent).getByLabelText("Add a folder"), { target: { value: "notes" } });
+    fireEvent.click(within(agent).getByRole("button", { name: "Add" }));
+    expect(within(agent).getByRole("alert")).toHaveTextContent("absolute path, or one under ~");
+
+    fireEvent.change(within(agent).getByLabelText("Add a folder"), { target: { value: "~/Documents/specs/" } });
+    fireEvent.click(within(agent).getByRole("button", { name: "Add" }));
+    expect(folders).toHaveTextContent("~/Documents/specs");
+    fireEvent.click(within(agent).getByLabelText(/Shell/));
+    fireEvent.click(within(agent).getByLabelText(/Web/));
+    await act(async () => {
+      fireEvent.click(within(agent).getByRole("button", { name: "Save" }));
+    });
+
+    const [set] = (await backend.settings()).access!;
+    expect(set).toMatchObject({
+      agent: AGENT,
+      folders: [
+        { path: "~/workspace/calimero", write: true },
+        { path: "~/Documents/specs", write: false },
+      ],
+      shell: false,
+      web: false,
+    });
+    expect(await within(agent).findByRole("button", { name: "Save" })).toBeDisabled();
+    expect(within(agent).queryByText(/Not set by you/)).toBeNull();
+  });
+
+  it("is not there on a feed that predates access", async () => {
+    class OlderFeed extends DemoBackend {
+      override async settings() {
+        const { access: _a, reach: _r, ...rest } = await super.settings();
+        return rest as Awaited<ReturnType<DemoBackend["settings"]>>;
+      }
+    }
+    render(<Harness backend={new OlderFeed(true, 0)} />);
+    await screen.findByRole("region", { name: "Standing rules" });
+    expect(screen.queryByRole("region", { name: "What your agents can reach" })).toBeNull();
+  });
+});

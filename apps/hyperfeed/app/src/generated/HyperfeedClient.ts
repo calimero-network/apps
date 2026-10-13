@@ -7,6 +7,30 @@ import type {
 // Generated types
 
 /**
+ * What you let one agent reach on its computer, beyond your Calimero apps:
+ * these folders, a shell, the web. Yours to set (`set_access`); the agent's
+ * runtime enforces it before any tool runs, and an agent with none set keeps
+ * its runtime's default.
+ */
+export interface Access {
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+  updated_at: number;
+}
+
+/**
+ * What you let one agent reach, as settings shows it.
+ */
+export interface AccessView {
+  agent: string;
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+  updated_at: number;
+}
+
+/**
  * One thing your agent did, or wants to do, on your behalf.
  *
  * Everything but `history` and `reviewed` is written once. `history` merges as
@@ -506,6 +530,15 @@ export interface FeedPage {
 }
 
 /**
+ * A folder an agent may use on its computer: an absolute path, or one under
+ * `~`, and whether it may write there too.
+ */
+export interface Folder {
+  path: string;
+  write: boolean;
+}
+
+/**
  * One "always ask me before" switch.
  */
 export interface Guard {
@@ -583,6 +616,14 @@ export interface Hyperfeed {
    * Which agent each of your messages sent with a mode is for, by the message's id.
    */
   modes: Record<string, MessageMode>;
+  /**
+   * What you let each agent reach on its computer, by agent name.
+   */
+  access: Record<string, Access>;
+  /**
+   * What each agent last reported it can reach, by agent name.
+   */
+  reach: Record<string, Reach>;
   /**
    * Questions a newer one in their chain replaced, by the question's id.
    */
@@ -1088,6 +1129,41 @@ export interface PushKeyView {
 }
 
 /**
+ * What one agent reported it can reach, latest report wins.
+ */
+export interface Reach {
+  lines: ReachLine[];
+  at: number;
+}
+
+/**
+ * One agent profile an agent runs, as it reports it: which mode or route
+ * it serves, its model, whether its model is attested, and what it can reach
+ * besides your Calimero apps.
+ */
+export interface ReachLine {
+  /**
+   * What it runs: a message mode (`private`, `public`) or `default`.
+   */
+  serves: string;
+  profile: string;
+  model: string;
+  attested: boolean;
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+}
+
+/**
+ * What one agent reported it can reach, as settings shows it.
+ */
+export interface ReachView {
+  agent: string;
+  lines: ReachLine[];
+  at: number;
+}
+
+/**
  * One of your standing rules: a short line your agent keeps to on every
  * turn ("Never push to main", "Answer in English"). Only you add or remove
  * one; removing keeps the row with `removed`, so the latest decision wins on
@@ -1165,6 +1241,15 @@ export interface SettingsView {
    * Empty on a feed made before modes, which refuses a `mode` argument.
    */
   message_modes: string[];
+  /**
+   * What you let each agent reach on its computer, by agent name. An agent
+   * with no entry keeps its runtime's default.
+   */
+  access: AccessView[];
+  /**
+   * What each agent last reported it can reach, by agent name.
+   */
+  reach: ReachView[];
 }
 
 /**
@@ -1599,6 +1684,19 @@ export class HyperfeedClient {
   public async agentProgress(params: { id: string; doing: string }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_progress', argsJson: params });
     return response as FeedItem;
+  }
+
+  /**
+   * agent_reach
+   *
+   * An agent saying what it can reach: one line per agent profile it runs.
+   * Shown to you in Controls beside what you set with `set_access`.
+   *
+   * @intent mutating
+   */
+  public async agentReach(params: { name: string; lines: ReachLine[] }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_reach', argsJson: params });
+    return response as void;
   }
 
   /**
@@ -2214,6 +2312,22 @@ export class HyperfeedClient {
   public async sayWith(params: { chain: string; text: string; attachments: Attachment[]; headline: string | null; mode: string | null }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'say_with', argsJson: params });
     return response as FeedItem;
+  }
+
+  /**
+   * set_access
+   *
+   * What `agent` (its name, as it reports in) may reach on its computer
+   * besides your Calimero apps: `folders` (each with or without writes),
+   * a `shell`, and the `web`. It replaces what was set before. Your
+   * agent's runtime refuses this method to the agent, so only you widen
+   * or narrow it.
+   *
+   * @intent mutating
+   */
+  public async setAccess(params: { agent: string; folders: Folder[]; shell: boolean; web: boolean }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_access', argsJson: params });
+    return response as void;
   }
 
   /**

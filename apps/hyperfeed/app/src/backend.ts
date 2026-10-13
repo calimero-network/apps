@@ -18,6 +18,7 @@ import type {
   RuleView,
   SettingsView,
   WatchView,
+  Folder,
 } from "./generated/HyperfeedClient";
 import { mergeWatchInput } from "./watches";
 
@@ -101,6 +102,11 @@ export interface FeedBackend {
   setPolicy(appKey: string, agent: AgentMode, notifications: NotificationMode): Promise<PolicyView>;
   setGuard(category: string, enabled: boolean): Promise<void>;
   setPaused(paused: boolean): Promise<void>;
+  /**
+   * What `agent` may reach on its computer besides your Calimero apps; it
+   * replaces what was set. Only a feed whose settings carry `access` has it.
+   */
+  setAccess?(agent: string, folders: Folder[], shell: boolean, web: boolean): Promise<void>;
   /** Add one of your standing rules: a short line your agent keeps to on every turn. */
   addRule(text: string): Promise<RuleView>;
   removeRule(id: string): Promise<void>;
@@ -194,6 +200,7 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
       client.setPolicy({ app_key: appKey, agent, notifications }),
     setGuard: (category, enabled) => client.setGuard({ category, enabled }),
     setPaused: (paused) => client.setPaused({ paused }),
+    setAccess: (agent, folders, shell, web) => client.setAccess({ agent, folders, shell, web }),
     addRule: (text) => client.addRule({ text }),
     removeRule: (id) => client.removeRule({ id }),
     approveRule: (id) => client.approveRule({ id }),
