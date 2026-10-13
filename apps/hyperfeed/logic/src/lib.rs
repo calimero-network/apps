@@ -106,6 +106,12 @@ pub use prs::{PrInput, PrSeen, PrView, CHECK_STATES, MAX_FAILING, MAX_PRS, PR_ST
 mod links;
 pub use links::{split_subject, Link, LinkInput, LinkView, LINK_BY, MAX_LINKS};
 
+mod push;
+pub use push::{
+    PushDevice, PushDeviceInput, PushDeviceView, PushKey, PushKeyView, MAX_PUSH_DEVICES,
+    MAX_PUSH_ENDPOINT, MAX_PUSH_KEY,
+};
+
 #[cfg(test)]
 mod tests;
 
@@ -1346,6 +1352,10 @@ pub struct Hyperfeed {
     subject_chains: UnorderedMap<String, Subject>,
     /// Each task's links, by `<chain>|<subject>`. See [`links`].
     links: UnorderedMap<String, Link>,
+    /// Devices to push to, by endpoint. See [`push`].
+    push_devices: UnorderedMap<String, PushDevice>,
+    /// The runtime's VAPID public key, under `vapid`.
+    push_keys: UnorderedMap<String, PushKey>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1417,6 +1427,8 @@ pub enum Event<'a> {
     LinksChanged {
         chain: &'a str,
     },
+    /// A device to push to, or the push key, changed: re-read `push_devices`.
+    PushChanged,
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -1457,6 +1469,8 @@ impl Hyperfeed {
             action_subjects: UnorderedMap::new(),
             subject_chains: UnorderedMap::new(),
             links: UnorderedMap::new(),
+            push_devices: UnorderedMap::new(),
+            push_keys: UnorderedMap::new(),
         }
     }
 
@@ -3698,6 +3712,38 @@ impl Hyperfeed {
     /// teammates did there (its notifications in the task).
     pub fn links(&self, chain: String) -> app::Result<Vec<LinkView>> {
         self.link_list(&chain)
+    }
+
+    // ── Push: wake your phone when something needs you ───────────────────────
+
+    /// Your agent's runtime keeps its VAPID public key here, for phones to
+    /// subscribe with; `by` names the runtime that holds the private half.
+    /// Owner only. A different key drops every device: each subscribes again.
+    pub fn set_push_key(&mut self, public_key: String, by: String) -> app::Result<PushKeyView> {
+        self.push_key_set(public_key, by)
+    }
+
+    /// The key phones subscribe with; empty before a runtime set one.
+    pub fn push_key(&self) -> app::Result<PushKeyView> {
+        self.push_key_get()
+    }
+
+    /// A phone (or any browser) to push to: its push subscription, a name,
+    /// and `quiet` to say only "Something needs you". Owner only; adding one
+    /// again updates it. At most [`MAX_PUSH_DEVICES`]; the oldest makes room.
+    pub fn add_push_device(&mut self, input: PushDeviceInput) -> app::Result<PushDeviceView> {
+        self.push_device_add(input)
+    }
+
+    /// Stop pushing to a device: you took it off, or its push service said
+    /// it is gone.
+    pub fn remove_push_device(&mut self, endpoint: String) -> app::Result<()> {
+        self.push_device_remove(endpoint)
+    }
+
+    /// The devices to push to, newest first.
+    pub fn push_devices(&self) -> app::Result<Vec<PushDeviceView>> {
+        self.push_device_list()
     }
 
     /// An agent saying it is running. The feed shows it as live while it

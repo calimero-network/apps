@@ -428,7 +428,8 @@ feed** is there too. mero-bot follows you to a feed once you write in it.
 ## Upgrading
 
 Feeds made by an earlier version are not migrated: delete the old feed and create a new one. The
-state layout changed three times (conversations, then lenses, then images on messages), and the
+state layout changed many times (conversations, lenses, images on messages, and since then most
+releases, push devices included), and the
 prototype does not carry old rows over. An older feed still chats in text; attaching an image there
 says the feed is too old.
 
@@ -437,6 +438,8 @@ says the feed is too old.
 - Approvals from mero-bot's terminal and from the feed race; the first answer wins. A held tool call
   waits as long as mero-bot runs: there is no timeout yet.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
+  Phone alerts (Controls → Phone alerts) keep your devices' push subscriptions and the runtime's VAPID
+  public key in the feed; mero-bot's sender, which pushes what newly needs you, is a separate change.
 - Lenses for apps other than Chat are learned on your node; none ships for them. A lens is tried on
   recent events only when there are some, so a quiet app's lens is checked against its ABI alone.
 - An answer the feed sends itself has no retry if the tab closes between the two calls; the row

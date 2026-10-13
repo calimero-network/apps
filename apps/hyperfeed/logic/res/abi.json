@@ -1693,6 +1693,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Each task's links, by `<chain>|<subject>`. See [`links`]."
+        },
+        {
+          "name": "push_devices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "PushDevice"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Devices to push to, by endpoint. See [`push`]."
+        },
+        {
+          "name": "push_keys",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "PushKey"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "The runtime's VAPID public key, under `vapid`."
         }
       ]
     },
@@ -2694,6 +2722,203 @@
         }
       ]
     },
+    "PushDevice": {
+      "kind": "record",
+      "doc": "One device, kept by its endpoint. Taking it off keeps the row with\n`removed: true`, so a device that synced late does not bring it back.",
+      "fields": [
+        {
+          "name": "endpoint",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "p256dh",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "auth",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "quiet",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Say only \"Something needs you\": no title, no text leaves your node."
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The VAPID public key it subscribed with."
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "removed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PushDeviceInput": {
+      "kind": "record",
+      "doc": "What [`crate::Hyperfeed::add_push_device`] takes: the browser's\n`PushSubscription.toJSON()`, a name, and how much it may say.",
+      "fields": [
+        {
+          "name": "endpoint",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "p256dh",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "auth",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "\"Sandi's iPhone\"; `\"\"` is named \"A device\"."
+        },
+        {
+          "name": "quiet",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The key it subscribed with: refused unless it is the current one."
+        }
+      ]
+    },
+    "PushDeviceView": {
+      "kind": "record",
+      "doc": "A device as [`crate::Hyperfeed::push_devices`] returns it.",
+      "fields": [
+        {
+          "name": "endpoint",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "p256dh",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "auth",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "quiet",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PushKey": {
+      "kind": "record",
+      "doc": "The runtime's VAPID public key.",
+      "fields": [
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The runtime that holds its private half, by name."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PushKeyView": {
+      "kind": "record",
+      "doc": "The key as [`crate::Hyperfeed::push_key`] returns it; empty before a runtime set one.",
+      "fields": [
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Rule": {
       "kind": "record",
       "doc": "One of your standing rules: a short line your agent keeps to on every\nturn (\"Never push to main\", \"Answer in English\"). Only you add or remove\none; removing keeps the row with `removed`, so the latest decision wins on\nevery device.",
@@ -3386,6 +3611,22 @@
       ],
       "returns": {
         "$ref": "LinkView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_push_device",
+      "doc": "A phone (or any browser) to push to: its push subscription, a name,\nand `quiet` to say only \"Something needs you\". Owner only; adding one\nagain updates it. At most [`MAX_PUSH_DEVICES`]; the oldest makes room.",
+      "params": [
+        {
+          "name": "input",
+          "type": {
+            "$ref": "PushDeviceInput"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "PushDeviceView"
       },
       "intent": "mutating"
     },
@@ -4177,6 +4418,27 @@
       "intent": "read_only"
     },
     {
+      "name": "push_devices",
+      "doc": "The devices to push to, newest first.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "PushDeviceView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "push_key",
+      "doc": "The key phones subscribe with; empty before a runtime set one.",
+      "params": [],
+      "returns": {
+        "$ref": "PushKeyView"
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "record_action",
       "doc": "Record an action: a proposal for you to approve, or an outcome.\n\nA proposal the rules refuse is an error. An outcome the rules say\nneeded you is recorded with a breach, never dropped, unless the app's\nmode alone asked for you and its `grant` is a session you allowed.",
       "params": [
@@ -4258,6 +4520,22 @@
         },
         {
           "name": "subject",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_push_device",
+      "doc": "Stop pushing to a device: you took it off, or its push service said\nit is gone.",
+      "params": [
+        {
+          "name": "endpoint",
           "type": {
             "kind": "string"
           }
@@ -4493,6 +4771,28 @@
       "intent": "mutating"
     },
     {
+      "name": "set_push_key",
+      "doc": "Your agent's runtime keeps its VAPID public key here, for phones to\nsubscribe with; `by` names the runtime that holds the private half.\nOwner only. A different key drops every device: each subscribes again.",
+      "params": [
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "PushKeyView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "settings",
       "doc": "Your rules: the pause switch, every app you set a policy for, every\nguard (defaults included), your standing rules, and the rules your\nagent suggested that wait for you.",
       "params": [],
@@ -4685,6 +4985,10 @@
         "$ref": "Event_PrChanged"
       },
       "doc": "Your agent's runtime saw a PR change on GitHub (`owner/name#number`):\nre-read `prs`."
+    },
+    {
+      "name": "PushChanged",
+      "doc": "A device to push to, or the push key, changed: re-read `push_devices`."
     },
     {
       "name": "SettingsChanged"

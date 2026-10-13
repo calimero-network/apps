@@ -11,6 +11,9 @@ import type {
   NotificationInput,
   PolicyView,
   PrView,
+  PushDeviceInput,
+  PushDeviceView,
+  PushKeyView,
   RuleProposalView,
   RuleView,
   SettingsView,
@@ -68,6 +71,14 @@ export interface FeedBackend {
   addLink?(chain: string, subject: string, label: string): Promise<LinkView>;
   /** Take a link off a task: your agent touching the thing again does not bring it back. */
   removeLink?(chain: string, subject: string): Promise<void>;
+  /** The key phones subscribe with (empty before your agent's runtime set one); null when the feed predates push. */
+  pushKey?(): Promise<PushKeyView | null>;
+  /** The devices your agent's runtime pushes to, newest first; [] when the feed predates push. */
+  pushDevices?(): Promise<PushDeviceView[]>;
+  /** Push to this device: its browser's subscription, a name, and whether it stays quiet. */
+  addPushDevice?(input: PushDeviceInput): Promise<PushDeviceView>;
+  /** Stop pushing to a device. */
+  removePushDevice?(endpoint: string): Promise<void>;
   /**
    * Talk to your agent about a chain, or about anything with `chain` "" (a new
    * chain). With images (uploaded with {@link FeedBackend.images}), `text` may be empty.
@@ -150,6 +161,18 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
       }),
     addLink: (chain, subject, label) => client.addLink({ chain, input: { subject, label, by: "you" } }),
     removeLink: (chain, subject) => client.removeLink({ chain, subject }).then(() => undefined),
+    pushKey: () =>
+      client.pushKey().catch((e: unknown) => {
+        if (lacksMethod(e, "push_key")) return null;
+        throw e;
+      }),
+    pushDevices: () =>
+      client.pushDevices().catch((e: unknown) => {
+        if (lacksMethod(e, "push_devices")) return [];
+        throw e;
+      }),
+    addPushDevice: (input) => client.addPushDevice({ input }),
+    removePushDevice: (endpoint) => client.removePushDevice({ endpoint }).then(() => undefined),
     // Text alone keeps to `say`, which every feed has; only images need `say_with`.
     // No `headline` key: a feed made before headlines refuses any argument it does not know.
     say: (chain, text, attachments = []) =>

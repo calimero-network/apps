@@ -2924,3 +2924,125 @@ fn a_task_takes_a_bounded_number_of_links() {
         .unwrap();
     assert_eq!(links_of(&app, &task.chain).len(), MAX_LINKS);
 }
+
+// ── push to your phone ───────────────────────────────────────────────────────
+
+const VAPID: &str =
+    "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U";
+const VAPID_2: &str =
+    "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM";
+
+fn phone(endpoint: &str, key: &str) -> PushDeviceInput {
+    PushDeviceInput {
+        endpoint: endpoint.to_owned(),
+        p256dh: "BLc4xRzKlKORKWlbdgFaBrrPK3ydWAHo4M0gs0i1oEKgPpWC5cW8OCzVrOQRv-1npXRWk8udnW3oQhFpFHw3Lvo".to_owned(),
+        auth: "8eDyX_uCN0XRhSbY5hs7Hg".to_owned(),
+        name: "Sandi's phone".to_owned(),
+        quiet: false,
+        key: key.to_owned(),
+    }
+}
+
+#[test]
+fn a_phone_subscribes_with_the_runtimes_key_and_is_listed() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    assert_eq!(app.view(|s| s.push_key()).unwrap(), PushKeyView::default());
+    // No key yet: nothing to subscribe with.
+    assert!(app
+        .call(|s| s.add_push_device(phone("https://fcm.googleapis.com/fcm/send/a", VAPID)))
+        .is_err());
+
+    let key = app
+        .call(|s| s.set_push_key(VAPID.to_owned(), "mero-bot@laptop".to_owned()))
+        .unwrap();
+    assert_eq!(key.public_key, VAPID);
+    let d = app
+        .call(|s| s.add_push_device(phone("https://fcm.googleapis.com/fcm/send/a", VAPID)))
+        .unwrap();
+    assert_eq!(d.name, "Sandi's phone");
+    // Adding it again updates it; still one device.
+    let mut quiet = phone("https://fcm.googleapis.com/fcm/send/a", VAPID);
+    quiet.quiet = true;
+    app.call(|s| s.add_push_device(quiet)).unwrap();
+    let list = app.view(|s| s.push_devices()).unwrap();
+    assert_eq!(list.len(), 1);
+    assert!(list[0].quiet);
+    assert_eq!(list[0].added_at, d.added_at);
+}
+
+#[test]
+fn a_subscription_made_with_an_old_key_is_refused_and_a_new_key_drops_devices() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    app.call(|s| s.set_push_key(VAPID.to_owned(), "a".to_owned()))
+        .unwrap();
+    app.call(|s| s.add_push_device(phone("https://web.push.apple.com/x", VAPID)))
+        .unwrap();
+    app.call(|s| s.set_push_key(VAPID_2.to_owned(), "b".to_owned()))
+        .unwrap();
+    assert!(app.view(|s| s.push_devices()).unwrap().is_empty());
+    assert!(app
+        .call(|s| s.add_push_device(phone("https://web.push.apple.com/x", VAPID)))
+        .is_err());
+    app.call(|s| s.add_push_device(phone("https://web.push.apple.com/x", VAPID_2)))
+        .unwrap();
+    assert_eq!(app.view(|s| s.push_devices()).unwrap().len(), 1);
+}
+
+#[test]
+fn a_device_comes_off_and_bad_subscriptions_are_refused() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    app.call(|s| s.set_push_key(VAPID.to_owned(), "a".to_owned()))
+        .unwrap();
+    app.call(|s| s.add_push_device(phone("https://push.example/1", VAPID)))
+        .unwrap();
+    app.call(|s| s.remove_push_device("https://push.example/1".to_owned()))
+        .unwrap();
+    assert!(app.view(|s| s.push_devices()).unwrap().is_empty());
+    // Taking off one that is not there is fine.
+    app.call(|s| s.remove_push_device("https://push.example/none".to_owned()))
+        .unwrap();
+
+    assert!(app
+        .call(|s| s.add_push_device(phone("http://push.example/plain", VAPID)))
+        .is_err());
+    let mut bad = phone("https://push.example/2", VAPID);
+    bad.auth = "not base64!".to_owned();
+    assert!(app.call(|s| s.add_push_device(bad)).is_err());
+    assert!(app
+        .call(|s| s.set_push_key("has spaces".to_owned(), "a".to_owned()))
+        .is_err());
+}
+
+#[test]
+fn only_the_owner_sets_the_key_or_adds_devices() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s
+            .set_push_key(VAPID.to_owned(), "a".to_owned()))
+        .is_err());
+    app.call(|s| s.set_push_key(VAPID.to_owned(), "a".to_owned()))
+        .unwrap();
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s
+            .add_push_device(phone("https://push.example/s", VAPID)))
+        .is_err());
+    // The owner's phone is the owner.
+    assert!(app
+        .call_as(PHONE, |s| s
+            .add_push_device(phone("https://push.example/p", VAPID)))
+        .is_ok());
+}
+
+#[test]
+fn at_most_ten_devices_the_oldest_makes_room() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    app.call(|s| s.set_push_key(VAPID.to_owned(), "a".to_owned()))
+        .unwrap();
+    for i in 0..=MAX_PUSH_DEVICES {
+        app.call(|s| s.add_push_device(phone(&format!("https://push.example/{i}"), VAPID)))
+            .unwrap();
+    }
+    let list = app.view(|s| s.push_devices()).unwrap();
+    assert_eq!(list.len(), MAX_PUSH_DEVICES);
+    assert!(!list.iter().any(|d| d.endpoint == "https://push.example/0"));
+}

@@ -1,11 +1,12 @@
-import { useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import type { AgentMode, NotificationMode } from "./backend";
-import type { Feed } from "./useFeed";
+import { messageOf, type Feed, type PushState } from "./useFeed";
 import { Badge, NewFeedButton, type NewFeed } from "./FeedView";
 import { DEFAULT_APPS, appLook } from "./apps";
 import { GUARD_LABELS, TYPE_LABELS } from "./format";
 import type { LensView, RuleProposalView } from "./generated/HyperfeedClient";
 import type { Preview, PreviewRow } from "./preview";
+import { currentEndpoint, deviceName, inputOf, pushSupported, subscribe, unsubscribe } from "./push";
 
 const AGENT_OPTIONS: { id: AgentMode; label: string }[] = [
   { id: "act", label: "Act" },
@@ -169,6 +170,8 @@ export function ControlsView({
           })}
         </section>
 
+        {feed.loadPush && <PhoneAlerts feed={feed} />}
+
         <section className="panel" aria-labelledby="h-agent">
           <h2 id="h-agent">Connect your agent</h2>
           <p className="muted">
@@ -213,6 +216,120 @@ export function ControlsView({
       </section>
 
     </div>
+  );
+}
+
+/**
+ * Push to your phone: this device subscribes with your agent's runtime's key,
+ * and the runtime wakes it when something needs you and you have not seen it
+ * for a minute. Every subscribed device is listed, and each can be taken off.
+ */
+function PhoneAlerts({ feed }: { feed: Feed }) {
+  const [push, setPush] = useState<PushState | null>(null);
+  const [mine, setMine] = useState<string | null>(null);
+  const [quiet, setQuiet] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [working, setWorking] = useState(false);
+  const supported = pushSupported();
+
+  const loadPush = feed.loadPush;
+  const load = useCallback(async () => {
+    if (!loadPush) return;
+    try {
+      const [p, e] = await Promise.all([loadPush(), currentEndpoint().catch(() => null)]);
+      setPush(p);
+      setMine(e);
+    } catch (e) {
+      setProblem(messageOf(e));
+    }
+  }, [loadPush]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (!push) return null;
+  const key = push.key.public_key;
+  const here = mine ? push.devices.find((d) => d.endpoint === mine) : undefined;
+
+  const start = async () => {
+    if (!feed.addPushDevice) return;
+    setWorking(true);
+    setProblem(null);
+    try {
+      const sub = await subscribe(key);
+      await feed.addPushDevice(inputOf(sub, deviceName(navigator.userAgent), quiet, key));
+    } catch (e) {
+      setProblem(messageOf(e));
+    } finally {
+      setWorking(false);
+      await load();
+    }
+  };
+  const remove = async (endpoint: string) => {
+    if (!feed.removePushDevice) return;
+    setWorking(true);
+    setProblem(null);
+    try {
+      if (endpoint === mine) await unsubscribe().catch(() => undefined);
+      await feed.removePushDevice(endpoint);
+    } finally {
+      setWorking(false);
+      await load();
+    }
+  };
+
+  return (
+    <section className="panel" aria-labelledby="h-push">
+      <h2 id="h-push">Phone alerts</h2>
+      <p className="muted">
+        Your agent's runtime wakes your phone when something needs you and you haven't seen it for a minute. Each push is
+        encrypted to the device: the push service sees only that one was sent.
+      </p>
+      {!key ? (
+        <p className="muted">Start mero-bot against this feed first: it sets the key your devices subscribe with.</p>
+      ) : !supported ? (
+        <p className="muted">This browser can't take pushes. On an iPhone, add Hyperfeed to your Home Screen and open it from there.</p>
+      ) : here ? (
+        <p className="muted">This device gets pushes{here.quiet ? ", saying only \"Something needs you\"" : ""}.</p>
+      ) : (
+        <>
+          <label className="check">
+            <input type="checkbox" checked={quiet} onChange={() => setQuiet(!quiet)} />
+            <span>Quiet: say only "Something needs you", with no title or text</span>
+          </label>
+          <button type="button" className="primary" disabled={working || feed.busy} onClick={() => void start()}>
+            Push to this device
+          </button>
+        </>
+      )}
+      {problem && (
+        <p className="error" role="alert">
+          {problem}
+        </p>
+      )}
+      {push.devices.length > 0 && (
+        <ul className="rules" aria-label="Devices your agent pushes to">
+          {push.devices.map((d) => (
+            <li key={d.endpoint} className="rule">
+              <span>
+                {d.name}
+                {d.endpoint === mine ? " (this device)" : ""}
+                {d.quiet ? " · quiet" : ""}
+              </span>
+              <button
+                type="button"
+                className="ghost small"
+                disabled={working || feed.busy}
+                aria-label={`Stop pushing to ${d.name}`}
+                onClick={() => void remove(d.endpoint)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
