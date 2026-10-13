@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { appLook } from "./apps";
-import { answersYou, isPast, mayAnswer, pastOf, placeOf, readPeopleRows, sentenceOf, sentenceText, writePeopleRows } from "./people";
+import { answersYou, isPast, mayAnswer, pastOf, placeOf, sentenceOf, sentenceText } from "./people";
 
 const appName = (key: string) => appLook(key).name;
 
@@ -77,17 +77,5 @@ describe("people-first rows", () => {
     expect(placeOf({ ...row, source_label: "#eng-standup" }, appName)).toBe("#eng-standup");
     expect(placeOf({ ...row, app: "mero-bot", source_label: "This computer" }, appName)).toBe("");
     expect(placeOf({ ...row, kind: "notification", source_label: "#launch" }, appName)).toBe("Chat · #launch");
-  });
-});
-
-describe("the new feed's switch", () => {
-  afterEach(() => localStorage.clear());
-
-  it("is off until you turn it on, and is remembered", () => {
-    expect(readPeopleRows()).toBe(false);
-    writePeopleRows(true);
-    expect(readPeopleRows()).toBe(true);
-    writePeopleRows(false);
-    expect(readPeopleRows()).toBe(false);
   });
 });

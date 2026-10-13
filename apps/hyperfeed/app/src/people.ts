@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { headlineOfMessage, rowTitle } from "./format";
 import { headlineOf } from "./team";
@@ -224,34 +224,4 @@ export function useChainRoot(chain: string, loadChain: LoadChain): FeedItem | nu
     };
   }, [chain, loadChain]);
   return root;
-}
-
-export const PEOPLE_ROWS_KEY = "hyperfeed:people-rows";
-
-/** Whether the people-first rows are on in this browser. Off until you turn them on. */
-export function readPeopleRows(): boolean {
-  try {
-    return localStorage.getItem(PEOPLE_ROWS_KEY) === "on";
-  } catch {
-    return false;
-  }
-}
-
-export function writePeopleRows(on: boolean) {
-  try {
-    if (on) localStorage.setItem(PEOPLE_ROWS_KEY, "on");
-    else localStorage.removeItem(PEOPLE_ROWS_KEY);
-  } catch {
-    // Private mode: it holds for this visit.
-  }
-}
-
-/** The new feed's switch, remembered in this browser. */
-export function usePeopleRows(): [boolean, (on: boolean) => void] {
-  const [on, setOn] = useState(readPeopleRows);
-  const set = useCallback((next: boolean) => {
-    setOn(next);
-    writePeopleRows(next);
-  }, []);
-  return [on, set];
 }

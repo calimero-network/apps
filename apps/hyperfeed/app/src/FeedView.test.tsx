@@ -11,17 +11,15 @@ function Harness({
   backend,
   newFeed,
   openLink,
-  people,
 }: {
   backend: DemoBackend;
   newFeed?: NewFeed;
   openLink?: (item: FeedItem) => Promise<string | null>;
-  people?: boolean;
 }) {
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
   const feed = useFeed(backend, nudge);
-  return <FeedView feed={feed} query="" newFeed={newFeed} openLink={openLink} people={people} />;
+  return <FeedView feed={feed} query="" newFeed={newFeed} openLink={openLink} />;
 }
 
 const stream = () => screen.getByRole("main");
@@ -99,7 +97,7 @@ describe("FeedView", () => {
     expect(within(needs()).getByRole("button", { name: /Vendor NDA/ })).toBeInTheDocument();
     // Your agent's finished work is in its digest, not a lane.
     for (const name of ["Needs you", "In progress", "Done"]) {
-      expect(within(lane(name)).queryByRole("button", { name: /Posted your stand-up/ })).not.toBeInTheDocument();
+      expect(within(lane(name)).queryByRole("button", { name: /Posted your stand-up/i })).not.toBeInTheDocument();
     }
     // Nothing is shown twice: no side panel repeats the row.
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
@@ -110,18 +108,18 @@ describe("FeedView", () => {
     await rowFor(/Vendor NDA/);
     // What needs you stays in the strip, and the card only counts it.
     expect(digest()).toHaveTextContent("Did 1 thing, 3 waiting on you.");
-    expect(within(digest()).queryByRole("button", { name: /Posted your stand-up/ })).not.toBeInTheDocument();
+    expect(within(digest()).queryByRole("button", { name: /Posted your stand-up/i })).not.toBeInTheDocument();
     // After what needs you, before everything else.
     expect(needs().compareDocumentPosition(digest()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(digest().compareDocumentPosition(lane("In progress")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await openDigest();
-    const row = await openRow(/Posted your stand-up/);
+    const row = await openRow(/Posted your stand-up/i);
     expect(digest()).toContainElement(row);
     expect(within(row).getByRole("button", { name: /Archive/ })).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(within(digest()).getByRole("button", { name: "Hide" }));
     });
-    expect(within(digest()).queryByRole("button", { name: /Posted your stand-up/ })).not.toBeInTheDocument();
+    expect(within(digest()).queryByRole("button", { name: /Posted your stand-up/i })).not.toBeInTheDocument();
   });
 
   it("sums up your agent's day as filed issues and what waits on you, with team rows left in the lanes", async () => {
@@ -139,12 +137,12 @@ describe("FeedView", () => {
     expect(digest()).toHaveTextContent("Your agent today");
     expect(digest()).toHaveTextContent("Filed 2 issues, 1 waiting on you.");
     expect(within(needs()).getByRole("button", { name: /Delete the duplicate/ })).toBeInTheDocument();
-    expect(within(lane("Done")).getByRole("button", { name: /Commented on your issue/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Filed:/ })).not.toBeInTheDocument();
+    expect(within(lane("Done")).getByRole("button", { name: /Commented on your issue/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /filed /i })).not.toBeInTheDocument();
     await act(async () => {
       fireEvent.click(within(digest()).getByRole("button", { name: "Show all 2" }));
     });
-    expect(within(digest()).getAllByRole("button", { name: /Filed:/ })).toHaveLength(2);
+    expect(within(digest()).getAllByRole("button", { name: /filed /i })).toHaveLength(2);
     expect(within(digest()).queryByRole("button", { name: /Delete the duplicate/ })).not.toBeInTheDocument();
   });
 
@@ -160,19 +158,19 @@ describe("FeedView", () => {
     ];
     render(<FeedView feed={staticFeed(items)} query="" />);
     // Right on the card, before it is opened: Archive, and nothing that leads nowhere.
-    for (const title of [/Set mero-bot to Act/, /Pin the stand-up/]) {
+    for (const title of [/Set mero-bot to Act/i, /Pin the stand-up/i]) {
       const card = await rowFor(title);
       expect(within(card).queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
       expect(within(card).queryByRole("button", { name: "Decline" })).not.toBeInTheDocument();
       expect(within(card).getByRole("button", { name: "Archive" })).toBeInTheDocument();
     }
-    const rule = await openRow(/Set mero-bot to Act/);
+    const rule = await openRow(/Set mero-bot to Act/i);
     expect(within(rule).getAllByRole("button", { name: /^Archive/ })).toHaveLength(1);
     expect(rule).toHaveTextContent("Retrying can't help");
-    const pin = await openRow(/Pin the stand-up/);
+    const pin = await openRow(/Pin the stand-up/i);
     expect(pin).toHaveTextContent("Chat has no pin_message.");
     // A failure a retry can fix still offers one.
-    const post = await openRow(/Post the stand-up/);
+    const post = await openRow(/Post the stand-up/i);
     expect(within(post).getByRole("button", { name: "Retry" })).toBeInTheDocument();
     expect(within(post).getByRole("button", { name: "Decline" })).toBeInTheDocument();
   });
@@ -188,13 +186,13 @@ describe("FeedView", () => {
       { ...noRow, id: "c1", chain: "c1", kind: "action", app: "chat", method: "send_message", status: "pending", needs_you: true, title: "Post the stand-up", body: "Shipped the fold", at, chain_at: at },
     ];
     render(<FeedView feed={staticFeed(items)} query="" />);
-    const row = await openRow(/Bundle the hyperfeed contract in apps-hyperfeed-images/);
+    const row = await openRow(/Bundle the hyperfeed contract in apps-hyperfeed-images/i);
     const details = within(row).getByText("Details").closest("details")!;
     expect(details).not.toHaveAttribute("open");
     expect(details).toHaveTextContent("cargo mero bundle");
-    expect(within(row).getByRole("button", { name: /Bundle the hyperfeed contract/ })).not.toHaveTextContent("cargo");
+    expect(within(row).getByRole("button", { name: /Bundle the hyperfeed contract/i })).not.toHaveTextContent("cargo");
     // Any other row's body is shown as it is.
-    const post = await openRow(/Post the stand-up/);
+    const post = await openRow(/Post the stand-up/i);
     expect(within(post).queryByText("Details")).not.toBeInTheDocument();
     expect(within(post).getByText("Shipped the fold")).toBeInTheDocument();
   });
@@ -205,7 +203,7 @@ describe("FeedView", () => {
       { ...noRow, id: "s1", chain: "s1", kind: "action", app: "issue-tracker", method: "set_summary", status: "pending", needs_you: true, title: "set summary in issue-tracker", at, chain_at: at },
     ];
     render(<FeedView feed={staticFeed(items)} query="" />);
-    expect(await rowFor(/Set the summary in Issue Tracker/)).toBeInTheDocument();
+    expect(await rowFor(/Set the summary in Issue Tracker/i)).toBeInTheDocument();
   });
 
   it("titles a command in one line and folds the command behind Details", async () => {
@@ -222,13 +220,13 @@ describe("FeedView", () => {
       },
     ];
     render(<FeedView feed={staticFeed(items)} query="" />);
-    const row = await openRow(/Bundle the hyperfeed contract in apps-hyperfeed-images/);
+    const row = await openRow(/Bundle the hyperfeed contract in apps-hyperfeed-images/i);
     const details = within(row).getByText("Details").closest("details")!;
     expect(details).not.toHaveAttribute("open");
     expect(details).toHaveTextContent("cargo mero bundle");
     expect(within(row).queryByText(command, { selector: "p" })).not.toBeInTheDocument();
     // An older row titled with the bare method is said in plain words.
-    expect(await rowFor(/Set the summary in Issue Tracker/)).toBeInTheDocument();
+    expect(await rowFor(/Set the summary in Issue Tracker/i)).toBeInTheDocument();
   });
 
   it("leads the #launch chain with the NDA; once approved, the next thing in the chain leads", async () => {
@@ -240,7 +238,7 @@ describe("FeedView", () => {
       fireEvent.click(within(row).getByRole("button", { name: "Approve" }));
     });
     // Same row (one per chain), now led by the slot proposal that still needs you.
-    expect(await within(needs()).findByRole("button", { name: /Book 20 minutes with Maya/ })).toBeInTheDocument();
+    expect(await within(needs()).findByRole("button", { name: /Book 20 minutes with Maya/i })).toBeInTheDocument();
     const nda = (await backend.chain("chat-launch:e>f:0")).find((i) => /Vendor NDA/.test(i.title));
     expect(nda?.status).toBe("approved");
   });
@@ -280,7 +278,7 @@ describe("FeedView", () => {
     render(<FeedView feed={staticFeed([{ ...noRow, id: "n1", chain: "n1", app: "chat", from: "Maya", title: "Said hi", at, chain_at: at }])} query="" />);
     expect(needs()).toHaveTextContent("You're clear. Nothing is waiting on you.");
     expect(within(needs()).queryByRole("listitem")).not.toBeInTheDocument();
-    expect(within(lane("Done")).getByRole("button", { name: /Said hi/ })).toBeInTheDocument();
+    expect(within(lane("Done")).getByRole("button", { name: /Said hi/i })).toBeInTheDocument();
   });
 
   it("moves a chain from In progress to Needs you when your reply in it fails to go out", async () => {
@@ -325,13 +323,13 @@ describe("FeedView", () => {
     render(<Harness backend={backend} />);
     // Your reply is still being delivered: the chain is in progress, not done.
     const progress = await screen.findByRole("region", { name: "In progress" });
-    expect(await within(progress).findByRole("button", { name: /Can you send the numbers/ })).toBeInTheDocument();
-    expect(within(lane("Done")).queryByRole("button", { name: /Can you send the numbers/ })).not.toBeInTheDocument();
+    expect(await within(progress).findByRole("button", { name: /Can you send the numbers/i })).toBeInTheDocument();
+    expect(within(lane("Done")).queryByRole("button", { name: /Can you send the numbers/i })).not.toBeInTheDocument();
     await act(async () => {
       await backend.completeAnswer(mention.id, "delivered", "Sent");
     });
     // Everything in it settled: its latest row, your agent's, leads it out of In progress.
-    await waitFor(() => expect(within(lane("In progress")).queryByRole("button", { name: /Can you send the numbers/ })).not.toBeInTheDocument());
+    await waitFor(() => expect(within(lane("In progress")).queryByRole("button", { name: /Can you send the numbers/i })).not.toBeInTheDocument());
     expect(digest()).toHaveTextContent("Did 1 thing");
   });
 
@@ -354,7 +352,7 @@ describe("FeedView", () => {
     render(<Harness backend={backend} />);
     await showAgentRows();
     const row = await openRow(/Ten ideas for the feed/);
-    expect(row.querySelector(".row-title")).toHaveTextContent(/^Ten ideas for the feed$/);
+    expect(row.querySelector(".people-what")).toHaveTextContent(/^Ten ideas for the feed$/);
     expect(within(row).queryByText(/300\. An idea worth trying/)).not.toBeInTheDocument();
     const more = within(row).getByRole("button", { name: "More" });
     expect(more).toHaveAttribute("aria-expanded", "false");
@@ -372,7 +370,7 @@ describe("FeedView", () => {
     render(<Harness backend={backend} />);
     await showAgentRows();
     const row = await openRow(/The deploy is green and live on every node now\./);
-    expect(row.querySelector(".row-title")).toHaveTextContent(/^The deploy is green and live on every node now\.$/);
+    expect(row.querySelector(".people-what")).toHaveTextContent(/^The deploy is green and live on every node now\.$/);
     expect(row.querySelector(".more-text")).toBeNull();
     await act(async () => {
       fireEvent.click(within(row).getByRole("button", { name: "More" }));
@@ -393,7 +391,7 @@ describe("FeedView", () => {
     const row = await rowFor(/Posted\. There are two hellos now/);
     expect(needs()).toContainElement(row);
     // Who asks what, as a sentence, with the options right on the card.
-    expect(row).toHaveTextContent("Your agent asks you");
+    expect(row).toHaveTextContent("Agent asks you");
     expect(within(row).getAllByText("Asks you").length).toBeGreaterThan(0);
     expect(within(row).getAllByRole("button")[0]).toHaveAttribute("aria-expanded", "false");
     await act(async () => {
@@ -503,7 +501,7 @@ describe("FeedView", () => {
     });
     expect(await screen.findByText('You chose "Berlin"')).toBeInTheDocument();
 
-    const jordan = await openRow(/Reply to Jordan/);
+    const jordan = await openRow(/Reply to Jordan/i);
     const box = within(jordan).getByLabelText("Send to Jordan");
     expect((box as HTMLTextAreaElement).value).toMatch(/^Hi Jordan/);
     fireEvent.change(box, { target: { value: "Hi Jordan, terms attached. Call Thursday?" } });
@@ -511,25 +509,25 @@ describe("FeedView", () => {
       fireEvent.click(within(jordan).getByRole("button", { name: "Approve & send" }));
     });
     // The Northwind chain is now led by the CRM failure, the one thing left in it.
-    expect(await within(stream()).findByRole("button", { name: /Couldn't move deal/ })).toBeInTheDocument();
-    const reply = (await backend.chain("northwind")).find((i) => /Reply to Jordan/.test(i.title));
+    expect(await within(stream()).findByRole("button", { name: /couldn't move deal/i })).toBeInTheDocument();
+    const reply = (await backend.chain("northwind")).find((i) => /Reply to Jordan/i.test(i.title));
     expect(reply).toMatchObject({ status: "approved", note: "Hi Jordan, terms attached. Call Thursday?" });
   });
 
   it("archives a done chain, offers undo, and brings it back", async () => {
     render(<Harness backend={new DemoBackend(true, 0)} />);
     await openDigest();
-    const row = await openRow(/Posted your stand-up/);
+    const row = await openRow(/Posted your stand-up/i);
     await act(async () => {
       fireEvent.click(within(row).getByRole("button", { name: /Archive/ }));
     });
-    expect(within(digest()).queryByRole("button", { name: /Posted your stand-up/ })).not.toBeInTheDocument();
+    expect(within(digest()).queryByRole("button", { name: /Posted your stand-up/i })).not.toBeInTheDocument();
     const toast = await screen.findByRole("status");
     expect(toast).toHaveTextContent("Archived");
     await act(async () => {
       fireEvent.click(within(toast).getByRole("button", { name: "Undo" }));
     });
-    expect(await within(digest()).findByRole("button", { name: /Posted your stand-up/ })).toBeInTheDocument();
+    expect(await within(digest()).findByRole("button", { name: /Posted your stand-up/i })).toBeInTheDocument();
   });
 
   it("archives everything done at once, your agent's too, and lists it under Archived", async () => {
@@ -549,11 +547,11 @@ describe("FeedView", () => {
     });
     const archived = await screen.findByRole("region", { name: "Archived" });
     expect(within(archived).getAllByRole("listitem").length).toBeGreaterThanOrEqual(done);
-    const row = await openRow(/Posted your stand-up/);
+    const row = await openRow(/Posted your stand-up/i);
     await act(async () => {
       fireEvent.click(within(row).getByRole("button", { name: "Unarchive" }));
     });
-    expect((await backend.feed("all", "")).items.some((i) => /Posted your stand-up/.test(i.title))).toBe(true);
+    expect((await backend.feed("all", "")).items.some((i) => /Posted your stand-up/i.test(i.title))).toBe(true);
   });
 
   it("puts a to-do away for later", async () => {
@@ -654,7 +652,7 @@ describe("FeedView", () => {
     const backend = new DemoBackend(true, 0);
     render(<Harness backend={backend} />);
     await openDigest();
-    const row = await openRow(/Posted your stand-up/);
+    const row = await openRow(/Posted your stand-up/i);
     fireEvent.change(within(row).getByLabelText("Talk to your agent about this"), {
       target: { value: "Mention the reconnect fix too" },
     });
@@ -809,9 +807,9 @@ describe("FeedView", () => {
     expect(await backend.links(asked.chain)).toEqual([]);
   });
 
-  describe("the new feed", () => {
+  describe("rows said as who did what", () => {
     it("says each row as who did what", async () => {
-      render(<Harness backend={new DemoBackend(true, 0)} people />);
+      render(<Harness backend={new DemoBackend(true, 0)} />);
       await rowFor(/Vendor NDA/);
       // A card in the strip: your agent, where, and what it wants to do.
       expect(await within(needs()).findByRole("button", { name: /Agent in Sign prepared "Vendor NDA/ })).toBeInTheDocument();
@@ -822,7 +820,7 @@ describe("FeedView", () => {
 
     it("keeps your agent's answer in the chat thread, not as a row of its own", async () => {
       const backend = new DemoBackend(true, 0);
-      render(<Harness backend={backend} people />);
+      render(<Harness backend={backend} />);
       await rowFor(/Vendor NDA/);
       const asked = await act(async () => backend.say("", "What's left before the board meeting?"));
       await act(async () => {
@@ -843,14 +841,14 @@ describe("FeedView", () => {
       const items: FeedItem[] = [
         { ...noRow, id: "a1", chain: "a1", kind: "action", app: "calendar", status: "approved", title: "Book 20 minutes with Maya", at, chain_at: at },
       ];
-      render(<FeedView feed={staticFeed(items)} query="" people />);
+      render(<FeedView feed={staticFeed(items)} query="" />);
       await openDigest();
       expect(await within(digest()).findByRole("button", { name: /You approved Book 20 minutes with Maya/ })).toBeInTheDocument();
     });
   
     it("tells a task in milestones, on its post and in its chain, with the whole flow behind More", async () => {
       const backend = new DemoBackend(true, 0);
-      render(<Harness backend={backend} people />);
+      render(<Harness backend={backend} />);
       await rowFor(/Vendor NDA/);
       const asked = await act(async () => backend.say("", "Fix the digest card"));
       await act(async () => {
@@ -872,7 +870,7 @@ describe("FeedView", () => {
     });
 
     it("shows a chain with no story to tell as its flow, as before", async () => {
-      render(<Harness backend={new DemoBackend(true, 0)} people />);
+      render(<Harness backend={new DemoBackend(true, 0)} />);
       await rowFor(/Vendor NDA/);
       const row = await openRow(/Vendor NDA/);
       expect(await within(row).findByRole("list", { name: "The whole flow" })).toBeInTheDocument();

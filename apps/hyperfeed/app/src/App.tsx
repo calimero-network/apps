@@ -14,7 +14,6 @@ import { useNewFeed, useOpenFeed } from "./newFeed";
 import { appLink } from "./links";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { AGENT_LIVE_MS, useTheme } from "./theme";
-import { usePeopleRows } from "./people";
 import type { NewFeed } from "./FeedView";
 import LandingPage from "./pages/landing/LandingPage";
 import DocsPage from "./pages/landing/DocsPage";
@@ -195,7 +194,6 @@ function Screen({
   const { chain = "" } = useParams();
   const openChat = (c: string) => navigate(c ? `${base}/chat/${encodeURIComponent(c)}` : `${base}/chat`);
   const [view, setView] = useFeedView();
-  const [people, setPeople] = usePeopleRows();
   if (page === "chat") return <ChatView feed={feed} chain={chain} onOpen={openChat} newFeed={newFeed} />;
   if (page !== "feed") return <ControlsView feed={feed} contextId={contextId} preview={preview} newFeed={newFeed} />;
   return (
@@ -212,22 +210,10 @@ function Screen({
           </button>
         ))}
       </div>
-      {view === "lanes" && (
-        <button
-          type="button"
-          className={`people-toggle ${people ? "on" : ""}`}
-          role="switch"
-          aria-checked={people}
-          title="Each row says who did what"
-          onClick={() => setPeople(!people)}
-        >
-          New feed
-        </button>
-      )}
       {view === "team" ? (
         <TeamView feed={feed} query={query} onChat={openChat} />
       ) : (
-        <FeedView feed={feed} query={query} newFeed={newFeed} onChat={openChat} openLink={openLink} people={people} />
+        <FeedView feed={feed} query={query} newFeed={newFeed} onChat={openChat} openLink={openLink} />
       )}
     </>
   );
