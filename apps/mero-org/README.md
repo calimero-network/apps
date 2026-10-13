@@ -121,8 +121,10 @@ It is idempotent: every operation comes from a diff, so re-running it changes no
 namespace matches the org. Two admins' tabs can each create a subgroup for the same org group if
 they race; the planner then uses whichever one it observes, and the other is left behind (a known
 follow-up). It
-runs in the admin's browser while the app is open (on every admin action, on a timer, and from
-"Run now"); there is no server. An app is reconciled only once the registering admin holds Admin in
+runs in the admin's browser while the app is open: on every change to the org that reaches the
+admin's node (any admin's, debounced by a second), on a 60 s timer, and from "Run now"; there is no
+server. The timer is the safety net for what raises no org event: a change made directly in an app
+namespace, and the retry of a failed operation. An app is reconciled only once the registering admin holds Admin in
 its namespace; until then it is `pending_admin`.
 
 ## Trust model, honestly

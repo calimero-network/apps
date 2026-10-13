@@ -1,19 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
 import type { OrgBackend } from "../backend";
+import { debounce } from "./debounce";
 import { execute, type ExecuteResult } from "./execute";
 import { observeApp } from "./observe";
 import { plan } from "./plan";
 import type { ObservedApp } from "./types";
 
-const PERIOD_MS = 30_000;
+/** The safety net: changes in app namespaces, and retries of failed ops, raise no org event. */
+const PERIOD_MS = 60_000;
+/** A burst of org changes (one admin action is several writes) is reconciled once. */
+const CHANGE_DEBOUNCE_MS = 1_000;
 
 /**
- * Runs plan → execute while an admin's tab is open. Each tab reconciles only the
- * apps whose namespace its account administers. One run at a time; a run
- * requested mid-run queues one more.
+ * Runs plan → execute while an admin's tab is open: on every change to the org
+ * (`changes`), on a slow timer, and on demand. Each tab reconciles only the apps
+ * whose namespace its account administers. One run at a time; a run requested
+ * mid-run queues one more. A run's own writes are changes too, so a run that
+ * wrote anything is followed by one that finds nothing to do.
  */
-export function useReconciler(backend: OrgBackend | null, orgNamespaceId: string, enabled: boolean, myAccount: string) {
+export function useReconciler(backend: OrgBackend | null, orgNamespaceId: string, enabled: boolean, myAccount: string, changes: number) {
   const { admin } = useMero();
   const [lastRun, setLastRun] = useState<number | null>(null);
   const [lastResult, setLastResult] = useState<ExecuteResult | null>(null);
@@ -48,6 +54,18 @@ export function useReconciler(backend: OrgBackend | null, orgNamespaceId: string
   }, [backend, admin, enabled, orgNamespaceId, myAccount]);
 
   useEffect(() => { if (!enabled) return; void runNow(); const t = setInterval(() => void runNow(), PERIOD_MS); return () => clearInterval(t); }, [enabled, runNow]);
+
+  // Every org change, from any admin on any node, once it reaches this tab's node.
+  const latest = useRef(runNow);
+  latest.current = runNow;
+  const kick = useMemo(() => debounce(() => void latest.current(), CHANGE_DEBOUNCE_MS), []);
+  useEffect(() => () => kick.cancel(), [kick]);
+  const seen = useRef(changes);
+  useEffect(() => {
+    if (changes === seen.current) return;
+    seen.current = changes;
+    if (enabled) kick();
+  }, [changes, enabled, kick]);
 
   return { lastRun, lastResult, running, runNow };
 }

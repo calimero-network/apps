@@ -121,18 +121,19 @@ test("members added to an app namespace join it with a follow, no second invitat
   await register.getByRole("button", { name: "Register app" }).click();
   await expect(fp.getByRole("row", { name: /Drive/ }).getByText("ready", { exact: true })).toBeVisible();
 
-  // Grant Engineering the app; the reconciler adds both accounts at the root, no invitation.
+  // Grant Engineering the app. Nobody presses Run now: the grant is an org change, and the
+  // reconciler runs on it, adding both accounts at the root with no invitation. The wait is
+  // shorter than the reconciler's 60 s timer, so only the change can have triggered it.
   await nav.getByRole("link", { name: "Groups" }).click();
   const driveTick = eng.getByRole("checkbox", { name: "Drive", exact: true });
   await driveTick.click();
   await expect(driveTick).toBeChecked();
-  await fp.getByRole("button", { name: "Run now" }).click();
   const [anaAccount, bobAccount] = await Promise.all([accountOf(ana), accountOf(bob)]);
   await waitFor("Ana and Bob added to Drive's namespace root", async () => {
     const { members } = await founder.mero.admin.listGroupMembers(drive.namespaceId);
     const ids = new Set(members.map((m) => m.identity));
     return ids.has(anaAccount) && ids.has(bobAccount);
-  }, 120_000, 2_000);
+  }, 30_000, 1_000);
 
   // Each member joins from Me, which follows the namespace from the founder's node.
   for (const [page, s] of [[ap, ana], [bp, bob]] as const) {

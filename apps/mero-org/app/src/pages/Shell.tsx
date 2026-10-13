@@ -42,7 +42,7 @@ function ago(ms: number): string {
 const NAV: [string, string][] = [["/people", "People"], ["/groups", "Groups"], ["/apps", "Apps"], ["/activity", "Activity"], ["/me", "Me"], ["/settings", "Settings"]];
 
 export function Shell({ state, orgNamespaceId, myAccount, isAdmin, onSwitchOrg, children }: PageProps & { onSwitchOrg: () => void; children: ReactNode }) {
-  const rec = useReconciler(state.backend, orgNamespaceId, isAdmin, myAccount);
+  const rec = useReconciler(state.backend, orgNamespaceId, isAdmin, myAccount, state.changes);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 5_000); return () => clearInterval(t); }, []);
   const failed = rec.lastResult?.failed.length ?? 0;
