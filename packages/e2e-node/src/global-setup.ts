@@ -8,7 +8,7 @@ export default async function journeyGlobalSetup(): Promise<void> {
     throw new Error("journey global setup needs JOURNEY_DATA_DIR, JOURNEY_APP_DIR and JOURNEY_PACKAGE_ID (set by journeyConfig)");
   }
   const mpk = resolveMpk(appDir, packageId);
-  const state = await startRig({ dataDir, mpk, nodes: 2 });
+  const state = await startRig({ dataDir, mpk, nodes: Number(process.env["JOURNEY_NODES"]) || 2 });
   console.log(
     `[journey] ${state.merodVersion}; ${state.nodes
       .map((n) => `${n.name} ${n.url} app=${n.applicationId.slice(0, 8)}…`)

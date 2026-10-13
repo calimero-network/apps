@@ -966,6 +966,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mero-org"
+version = "0.0.1"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "mero-pass"
 version = "0.1.0"
 dependencies = [

@@ -182,9 +182,20 @@ function initNode(merod: string, node: Omit<RigNode, "pid" | "adminToken" | "app
   return peerId;
 }
 
-function isolate(file: string, rendezvous: string, bootstrap: string[]): void {
+function isolate(file: string, rendezvous: string, bootstrap: string[], swarmPort: number): void {
   let toml = readFileSync(file, "utf8");
   toml = setTomlKey(toml, "bootstrap", "nodes", bootstrap);
+  // Loopback is never advertised and AutoNAT confirms nothing on one host, so a
+  // node reports no external address. JOURNEY_ADVERTISE_IP (this host's LAN IP)
+  // gives each node one, for flows that dial the addresses a node advertises.
+  const advertise = process.env["JOURNEY_ADVERTISE_IP"];
+  if (advertise) {
+    toml = setTomlKey(toml, "discovery", "advertise_address", true);
+    toml = setTomlKey(toml, "discovery", "external_address", [
+      `/ip4/${advertise}/udp/${swarmPort}/quic-v1`,
+      `/ip4/${advertise}/tcp/${swarmPort}`,
+    ]);
+  }
   toml = setTomlKey(toml, "discovery", "mdns", true);
   toml = setTomlKey(toml, "discovery.rendezvous", "namespace", rendezvous);
   toml = setTomlKey(toml, "sync", "interval_ms", 500);
@@ -236,7 +247,7 @@ export async function startRig(opts: RigOptions): Promise<RigState> {
   planned.forEach((n, i) => {
     const bootstrap =
       i === 0 ? [] : [`/ip4/127.0.0.1/tcp/${planned[0]!.swarmPort}/p2p/${peerIds[0]}`];
-    isolate(configPath(n), rendezvous, bootstrap);
+    isolate(configPath(n), rendezvous, bootstrap, n.swarmPort);
   });
 
   const nodes: RigNode[] = [];

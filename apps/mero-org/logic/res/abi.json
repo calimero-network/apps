@@ -1,0 +1,1683 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Access": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "capabilities",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          },
+          "doc": "Core capability bitmask given to each placed member in the mirrored subgroup."
+        },
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        }
+      ]
+    },
+    "AccessView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "capabilities",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "ActivityPage": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "rows",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ActivityRow"
+            }
+          }
+        },
+        {
+          "name": "total",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "ActivityRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "actor",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "verb",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "object",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "prev_hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "hash",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "App": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The app namespace id, 64 hex. One row per namespace."
+        },
+        {
+          "name": "package",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "admin_account",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The org admin account that holds Admin in that namespace."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "registered_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The application the namespace runs, 64 hex: what a member's node needs\nto follow it."
+        },
+        {
+          "name": "peer_addrs",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "list",
+              "items": {
+                "kind": "string"
+              }
+            }
+          },
+          "doc": "Multiaddrs of the admin's node, from its `externalAddrs`: where a\nmember's node follows the namespace from. Kept current by the\nreconciler."
+        }
+      ]
+    },
+    "AppView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "package",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "admin_account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "registered_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "group_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peer_addrs",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Enrolment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "state",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "subgroups",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "list",
+              "items": {
+                "kind": "string"
+              }
+            }
+          },
+          "doc": "Mirrored subgroup ids the member is placed in."
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        }
+      ]
+    },
+    "EnrolmentView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "state",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "subgroups",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Event_AccessChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ActivityAppended": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_EnrolmentChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "state",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_GroupChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_MemberChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Group": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Parent group id, \"\" at the top."
+        },
+        {
+          "name": "admins",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "list",
+              "items": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "GroupView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "admins",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "member_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MemberView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "display_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "handle",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "groups",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "apps",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Membership": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "since",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Org": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "settings",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "$ref": "OrgSettings"
+            }
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "profiles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Profile"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "groups",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Group"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "memberships",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Membership"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "apps",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "App"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "access",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Access"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "enrolments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Enrolment"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "activity",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ActivityRow"
+            },
+            "crdt_type": "vector"
+          }
+        }
+      ]
+    },
+    "OrgSettings": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "icon",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Hex blob id of the org icon, or \"\"."
+        }
+      ]
+    },
+    "OrgView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "icon",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "admins",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "member_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "group_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "app_count",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "PlacementView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "capabilities",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Profile": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "display_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "handle",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Frozen at claim."
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Hex blob id or \"\"."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "access_for",
+      "params": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "AccessView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "access_rows",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "AccessView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "activity",
+      "doc": "Newest first. `before` = 0 means from the end; otherwise rows with index < before.",
+      "params": [
+        {
+          "name": "before",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ActivityPage"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "admins",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "apps",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "AppView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "claim_membership",
+      "doc": "The newcomer's first write. Reaching this method at all proves namespace\nmembership, which is the only credential the org relies on.",
+      "params": [
+        {
+          "name": "display_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "handle",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "MemberView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_group",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "GroupView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_group",
+      "doc": "Removes the group, its memberships, its access rows (Task 4) and every child, depth first.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "desired_placements",
+      "doc": "Every (member, app, group, capabilities) the graph implies, for members\nthat are enrolled or active, through enabled access rows of ready apps.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "PlacementView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "enrolments",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "EnrolmentView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "grant_admin",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "group_members",
+      "params": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MemberView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "groups",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "GroupView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "doc": "No arguments: the frontend sends `{}`. The creator is the first admin.",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "member",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "MemberView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "members",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MemberView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "move_group",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "my_enrolments",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "EnrolmentView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "org",
+      "params": [],
+      "returns": {
+        "$ref": "OrgView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "record_enrolment",
+      "doc": "Written by the reconciler (an admin session) after each governance op.",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "state",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "subgroups",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "register_app",
+      "params": [
+        {
+          "name": "namespace_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "package",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peer_addrs",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "AppView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_access",
+      "params": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_app",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_membership",
+      "params": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "rename_group",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "revoke_admin",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_access",
+      "params": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "capabilities",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_app_peers",
+      "doc": "Where members' nodes follow the app namespace from. Only the admin who\nregistered the app sets it: theirs is the node that administers it.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peer_addrs",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_app_status",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_group_admins",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "admins",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_member_status",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_membership",
+      "params": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_settings",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "icon",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_profile",
+      "params": [
+        {
+          "name": "display_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_profile_of",
+      "doc": "`update` on an AuthoredMap re-signs as the caller and storage refuses\nanyone but the owner; the explicit check gives a readable error first.",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "display_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "verify_activity",
+      "params": [],
+      "returns": {
+        "kind": "bool"
+      },
+      "intent": "read_only"
+    }
+  ],
+  "events": [
+    {
+      "name": "AccessChanged",
+      "payload": {
+        "$ref": "Event_AccessChanged"
+      }
+    },
+    {
+      "name": "ActivityAppended",
+      "payload": {
+        "$ref": "Event_ActivityAppended"
+      }
+    },
+    {
+      "name": "EnrolmentChanged",
+      "payload": {
+        "$ref": "Event_EnrolmentChanged"
+      }
+    },
+    {
+      "name": "GroupChanged",
+      "payload": {
+        "$ref": "Event_GroupChanged"
+      }
+    },
+    {
+      "name": "MemberChanged",
+      "payload": {
+        "$ref": "Event_MemberChanged"
+      }
+    },
+    {
+      "name": "SettingsChanged"
+    }
+  ],
+  "state_root": "Org",
+  "state_version": 1
+}

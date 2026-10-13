@@ -1,0 +1,558 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Access": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "capabilities",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          },
+          "doc": "Core capability bitmask given to each placed member in the mirrored subgroup."
+        },
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        }
+      ]
+    },
+    "ActivityRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "actor",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "verb",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "object",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "prev_hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "hash",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "App": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The app namespace id, 64 hex. One row per namespace."
+        },
+        {
+          "name": "package",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "admin_account",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The org admin account that holds Admin in that namespace."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "registered_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The application the namespace runs, 64 hex: what a member's node needs\nto follow it."
+        },
+        {
+          "name": "peer_addrs",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "list",
+              "items": {
+                "kind": "string"
+              }
+            }
+          },
+          "doc": "Multiaddrs of the admin's node, from its `externalAddrs`: where a\nmember's node follows the namespace from. Kept current by the\nreconciler."
+        }
+      ]
+    },
+    "Enrolment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "state",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "subgroups",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "list",
+              "items": {
+                "kind": "string"
+              }
+            }
+          },
+          "doc": "Mirrored subgroup ids the member is placed in."
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        }
+      ]
+    },
+    "Group": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Parent group id, \"\" at the top."
+        },
+        {
+          "name": "admins",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "list",
+              "items": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Membership": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "group",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "since",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Org": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "settings",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "$ref": "OrgSettings"
+            }
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "profiles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Profile"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "groups",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Group"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "memberships",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Membership"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "apps",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "App"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "access",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Access"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "enrolments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Enrolment"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "activity",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ActivityRow"
+            },
+            "crdt_type": "vector"
+          }
+        }
+      ]
+    },
+    "OrgSettings": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "icon",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Hex blob id of the org icon, or \"\"."
+        }
+      ]
+    },
+    "Profile": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "display_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "handle",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Frozen at claim."
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Hex blob id or \"\"."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "Org",
+  "state_version": 1
+}

@@ -1,0 +1,631 @@
+name: Mero Org E2E
+description: >
+  The founder's node names the org, builds the group tree, registers an app and
+  grants a group access to it; a second node in the same namespace claims its
+  own membership, edits its own profile and is refused every admin write. The
+  founder places the newcomer, the reconciler's enrolment record converges on
+  the newcomer's node, and the activity chain still verifies at the end.
+
+  The Rust tests cover the rules in-process. This covers what they cannot:
+  every method called over the wire on a real merod (argument names, the
+  admin check against a node that is not the founder's), and the org state
+  converging across two nodes.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+# Clears the public devnet bootstrap nodes and turns local discovery on; without
+# it the mesh join dies on `KeyDelivery timed out`.
+e2e_mode: true
+
+nodes:
+  count: 2
+  # Matched to the calimero-sdk tag in the root Cargo.toml.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.83
+  prefix: org-node
+  mdns: true
+
+steps:
+  - name: Install application on org-node-1
+    type: install_application
+    node: org-node-1
+    path: dist/com.calimero.mero-org.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # A node does not serve bytecode to its peers, so every node installs it.
+  - name: Install application on org-node-2
+    type: install_application
+    node: org-node-2
+    path: dist/com.calimero.mero-org.mpk
+    dev: true
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  # `create_mesh` joins internally and races the KeyDelivery window.
+  - name: Settle before the mesh joins
+    type: wait
+    seconds: 12
+
+  - name: Create mesh with node-2
+    type: create_mesh
+    context_node: org-node-1
+    application_id: "{{app_id}}"
+    nodes:
+      - org-node-2
+    params: "{}"
+    outputs:
+      context_id: contextId
+      owner_key: memberPublicKey
+
+  - name: Verify mesh keys are populated
+    type: assert
+    statements:
+      - "is_set({{context_id}})"
+      - "is_set({{owner_key}})"
+      - "is_set({{public_key_org-node-2}})"
+
+  # ─── the founder sets the org up ──────────────────────────────────────────
+
+  - name: Founder names the org
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_settings
+    args: { name: "Calimero", icon: "" }
+
+  - name: Founder reads the org
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: org
+    args: {}
+    outputs:
+      org_1: result
+
+  - name: Founder lists the admins
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: admins
+    args: {}
+    outputs:
+      admins_1: result
+      founder: result.output.0
+
+  # The founder is an admin, not a member: nobody has claimed yet.
+  - name: Assert the org is named and the founder is its one admin
+    type: json_assert
+    statements:
+      - 'json_subset({{org_1}}, {"output": {"name": "Calimero", "member_count": 0}})'
+      - 'json_subset({{admins_1}}, {"output": ["{{founder}}"]})'
+
+  - name: Founder creates Engineering
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: create_group
+    args: { name: "Engineering", parent: "" }
+    outputs:
+      eng_id: result.output.id
+
+  - name: Founder renames Engineering to Eng
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: rename_group
+    args: { id: "{{eng_id}}", name: "Eng" }
+
+  - name: Founder creates Platform under Eng
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: create_group
+    args: { name: "Platform", parent: "{{eng_id}}" }
+    outputs:
+      plat_id: result.output.id
+
+  - name: Founder moves Platform to the top
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: move_group
+    args: { id: "{{plat_id}}", parent: "" }
+
+  - name: Founder lists the groups
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: groups
+    args: {}
+    # Sorted by name: Eng, then Platform.
+    outputs:
+      group_a: result.output.0
+      group_b: result.output.1
+
+  - name: Assert the rename and the move landed
+    type: json_assert
+    statements:
+      - 'json_subset({{group_a}}, {"id": "{{eng_id}}", "name": "Eng", "parent": ""})'
+      - 'json_subset({{group_b}}, {"id": "{{plat_id}}", "name": "Platform", "parent": ""})'
+
+  # ─── the newcomer, on the second node ─────────────────────────────────────
+
+  # The mesh already admitted node-2 into the namespace, which is the only
+  # credential the org relies on.
+  - name: Node-2 claims as Ana
+    type: call
+    node: org-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_org-node-2}}"
+    method: claim_membership
+    args: { display_name: "Ana", handle: "ana" }
+    outputs:
+      ana: result.output.account
+      claimed: result
+
+  - name: Assert the claim made an enrolled member
+    type: json_assert
+    statements:
+      - 'json_subset({{claimed}}, {"output": {"status": "enrolled", "display_name": "Ana"}})'
+
+  - name: Ana updates her profile
+    type: call
+    node: org-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_org-node-2}}"
+    method: update_profile
+    args: { display_name: "Ana R.", avatar: "" }
+
+  - name: Ana updates her profile by account
+    type: call
+    node: org-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_org-node-2}}"
+    method: update_profile_of
+    args: { account: "{{ana}}", display_name: "Ana R.", avatar: "" }
+
+  - name: Ana cannot edit the founder's profile
+    type: call
+    node: org-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_org-node-2}}"
+    method: update_profile_of
+    args: { account: "{{founder}}", display_name: "Mallory", avatar: "" }
+    expected_failure: true
+    outputs:
+      other_profile_error: error
+
+  # `expected_failure`, not `expect_failure` (not a merobox field). The flag
+  # alone only allows the step to fail, so the error is captured and asserted.
+  - name: Ana cannot create a group
+    type: call
+    node: org-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_org-node-2}}"
+    method: create_group
+    args: { name: "Rogue", parent: "" }
+    expected_failure: true
+    outputs:
+      rogue_error: error
+
+  - name: Ana cannot grant herself admin
+    type: call
+    node: org-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_org-node-2}}"
+    method: grant_admin
+    args: { account: "{{ana}}" }
+    expected_failure: true
+    outputs:
+      rogue_grant_error: error
+
+  - name: Assert the refusals
+    type: assert
+    statements:
+      - "is_set({{rogue_error}})"
+      - "is_set({{rogue_grant_error}})"
+      - "is_set({{other_profile_error}})"
+      - "regex({{rogue_error}}, org admin)"
+
+  - name: Let Ana's claim reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - org-node-1
+      - org-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Founder reads Ana
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: member
+    args: { account: "{{ana}}" }
+    outputs:
+      ana_on_1: result
+
+  - name: Founder lists the members
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: members
+    args: {}
+    outputs:
+      members_1: result
+      first_member: result.output.0
+
+  - name: Assert Ana's claim and profile converged on node-1
+    type: json_assert
+    statements:
+      - 'json_subset({{ana_on_1}}, {"output": {"account": "{{ana}}", "status": "enrolled", "display_name": "Ana R.", "handle": "ana"}})'
+      - 'json_subset({{first_member}}, {"account": "{{ana}}", "display_name": "Ana R."})'
+
+  # ─── groups, apps and access ──────────────────────────────────────────────
+
+  - name: Founder places Ana in Eng
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_membership
+    args: { group: "{{eng_id}}", account: "{{ana}}", role: "member" }
+
+  - name: Founder makes Ana a lead-admin of Eng
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_group_admins
+    args: { id: "{{eng_id}}", admins: ["{{ana}}"] }
+
+  - name: Founder reads Eng's members
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: group_members
+    args: { group: "{{eng_id}}" }
+    outputs:
+      eng_member: result.output.0
+
+  - name: Assert Ana is in Eng
+    type: json_assert
+    statements:
+      - 'json_subset({{eng_member}}, {"account": "{{ana}}"})'
+
+  - name: Founder registers Drive (any 64-hex namespace id)
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: register_app
+    args: { namespace_id: "1111111111111111111111111111111111111111111111111111111111111111", package: "com.calimero.mero-drive-docs", label: "Drive", status: "ready", application_id: "2222222222222222222222222222222222222222222222222222222222222222", peer_addrs: ["/ip4/127.0.0.1/udp/2528/quic-v1/p2p/12D3KooWStandIn"] }
+    outputs:
+      drive: result
+
+  - name: Founder grants Eng access to Drive
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_access
+    args: { group: "{{eng_id}}", app_id: "1111111111111111111111111111111111111111111111111111111111111111", capabilities: 7 }
+
+  - name: Founder lists the apps
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: apps
+    args: {}
+    outputs:
+      first_app: result.output.0
+
+  - name: Founder lists every access row
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: access_rows
+    args: {}
+    outputs:
+      first_access: result.output.0
+
+  - name: Founder lists Eng's access
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: access_for
+    args: { group: "{{eng_id}}" }
+    outputs:
+      eng_access: result.output.0
+
+  - name: Founder reads desired placements
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: desired_placements
+    args: {}
+    outputs:
+      placements: result
+      placement: result.output.0
+
+  # `json_subset` compares list items whole, so the rows are pulled out first.
+  - name: Assert the app, the access and Ana's placement
+    type: json_assert
+    statements:
+      - 'json_subset({{drive}}, {"output": {"label": "Drive", "status": "ready"}})'
+      - 'json_subset({{first_app}}, {"id": "1111111111111111111111111111111111111111111111111111111111111111", "label": "Drive", "group_count": 1})'
+      - 'json_subset({{first_access}}, {"group": "{{eng_id}}", "capabilities": 7})'
+      - 'json_subset({{eng_access}}, {"group": "{{eng_id}}", "capabilities": 7})'
+      - 'json_subset({{placement}}, {"account": "{{ana}}", "group": "{{eng_id}}", "capabilities": 7})'
+
+  - name: The reconciler records that it added Ana to Drive's namespace
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_enrolment
+    args: { account: "{{ana}}", app_id: "1111111111111111111111111111111111111111111111111111111111111111", state: "added", subgroups: [], note: "" }
+
+  - name: Founder lists the enrolments
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: enrolments
+    args: {}
+    outputs:
+      enrolment_1: result.output.0
+
+  - name: Let the enrolment reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - org-node-1
+      - org-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Ana reads her enrolments on node-2
+    type: call
+    node: org-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_org-node-2}}"
+    method: my_enrolments
+    args: {}
+    outputs:
+      mine: result.output.0
+
+  - name: Assert the enrolment converged
+    type: json_assert
+    statements:
+      - 'json_subset({{enrolment_1}}, {"account": "{{ana}}", "state": "added"})'
+      - 'json_subset({{mine}}, {"account": "{{ana}}", "state": "added"})'
+
+  # ─── admins and teardown of the graph ─────────────────────────────────────
+
+  - name: Founder grants Ana admin
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: grant_admin
+    args: { account: "{{ana}}" }
+
+  - name: Founder reads two admins
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: org
+    args: {}
+    outputs:
+      org_2: result
+
+  - name: Founder revokes Ana's admin again
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: revoke_admin
+    args: { account: "{{ana}}" }
+
+  - name: Founder reads one admin again
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: admins
+    args: {}
+    outputs:
+      admins_2: result
+
+  - name: Founder cannot revoke the last admin
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: revoke_admin
+    args: { account: "{{founder}}" }
+    expected_failure: true
+    outputs:
+      last_admin_error: error
+
+  - name: Assert the grant and the revoke
+    type: json_assert
+    statements:
+      - 'json_subset({{org_2}}, {"output": {"admins": ["{{ana}}", "{{founder}}"]}})'
+      - 'json_equal({{admins_2}}, {"output": ["{{founder}}"]})'
+
+  - name: Assert the last admin stays
+    type: assert
+    statements:
+      - "is_set({{last_admin_error}})"
+
+  - name: Founder marks Ana active
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_member_status
+    args: { account: "{{ana}}", status: "active" }
+
+  - name: Founder takes Ana out of Eng (her last group, so she reverts to enrolled)
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: remove_membership
+    args: { group: "{{eng_id}}", account: "{{ana}}" }
+
+  - name: Founder removes Eng's access to Drive
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: remove_access
+    args: { group: "{{eng_id}}", app_id: "1111111111111111111111111111111111111111111111111111111111111111" }
+
+  - name: Founder parks Drive as pending_admin
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_app_status
+    args: { id: "1111111111111111111111111111111111111111111111111111111111111111", status: "pending_admin" }
+
+  - name: Founder reads Drive parked
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: apps
+    args: {}
+    outputs:
+      parked: result.output.0
+
+  - name: Founder removes Drive
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: remove_app
+    args: { id: "1111111111111111111111111111111111111111111111111111111111111111" }
+
+  - name: Founder deletes Platform
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: delete_group
+    args: { id: "{{plat_id}}" }
+
+  - name: Founder reads the org after the teardown
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: org
+    args: {}
+    outputs:
+      org_3: result
+
+  - name: Founder reads Ana after the teardown
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: member
+    args: { account: "{{ana}}" }
+    outputs:
+      ana_after: result
+
+  - name: Founder reads the now-empty placements
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: desired_placements
+    args: {}
+    outputs:
+      placements_after: result
+
+  - name: Assert the teardown
+    type: json_assert
+    statements:
+      - 'json_subset({{parked}}, {"status": "pending_admin"})'
+      - 'json_subset({{org_3}}, {"output": {"member_count": 1, "group_count": 1, "app_count": 0}})'
+      - 'json_subset({{ana_after}}, {"output": {"status": "enrolled"}})'
+      - 'json_equal({{placements_after}}, {"output": []})'
+
+  # ─── the activity chain ───────────────────────────────────────────────────
+
+  - name: Let every node's writes converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - org-node-1
+      - org-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Founder reads the activity
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: activity
+    args: { before: 0, limit: 0 }
+    outputs:
+      activity_1: result
+      newest: result.output.rows.0
+
+  - name: Founder verifies the activity chain
+    type: call
+    node: org-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: verify_activity
+    args: {}
+    outputs:
+      verified_1: result
+
+  - name: Ana verifies the activity chain on node-2
+    type: call
+    node: org-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_org-node-2}}"
+    method: verify_activity
+    args: {}
+    outputs:
+      verified_2: result
+
+  - name: Assert the chain is intact on both nodes
+    type: json_assert
+    statements:
+      - 'json_subset({{newest}}, {"verb": "group_deleted", "subject": "{{plat_id}}"})'
+      - 'json_equal({{verified_1}}, {"output": true})'
+      - 'json_equal({{verified_2}}, {"output": true})'
