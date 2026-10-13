@@ -192,11 +192,12 @@ pub const AGENT_MODES: &[&str] = &["act", "ask", "read", "off"];
 /// The mode for an app nobody has set a policy for. Asking is the only safe
 /// default: an agent that discovers a new app should not get to act in it.
 pub const DEFAULT_AGENT_MODE: &str = "ask";
-/// Which of your agents a message of yours is for: `chat`, a private model
-/// for everyday work, or `code`, one that works in repositories. Your agent's
-/// runtime maps each to a model. Not [`AGENT_MODES`], which say how freely the
-/// agent may act in an app.
-pub const MESSAGE_MODES: &[&str] = &["chat", "code"];
+/// How private a message of yours is, which says which of your agents takes
+/// it: `private`, for an agent whose model runs where no operator can read it
+/// (an attested TEE), or `public`, for any agent you configured (one with your
+/// repositories and tools, say). Your agent's runtime maps each to an agent.
+/// Not [`AGENT_MODES`], which say how freely the agent may act in an app.
+pub const MESSAGE_MODES: &[&str] = &["private", "public"];
 
 /// Where an app's notifications go: the feed and a push, the feed only, or
 /// nowhere (still recorded, so un-muting brings them back).
@@ -536,7 +537,7 @@ impl Mergeable for Headline {
     }
 }
 
-/// Which of your agents a message of yours is for: one of [`MESSAGE_MODES`].
+/// How private a message of yours is: one of [`MESSAGE_MODES`].
 /// Kept beside the message, keyed by its id, so messages written before
 /// modes keep their layout.
 #[app::mergeable(id = "hyperfeed::MessageMode")]
@@ -1181,7 +1182,7 @@ pub struct FeedItem {
     #[serde(default)]
     pub headline: String,
     // ── which agent a message of yours is for ──
-    /// On a message of yours sent with a mode: `chat` or `code` (see
+    /// On a message of yours sent with a mode: `private` or `public` (see
     /// [`MESSAGE_MODES`]). `""` when it was sent without one, and for every
     /// other row; your agent's runtime then decides, usually by the chain's
     /// last message that had one.
@@ -2777,9 +2778,9 @@ impl Hyperfeed {
     /// A long message takes a `headline`, as [`Self::agent_say`] does. Older
     /// clients omit it.
     ///
-    /// `mode` says which of your agents it is for: `chat` or `code` (see
-    /// [`MESSAGE_MODES`]). Omitted or empty, it has none, and your agent's
-    /// runtime decides. Older clients omit it.
+    /// `mode` says how private it is, and so which of your agents takes it:
+    /// `private` or `public` (see [`MESSAGE_MODES`]). Omitted or empty, it
+    /// has none, and your agent's runtime decides. Older clients omit it.
     pub fn say(
         &mut self,
         chain: String,

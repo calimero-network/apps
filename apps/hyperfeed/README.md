@@ -33,7 +33,7 @@ same warrant path it uses everywhere else.
 | Row | Written by | Holds |
 | --- | --- | --- |
 | **Action** | your agent | app, source context, method, guard category, title, why, the warrant's intent hash, the executing relay, its chain and ask, every status step, and a *breach* note when the rules say it should have asked |
-| **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said`. Yours may carry up to four **images** (PNG, JPEG, WebP or GIF, 10 MB each): blobs on your node announced to the feed's context, of which the feed keeps only the id, name, type and size, beside the message by id. Yours may also carry a **mode**, `chat` or `code`, saying which of your agents it is for, kept beside the message by id |
+| **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said`. Yours may carry up to four **images** (PNG, JPEG, WebP or GIF, 10 MB each): blobs on your node announced to the feed's context, of which the feed keeps only the id, name, type and size, beside the message by id. Yours may also carry a **mode**, `private` or `public`, saying how private it is and so which of your agents takes it, kept beside the message by id |
 | **Notification** | your client, or your agent | app, source context, sender, title, event kind, and whether it needs you. Keyed by the state transition that produced it, so each of your devices records the same event once (see [the collector](#notifications-the-collector)). A notification a lens made also carries its **item type**, the type's **fields**, and the **reply call** that answers it in its app, kept beside it by id |
 | **Lens** | your agent proposes, you approve | for one app version: which of its events become feed items, of which type, and how your answer goes back. JSON, up to 32 kB; `proposed`, `approved` or `rejected` |
 | **Policy** | you | per app: the agent mode (`act` / `ask` / `read` / `off`) and notification routing (`push` / `feed` / `mute`) |
@@ -340,7 +340,9 @@ in the row's `note` while it is current.
    same `chain`. An agent that was away reads `open_questions()` when it starts.
    The app's Chat page (`/chat`) is these chains as chats: New chat is `say("", text)`, every
    message after it is `say(chain, text)`, and your answers show as they land. Beside Send, a
-   picker sends each message as **Private** (`mode: "chat"`) or **Code** (`mode: "code"`); a chat
+   picker sends each message as **Private** (`mode: "private"`: only an agent whose model no
+   operator can read, such as one in an attested TEE) or **Public** (`mode: "public"`: whichever
+   agent you set up for it, such as one with your repositories); a chat
    opens on the mode of your last message in it. `settings().message_modes` lists the modes a feed
    takes; a feed made before modes lists none, refuses a `mode` argument, and shows no picker. A message nobody
    has taken up after 30 seconds asks whether your agent (mero-bot) is running.

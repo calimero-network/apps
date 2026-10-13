@@ -1074,7 +1074,7 @@ function Row({
             feed={feed}
             chain={item.chain}
             label={item.kind === "message" ? "Say more to your agent" : "Talk to your agent about this"}
-            defaultMode={item.mode === "code" ? "code" : "chat"}
+            defaultMode={item.mode === "public" ? "public" : "private"}
           />
         </div>
       )}
@@ -1294,7 +1294,7 @@ export function AskAgent({
   chain,
   label,
   onPosted,
-  defaultMode = "chat",
+  defaultMode = "private",
 }: {
   feed: Feed;
   chain: string;

@@ -831,30 +831,30 @@ fn a_question_into_a_chain_that_does_not_exist_is_refused() {
 }
 
 #[test]
-fn a_message_says_which_of_your_agents_it_is_for() {
+fn a_message_says_how_private_it_is() {
     let mut app = TestHost::new(Hyperfeed::init);
-    let code = app
+    let public = app
         .call(|s| {
             s.say(
                 String::new(),
                 "Fix the flaky test".to_owned(),
                 None,
-                Some("code".to_owned()),
+                Some("public".to_owned()),
             )
         })
         .unwrap();
-    assert_eq!(code.mode, "code");
+    assert_eq!(public.mode, "public");
     let next = app
         .call(|s| {
             s.say(
-                code.chain.clone(),
+                public.chain.clone(),
                 "And open a PR".to_owned(),
                 None,
-                Some("chat".to_owned()),
+                Some("private".to_owned()),
             )
         })
         .unwrap();
-    assert_eq!(next.mode, "chat", "each message keeps its own");
+    assert_eq!(next.mode, "private", "each message keeps its own");
 
     let plain = say(&mut app, "", "What happened today?");
     assert_eq!(plain.mode, "", "a message sent without a mode has none");
@@ -863,12 +863,16 @@ fn a_message_says_which_of_your_agents_it_is_for() {
         .unwrap();
     assert_eq!(empty.mode, "", "an empty mode is none");
 
-    let flow = app.view(|s| s.chain(code.chain.clone())).unwrap();
+    let flow = app.view(|s| s.chain(public.chain.clone())).unwrap();
     let modes: Vec<&str> = flow.iter().map(|i| i.mode.as_str()).collect();
-    assert_eq!(modes, ["code", "chat"], "read back the same in the chain");
+    assert_eq!(
+        modes,
+        ["public", "private"],
+        "read back the same in the chain"
+    );
     assert_eq!(
         app.view(|s| s.settings()).unwrap().message_modes,
-        ["chat", "code"],
+        ["private", "public"],
         "settings name the modes, so a client knows this feed takes them"
     );
 
@@ -880,7 +884,7 @@ fn a_message_says_which_of_your_agents_it_is_for() {
             "look".to_owned(),
             vec![image(&"ab".repeat(32))],
             None,
-            Some("CODE".to_owned()),
+            Some("PRIVATE".to_owned()),
         )
     });
     assert!(r.is_err(), "modes are exact");

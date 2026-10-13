@@ -1,33 +1,36 @@
 import type { FeedItem, SettingsView } from "./generated/HyperfeedClient";
 
 /**
- * Which of your agents a message of yours is for (the contract's
- * `MESSAGE_MODES`). Your agent's runtime maps each to a model: `chat` to a
- * private one for everyday work, `code` to one that works in repositories.
+ * How private a message of yours is (the contract's `MESSAGE_MODES`), which
+ * says which of your agents takes it. Your agent's runtime maps each to an
+ * agent: `private` to one whose model runs where no operator can read it,
+ * `public` to any you configured (one with your repositories, say).
  */
-export type MessageMode = "chat" | "code";
+export type MessageMode = "private" | "public";
 
-export const MODE_LABELS: Record<MessageMode, string> = { chat: "Private", code: "Code" };
+const MODES: MessageMode[] = ["private", "public"];
+export const MODE_LABELS: Record<MessageMode, string> = { private: "Private", public: "Public" };
 const MODE_HINTS: Record<MessageMode, string> = {
-  chat: "Your private agent: everyday questions and actions in your apps",
-  code: "Your coding agent: repositories, branches and pull requests",
+  private: "Your private agent: its model runs where no one, Calimero included, can read what you say",
+  public: "Your other agent: the one you set up for everything else, such as code",
 };
+const isMode = (m: unknown): m is MessageMode => MODES.includes(m as MessageMode);
 
 /** The modes this feed takes; none on a feed made before modes, which refuses a `mode` argument. */
 export function feedModes(settings: SettingsView | null | undefined): MessageMode[] {
-  return (settings?.message_modes ?? []).filter((m): m is MessageMode => m === "chat" || m === "code");
+  return (settings?.message_modes ?? []).filter(isMode);
 }
 
-/** A chat keeps the mode of the last message of yours that had one; a chat with none is `chat`. */
+/** A chat keeps the mode of the last message of yours that had one; a chat with none is `private`. */
 export function chainMode(thread: FeedItem[]): MessageMode {
   for (let i = thread.length - 1; i >= 0; i--) {
     const m = thread[i]!;
-    if (m.kind === "message" && m.from === "you" && (m.mode === "chat" || m.mode === "code")) return m.mode;
+    if (m.kind === "message" && m.from === "you" && isMode(m.mode)) return m.mode;
   }
-  return "chat";
+  return "private";
 }
 
-/** Two buttons beside Send: which agent the next message goes to. */
+/** Two buttons beside Send: how private the next message is, and so which agent takes it. */
 export function ModePicker({
   modes,
   value,
@@ -41,7 +44,7 @@ export function ModePicker({
 }) {
   if (modes.length < 2) return null;
   return (
-    <div className="mode-picker" role="radiogroup" aria-label="Which agent">
+    <div className="mode-picker" role="radiogroup" aria-label="How private">
       {modes.map((m) => (
         <button
           key={m}
@@ -60,8 +63,8 @@ export function ModePicker({
   );
 }
 
-/** On a message of yours sent with a mode: which agent it went to. */
+/** On a message of yours sent with a mode: how private it was. */
 export function ModeChip({ mode }: { mode: string }) {
-  if (mode !== "chat" && mode !== "code") return null;
+  if (!isMode(mode)) return null;
   return <span className={`mode-chip mode-${mode}`}>{MODE_LABELS[mode]}</span>;
 }

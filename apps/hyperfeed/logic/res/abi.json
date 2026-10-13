@@ -1178,7 +1178,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "On a message of yours sent with a mode: `chat` or `code` (see\n[`MESSAGE_MODES`]). `\"\"` when it was sent without one, and for every\nother row; your agent's runtime then decides, usually by the chain's\nlast message that had one."
+          "doc": "On a message of yours sent with a mode: `private` or `public` (see\n[`MESSAGE_MODES`]). `\"\"` when it was sent without one, and for every\nother row; your agent's runtime then decides, usually by the chain's\nlast message that had one."
         },
         {
           "name": "superseded_by",
@@ -2108,7 +2108,7 @@
     },
     "MessageMode": {
       "kind": "record",
-      "doc": "Which of your agents a message of yours is for: one of [`MESSAGE_MODES`].\nKept beside the message, keyed by its id, so messages written before\nmodes keep their layout.",
+      "doc": "How private a message of yours is: one of [`MESSAGE_MODES`].\nKept beside the message, keyed by its id, so messages written before\nmodes keep their layout.",
       "fields": [
         {
           "name": "mode",
@@ -4663,7 +4663,7 @@
     },
     {
       "name": "say",
-      "doc": "Talk to your agent: about a chain (`chain` = its id), or about\nanything (`chain` empty, which starts a new chain). Your agent picks it\nup, answers in the chain, and may propose or act there under your rules.\n\nA long message takes a `headline`, as [`Self::agent_say`] does. Older\nclients omit it.\n\n`mode` says which of your agents it is for: `chat` or `code` (see\n[`MESSAGE_MODES`]). Omitted or empty, it has none, and your agent's\nruntime decides. Older clients omit it.",
+      "doc": "Talk to your agent: about a chain (`chain` = its id), or about\nanything (`chain` empty, which starts a new chain). Your agent picks it\nup, answers in the chain, and may propose or act there under your rules.\n\nA long message takes a `headline`, as [`Self::agent_say`] does. Older\nclients omit it.\n\n`mode` says how private it is, and so which of your agents takes it:\n`private` or `public` (see [`MESSAGE_MODES`]). Omitted or empty, it\nhas none, and your agent's runtime decides. Older clients omit it.",
       "params": [
         {
           "name": "chain",

@@ -453,7 +453,7 @@ export interface FeedItem {
    */
   headline: string;
   /**
-   * On a message of yours sent with a mode: `chat` or `code` (see
+   * On a message of yours sent with a mode: `private` or `public` (see
    * [`MESSAGE_MODES`]). `""` when it was sent without one, and for every
    * other row; your agent's runtime then decides, usually by the chain's
    * last message that had one.
@@ -798,7 +798,7 @@ export interface Message {
 }
 
 /**
- * Which of your agents a message of yours is for: one of [`MESSAGE_MODES`].
+ * How private a message of yours is: one of [`MESSAGE_MODES`].
  * Kept beside the message, keyed by its id, so messages written before
  * modes keep their layout.
  */
@@ -2192,9 +2192,9 @@ export class HyperfeedClient {
    * A long message takes a `headline`, as [`Self::agent_say`] does. Older
    * clients omit it.
    *
-   * `mode` says which of your agents it is for: `chat` or `code` (see
-   * [`MESSAGE_MODES`]). Omitted or empty, it has none, and your agent's
-   * runtime decides. Older clients omit it.
+   * `mode` says how private it is, and so which of your agents takes it:
+   * `private` or `public` (see [`MESSAGE_MODES`]). Omitted or empty, it
+   * has none, and your agent's runtime decides. Older clients omit it.
    *
    * @intent mutating
    */

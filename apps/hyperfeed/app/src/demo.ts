@@ -52,8 +52,8 @@ const MAX_MESSAGE = 2_000;
 const MAX_LONG_MESSAGE = 32_000;
 const MAX_HEADLINE = 80;
 const MAX_TITLE = 200;
-/** Which of your agents a message of yours is for, as the contract's `MESSAGE_MODES`. */
-const MESSAGE_MODES = ["chat", "code"];
+/** How private a message of yours is, as the contract's `MESSAGE_MODES`. */
+const MESSAGE_MODES = ["private", "public"];
 
 /** The contract's `check_message`: the headline to keep, or "" for none. A headline lets the text run long. */
 function checkMessage(text: string, headline = ""): string {

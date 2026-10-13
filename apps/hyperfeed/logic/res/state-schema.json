@@ -1014,7 +1014,7 @@
     },
     "MessageMode": {
       "kind": "record",
-      "doc": "Which of your agents a message of yours is for: one of [`MESSAGE_MODES`].\nKept beside the message, keyed by its id, so messages written before\nmodes keep their layout.",
+      "doc": "How private a message of yours is: one of [`MESSAGE_MODES`].\nKept beside the message, keyed by its id, so messages written before\nmodes keep their layout.",
       "fields": [
         {
           "name": "mode",
