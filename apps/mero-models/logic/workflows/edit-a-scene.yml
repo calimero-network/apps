@@ -2,17 +2,14 @@ name: Mero Models E2E
 description: >
   Two nodes share one 3D scene and converge on it.
 
-  Walks the loop a modelling session actually takes: the creator adds a cube
-  and a mesh, a second member opens the scene as a viewer and is refused when
-  they try to change it, the creator grants them the editor role, and from then
-  on both nodes edit the same objects — move, re-parent, delete — and every
-  change is read back on the OTHER node, which is the one assertion a single
-  node cannot make.
-
-  The editor gate is the part that needs a real network: a viewer's write is
-  refused by its own node's `require_editor`, and the role grant has to be
-  projected onto the scene collections' capability maps and replicate before
-  the other node will accept the new editor's deltas.
+  Walks the loop a production session takes: the creator adds a cube and a
+  mesh object, uploads the mesh's vertices and a texture as BLOBS and points
+  the scene at them, and the second node fetches both blobs from the first —
+  the part a reference in state cannot prove on its own. The second member is
+  refused as a viewer, granted the editor role, checks the mesh out (and the
+  first node is then refused a new version of it), saves a named version,
+  checks it back in, and every change — objects, versions, check-outs — is
+  read back on the OTHER node.
 
 force_pull_image: false
 nuke_on_start: true
@@ -108,7 +105,7 @@ steps:
           rotation: { x: 0, y: 0, z: 0 }
           scale: { x: 1, y: 1, z: 1 }
           visible: true
-          material: { color: "#c8ccd4", metalness: 0, roughness: 0.6, opacity: 1, emissive: "#000000", wireframe: false, flat_shading: false }
+          material: { color: "#c8ccd4", metalness: 0, roughness: 0.6, opacity: 1, emissive: "#000000", wireframe: false, flat_shading: false, base_color_map: "", normal_map: "", normal_scale: 1, orm_map: "", emissive_map: "" }
           segments: 32
           intensity: 0
           created_by: ""
@@ -122,14 +119,26 @@ steps:
           rotation: { x: 0, y: 0, z: 0 }
           scale: { x: 1, y: 1, z: 1 }
           visible: true
-          material: { color: "#e07a2f", metalness: 0, roughness: 0.5, opacity: 1, emissive: "#000000", wireframe: false, flat_shading: true }
+          material: { color: "#e07a2f", metalness: 0, roughness: 0.5, opacity: 1, emissive: "#000000", wireframe: false, flat_shading: true, base_color_map: "", normal_map: "", normal_scale: 1, orm_map: "", emissive_map: "" }
           segments: 3
           intensity: 0
           created_by: ""
           created_at: 0
           updated_at: 0
 
-  - name: node-1 gives the mesh object its vertices
+  # The vertices live in a blob: a real mesh in the app's own format
+  # (test-files/fin.mmsh, written by meshcodec.ts — 36 bytes, one triangle
+  # with UVs). The upload carries the context id, so it is announced to
+  # node-2 at once; the contract only stores the reference.
+  - name: node-1 uploads the fin's mesh blob
+    type: upload_blob
+    node: models-node-1
+    context_id: "{{context_id}}"
+    file_path: workflows/test-files/fin.mmsh
+    outputs:
+      fin_blob: blob_id
+
+  - name: node-1 points the mesh object at the blob
     type: call
     node: models-node-1
     context_id: "{{context_id}}"
@@ -139,8 +148,42 @@ steps:
       now: 1700000003000
       mesh:
         id: "tri-1"
-        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0]
-        indices: [0, 1, 2]
+        blob_id: "{{fin_blob}}"
+        size: 36
+        vertex_count: 3
+        triangle_count: 1
+        has_uvs: true
+        author: ""
+        message: "blockout"
+        updated_at: 0
+
+  - name: node-1 uploads a texture image
+    type: upload_blob
+    node: models-node-1
+    context_id: "{{context_id}}"
+    file_path: workflows/test-files/fin-albedo.png
+    outputs:
+      tex_blob: blob_id
+
+  - name: node-1 adds the texture
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: put_texture
+    args:
+      now: 1700000003500
+      texture:
+        id: "tex-fin"
+        name: "Fin albedo"
+        blob_id: "{{tex_blob}}"
+        size: 1729
+        width: 192
+        height: 192
+        mime: "image/png"
+        color_space: "srgb"
+        author: ""
+        message: ""
         updated_at: 0
 
   - name: node-1 names the scene and sets its background
@@ -195,7 +238,7 @@ steps:
   - name: Assert node-2 sees the creator's scene, as a viewer
     type: json_assert
     statements:
-      - 'json_subset({{n2_scene}}, {"output": {"name": "Robot", "object_count": 2, "mesh_count": 1, "my_role": "viewer"}})'
+      - 'json_subset({{n2_scene}}, {"output": {"name": "Robot", "object_count": 2, "mesh_count": 1, "texture_count": 1, "my_role": "viewer"}})'
       - 'json_subset({{n2_scene}}, {"output": {"environment": {"background": "#101418"}}})'
 
   - name: node-2 reads the objects
@@ -221,7 +264,7 @@ steps:
       - "{{n2_tri_parent}} == cube-1"
       - "{{n2_tri_kind}} == mesh"
 
-  - name: node-2 lists the meshes without downloading them
+  - name: node-2 lists the mesh references
     type: call
     node: models-node-2
     context_id: "{{context_id}}"
@@ -229,37 +272,92 @@ steps:
     method: list_meshes
     args: {}
     outputs:
-      n2_stamp_id: result.output.0.id
-      n2_stamp_vertices: result.output.0.vertex_count
-      n2_stamp_triangles: result.output.0.triangle_count
+      n2_ref_id: result.output.0.id
+      n2_ref_blob: result.output.0.blob_id
+      n2_ref_vertices: result.output.0.vertex_count
+      n2_ref_triangles: result.output.0.triangle_count
 
-  - name: Assert the mesh stamp
+  - name: Assert the reference names node-1's blob
     type: assert
     statements:
-      - "{{n2_stamp_id}} == tri-1"
-      - "{{n2_stamp_vertices}} == 3"
-      - "{{n2_stamp_triangles}} == 1"
+      - "{{n2_ref_id}} == tri-1"
+      - "{{n2_ref_blob}} == {{fin_blob}}"
+      - "{{n2_ref_vertices}} == 3"
+      - "{{n2_ref_triangles}} == 1"
 
-  - name: node-2 downloads the mesh
+  # The bytes themselves, fetched by node-2 from the context's peers — the
+  # one thing a reference in state cannot prove on its own.
+  - name: node-2 fetches the mesh blob from node-1
+    type: download_blob
+    node: models-node-2
+    context_id: "{{context_id}}"
+    blob_id: "{{fin_blob}}"
+    expected_size: 36
+
+  - name: node-2 fetches the texture blob from node-1
+    type: download_blob
+    node: models-node-2
+    context_id: "{{context_id}}"
+    blob_id: "{{tex_blob}}"
+    expected_size: 1729
+
+  - name: node-2 lists the textures
     type: call
     node: models-node-2
     context_id: "{{context_id}}"
     executor_public_key: "{{public_key_models-node-2}}"
-    method: get_meshes
-    args:
-      ids: ["tri-1"]
+    method: list_textures
+    args: {}
     outputs:
-      n2_mesh_id: result.output.0.id
-      n2_mesh_indices: result.output.0.indices
+      n2_tex_id: result.output.0.id
+      n2_tex_blob: result.output.0.blob_id
+      n2_tex_width: result.output.0.width
 
-  - name: Assert the vertices arrived
+  - name: Assert the texture replicated
     type: assert
     statements:
-      - "{{n2_mesh_id}} == tri-1"
-  - name: Assert the triangle is intact
-    type: json_assert
+      - "{{n2_tex_id}} == tex-fin"
+      - "{{n2_tex_blob}} == {{tex_blob}}"
+      - "{{n2_tex_width}} == 192"
+
+  - name: node-2 reads the fin's history
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: list_history
+    args:
+      asset_id: "tri-1"
+    outputs:
+      n2_v1_number: result.output.0.number
+      n2_v1_current: result.output.0.current
+      n2_v1_message: result.output.0.message
+
+  - name: Assert one version, current, with its note
+    type: assert
     statements:
-      - 'json_equal({{n2_mesh_indices}}, [0, 1, 2])'
+      - "{{n2_v1_number}} == 1"
+      - "{{n2_v1_current}} == True"
+      - "{{n2_v1_message}} == blockout"
+
+  - name: node-2 tries to check the fin out as a viewer
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: check_out
+    args:
+      ids: ["tri-1"]
+      hours: 1
+      now: 1700000005500
+    expected_failure: true
+    outputs:
+      viewer_checkout_error: error
+
+  - name: Assert a viewer cannot check out
+    type: assert
+    statements:
+      - "is_set({{viewer_checkout_error}})"
 
   - name: node-2 asks its own role
     type: call
@@ -286,6 +384,7 @@ steps:
     method: delete_objects
     args:
       ids: ["cube-1"]
+      now: 1700000006000
     expected_failure: true
     outputs:
       viewer_error: error
@@ -364,6 +463,76 @@ steps:
     check_interval: 2
     trigger_sync: true
 
+  # ─── a check-out holds on the other node ──────────────────────────────────
+
+  - name: node-2 checks the fin out
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: check_out
+    args:
+      ids: ["tri-1"]
+      hours: 8
+      now: 1700000008000
+
+  - name: Wait for the check-out to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - models-node-1
+      - models-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 lists the check-outs
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: list_locks
+    args:
+      now: 1700000009000
+    outputs:
+      n1_lock_asset: result.output.0.asset_id
+      n1_lock_holder: result.output.0.holder
+      n1_lock_mine: result.output.0.mine
+
+  - name: Assert node-1 sees node-2 holding the fin
+    type: assert
+    statements:
+      - "{{n1_lock_asset}} == tri-1"
+      - "{{n1_lock_holder}} == {{n2_account}}"
+      - "{{n1_lock_mine}} == False"
+
+  - name: node-1 tries to give the fin a new version while it is checked out
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: put_mesh
+    args:
+      now: 1700000009500
+      mesh:
+        id: "tri-1"
+        blob_id: "{{fin_blob}}"
+        size: 36
+        vertex_count: 3
+        triangle_count: 1
+        has_uvs: true
+        author: ""
+        message: "not mine to change"
+        updated_at: 0
+    expected_failure: true
+    outputs:
+      locked_error: error
+
+  - name: Assert the check-out held on node-1
+    type: assert
+    statements:
+      - "is_set({{locked_error}})"
+
   # ─── both edit ────────────────────────────────────────────────────────────
 
   - name: node-2 moves the fin out from under the cube
@@ -383,12 +552,40 @@ steps:
           rotation: { x: 0, y: 0, z: 0 }
           scale: { x: 2, y: 2, z: 2 }
           visible: true
-          material: { color: "#e07a2f", metalness: 0, roughness: 0.5, opacity: 1, emissive: "#000000", wireframe: false, flat_shading: true }
+          material: { color: "#e07a2f", metalness: 0, roughness: 0.5, opacity: 1, emissive: "#000000", wireframe: false, flat_shading: true, base_color_map: "", normal_map: "", normal_scale: 1, orm_map: "", emissive_map: "" }
           segments: 3
           intensity: 0
           created_by: ""
           created_at: 0
           updated_at: 0
+
+  - name: node-2 saves a named version of the fin
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: put_mesh
+    args:
+      now: 1700000010500
+      mesh:
+        id: "tri-1"
+        blob_id: "{{fin_blob}}"
+        size: 36
+        vertex_count: 3
+        triangle_count: 1
+        has_uvs: true
+        author: ""
+        message: "approved"
+        updated_at: 0
+
+  - name: node-2 checks the fin back in
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: check_in
+    args:
+      ids: ["tri-1"]
 
   - name: Wait for node-2's edit to reach node-1
     type: wait_for_sync
@@ -433,6 +630,54 @@ steps:
     statements:
       - 'json_equal({{n1_o1_parent}}, "")'
 
+  - name: node-1 reads the fin's history
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: list_history
+    args:
+      asset_id: "tri-1"
+    outputs:
+      n1_v2_number: result.output.1.number
+      n1_v2_message: result.output.1.message
+      n1_v2_author: result.output.1.author
+      n1_v2_current: result.output.1.current
+
+  - name: Assert node-2's version is on node-1, by node-2
+    type: assert
+    statements:
+      - "{{n1_v2_number}} == 2"
+      - "{{n1_v2_message}} == approved"
+      - "{{n1_v2_author}} == {{n2_account}}"
+      - "{{n1_v2_current}} == True"
+
+  - name: node-1 lists the check-outs after the check-in
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: list_locks
+    args:
+      now: 1700000011500
+    outputs:
+      n1_locks_after: result
+
+  - name: Assert nothing is checked out
+    type: json_assert
+    statements:
+      - 'json_equal({{n1_locks_after}}, {"output": []})'
+
+  - name: node-1 deletes the texture
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: delete_textures
+    args:
+      ids: ["tex-fin"]
+      now: 1700000011800
+
   - name: node-1 deletes the cube
     type: call
     node: models-node-1
@@ -441,6 +686,7 @@ steps:
     method: delete_objects
     args:
       ids: ["cube-1"]
+      now: 1700000012000
 
   - name: Wait for the delete to reach node-2
     type: wait_for_sync
@@ -465,7 +711,7 @@ steps:
   - name: Assert one object is left and node-2 is an editor
     type: json_assert
     statements:
-      - 'json_subset({{n2_after_delete}}, {"output": {"object_count": 1, "mesh_count": 1, "my_role": "editor"}})'
+      - 'json_subset({{n2_after_delete}}, {"output": {"object_count": 1, "mesh_count": 1, "texture_count": 0, "my_role": "editor"}})'
 
   # ─── and the creator takes it back ────────────────────────────────────────
 
@@ -509,4 +755,4 @@ steps:
   - name: Assert the scene is empty and node-2 is a viewer again
     type: json_assert
     statements:
-      - 'json_subset({{n2_cleared}}, {"output": {"object_count": 0, "mesh_count": 0, "my_role": "viewer"}})'
+      - 'json_subset({{n2_cleared}}, {"output": {"object_count": 0, "mesh_count": 0, "texture_count": 0, "my_role": "viewer"}})'

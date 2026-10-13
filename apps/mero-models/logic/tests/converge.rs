@@ -11,7 +11,7 @@
 //! grant a role to another replica's account before the ops run.
 
 use calimero_storage::testing::converge_app;
-use mero_models::{Material, MeroModels, SceneObject, Vec3};
+use mero_models::{Material, MeroModels, MeshRef, SceneObject, Vec3};
 
 const NOW: u64 = 1_700_000_000_000;
 
@@ -37,6 +37,11 @@ fn cube(id: &str, x: f64, color: &str) -> SceneObject {
             emissive: "#000000".to_owned(),
             wireframe: false,
             flat_shading: false,
+            base_color_map: String::new(),
+            normal_map: String::new(),
+            normal_scale: 1.0,
+            orm_map: String::new(),
+            emissive_map: String::new(),
         },
         segments: 32,
         intensity: 0.0,
@@ -120,5 +125,54 @@ fn concurrent_reparenting_into_a_loop_reads_as_two_roots_everywhere() {
             let parent = |id: &str| objs.iter().find(|o| o.id == id).unwrap().parent.clone();
             !(parent("a") == "b" && parent("b") == "a")
         })
+        .assert_all_replicas_equal();
+}
+
+fn mesh_ref(id: &str, fill: &str) -> MeshRef {
+    MeshRef {
+        id: id.to_owned(),
+        blob_id: fill.repeat(64),
+        size: 100,
+        vertex_count: 3,
+        triangle_count: 1,
+        has_uvs: false,
+        author: String::new(),
+        message: String::new(),
+        updated_at: 0,
+    }
+}
+
+#[test]
+fn two_devices_saving_a_mesh_at_once_keep_both_versions() {
+    // Same person, same millisecond, different shapes: the current mesh is one
+    // of them, and the history still holds both, so neither save is lost.
+    converge_app(scene())
+        .one_account()
+        .replicas(2)
+        .ops(|s| {
+            let _ = s.put_mesh(mesh_ref("m", "a"), NOW);
+        })
+        .ops(|s| {
+            let _ = s.put_mesh(mesh_ref("m", "b"), NOW);
+        })
+        .invariant("both saves are in the history", |s| {
+            let blobs: Vec<String> = s
+                .list_history("m".to_owned())
+                .into_iter()
+                .map(|v| v.blob_id)
+                .collect();
+            // Every save is a version (the harness runs both on each replica, so
+            // there are more than two); what matters is that neither was merged away.
+            blobs.contains(&"a".repeat(64)) && blobs.contains(&"b".repeat(64))
+        })
+        .invariant(
+            "exactly one version is current, and it is the mesh's blob",
+            |s| {
+                let current = s.list_meshes()[0].blob_id.clone();
+                let h = s.list_history("m".to_owned());
+                h.iter().filter(|v| v.current).count() == 1
+                    && h.iter().any(|v| v.current && v.blob_id == current)
+            },
+        )
         .assert_all_replicas_equal();
 }

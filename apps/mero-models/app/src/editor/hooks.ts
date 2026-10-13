@@ -4,6 +4,7 @@ import type { SubscriptionEventData } from "@calimero-network/mero-react";
 import { MeroModelsClient } from "../generated/MeroModelsClient";
 import { memberColor } from "./model";
 import { useEditor } from "./store";
+import { BlobStore, adminTransport, type AdminBlobApi } from "./blobs";
 import { SceneSync, messageOf } from "./sync";
 import type { Peer } from "./viewport";
 
@@ -41,12 +42,14 @@ export function useModelsClient(contextId: string): MeroModelsClient | null {
  */
 export function useSceneSync(contextId: string): { sync: SceneSync | null; saving: boolean } {
   const client = useModelsClient(contextId);
+  const { admin } = useMero();
   const [sync, setSync] = useState<SceneSync | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!client) return;
-    const s = new SceneSync(client, (message) => useEditor.getState().notify(message, true));
+    if (!client || !admin) return;
+    const blobs = new BlobStore(adminTransport(admin as unknown as AdminBlobApi), contextId);
+    const s = new SceneSync(client, blobs, (message) => useEditor.getState().notify(message, true));
     useEditor.getState().setOutbox(s);
     setSync(s);
     void s.refresh();
@@ -63,6 +66,9 @@ export function useSceneSync(contextId: string): { sync: SceneSync | null; savin
       useEditor.setState({
         objects: new Map(),
         meshes: new Map(),
+        meshStatus: new Map(),
+        textures: new Map(),
+        locks: new Map(),
         selection: [],
         past: [],
         future: [],
@@ -71,7 +77,7 @@ export function useSceneSync(contextId: string): { sync: SceneSync | null; savin
         vertexSelection: new Set(),
       });
     };
-  }, [client]);
+  }, [client, admin, contextId]);
 
   const nudge = useRef<number | null>(null);
   useSubscription(

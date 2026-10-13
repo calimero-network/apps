@@ -1,11 +1,13 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import {
-  decimateToFit,
+  colocated,
+  decimate,
   deleteVertices,
   extrudeRegion,
   fitsLimits,
   flipNormals,
+  makeShape,
   joinShapes,
   mergeByDistance,
   primitiveGeometry,
@@ -18,7 +20,6 @@ import {
   vertexCount,
   type MeshShape,
 } from "./geometry";
-import { MAX_VERTICES } from "./model";
 
 const cube = () => shapeFromGeometry(primitiveGeometry("cube", 32)!);
 
@@ -136,11 +137,58 @@ describe("mesh operations", () => {
     expect(shapeCenter(moved).toArray()).toEqual([2, 3, 4]);
   });
 
-  it("an oversized mesh is decimated under the contract's limit", () => {
-    const big = shapeFromGeometry(new THREE.SphereGeometry(1, 260, 130));
-    expect(fitsLimits(big)).toBe(false);
-    const fitted = decimateToFit(big);
-    expect(fitsLimits(fitted)).toBe(true);
-    expect(vertexCount(fitted)).toBeGreaterThan(MAX_VERTICES * 0.8);
+  it("decimate collapses a dense mesh to the vertex budget it is given", () => {
+    const dense = shapeFromGeometry(new THREE.SphereGeometry(1, 64, 32));
+    const target = Math.floor(vertexCount(dense) / 2);
+    const out = decimate(dense, target);
+    expect(vertexCount(out)).toBeLessThanOrEqual(target);
+    expect(vertexCount(out)).toBeGreaterThan(target * 0.8);
   }, 60_000);
+});
+
+describe("UVs survive editing", () => {
+  const plane = () => shapeFromGeometry(primitiveGeometry("cube", 32)!, undefined, true);
+
+  it("an imported cube keeps its UV seams: split vertices, not 8 welded corners", () => {
+    const s = plane();
+    expect(vertexCount(s)).toBeGreaterThan(8);
+    expect(s.uvs?.length).toBe(vertexCount(s) * 2);
+    // …and edit mode can still find the 8 corners.
+    expect(new Set(colocated(s)).size).toBe(8);
+  });
+
+  it("subdivide interpolates UVs, transform and flip keep them", () => {
+    const s = plane();
+    const sub = subdivide(s);
+    expect(sub.uvs?.length).toBe(vertexCount(sub) * 2);
+    for (const v of sub.uvs!) expect(v).toBeGreaterThanOrEqual(0);
+    expect(transformShape(s, new THREE.Matrix4().makeScale(2, 2, 2)).uvs).toEqual(s.uvs);
+    expect(flipNormals(s).uvs).toEqual(s.uvs);
+  });
+
+  it("merge by distance never welds across a UV seam", () => {
+    const s = plane();
+    expect(vertexCount(mergeByDistance(s, 1e-3))).toBe(vertexCount(s));
+  });
+
+  it("smoothing moves both sides of a seam together, so the surface stays closed", () => {
+    const s = smooth(subdivide(plane()), 0.5, 2);
+    const roots = colocated(s);
+    // Every vertex still sits exactly on its seam partner.
+    roots.forEach((r, i) => {
+      for (let k = 0; k < 3; k += 1) expect(s.positions[i * 3 + k]).toBeCloseTo(s.positions[r * 3 + k]!, 6);
+    });
+  });
+
+  it("joining keeps UVs only when every part has them", () => {
+    expect(joinShapes([plane(), plane()]).uvs).toBeDefined();
+    expect(joinShapes([plane(), cube()]).uvs).toBeUndefined();
+  });
+
+  it("makeShape accepts plain arrays", () => {
+    const s = makeShape([0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 1, 2], [0, 0, 1, 0, 0, 1]);
+    expect(s.positions).toBeInstanceOf(Float32Array);
+    expect(s.indices).toBeInstanceOf(Uint32Array);
+    expect(s.uvs).toBeInstanceOf(Float32Array);
+  });
 });

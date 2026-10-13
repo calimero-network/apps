@@ -33,6 +33,37 @@ export interface Environment {
 }
 
 /**
+ * A check-out: one editor holding an asset until they check it in or it lapses.
+ */
+export interface Lock {
+  asset_id: string;
+  /**
+   * Set by the contract.
+   */
+  holder: string;
+  since: number;
+  /**
+   * After this (the holder's clock, unix milliseconds) the lock no longer holds.
+   */
+  expires_at: number;
+  updated_at: number;
+}
+
+/**
+ * A live check-out.
+ */
+export interface LockView {
+  asset_id: string;
+  holder: string;
+  since: number;
+  expires_at: number;
+  /**
+   * Whether the caller holds it.
+   */
+  mine: boolean;
+}
+
+/**
  * How an object's surface looks. A light reads `color` as its light colour.
  */
 export interface Material {
@@ -64,6 +95,27 @@ export interface Material {
    * Faceted normals instead of smooth ones.
    */
   flat_shading: boolean;
+  /**
+   * Texture id for the base colour (sRGB), or `""`.
+   */
+  base_color_map: string;
+  /**
+   * Texture id for the tangent-space normal map (OpenGL, +Y up), or `""`.
+   */
+  normal_map: string;
+  /**
+   * Strength of the normal map, 0 to 10.
+   */
+  normal_scale: number;
+  /**
+   * Texture id packing occlusion (R), roughness (G) and metalness (B) — glTF's and
+   * Unreal's layout — or `""`.
+   */
+  orm_map: string;
+  /**
+   * Texture id for emission, or `""`.
+   */
+  emissive_map: string;
 }
 
 /**
@@ -104,9 +156,24 @@ export interface MeroModels {
    */
   objects: Record<string, SceneObject>;
   /**
-   * Vertex data for `mesh` objects, keyed by the object's id. Guarded like `objects`.
+   * The current blob of every `mesh` object, keyed by the object's id. Guarded like
+   * `objects`.
    */
-  meshes: Record<string, MeshData>;
+  meshes: Record<string, MeshRef>;
+  /**
+   * Every texture, keyed by id. Guarded like `objects`.
+   */
+  textures: Record<string, TextureRef>;
+  /**
+   * Every version of every mesh and texture, keyed
+   * `"<asset>/<stamp:020>/<author>/<blob>"` so one asset's history is a prefix scan
+   * in order. Guarded like `objects`.
+   */
+  history: Record<string, VersionRecord>;
+  /**
+   * Live and lapsed check-outs, keyed by asset id. Guarded like `objects`.
+   */
+  locks: Record<string, Lock>;
   /**
    * One entry, under [`ENVIRONMENT_KEY`]. Guarded like `objects`.
    */
@@ -122,36 +189,43 @@ export interface MeroModels {
 }
 
 /**
- * A triangle mesh: the shape of a `mesh` object, in its own local space.
+ * The shape of a `mesh` object: a reference to the blob holding its vertices.
+ *
+ * The blob is the app's binary mesh format (see the frontend's `meshcodec.ts`).
+ * The contract cannot read it; `vertex_count` and friends are what the writer
+ * says is inside, and a reader checks them against what it decodes.
  */
-export interface MeshData {
+export interface MeshRef {
   /**
    * The object this is the shape of.
    */
   id: string;
   /**
-   * `x, y, z` per vertex, flattened.
+   * The blob, as the 64-character hex id the node returned from the upload.
    */
-  positions: number[];
+  blob_id: string;
   /**
-   * Three vertex indices per triangle, counter-clockwise when seen from outside.
+   * The blob's length in bytes.
    */
-  indices: number[];
-  /**
-   * Set by the contract like an object's.
-   */
-  updated_at: number;
-}
-
-/**
- * A mesh's identity and size without its vertices, so a client can tell which meshes it
- * already holds before downloading any.
- */
-export interface MeshStamp {
-  id: string;
-  updated_at: number;
+  size: number;
   vertex_count: number;
   triangle_count: number;
+  /**
+   * Whether the mesh carries texture coordinates.
+   */
+  has_uvs: boolean;
+  /**
+   * Who wrote this version. Set by the contract.
+   */
+  author: string;
+  /**
+   * A note for the history ("retopo pass", "Restored v3"); may be empty.
+   */
+  message: string;
+  /**
+   * Set by the contract; only ever grows.
+   */
+  updated_at: number;
 }
 
 /**
@@ -162,6 +236,7 @@ export interface SceneInfo {
   environment: Environment;
   object_count: number;
   mesh_count: number;
+  texture_count: number;
   member_count: number;
   /**
    * The caller's account id.
@@ -238,6 +313,41 @@ export interface SceneObject {
 }
 
 /**
+ * An image a material can use, held in a blob.
+ */
+export interface TextureRef {
+  /**
+   * Chosen by the caller; use a fresh UUID.
+   */
+  id: string;
+  name: string;
+  /**
+   * The blob, as a 64-character hex id.
+   */
+  blob_id: string;
+  size: number;
+  width: number;
+  height: number;
+  /**
+   * `image/png`, `image/jpeg` or `image/webp`.
+   */
+  mime: string;
+  /**
+   * `srgb` for colour, `linear` for data (normal, ORM).
+   */
+  color_space: string;
+  /**
+   * Set by the contract.
+   */
+  author: string;
+  message: string;
+  /**
+   * Set by the contract; only ever grows.
+   */
+  updated_at: number;
+}
+
+/**
  * A point or a direction in scene units, or Euler angles in radians.
  */
 export interface Vec3 {
@@ -246,6 +356,61 @@ export interface Vec3 {
   z: number;
 }
 
+/**
+ * One saved version of a mesh or a texture. Written once per write and never
+ * changed; restoring writes a new one.
+ */
+export interface VersionRecord {
+  /**
+   * The mesh's object id or the texture's id.
+   */
+  asset_id: string;
+  /**
+   * `mesh` or `texture`.
+   */
+  kind: string;
+  blob_id: string;
+  size: number;
+  /**
+   * Vertices and triangles for a mesh; width and height for a texture.
+   */
+  a: number;
+  b: number;
+  author: string;
+  message: string;
+  created_at: number;
+}
+
+/**
+ * One row of an asset's history, numbered from 1 in the order it was written.
+ */
+export interface VersionView {
+  /**
+   * 1 for the first version. Derived from the history's order, never stored.
+   */
+  number: number;
+  kind: string;
+  blob_id: string;
+  size: number;
+  /**
+   * Vertices (mesh) or width (texture).
+   */
+  a: number;
+  /**
+   * Triangles (mesh) or height (texture).
+   */
+  b: number;
+  author: string;
+  message: string;
+  created_at: number;
+  /**
+   * Whether this is the blob the asset points at now.
+   */
+  current: boolean;
+}
+
+
+export type LocksChangedPayload = string[];
 
 export type MemberChangedPayload = string;
 
@@ -258,12 +423,23 @@ export type ObjectsDeletedPayload = string[];
 export type RoleChangedPayload = string;
 
 
+export type TextureChangedPayload = string;
+
+export type TexturesDeletedPayload = string[];
+
 export type AbiEvent =
   | {
     /**
      * The name, background or ambient light changed.
      */
     name: "EnvironmentChanged";
+  }
+  | {
+    /**
+     * Assets were checked out or in; the payload is their ids.
+     */
+    name: "LocksChanged";
+    payload: string[];
   }
   | {
     /**
@@ -306,6 +482,20 @@ export type AbiEvent =
      */
     name: "SceneCleared";
   }
+  | {
+    /**
+     * A texture was added or replaced; the payload is its id.
+     */
+    name: "TextureChanged";
+    payload: string;
+  }
+  | {
+    /**
+     * Textures were deleted; the payload is the ids the call named.
+     */
+    name: "TexturesDeleted";
+    payload: string[];
+  }
 ;
 
 
@@ -323,9 +513,61 @@ export class MeroModelsClient {
   }
 
   /**
+   * check_in
+   *
+   * Check assets back in. Editors may check in their own; an admin may release anyone's
+   * (breaking a lock left by someone who is away). Ids not checked out are fine.
+   *
+   * # Errors
+   * Fails, releasing nothing, if the caller is not an editor, the batch is too large, or
+   * a non-admin names someone else's check-out.
+   *
+   * # Examples
+   * ```json
+   * {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"]}
+   * ```
+   *
+   * @param params.ids at most 200.
+   *
+   * @intent mutating
+   */
+  public async checkIn(params: { ids: string[] }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'check_in', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * check_out
+   *
+   * Check assets out, so nobody else can change them until the caller checks them in or
+   * the check-out lapses. Editors only. Checking out something the caller already holds
+   * extends it.
+   *
+   * # Errors
+   * Fails, checking out nothing, if the caller is not an editor, the batch is too large,
+   * or one of them is checked out, live, by someone else.
+   *
+   * # Examples
+   * ```json
+   * {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"],"hours":8,"now":1727000000000}
+   * ```
+   *
+   * @param params.ids object or texture ids, at most 200.
+   * @param params.hours how long the check-out lasts, 1 to 168.
+   * @param params.now the caller's clock, unix milliseconds.
+   *
+   * @intent mutating
+   */
+  public async checkOut(params: { ids: string[]; hours: number; now: number }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'check_out', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * clear_scene
    *
-   * Remove every object and mesh. Admin only.
+   * Remove every object, mesh, texture, version and check-out. Admin only. The blobs
+   * themselves stay on the nodes that hold them.
    *
    * # Errors
    * Fails if the caller is not an admin.
@@ -349,23 +591,52 @@ export class MeroModelsClient {
    *
    * Delete objects and their meshes. Editors only. Ids already gone are fine. Children
    * of a deleted object are not deleted — they read as root objects — so delete them in
-   * the same call to remove a whole branch. Emits one `ObjectsDeleted` event.
+   * the same call to remove a whole branch. A deleted mesh's history is kept, so an undo
+   * can bring it back. Emits one `ObjectsDeleted` event.
    *
    * # Errors
-   * Fails, deleting nothing, if the caller is not an editor or the batch is too large.
+   * Fails, deleting nothing, if the caller is not an editor, the batch is too large, or
+   * one of the objects is checked out by someone else.
    *
    * # Examples
    * ```json
-   * {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"]}
+   * {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"],"now":1727000000000}
    * ```
    *
    * @param params.ids at most 200.
+   * @param params.now the caller's clock, unix milliseconds, for judging check-outs.
    * @remarks destructive
    *
    * @intent mutating
    */
-  public async deleteObjects(params: { ids: string[] }): Promise<void> {
+  public async deleteObjects(params: { ids: string[]; now: number }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'delete_objects', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * delete_textures
+   *
+   * Delete textures. Editors only. Materials that name a deleted texture simply draw
+   * without it. Their history is kept.
+   *
+   * # Errors
+   * Fails, deleting nothing, if the caller is not an editor, the batch is too large, or
+   * one of them is checked out by someone else.
+   *
+   * # Examples
+   * ```json
+   * {"ids":["tex-1"],"now":1727000000000}
+   * ```
+   *
+   * @param params.ids at most 200.
+   * @param params.now the caller's clock, unix milliseconds, for judging check-outs.
+   * @remarks destructive
+   *
+   * @intent mutating
+   */
+  public async deleteTextures(params: { ids: string[]; now: number }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'delete_textures', argsJson: params });
     return response as void;
   }
 
@@ -385,23 +656,6 @@ export class MeroModelsClient {
   public async getMembers(): Promise<MemberView[]> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'get_members', argsJson: {} });
     return response as MemberView[];
-  }
-
-  /**
-   * get_meshes
-   *
-   * Meshes by object id, in the order asked; unknown ids are left out.
-   *
-   * # Examples
-   * ```json
-   * {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"]}
-   * ```
-   *
-   * @intent read_only
-   */
-  public async getMeshes(params: { ids: string[] }): Promise<MeshData[]> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'get_meshes', argsJson: params });
-    return response as MeshData[];
   }
 
   /**
@@ -519,10 +773,49 @@ export class MeroModelsClient {
   }
 
   /**
+   * list_history
+   *
+   * Every saved version of one mesh or texture, oldest first and numbered from 1, with
+   * the one in use marked `current`. At most the newest 500.
+   *
+   * # Examples
+   * ```json
+   * {"asset_id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"}
+   * ```
+   *
+   * @param params.asset_id a mesh object's id or a texture's id.
+   *
+   * @intent read_only
+   */
+  public async listHistory(params: { asset_id: string }): Promise<VersionView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'list_history', argsJson: params });
+    return response as VersionView[];
+  }
+
+  /**
+   * list_locks
+   *
+   * Every check-out still live at `now`, ordered by asset id.
+   *
+   * # Examples
+   * ```json
+   * {"now":1727000000000}
+   * ```
+   *
+   * @param params.now the caller's clock, unix milliseconds.
+   *
+   * @intent read_only
+   */
+  public async listLocks(params: { now: number }): Promise<LockView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'list_locks', argsJson: params });
+    return response as LockView[];
+  }
+
+  /**
    * list_meshes
    *
-   * Every stored mesh's id, version and size — no vertices. Compare `updated_at` with
-   * what you hold and fetch only what changed with `get_meshes`.
+   * Every mesh's current reference, ordered by id. A client compares each `blob_id`
+   * with what it holds and downloads only the blobs it lacks.
    *
    * # Examples
    * ```json
@@ -531,9 +824,26 @@ export class MeroModelsClient {
    *
    * @intent read_only
    */
-  public async listMeshes(): Promise<MeshStamp[]> {
+  public async listMeshes(): Promise<MeshRef[]> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'list_meshes', argsJson: {} });
-    return response as MeshStamp[];
+    return response as MeshRef[];
+  }
+
+  /**
+   * list_textures
+   *
+   * Every texture's current reference, ordered by name, then id.
+   *
+   * # Examples
+   * ```json
+   * {}
+   * ```
+   *
+   * @intent read_only
+   */
+  public async listTextures(): Promise<TextureRef[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'list_textures', argsJson: {} });
+    return response as TextureRef[];
   }
 
   /**
@@ -556,25 +866,28 @@ export class MeroModelsClient {
   /**
    * put_mesh
    *
-   * Set the vertices of a `mesh` object. Editors only. Write the object first, or in the
-   * same session: a mesh with no object is stored but drawn by nobody.
+   * Point a `mesh` object at a new blob of vertices, and record it as a new version.
+   * Editors only. Upload the blob to the node first (with this context's id, so it is
+   * announced); write the object before or with it — a mesh with no object is stored but
+   * drawn by nobody.
+   *
+   * To restore an earlier version, write its `blob_id` (from `list_history`) again.
    *
    * # Errors
-   * Fails if the caller is not an editor, the mesh is too large, `positions` is not a
-   * whole number of vertices, an index points past the last vertex, or a coordinate is
-   * not finite.
+   * Fails if the caller is not an editor, the mesh is checked out by someone else, the
+   * blob id is not 64 hex characters, or a count or size is over its limit.
    *
    * # Examples
    * ```json
-   * {"mesh":{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","positions":[0,0,0,1,0,0,0,1,0],"indices":[0,1,2],"updated_at":0},"now":1727000000000}
+   * {"mesh":{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","blob_id":"4f9c3d1e2b7a8c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d","size":180,"vertex_count":3,"triangle_count":1,"has_uvs":false,"author":"","message":"blockout","updated_at":0},"now":1727000000000}
    * ```
    *
-   * @param params.mesh at most 30 000 vertices and 60 000 triangles; `updated_at` is set by the contract.
+   * @param params.mesh the reference; `author` and `updated_at` are set by the contract. At most 4 000 000 vertices, 8 000 000 triangles and 512 MiB.
    * @param params.now the caller's clock, unix milliseconds.
    *
    * @intent mutating
    */
-  public async putMesh(params: { mesh: MeshData; now: number }): Promise<void> {
+  public async putMesh(params: { mesh: MeshRef; now: number }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'put_mesh', argsJson: params });
     return response as void;
   }
@@ -590,12 +903,13 @@ export class MeroModelsClient {
    *
    * # Errors
    * Fails, writing nothing, if the caller is not an editor, the batch is too large, the
-   * scene would exceed 2000 objects, or an object is malformed (unknown kind, a
-   * non-finite number, a bad colour, an object parented to itself).
+   * scene would exceed 2000 objects, an object is checked out by someone else, or an
+   * object is malformed (unknown kind, a non-finite number, a bad colour, a texture id
+   * that is too long, an object parented to itself).
    *
    * # Examples
    * ```json
-   * {"objects":[{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","name":"Cube","kind":"cube","parent":"","position":{"x":0,"y":0.5,"z":0},"rotation":{"x":0,"y":0,"z":0},"scale":{"x":1,"y":1,"z":1},"visible":true,"material":{"color":"#c8ccd4","metalness":0,"roughness":0.6,"opacity":1,"emissive":"#000000","wireframe":false,"flat_shading":false},"segments":32,"intensity":0,"created_by":"","created_at":0,"updated_at":0}],"now":1727000000000}
+   * {"objects":[{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","name":"Cube","kind":"cube","parent":"","position":{"x":0,"y":0.5,"z":0},"rotation":{"x":0,"y":0,"z":0},"scale":{"x":1,"y":1,"z":1},"visible":true,"material":{"color":"#c8ccd4","metalness":0,"roughness":0.6,"opacity":1,"emissive":"#000000","wireframe":false,"flat_shading":false,"base_color_map":"","normal_map":"","normal_scale":1,"orm_map":"","emissive_map":""},"segments":32,"intensity":0,"created_by":"","created_at":0,"updated_at":0}],"now":1727000000000}
    * ```
    *
    * @param params.objects at most 200.
@@ -607,6 +921,32 @@ export class MeroModelsClient {
   public async putObjects(params: { objects: SceneObject[]; now: number }): Promise<string[]> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'put_objects', argsJson: params });
     return response as string[];
+  }
+
+  /**
+   * put_texture
+   *
+   * Add a texture, or point an existing one at a new image, and record it as a new
+   * version. Editors only. Upload the image blob first, with this context's id.
+   *
+   * # Errors
+   * Fails if the caller is not an editor, the texture is checked out by someone else,
+   * the scene already holds 1 000 textures, the blob id is not 64 hex characters, the
+   * mime type or colour space is not one this app knows, or a size is over its limit.
+   *
+   * # Examples
+   * ```json
+   * {"texture":{"id":"tex-1","name":"Crate albedo","blob_id":"4f9c3d1e2b7a8c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d","size":524288,"width":2048,"height":2048,"mime":"image/png","color_space":"srgb","author":"","message":"","updated_at":0},"now":1727000000000}
+   * ```
+   *
+   * @param params.texture the reference; `author` and `updated_at` are set by the contract. At most 16 384 pixels a side and 512 MiB.
+   * @param params.now the caller's clock, unix milliseconds.
+   *
+   * @intent mutating
+   */
+  public async putTexture(params: { texture: TextureRef; now: number }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'put_texture', argsJson: params });
+    return response as void;
   }
 
   /**

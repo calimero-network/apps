@@ -8,8 +8,9 @@ import { OutlinePass } from "three/examples/jsm/postprocessing/OutlinePass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { applyTransform, buildObject, disposeObject, standardMaterial, type Built } from "./build";
-import { geometryFromShape, type MeshShape } from "./geometry";
+import { applyTransform, buildObject, disposeObject, hasMaps, standardMaterial, type Built, type TextureLookup } from "./build";
+import { colocated, geometryFromShape, type MeshShape } from "./geometry";
+import type { TextureCache } from "./textures";
 import { childrenIndex, isLight, topmost, type SceneObject } from "./model";
 import { activeObject, useEditor, type EditorState } from "./store";
 import { withMatrix } from "./transform";
@@ -82,6 +83,14 @@ export class Viewport {
   private editPoints: THREE.Points | null = null;
   private editWire: THREE.LineSegments | null = null;
   private editFor: { id: string; mesh: MeshShape | undefined } | null = null;
+  /** For the edited mesh: each vertex's first vertex at the same position (UV seams). */
+  private editRoots: { shape: MeshShape; roots: Int32Array; groups: Map<number, number[]> } | null = null;
+  private textures: TextureCache | null = null;
+  private unsubscribeTextures: (() => void) | null = null;
+  private readonly lookup: TextureLookup = (id, colorSpace) => {
+    const ref = useEditor.getState().textures.get(id);
+    return ref && this.textures ? this.textures.get(ref, colorSpace) : null;
+  };
   private readonly raycaster = new THREE.Raycaster();
   private readonly timer = new THREE.Timer();
   private readonly resize: ResizeObserver;
@@ -203,6 +212,7 @@ export class Viewport {
 
   dispose(): void {
     this.disposed = true;
+    this.unsubscribeTextures?.();
     this.renderer.setAnimationLoop(null);
     this.unsubscribe();
     this.resize.disconnect();
@@ -228,6 +238,24 @@ export class Viewport {
   }
 
   // ── public API ────────────────────────────────────────────────────────────
+
+  /** Where materials get their textures. Materials are rebuilt as textures arrive. */
+  setTextures(cache: TextureCache | null): void {
+    this.unsubscribeTextures?.();
+    this.textures = cache;
+    if (cache) cache.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    this.unsubscribeTextures = cache?.onChange(() => this.refreshMaterials()) ?? null;
+    this.refreshMaterials();
+  }
+
+  /** Rebuild every textured material — a texture landed or the texture list changed. */
+  private refreshMaterials(): void {
+    for (const node of this.nodes.values()) {
+      if (hasMaps(node.obj) && (node.built.body as THREE.Mesh | null)?.isMesh) this.patch(node, node.obj);
+    }
+    this.applyShading(useEditor.getState());
+    this.dirty = true;
+  }
 
   setPeers(peers: Peer[]): void {
     this.peerData = peers;
@@ -332,6 +360,7 @@ export class Viewport {
   private sync(state: EditorState, prev: EditorState | undefined): void {
     if (this.disposed) return;
     if (!prev || state.objects !== prev.objects || state.meshes !== prev.meshes) this.syncObjects(state);
+    if (prev && state.textures !== prev.textures) this.refreshMaterials();
     if (!prev || state.environment !== prev.environment) {
       this.scene.background = new THREE.Color(state.environment.background);
       this.ambient.color.set(state.environment.ambient_color);
@@ -387,7 +416,7 @@ export class Viewport {
         node.obj = obj;
         continue;
       }
-      const built = buildObject(obj, mesh);
+      const built = buildObject(obj, mesh, true, this.lookup);
       if (this.editFor?.id === obj.id) this.clearEditOverlay();
       if (node) {
         // Keep its children: they are moved across below.
@@ -427,7 +456,7 @@ export class Viewport {
     const mesh = body as THREE.Mesh | null;
     if (mesh?.isMesh) {
       const prior = mesh.material as THREE.Material;
-      mesh.material = standardMaterial(obj);
+      mesh.material = standardMaterial(obj, this.lookup);
       prior.dispose();
       mesh.name = obj.name;
     }
@@ -471,7 +500,9 @@ export class Viewport {
     else this.clearEditOverlay();
 
     if (this.gesture) return; // the pivot is being dragged; do not move it from under the hand
-    const canTransform = state.canEdit() && state.tool !== "select";
+    // Nothing checked out by someone else gets a gizmo: it is read-only to us.
+    const lockedOut = state.selection.some((id) => state.lockedByOther(id));
+    const canTransform = state.canEdit() && state.tool !== "select" && !lockedOut;
     const gizmoMode = state.tool === "rotate" ? "rotate" : state.tool === "scale" ? "scale" : "translate";
     this.gizmo.setMode(gizmoMode);
     this.gizmo.setSpace(state.space);
@@ -572,6 +603,22 @@ export class Viewport {
       colors.setXYZ(i, c.r, c.g, c.b);
     }
     colors.needsUpdate = true;
+  }
+
+  /** The vertices sharing `index`'s position in the edited mesh, itself included. */
+  private seamGroup(index: number): number[] {
+    const target = this.editTarget(useEditor.getState());
+    if (!target) return [index];
+    if (this.editRoots?.shape !== target.shape) {
+      const roots = colocated(target.shape);
+      const groups = new Map<number, number[]>();
+      roots.forEach((r, i) => {
+        if (r !== i) groups.set(r, [...(groups.get(r) ?? [r]), i]);
+      });
+      this.editRoots = { shape: target.shape, roots, groups };
+    }
+    const root = this.editRoots.roots[index] ?? index;
+    return this.editRoots.groups.get(root) ?? [index];
   }
 
   private clearEditOverlay(): void {
@@ -757,8 +804,10 @@ export class Viewport {
         // Hits come nearest-first: the vertex under the pointer closest to the camera.
         const index = hits[0]!.index!;
         const next = mode === "replace" ? new Set<number>() : new Set(state.vertexSelection);
-        if (mode === "toggle" && next.has(index)) next.delete(index);
-        else next.add(index);
+        // Every vertex at that position — both sides of a UV seam move as one.
+        const group = this.seamGroup(index);
+        if (mode === "toggle" && next.has(index)) for (const i of group) next.delete(i);
+        else for (const i of group) next.add(i);
         state.setVertexSelection(next);
       } else if (mode === "replace") {
         state.setVertexSelection(new Set());
@@ -793,6 +842,7 @@ export class Viewport {
         v.set(p[i * 3]!, p[i * 3 + 1]!, p[i * 3 + 2]!).applyMatrix4(world).project(this.camera);
         if (inside(v)) next.add(i);
       }
+      for (const i of [...next]) for (const j of this.seamGroup(i)) next.add(j);
       state.setVertexSelection(next);
       return;
     }

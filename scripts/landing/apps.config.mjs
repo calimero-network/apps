@@ -144,7 +144,7 @@ export const APPS = {
       { icon: 'CloudX', title: 'No server holds the model', body: 'A scene is a context. Every member’s node keeps the whole scene, and edits travel peer to peer.' },
       { icon: 'Target', title: 'Live together', body: 'See who is in the scene, what they have selected and where their camera is, and jump to their view with one click.' },
       { icon: 'LockCheck', title: 'Editors, enforced', body: 'Anyone invited can watch; only editors the admin names can change the scene, and every node refuses anyone else’s write.' },
-      { icon: 'Upload', title: 'Bring models in, take them out', body: 'Import OBJ, STL and glTF, export glTF, OBJ and STL, or save the whole scene as a file.' },
+      { icon: 'Upload', title: 'Production assets, versioned', body: 'Meshes and PBR textures live in blobs on your nodes. Every save is a version you can restore, and an asset can be checked out so nobody else changes it while you work. glTF, OBJ and STL in and out.' },
     ],
     faq: [
       {
@@ -153,7 +153,7 @@ export const APPS = {
       },
       {
         q: 'How big can a model be?',
-        a: 'A scene holds up to 2,000 objects, and a single mesh up to 30,000 vertices and 60,000 triangles. An import above that is simplified to fit, and the app says so.',
+        a: 'A single mesh can be up to 4 million vertices and 8 million triangles, and a texture up to 16,384 pixels a side. Vertices and pixels live in content-addressed blobs on the members’ nodes, not in the replicated state, so a heavy asset is one upload. A scene holds up to 2,000 objects.',
       },
       {
         q: 'Can someone I invite change my scene?',

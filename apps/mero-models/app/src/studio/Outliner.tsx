@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactElement } from "react";
 import { renameObject, setParent, setVisible } from "../editor/commands";
 import { childrenIndex, type SceneObject } from "../editor/model";
-import { useEditor } from "../editor/store";
+import { nameOf, useEditor } from "../editor/store";
 import type { Peer } from "../editor/viewport";
 import { IconChevron, IconEye, IconEyeOff, KindIcon } from "../ui/icons";
 
@@ -14,6 +14,10 @@ export function Outliner({ peers }: { peers: Peer[] }) {
   const objects = useEditor((s) => s.objects);
   const selection = useEditor((s) => s.selection);
   const canEdit = useEditor((s) => s.role !== "viewer");
+  const locks = useEditor((s) => s.locks);
+  const memberNames = useEditor((s) => s.memberNames);
+  const me = useEditor((s) => s.me);
+  const names = { memberNames, me };
   const index = useMemo(() => childrenIndex(objects), [objects]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -57,6 +61,10 @@ export function Outliner({ peers }: { peers: Peer[] }) {
           dropping={dropTarget === o.id}
           canEdit={canEdit}
           watchers={watching.get(o.id) ?? []}
+          lock={(() => {
+            const l = locks.get(o.id);
+            return l && l.expires_at > Date.now() ? { mine: l.mine, who: nameOf(names, l.holder) } : null;
+          })()}
           onToggleOpen={() => {
             const next = new Set(collapsed);
             if (open) next.add(o.id);
@@ -119,6 +127,7 @@ function Row({
   dropping,
   canEdit,
   watchers,
+  lock,
   onToggleOpen,
   onSelect,
   onRename,
@@ -136,6 +145,7 @@ function Row({
   dropping: boolean;
   canEdit: boolean;
   watchers: Peer[];
+  lock: { mine: boolean; who: string } | null;
   onToggleOpen: () => void;
   onSelect: (mode: "replace" | "add" | "toggle") => void;
   onRename: (name: string | null) => void;
@@ -190,6 +200,15 @@ function Row({
         />
       ) : (
         <span className="ol-name">{obj.name}</span>
+      )}
+      {lock && (
+        <span
+          className={`ol-lock ${lock.mine ? "mine" : "theirs"}`}
+          title={lock.mine ? "Checked out by you" : `Checked out by ${lock.who}`}
+          data-testid="outliner-lock"
+        >
+          🔒
+        </span>
       )}
       <span className="ol-watchers">
         {watchers.slice(0, 3).map((p) => (

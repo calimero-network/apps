@@ -50,8 +50,8 @@ export const CONFIG: LandingConfig = {
     },
     {
       icon: Upload,
-      title: "Bring models in, take them out",
-      body: "Import OBJ, STL and glTF, export glTF, OBJ and STL, or save the whole scene as a file.",
+      title: "Production assets, versioned",
+      body: "Meshes and PBR textures live in blobs on your nodes. Every save is a version you can restore, and an asset can be checked out so nobody else changes it while you work. glTF, OBJ and STL in and out.",
     },
   ],
   overview: {
@@ -77,7 +77,7 @@ export const CONFIG: LandingConfig = {
     },
     {
       q: "How big can a model be?",
-      a: "A scene holds up to 2,000 objects, and a single mesh up to 30,000 vertices and 60,000 triangles. An import above that is simplified to fit, and the app says so.",
+      a: "A single mesh can be up to 4 million vertices and 8 million triangles, and a texture up to 16,384 pixels a side. Vertices and pixels live in content-addressed blobs on the members’ nodes, not in the replicated state, so a heavy asset is one upload. A scene holds up to 2,000 objects.",
     },
     {
       q: "Can someone I invite change my scene?",
@@ -127,7 +127,9 @@ export const CONFIG: LandingConfig = {
       heading: "What is stored, and where",
       bullets: [
         "One record per object: its name, kind, parent, position, rotation, scale, visibility, material and light settings. Two people changing the same object resolve to one of their writes, whole.",
-        "One record per edited or imported mesh: its vertex positions and triangles, up to 30,000 vertices.",
+        "Meshes and textures as content-addressed blobs on the members’ nodes — up to 4 million vertices a mesh, 16,384 pixels a side a texture. State holds only a reference to each: the blob id, its size and what is in it.",
+        "Every version of every mesh and texture, in order, with who saved it and an optional note. Restoring writes the old blob again as a new version, so nothing is ever copied.",
+        "Check-outs: who holds which asset, and until when. While one is live, every honest node refuses anyone else’s change to that asset.",
         "The scene’s name, background and ambient light, and each member’s display name.",
         "Who may edit, as a role the admin grants. The scene’s collections enforce it on every node, so a viewer’s write is refused everywhere, not just in their app.",
         "Not stored: cameras and selections. They stream over ephemeral presence and vanish when you leave.",
@@ -147,7 +149,8 @@ export const CONFIG: LandingConfig = {
       concepts: [
         { term: "Your edit is refused", def: "You are a viewer. The admin can tick Can edit beside your name in Share." },
         { term: "An object jumped back", def: "Someone else moved it at the same moment, and their write is the one every node kept. Move it again." },
-        { term: "An import was simplified", def: "A mesh over 30,000 vertices is decimated to fit, and the status bar says by how much." },
+        { term: "An object is read-only", def: "Someone else has it checked out — the outliner shows a lock and Properties says who. It frees itself when they check it in or the check-out lapses; an admin can release it." },
+        { term: "A mesh shows as a grey box", def: "Its blob is still downloading from the other members’ nodes. Big meshes take a moment the first time; after that they are cached by your browser." },
         { term: "The invite link does nothing", def: "An invitation is tied to the namespace that minted it. Ask for a fresh one rather than reusing an old link." },
       ],
     },

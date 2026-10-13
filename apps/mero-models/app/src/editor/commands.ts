@@ -18,6 +18,7 @@ import {
   type MeshShape,
 } from "./geometry";
 import {
+  EDIT_MAX_VERTICES,
   MAX_OBJECTS,
   MAX_TRIANGLES,
   MAX_VERTICES,
@@ -79,7 +80,8 @@ export function shapeOf(o: SceneObject): MeshShape | null {
   if (o.kind === "mesh") return editor().meshes.get(o.id)?.shape ?? null;
   const g = primitiveGeometry(o.kind, o.segments);
   if (!g) return null;
-  const shape = shapeFromGeometry(g);
+  // Keep the primitive's own UV layout; edit mode moves both sides of a seam together.
+  const shape = shapeFromGeometry(g, undefined, true);
   g.dispose();
   return shape;
 }
@@ -513,6 +515,15 @@ export function toggleEditMode(): void {
     return;
   }
   if (!guard()) return;
+  const verts = active.kind === "mesh" ? (s.meshes.get(active.id)?.shape.positions.length ?? 0) / 3 : 0;
+  if (verts > EDIT_MAX_VERTICES) {
+    s.notify(`${active.name} has ${verts.toLocaleString()} vertices; vertex editing in the browser stops at ${EDIT_MAX_VERTICES.toLocaleString()}. Decimate a copy, or edit it in your DCC and re-import as a new version.`, true);
+    return;
+  }
+  if (active.kind === "mesh" && !s.meshes.get(active.id)) {
+    s.notify(`${active.name} is still downloading.`, true);
+    return;
+  }
   if (active.kind !== "mesh") convertToMesh([active.id]);
   editor().select([active.id]);
   editor().setMode("edit");

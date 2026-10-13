@@ -1507,3 +1507,220 @@ select:focus {
     display: none;
   }
 }
+
+/* ── assets: check-out, history, textures ───────────────────────────────── */
+
+.ol-lock {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.ol-lock.mine {
+  filter: sepia(1) saturate(4) hue-rotate(-10deg);
+}
+
+.ol-lock.theirs {
+  filter: sepia(1) saturate(6) hue-rotate(-40deg);
+}
+
+.lock-note {
+  margin: 4px 0;
+  padding: 7px 9px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.lock-note.theirs {
+  background: rgba(229, 72, 77, 0.12);
+  border: 1px solid rgba(229, 72, 77, 0.4);
+  color: #ffc2c4;
+}
+
+.lock-note.mine {
+  background: rgba(255, 154, 31, 0.1);
+  border: 1px solid rgba(255, 154, 31, 0.35);
+  color: #ffd39e;
+}
+
+.mesh-status {
+  margin: 0 0 8px;
+}
+
+.mesh-status.error {
+  color: #ff8a8d;
+}
+
+.button-row select {
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.save-version {
+  display: flex;
+  gap: 4px;
+}
+
+.save-version input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 7px;
+  font-size: 12px;
+}
+
+.save-version button {
+  font-size: 12px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.history-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.history-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 5px;
+}
+
+.history-list li.current {
+  background: rgba(76, 195, 138, 0.08);
+}
+
+.v-num {
+  font: 600 11px var(--mono);
+  color: var(--accent);
+  min-width: 30px;
+}
+
+.v-text {
+  flex: 1;
+  display: grid;
+  min-width: 0;
+}
+
+.v-line {
+  font-size: 12px;
+}
+
+.v-sub {
+  font-size: 11px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v-sub em {
+  color: var(--muted);
+}
+
+.tex-slots {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tex-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tex-slot-body {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tex-slot-body .num-label {
+  padding: 0;
+}
+
+.tex-slot-body select {
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.tex-thumb {
+  flex: none;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  background: repeating-conic-gradient(#2c2d33 0 25%, #222328 0 50%) 0 0 / 10px 10px;
+  display: inline-block;
+}
+
+.tex-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tex-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.tex-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tex-name {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 2px 0;
+}
+
+.tex-name:hover:not(:disabled) {
+  background: none;
+  color: #fff;
+}
+
+.tex-detail {
+  margin: 4px 0 8px 48px;
+  display: grid;
+  gap: 6px;
+}
+
+.tex-detail .prop-section {
+  border-top: none;
+  padding: 0;
+}
+
+/* Panels never scroll sideways: long rows shrink and truncate instead. */
+.properties-panel {
+  overflow-x: hidden;
+}
+
+.prop-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.history-list li > * {
+  min-width: 0;
+}
+
+.history-list .role-badge,
+.history-list button {
+  flex: none;
+}

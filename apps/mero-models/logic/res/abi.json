@@ -42,6 +42,81 @@
         }
       ]
     },
+    "Lock": {
+      "kind": "record",
+      "doc": "A check-out: one editor holding an asset until they check it in or it lapses.",
+      "fields": [
+        {
+          "name": "asset_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "holder",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Set by the contract."
+        },
+        {
+          "name": "since",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "expires_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "After this (the holder's clock, unix milliseconds) the lock no longer holds."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "LockView": {
+      "kind": "record",
+      "doc": "A live check-out.",
+      "fields": [
+        {
+          "name": "asset_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "holder",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "since",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "expires_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "mine",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether the caller holds it."
+        }
+      ]
+    },
     "Material": {
       "kind": "record",
       "doc": "How an object's surface looks. A light reads `color` as its light colour.",
@@ -94,6 +169,41 @@
             "kind": "bool"
           },
           "doc": "Faceted normals instead of smooth ones."
+        },
+        {
+          "name": "base_color_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id for the base colour (sRGB), or `\"\"`."
+        },
+        {
+          "name": "normal_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id for the tangent-space normal map (OpenGL, +Y up), or `\"\"`."
+        },
+        {
+          "name": "normal_scale",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "Strength of the normal map, 0 to 10."
+        },
+        {
+          "name": "orm_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id packing occlusion (R), roughness (G) and metalness (B) — glTF's and\nUnreal's layout — or `\"\"`."
+        },
+        {
+          "name": "emissive_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id for emission, or `\"\"`."
         }
       ]
     },
@@ -205,12 +315,69 @@
                 "kind": "string"
               },
               "value": {
-                "$ref": "MeshData"
+                "$ref": "MeshRef"
               },
               "crdt_type": "unordered_map"
             }
           },
-          "doc": "Vertex data for `mesh` objects, keyed by the object's id. Guarded like `objects`."
+          "doc": "The current blob of every `mesh` object, keyed by the object's id. Guarded like\n`objects`."
+        },
+        {
+          "name": "textures",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "TextureRef"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Every texture, keyed by id. Guarded like `objects`."
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "VersionRecord"
+              },
+              "crdt_type": "sorted_map"
+            }
+          },
+          "doc": "Every version of every mesh and texture, keyed\n`\"<asset>/<stamp:020>/<author>/<blob>\"` so one asset's history is a prefix scan\nin order. Guarded like `objects`."
+        },
+        {
+          "name": "locks",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Lock"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Live and lapsed check-outs, keyed by asset id. Guarded like `objects`."
         },
         {
           "name": "environment",
@@ -260,9 +427,9 @@
         }
       ]
     },
-    "MeshData": {
+    "MeshRef": {
       "kind": "record",
-      "doc": "A triangle mesh: the shape of a `mesh` object, in its own local space.",
+      "doc": "The shape of a `mesh` object: a reference to the blob holding its vertices.\n\nThe blob is the app's binary mesh format (see the frontend's `meshcodec.ts`).\nThe contract cannot read it; `vertex_count` and friends are what the writer\nsays is inside, and a reader checks them against what it decodes.",
       "fields": [
         {
           "name": "id",
@@ -272,49 +439,18 @@
           "doc": "The object this is the shape of."
         },
         {
-          "name": "positions",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "f32"
-            }
-          },
-          "doc": "`x, y, z` per vertex, flattened."
-        },
-        {
-          "name": "indices",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "u32"
-            }
-          },
-          "doc": "Three vertex indices per triangle, counter-clockwise when seen from outside."
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          },
-          "doc": "Set by the contract like an object's."
-        }
-      ]
-    },
-    "MeshStamp": {
-      "kind": "record",
-      "doc": "A mesh's identity and size without its vertices, so a client can tell which meshes it\nalready holds before downloading any.",
-      "fields": [
-        {
-          "name": "id",
+          "name": "blob_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The blob, as the 64-character hex id the node returned from the upload."
         },
         {
-          "name": "updated_at",
+          "name": "size",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "The blob's length in bytes."
         },
         {
           "name": "vertex_count",
@@ -327,6 +463,34 @@
           "type": {
             "kind": "u32"
           }
+        },
+        {
+          "name": "has_uvs",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether the mesh carries texture coordinates."
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Who wrote this version. Set by the contract."
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A note for the history (\"retopo pass\", \"Restored v3\"); may be empty."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Set by the contract; only ever grows."
         }
       ]
     },
@@ -354,6 +518,12 @@
         },
         {
           "name": "mesh_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "texture_count",
           "type": {
             "kind": "u32"
           }
@@ -484,6 +654,84 @@
         }
       ]
     },
+    "TextureRef": {
+      "kind": "record",
+      "doc": "An image a material can use, held in a blob.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Chosen by the caller; use a fresh UUID."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The blob, as a 64-character hex id."
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "mime",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`image/png`, `image/jpeg` or `image/webp`."
+        },
+        {
+          "name": "color_space",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`srgb` for colour, `linear` for data (normal, ORM)."
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Set by the contract."
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Set by the contract; only ever grows."
+        }
+      ]
+    },
     "Vec3": {
       "kind": "record",
       "doc": "A point or a direction in scene units, or Euler angles in radians.",
@@ -507,22 +755,145 @@
           }
         }
       ]
+    },
+    "VersionRecord": {
+      "kind": "record",
+      "doc": "One saved version of a mesh or a texture. Written once per write and never\nchanged; restoring writes a new one.",
+      "fields": [
+        {
+          "name": "asset_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The mesh's object id or the texture's id."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`mesh` or `texture`."
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "a",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Vertices and triangles for a mesh; width and height for a texture."
+        },
+        {
+          "name": "b",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "VersionView": {
+      "kind": "record",
+      "doc": "One row of an asset's history, numbered from 1 in the order it was written.",
+      "fields": [
+        {
+          "name": "number",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "1 for the first version. Derived from the history's order, never stored."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "a",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Vertices (mesh) or width (texture)."
+        },
+        {
+          "name": "b",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Triangles (mesh) or height (texture)."
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "current",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether this is the blob the asset points at now."
+        }
+      ]
     }
   },
   "methods": [
     {
-      "name": "clear_scene",
-      "doc": "Remove every object and mesh. Admin only.\n\n# Errors\nFails if the caller is not an admin.\n\n# Examples\n```json\n{}\n```",
-      "params": [],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating",
-      "destructive": true
-    },
-    {
-      "name": "delete_objects",
-      "doc": "Delete objects and their meshes. Editors only. Ids already gone are fine. Children\nof a deleted object are not deleted — they read as root objects — so delete them in\nthe same call to remove a whole branch. Emits one `ObjectsDeleted` event.\n\n# Errors\nFails, deleting nothing, if the caller is not an editor or the batch is too large.\n\n# Examples\n```json\n{\"ids\":[\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"]}\n```",
+      "name": "check_in",
+      "doc": "Check assets back in. Editors may check in their own; an admin may release anyone's\n(breaking a lock left by someone who is away). Ids not checked out are fine.\n\n# Errors\nFails, releasing nothing, if the caller is not an editor, the batch is too large, or\na non-admin names someone else's check-out.\n\n# Examples\n```json\n{\"ids\":[\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"]}\n```",
       "params": [
         {
           "name": "ids",
@@ -533,6 +904,105 @@
             }
           },
           "doc": "at most 200."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "check_out",
+      "doc": "Check assets out, so nobody else can change them until the caller checks them in or\nthe check-out lapses. Editors only. Checking out something the caller already holds\nextends it.\n\n# Errors\nFails, checking out nothing, if the caller is not an editor, the batch is too large,\nor one of them is checked out, live, by someone else.\n\n# Examples\n```json\n{\"ids\":[\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"],\"hours\":8,\"now\":1727000000000}\n```",
+      "params": [
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "object or texture ids, at most 200."
+        },
+        {
+          "name": "hours",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "how long the check-out lasts, 1 to 168."
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "the caller's clock, unix milliseconds."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "clear_scene",
+      "doc": "Remove every object, mesh, texture, version and check-out. Admin only. The blobs\nthemselves stay on the nodes that hold them.\n\n# Errors\nFails if the caller is not an admin.\n\n# Examples\n```json\n{}\n```",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "destructive": true
+    },
+    {
+      "name": "delete_objects",
+      "doc": "Delete objects and their meshes. Editors only. Ids already gone are fine. Children\nof a deleted object are not deleted — they read as root objects — so delete them in\nthe same call to remove a whole branch. A deleted mesh's history is kept, so an undo\ncan bring it back. Emits one `ObjectsDeleted` event.\n\n# Errors\nFails, deleting nothing, if the caller is not an editor, the batch is too large, or\none of the objects is checked out by someone else.\n\n# Examples\n```json\n{\"ids\":[\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"],\"now\":1727000000000}\n```",
+      "params": [
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "at most 200."
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "the caller's clock, unix milliseconds, for judging check-outs."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "destructive": true
+    },
+    {
+      "name": "delete_textures",
+      "doc": "Delete textures. Editors only. Materials that name a deleted texture simply draw\nwithout it. Their history is kept.\n\n# Errors\nFails, deleting nothing, if the caller is not an editor, the batch is too large, or\none of them is checked out by someone else.\n\n# Examples\n```json\n{\"ids\":[\"tex-1\"],\"now\":1727000000000}\n```",
+      "params": [
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "at most 200."
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "the caller's clock, unix milliseconds, for judging check-outs."
         }
       ],
       "returns": {
@@ -549,28 +1019,6 @@
         "kind": "list",
         "items": {
           "$ref": "MemberView"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_meshes",
-      "doc": "Meshes by object id, in the order asked; unknown ids are left out.\n\n# Examples\n```json\n{\"ids\":[\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"]}\n```",
-      "params": [
-        {
-          "name": "ids",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "string"
-            }
-          }
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "MeshData"
         }
       },
       "intent": "read_only"
@@ -676,13 +1124,65 @@
       "intent": "mutating"
     },
     {
+      "name": "list_history",
+      "doc": "Every saved version of one mesh or texture, oldest first and numbered from 1, with\nthe one in use marked `current`. At most the newest 500.\n\n# Examples\n```json\n{\"asset_id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"}\n```",
+      "params": [
+        {
+          "name": "asset_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "a mesh object's id or a texture's id."
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "VersionView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_locks",
+      "doc": "Every check-out still live at `now`, ordered by asset id.\n\n# Examples\n```json\n{\"now\":1727000000000}\n```",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "the caller's clock, unix milliseconds."
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "LockView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "list_meshes",
-      "doc": "Every stored mesh's id, version and size — no vertices. Compare `updated_at` with\nwhat you hold and fetch only what changed with `get_meshes`.\n\n# Examples\n```json\n{}\n```",
+      "doc": "Every mesh's current reference, ordered by id. A client compares each `blob_id`\nwith what it holds and downloads only the blobs it lacks.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "list",
         "items": {
-          "$ref": "MeshStamp"
+          "$ref": "MeshRef"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_textures",
+      "doc": "Every texture's current reference, ordered by name, then id.\n\n# Examples\n```json\n{}\n```",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "TextureRef"
         }
       },
       "intent": "read_only"
@@ -698,14 +1198,14 @@
     },
     {
       "name": "put_mesh",
-      "doc": "Set the vertices of a `mesh` object. Editors only. Write the object first, or in the\nsame session: a mesh with no object is stored but drawn by nobody.\n\n# Errors\nFails if the caller is not an editor, the mesh is too large, `positions` is not a\nwhole number of vertices, an index points past the last vertex, or a coordinate is\nnot finite.\n\n# Examples\n```json\n{\"mesh\":{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"positions\":[0,0,0,1,0,0,0,1,0],\"indices\":[0,1,2],\"updated_at\":0},\"now\":1727000000000}\n```",
+      "doc": "Point a `mesh` object at a new blob of vertices, and record it as a new version.\nEditors only. Upload the blob to the node first (with this context's id, so it is\nannounced); write the object before or with it — a mesh with no object is stored but\ndrawn by nobody.\n\nTo restore an earlier version, write its `blob_id` (from `list_history`) again.\n\n# Errors\nFails if the caller is not an editor, the mesh is checked out by someone else, the\nblob id is not 64 hex characters, or a count or size is over its limit.\n\n# Examples\n```json\n{\"mesh\":{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"blob_id\":\"4f9c3d1e2b7a8c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d\",\"size\":180,\"vertex_count\":3,\"triangle_count\":1,\"has_uvs\":false,\"author\":\"\",\"message\":\"blockout\",\"updated_at\":0},\"now\":1727000000000}\n```",
       "params": [
         {
           "name": "mesh",
           "type": {
-            "$ref": "MeshData"
+            "$ref": "MeshRef"
           },
-          "doc": "at most 30 000 vertices and 60 000 triangles; `updated_at` is set by the contract."
+          "doc": "the reference; `author` and `updated_at` are set by the contract. At most 4 000 000 vertices, 8 000 000 triangles and 512 MiB."
         },
         {
           "name": "now",
@@ -722,7 +1222,7 @@
     },
     {
       "name": "put_objects",
-      "doc": "Add objects, or replace the objects with the same ids. Editors only. Emits one\n`ObjectsChanged` event.\n\nEach object's `created_by` and `created_at` are kept from the first write;\n`updated_at` is the caller's `now`, moved past the stored value.\n\n# Errors\nFails, writing nothing, if the caller is not an editor, the batch is too large, the\nscene would exceed 2000 objects, or an object is malformed (unknown kind, a\nnon-finite number, a bad colour, an object parented to itself).\n\n# Examples\n```json\n{\"objects\":[{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"name\":\"Cube\",\"kind\":\"cube\",\"parent\":\"\",\"position\":{\"x\":0,\"y\":0.5,\"z\":0},\"rotation\":{\"x\":0,\"y\":0,\"z\":0},\"scale\":{\"x\":1,\"y\":1,\"z\":1},\"visible\":true,\"material\":{\"color\":\"#c8ccd4\",\"metalness\":0,\"roughness\":0.6,\"opacity\":1,\"emissive\":\"#000000\",\"wireframe\":false,\"flat_shading\":false},\"segments\":32,\"intensity\":0,\"created_by\":\"\",\"created_at\":0,\"updated_at\":0}],\"now\":1727000000000}\n```",
+      "doc": "Add objects, or replace the objects with the same ids. Editors only. Emits one\n`ObjectsChanged` event.\n\nEach object's `created_by` and `created_at` are kept from the first write;\n`updated_at` is the caller's `now`, moved past the stored value.\n\n# Errors\nFails, writing nothing, if the caller is not an editor, the batch is too large, the\nscene would exceed 2000 objects, an object is checked out by someone else, or an\nobject is malformed (unknown kind, a non-finite number, a bad colour, a texture id\nthat is too long, an object parented to itself).\n\n# Examples\n```json\n{\"objects\":[{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"name\":\"Cube\",\"kind\":\"cube\",\"parent\":\"\",\"position\":{\"x\":0,\"y\":0.5,\"z\":0},\"rotation\":{\"x\":0,\"y\":0,\"z\":0},\"scale\":{\"x\":1,\"y\":1,\"z\":1},\"visible\":true,\"material\":{\"color\":\"#c8ccd4\",\"metalness\":0,\"roughness\":0.6,\"opacity\":1,\"emissive\":\"#000000\",\"wireframe\":false,\"flat_shading\":false,\"base_color_map\":\"\",\"normal_map\":\"\",\"normal_scale\":1,\"orm_map\":\"\",\"emissive_map\":\"\"},\"segments\":32,\"intensity\":0,\"created_by\":\"\",\"created_at\":0,\"updated_at\":0}],\"now\":1727000000000}\n```",
       "params": [
         {
           "name": "objects",
@@ -749,6 +1249,30 @@
         }
       },
       "returns_doc": "The ids written, in the order given.",
+      "intent": "mutating"
+    },
+    {
+      "name": "put_texture",
+      "doc": "Add a texture, or point an existing one at a new image, and record it as a new\nversion. Editors only. Upload the image blob first, with this context's id.\n\n# Errors\nFails if the caller is not an editor, the texture is checked out by someone else,\nthe scene already holds 1 000 textures, the blob id is not 64 hex characters, the\nmime type or colour space is not one this app knows, or a size is over its limit.\n\n# Examples\n```json\n{\"texture\":{\"id\":\"tex-1\",\"name\":\"Crate albedo\",\"blob_id\":\"4f9c3d1e2b7a8c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d\",\"size\":524288,\"width\":2048,\"height\":2048,\"mime\":\"image/png\",\"color_space\":\"srgb\",\"author\":\"\",\"message\":\"\",\"updated_at\":0},\"now\":1727000000000}\n```",
+      "params": [
+        {
+          "name": "texture",
+          "type": {
+            "$ref": "TextureRef"
+          },
+          "doc": "the reference; `author` and `updated_at` are set by the contract. At most 16 384 pixels a side and 512 MiB."
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "the caller's clock, unix milliseconds."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
       "intent": "mutating"
     },
     {
@@ -799,6 +1323,16 @@
       "doc": "The name, background or ambient light changed."
     },
     {
+      "name": "LocksChanged",
+      "payload": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "doc": "Assets were checked out or in; the payload is their ids."
+    },
+    {
       "name": "MemberChanged",
       "payload": {
         "kind": "string"
@@ -842,6 +1376,23 @@
     {
       "name": "SceneCleared",
       "doc": "Every object was removed."
+    },
+    {
+      "name": "TextureChanged",
+      "payload": {
+        "kind": "string"
+      },
+      "doc": "A texture was added or replaced; the payload is its id."
+    },
+    {
+      "name": "TexturesDeleted",
+      "payload": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "doc": "Textures were deleted; the payload is the ids the call named."
     }
   ],
   "state_root": "MeroModels",

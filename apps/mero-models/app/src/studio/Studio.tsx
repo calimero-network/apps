@@ -8,6 +8,8 @@ import { LIGHTS, PRIMITIVES, isSolid, type Environment, type ObjectKind } from "
 import { activeObject, useEditor, type Shading, type Tool } from "../editor/store";
 import { messageOf } from "../editor/sync";
 import { Viewport, type Peer } from "../editor/viewport";
+import { TextureCache } from "../editor/textures";
+import { StudioContext } from "./StudioContext";
 import {
   IconCursor,
   IconGrid,
@@ -37,6 +39,13 @@ import { SharePanel } from "./SharePanel";
  */
 export function Studio({ contextId }: { contextId: string }) {
   const { sync, saving } = useSceneSync(contextId);
+  // One texture cache per open scene, shared by the viewport, the panels and export.
+  const textures = useMemo(() => (sync ? new TextureCache(sync.blobs) : null), [sync]);
+  useEffect(() => {
+    viewport.current?.setTextures(textures);
+    return () => textures?.dispose();
+  }, [textures]);
+  const services = useMemo(() => ({ sync, textures }), [sync, textures]);
   const [name, setName] = useState(storedName);
   useJoin(contextId, name);
   const { peers, publishCamera } = usePresence(contextId, name);
@@ -73,7 +82,16 @@ export function Studio({ contextId }: { contextId: string }) {
     try {
       const imported = await importFile(file, [...s.objects.values()].map((o) => o.name));
       if (s.objects.size + imported.objects.length > 2_000) throw new Error("That would take the scene past 2,000 objects.");
-      s.commit({ puts: imported.objects, deletes: [], meshes: imported.meshes }, `Import ${file.name}`);
+      // Textures first: the materials name them, and a material that names a
+      // texture the scene does not have yet simply draws without it.
+      for (const [i, t] of imported.textures.entries()) {
+        s.notify(`Uploading texture ${i + 1} of ${imported.textures.length}…`);
+        await sync?.putTexture(
+          { id: t.id, name: t.name, width: t.width, height: t.height, mime: t.mime, color_space: t.colorSpace, message: `Imported from ${file.name}` },
+          t.bytes,
+        );
+      }
+      s.commit({ puts: imported.objects, deletes: [], meshes: imported.meshes.map((m) => ({ ...m, message: `Imported from ${file.name}` })) }, `Import ${file.name}`);
       s.select([imported.objects[0]!.id]);
       viewport.current?.frameSelection(true);
       s.notify(imported.notes.length ? imported.notes.join(" ") : `Imported ${file.name}.`);
@@ -85,7 +103,7 @@ export function Studio({ contextId }: { contextId: string }) {
   async function onExport(format: ExportFormat) {
     const s = useEditor.getState();
     try {
-      await exportScene(format, s.objects, s.meshes, s.sceneName);
+      await exportScene(format, s.objects, s.meshes, s.sceneName, textures ? { cache: textures, refs: s.textures } : undefined);
     } catch (e) {
       s.notify(messageOf(e), true);
     }
@@ -293,6 +311,7 @@ export function Studio({ contextId }: { contextId: string }) {
   }, []);
 
   return (
+    <StudioContext.Provider value={services}>
     <div className="studio" data-testid="studio">
       <header className="studio-top">
         <MenuBar menus={menus} openName={menu} onOpenChange={setMenu} />
@@ -341,7 +360,10 @@ export function Studio({ contextId }: { contextId: string }) {
 
         <main className="viewport-wrap">
           <ViewportHost
-            onReady={(v) => (viewport.current = v)}
+            onReady={(v) => {
+              viewport.current = v;
+              v?.setTextures(textures);
+            }}
             peers={peers}
             onCamera={(cam, target) => publishCamera(cam, target)}
           />
@@ -442,6 +464,7 @@ export function Studio({ contextId }: { contextId: string }) {
         }}
       />
     </div>
+    </StudioContext.Provider>
   );
 }
 

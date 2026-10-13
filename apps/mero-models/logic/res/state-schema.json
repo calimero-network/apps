@@ -42,6 +42,44 @@
         }
       ]
     },
+    "Lock": {
+      "kind": "record",
+      "doc": "A check-out: one editor holding an asset until they check it in or it lapses.",
+      "fields": [
+        {
+          "name": "asset_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "holder",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Set by the contract."
+        },
+        {
+          "name": "since",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "expires_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "After this (the holder's clock, unix milliseconds) the lock no longer holds."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Material": {
       "kind": "record",
       "doc": "How an object's surface looks. A light reads `color` as its light colour.",
@@ -94,6 +132,41 @@
             "kind": "bool"
           },
           "doc": "Faceted normals instead of smooth ones."
+        },
+        {
+          "name": "base_color_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id for the base colour (sRGB), or `\"\"`."
+        },
+        {
+          "name": "normal_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id for the tangent-space normal map (OpenGL, +Y up), or `\"\"`."
+        },
+        {
+          "name": "normal_scale",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "Strength of the normal map, 0 to 10."
+        },
+        {
+          "name": "orm_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id packing occlusion (R), roughness (G) and metalness (B) — glTF's and\nUnreal's layout — or `\"\"`."
+        },
+        {
+          "name": "emissive_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id for emission, or `\"\"`."
         }
       ]
     },
@@ -174,12 +247,69 @@
                 "kind": "string"
               },
               "value": {
-                "$ref": "MeshData"
+                "$ref": "MeshRef"
               },
               "crdt_type": "unordered_map"
             }
           },
-          "doc": "Vertex data for `mesh` objects, keyed by the object's id. Guarded like `objects`."
+          "doc": "The current blob of every `mesh` object, keyed by the object's id. Guarded like\n`objects`."
+        },
+        {
+          "name": "textures",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "TextureRef"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Every texture, keyed by id. Guarded like `objects`."
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "VersionRecord"
+              },
+              "crdt_type": "sorted_map"
+            }
+          },
+          "doc": "Every version of every mesh and texture, keyed\n`\"<asset>/<stamp:020>/<author>/<blob>\"` so one asset's history is a prefix scan\nin order. Guarded like `objects`."
+        },
+        {
+          "name": "locks",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Lock"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Live and lapsed check-outs, keyed by asset id. Guarded like `objects`."
         },
         {
           "name": "environment",
@@ -229,9 +359,9 @@
         }
       ]
     },
-    "MeshData": {
+    "MeshRef": {
       "kind": "record",
-      "doc": "A triangle mesh: the shape of a `mesh` object, in its own local space.",
+      "doc": "The shape of a `mesh` object: a reference to the blob holding its vertices.\n\nThe blob is the app's binary mesh format (see the frontend's `meshcodec.ts`).\nThe contract cannot read it; `vertex_count` and friends are what the writer\nsays is inside, and a reader checks them against what it decodes.",
       "fields": [
         {
           "name": "id",
@@ -241,31 +371,58 @@
           "doc": "The object this is the shape of."
         },
         {
-          "name": "positions",
+          "name": "blob_id",
           "type": {
-            "kind": "list",
-            "items": {
-              "kind": "f32"
-            }
+            "kind": "string"
           },
-          "doc": "`x, y, z` per vertex, flattened."
+          "doc": "The blob, as the 64-character hex id the node returned from the upload."
         },
         {
-          "name": "indices",
+          "name": "size",
           "type": {
-            "kind": "list",
-            "items": {
-              "kind": "u32"
-            }
+            "kind": "u64"
           },
-          "doc": "Three vertex indices per triangle, counter-clockwise when seen from outside."
+          "doc": "The blob's length in bytes."
+        },
+        {
+          "name": "vertex_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "triangle_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "has_uvs",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether the mesh carries texture coordinates."
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Who wrote this version. Set by the contract."
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A note for the history (\"retopo pass\", \"Restored v3\"); may be empty."
         },
         {
           "name": "updated_at",
           "type": {
             "kind": "u64"
           },
-          "doc": "Set by the contract like an object's."
+          "doc": "Set by the contract; only ever grows."
         }
       ]
     },
@@ -373,6 +530,84 @@
         }
       ]
     },
+    "TextureRef": {
+      "kind": "record",
+      "doc": "An image a material can use, held in a blob.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Chosen by the caller; use a fresh UUID."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The blob, as a 64-character hex id."
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "mime",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`image/png`, `image/jpeg` or `image/webp`."
+        },
+        {
+          "name": "color_space",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`srgb` for colour, `linear` for data (normal, ORM)."
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Set by the contract."
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Set by the contract; only ever grows."
+        }
+      ]
+    },
     "Vec3": {
       "kind": "record",
       "doc": "A point or a direction in scene units, or Euler angles in radians.",
@@ -393,6 +628,69 @@
           "name": "z",
           "type": {
             "kind": "f64"
+          }
+        }
+      ]
+    },
+    "VersionRecord": {
+      "kind": "record",
+      "doc": "One saved version of a mesh or a texture. Written once per write and never\nchanged; restoring writes a new one.",
+      "fields": [
+        {
+          "name": "asset_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The mesh's object id or the texture's id."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`mesh` or `texture`."
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "a",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Vertices and triangles for a mesh; width and height for a texture."
+        },
+        {
+          "name": "b",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
           }
         }
       ]

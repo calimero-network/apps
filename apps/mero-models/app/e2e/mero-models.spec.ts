@@ -85,9 +85,57 @@ test.describe("Mero Models", () => {
     await page.keyboard.press("Tab");
     await expect(page.getByText(/vertices selected/)).toBeVisible();
     await page.keyboard.press("a");
-    await expect(page.getByText(/^8 of 8 vertices selected/)).toBeVisible();
+    // Every vertex selected — a converted cube keeps its UV seams, so it has
+    // more than 8, and selecting all is all of them.
+    await expect(page.getByText(/^(\d+) of \1 vertices selected/)).toBeVisible();
     await page.keyboard.press("Tab");
     await expect(page.locator(".panel-sub").first()).toContainText("Mesh");
+
+    errors.assertClean();
+  });
+
+  test("a mesh is a versioned blob, can be checked out and textured, and another page downloads it", async ({ page, browser }) => {
+    const errors = watchForErrors(page);
+    await login(page);
+    await waitForStudio(page);
+
+    await page.getByTestId("add-cube").click();
+    await page.getByLabel("Object name").fill("Crate");
+    await page.getByLabel("Object name").press("Enter");
+    await expect(outlinerRow(page, "Crate")).toHaveCount(1);
+
+    // Tab converts the cube into a mesh: its vertices go up as a blob and the
+    // contract records version 1.
+    await page.locator("canvas.viewport-canvas").focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: /History · 1 version$/ })).toBeVisible({ timeout: 20_000 });
+
+    // Check it out.
+    await page.getByTestId("check-out").click();
+    await expect(page.getByTestId("lock-mine")).toBeVisible({ timeout: 20_000 });
+    await expect(outlinerRow(page, "Crate").getByTestId("outliner-lock")).toBeVisible();
+
+    // A base-colour texture, uploaded through the material slot.
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByTestId("texture-slots").getByRole("button", { name: "Upload…" }).first().click();
+    await (await chooser).setFiles("public/icon-192.png");
+    const slot = page.getByLabel("Base colour texture");
+    await expect(slot.locator("option:checked")).toHaveText(/icon-192 · 192×192/, { timeout: 20_000 });
+    await expect(page.locator(".save-state")).toHaveText("Saved to your node", { timeout: 20_000 });
+
+    // A fresh page has nothing cached in memory: it reads the references and
+    // downloads the mesh blob from the node.
+    const other = await freshView(browser);
+    await outlinerRow(other, "Crate").click();
+    await expect(other.getByTestId("mesh-status")).toHaveCount(0, { timeout: 20_000 });
+    await expect(other.getByText(/Mesh · \d+ vertices · 12 triangles/)).toBeVisible();
+    await expect(other.getByLabel("Base colour texture").locator("option:checked")).toHaveText(/icon-192/);
+    await expect(other.getByTestId("lock-mine")).toBeVisible();
+
+    // Check it back in.
+    await page.getByTestId("check-in").click();
+    await expect(outlinerRow(page, "Crate").getByTestId("outliner-lock")).toHaveCount(0, { timeout: 20_000 });
 
     errors.assertClean();
   });

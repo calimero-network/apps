@@ -15,10 +15,26 @@
 //! always moved past the stored value (see [`MeroModels::stamp`]), which is
 //! what lets a client tell a changed mesh from one it already holds.
 //!
-//! **Geometry lives apart from the object.** A mesh can be tens of thousands
-//! of vertices, and moving an object must not rewrite them, so vertex data is
-//! a second map keyed by the same id. The object carries the transform; the
-//! mesh carries the shape.
+//! **Heavy data lives in blobs; state holds references.** A production mesh is
+//! hundreds of thousands of vertices and a texture is megabytes, far more than
+//! belongs in a replicated record. So the vertices and the pixels are
+//! content-addressed node blobs, announced to the context so every member's
+//! node fetches them, and state holds a small [`MeshRef`] or [`TextureRef`]:
+//! the blob id, its size and what is in it. Moving an object never touches its
+//! mesh; replacing a mesh is one new blob and one small record.
+//!
+//! **Every version is kept.** Each mesh or texture write also appends a
+//! [`VersionRecord`] to `history`, keyed by asset, so any earlier version can
+//! be listed and restored — restoring is writing the old blob id again, and
+//! because blobs are content-addressed nothing is copied. Version numbers are
+//! derived on read from the order of the history, never stored.
+//!
+//! **Check-out locks are coordination, not security.** An editor checks an
+//! asset out; while the lock is live, every honest node refuses anyone else's
+//! write to it. The lock is a record like any other, so two people checking
+//! out the same asset while offline resolve to one holder when they meet, and
+//! a write made before a node saw the lock still merges. Locks expire, and an
+//! admin can break one.
 //!
 //! **The hierarchy is derived on read.** An object names its `parent`; the
 //! reader decides what that means. A parent that no longer exists, or a chain
@@ -45,11 +61,11 @@ use std::str::FromStr;
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env as sdk_env, AccountId};
+use calimero_sdk::{app, env as sdk_env, AccountId, BlobId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
     AccessControl, Frozen, Mergeable as MergeableTrait, PermissionedStorage, ProtocolAuthorizer,
-    UnorderedMap, UserStorage,
+    SortedMap, UnorderedMap, UserStorage,
 };
 use calimero_storage::entities::OpMask;
 
@@ -66,13 +82,28 @@ pub const MAX_BATCH: usize = 200;
 /// what keeps a read cheap.
 pub const MAX_OBJECTS: usize = 2_000;
 
-/// Vertices one mesh may carry. A sculpted-detail mesh belongs in a file, not
-/// in a replicated delta every member has to store; the frontend decimates or
-/// refuses an import above this.
-pub const MAX_VERTICES: usize = 30_000;
+/// Vertices one mesh may carry. The vertices live in a blob, so this bounds
+/// what a member's browser has to hold, not what state holds.
+pub const MAX_VERTICES: u32 = 4_000_000;
 
 /// Triangles one mesh may carry.
-pub const MAX_TRIANGLES: usize = 60_000;
+pub const MAX_TRIANGLES: u32 = 8_000_000;
+
+/// The largest blob a mesh or texture may name, in bytes. Core accepts up to
+/// 1 GiB from a node (64 MiB through an account's relay).
+pub const MAX_BLOB_BYTES: u64 = 512 * 1024 * 1024;
+
+/// The largest texture side, in pixels.
+pub const MAX_TEXTURE_SIDE: u32 = 16_384;
+
+/// Textures one scene may hold.
+pub const MAX_TEXTURES: usize = 1_000;
+
+/// The longest a check-out may last before it lapses, in hours.
+pub const MAX_LOCK_HOURS: u32 = 168;
+
+/// The most history rows `list_history` returns, newest kept.
+pub const MAX_HISTORY_VIEW: usize = 500;
 
 /// Longest object or scene name, in characters.
 pub const MAX_NAME_LEN: usize = 80;
@@ -166,6 +197,17 @@ pub struct Material {
     pub wireframe: bool,
     /// Faceted normals instead of smooth ones.
     pub flat_shading: bool,
+    /// Texture id for the base colour (sRGB), or `""`.
+    pub base_color_map: String,
+    /// Texture id for the tangent-space normal map (OpenGL, +Y up), or `""`.
+    pub normal_map: String,
+    /// Strength of the normal map, 0 to 10.
+    pub normal_scale: f64,
+    /// Texture id packing occlusion (R), roughness (G) and metalness (B) — glTF's and
+    /// Unreal's layout — or `""`.
+    pub orm_map: String,
+    /// Texture id for emission, or `""`.
+    pub emissive_map: String,
 }
 
 /// One object in the scene.
@@ -207,22 +249,98 @@ pub struct SceneObject {
 
 calimero_storage::impl_atomic_lww_leaf!(SceneObject, updated_at);
 
-/// A triangle mesh: the shape of a `mesh` object, in its own local space.
+/// The shape of a `mesh` object: a reference to the blob holding its vertices.
+///
+/// The blob is the app's binary mesh format (see the frontend's `meshcodec.ts`).
+/// The contract cannot read it; `vertex_count` and friends are what the writer
+/// says is inside, and a reader checks them against what it decodes.
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
-pub struct MeshData {
+pub struct MeshRef {
     /// The object this is the shape of.
     pub id: ObjectId,
-    /// `x, y, z` per vertex, flattened.
-    pub positions: Vec<f32>,
-    /// Three vertex indices per triangle, counter-clockwise when seen from outside.
-    pub indices: Vec<u32>,
-    /// Set by the contract like an object's.
+    /// The blob, as the 64-character hex id the node returned from the upload.
+    pub blob_id: String,
+    /// The blob's length in bytes.
+    pub size: u64,
+    pub vertex_count: u32,
+    pub triangle_count: u32,
+    /// Whether the mesh carries texture coordinates.
+    pub has_uvs: bool,
+    /// Who wrote this version. Set by the contract.
+    pub author: MemberId,
+    /// A note for the history ("retopo pass", "Restored v3"); may be empty.
+    pub message: String,
+    /// Set by the contract; only ever grows.
     pub updated_at: u64,
 }
 
-calimero_storage::impl_atomic_lww_leaf!(MeshData, updated_at);
+calimero_storage::impl_atomic_lww_leaf!(MeshRef, updated_at);
+
+/// An image a material can use, held in a blob.
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct TextureRef {
+    /// Chosen by the caller; use a fresh UUID.
+    pub id: String,
+    pub name: String,
+    /// The blob, as a 64-character hex id.
+    pub blob_id: String,
+    pub size: u64,
+    pub width: u32,
+    pub height: u32,
+    /// `image/png`, `image/jpeg` or `image/webp`.
+    pub mime: String,
+    /// `srgb` for colour, `linear` for data (normal, ORM).
+    pub color_space: String,
+    /// Set by the contract.
+    pub author: MemberId,
+    pub message: String,
+    /// Set by the contract; only ever grows.
+    pub updated_at: u64,
+}
+
+calimero_storage::impl_atomic_lww_leaf!(TextureRef, updated_at);
+
+/// One saved version of a mesh or a texture. Written once per write and never
+/// changed; restoring writes a new one.
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct VersionRecord {
+    /// The mesh's object id or the texture's id.
+    pub asset_id: String,
+    /// `mesh` or `texture`.
+    pub kind: String,
+    pub blob_id: String,
+    pub size: u64,
+    /// Vertices and triangles for a mesh; width and height for a texture.
+    pub a: u32,
+    pub b: u32,
+    pub author: MemberId,
+    pub message: String,
+    pub created_at: u64,
+}
+
+calimero_storage::impl_atomic_lww_leaf!(VersionRecord, created_at);
+
+/// A check-out: one editor holding an asset until they check it in or it lapses.
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Lock {
+    pub asset_id: String,
+    /// Set by the contract.
+    pub holder: MemberId,
+    pub since: u64,
+    /// After this (the holder's clock, unix milliseconds) the lock no longer holds.
+    pub expires_at: u64,
+    pub updated_at: u64,
+}
+
+calimero_storage::impl_atomic_lww_leaf!(Lock, updated_at);
 
 /// What surrounds the scene: its name, the background and the ambient light.
 #[derive(
@@ -280,6 +398,7 @@ pub struct SceneInfo {
     pub environment: Environment,
     pub object_count: u32,
     pub mesh_count: u32,
+    pub texture_count: u32,
     pub member_count: u32,
     /// The caller's account id.
     pub me: MemberId,
@@ -287,15 +406,36 @@ pub struct SceneInfo {
     pub my_role: String,
 }
 
-/// A mesh's identity and size without its vertices, so a client can tell which meshes it
-/// already holds before downloading any.
+/// One row of an asset's history, numbered from 1 in the order it was written.
 #[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
-pub struct MeshStamp {
-    pub id: ObjectId,
-    pub updated_at: u64,
-    pub vertex_count: u32,
-    pub triangle_count: u32,
+pub struct VersionView {
+    /// 1 for the first version. Derived from the history's order, never stored.
+    pub number: u32,
+    pub kind: String,
+    pub blob_id: String,
+    pub size: u64,
+    /// Vertices (mesh) or width (texture).
+    pub a: u32,
+    /// Triangles (mesh) or height (texture).
+    pub b: u32,
+    pub author: MemberId,
+    pub message: String,
+    pub created_at: u64,
+    /// Whether this is the blob the asset points at now.
+    pub current: bool,
+}
+
+/// A live check-out.
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct LockView {
+    pub asset_id: String,
+    pub holder: MemberId,
+    pub since: u64,
+    pub expires_at: u64,
+    /// Whether the caller holds it.
+    pub mine: bool,
 }
 
 /// A member with their effective role.
@@ -321,6 +461,12 @@ pub enum Event {
     ObjectsDeleted(Vec<String>),
     /// A mesh's vertices changed; the payload is its object id.
     MeshChanged(String),
+    /// A texture was added or replaced; the payload is its id.
+    TextureChanged(String),
+    /// Textures were deleted; the payload is the ids the call named.
+    TexturesDeleted(Vec<String>),
+    /// Assets were checked out or in; the payload is their ids.
+    LocksChanged(Vec<String>),
     /// The name, background or ambient light changed.
     EnvironmentChanged(),
     /// Every object was removed.
@@ -341,8 +487,17 @@ pub struct MeroModels {
     /// Every object, keyed by id. Writable only by accounts the editor role is
     /// projected onto, on every node.
     objects: PermissionedStorage<UnorderedMap<ObjectId, SceneObject>, ProtocolAuthorizer>,
-    /// Vertex data for `mesh` objects, keyed by the object's id. Guarded like `objects`.
-    meshes: PermissionedStorage<UnorderedMap<ObjectId, MeshData>, ProtocolAuthorizer>,
+    /// The current blob of every `mesh` object, keyed by the object's id. Guarded like
+    /// `objects`.
+    meshes: PermissionedStorage<UnorderedMap<ObjectId, MeshRef>, ProtocolAuthorizer>,
+    /// Every texture, keyed by id. Guarded like `objects`.
+    textures: PermissionedStorage<UnorderedMap<String, TextureRef>, ProtocolAuthorizer>,
+    /// Every version of every mesh and texture, keyed
+    /// `"<asset>/<stamp:020>/<author>/<blob>"` so one asset's history is a prefix scan
+    /// in order. Guarded like `objects`.
+    history: PermissionedStorage<SortedMap<String, VersionRecord>, ProtocolAuthorizer>,
+    /// Live and lapsed check-outs, keyed by asset id. Guarded like `objects`.
+    locks: PermissionedStorage<UnorderedMap<String, Lock>, ProtocolAuthorizer>,
     /// One entry, under [`ENVIRONMENT_KEY`]. Guarded like `objects`.
     environment: PermissionedStorage<UnorderedMap<String, Environment>, ProtocolAuthorizer>,
     /// One profile per account, written only by that account.
@@ -374,6 +529,9 @@ impl MeroModels {
             initial_name: Frozen::new(clean_name(&name, "Untitled scene")),
             objects: PermissionedStorage::new(BTreeSet::from([me]), false),
             meshes: PermissionedStorage::new(BTreeSet::from([me]), false),
+            textures: PermissionedStorage::new(BTreeSet::from([me]), false),
+            history: PermissionedStorage::new(BTreeSet::from([me]), false),
+            locks: PermissionedStorage::new(BTreeSet::from([me]), false),
             environment: PermissionedStorage::new(BTreeSet::from([me]), false),
             members: UserStorage::new(),
             roles: AccessControl::new(me),
@@ -429,6 +587,11 @@ impl MeroModels {
             .project_onto(SCENE_ROLE_MASKS, &mut self.meshes)?;
         self.roles
             .project_onto(SCENE_ROLE_MASKS, &mut self.environment)?;
+        self.roles
+            .project_onto(SCENE_ROLE_MASKS, &mut self.textures)?;
+        self.roles
+            .project_onto(SCENE_ROLE_MASKS, &mut self.history)?;
+        self.roles.project_onto(SCENE_ROLE_MASKS, &mut self.locks)?;
         Ok(())
     }
 
@@ -483,6 +646,12 @@ impl MeroModels {
                 .unwrap_or(0) as u32,
             mesh_count: self
                 .meshes
+                .get()
+                .ok()
+                .and_then(|m| m.len().ok())
+                .unwrap_or(0) as u32,
+            texture_count: self
+                .textures
                 .get()
                 .ok()
                 .and_then(|m| m.len().ok())
@@ -619,12 +788,13 @@ impl MeroModels {
     ///
     /// # Errors
     /// Fails, writing nothing, if the caller is not an editor, the batch is too large, the
-    /// scene would exceed 2000 objects, or an object is malformed (unknown kind, a
-    /// non-finite number, a bad colour, an object parented to itself).
+    /// scene would exceed 2000 objects, an object is checked out by someone else, or an
+    /// object is malformed (unknown kind, a non-finite number, a bad colour, a texture id
+    /// that is too long, an object parented to itself).
     ///
     /// # Examples
     /// ```json
-    /// {"objects":[{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","name":"Cube","kind":"cube","parent":"","position":{"x":0,"y":0.5,"z":0},"rotation":{"x":0,"y":0,"z":0},"scale":{"x":1,"y":1,"z":1},"visible":true,"material":{"color":"#c8ccd4","metalness":0,"roughness":0.6,"opacity":1,"emissive":"#000000","wireframe":false,"flat_shading":false},"segments":32,"intensity":0,"created_by":"","created_at":0,"updated_at":0}],"now":1727000000000}
+    /// {"objects":[{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","name":"Cube","kind":"cube","parent":"","position":{"x":0,"y":0.5,"z":0},"rotation":{"x":0,"y":0,"z":0},"scale":{"x":1,"y":1,"z":1},"visible":true,"material":{"color":"#c8ccd4","metalness":0,"roughness":0.6,"opacity":1,"emissive":"#000000","wireframe":false,"flat_shading":false,"base_color_map":"","normal_map":"","normal_scale":1,"orm_map":"","emissive_map":""},"segments":32,"intensity":0,"created_by":"","created_at":0,"updated_at":0}],"now":1727000000000}
     /// ```
     pub fn put_objects(&mut self, objects: Vec<SceneObject>, now: u64) -> app::Result<Vec<String>> {
         self.require_editor()?;
@@ -638,6 +808,7 @@ impl MeroModels {
         for obj in objects {
             cleaned.push(validate_object(obj)?);
         }
+        self.require_unlocked(cleaned.iter().map(|o| o.id.as_str()), now)?;
         let caller = Self::caller_id();
         let map = self.objects.get_mut()?;
         let existing = map.len()?;
@@ -673,42 +844,55 @@ impl MeroModels {
 
     /// Delete objects and their meshes. Editors only. Ids already gone are fine. Children
     /// of a deleted object are not deleted — they read as root objects — so delete them in
-    /// the same call to remove a whole branch. Emits one `ObjectsDeleted` event.
+    /// the same call to remove a whole branch. A deleted mesh's history is kept, so an undo
+    /// can bring it back. Emits one `ObjectsDeleted` event.
     ///
     /// # Arguments
     /// * `ids` - at most 200.
+    /// * `now` - the caller's clock, unix milliseconds, for judging check-outs.
     ///
     /// # Errors
-    /// Fails, deleting nothing, if the caller is not an editor or the batch is too large.
+    /// Fails, deleting nothing, if the caller is not an editor, the batch is too large, or
+    /// one of the objects is checked out by someone else.
     ///
     /// # Examples
     /// ```json
-    /// {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"]}
+    /// {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"],"now":1727000000000}
     /// ```
     #[app::destructive]
-    pub fn delete_objects(&mut self, ids: Vec<String>) -> app::Result<()> {
+    pub fn delete_objects(&mut self, ids: Vec<String>, now: u64) -> app::Result<()> {
         self.require_editor()?;
         require_batch(ids.len())?;
         if ids.is_empty() {
             return Ok(());
         }
+        self.require_unlocked(ids.iter().map(String::as_str), now)?;
         {
             let objects = self.objects.get_mut()?;
             for id in &ids {
                 let _ = objects.remove(id)?;
             }
         }
-        let meshes = self.meshes.get_mut()?;
+        {
+            let meshes = self.meshes.get_mut()?;
+            for id in &ids {
+                if meshes.contains(id)? {
+                    let _ = meshes.remove(id)?;
+                }
+            }
+        }
+        let locks = self.locks.get_mut()?;
         for id in &ids {
-            if meshes.contains(id)? {
-                let _ = meshes.remove(id)?;
+            if locks.contains(id)? {
+                let _ = locks.remove(id)?;
             }
         }
         app::emit!(Event::ObjectsDeleted(ids));
         Ok(())
     }
 
-    /// Remove every object and mesh. Admin only.
+    /// Remove every object, mesh, texture, version and check-out. Admin only. The blobs
+    /// themselves stay on the nodes that hold them.
     ///
     /// # Errors
     /// Fails if the caller is not an admin.
@@ -722,80 +906,403 @@ impl MeroModels {
         self.require_admin()?;
         self.objects.get_mut()?.clear()?;
         self.meshes.get_mut()?.clear()?;
+        self.textures.get_mut()?.clear()?;
+        self.history.get_mut()?.clear()?;
+        self.locks.get_mut()?.clear()?;
         app::emit!(Event::SceneCleared());
+        Ok(())
+    }
+
+    // ── Blobs ─────────────────────────────────────────────────────────────────
+
+    /// Tell the context's members to fetch a blob. The upload announces it too; this
+    /// covers a blob uploaded without a context, and a node that missed the first
+    /// announcement.
+    fn announce(blob_id: &str) -> app::Result<()> {
+        let blob = blob_id
+            .parse::<BlobId>()
+            .map_err(|_| app::err!("{blob_id:?} is not a blob id — expected 64 hex characters"))?;
+        let _ = sdk_env::blob_announce_to_context(blob.as_ref(), &sdk_env::context_id());
+        Ok(())
+    }
+
+    /// Append one version to an asset's history.
+    fn record_version(&mut self, record: VersionRecord) -> app::Result<()> {
+        // The blob is in the key so two versions written in the same millisecond —
+        // two devices of one person — are two rows, not one row merged away.
+        let author: String = record.author.chars().take(16).collect();
+        let blob: String = record.blob_id.chars().take(16).collect();
+        let key = format!(
+            "{}/{:020}/{author}/{blob}",
+            record.asset_id, record.created_at
+        );
+        let _ = self.history.get_mut()?.insert(key, record)?;
         Ok(())
     }
 
     // ── Meshes ────────────────────────────────────────────────────────────────
 
-    /// Set the vertices of a `mesh` object. Editors only. Write the object first, or in the
-    /// same session: a mesh with no object is stored but drawn by nobody.
+    /// Point a `mesh` object at a new blob of vertices, and record it as a new version.
+    /// Editors only. Upload the blob to the node first (with this context's id, so it is
+    /// announced); write the object before or with it — a mesh with no object is stored but
+    /// drawn by nobody.
+    ///
+    /// To restore an earlier version, write its `blob_id` (from `list_history`) again.
     ///
     /// # Arguments
-    /// * `mesh` - at most 30 000 vertices and 60 000 triangles; `updated_at` is set by the
-    ///   contract.
+    /// * `mesh` - the reference; `author` and `updated_at` are set by the contract. At most
+    ///   4 000 000 vertices, 8 000 000 triangles and 512 MiB.
     /// * `now` - the caller's clock, unix milliseconds.
     ///
     /// # Errors
-    /// Fails if the caller is not an editor, the mesh is too large, `positions` is not a
-    /// whole number of vertices, an index points past the last vertex, or a coordinate is
-    /// not finite.
+    /// Fails if the caller is not an editor, the mesh is checked out by someone else, the
+    /// blob id is not 64 hex characters, or a count or size is over its limit.
     ///
     /// # Examples
     /// ```json
-    /// {"mesh":{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","positions":[0,0,0,1,0,0,0,1,0],"indices":[0,1,2],"updated_at":0},"now":1727000000000}
+    /// {"mesh":{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","blob_id":"4f9c3d1e2b7a8c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d","size":180,"vertex_count":3,"triangle_count":1,"has_uvs":false,"author":"","message":"blockout","updated_at":0},"now":1727000000000}
     /// ```
-    pub fn put_mesh(&mut self, mesh: MeshData, now: u64) -> app::Result<()> {
+    pub fn put_mesh(&mut self, mesh: MeshRef, now: u64) -> app::Result<()> {
         self.require_editor()?;
         let mut mesh = mesh;
-        validate_mesh(&mesh)?;
+        validate_mesh_ref(&mesh)?;
+        self.require_unlocked(std::iter::once(mesh.id.as_str()), now)?;
+        Self::announce(&mesh.blob_id)?;
         let stored = self.meshes.get()?.get(&mesh.id)?.map(|m| m.updated_at);
         mesh.updated_at = Self::stamp(now, stored);
+        mesh.author = Self::caller_id();
+        mesh.message = clean_name(&mesh.message, "");
+        self.record_version(VersionRecord {
+            asset_id: mesh.id.clone(),
+            kind: "mesh".to_owned(),
+            blob_id: mesh.blob_id.clone(),
+            size: mesh.size,
+            a: mesh.vertex_count,
+            b: mesh.triangle_count,
+            author: mesh.author.clone(),
+            message: mesh.message.clone(),
+            created_at: mesh.updated_at,
+        })?;
         let id = mesh.id.clone();
         let _ = self.meshes.get_mut()?.insert(id.clone(), mesh)?;
         app::emit!(Event::MeshChanged(id));
         Ok(())
     }
 
-    /// Every stored mesh's id, version and size — no vertices. Compare `updated_at` with
-    /// what you hold and fetch only what changed with `get_meshes`.
+    /// Every mesh's current reference, ordered by id. A client compares each `blob_id`
+    /// with what it holds and downloads only the blobs it lacks.
     ///
     /// # Examples
     /// ```json
     /// {}
     /// ```
-    pub fn list_meshes(&self) -> Vec<MeshStamp> {
-        let Ok(map) = self.meshes.get() else {
-            return Vec::new();
-        };
-        let Ok(rows) = map.entries() else {
-            return Vec::new();
-        };
-        let mut out: Vec<MeshStamp> = rows
-            .map(|(id, m)| MeshStamp {
-                id,
-                updated_at: m.updated_at,
-                vertex_count: (m.positions.len() / 3) as u32,
-                triangle_count: (m.indices.len() / 3) as u32,
-            })
-            .collect();
+    pub fn list_meshes(&self) -> Vec<MeshRef> {
+        let mut out: Vec<MeshRef> = self
+            .meshes
+            .get()
+            .ok()
+            .and_then(|m| m.entries().ok().map(|rows| rows.map(|(_, r)| r).collect()))
+            .unwrap_or_default();
         out.sort_by(|a, b| a.id.cmp(&b.id));
         out
     }
 
-    /// Meshes by object id, in the order asked; unknown ids are left out.
+    // ── Textures ──────────────────────────────────────────────────────────────
+
+    /// Add a texture, or point an existing one at a new image, and record it as a new
+    /// version. Editors only. Upload the image blob first, with this context's id.
+    ///
+    /// # Arguments
+    /// * `texture` - the reference; `author` and `updated_at` are set by the contract. At
+    ///   most 16 384 pixels a side and 512 MiB.
+    /// * `now` - the caller's clock, unix milliseconds.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor, the texture is checked out by someone else,
+    /// the scene already holds 1 000 textures, the blob id is not 64 hex characters, the
+    /// mime type or colour space is not one this app knows, or a size is over its limit.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"texture":{"id":"tex-1","name":"Crate albedo","blob_id":"4f9c3d1e2b7a8c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d","size":524288,"width":2048,"height":2048,"mime":"image/png","color_space":"srgb","author":"","message":"","updated_at":0},"now":1727000000000}
+    /// ```
+    pub fn put_texture(&mut self, texture: TextureRef, now: u64) -> app::Result<()> {
+        self.require_editor()?;
+        let mut texture = texture;
+        validate_texture_ref(&mut texture)?;
+        self.require_unlocked(std::iter::once(texture.id.as_str()), now)?;
+        let stored = self.textures.get()?.get(&texture.id)?.map(|t| t.updated_at);
+        if stored.is_none() && self.textures.get()?.len()? >= MAX_TEXTURES {
+            app::bail!("a scene holds at most {MAX_TEXTURES} textures");
+        }
+        Self::announce(&texture.blob_id)?;
+        texture.updated_at = Self::stamp(now, stored);
+        texture.author = Self::caller_id();
+        self.record_version(VersionRecord {
+            asset_id: texture.id.clone(),
+            kind: "texture".to_owned(),
+            blob_id: texture.blob_id.clone(),
+            size: texture.size,
+            a: texture.width,
+            b: texture.height,
+            author: texture.author.clone(),
+            message: texture.message.clone(),
+            created_at: texture.updated_at,
+        })?;
+        let id = texture.id.clone();
+        let _ = self.textures.get_mut()?.insert(id.clone(), texture)?;
+        app::emit!(Event::TextureChanged(id));
+        Ok(())
+    }
+
+    /// Every texture's current reference, ordered by name, then id.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
+    pub fn list_textures(&self) -> Vec<TextureRef> {
+        let mut out: Vec<TextureRef> = self
+            .textures
+            .get()
+            .ok()
+            .and_then(|m| m.entries().ok().map(|rows| rows.map(|(_, t)| t).collect()))
+            .unwrap_or_default();
+        out.sort_by(|a, b| (&a.name, &a.id).cmp(&(&b.name, &b.id)));
+        out
+    }
+
+    /// Delete textures. Editors only. Materials that name a deleted texture simply draw
+    /// without it. Their history is kept.
+    ///
+    /// # Arguments
+    /// * `ids` - at most 200.
+    /// * `now` - the caller's clock, unix milliseconds, for judging check-outs.
+    ///
+    /// # Errors
+    /// Fails, deleting nothing, if the caller is not an editor, the batch is too large, or
+    /// one of them is checked out by someone else.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"ids":["tex-1"],"now":1727000000000}
+    /// ```
+    #[app::destructive]
+    pub fn delete_textures(&mut self, ids: Vec<String>, now: u64) -> app::Result<()> {
+        self.require_editor()?;
+        require_batch(ids.len())?;
+        self.require_unlocked(ids.iter().map(String::as_str), now)?;
+        let textures = self.textures.get_mut()?;
+        for id in &ids {
+            if textures.contains(id)? {
+                let _ = textures.remove(id)?;
+            }
+        }
+        app::emit!(Event::TexturesDeleted(ids));
+        Ok(())
+    }
+
+    // ── History ───────────────────────────────────────────────────────────────
+
+    /// Every saved version of one mesh or texture, oldest first and numbered from 1, with
+    /// the one in use marked `current`. At most the newest 500.
+    ///
+    /// # Arguments
+    /// * `asset_id` - a mesh object's id or a texture's id.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"asset_id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"}
+    /// ```
+    pub fn list_history(&self, asset_id: String) -> Vec<VersionView> {
+        let current = self
+            .meshes
+            .get()
+            .ok()
+            .and_then(|m| m.get(&asset_id).ok().flatten().map(|r| r.blob_id.clone()))
+            .or_else(|| {
+                self.textures
+                    .get()
+                    .ok()
+                    .and_then(|m| m.get(&asset_id).ok().flatten().map(|t| t.blob_id.clone()))
+            })
+            .unwrap_or_default();
+        let prefix = format!("{asset_id}/");
+        let rows: Vec<VersionRecord> = self
+            .history
+            .get()
+            .ok()
+            .and_then(|h| {
+                h.prefix(prefix.as_bytes())
+                    .ok()
+                    .map(|it| it.map(|(_, v)| v).collect())
+            })
+            .unwrap_or_default();
+        // The key is `<asset>/<stamp>/…`, and a stamp is never reused for one asset
+        // on one node, so this order is the order versions were written in.
+        let skip = rows.len().saturating_sub(MAX_HISTORY_VIEW);
+        let last = rows.iter().rposition(|r| r.blob_id == current);
+        rows.into_iter()
+            .enumerate()
+            .skip(skip)
+            .map(|(i, r)| VersionView {
+                number: (i + 1) as u32,
+                kind: r.kind,
+                current: Some(i) == last,
+                blob_id: r.blob_id,
+                size: r.size,
+                a: r.a,
+                b: r.b,
+                author: r.author,
+                message: r.message,
+                created_at: r.created_at,
+            })
+            .collect()
+    }
+
+    // ── Check-out ─────────────────────────────────────────────────────────────
+
+    /// Fail if any of `ids` is checked out, live, by someone other than the caller.
+    fn require_unlocked<'a>(
+        &self,
+        ids: impl Iterator<Item = &'a str>,
+        now: u64,
+    ) -> app::Result<()> {
+        let Ok(locks) = self.locks.get() else {
+            return Ok(());
+        };
+        let me = Self::caller_id();
+        for id in ids {
+            if let Some(lock) = locks.get(id)? {
+                if lock.holder != me && lock.expires_at > now {
+                    let who = AccountId::from_str(&lock.holder)
+                        .ok()
+                        .and_then(|a| self.members.get_for_user(&a).ok().flatten())
+                        .map_or_else(|| lock.holder.chars().take(8).collect(), |m| m.name);
+                    app::bail!("{id} is checked out by {who}; ask them to check it in");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Check assets out, so nobody else can change them until the caller checks them in or
+    /// the check-out lapses. Editors only. Checking out something the caller already holds
+    /// extends it.
+    ///
+    /// # Arguments
+    /// * `ids` - object or texture ids, at most 200.
+    /// * `hours` - how long the check-out lasts, 1 to 168.
+    /// * `now` - the caller's clock, unix milliseconds.
+    ///
+    /// # Errors
+    /// Fails, checking out nothing, if the caller is not an editor, the batch is too large,
+    /// or one of them is checked out, live, by someone else.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"],"hours":8,"now":1727000000000}
+    /// ```
+    pub fn check_out(&mut self, ids: Vec<String>, hours: u32, now: u64) -> app::Result<()> {
+        self.require_editor()?;
+        require_batch(ids.len())?;
+        self.require_unlocked(ids.iter().map(String::as_str), now)?;
+        let hours = u64::from(hours.clamp(1, MAX_LOCK_HOURS));
+        let me = Self::caller_id();
+        let locks = self.locks.get_mut()?;
+        for id in &ids {
+            if id.is_empty() || id.len() > 64 {
+                app::bail!("an asset id is 1 to 64 characters");
+            }
+            let prior = locks.get(id)?.map(|l| l.clone());
+            let since = prior
+                .as_ref()
+                .filter(|l| l.holder == me && l.expires_at > now)
+                .map_or(now, |l| l.since);
+            let lock = Lock {
+                asset_id: id.clone(),
+                holder: me.clone(),
+                since,
+                expires_at: now.saturating_add(hours * 3_600_000),
+                updated_at: Self::stamp(now, prior.map(|l| l.updated_at)),
+            };
+            let _ = locks.insert(id.clone(), lock)?;
+        }
+        app::emit!(Event::LocksChanged(ids));
+        Ok(())
+    }
+
+    /// Check assets back in. Editors may check in their own; an admin may release anyone's
+    /// (breaking a lock left by someone who is away). Ids not checked out are fine.
+    ///
+    /// # Arguments
+    /// * `ids` - at most 200.
+    ///
+    /// # Errors
+    /// Fails, releasing nothing, if the caller is not an editor, the batch is too large, or
+    /// a non-admin names someone else's check-out.
     ///
     /// # Examples
     /// ```json
     /// {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"]}
     /// ```
-    pub fn get_meshes(&self, ids: Vec<String>) -> Vec<MeshData> {
-        let Ok(map) = self.meshes.get() else {
-            return Vec::new();
-        };
-        ids.iter()
-            .filter_map(|id| map.get(id).ok().flatten().map(|m| m.clone()))
-            .collect()
+    pub fn check_in(&mut self, ids: Vec<String>) -> app::Result<()> {
+        self.require_editor()?;
+        require_batch(ids.len())?;
+        let me = Self::caller_id();
+        let admin = self.roles.is_admin(&Self::caller_account());
+        let locks = self.locks.get_mut()?;
+        for id in &ids {
+            if let Some(lock) = locks.get(id)? {
+                if lock.holder != me && !admin {
+                    app::bail!(
+                        "{id} is someone else's check-out; only they or an admin can release it"
+                    );
+                }
+            }
+        }
+        for id in &ids {
+            if locks.contains(id)? {
+                let _ = locks.remove(id)?;
+            }
+        }
+        app::emit!(Event::LocksChanged(ids));
+        Ok(())
+    }
+
+    /// Every check-out still live at `now`, ordered by asset id.
+    ///
+    /// # Arguments
+    /// * `now` - the caller's clock, unix milliseconds.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"now":1727000000000}
+    /// ```
+    pub fn list_locks(&self, now: u64) -> Vec<LockView> {
+        let me = Self::caller_id();
+        let mut out: Vec<LockView> = self
+            .locks
+            .get()
+            .ok()
+            .and_then(|m| {
+                m.entries()
+                    .ok()
+                    .map(|rows| rows.map(|(_, l)| l).collect::<Vec<_>>())
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|l| l.expires_at > now)
+            .map(|l| LockView {
+                mine: l.holder == me,
+                asset_id: l.asset_id,
+                holder: l.holder,
+                since: l.since,
+                expires_at: l.expires_at,
+            })
+            .collect();
+        out.sort_by(|a, b| a.asset_id.cmp(&b.asset_id));
+        out
     }
 
     // ── Members ───────────────────────────────────────────────────────────────
@@ -989,6 +1496,20 @@ pub(crate) fn validate_object(mut obj: SceneObject) -> app::Result<SceneObject> 
             app::bail!("{:?}: material values must be finite numbers", obj.name);
         }
     }
+    for map in [
+        &m.base_color_map,
+        &m.normal_map,
+        &m.orm_map,
+        &m.emissive_map,
+    ] {
+        if map.len() > 64 {
+            app::bail!("{:?}: a texture id is at most 64 characters", obj.name);
+        }
+    }
+    if !m.normal_scale.is_finite() {
+        app::bail!("{:?}: material values must be finite numbers", obj.name);
+    }
+    m.normal_scale = m.normal_scale.clamp(0.0, 10.0);
     m.metalness = m.metalness.clamp(0.0, 1.0);
     m.roughness = m.roughness.clamp(0.0, 1.0);
     m.opacity = m.opacity.clamp(0.0, 1.0);
@@ -998,26 +1519,68 @@ pub(crate) fn validate_object(mut obj: SceneObject) -> app::Result<SceneObject> 
     Ok(obj)
 }
 
-pub(crate) fn validate_mesh(mesh: &MeshData) -> app::Result<()> {
+/// A 64-character hex blob id, the form the node returns from an upload.
+fn require_blob_id(blob_id: &str) -> app::Result<()> {
+    if blob_id.len() != 64 || !blob_id.chars().all(|c| c.is_ascii_hexdigit()) {
+        app::bail!("{blob_id:?} is not a blob id — expected 64 hex characters");
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_mesh_ref(mesh: &MeshRef) -> app::Result<()> {
     if mesh.id.is_empty() || mesh.id.len() > 64 {
         app::bail!("a mesh id is 1 to 64 characters");
     }
-    if !mesh.positions.len().is_multiple_of(3) || !mesh.indices.len().is_multiple_of(3) {
-        app::bail!("positions and indices both come in threes");
+    require_blob_id(&mesh.blob_id)?;
+    if mesh.vertex_count > MAX_VERTICES {
+        app::bail!(
+            "a mesh holds at most {MAX_VERTICES} vertices, got {}",
+            mesh.vertex_count
+        );
     }
-    let vertices = mesh.positions.len() / 3;
-    if vertices > MAX_VERTICES {
-        app::bail!("a mesh holds at most {MAX_VERTICES} vertices, got {vertices}");
+    if mesh.triangle_count > MAX_TRIANGLES {
+        app::bail!(
+            "a mesh holds at most {MAX_TRIANGLES} triangles, got {}",
+            mesh.triangle_count
+        );
     }
-    let triangles = mesh.indices.len() / 3;
-    if triangles > MAX_TRIANGLES {
-        app::bail!("a mesh holds at most {MAX_TRIANGLES} triangles, got {triangles}");
+    if mesh.size == 0 || mesh.size > MAX_BLOB_BYTES {
+        app::bail!(
+            "a mesh blob is 1 byte to {MAX_BLOB_BYTES} bytes, got {}",
+            mesh.size
+        );
     }
-    if mesh.positions.iter().any(|p| !p.is_finite()) {
-        app::bail!("vertex positions must be finite numbers");
+    Ok(())
+}
+
+pub(crate) fn validate_texture_ref(texture: &mut TextureRef) -> app::Result<()> {
+    if texture.id.is_empty() || texture.id.len() > 64 {
+        app::bail!("a texture id is 1 to 64 characters");
     }
-    if mesh.indices.iter().any(|&i| i as usize >= vertices) {
-        app::bail!("a triangle refers to a vertex the mesh does not have");
+    require_blob_id(&texture.blob_id)?;
+    if texture.width == 0
+        || texture.height == 0
+        || texture.width > MAX_TEXTURE_SIDE
+        || texture.height > MAX_TEXTURE_SIDE
+    {
+        app::bail!("a texture is 1 to {MAX_TEXTURE_SIDE} pixels a side");
     }
+    if texture.size == 0 || texture.size > MAX_BLOB_BYTES {
+        app::bail!(
+            "a texture blob is 1 byte to {MAX_BLOB_BYTES} bytes, got {}",
+            texture.size
+        );
+    }
+    if !["image/png", "image/jpeg", "image/webp"].contains(&texture.mime.as_str()) {
+        app::bail!(
+            "a texture is image/png, image/jpeg or image/webp, got {:?}",
+            texture.mime
+        );
+    }
+    if !["srgb", "linear"].contains(&texture.color_space.as_str()) {
+        app::bail!("a texture's colour space is srgb or linear");
+    }
+    texture.name = clean_name(&texture.name, "Texture");
+    texture.message = clean_name(&texture.message, "");
     Ok(())
 }

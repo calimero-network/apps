@@ -1,12 +1,12 @@
 import type {
   Environment,
   Material,
-  MeshData,
+  MeshRef,
   SceneObject,
   Vec3,
 } from "../generated/MeroModelsClient";
 
-export type { Environment, Material, MeshData, SceneObject, Vec3 };
+export type { Environment, Material, MeshRef, SceneObject, Vec3 };
 
 /**
  * Every kind the contract accepts (`OBJECT_KINDS` in logic/src/lib.rs). The
@@ -51,8 +51,12 @@ export const LIGHTS: { kind: ObjectKind; label: string }[] = [
 /** Limits mirrored from the contract, so the UI refuses before the node does. */
 export const MAX_BATCH = 200;
 export const MAX_OBJECTS = 2_000;
-export const MAX_VERTICES = 30_000;
-export const MAX_TRIANGLES = 60_000;
+export const MAX_VERTICES = 4_000_000;
+export const MAX_TRIANGLES = 8_000_000;
+export const MAX_TEXTURE_SIDE = 16_384;
+export const MAX_LOCK_HOURS = 168;
+/** Edit mode draws every vertex; past this many it stops being usable in a browser. */
+export const EDIT_MAX_VERTICES = 250_000;
 
 export function isLight(kind: string): boolean {
   return kind === "point_light" || kind === "spot_light" || kind === "directional_light";
@@ -94,6 +98,7 @@ export function defaultMaterial(kind: string): Material {
       emissive: "#000000",
       wireframe: false,
       flat_shading: false,
+      ...NO_MAPS,
     };
   }
   return {
@@ -104,8 +109,28 @@ export function defaultMaterial(kind: string): Material {
     emissive: "#000000",
     wireframe: false,
     flat_shading: kind === "cube" || kind === "plane",
+    ...NO_MAPS,
   };
 }
+
+/** A material with no textures. */
+export const NO_MAPS = {
+  base_color_map: "",
+  normal_map: "",
+  normal_scale: 1,
+  orm_map: "",
+  emissive_map: "",
+} as const;
+
+/** The material's texture slots, in the order the panel shows them. */
+export const MAP_SLOTS = [
+  { key: "base_color_map", label: "Base colour", colorSpace: "srgb" },
+  { key: "normal_map", label: "Normal", colorSpace: "linear" },
+  { key: "orm_map", label: "Occlusion · Rough · Metal", colorSpace: "linear" },
+  { key: "emissive_map", label: "Emission", colorSpace: "srgb" },
+] as const;
+
+export type MapSlot = (typeof MAP_SLOTS)[number]["key"];
 
 const LABELS: Record<string, string> = {
   cube: "Cube",
@@ -216,7 +241,12 @@ export function sameObject(a: SceneObject, b: SceneObject): boolean {
     m.opacity === n.opacity &&
     m.emissive === n.emissive &&
     m.wireframe === n.wireframe &&
-    m.flat_shading === n.flat_shading
+    m.flat_shading === n.flat_shading &&
+    m.base_color_map === n.base_color_map &&
+    m.normal_map === n.normal_map &&
+    m.normal_scale === n.normal_scale &&
+    m.orm_map === n.orm_map &&
+    m.emissive_map === n.emissive_map
   );
 }
 

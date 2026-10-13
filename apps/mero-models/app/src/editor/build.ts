@@ -16,16 +16,42 @@ export interface Built {
   helper: THREE.Object3D | null;
 }
 
-export function standardMaterial(o: SceneObject): THREE.MeshStandardMaterial {
+/**
+ * Finds a material's texture by id: the ready texture, or null while it loads
+ * (the material is rebuilt when it lands) or when the id names nothing.
+ */
+export type TextureLookup = (textureId: string, colorSpace: "srgb" | "linear") => THREE.Texture | null;
+
+export function hasMaps(o: SceneObject): boolean {
   const m = o.material;
+  return !!(m.base_color_map || m.normal_map || m.orm_map || m.emissive_map);
+}
+
+export function standardMaterial(o: SceneObject, textures?: TextureLookup): THREE.MeshStandardMaterial {
+  const m = o.material;
+  const tex = (id: string, cs: "srgb" | "linear") => (id && textures ? textures(id, cs) : null);
+  const map = tex(m.base_color_map, "srgb");
+  const normalMap = tex(m.normal_map, "linear");
+  const orm = tex(m.orm_map, "linear");
+  const emissiveMap = tex(m.emissive_map, "srgb");
   return new THREE.MeshStandardMaterial({
+    map,
+    normalMap,
+    normalScale: new THREE.Vector2(m.normal_scale, m.normal_scale),
+    // One packed texture drives all three, in glTF's (and Unreal's) channel
+    // layout — exactly the channels three reads each map from.
+    aoMap: orm,
+    roughnessMap: orm,
+    metalnessMap: orm,
+    emissiveMap,
     color: new THREE.Color(m.color),
     metalness: m.metalness,
     roughness: m.roughness,
     opacity: m.opacity,
     transparent: m.opacity < 1,
     depthWrite: m.opacity >= 1,
-    emissive: new THREE.Color(m.emissive),
+    // An emission map is multiplied by the emissive colour; black would hide it.
+    emissive: new THREE.Color(emissiveMap && m.emissive === "#000000" ? "#ffffff" : m.emissive),
     wireframe: m.wireframe,
     flatShading: m.flat_shading,
     side: o.kind === "plane" || o.kind === "mesh" ? THREE.DoubleSide : THREE.FrontSide,
@@ -34,7 +60,8 @@ export function standardMaterial(o: SceneObject): THREE.MeshStandardMaterial {
 
 /** The geometry an object draws with, or null for one that has no surface. */
 export function geometryFor(o: SceneObject, mesh: MeshShape | undefined): THREE.BufferGeometry | null {
-  if (o.kind === "mesh") return mesh ? geometryFromShape(mesh) : null;
+  // A mesh with no UVs of its own gets box-projected ones, so a texture lands on it.
+  if (o.kind === "mesh") return mesh ? geometryFromShape(mesh, true) : null;
   return primitiveGeometry(o.kind, o.segments);
 }
 
@@ -93,7 +120,11 @@ function helperLineMaterial(color: string): THREE.LineBasicMaterial {
 }
 
 /** The glyph an empty or a light is seen and clicked by. */
-function makeHelper(o: SceneObject): THREE.Object3D | null {
+function makeHelper(o: SceneObject, meshMissing = false): THREE.Object3D | null {
+  if (meshMissing) {
+    // A mesh whose blob has not arrived yet: a box to see and pick it by.
+    return new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), helperLineMaterial("#6e707a"));
+  }
   if (o.kind === "group") {
     // Three axes, Blender's "plain axes" empty.
     const g = new THREE.BufferGeometry();
@@ -134,7 +165,12 @@ function makeHelper(o: SceneObject): THREE.Object3D | null {
 }
 
 /** Build the drawable parts for `o`. Transforms are set; children are the caller's job. */
-export function buildObject(o: SceneObject, mesh: MeshShape | undefined, withHelpers = true): Built {
+export function buildObject(
+  o: SceneObject,
+  mesh: MeshShape | undefined,
+  withHelpers = true,
+  textures?: TextureLookup,
+): Built {
   const group = new THREE.Group();
   group.name = o.name;
   group.userData.id = o.id;
@@ -147,7 +183,7 @@ export function buildObject(o: SceneObject, mesh: MeshShape | undefined, withHel
   } else {
     const geometry = geometryFor(o, mesh);
     if (geometry) {
-      const m = new THREE.Mesh(geometry, standardMaterial(o));
+      const m = new THREE.Mesh(geometry, standardMaterial(o, textures));
       m.castShadow = true;
       m.receiveShadow = true;
       m.name = o.name;
@@ -158,7 +194,7 @@ export function buildObject(o: SceneObject, mesh: MeshShape | undefined, withHel
     body.userData.id = o.id;
     group.add(body);
   }
-  const helper = withHelpers ? makeHelper(o) : null;
+  const helper = withHelpers ? makeHelper(o, o.kind === "mesh" && !mesh) : null;
   if (helper) {
     helper.userData.id = o.id;
     helper.userData.helper = true;
@@ -189,12 +225,13 @@ export function buildScene(
   meshes: Map<string, { shape: MeshShape }>,
   childrenOf: Map<string, SceneObject[]>,
   onlyVisible = true,
+  textures?: TextureLookup,
 ): THREE.Scene {
   const scene = new THREE.Scene();
   const add = (parentId: string, parent: THREE.Object3D) => {
     for (const o of childrenOf.get(parentId) ?? []) {
       if (onlyVisible && !o.visible) continue;
-      const built = buildObject(o, meshes.get(o.id)?.shape, false);
+      const built = buildObject(o, meshes.get(o.id)?.shape, false, textures);
       parent.add(built.group);
       add(o.id, built.group);
     }

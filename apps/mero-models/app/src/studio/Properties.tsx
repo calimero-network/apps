@@ -27,12 +27,15 @@ import {
   isLight,
   isSolid,
   kindLabel,
+  MAX_TRIANGLES,
+  MAX_VERTICES,
   resolvedParent,
   type Environment,
   type SceneObject,
 } from "../editor/model";
 import { activeObject, useEditor, type Snapshot } from "../editor/store";
 import { ColorField, NumberField, Section, Toggle } from "../ui/fields";
+import { CheckoutSection, HistorySection, TextureLibrary, TextureSlots } from "./AssetPanels";
 
 const DEG = 180 / Math.PI;
 
@@ -46,7 +49,8 @@ const DEG = 180 / Math.PI;
 export function Properties({ onEnvironment }: { onEnvironment: (env: Environment) => void }) {
   const state = useEditor();
   const active = activeObject(state);
-  const canEdit = state.role !== "viewer";
+  // Read-only for a viewer, and for anything someone else has checked out.
+  const canEdit = state.role !== "viewer" && !(active && state.selection.some((id) => state.lockedByOther(id)));
   const snap = useRef<Snapshot | null>(null);
 
   const selected = useMemo(
@@ -88,6 +92,7 @@ export function Properties({ onEnvironment }: { onEnvironment: (env: Environment
   const solids = selected.filter((o) => isSolid(o.kind)).map((o) => o.id);
   const lights = selected.filter((o) => isLight(o.kind)).map((o) => o.id);
   const mesh = active.kind === "mesh" ? state.meshes.get(active.id)?.shape : undefined;
+  const meshStatus = active.kind === "mesh" ? state.meshStatus.get(active.id) : undefined;
 
   if (state.mode === "edit") {
     return (
@@ -140,6 +145,13 @@ export function Properties({ onEnvironment }: { onEnvironment: (env: Environment
   return (
     <div className="properties">
       <PanelHead obj={active} count={selected.length} canEdit={canEdit} />
+      {meshStatus !== undefined && (
+        <p className={`hint mesh-status ${meshStatus ? "error" : ""}`} data-testid="mesh-status">
+          {meshStatus ? `This mesh could not be loaded: ${meshStatus}` : "Downloading this mesh from the scene's nodes…"}
+        </p>
+      )}
+
+      <CheckoutSection ids={ids} />
 
       <Section title="Transform">
         {v3("position", "Location", 0.1)}
@@ -270,8 +282,11 @@ export function Properties({ onEnvironment }: { onEnvironment: (env: Environment
             />
           </div>
           <MaterialPresets disabled={!canEdit} ids={solids} />
+          <TextureSlots objects={selected.filter((o) => solids.includes(o.id))} canEdit={canEdit} />
         </Section>
       )}
+
+      {active.kind === "mesh" && <HistorySection assetId={active.id} kind="mesh" />}
 
       {lights.length > 0 && (
         <Section title="Light">
@@ -325,7 +340,7 @@ function PanelHead({ obj, count, canEdit }: { obj: SceneObject; count: number; c
 function MeshStats({ positions, triangles }: { positions: number; triangles: number }) {
   return (
     <p className="hint mesh-stats">
-      {positions.toLocaleString()} / 30,000 vertices · {triangles.toLocaleString()} / 60,000 triangles
+      {positions.toLocaleString()} / {MAX_VERTICES.toLocaleString()} vertices · {triangles.toLocaleString()} / {MAX_TRIANGLES.toLocaleString()} triangles
     </p>
   );
 }
@@ -420,6 +435,7 @@ function SceneSettings({ onEnvironment, canEdit }: { onEnvironment: (env: Enviro
           onCommit={(ambient_intensity) => set({ ambient_intensity })}
         />
       </Section>
+      <TextureLibrary canEdit={canEdit} />
       <Section title="Statistics">
         <p className="hint">
           {objects.size.toLocaleString()} objects · {meshes.size.toLocaleString()} meshes · {totals.v.toLocaleString()} vertices ·{" "}

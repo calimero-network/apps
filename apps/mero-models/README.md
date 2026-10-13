@@ -10,15 +10,18 @@ the scene's admin decides who may edit — enforced by the contract on every nod
 ```
 apps/mero-models/
 ├── logic/                     Rust → WASM. The whole backend.
-│   ├── src/lib.rs             #[app::state] objects, meshes, environment, members, roles
+│   ├── src/lib.rs             #[app::state] objects, mesh/texture refs, history, check-outs, roles
 │   ├── src/tests.rs           TestHost tests: roles, validation, stamps, the hierarchy rule
 │   ├── tests/converge.rs      two replicas editing one object at the same instant
 │   ├── res/                   abi.json + state-schema.json, emitted by `cargo mero build`
-│   └── workflows/             merobox: two real nodes sharing, refusing and granting edits
+│   └── workflows/             merobox: two nodes sharing blobs, versions, check-outs and edits
 └── app/                       Vite + React + TypeScript + three.js
     ├── src/editor/            the modeller: no React in here except hooks.ts
     │   ├── model.ts           kinds, limits, hierarchy rules (mirrors the contract)
-    │   ├── geometry.ts        primitives, welding, subdivide/smooth/extrude/merge/decimate
+    │   ├── geometry.ts        typed-array meshes with UVs: subdivide/smooth/extrude/merge/decimate
+    │   ├── meshcodec.ts       the mesh blob format: compressed, deterministic, validated on read
+    │   ├── blobs.ts           upload/download with the context id, IndexedDB-cached by blob id
+    │   ├── textures.ts        blob → image → three.js texture, per colour space
     │   ├── store.ts           zustand store: the scene, selection, undo/redo
     │   ├── sync.ts            optimistic writes, the outbox, read-back without flicker
     │   ├── viewport.ts        three.js: rendering, picking, gizmo, edit mode, peers
@@ -61,7 +64,10 @@ invite link; tick **Can edit** beside someone to let them build.
 | field | tier | why |
 | --- | --- | --- |
 | `objects` | `PermissionedStorage<UnorderedMap<id, SceneObject>>` | one record per object, whole-record LWW; only editors can write, checked on every node |
-| `meshes` | `PermissionedStorage<UnorderedMap<id, MeshData>>` | vertex data apart from the object, so a move never rewrites 30 000 vertices |
+| `meshes` | `PermissionedStorage<UnorderedMap<id, MeshRef>>` | the blob holding each mesh's vertices — id, size, counts, author, note; the vertices themselves are a node blob |
+| `textures` | `PermissionedStorage<UnorderedMap<id, TextureRef>>` | each texture's image blob, size, colour space |
+| `history` | `PermissionedStorage<SortedMap<"asset/stamp/author/blob", VersionRecord>>` | every version of every mesh and texture; one asset's history is a prefix scan |
+| `locks` | `PermissionedStorage<UnorderedMap<id, Lock>>` | check-outs: who holds an asset and until when |
 | `environment` | `PermissionedStorage<UnorderedMap<…>>` | the scene's name, background and ambient light |
 | `members` | `UserStorage<Member>` | each person's display name, written only by them |
 | `roles` | `AccessControl` | the creator is admin; editors are granted, and projected onto the collections above |
@@ -75,6 +81,16 @@ Three decisions carry the design:
   that no write-time check could prevent. Every reader resolves a missing
   parent or a loop to the root, the same way (`resolve_parents`, mirrored in
   `model.ts`).
+- **Heavy data is blobs; state is references.** A mesh's vertices and a
+  texture's pixels are content-addressed node blobs, uploaded with the context
+  id so every member's node fetches them. State holds a small reference, every
+  save also appends a version, and restoring writes an old blob id again —
+  identical bytes are the identical blob, so nothing is copied. Decoding checks
+  the blob against what its reference claims and refuses a mismatch.
+- **Check-out is coordination, not security.** While an asset is checked out,
+  every honest node refuses anyone else's write to it; two people checking out
+  the same asset offline resolve to one holder when they meet. Check-outs lapse
+  (1 hour to 1 week), and an admin can release one.
 - **Presence is not state.** Selections and cameras stream over the node's
   ephemeral channel. Moving the camera is never a transaction; moving an object
   is one, sent once when the drag ends.
@@ -86,8 +102,12 @@ from the node never drags back an object whose write is still in flight
 
 ## Limits
 
-2 000 objects a scene, 200 per call, 30 000 vertices and 60 000 triangles a
-mesh. An import over the mesh limit is decimated to fit, and the status bar
+2 000 objects a scene, 200 per call; 4 000 000 vertices and 8 000 000
+triangles a mesh; 16 384 pixels a side and 512 MiB a texture or mesh blob
+(core itself takes up to 1 GiB from a node, 64 MiB through an account's
+relay); 1 000 textures a scene. Vertex editing in the browser stops at
+250 000 vertices — heavier meshes are edited in a DCC and re-imported as a new
+version. An import over the mesh limit is decimated to fit, and the status bar
 says by how much.
 
 ## Tests

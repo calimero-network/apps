@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { MeshShape } from "./geometry";
+import type { LockView, MeshRef, TextureRef } from "../generated/MeroModelsClient";
 import {
   cloneObject,
   defaultEnvironment,
@@ -15,8 +16,8 @@ export type Role = "admin" | "editor" | "viewer";
 
 export interface StoredMesh {
   shape: MeshShape;
-  /** The contract's version stamp; 0 for a local edit not yet read back. */
-  updated_at: number;
+  /** The reference the shape was read from; null for a local edit not yet saved. */
+  ref: MeshRef | null;
 }
 
 /**
@@ -27,7 +28,8 @@ export interface StoredMesh {
 export interface Change {
   puts: SceneObject[];
   deletes: string[];
-  meshes: { id: string; shape: MeshShape }[];
+  /** `message` is the version note the save carries into the history. */
+  meshes: { id: string; shape: MeshShape; message?: string }[];
 }
 
 export interface HistoryEntry {
@@ -54,6 +56,13 @@ export const emptyChange = (): Change => ({ puts: [], deletes: [], meshes: [] })
 export interface EditorState {
   objects: Map<string, SceneObject>;
   meshes: Map<string, StoredMesh>;
+  /** Mesh references whose blob is still downloading, or failed to: id → message ("" while loading). */
+  meshStatus: Map<string, string>;
+  textures: Map<string, TextureRef>;
+  /** Live check-outs, by asset id. */
+  locks: Map<string, LockView>;
+  /** Display names by member id, for check-outs and history. */
+  memberNames: Map<string, string>;
   environment: Environment;
   sceneName: string;
   /** Selected object ids, in the order they were picked; the last is active. */
@@ -99,12 +108,18 @@ export interface EditorState {
     objects?: Map<string, SceneObject>;
     meshes?: Map<string, StoredMesh>;
     removedMeshes?: string[];
+    meshStatus?: Map<string, string>;
+    textures?: Map<string, TextureRef>;
+    locks?: Map<string, LockView>;
+    memberNames?: Map<string, string>;
     environment?: Environment;
     sceneName?: string;
     role?: Role;
     me?: string;
   }): void;
   canEdit(): boolean;
+  /** The live check-out of `id` by someone else, if there is one. */
+  lockedByOther(id: string): LockView | undefined;
 }
 
 function applyChange(
@@ -119,7 +134,7 @@ function applyChange(
     nextMeshes.delete(id);
   }
   for (const o of change.puts) nextObjects.set(o.id, o);
-  for (const m of change.meshes) nextMeshes.set(m.id, { shape: m.shape, updated_at: 0 });
+  for (const m of change.meshes) nextMeshes.set(m.id, { shape: m.shape, ref: null });
   return { objects: nextObjects, meshes: nextMeshes };
 }
 
@@ -145,6 +160,10 @@ function inverse(forward: Change, before: Snapshot): Change {
 export const useEditor = create<EditorState>((set, get) => ({
   objects: new Map(),
   meshes: new Map(),
+  meshStatus: new Map(),
+  textures: new Map(),
+  locks: new Map(),
+  memberNames: new Map(),
   environment: defaultEnvironment(),
   sceneName: "",
   selection: [],
@@ -223,6 +242,18 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
     const effective: Change = { puts, deletes: change.deletes, meshes: change.meshes };
     if (!puts.length && !change.deletes.length && !change.meshes.length) return;
+    // Refused here, before anything moves on screen, rather than by the node a
+    // round trip later.
+    for (const id of [...puts.map((o) => o.id), ...change.deletes, ...change.meshes.map((m) => m.id)]) {
+      const lock = state.lockedByOther(id);
+      if (lock) {
+        const name = state.objects.get(id)?.name ?? id;
+        state.notify(`${name} is checked out by someone else — it is read-only until they check it in.`, true);
+        // A refused drag has already been previewed; put it back.
+        if (before) set(revert(state, before));
+        return;
+      }
+    }
     const snap =
       before ??
       state.snapshot(
@@ -245,6 +276,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     const state = get();
     const entry = state.past.at(-1);
     if (!entry || !state.canEdit()) return;
+    if (touches(entry.backward).some((id) => state.lockedByOther(id))) {
+      state.notify(`Cannot undo ${entry.label}: something it changes is checked out by someone else.`, true);
+      return;
+    }
     const applied = applyChange(state.objects, state.meshes, entry.backward);
     set({
       ...applied,
@@ -260,6 +295,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     const state = get();
     const entry = state.future[0];
     if (!entry || !state.canEdit()) return;
+    if (touches(entry.forward).some((id) => state.lockedByOther(id))) {
+      state.notify(`Cannot redo ${entry.label}: something it changes is checked out by someone else.`, true);
+      return;
+    }
     const applied = applyChange(state.objects, state.meshes, entry.forward);
     set({
       ...applied,
@@ -284,6 +323,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       for (const id of read.removedMeshes ?? []) meshes.delete(id);
       patch.meshes = meshes;
     }
+    if (read.meshStatus) patch.meshStatus = read.meshStatus;
+    if (read.textures) patch.textures = read.textures;
+    if (read.locks) patch.locks = read.locks;
+    if (read.memberNames) patch.memberNames = read.memberNames;
     if (read.environment) patch.environment = read.environment;
     if (read.sceneName !== undefined) patch.sceneName = read.sceneName;
     if (read.role) patch.role = read.role;
@@ -297,10 +340,40 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   canEdit: () => get().role !== "viewer",
+
+  lockedByOther: (id) => {
+    const lock = get().locks.get(id);
+    return lock && !lock.mine && lock.expires_at > Date.now() ? lock : undefined;
+  },
 }));
+
+/** The objects and meshes a snapshot captured, put back as they were. */
+function revert(state: EditorState, before: Snapshot): Pick<EditorState, "objects" | "meshes"> {
+  const objects = new Map(state.objects);
+  for (const [id, o] of before.objects) {
+    if (o) objects.set(id, o);
+    else objects.delete(id);
+  }
+  const meshes = new Map(state.meshes);
+  for (const [id, shape] of before.meshes) {
+    const stored = state.meshes.get(id);
+    if (shape) meshes.set(id, { shape, ref: stored?.shape === shape ? stored.ref : null });
+  }
+  return { objects, meshes };
+}
+
+function touches(change: Change): string[] {
+  return [...change.puts.map((o) => o.id), ...change.deletes, ...change.meshes.map((m) => m.id)];
+}
 
 /** The active object: the last one selected. */
 export function activeObject(state: Pick<EditorState, "objects" | "selection">): SceneObject | undefined {
   const id = state.selection.at(-1);
   return id ? state.objects.get(id) : undefined;
+}
+
+/** A member's display name, or a short form of their id. */
+export function nameOf(state: Pick<EditorState, "memberNames" | "me">, id: string): string {
+  if (id && id === state.me) return "you";
+  return state.memberNames.get(id) || (id ? `${id.slice(0, 6)}…` : "someone");
 }
