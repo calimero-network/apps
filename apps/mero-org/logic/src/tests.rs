@@ -331,3 +331,24 @@ fn deleting_a_group_drops_its_access_rows() {
     app.call(|s| s.delete_group(eng.id.clone())).unwrap();
     assert!(app.view(|s| s.access_rows()).unwrap().is_empty());
 }
+
+#[test]
+fn activity_is_hash_chained_and_pages_newest_first() {
+    let mut app = founded();
+    let eng = app
+        .call(|s| s.create_group("Engineering".to_owned(), String::new()))
+        .unwrap();
+    app.call(|s| s.rename_group(eng.id.clone(), "Eng".to_owned()))
+        .unwrap();
+    let page = app.view(|s| s.activity(0, 10)).unwrap();
+    assert_eq!(page.total, 2);
+    assert_eq!(page.rows[0].verb, "group_renamed");
+    assert_eq!(page.rows[1].verb, "group_created");
+    assert_eq!(page.rows[1].prev_hash, "");
+    assert_eq!(page.rows[0].prev_hash, page.rows[1].hash);
+    assert_eq!(page.rows[0].actor, hex32(FOUNDER));
+    assert!(app.view(|s| s.verify_activity()).unwrap());
+    let page = app.view(|s| s.activity(1, 10)).unwrap();
+    assert_eq!(page.rows.len(), 1);
+    assert_eq!(page.rows[0].index, 0);
+}

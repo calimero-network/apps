@@ -328,11 +328,26 @@ pub struct PlacementView {
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ActivityRow {
     pub index: u32,
+    pub at: u64,
+    pub actor: String,
+    pub verb: String,
+    pub subject: String,
+    pub object: String,
+    pub note: String,
+    pub prev_hash: String,
+    pub hash: String,
 }
 impl Mergeable for ActivityRow {
     fn merge(&mut self, _: &Self) -> Result<(), MergeError> {
         Ok(())
     }
+}
+
+#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ActivityPage {
+    pub rows: Vec<ActivityRow>,
+    pub total: u32,
 }
 
 #[app::logic]
@@ -1147,14 +1162,91 @@ impl Org {
         Ok(out)
     }
 
-    /// Activity is implemented in Task 5; until then a no-op so earlier tasks compile.
-    fn record(
-        &mut self,
-        _verb: &str,
-        _subject: &str,
-        _object: &str,
-        _note: &str,
-    ) -> app::Result<()> {
+    fn row_hash(row: &ActivityRow) -> String {
+        use sha2::{Digest, Sha256};
+        let mut body: Vec<u8> = Vec::new();
+        BorshSerialize::serialize(
+            &(
+                row.index,
+                row.at,
+                &row.actor,
+                &row.verb,
+                &row.subject,
+                &row.object,
+                &row.note,
+                &row.prev_hash,
+            ),
+            &mut body,
+        )
+        .expect("borsh of plain fields");
+        let mut h = Sha256::new();
+        h.update(b"mero-org.activity.v1");
+        h.update(body);
+        hex::encode(h.finalize())
+    }
+
+    /// Appends one row. Concurrent appends from two admins both land (Vector
+    /// merges as a union) and the chain is then verified per row's own
+    /// `prev_hash`, which names the row the writer saw; `verify_activity`
+    /// accepts a row whose `prev_hash` is any earlier row's hash.
+    fn record(&mut self, verb: &str, subject: &str, object: &str, note: &str) -> app::Result<()> {
+        let index = self.activity.len()? as u32;
+        let prev_hash = self
+            .activity
+            .last()?
+            .map(|r| r.hash.clone())
+            .unwrap_or_default();
+        let mut row = ActivityRow {
+            index,
+            at: Self::now(),
+            actor: Self::caller(),
+            verb: verb.to_owned(),
+            subject: subject.to_owned(),
+            object: object.to_owned(),
+            note: note.to_owned(),
+            prev_hash,
+            hash: String::new(),
+        };
+        row.hash = Self::row_hash(&row);
+        self.activity.push(row)?;
+        app::emit!(Event::ActivityAppended { index });
         Ok(())
+    }
+
+    /// Newest first. `before` = 0 means from the end; otherwise rows with index < before.
+    pub fn activity(&self, before: u32, limit: u32) -> app::Result<ActivityPage> {
+        let total = self.activity.len()? as u32;
+        let limit = if limit == 0 {
+            DEFAULT_PAGE
+        } else {
+            limit.min(MAX_PAGE)
+        };
+        let end = if before == 0 {
+            total
+        } else {
+            before.min(total)
+        };
+        let start = end.saturating_sub(limit);
+        let mut rows = Vec::new();
+        for i in (start..end).rev() {
+            if let Some(r) = self.activity.get(i as usize)? {
+                rows.push(r.clone());
+            }
+        }
+        Ok(ActivityPage { rows, total })
+    }
+
+    pub fn verify_activity(&self) -> app::Result<bool> {
+        let mut seen: Vec<String> = Vec::new();
+        for row in self.activity.iter()? {
+            if Self::row_hash(&row) != row.hash {
+                return Ok(false);
+            }
+            if !row.prev_hash.is_empty() && !seen.contains(&row.prev_hash) {
+                return Ok(false);
+            }
+            seen.push(row.hash.clone());
+        }
+        Ok(true)
     }
 }
