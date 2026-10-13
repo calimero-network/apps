@@ -1296,6 +1296,10 @@ thead th {
 }
 
 .chat-thread {
+  /* The containing block of what is positioned inside it (each bubble's sr-only
+     label): without it those escape the scroller and stretch the page, so a long
+     chat let the whole page scroll out of the screen. */
+  position: relative;
   flex: 1 1 auto;
   overflow-y: auto;
   display: flex;
