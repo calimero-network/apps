@@ -11,6 +11,7 @@ import { prKey } from "./github";
 import { agentLive, notPickedUp } from "./theme";
 import { WorkBlock } from "./WorkBlock";
 import { WatchList } from "./WatchList";
+import { isActive } from "./watches";
 
 /**
  * Chats with your agent.
@@ -88,7 +89,23 @@ export function ChatView({
       live = false;
     };
   }, [loadWatches, loadPrs, chain, page]);
-  const merge = useMemo<MergeContext | undefined>(() => {
+  // How many watches each chat still waits on, in every chain: a chat with
+  // one ("merge #57 after #459") isn't done, whatever its last answer said.
+  const [waiting, setWaiting] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    let live = true;
+    const count = (all: WatchView[]) => {
+      const by = new Map<string, number>();
+      for (const w of all.filter(isActive)) by.set(w.chain, (by.get(w.chain) ?? 0) + 1);
+      return by;
+    };
+    if (!loadWatches) setWaiting(new Map());
+    else void loadWatches("").then((w) => live && setWaiting(count(w)), () => live && setWaiting(new Map()));
+    return () => {
+      live = false;
+    };
+  }, [loadWatches, page]);
+  const merge =useMemo<MergeContext | undefined>(() => {
     if (!chain) return undefined;
     const seen = new Map<string, PrView>();
     for (const p of prs) seen.set(prKey(p.repo, p.pr), p);
@@ -140,6 +157,12 @@ export function ChatView({
       <span className="chat-item-meta">{timeLabel(c.chain_at)}</span>
       {/* Which agent session is on this chat now, maybe on another machine. */}
       {heldLine(c, clock()) && <span className="chat-item-held">{heldLine(c, clock())}</span>}
+      {/* What it still waits for, so a chat with watches doesn't look finished. */}
+      {waiting.has(c.chain) && (
+        <span className="chat-item-held">
+          {waiting.get(c.chain) === 1 ? "Watching 1 thing" : `Watching ${waiting.get(c.chain)} things`}
+        </span>
+      )}
     </button>
   );
 
@@ -162,7 +185,7 @@ export function ChatView({
         ) : chats.length === 0 && archived.length === 0 ? (
           <p className="chat-hint">No chats yet. Ask your agent anything and it answers here.</p>
         ) : (
-          <ChatList chats={chats} open={chain} showDone={showDone} onShowDone={setShowDone}>
+          <ChatList chats={chats} open={chain} waiting={waiting} showDone={showDone} onShowDone={setShowDone}>
             {(c) => <li key={c.chain}>{item(c)}</li>}
           </ChatList>
         )}
@@ -288,23 +311,26 @@ export function ChatView({
 /**
  * The chats, the finished ones hidden unless you ask for them. A chat is
  * finished when nothing in it is left to you or your agent: your agent's
- * answer closed it, as the feed's Done lane counts it. The chat you have open
- * always shows, finished or not.
+ * answer closed it, as the feed's Done lane counts it, and no watch of its is
+ * still waiting to fire. The chat you have open always shows, finished or not.
  */
 function ChatList({
   chats,
   open,
+  waiting,
   showDone,
   onShowDone,
   children,
 }: {
   chats: FeedItem[];
   open: string;
+  /** Active watches per chain. */
+  waiting: Map<string, number>;
   showDone: boolean;
   onShowDone: (show: boolean) => void;
   children: (chat: FeedItem) => ReactNode;
 }) {
-  const done = chats.filter((c) => laneOf(c) === "done" && c.chain !== open);
+  const done = chats.filter((c) => laneOf(c) === "done" && !waiting.has(c.chain) && c.chain !== open);
   const shown = showDone ? chats : chats.filter((c) => !done.includes(c));
   return (
     <>
