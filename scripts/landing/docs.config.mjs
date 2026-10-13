@@ -1103,4 +1103,36 @@ export const DOCS = {
       { title: 'No game server', body: 'Seed plus overrides is the entire world. Nobody hosts it.' },
     ],
   },
+
+  'mero-org': {
+    docs: [
+      { id: 'concepts', heading: 'The words, and what they mean here', paragraphs: ['The org is one Calimero namespace of this app. Every app the company uses is another namespace, administered by an org admin.'], concepts: [
+        { term: 'Member', def: 'An account that joined the org namespace and claimed a name and handle.' },
+        { term: 'Group', def: 'A team in the tree. Membership is explicit; access flows through groups.' },
+        { term: 'App', def: 'A namespace of another Calimero application that an org admin administers.' },
+        { term: 'Access', def: 'A group reaches an app with a set of capabilities. One private subgroup per (group, app).' },
+        { term: 'Enrolment', def: 'A member\'s state in one app: they redeem one invitation per app, then placement is automatic.' },
+      ] },
+      { id: 'start', heading: 'Getting started', steps: [
+        { title: 'Found the org', body: 'Connect and press Create org. You are its first admin.' },
+        { title: 'Invite someone', body: 'People → Invite. Send them the link; they join and pick a name.' },
+        { title: 'Make groups and register apps', body: 'Groups → New group. Apps → Register, naming a namespace you administer.' },
+        { title: 'Grant access', body: 'On a group, tick the apps it reaches. The reconciler does the rest while this tab is open.' },
+      ] },
+      { id: 'sharing', heading: 'Who can see it', paragraphs: ['Every org member replicates the directory and the activity log. Only org admins write to them; a person edits only their own profile.'] },
+      { id: 'storage', heading: 'What is stored, and where', bullets: ['Members, groups, memberships, apps, access rows and enrolment state, each replaced whole per key.', 'Profiles in an authored map: the runtime stamps the owner and peers refuse anyone else\'s edit.', 'Activity rows in a vector, each hashing the one before.'] },
+      { id: 'offline', heading: 'Offline, and what happens when you reconnect', paragraphs: ['Your node holds the whole state. Changes merge as CRDTs when peers meet; two admins editing different things both keep their work.'] },
+      { id: 'trouble', heading: 'When something looks wrong', concepts: [
+        { term: 'An enrolment stays pending', def: 'The person has not redeemed that app\'s invitation yet, or it expired (24 h). The reconciler re-mints it when an admin is online.' },
+        { term: 'An app shows "needs admin"', def: 'The registering admin is not Admin in that namespace. Ask its founder to grant it.' },
+      ] },
+    ],
+    previewSteps: [
+      { title: 'Invite Ana', body: 'One link. Ana enrols her device and picks a name.' },
+      { title: 'Put her in Engineering', body: 'One tick. Engineering reaches Drive and Issues.' },
+      { title: 'Ana joins each app', body: 'Two taps on her side; placement into the private subgroups is automatic.' },
+      { title: 'See it on the chain', body: 'Every step is a row, hashed onto the one before.' },
+    ],
+  },
+
 };

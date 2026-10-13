@@ -827,6 +827,37 @@ export const APPS = {
     ],
   },
 
+  'mero-org': {
+    e2eDir: 'tests',
+    availability: 'web+desktop',
+    overview: {
+      headline: 'Invite someone once. Decide which groups they are in and which apps they reach. The rest is governance.',
+      comparison: {
+        heading: 'One place to manage the company',
+        sub: 'Every Calimero app has its own members and its own groups. Mero Org holds the graph once and writes it into each app for you.',
+        themLabel: 'Managing apps one by one',
+        rows: [
+          { label: 'Inviting a colleague', them: 'An invitation per app, each with its own link', us: 'One invitation; each app enrolment is a tap on their side' },
+          { label: 'Who is in Engineering', them: 'Different in every app', us: 'One group tree, mirrored into every app as a private subgroup' },
+          { label: 'Taking access away', them: 'Remember every app they were in', us: 'Suspend once; the reconciler removes them everywhere' },
+          { label: 'Proving what changed', them: 'Nothing', us: 'A hash-chained activity log every member replicates' },
+        ],
+      },
+      closing: { title: 'Found your org', body: 'Connect your node or your account, create the org, and invite the first person.' },
+    },
+    trust: ['Admin writes are merge-enforced', 'Profiles belong to their owner', 'Every change is on the chain'],
+    explainer: [
+      'Mero Org is the company directory and its governance graph: members, a tree of groups, the applications the company uses, and which groups reach which app. It is one context every member replicates.',
+      'Each application is its own namespace on Calimero. Mero Org does not replace that; a reconciler running in the admin\'s browser turns the graph into membership and capabilities inside each app namespace, one private subgroup per group, and records what it managed to do.',
+    ],
+    features: [
+      { icon: 'Folder', title: 'Members', body: 'One invitation, one profile the member owns, and a status an admin controls.' },
+      { icon: 'Cube3DStacked', title: 'Groups that nest', body: 'A tree up to sixteen deep. Access is granted to groups, never to individuals.' },
+      { icon: 'ShieldCheck', title: 'Access per app', body: 'Pick the capabilities a group gets in an app; members land in a private subgroup there.' },
+      { icon: 'CheckSquare', title: 'Enrolment you can see', body: 'Every member × app has a state: pending, joined, placed, removed. Nothing is assumed.' },
+    ],
+  },
+
 };
 
 /**
