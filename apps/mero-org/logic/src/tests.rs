@@ -140,3 +140,74 @@ fn only_an_admin_moves_status() {
         .unwrap_err();
     assert!(format!("{err:?}").contains("unknown status"), "{err:?}");
 }
+
+fn enrolled(app: &mut TestHost<Org>, who: [u8; 32], name: &str) {
+    claim(app, who, name);
+}
+
+#[test]
+fn groups_nest_and_cannot_cycle() {
+    let mut app = founded();
+    let eng = app
+        .call(|s| s.create_group("Engineering".to_owned(), String::new()))
+        .unwrap();
+    let plat = app
+        .call(|s| s.create_group("Platform".to_owned(), eng.id.clone()))
+        .unwrap();
+    assert_eq!(plat.parent, eng.id);
+    let err = app
+        .call(|s| s.move_group(eng.id.clone(), plat.id.clone()))
+        .unwrap_err();
+    assert!(format!("{err:?}").contains("cycle"), "{err:?}");
+    let err = app
+        .call(|s| s.create_group("Orphan".to_owned(), "nope".to_owned()))
+        .unwrap_err();
+    assert!(format!("{err:?}").contains("no group"), "{err:?}");
+}
+
+#[test]
+fn membership_is_admin_only_and_listed_on_the_member() {
+    let mut app = founded();
+    enrolled(&mut app, ANA, "ana");
+    let eng = app
+        .call(|s| s.create_group("Engineering".to_owned(), String::new()))
+        .unwrap();
+    let err = app
+        .call_as_account(ANA, ANA, |s| {
+            s.set_membership(eng.id.clone(), hex32(ANA), ROLE_MEMBER.to_owned())
+        })
+        .unwrap_err();
+    assert!(format!("{err:?}").contains("admin"), "{err:?}");
+    app.call(|s| s.set_membership(eng.id.clone(), hex32(ANA), ROLE_LEAD.to_owned()))
+        .unwrap();
+    let m = app.view(|s| s.member(hex32(ANA))).unwrap().unwrap();
+    assert_eq!(m.groups, vec![eng.id.clone()]);
+    let gm = app.view(|s| s.group_members(eng.id.clone())).unwrap();
+    assert_eq!(gm.len(), 1);
+    let err = app
+        .call(|s| s.set_membership(eng.id.clone(), hex32(STRANGER), ROLE_MEMBER.to_owned()))
+        .unwrap_err();
+    assert!(format!("{err:?}").contains("no member"), "{err:?}");
+}
+
+#[test]
+fn deleting_a_group_cascades_memberships_and_children() {
+    let mut app = founded();
+    enrolled(&mut app, ANA, "ana");
+    let eng = app
+        .call(|s| s.create_group("Engineering".to_owned(), String::new()))
+        .unwrap();
+    let plat = app
+        .call(|s| s.create_group("Platform".to_owned(), eng.id.clone()))
+        .unwrap();
+    app.call(|s| s.set_membership(plat.id.clone(), hex32(ANA), ROLE_MEMBER.to_owned()))
+        .unwrap();
+    app.call(|s| s.delete_group(eng.id.clone())).unwrap();
+    assert!(app.view(|s| s.groups()).unwrap().is_empty());
+    assert!(app
+        .view(|s| s.member(hex32(ANA)))
+        .unwrap()
+        .unwrap()
+        .groups
+        .is_empty());
+}

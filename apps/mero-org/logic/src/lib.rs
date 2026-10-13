@@ -146,30 +146,55 @@ pub struct MemberView {
     pub apps: Vec<String>,
 }
 
+pub const ROLE_LEAD: &str = "lead";
+pub const ROLE_MEMBER: &str = "member";
+pub const MAX_DEPTH: usize = 16;
+
 #[app::mergeable(id = "mero_org::Group")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
 pub struct Group {
     pub id: String,
+    pub name: LwwRegister<String>,
+    /// Parent group id, "" at the top.
+    pub parent: LwwRegister<String>,
+    pub admins: LwwRegister<Vec<String>>,
+    pub created_at: u64,
 }
 impl Mergeable for Group {
-    fn merge(&mut self, _: &Self) -> Result<(), MergeError> {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        self.name.merge(&other.name);
+        self.parent.merge(&other.parent);
+        self.admins.merge(&other.admins);
         Ok(())
     }
 }
 
 #[app::mergeable(id = "mero_org::Membership")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
 pub struct Membership {
     pub group: String,
+    pub account: String,
+    pub role: LwwRegister<String>,
+    pub since: u64,
 }
 impl Mergeable for Membership {
-    fn merge(&mut self, _: &Self) -> Result<(), MergeError> {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        self.role.merge(&other.role);
         Ok(())
     }
+}
+
+#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct GroupView {
+    pub id: String,
+    pub name: String,
+    pub parent: String,
+    pub admins: Vec<String>,
+    pub member_count: u32,
+    pub created_at: u64,
 }
 
 #[app::mergeable(id = "mero_org::App")]
@@ -260,7 +285,6 @@ impl Org {
             .map_err(|_| AppError::msg("only an org admin can do this"))
     }
 
-    #[allow(dead_code)] // used by Tasks 2-5
     fn fresh_id() -> String {
         let mut buffer = [0u8; 16];
         env::random_bytes(&mut buffer);
@@ -369,9 +393,19 @@ impl Org {
         })
     }
 
-    /// Filled in Task 3; returns an empty list until then.
-    fn groups_of(&self, _account: &str) -> app::Result<Vec<String>> {
-        Ok(Vec::new())
+    fn membership_key(group: &str, account: &str) -> String {
+        format!("{group}:{account}")
+    }
+
+    fn groups_of(&self, account: &str) -> app::Result<Vec<String>> {
+        let mut out: Vec<String> = self
+            .memberships
+            .entries()?
+            .filter(|(_, m)| m.account == account)
+            .map(|(_, m)| m.group.clone())
+            .collect();
+        out.sort();
+        Ok(out)
     }
 
     /// Filled in Task 4; returns an empty list until then.
@@ -484,6 +518,223 @@ impl Org {
             Some(m) => Ok(Some(self.member_view(&m)?)),
             None => Ok(None),
         }
+    }
+
+    // ── groups and memberships ───────────────────────────────────────────────
+
+    fn group_view(&self, g: &Group) -> app::Result<GroupView> {
+        let member_count = self
+            .memberships
+            .entries()?
+            .filter(|(_, m)| m.group == g.id)
+            .count() as u32;
+        Ok(GroupView {
+            id: g.id.clone(),
+            name: g.name.get().clone(),
+            parent: g.parent.get().clone(),
+            admins: g.admins.get().clone(),
+            member_count,
+            created_at: g.created_at,
+        })
+    }
+
+    /// Walks up from `parent`; errors if `child` is an ancestor (a cycle), the
+    /// chain hits a missing group, or depth exceeds MAX_DEPTH.
+    fn check_parent(&self, child: &str, parent: &str) -> app::Result<()> {
+        let mut cur = parent.to_owned();
+        let mut depth = 0;
+        while !cur.is_empty() {
+            if cur == child {
+                return Err(AppError::msg("that move would make a cycle"));
+            }
+            let g = self
+                .groups
+                .get(&cur)?
+                .ok_or_else(|| AppError::msg(format!("no group {cur}")))?;
+            cur = g.parent.get().clone();
+            depth += 1;
+            if depth > MAX_DEPTH {
+                return Err(AppError::msg("groups nest too deep"));
+            }
+        }
+        Ok(())
+    }
+
+    fn group_of(&self, id: &str) -> app::Result<Group> {
+        self.groups
+            .get(id)?
+            .map(|v| v.clone())
+            .ok_or_else(|| AppError::msg(format!("no group {id}")))
+    }
+
+    pub fn create_group(&mut self, name: String, parent: String) -> app::Result<GroupView> {
+        self.require_admin()?;
+        Self::check_len("name", &name, MAX_NAME, true)?;
+        let id = Self::fresh_id();
+        self.check_parent(&id, &parent)?;
+        let g = Group {
+            id: id.clone(),
+            name: LwwRegister::new(name),
+            parent: LwwRegister::new(parent),
+            admins: LwwRegister::new(Vec::new()),
+            created_at: Self::now(),
+        };
+        self.groups.insert(id.clone(), g.clone())?;
+        self.record("group_created", &id, "", "")?;
+        app::emit!(Event::GroupChanged { group: &id });
+        self.group_view(&g)
+    }
+
+    pub fn rename_group(&mut self, id: String, name: String) -> app::Result<()> {
+        self.require_admin()?;
+        Self::check_len("name", &name, MAX_NAME, true)?;
+        let mut g = self.group_of(&id)?;
+        g.name.set(name);
+        self.groups.insert(id.clone(), g)?;
+        self.record("group_renamed", &id, "", "")?;
+        app::emit!(Event::GroupChanged { group: &id });
+        Ok(())
+    }
+
+    pub fn move_group(&mut self, id: String, parent: String) -> app::Result<()> {
+        self.require_admin()?;
+        let mut g = self.group_of(&id)?;
+        self.check_parent(&id, &parent)?;
+        g.parent.set(parent);
+        self.groups.insert(id.clone(), g)?;
+        self.record("group_moved", &id, "", "")?;
+        app::emit!(Event::GroupChanged { group: &id });
+        Ok(())
+    }
+
+    pub fn set_group_admins(&mut self, id: String, admins: Vec<String>) -> app::Result<()> {
+        self.require_admin()?;
+        for a in &admins {
+            if !self.members.contains(a)? {
+                return Err(AppError::msg(format!("no member {a}")));
+            }
+        }
+        let mut g = self.group_of(&id)?;
+        g.admins.set(admins);
+        self.groups.insert(id.clone(), g)?;
+        app::emit!(Event::GroupChanged { group: &id });
+        Ok(())
+    }
+
+    /// Removes the group, its memberships, its access rows (Task 4) and every child, depth first.
+    pub fn delete_group(&mut self, id: String) -> app::Result<()> {
+        self.require_admin()?;
+        self.delete_group_tree(&id)
+    }
+
+    fn delete_group_tree(&mut self, id: &str) -> app::Result<()> {
+        if !self.groups.contains(id)? {
+            return Err(AppError::msg(format!("no group {id}")));
+        }
+        let children: Vec<String> = self
+            .groups
+            .entries()?
+            .filter(|(_, g)| g.parent.get() == id)
+            .map(|(k, _)| k)
+            .collect();
+        for c in children {
+            self.delete_group_tree(&c)?;
+        }
+        let keys: Vec<(String, String)> = self
+            .memberships
+            .entries()?
+            .filter(|(_, m)| m.group == id)
+            .map(|(k, m)| (k, m.account.clone()))
+            .collect();
+        for (k, account) in keys {
+            self.memberships.remove(&k)?;
+            self.record("membership_removed", &account, id, "")?;
+        }
+        self.remove_access_rows_for_group(id)?;
+        self.groups.remove(id)?;
+        self.record("group_deleted", id, "", "")?;
+        app::emit!(Event::GroupChanged { group: id });
+        Ok(())
+    }
+
+    /// Filled in Task 4; nothing to remove until access rows exist.
+    fn remove_access_rows_for_group(&mut self, _group: &str) -> app::Result<()> {
+        Ok(())
+    }
+
+    pub fn set_membership(
+        &mut self,
+        group: String,
+        account: String,
+        role: String,
+    ) -> app::Result<()> {
+        self.require_admin()?;
+        if role != ROLE_LEAD && role != ROLE_MEMBER {
+            return Err(AppError::msg("role must be lead or member"));
+        }
+        if !self.groups.contains(&group)? {
+            return Err(AppError::msg(format!("no group {group}")));
+        }
+        if !self.members.contains(&account)? {
+            return Err(AppError::msg(format!("no member {account}")));
+        }
+        let key = Self::membership_key(&group, &account);
+        let since = self
+            .memberships
+            .get(&key)?
+            .map(|m| m.since)
+            .unwrap_or_else(Self::now);
+        self.memberships.insert(
+            key,
+            Membership {
+                group: group.clone(),
+                account: account.clone(),
+                role: LwwRegister::new(role.clone()),
+                since,
+            },
+        )?;
+        self.record("membership_set", &account, &group, &role)?;
+        app::emit!(Event::GroupChanged { group: &group });
+        Ok(())
+    }
+
+    pub fn remove_membership(&mut self, group: String, account: String) -> app::Result<()> {
+        self.require_admin()?;
+        let key = Self::membership_key(&group, &account);
+        self.memberships
+            .remove(&key)?
+            .ok_or_else(|| AppError::msg("no such membership"))?;
+        self.record("membership_removed", &account, &group, "")?;
+        app::emit!(Event::GroupChanged { group: &group });
+        Ok(())
+    }
+
+    pub fn groups(&self) -> app::Result<Vec<GroupView>> {
+        let mut out = Vec::new();
+        for (_, g) in self.groups.entries()? {
+            out.push(self.group_view(&g)?);
+        }
+        out.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
+        Ok(out)
+    }
+
+    pub fn group_members(&self, group: String) -> app::Result<Vec<MemberView>> {
+        let mut out = Vec::new();
+        for (_, m) in self
+            .memberships
+            .entries()?
+            .filter(|(_, m)| m.group == group)
+        {
+            if let Some(member) = self.members.get(&m.account)? {
+                out.push(self.member_view(&member)?);
+            }
+        }
+        out.sort_by(|a, b| {
+            a.display_name
+                .cmp(&b.display_name)
+                .then_with(|| a.account.cmp(&b.account))
+        });
+        Ok(out)
     }
 
     /// Activity is implemented in Task 5; until then a no-op so earlier tasks compile.
