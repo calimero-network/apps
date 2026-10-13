@@ -14,6 +14,7 @@ import { useNewFeed, useOpenFeed } from "./newFeed";
 import { appLink } from "./links";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { AGENT_LIVE_MS, useTheme } from "./theme";
+import { useAttention } from "./useAttention";
 import type { NewFeed } from "./FeedView";
 import LandingPage from "./pages/landing/LandingPage";
 import DocsPage from "./pages/landing/DocsPage";
@@ -269,6 +270,7 @@ function Shell({
   const paused = feed?.settings?.paused ?? false;
   const [theme, toggleTheme] = useTheme();
   const agent = feed?.settings?.agents?.find((a) => Date.now() - a.seen_at < AGENT_LIVE_MS);
+  const attention = useAttention(feed?.page ?? null, base);
   return (
     <div className="shell">
       <header className="topbar">
@@ -321,6 +323,28 @@ function Shell({
             </button>
           )}
           {extra}
+          {feed && attention.supported && (
+            <button
+              type="button"
+              className={`icon-button ${attention.on ? "on" : ""}`}
+              aria-pressed={attention.on}
+              aria-label={attention.on ? "Turn alerts off" : "Alert me when something needs me"}
+              title={
+                attention.blocked
+                  ? "Alerts are blocked for this site: allow notifications in your browser's settings"
+                  : attention.on
+                    ? "Alerts on: a banner when your agent asks, an action waits for you, or an app flags you"
+                    : "Alert me when something needs me"
+              }
+              onClick={() => void attention.toggle()}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill={attention.on ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                {!attention.on && <path d="M3 3l18 18" />}
+              </svg>
+            </button>
+          )}
           <button type="button" className="icon-button" aria-label={theme === "dark" ? "Use light theme" : "Use dark theme"} onClick={toggleTheme}>
             {theme === "dark" ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
