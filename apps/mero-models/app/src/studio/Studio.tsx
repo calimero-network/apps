@@ -4,6 +4,7 @@ import { clearContextId, useMero } from "@calimero-network/mero-react";
 import * as cmd from "../editor/commands";
 import { rememberName, storedName, useJoin, usePresence, useSceneSync } from "../editor/hooks";
 import { IMPORT_ACCEPT, download, exportScene, importFile, type ExportFormat } from "../editor/io";
+import { EXAMPLES } from "../editor/examples";
 import { LIGHTS, PRIMITIVES, isSolid, type Environment, type ObjectKind } from "../editor/model";
 import { activeObject, useEditor, type Shading, type Tool } from "../editor/store";
 import { messageOf } from "../editor/sync";
@@ -32,6 +33,7 @@ import { MenuBar, type MenuEntry } from "../ui/Menu";
 import { Outliner } from "./Outliner";
 import { Properties } from "./Properties";
 import { SharePanel } from "./SharePanel";
+import { OperatorPanel, SelectModeSwitch } from "./MeshPanels";
 
 /**
  * The modeller: menu bar across the top, tools down the left, the 3D view in
@@ -138,6 +140,16 @@ export function Studio({ contextId }: { contextId: string }) {
     })),
     "separator",
     { label: "Empty", icon: <KindIcon kind="group" size={14} />, disabled: !canEdit, onSelect: () => cmd.addObject("group" as ObjectKind) },
+    "separator",
+    {
+      label: "Examples",
+      disabled: !canEdit,
+      items: [
+        { label: "Showcase — all of them", onSelect: () => cmd.addExample("showcase") },
+        "separator",
+        ...EXAMPLES.map((e) => ({ label: e.name, onSelect: () => cmd.addExample(e.key) })),
+      ],
+    },
   ];
   const hasSel = state.selection.length > 0;
   const editMode = state.mode === "edit";
@@ -182,14 +194,48 @@ export function Studio({ contextId }: { contextId: string }) {
     },
     { name: "Add", items: addItems },
     {
-      name: "Object",
+      name: editMode ? "Mesh" : "Object",
       items: editMode
         ? [
+            { heading: "Select" },
+            { label: "Vertices", shortcut: "1", checked: state.selectMode === "vertex", onSelect: () => cmd.setSelectMode("vertex") },
+            { label: "Edges", shortcut: "2", checked: state.selectMode === "edge", onSelect: () => cmd.setSelectMode("edge") },
+            { label: "Faces", shortcut: "3", checked: state.selectMode === "face", onSelect: () => cmd.setSelectMode("face") },
+            { label: "Linked", shortcut: "Ctrl L", onSelect: cmd.selectLinked },
+            { label: "Edge loops", shortcut: "Alt click", onSelect: () => cmd.selectLoopsOfSelection(false) },
+            { label: "Edge rings", shortcut: "Ctrl Alt click", onSelect: () => cmd.selectLoopsOfSelection(true) },
+            "separator",
+            { heading: "Model" },
             { label: "Extrude", shortcut: "E", disabled: !canEdit, onSelect: cmd.extrudeSelected },
-            { label: "Merge at centre", shortcut: "M", disabled: !canEdit, onSelect: cmd.mergeSelectedVertices },
-            { label: "Smooth vertices", disabled: !canEdit, onSelect: cmd.smoothSelectedVertices },
-            { label: "Subdivide", disabled: !canEdit, onSelect: cmd.subdivideActive },
-            { label: "Delete vertices", shortcut: "X", disabled: !canEdit, onSelect: cmd.deleteSelectedVertices },
+            { label: "Inset faces", shortcut: "I", disabled: !canEdit, onSelect: cmd.insetSelected },
+            { label: "Bevel edges", shortcut: "Ctrl B", disabled: !canEdit, onSelect: cmd.bevelSelected },
+            { label: "Loop cut", shortcut: "Ctrl R", disabled: !canEdit, onSelect: cmd.loopCutSelected },
+            { label: "Knife plane", shortcut: "K", disabled: !canEdit, onSelect: cmd.bisectSelected },
+            { label: "Connect vertices", shortcut: "J", disabled: !canEdit, onSelect: cmd.connectSelected },
+            { label: "Bridge edge loops", disabled: !canEdit, onSelect: cmd.bridgeSelected },
+            { label: "Fill", shortcut: "F", disabled: !canEdit, onSelect: cmd.fillSelected },
+            {
+              label: "Clean up",
+              disabled: !canEdit,
+              items: [
+                { label: "Merge at centre", shortcut: "M", onSelect: cmd.mergeSelectedVertices },
+                { label: "Merge by distance", onSelect: cmd.mergeByDistanceSelected },
+                { label: "Dissolve", shortcut: "Ctrl X", onSelect: cmd.dissolveSelected },
+                { label: "Smooth vertices", onSelect: cmd.smoothSelectedVertices },
+                { label: "Subdivide", onSelect: cmd.subdivideActive },
+                { label: "Symmetrize", onSelect: cmd.symmetrizeActive },
+              ],
+            },
+            {
+              label: "Edges",
+              disabled: !canEdit,
+              items: [
+                { label: "Mark sharp", onSelect: () => cmd.markSharpSelected(true) },
+                { label: "Clear sharp", onSelect: () => cmd.markSharpSelected(false) },
+                { label: "Sharp by angle", onSelect: cmd.sharpByAngleActive },
+              ],
+            },
+            { label: "Delete", shortcut: "X", disabled: !canEdit, onSelect: cmd.deleteSelectedVertices },
             "separator",
             { label: "Back to object mode", shortcut: "Tab", onSelect: cmd.toggleEditMode },
           ]
@@ -266,6 +312,12 @@ export function Studio({ contextId }: { contextId: string }) {
       if (ctrl && key === "a") return handled(), cmd.applyTransforms();
       if (ctrl && key === "i") return handled(), cmd.invertSelection();
       if (ctrl && key === "d") return handled(), cmd.duplicateSelection();
+      if (s.mode === "edit") {
+        if (ctrl && key === "b") return handled(), cmd.bevelSelected();
+        if (ctrl && key === "r") return handled(), cmd.loopCutSelected();
+        if (ctrl && key === "x") return handled(), cmd.dissolveSelected();
+        if (ctrl && key === "l") return handled(), cmd.selectLinked();
+      }
       if (ctrl) return;
       if (e.altKey) {
         if (key === "a") return handled(), cmd.deselect();
@@ -286,9 +338,19 @@ export function Studio({ contextId }: { contextId: string }) {
       if (tools[key]) return handled(), s.setTool(tools[key]!);
       if (key === "a") return handled(), cmd.selectAll();
       if (key === "h") return handled(), cmd.hideSelection();
+      if (s.mode === "edit") {
+        // Blender's edit-mode keys; the number row picks what a click selects.
+        const modes = { Digit1: "vertex", Digit2: "edge", Digit3: "face" } as const;
+        const pick = modes[e.code as keyof typeof modes];
+        if (pick) return handled(), cmd.setSelectMode(pick);
+        if (key === "e") return handled(), cmd.extrudeSelected();
+        if (key === "i") return handled(), cmd.insetSelected();
+        if (key === "k") return handled(), cmd.bisectSelected();
+        if (key === "j") return handled(), cmd.connectSelected();
+        if (key === "f") return handled(), cmd.fillSelected();
+        if (key === "m") return handled(), cmd.mergeSelectedVertices();
+      }
       if (key === "f" || e.code === "NumpadDecimal") return handled(), v?.frameSelection(true);
-      if (key === "e" && s.mode === "edit") return handled(), cmd.extrudeSelected();
-      if (key === "m" && s.mode === "edit") return handled(), cmd.mergeSelectedVertices();
       if (key === "z") {
         const order: Shading[] = ["solid", "material", "wireframe"];
         return handled(), s.set({ shading: order[(order.indexOf(s.shading) + 1) % order.length]! });
@@ -393,6 +455,20 @@ export function Studio({ contextId }: { contextId: string }) {
             <button type="button" className={`vp-btn ${state.snap ? "on" : ""}`} title="Snap (hold Ctrl while dragging)" onClick={() => state.set({ snap: !state.snap })}>
               <IconMagnet size={14} />
             </button>
+            {editMode && (
+              <>
+                <SelectModeSwitch />
+                <button
+                  type="button"
+                  className={`vp-btn text ${state.xMirror ? "on" : ""}`}
+                  title="X mirror: moving a vertex moves its mirror image too"
+                  onClick={() => state.set({ xMirror: !state.xMirror })}
+                  data-testid="x-mirror"
+                >
+                  X⇆
+                </button>
+              </>
+            )}
             <span className="vp-flex" />
             <button type="button" className={`vp-btn ${state.showGrid ? "on" : ""}`} title="Grid" onClick={() => state.set({ showGrid: !state.showGrid })}>
               <IconGrid size={14} />
@@ -417,7 +493,12 @@ export function Studio({ contextId }: { contextId: string }) {
               <p>An empty scene.</p>
               {canEdit ? (
                 <>
-                  <button type="button" onClick={() => cmd.addObject("cube")}>Add a cube</button>
+                  <div className="vp-empty-actions">
+                    <button type="button" onClick={() => cmd.addObject("cube")}>Add a cube</button>
+                    <button type="button" className="ghost" onClick={() => cmd.addExample("showcase")} data-testid="load-examples">
+                      Load the example assets
+                    </button>
+                  </div>
                   <p className="hint">or press Shift+A, or import an OBJ, STL or glTF from File.</p>
                 </>
               ) : (
@@ -426,6 +507,7 @@ export function Studio({ contextId }: { contextId: string }) {
             </div>
           )}
           {arrayOpen && <ArrayDialog onClose={() => setArrayOpen(false)} />}
+          <OperatorPanel />
         </main>
 
         <aside className="sidebar">
@@ -571,7 +653,7 @@ function StatusBar() {
   const fresh = notice && Date.now() - notice.at < 6_000;
   const hint =
     mode === "edit"
-      ? "Edit mode · click vertices (Shift adds) · E extrude · M merge · X delete · Tab back"
+      ? "Edit mode · 1 2 3 vertex/edge/face · Alt-click loop · E extrude · I inset · Ctrl B bevel · Ctrl R loop cut · Tab back"
       : tool === "select"
         ? "Drag to box-select · Shift-click adds · middle-drag orbits · right-drag pans · scroll zooms"
         : "Click to select · drag the gizmo · left-drag orbits · right-drag pans · Ctrl snaps · Shift+A adds";

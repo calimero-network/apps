@@ -1,7 +1,7 @@
 import type { LockView, MeroModelsClient, MeshRef, TextureRef, VersionView } from "../generated/MeroModelsClient";
 import type { BlobStore } from "./blobs";
-import { triangleCount, vertexCount, type MeshShape } from "./geometry";
-import { decodeMesh, encodeMesh } from "./meshcodec";
+import type { MeshShape } from "./geometry";
+import { decodeMesh, encodeMesh, meshCounts } from "./meshcodec";
 import { MAX_BATCH, type Environment, type SceneObject } from "./model";
 import { emptyChange, useEditor, type Change, type Outbox, type Role, type StoredMesh } from "./store";
 
@@ -158,8 +158,7 @@ export class SceneSync implements Outbox {
       id,
       blob_id: blob.blobId,
       size: blob.size,
-      vertex_count: vertexCount(shape),
-      triangle_count: triangleCount(shape),
+      ...meshCounts(shape),
       has_uvs: !!shape.uvs,
       author: "",
       message,

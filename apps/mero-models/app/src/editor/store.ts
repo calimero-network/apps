@@ -12,6 +12,26 @@ import {
 export type Tool = "select" | "translate" | "rotate" | "scale";
 export type Shading = "solid" | "material" | "wireframe";
 export type Mode = "object" | "edit";
+/** What a click picks in edit mode. */
+export type SelectMode = "vertex" | "edge" | "face";
+
+/** A number or a switch the last mesh tool can be re-run with, from the operator panel. */
+export type OpParam =
+  | { key: string; label: string; kind: "number"; min: number; max: number; step: number; integer?: boolean }
+  | { key: string; label: string; kind: "toggle" }
+  | { key: string; label: string; kind: "choice"; options: { value: number; label: string }[] };
+
+/**
+ * The mesh tool just run, which the operator panel can adjust: `rerun` runs
+ * it again from the same starting mesh with new values. `final` false is a
+ * preview while a slider moves; true replaces the history entry and saves.
+ */
+export interface LastOp {
+  label: string;
+  params: OpParam[];
+  values: Record<string, number | boolean>;
+  rerun(values: Record<string, number | boolean>, final: boolean): void;
+}
 export type Role = "admin" | "editor" | "viewer";
 
 export interface StoredMesh {
@@ -68,8 +88,18 @@ export interface EditorState {
   /** Selected object ids, in the order they were picked; the last is active. */
   selection: string[];
   mode: Mode;
-  /** Selected vertex indices of the active mesh, in edit mode. */
+  /**
+   * Selected vertices of the active mesh's cage, in edit mode. In edge mode an
+   * edge is selected when both its ends are; in face mode `faceSelection` is
+   * what was picked and this follows it.
+   */
   vertexSelection: Set<number>;
+  /** Selected faces of the cage, in face mode. */
+  faceSelection: Set<number>;
+  selectMode: SelectMode;
+  /** Edit-mode moves also move each vertex's mirror image across X. */
+  xMirror: boolean;
+  lastOp: LastOp | null;
   tool: Tool;
   space: "world" | "local";
   snap: boolean;
@@ -93,6 +123,9 @@ export interface EditorState {
   setTool(tool: Tool): void;
   setMode(mode: Mode): void;
   setVertexSelection(sel: Set<number>): void;
+  /** Select faces (face mode), with the vertices they use. */
+  setFaceSelection(faces: Set<number>, verts: Set<number>): void;
+  setSelectMode(mode: SelectMode): void;
   set(partial: Partial<EditorState>): void;
   notify(text: string, error?: boolean): void;
   /** Show a change without recording or sending it — the frames of a drag. */
@@ -101,6 +134,8 @@ export interface EditorState {
   snapshot(ids: string[], meshIds?: string[]): Snapshot;
   /** Apply a change, record it for undo, and send it. */
   commit(change: Change, label: string, before?: Snapshot): void;
+  /** Replace what the last undo step did with `change` (the operator panel re-running a tool). */
+  amend(change: Change, label: string): void;
   undo(): void;
   redo(): void;
   /** Fold a read from the node into the local model. */
@@ -169,6 +204,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   selection: [],
   mode: "object",
   vertexSelection: new Set(),
+  faceSelection: new Set(),
+  selectMode: "vertex",
+  xMirror: false,
+  lastOp: null,
   tool: "translate",
   space: "world",
   snap: false,
@@ -202,13 +241,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selection: next });
     // Edit mode works on exactly one mesh; picking something else leaves it.
     if (get().mode === "edit" && next.at(-1) !== selection.at(-1)) {
-      set({ mode: "object", vertexSelection: new Set() });
+      set({ mode: "object", vertexSelection: new Set(), faceSelection: new Set(), lastOp: null });
     }
   },
 
   setTool: (tool) => set({ tool }),
-  setMode: (mode) => set({ mode, vertexSelection: new Set() }),
-  setVertexSelection: (vertexSelection) => set({ vertexSelection }),
+  setMode: (mode) => set({ mode, vertexSelection: new Set(), faceSelection: new Set(), lastOp: null }),
+  setVertexSelection: (vertexSelection) => set({ vertexSelection, faceSelection: new Set() }),
+  setFaceSelection: (faceSelection, vertexSelection) => set({ faceSelection, vertexSelection }),
+  setSelectMode: (selectMode) => set({ selectMode, faceSelection: new Set(), vertexSelection: get().selectMode === "face" ? new Set() : get().vertexSelection }),
   set: (partial) => set(partial),
   notify: (text, error) => set({ notice: { text, at: Date.now(), error } }),
 
@@ -268,8 +309,20 @@ export const useEditor = create<EditorState>((set, get) => ({
       selection: state.selection.filter((id) => !deleted.has(id)),
       past: [...state.past, entry].slice(-HISTORY_LIMIT),
       future: [],
+      lastOp: null,
     });
     state.outbox?.send(effective);
+  },
+
+  amend: (change, label) => {
+    const state = get();
+    const entry = state.past.at(-1);
+    if (!entry || entry.label !== label || !state.canEdit()) return;
+    // Back to where the entry started, then forward along the new change.
+    const base = applyChange(state.objects, state.meshes, entry.backward);
+    const applied = applyChange(base.objects, base.meshes, change);
+    set({ ...applied, past: [...state.past.slice(0, -1), { ...entry, forward: change }], future: [] });
+    state.outbox?.send(change);
   },
 
   undo: () => {
@@ -286,6 +339,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       past: state.past.slice(0, -1),
       future: [entry, ...state.future],
       selection: state.selection.filter((id) => applied.objects.has(id)),
+      vertexSelection: new Set(),
+      faceSelection: new Set(),
+      lastOp: null,
     });
     state.outbox?.send(entry.backward);
     state.notify(`Undo ${entry.label}`);
@@ -305,6 +361,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       past: [...state.past, entry],
       future: state.future.slice(1),
       selection: state.selection.filter((id) => applied.objects.has(id)),
+      vertexSelection: new Set(),
+      faceSelection: new Set(),
+      lastOp: null,
     });
     state.outbox?.send(entry.forward);
     state.notify(`Redo ${entry.label}`);
@@ -335,7 +394,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const after = get();
     if (after.mode === "edit") {
       const active = after.objects.get(after.selection.at(-1) ?? "");
-      if (!active || active.kind !== "mesh") set({ mode: "object", vertexSelection: new Set() });
+      if (!active || active.kind !== "mesh") set({ mode: "object", vertexSelection: new Set(), faceSelection: new Set(), lastOp: null });
     }
   },
 

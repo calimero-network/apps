@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   colocated,
   decimate,
-  deleteVertices,
-  extrudeRegion,
   fitsLimits,
   flipNormals,
   makeShape,
@@ -105,31 +103,6 @@ describe("mesh operations", () => {
     expect(vertexCount(doubled)).toBe(16);
     const merged = mergeByDistance(doubled, 1e-4);
     expect(vertexCount(merged)).toBe(8);
-  });
-
-  it("deleting a vertex removes the triangles around it and nothing else", () => {
-    const s = deleteVertices(cube(), new Set([0]));
-    expect(vertexCount(s)).toBe(7);
-    // A cube corner touches 3 faces; with two triangles per face, 3–6 of them go.
-    expect(triangleCount(s)).toBeLessThan(12);
-    expect(triangleCount(s)).toBeGreaterThanOrEqual(6);
-  });
-
-  it("extruding the top face makes the box taller and keeps it closed", () => {
-    const s = cube();
-    const top = new Set<number>();
-    for (let i = 0; i < vertexCount(s); i += 1) if (s.positions[i * 3 + 1]! > 0.4) top.add(i);
-    expect(top.size).toBe(4);
-    const result = extrudeRegion(s, top, 0.5)!;
-    expect(result).not.toBeNull();
-    expect(result.selection.size).toBe(4);
-    expect(isClosed(result.shape)).toBe(true);
-    expect(volume(result.shape)).toBeCloseTo(1.5, 5);
-    for (const i of result.selection) expect(result.shape.positions[i * 3 + 1]).toBeCloseTo(1, 5);
-  });
-
-  it("extrude needs whole faces", () => {
-    expect(extrudeRegion(cube(), new Set([0]))).toBeNull();
   });
 
   it("the centre of an offset shape is found", () => {

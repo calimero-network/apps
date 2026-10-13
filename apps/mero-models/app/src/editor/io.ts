@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
-import { OBJExporter } from "three/examples/jsm/exporters/OBJExporter.js";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
@@ -21,6 +20,9 @@ import {
   vec,
   type SceneObject,
 } from "./model";
+import { decodeMesh, encodeMesh } from "./meshcodec";
+import { evaluate } from "./modifiers";
+import { primitivePoly, shapeFromPoly } from "./polymesh";
 import type { StoredMesh } from "./store";
 import type { ColorSpaceName, TextureCache } from "./textures";
 
@@ -51,7 +53,8 @@ interface SceneFile {
   format: "mero-models";
   version: 1 | 2;
   objects: SceneObject[];
-  meshes: Record<string, { positions: number[]; indices: number[]; uvs?: number[] }>;
+  /** `cage`, when present, is the mesh blob (base64, format 2): the polygon cage and its modifiers. */
+  meshes: Record<string, { positions: number[]; indices: number[]; uvs?: number[]; cage?: string }>;
   /** Version 2: the textures, embedded as base64. */
   textures?: (Omit<ImportedTexture, "bytes"> & { data: string })[];
 }
@@ -270,7 +273,7 @@ export function importSceneFile(data: unknown, takenNames: string[]): Imported {
   }
   const meshes = Object.entries(file.meshes ?? {})
     .filter(([id]) => remap.has(id))
-    .map(([id, m]) => ({ id: remap.get(id)!, shape: makeShape(m.positions, m.indices, m.uvs) }));
+    .map(([id, m]) => ({ id: remap.get(id)!, shape: m.cage ? decodeMesh(fromBase64(m.cage)) : makeShape(m.positions, m.indices, m.uvs) }));
   const textures: ImportedTexture[] = (file.textures ?? []).map((t) => ({
     id: texRemap.get(t.id)!,
     name: t.name,
@@ -352,7 +355,12 @@ export async function exportScene(
       meshes: Object.fromEntries(
         [...meshes].map(([id, m]) => [
           id,
-          { positions: Array.from(m.shape.positions), indices: Array.from(m.shape.indices), ...(m.shape.uvs ? { uvs: Array.from(m.shape.uvs) } : {}) },
+          {
+            positions: Array.from(m.shape.positions),
+            indices: Array.from(m.shape.indices),
+            ...(m.shape.uvs ? { uvs: Array.from(m.shape.uvs) } : {}),
+            ...(m.shape.poly ? { cage: toBase64(encodeMesh(m.shape)) } : {}),
+          },
         ]),
       ),
       textures: embedded,
@@ -367,11 +375,68 @@ export async function exportScene(
     const result = await new GLTFExporter().parseAsync(scene, { binary: true });
     download(new Blob([result as ArrayBuffer], { type: "model/gltf-binary" }), `${base}.glb`);
   } else if (format === "obj") {
-    download(new Blob([new OBJExporter().parse(scene)], { type: "text/plain" }), `${base}.obj`);
+    download(new Blob([toObj(scene, objects, meshes)], { type: "text/plain" }), `${base}.obj`);
   } else {
     const data = new STLExporter().parse(scene, { binary: true }) as unknown as DataView;
     download(new Blob([data.buffer as ArrayBuffer], { type: "model/stl" }), `${base}.stl`);
   }
+}
+
+/**
+ * Wavefront OBJ of everything visible, in world space. A mesh with a cage
+ * (modifiers applied) is written as its quads and n-gons — what a game
+ * pipeline wants to receive — with a UV per corner; a triangle mesh as its
+ * triangles. Normals are left to the importer, as most DCCs recompute them.
+ */
+function toObj(scene: THREE.Scene, objects: Map<string, SceneObject>, meshes: Map<string, StoredMesh>): string {
+  const out: string[] = ["# Mero Models"];
+  let vBase = 1;
+  let tBase = 1;
+  const v = new THREE.Vector3();
+  scene.traverseVisible((node) => {
+    const mesh = node as THREE.Mesh;
+    const id = mesh.userData.id as string | undefined;
+    if (!mesh.isMesh || !id || mesh.userData.helper) return;
+    const o = objects.get(id);
+    if (!o) return;
+    const shape = meshes.get(id)?.shape ?? (() => {
+      const p = primitivePoly(o.kind, o.segments);
+      return p ? shapeFromPoly(p) : undefined;
+    })();
+    if (!shape) return;
+    mesh.updateWorldMatrix(true, false);
+    // A mirroring transform turns faces inside out; write them the other way round.
+    const order = <T,>(f: T[]): T[] => (mesh.matrixWorld.determinant() < 0 ? [f[0]!, ...f.slice(1).reverse()] : f);
+    out.push(`o ${o.name.replace(/\s+/g, "_")}`);
+    if (shape.poly) {
+      const p = evaluate(shape.poly).poly;
+      for (let i = 0; i < p.positions.length; i += 3) {
+        v.set(p.positions[i]!, p.positions[i + 1]!, p.positions[i + 2]!).applyMatrix4(mesh.matrixWorld);
+        out.push(`v ${v.x.toFixed(6)} ${v.y.toFixed(6)} ${v.z.toFixed(6)}`);
+      }
+      let corner = 0;
+      if (p.uvs) for (const uv of p.uvs) for (let k = 0; k < uv.length; k += 2) out.push(`vt ${uv[k]!.toFixed(6)} ${uv[k + 1]!.toFixed(6)}`);
+      for (const face of p.faces) {
+        out.push(`f ${order(face.map((x) => (p.uvs ? `${x + vBase}/${tBase + corner++}` : `${x + vBase}`))).join(" ")}`);
+      }
+      vBase += p.positions.length / 3;
+      tBase += corner;
+    } else {
+      const n = shape.positions.length / 3;
+      for (let i = 0; i < n; i += 1) {
+        v.set(shape.positions[i * 3]!, shape.positions[i * 3 + 1]!, shape.positions[i * 3 + 2]!).applyMatrix4(mesh.matrixWorld);
+        out.push(`v ${v.x.toFixed(6)} ${v.y.toFixed(6)} ${v.z.toFixed(6)}`);
+      }
+      if (shape.uvs) for (let i = 0; i < n; i += 1) out.push(`vt ${shape.uvs[i * 2]!.toFixed(6)} ${shape.uvs[i * 2 + 1]!.toFixed(6)}`);
+      for (let t = 0; t < shape.indices.length; t += 3) {
+        const f = [shape.indices[t]!, shape.indices[t + 1]!, shape.indices[t + 2]!];
+        out.push(`f ${order(f.map((x) => (shape.uvs ? `${x + vBase}/${x + tBase}` : `${x + vBase}`))).join(" ")}`);
+      }
+      vBase += n;
+      if (shape.uvs) tBase += n;
+    }
+  });
+  return `${out.join("\n")}\n`;
 }
 
 export function download(blob: Blob, filename: string): void {

@@ -3,19 +3,13 @@ import {
   applyTransforms,
   convertToMesh,
   decimateSelection,
-  deleteSelectedVertices,
   dropToGround,
-  extrudeSelected,
   flipSelection,
-  mergeSelectedVertices,
   originToGeometry,
   renameObject,
   resetTransform,
-  selectAll,
   setParent,
-  smoothSelectedVertices,
   smoothSelection,
-  subdivideActive,
   subdivideSelection,
   toggleEditMode,
 } from "../editor/commands";
@@ -36,6 +30,7 @@ import {
 import { activeObject, useEditor, type Snapshot } from "../editor/store";
 import { ColorField, NumberField, Section, Toggle } from "../ui/fields";
 import { CheckoutSection, HistorySection, TextureLibrary, TextureSlots } from "./AssetPanels";
+import { EditModeSection, ModifierSection } from "./MeshPanels";
 
 const DEG = 180 / Math.PI;
 
@@ -98,20 +93,7 @@ export function Properties({ onEnvironment }: { onEnvironment: (env: Environment
     return (
       <div className="properties">
         <PanelHead obj={active} count={selected.length} canEdit={canEdit} />
-        <Section title="Edit mode">
-          <p className="hint">
-            {state.vertexSelection.size} of {mesh ? vertexCount(mesh).toLocaleString() : 0} vertices selected. Click a
-            vertex, Shift-click to add, drag a box with the Select tool (W).
-          </p>
-          <div className="button-grid">
-            <button onClick={selectAll}>Select all (A)</button>
-            <button disabled={!canEdit} onClick={extrudeSelected}>Extrude (E)</button>
-            <button disabled={!canEdit} onClick={mergeSelectedVertices}>Merge (M)</button>
-            <button disabled={!canEdit} onClick={smoothSelectedVertices}>Smooth</button>
-            <button disabled={!canEdit} onClick={subdivideActive}>Subdivide</button>
-            <button disabled={!canEdit} className="danger" onClick={deleteSelectedVertices}>Delete (X)</button>
-          </div>
-        </Section>
+        <EditModeSection canEdit={canEdit} />
         {mesh && <MeshStats positions={mesh.positions.length / 3} triangles={triangleCount(mesh)} />}
       </div>
     );
@@ -225,6 +207,8 @@ export function Properties({ onEnvironment }: { onEnvironment: (env: Environment
           </div>
         </Section>
       )}
+
+      {isSolid(active.kind) && <ModifierSection id={active.id} canEdit={canEdit} />}
 
       {solids.length > 0 && (
         <Section title={solids.length > 1 ? `Material · ${solids.length} objects` : "Material"}>

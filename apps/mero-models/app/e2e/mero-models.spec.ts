@@ -72,24 +72,72 @@ test.describe("Mero Models", () => {
     errors.assertClean();
   });
 
-  test("edits a primitive's vertices in edit mode", async ({ page }) => {
+  test("models with polygon tools, and the node keeps the cage and its modifiers", async ({ page, browser }) => {
     const errors = watchForErrors(page);
     await login(page);
     await waitForStudio(page);
 
     await page.getByTestId("add-cube").click();
-    const rows = page.getByTestId("outliner-row");
-    await expect(rows.last()).toBeVisible();
-    await page.locator("canvas.viewport-canvas").focus();
-    // Tab converts the primitive into an editable mesh and enters edit mode.
+    const name = "Bevelled block";
+    await page.getByLabel("Object name").fill(name);
+    await page.getByLabel("Object name").press("Enter");
+    await expect(outlinerRow(page, name)).toHaveCount(1);
+    const canvas = page.locator("canvas.viewport-canvas");
+    await canvas.focus();
+    // Tab turns the primitive into a polygon cage — six quads on eight
+    // vertices, its UV seams kept per face corner — and enters edit mode.
     await page.keyboard.press("Tab");
-    await expect(page.getByText(/vertices selected/)).toBeVisible();
+    await expect(page.getByTestId("edit-selection")).toContainText("0 of 8 vertices selected");
+    await expect(page.getByTestId("cage-stats")).toContainText("8 vertices · 6 faces · 12 triangles");
+
+    // Edge mode, every edge, Ctrl+B: a chamfer on each edge and a patch at each corner.
+    await page.keyboard.press("2");
     await page.keyboard.press("a");
-    // Every vertex selected — a converted cube keeps its UV seams, so it has
-    // more than 8, and selecting all is all of them.
-    await expect(page.getByText(/^(\d+) of \1 vertices selected/)).toBeVisible();
+    await page.keyboard.press("Control+b");
+    await expect(page.getByTestId("cage-stats")).toContainText("24 vertices · 26 faces");
+    await expect(page.getByTestId("op-panel")).toContainText("Bevel");
+
+    // Face mode carries the selection over: the bevel left every vertex
+    // selected, so every face is. E on a closed region has no border to grow
+    // walls from, so it is pushed out along its normals — the same faces, larger.
+    await page.keyboard.press("3");
+    await expect(page.getByTestId("edit-selection")).toContainText("26 of 26 faces selected");
+    await page.keyboard.press("e");
+    await expect(page.getByTestId("cage-stats")).toContainText("26 faces");
+
+    // Back in object mode: a subdivision surface on top, the bevel holding its edges.
     await page.keyboard.press("Tab");
-    await expect(page.locator(".panel-sub").first()).toContainText("Mesh");
+    await page.getByTestId("add-modifier").selectOption("subdivision");
+    await expect(page.getByTestId("modifier-subdivision")).toBeVisible();
+    await expect(page.locator(".save-state")).toHaveText("Saved to your node", { timeout: 20_000 });
+
+    // A fresh page reads the cage and the stack back from the node.
+    const other = await freshView(browser);
+    await outlinerRow(other, name).click();
+    await expect(other.getByTestId("modifier-subdivision")).toBeVisible({ timeout: 30_000 });
+    await other.locator("canvas.viewport-canvas").focus();
+    await other.keyboard.press("Tab");
+    await expect(other.getByTestId("cage-stats")).toContainText("24 vertices · 26 faces");
+
+    errors.assertClean();
+  });
+
+  test("loads the example assets, built from the modelling tools", async ({ page, browser }) => {
+    const errors = watchForErrors(page);
+    await login(page);
+    await waitForStudio(page);
+    await page.getByRole("menuitem", { name: "Add" }).click();
+    await page.getByRole("menuitem", { name: "Examples" }).hover();
+    await page.getByRole("menuitem", { name: /Showcase/ }).click();
+    for (const group of ["Sci-fi supply crate", "Fuel drum", "Sword", "Corridor kit", "Rock and tree"]) {
+      await expect(outlinerRow(page, group)).toHaveCount(1);
+    }
+    await expect(page.locator(".save-state")).toHaveText("Saved to your node", { timeout: 60_000 });
+
+    const other = await freshView(browser);
+    await expect(outlinerRow(other, "Corridor kit")).toHaveCount(1);
+    await outlinerRow(other, "Wall panel").click();
+    await expect(other.getByTestId("modifier-array")).toBeVisible({ timeout: 30_000 });
 
     errors.assertClean();
   });
@@ -100,9 +148,9 @@ test.describe("Mero Models", () => {
     await waitForStudio(page);
 
     await page.getByTestId("add-cube").click();
-    await page.getByLabel("Object name").fill("Crate");
+    await page.getByLabel("Object name").fill("Hero crate");
     await page.getByLabel("Object name").press("Enter");
-    await expect(outlinerRow(page, "Crate")).toHaveCount(1);
+    await expect(outlinerRow(page, "Hero crate")).toHaveCount(1);
 
     // Tab converts the cube into a mesh: its vertices go up as a blob and the
     // contract records version 1.
@@ -114,7 +162,7 @@ test.describe("Mero Models", () => {
     // Check it out.
     await page.getByTestId("check-out").click();
     await expect(page.getByTestId("lock-mine")).toBeVisible({ timeout: 20_000 });
-    await expect(outlinerRow(page, "Crate").getByTestId("outliner-lock")).toBeVisible();
+    await expect(outlinerRow(page, "Hero crate").getByTestId("outliner-lock")).toBeVisible();
 
     // A base-colour texture, uploaded through the material slot.
     const chooser = page.waitForEvent("filechooser");
@@ -127,7 +175,7 @@ test.describe("Mero Models", () => {
     // A fresh page has nothing cached in memory: it reads the references and
     // downloads the mesh blob from the node.
     const other = await freshView(browser);
-    await outlinerRow(other, "Crate").click();
+    await outlinerRow(other, "Hero crate").click();
     await expect(other.getByTestId("mesh-status")).toHaveCount(0, { timeout: 20_000 });
     await expect(other.getByText(/Mesh · \d+ vertices · 12 triangles/)).toBeVisible();
     await expect(other.getByLabel("Base colour texture").locator("option:checked")).toHaveText(/icon-192/);
@@ -135,7 +183,7 @@ test.describe("Mero Models", () => {
 
     // Check it back in.
     await page.getByTestId("check-in").click();
-    await expect(outlinerRow(page, "Crate").getByTestId("outliner-lock")).toHaveCount(0, { timeout: 20_000 });
+    await expect(outlinerRow(page, "Hero crate").getByTestId("outliner-lock")).toHaveCount(0, { timeout: 20_000 });
 
     errors.assertClean();
   });

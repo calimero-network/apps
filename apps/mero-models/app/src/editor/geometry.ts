@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { SimplifyModifier } from "three/examples/jsm/modifiers/SimplifyModifier.js";
 import { MAX_TRIANGLES, MAX_VERTICES } from "./model";
+import type { Poly } from "./poly";
 
 /**
  * A triangle mesh in its own space: what a mesh blob holds.
@@ -11,13 +12,20 @@ import { MAX_TRIANGLES, MAX_VERTICES } from "./model";
  * converted again for every upload and every draw.
  *
  * `uvs` are per vertex. A mesh imported with UVs keeps them, split at its UV
- * seams (two vertices at one position with different UVs); edit mode moves the
- * vertices at one position together, so a seam never tears (`colocated`).
+ * seams (two vertices at one position with different UVs). Edit mode works on
+ * the polygon cage instead (`poly.ts`), where a seam is a UV per face corner
+ * and so can never tear.
  */
 export interface MeshShape {
   positions: Float32Array;
   indices: Uint32Array;
   uvs?: Float32Array;
+  /**
+   * The polygon cage this was drawn from, when the mesh has one (see
+   * `poly.ts`). Then the triangles above are derived from it — modifiers
+   * applied, faces triangulated — and the cage is what is saved and edited.
+   */
+  poly?: Poly;
 }
 
 export function makeShape(
@@ -205,8 +213,8 @@ export function decimateToFit(shape: MeshShape): MeshShape {
 }
 
 /**
- * For each vertex, the lowest index of a vertex at exactly the same position.
- * Edit mode selects through this, so picking one side of a UV seam moves both.
+ * For each vertex, the lowest index of a vertex at exactly the same position,
+ * so a triangle-mesh operation (smooth) moves both sides of a UV seam together.
  */
 export function colocated(shape: MeshShape): Int32Array {
   const n = vertexCount(shape);
@@ -467,100 +475,4 @@ export function mergeByDistance(shape: MeshShape, distance = 1e-4, only?: Set<nu
   const indices = new Uint32Array(shape.indices.length);
   for (let k = 0; k < indices.length; k += 1) indices[k] = remap[shape.indices[k]!]!;
   return compact(withUvs({ positions: shape.positions, indices: dropDegenerate(indices) }, shape.uvs));
-}
-
-/** Remove vertices and every triangle that uses one of them. */
-export function deleteVertices(shape: MeshShape, doomed: Set<number>): MeshShape {
-  const indices: number[] = [];
-  for (let t = 0; t < shape.indices.length; t += 3) {
-    const a = shape.indices[t]!;
-    const b = shape.indices[t + 1]!;
-    const c = shape.indices[t + 2]!;
-    if (!doomed.has(a) && !doomed.has(b) && !doomed.has(c)) indices.push(a, b, c);
-  }
-  return compact(withUvs({ positions: shape.positions, indices: Uint32Array.from(indices) }, shape.uvs));
-}
-
-/**
- * Extrude the faces whose three corners are all selected.
- *
- * The region is copied and pushed out along its average normal by `distance`,
- * and its boundary is stitched to the original with side walls, so the result
- * is closed wherever the input was. Returns the new shape and the indices of
- * the moved copy — the new selection, ready to be dragged further.
- */
-export function extrudeRegion(
-  shape: MeshShape,
-  selected: Set<number>,
-  distance = 0.25,
-): { shape: MeshShape; selection: Set<number> } | null {
-  const region: number[] = [];
-  const rest: number[] = [];
-  for (let t = 0; t < shape.indices.length; t += 3) {
-    const tri = [shape.indices[t]!, shape.indices[t + 1]!, shape.indices[t + 2]!];
-    (tri.every((i) => selected.has(i)) ? region : rest).push(...tri);
-  }
-  if (region.length === 0) return null;
-
-  // Average normal of the region, area-weighted by the cross product.
-  const a = new THREE.Vector3();
-  const b = new THREE.Vector3();
-  const c = new THREE.Vector3();
-  const normal = new THREE.Vector3();
-  const at = (i: number, v: THREE.Vector3) =>
-    v.set(shape.positions[i * 3]!, shape.positions[i * 3 + 1]!, shape.positions[i * 3 + 2]!);
-  for (let t = 0; t < region.length; t += 3) {
-    at(region[t]!, a);
-    at(region[t + 1]!, b);
-    at(region[t + 2]!, c);
-    normal.add(b.sub(a).cross(c.sub(a)));
-  }
-  if (normal.lengthSq() < 1e-12) normal.set(0, 1, 0);
-  normal.normalize().multiplyScalar(distance);
-
-  // Directed edges that appear once in the region are its boundary.
-  const edges = new Map<string, [number, number]>();
-  for (let t = 0; t < region.length; t += 3) {
-    for (let k = 0; k < 3; k += 1) {
-      const u = region[t + k]!;
-      const v = region[t + ((k + 1) % 3)]!;
-      const reverse = `${v}_${u}`;
-      if (edges.has(reverse)) edges.delete(reverse);
-      else edges.set(`${u}_${v}`, [u, v]);
-    }
-  }
-
-  const positions: number[] = Array.from(shape.positions);
-  const uvs: number[] | null = shape.uvs ? Array.from(shape.uvs) : null;
-  const copy = new Map<number, number>();
-  const moved = (i: number): number => {
-    let j = copy.get(i);
-    if (j === undefined) {
-      j = positions.length / 3;
-      positions.push(
-        shape.positions[i * 3]! + normal.x,
-        shape.positions[i * 3 + 1]! + normal.y,
-        shape.positions[i * 3 + 2]! + normal.z,
-      );
-      if (uvs) uvs.push(shape.uvs![i * 2]!, shape.uvs![i * 2 + 1]!);
-      copy.set(i, j);
-    }
-    return j;
-  };
-  const indices = rest.slice();
-  for (const i of region) indices.push(moved(i));
-  for (const [u, v] of edges.values()) {
-    const u2 = moved(u);
-    const v2 = moved(v);
-    indices.push(u, v, v2, u, v2, u2);
-  }
-  // `compact` renumbers; carry the selection through by marking the copies.
-  const marked = new Set(copy.values());
-  const full = makeShape(positions, indices, uvs);
-  const remap = new Int32Array(vertexCount(full)).fill(-1);
-  let next = 0;
-  for (const i of full.indices) if (remap[i] === -1) remap[i] = next++;
-  const selection = new Set<number>();
-  for (const i of marked) if (remap[i]! >= 0) selection.add(remap[i]!);
-  return { shape: compact(full), selection };
 }

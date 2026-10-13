@@ -103,7 +103,7 @@ export const DOCS = {
           { term: 'Namespace', def: 'A studio. You create one, invite the people you build with, and every scene inside it is open to them without another invitation.' },
           { term: 'Context', def: 'A scene. It holds the objects, their meshes, the world settings and who may edit.' },
           { term: 'Object', def: 'One thing in the outliner: a primitive, a mesh, a light or an empty, with a transform, a material and a parent.' },
-          { term: 'Mesh', def: 'The vertices and triangles of an edited or imported shape, stored apart from the object so moving it never rewrites them.' },
+          { term: 'Mesh', def: 'The polygon cage of an edited or imported shape — quads and n-gons, UVs, hard edges and its modifiers — stored as a versioned blob apart from the object, so moving it never rewrites them.' },
           { term: 'Editor', def: 'Someone the scene’s admin has allowed to change it. Everyone else in the namespace can open the scene and watch.' },
         ],
       },
@@ -113,7 +113,7 @@ export const DOCS = {
         steps: [
           { title: 'Connect a node', body: 'Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
           { title: 'Start a scene', body: 'Name it and press New scene. That creates a namespace you own and a scene inside it, with you as its admin.' },
-          { title: 'Build', body: 'Shift+A adds a primitive. Drag the gizmo to move it; G, R and S switch between move, rotate and scale, Tab edits vertices, and Ctrl+Z undoes.' },
+          { title: 'Build', body: 'Shift+A adds a primitive. Drag the gizmo to move it; G, R and S switch between move, rotate and scale, Tab models the mesh — 1, 2 and 3 pick vertices, edges or faces; E, I, Ctrl+B and Ctrl+R extrude, inset, bevel and loop-cut — and Ctrl+Z undoes. Add → Examples loads finished assets built the same way.' },
           { title: 'Invite', body: 'Share mints a link. Whoever opens it can watch at once; tick Can edit beside their name to let them build too.' },
         ],
       },

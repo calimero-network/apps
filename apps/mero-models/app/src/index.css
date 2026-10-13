@@ -1724,3 +1724,104 @@ select:focus {
 .history-list button {
   flex: none;
 }
+
+/* ── Mesh tools: operator panel, modifier stack, tool buttons ─────────────── */
+
+.button-grid button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  text-align: left;
+}
+
+.button-grid kbd {
+  font: 10px/1 var(--mono);
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.vp-btn.text {
+  width: auto;
+  padding: 0 8px;
+  font: 600 11px/1 var(--font);
+}
+
+.op-panel {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 40;
+  width: 220px;
+  max-width: calc(100% - 24px);
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.op-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.op-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mod-add {
+  font-size: 11px;
+  padding: 2px 4px;
+  margin-left: auto;
+}
+
+.modifier {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  margin-bottom: 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.modifier.off {
+  opacity: 0.55;
+}
+
+.mod-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mod-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.hint.error {
+  color: var(--danger);
+}
+
+.vp-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.vp-empty button.ghost {
+  background: transparent;
+  border-color: var(--line-2);
+  color: var(--text);
+}

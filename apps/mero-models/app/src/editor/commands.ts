@@ -1,15 +1,11 @@
 import * as THREE from "three";
 import {
   decimate,
-  deleteVertices,
-  extrudeRegion,
   fitsLimits,
   flipNormals,
   joinShapes,
   mergeByDistance,
-  primitiveGeometry,
   shapeCenter,
-  shapeFromGeometry,
   smooth,
   subdivide,
   transformShape,
@@ -36,7 +32,53 @@ import {
   type ObjectKind,
   type SceneObject,
 } from "./model";
-import { activeObject, emptyChange, useEditor, type Change } from "./store";
+import { EXAMPLES, exampleChange } from "./examples";
+import { MAX_EVALUATED_CORNERS, catmullClark, evaluate } from "./modifiers";
+import {
+  edgeEnds,
+  edgesOfVerts,
+  facesOfVerts,
+  vertexTotal,
+  vertsOfEdges,
+  vertsOfFaces,
+  withModifiers,
+  type Axis,
+  type Modifier,
+  type Poly,
+  type V3,
+} from "./poly";
+import {
+  MeshOpError,
+  bevelEdges,
+  bisect,
+  bridgeLoops,
+  connectVerts,
+  deleteEdgesPoly,
+  deleteFacesPoly,
+  deleteVertsPoly,
+  dissolveEdges,
+  dissolveFaces,
+  dissolveVerts,
+  edgeLoop,
+  edgeRing,
+  extrudeEdges,
+  extrudeFaces,
+  fillLoops,
+  flipPoly,
+  insetFaces,
+  joinPolys,
+  linked,
+  loopCut,
+  mergeAtCenter,
+  mergeByDistancePoly,
+  setSharp,
+  smoothPoly,
+  symmetrize,
+  transformPoly,
+  type OpResult,
+} from "./polyops";
+import { AUTO_SHARP_DEGREES, polyOf, primitivePoly, shapeFromPoly, sharpByAngle, skippedModifiers } from "./polymesh";
+import { activeObject, emptyChange, useEditor, type Change, type LastOp, type OpParam, type SelectMode, type Snapshot } from "./store";
 import { localMatrix, reparent, withMatrix, worldMatrix } from "./transform";
 
 /** What commands need from the 3D view: where to put things and how big things are. */
@@ -75,16 +117,27 @@ function roomFor(count: number): boolean {
   return true;
 }
 
-/** The shape a solid object draws, in its own space: its mesh, or its primitive's. */
+/**
+ * The shape a solid object draws, in its own space: its mesh, or its
+ * primitive's — as a polygon cage with the primitive's own UVs and hard edges,
+ * so a converted cube is six quads ready for loop cuts and bevels.
+ */
 export function shapeOf(o: SceneObject): MeshShape | null {
   if (o.kind === "mesh") return editor().meshes.get(o.id)?.shape ?? null;
-  const g = primitiveGeometry(o.kind, o.segments);
-  if (!g) return null;
-  // Keep the primitive's own UV layout; edit mode moves both sides of a seam together.
-  const shape = shapeFromGeometry(g, undefined, true);
-  g.dispose();
-  return shape;
+  const poly = primitivePoly(o.kind, o.segments);
+  return poly ? shapeFromPoly(poly) : null;
 }
+
+/** A shape with a transform baked in, keeping its cage when it has one. */
+function bake(shape: MeshShape, matrix: THREE.Matrix4): MeshShape {
+  return shape.poly ? shapeFromPoly(transformPoly(shape.poly, matrix.elements)) : transformShape(shape, matrix);
+}
+
+/** A cage op on cages, the triangle op otherwise. */
+const either =
+  (onCage: (p: Poly) => Poly, onTriangles: (s: MeshShape) => MeshShape) =>
+  (shape: MeshShape): MeshShape =>
+    shape.poly ? shapeFromPoly(onCage(shape.poly)) : onTriangles(shape);
 
 function checkLimits(shape: MeshShape, what: string): boolean {
   if (fitsLimits(shape)) return true;
@@ -164,6 +217,19 @@ export function arraySelection(count: number, step: THREE.Vector3): void {
   s.commit(all, `Array ×${count}`);
 }
 
+/** Add an example asset (or every one, `"showcase"`) built with the modelling tools. */
+export function addExample(key: string): void {
+  if (!guard()) return;
+  const at = view?.cursor() ?? new THREE.Vector3();
+  const { change, roots } = exampleChange(key, names(), vec(at.x, 0, at.z));
+  if (!roomFor(change.puts.length)) return;
+  const s = editor();
+  s.setMode("object");
+  s.commit(change, key === "showcase" ? "Add example showcase" : `Add example ${EXAMPLES.find((e) => e.key === key)?.name ?? key}`);
+  s.select(roots);
+  view?.frameSelection(true);
+}
+
 // ── Removing, hiding, selecting ─────────────────────────────────────────────
 
 export function deleteSelection(): void {
@@ -198,11 +264,13 @@ export function unhideAll(): void {
 export function selectAll(): void {
   const s = editor();
   if (s.mode === "edit") {
-    const target = activeObject(s);
-    const shape = target ? s.meshes.get(target.id)?.shape : undefined;
-    if (!shape) return;
-    const all = shape.positions.length / 3;
-    s.setVertexSelection(s.vertexSelection.size === all ? new Set() : new Set(Array.from({ length: all }, (_, i) => i)));
+    const target = editTarget();
+    if (!target) return;
+    const all = vertexTotal(target.poly);
+    const everything = s.selectMode === "face" ? s.faceSelection.size === target.poly.faces.length : s.vertexSelection.size === all;
+    if (everything) return deselect();
+    if (s.selectMode === "face") s.setFaceSelection(new Set(target.poly.faces.keys()), new Set(Array.from({ length: all }, (_, i) => i)));
+    else s.setVertexSelection(new Set(Array.from({ length: all }, (_, i) => i)));
     return;
   }
   s.select([...s.objects.values()].filter((o) => o.visible).map((o) => o.id));
@@ -211,11 +279,15 @@ export function selectAll(): void {
 export function invertSelection(): void {
   const s = editor();
   if (s.mode === "edit") {
-    const target = activeObject(s);
-    const shape = target ? s.meshes.get(target.id)?.shape : undefined;
-    if (!shape) return;
+    const target = editTarget();
+    if (!target) return;
+    if (s.selectMode === "face") {
+      const faces = new Set([...target.poly.faces.keys()].filter((f) => !s.faceSelection.has(f)));
+      s.setFaceSelection(faces, vertsOfFaces(target.poly, faces));
+      return;
+    }
     const next = new Set<number>();
-    for (let i = 0; i < shape.positions.length / 3; i += 1) if (!s.vertexSelection.has(i)) next.add(i);
+    for (let i = 0; i < vertexTotal(target.poly); i += 1) if (!s.vertexSelection.has(i)) next.add(i);
     s.setVertexSelection(next);
     return;
   }
@@ -225,7 +297,7 @@ export function invertSelection(): void {
 
 export function deselect(): void {
   const s = editor();
-  if (s.mode === "edit") s.setVertexSelection(new Set());
+  if (s.mode === "edit") s.setFaceSelection(new Set(), new Set());
   else s.select([]);
 }
 
@@ -359,10 +431,10 @@ function reshape(label: string, op: (shape: MeshShape, o: SceneObject) => MeshSh
   s.commit(change, label);
 }
 
-export const subdivideSelection = () => reshape("Subdivide", (shape) => subdivide(shape));
-export const smoothSelection = () => reshape("Smooth", (shape) => smooth(shape, 0.5, 2));
-export const flipSelection = () => reshape("Flip normals", (shape) => flipNormals(shape));
-export const mergeSelection = () => reshape("Merge by distance", (shape) => mergeByDistance(shape, 1e-3));
+export const subdivideSelection = () => reshape("Subdivide", either((p) => catmullClark(p, false), subdivide));
+export const smoothSelection = () => reshape("Smooth", either((p) => smoothPoly(p, 0.5, 2), (s) => smooth(s, 0.5, 2)));
+export const flipSelection = () => reshape("Flip normals", either(flipPoly, flipNormals));
+export const mergeSelection = () => reshape("Merge by distance", either((p) => mergeByDistancePoly(p, 1e-3), (s) => mergeByDistance(s, 1e-3)));
 export const decimateSelection = () =>
   reshape("Decimate", (shape) => decimate(shape, Math.max(4, Math.floor(vertexCount(shape) / 2))));
 
@@ -388,7 +460,7 @@ export function applyTransforms(): void {
     );
     const next = { ...cloneObject(o), kind: "mesh", rotation: vec(), scale: vec(1, 1, 1) };
     change.puts.push(next);
-    change.meshes.push({ id: o.id, shape: transformShape(shape, rs) });
+    change.meshes.push({ id: o.id, shape: bake(shape, rs) });
     // Children were under the old rotation and scale; carry them over so they do not move.
     for (const child of index.get(o.id) ?? []) {
       change.puts.push(withMatrix(child, rs.clone().multiply(localMatrix(child))));
@@ -411,7 +483,7 @@ export function originToGeometry(): void {
     const shift = new THREE.Matrix4().makeTranslation(c);
     const next = withMatrix({ ...cloneObject(o), kind: "mesh" }, localMatrix(o).multiply(shift));
     change.puts.push(next);
-    change.meshes.push({ id: o.id, shape: transformShape(shape, new THREE.Matrix4().makeTranslation(c.clone().negate())) });
+    change.meshes.push({ id: o.id, shape: bake(shape, new THREE.Matrix4().makeTranslation(c.clone().negate())) });
     const back = shift.clone().invert();
     for (const child of index.get(o.id) ?? []) change.puts.push(withMatrix(child, back.clone().multiply(localMatrix(child))));
   }
@@ -448,9 +520,12 @@ export function joinSelection(): void {
   for (const o of solids) {
     const shape = shapeOf(o);
     if (!shape) continue;
-    shapes.push(transformShape(shape, into.clone().multiply(worldMatrix(o.id, s.objects))));
+    shapes.push(bake(shape, into.clone().multiply(worldMatrix(o.id, s.objects))));
   }
-  const joined = joinShapes(shapes);
+  // Cages join as a cage, each part's modifiers applied first; anything else as triangles.
+  const joined = shapes.every((sh) => sh.poly)
+    ? shapeFromPoly(joinPolys(shapes.map((sh) => withModifiers(evaluate(sh.poly!).poly, []))))
+    : joinShapes(shapes);
   if (!checkLimits(joined, "The joined mesh")) return;
   const others = solids.filter((o) => o.id !== active.id).map((o) => o.id);
   // Children of the merged-away objects move to the survivor, in place.
@@ -515,12 +590,13 @@ export function toggleEditMode(): void {
     return;
   }
   if (!guard()) return;
-  const verts = active.kind === "mesh" ? (s.meshes.get(active.id)?.shape.positions.length ?? 0) / 3 : 0;
+  const stored = active.kind === "mesh" ? s.meshes.get(active.id)?.shape : undefined;
+  const verts = stored ? (stored.poly ? vertexTotal(stored.poly) : vertexCount(stored)) : 0;
   if (verts > EDIT_MAX_VERTICES) {
     s.notify(`${active.name} has ${verts.toLocaleString()} vertices; vertex editing in the browser stops at ${EDIT_MAX_VERTICES.toLocaleString()}. Decimate a copy, or edit it in your DCC and re-import as a new version.`, true);
     return;
   }
-  if (active.kind === "mesh" && !s.meshes.get(active.id)) {
+  if (active.kind === "mesh" && !stored) {
     s.notify(`${active.name} is still downloading.`, true);
     return;
   }
@@ -530,81 +606,382 @@ export function toggleEditMode(): void {
   editor().setTool(editor().tool === "select" ? "translate" : editor().tool);
 }
 
-function editShape(): { id: string; shape: MeshShape } | null {
+/** The mesh being edited, with its cage. */
+export function editTarget(): { id: string; shape: MeshShape; poly: Poly } | null {
   const s = editor();
   const active = activeObject(s);
   const shape = active ? s.meshes.get(active.id)?.shape : undefined;
-  return active && shape ? { id: active.id, shape } : null;
+  return active && shape ? { id: active.id, shape, poly: polyOf(shape) } : null;
+}
+
+/** What is selected on the cage, in every form a tool might want. */
+export interface CageSelection {
+  verts: Set<number>;
+  edges: Set<number>;
+  faces: Set<number>;
+}
+
+export function cageSelection(poly: Poly): CageSelection {
+  const s = editor();
+  const n = vertexTotal(poly);
+  const verts = new Set([...s.vertexSelection].filter((v) => v < n));
+  const faces =
+    s.selectMode === "face" ? new Set([...s.faceSelection].filter((f) => f < poly.faces.length)) : facesOfVerts(poly, verts);
+  return { verts, edges: edgesOfVerts(poly, verts), faces };
+}
+
+/** Put a tool's resulting selection into the store, in the current select mode's terms. */
+function applySelection(poly: Poly, result: OpResult): void {
+  const s = editor();
+  if (result.faces) {
+    const faces = result.faces;
+    const verts = vertsOfFaces(poly, faces);
+    if (s.selectMode === "face") s.setFaceSelection(faces, verts);
+    else s.setVertexSelection(verts);
+  } else if (result.verts) {
+    if (s.selectMode === "face") s.setFaceSelection(facesOfVerts(poly, result.verts), result.verts);
+    else s.setVertexSelection(result.verts);
+  }
+}
+
+type Values = Record<string, number | boolean>;
+
+/**
+ * Run a mesh tool on the edited cage. With `params`, the operator panel can
+ * re-run it from the same starting mesh with other values, replacing the
+ * result rather than stacking another one on top.
+ */
+function cageOp(
+  label: string,
+  run: (poly: Poly, sel: CageSelection, values: Values) => OpResult,
+  params: OpParam[] = [],
+  defaults: Values = {},
+): boolean {
+  if (!guard()) return false;
+  const target = editTarget();
+  if (!target) return false;
+  const sel = cageSelection(target.poly);
+  const attempt = (values: Values): { result: OpResult; shape: MeshShape } | null => {
+    let result: OpResult;
+    try {
+      result = run(target.poly, sel, values);
+    } catch (e) {
+      if (e instanceof MeshOpError) {
+        editor().notify(e.message, true);
+        return null;
+      }
+      throw e;
+    }
+    const shape = shapeFromPoly(result.poly);
+    if (!checkLimits(shape, `${label}`)) return null;
+    return { result, shape };
+  };
+  const first = attempt(defaults);
+  if (!first) return false;
+  editor().commit({ puts: [], deletes: [], meshes: [{ id: target.id, shape: first.shape }] }, label);
+  applySelection(first.result.poly, first.result);
+  if (params.length) {
+    const lastOp: LastOp = {
+      label,
+      params,
+      values: defaults,
+      rerun: (values, final) => {
+        const next = attempt(values);
+        if (!next) return;
+        const s = editor();
+        if (final) s.amend({ puts: [], deletes: [], meshes: [{ id: target.id, shape: next.shape }] }, label);
+        else s.preview([], [{ id: target.id, shape: next.shape }]);
+        applySelection(next.result.poly, next.result);
+        editor().set({ lastOp: { ...lastOp, values } });
+      },
+    };
+    editor().set({ lastOp });
+  }
+  return true;
+}
+
+/** Exactly one selected edge, for tools that start from one. */
+function oneEdge(sel: CageSelection, what: string): [number, number] {
+  if (sel.edges.size < 1) throw new MeshOpError(`${what} starts from an edge — select one (edge mode, 2).`);
+  return edgeEnds([...sel.edges][0]!);
 }
 
 export function deleteSelectedVertices(): void {
-  if (!guard()) return;
-  const target = editShape();
-  const s = editor();
-  if (!target || !s.vertexSelection.size) return;
-  const next = deleteVertices(target.shape, s.vertexSelection);
-  s.commit({ puts: [], deletes: [], meshes: [{ id: target.id, shape: next }] }, `Delete ${s.vertexSelection.size} vertices`);
-  s.setVertexSelection(new Set());
+  const mode = editor().selectMode;
+  cageOp(mode === "face" ? "Delete faces" : mode === "edge" ? "Delete edges" : "Delete vertices", (poly, sel) => {
+    if (mode === "face") {
+      if (!sel.faces.size) throw new MeshOpError("Select faces to delete.");
+      return { poly: deleteFacesPoly(poly, sel.faces), verts: new Set() };
+    }
+    if (mode === "edge") {
+      if (!sel.edges.size) throw new MeshOpError("Select edges to delete.");
+      return { poly: deleteEdgesPoly(poly, sel.edges), verts: new Set() };
+    }
+    if (!sel.verts.size) throw new MeshOpError("Select vertices to delete.");
+    return { poly: deleteVertsPoly(poly, sel.verts), verts: new Set() };
+  });
 }
 
+/** E: extrude faces along their normals, or an open border outward. */
 export function extrudeSelected(): void {
-  if (!guard()) return;
-  const target = editShape();
-  const s = editor();
+  const target = editTarget();
   if (!target) return;
-  const result = extrudeRegion(target.shape, s.vertexSelection);
-  if (!result) {
-    s.notify("Select whole faces (all three corners of a triangle) to extrude.", true);
-    return;
-  }
-  if (!checkLimits(result.shape, "The extruded mesh")) return;
-  s.commit({ puts: [], deletes: [], meshes: [{ id: target.id, shape: result.shape }] }, "Extrude");
-  s.setVertexSelection(result.selection);
-  s.setTool("translate");
+  const sel = cageSelection(target.poly);
+  const ok = sel.faces.size
+    ? cageOp(
+        "Extrude",
+        (poly, s, v) => extrudeFaces(poly, s.faces, v.distance as number),
+        [{ key: "distance", label: "Distance", kind: "number", min: -5, max: 5, step: 0.01 }],
+        { distance: 0.25 },
+      )
+    : cageOp(
+        "Extrude edges",
+        (poly, s, v) => extrudeEdges(poly, s.verts, v.distance as number),
+        [{ key: "distance", label: "Distance", kind: "number", min: -5, max: 5, step: 0.01 }],
+        { distance: 0.25 },
+      );
+  if (ok) editor().setTool("translate");
+}
+
+/** I: inset the selected faces. */
+export function insetSelected(): void {
+  cageOp(
+    "Inset",
+    (poly, sel, v) => insetFaces(poly, sel.faces, v.thickness as number, v.depth as number, v.individual as boolean),
+    [
+      { key: "thickness", label: "Thickness", kind: "number", min: 0, max: 2, step: 0.005 },
+      { key: "depth", label: "Depth", kind: "number", min: -2, max: 2, step: 0.005 },
+      { key: "individual", label: "Each face on its own", kind: "toggle" },
+    ],
+    { thickness: 0.08, depth: 0, individual: false },
+  );
+}
+
+/** Ctrl+B: bevel the selected edges. */
+export function bevelSelected(): void {
+  cageOp(
+    "Bevel",
+    (poly, sel, v) => bevelEdges(poly, sel.edges, v.width as number),
+    [{ key: "width", label: "Width", kind: "number", min: 0.001, max: 1, step: 0.001 }],
+    { width: 0.05 },
+  );
+}
+
+/** Ctrl+R: loop cut across the ring of the selected edge. */
+export function loopCutSelected(): void {
+  cageOp(
+    "Loop cut",
+    (poly, sel, v) => loopCut(poly, ...oneEdge(sel, "Loop cut"), v.cuts as number),
+    [{ key: "cuts", label: "Cuts", kind: "number", min: 1, max: 32, step: 1, integer: true }],
+    { cuts: 1 },
+  );
+}
+
+export function bridgeSelected(): void {
+  cageOp("Bridge edge loops", (poly, sel) => bridgeLoops(poly, sel.verts));
+}
+
+export function fillSelected(): void {
+  cageOp("Fill", (poly, sel) => fillLoops(poly, sel.verts));
+}
+
+export function connectSelected(): void {
+  cageOp("Connect vertices", (poly, sel) => connectVerts(poly, sel.verts));
+}
+
+/** Knife the cage along a plane through the selection's centre (or the origin). */
+export function bisectSelected(): void {
+  const target = editTarget();
+  if (!target) return;
+  const sel = cageSelection(target.poly);
+  const centre: V3 = [0, 0, 0];
+  for (const v of sel.verts) for (let k = 0; k < 3; k += 1) centre[k]! += target.poly.positions[v * 3 + k]! / sel.verts.size;
+  cageOp(
+    "Knife plane",
+    (poly, _sel, v) => bisect(poly, v.axis as Axis, v.offset as number),
+    [
+      { key: "axis", label: "Across", kind: "choice", options: [{ value: 0, label: "X" }, { value: 1, label: "Y" }, { value: 2, label: "Z" }] },
+      { key: "offset", label: "At", kind: "number", min: -50, max: 50, step: 0.01 },
+    ],
+    { axis: 1, offset: Math.round(centre[1] * 1000) / 1000 },
+  );
 }
 
 export function mergeSelectedVertices(): void {
-  if (!guard()) return;
-  const target = editShape();
-  const s = editor();
-  if (!target || s.vertexSelection.size < 2) return;
-  // Merge at the centre: move every picked vertex there, then weld.
-  const c = new THREE.Vector3();
-  for (const i of s.vertexSelection) {
-    c.x += target.shape.positions[i * 3]!;
-    c.y += target.shape.positions[i * 3 + 1]!;
-    c.z += target.shape.positions[i * 3 + 2]!;
-  }
-  c.divideScalar(s.vertexSelection.size);
-  const positions = target.shape.positions.slice();
-  for (const i of s.vertexSelection) {
-    positions[i * 3] = c.x;
-    positions[i * 3 + 1] = c.y;
-    positions[i * 3 + 2] = c.z;
-  }
-  const next = mergeByDistance({ positions, indices: target.shape.indices }, 1e-6, s.vertexSelection);
-  s.commit({ puts: [], deletes: [], meshes: [{ id: target.id, shape: next }] }, "Merge vertices");
-  s.setVertexSelection(new Set());
+  cageOp("Merge at centre", (poly, sel) => mergeAtCenter(poly, sel.verts));
+}
+
+export function mergeByDistanceSelected(): void {
+  cageOp(
+    "Merge by distance",
+    (poly, sel, v) => ({ poly: mergeByDistancePoly(poly, v.distance as number, sel.verts.size ? sel.verts : undefined), verts: new Set() }),
+    [{ key: "distance", label: "Distance", kind: "number", min: 0, max: 1, step: 0.0001 }],
+    { distance: 0.001 },
+  );
+}
+
+/** Dissolve, in the terms of the select mode: vertices, edges or faces. */
+export function dissolveSelected(): void {
+  const mode = editor().selectMode;
+  if (mode === "face") cageOp("Dissolve faces", (poly, sel) => dissolveFaces(poly, sel.faces));
+  else if (mode === "edge") cageOp("Dissolve edges", (poly, sel) => dissolveEdges(poly, sel.edges));
+  else cageOp("Dissolve vertices", (poly, sel) => dissolveVerts(poly, sel.verts));
 }
 
 export function smoothSelectedVertices(): void {
-  if (!guard()) return;
-  const target = editShape();
-  const s = editor();
-  if (!target) return;
-  const only = s.vertexSelection.size ? s.vertexSelection : undefined;
-  s.commit({ puts: [], deletes: [], meshes: [{ id: target.id, shape: smooth(target.shape, 0.5, 1, only) }] }, "Smooth vertices");
+  cageOp(
+    "Smooth vertices",
+    (poly, sel, v) => ({ poly: smoothPoly(poly, v.strength as number, v.repeat as number, sel.verts.size ? sel.verts : undefined), verts: sel.verts }),
+    [
+      { key: "strength", label: "Strength", kind: "number", min: 0, max: 1, step: 0.05 },
+      { key: "repeat", label: "Repeat", kind: "number", min: 1, max: 50, step: 1, integer: true },
+    ],
+    { strength: 0.5, repeat: 1 },
+  );
 }
 
 export function subdivideActive(): void {
-  if (!guard()) return;
-  const target = editShape();
-  const s = editor();
+  cageOp(
+    "Subdivide",
+    (poly, _sel, v) => {
+      let out = poly;
+      for (let i = 0; i < (v.cuts as number); i += 1) out = catmullClark(out, v.smooth as boolean);
+      return { poly: out, verts: new Set() };
+    },
+    [
+      { key: "cuts", label: "Levels", kind: "number", min: 1, max: 3, step: 1, integer: true },
+      { key: "smooth", label: "Smooth", kind: "toggle" },
+    ],
+    { cuts: 1, smooth: false },
+  );
+}
+
+export function symmetrizeActive(): void {
+  cageOp(
+    "Symmetrize",
+    (poly, _sel, v) => ({ poly: symmetrize(poly, v.axis as Axis, v.positive as boolean), verts: new Set() }),
+    [
+      { key: "axis", label: "Across", kind: "choice", options: [{ value: 0, label: "X" }, { value: 1, label: "Y" }, { value: 2, label: "Z" }] },
+      { key: "positive", label: "Keep the + side", kind: "toggle" },
+    ],
+    { axis: 0, positive: true },
+  );
+}
+
+/** Mark or clear the selected edges as hard. */
+export function markSharpSelected(sharp: boolean): void {
+  cageOp(sharp ? "Mark sharp" : "Clear sharp", (poly, sel) => {
+    if (!sel.edges.size) throw new MeshOpError("Select the edges to mark.");
+    return { poly: setSharp(poly, sel.edges, sharp), verts: sel.verts };
+  });
+}
+
+/** Hard edges wherever faces meet at more than an angle. */
+export function sharpByAngleActive(): void {
+  cageOp(
+    "Sharp by angle",
+    (poly, sel, v) => ({ poly: { ...poly, sharp: sharpByAngle(poly, v.angle as number) }, verts: sel.verts }),
+    [{ key: "angle", label: "Angle °", kind: "number", min: 1, max: 180, step: 1 }],
+    { angle: AUTO_SHARP_DEGREES },
+  );
+}
+
+/** Select the edge loop, ring or face loop through an edge, or what is linked. */
+export function selectLoop(a: number, b: number, ring: boolean, add: boolean): void {
+  const target = editTarget();
   if (!target) return;
-  const next = subdivide(target.shape);
-  if (!checkLimits(next, "The subdivided mesh")) return;
-  s.commit({ puts: [], deletes: [], meshes: [{ id: target.id, shape: next }] }, "Subdivide");
-  s.setVertexSelection(new Set());
+  const s = editor();
+  const { poly } = target;
+  if (s.selectMode === "face") {
+    const faces = edgeRing(poly, a, b).faces;
+    const next = add ? new Set([...s.faceSelection, ...faces]) : faces;
+    s.setFaceSelection(next, vertsOfFaces(poly, next));
+    return;
+  }
+  const edges = ring ? edgeRing(poly, a, b).edges : edgeLoop(poly, a, b);
+  const verts = vertsOfEdges(edges);
+  s.setVertexSelection(add ? new Set([...s.vertexSelection, ...verts]) : verts);
+}
+
+/** 1, 2, 3: what a click picks. The selection carries over: into face mode as the faces it covers. */
+export function setSelectMode(mode: SelectMode): void {
+  const s = editor();
+  if (mode === s.selectMode) return;
+  const target = s.mode === "edit" ? editTarget() : null;
+  const verts = s.vertexSelection;
+  s.setSelectMode(mode);
+  if (!target) return;
+  if (mode === "face") {
+    const faces = facesOfVerts(target.poly, verts);
+    s.setFaceSelection(faces, vertsOfFaces(target.poly, faces));
+  } else {
+    s.setVertexSelection(verts);
+  }
+}
+
+/** Grow the selected edges to their whole loops (or rings) — the menu twin of Alt-click. */
+export function selectLoopsOfSelection(ring: boolean): void {
+  const target = editTarget();
+  if (!target) return;
+  const s = editor();
+  const sel = cageSelection(target.poly);
+  if (!sel.edges.size) {
+    s.notify("Select an edge first (edge mode, 2), then grow it to its loop or ring.", true);
+    return;
+  }
+  const edges = [...sel.edges].flatMap((k) => {
+    const [a, b] = edgeEnds(k);
+    return ring ? edgeRing(target.poly, a, b).edges : edgeLoop(target.poly, a, b);
+  });
+  const verts = vertsOfEdges(edges);
+  if (s.selectMode === "face") s.setFaceSelection(facesOfVerts(target.poly, verts), verts);
+  else s.setVertexSelection(verts);
+}
+
+export function selectLinked(): void {
+  const target = editTarget();
+  if (!target) return;
+  const s = editor();
+  const verts = linked(target.poly, s.vertexSelection);
+  if (s.selectMode === "face") s.setFaceSelection(facesOfVerts(target.poly, verts), verts);
+  else s.setVertexSelection(verts);
+}
+
+// ── Modifiers ───────────────────────────────────────────────────────────────
+
+/** Change the active mesh's modifier stack (converting a primitive first). */
+export function setModifiers(id: string, modifiers: Modifier[], label: string, before?: Snapshot): void {
+  if (!guard()) return;
+  const s = editor();
+  const o = s.objects.get(id);
+  if (!o || !isSolid(o.kind)) return;
+  const shape = shapeOf(o);
+  if (!shape) {
+    s.notify(`${o.name} is still downloading.`, true);
+    return;
+  }
+  const next = modifiedShape(shape, modifiers);
+  const change = emptyChange();
+  if (o.kind !== "mesh") change.puts.push({ ...cloneObject(o), kind: "mesh" });
+  change.meshes.push({ id, shape: next });
+  s.commit(change, label, before);
+  const skipped = skippedModifiers(next);
+  if (skipped.length) s.notify(`${skipped.join(", ")} would make more than ${MAX_EVALUATED_CORNERS.toLocaleString()} face corners, so it is skipped.`, true);
+}
+
+/** The shape with another modifier stack: what a modifier field previews while it is dragged. */
+export function modifiedShape(shape: MeshShape, modifiers: Modifier[]): MeshShape {
+  return shapeFromPoly(withModifiers(polyOf(shape), modifiers));
+}
+
+/** Bake the stack into the cage: what is drawn becomes what is edited. */
+export function applyModifiers(id: string): void {
+  if (!guard()) return;
+  const s = editor();
+  const shape = s.meshes.get(id)?.shape;
+  if (!shape?.poly?.modifiers.length) return;
+  const baked = evaluate(shape.poly).poly;
+  s.commit({ puts: [], deletes: [], meshes: [{ id, shape: shapeFromPoly(baked) }] }, "Apply modifiers");
 }
 
 // ── Scene ───────────────────────────────────────────────────────────────────

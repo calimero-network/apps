@@ -9,10 +9,13 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { applyTransform, buildObject, disposeObject, hasMaps, standardMaterial, type Built, type TextureLookup } from "./build";
-import { colocated, geometryFromShape, type MeshShape } from "./geometry";
+import type { MeshShape } from "./geometry";
+import { edgeEnds, edgeList, faceCenter, vertsOfFaces, type Poly } from "./poly";
+import { cageTriangles, movedShape, polyOf, withCage } from "./polymesh";
+import { selectLoop } from "./commands";
 import type { TextureCache } from "./textures";
 import { childrenIndex, isLight, topmost, type SceneObject } from "./model";
-import { activeObject, useEditor, type EditorState } from "./store";
+import { activeObject, useEditor, type EditorState, type SelectMode } from "./store";
 import { withMatrix } from "./transform";
 
 /** Someone else in the scene, as their presence slice describes them. */
@@ -47,6 +50,24 @@ export interface ViewportEvents {
 const SELECT_COLOR = new THREE.Color("#ffa033");
 const VERTEX_COLOR = new THREE.Color("#101010");
 const VERTEX_SELECTED = new THREE.Color("#ff9a1f");
+const EDGE_COLOR = new THREE.Color("#1a1a1a");
+const EDGE_SHARP = new THREE.Color("#22c7e6");
+
+/** The edited mesh's cage drawn over it: vertices, edges, the selected faces, and an invisible surface to pick faces on. */
+interface EditOverlay {
+  id: string;
+  poly: Poly;
+  mode: SelectMode;
+  points: THREE.Points;
+  lines: THREE.LineSegments;
+  /** The edge each line segment draws. */
+  edgeKeys: number[];
+  fill: THREE.Mesh;
+  pick: THREE.Mesh;
+  triFace: Uint32Array;
+  /** The edited surface's material, pushed back in depth so the cage's wires draw on top of it. */
+  surface: THREE.Material | null;
+}
 const CLICK_SLOP = 4;
 
 /**
@@ -80,11 +101,7 @@ export class Viewport {
   private readonly nodes = new Map<string, Node>();
   private readonly peers = new Map<string, PeerView>();
   private peerData: Peer[] = [];
-  private editPoints: THREE.Points | null = null;
-  private editWire: THREE.LineSegments | null = null;
-  private editFor: { id: string; mesh: MeshShape | undefined } | null = null;
-  /** For the edited mesh: each vertex's first vertex at the same position (UV seams). */
-  private editRoots: { shape: MeshShape; roots: Int32Array; groups: Map<number, number[]> } | null = null;
+  private edit: EditOverlay | null = null;
   private textures: TextureCache | null = null;
   private unsubscribeTextures: (() => void) | null = null;
   private readonly lookup: TextureLookup = (id, colorSpace) => {
@@ -100,12 +117,22 @@ export class Viewport {
   private gesture: {
     pivotStart: THREE.Matrix4;
     starts: Map<string, { world: THREE.Matrix4; parentInverse: THREE.Matrix4 }>;
-    vertexStarts?: { id: string; world: THREE.Matrix4; inverse: THREE.Matrix4; base: MeshShape; picks: number[] };
+    vertexStarts?: {
+      id: string;
+      world: THREE.Matrix4;
+      inverse: THREE.Matrix4;
+      base: MeshShape;
+      picks: number[];
+      /** With X-mirror on: each picked vertex's mirror image (itself when on the plane). */
+      mirror: Map<number, number>;
+    };
     before: ReturnType<EditorState["snapshot"]>;
   } | null = null;
-  private pointerDown: { x: number; y: number; button: number; shift: boolean; ctrl: boolean } | null = null;
+  private pointerDown: { x: number; y: number; button: number; shift: boolean; ctrl: boolean; alt: boolean } | null = null;
   private box: HTMLDivElement;
   private ctrlHeld = false;
+  /** Alt as the keyboard last reported it: some platforms leave it off pointer events. */
+  private altHeld = false;
 
   constructor(
     private readonly container: HTMLElement,
@@ -340,8 +367,7 @@ export class Viewport {
   async capture(): Promise<Blob | null> {
     const hidden: THREE.Object3D[] = [this.grid, this.gizmoHelper];
     for (const node of this.nodes.values()) if (node.built.helper) hidden.push(node.built.helper);
-    if (this.editPoints) hidden.push(this.editPoints);
-    if (this.editWire) hidden.push(this.editWire);
+    if (this.edit) hidden.push(this.edit.points, this.edit.lines, this.edit.fill);
     for (const p of this.peers.values()) hidden.push(p.marker, ...p.boxes);
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => (o.visible = false));
@@ -379,6 +405,8 @@ export class Viewport {
       state.mode !== prev.mode ||
       state.meshes !== prev.meshes ||
       state.vertexSelection !== prev.vertexSelection ||
+      state.faceSelection !== prev.faceSelection ||
+      state.selectMode !== prev.selectMode ||
       state.role !== prev.role
     ) {
       this.syncSelection(state);
@@ -400,7 +428,7 @@ export class Viewport {
         for (const child of [...node.built.group.children]) {
           if (child.userData.id && child.userData.id !== id) this.root.add(child);
         }
-        if (this.editFor?.id === id) this.clearEditOverlay();
+        if (this.edit?.id === id) this.clearEditOverlay();
         node.built.group.removeFromParent();
         disposeObject(node.built.group);
         this.nodes.delete(id);
@@ -417,7 +445,7 @@ export class Viewport {
         continue;
       }
       const built = buildObject(obj, mesh, true, this.lookup);
-      if (this.editFor?.id === obj.id) this.clearEditOverlay();
+      if (this.edit?.id === obj.id) this.clearEditOverlay();
       if (node) {
         // Keep its children: they are moved across below.
         for (const child of [...node.built.group.children]) {
@@ -576,74 +604,159 @@ export class Viewport {
       return;
     }
     const { obj, node, shape } = target;
-    if (!this.editFor || this.editFor.id !== obj.id || this.editFor.mesh !== shape) {
+    const poly = polyOf(shape);
+    if (!this.edit || this.edit.id !== obj.id || this.edit.poly !== poly) {
       this.clearEditOverlay();
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute("position", new THREE.Float32BufferAttribute(shape.positions, 3));
-      geometry.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(shape.positions.length), 3));
-      this.editPoints = new THREE.Points(
-        geometry,
+      const points = new THREE.Points(
+        new THREE.BufferGeometry()
+          .setAttribute("position", new THREE.Float32BufferAttribute(poly.positions, 3))
+          .setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(poly.positions.length), 3)),
         new THREE.PointsMaterial({ size: 7, sizeAttenuation: false, vertexColors: true, depthTest: false }),
       );
-      this.editPoints.renderOrder = 10;
-      this.editPoints.userData.edit = true;
-      const wire = new THREE.WireframeGeometry(geometryFromShape(shape));
-      this.editWire = new THREE.LineSegments(
-        wire,
-        new THREE.LineBasicMaterial({ color: "#1a1a1a", transparent: true, opacity: 0.55, depthTest: true }),
+      points.renderOrder = 10;
+      const edgeKeys = edgeList(poly);
+      const linePos = new Float32Array(edgeKeys.length * 6);
+      edgeKeys.forEach((key, i) => {
+        const [a, b] = edgeEnds(key);
+        for (let k = 0; k < 3; k += 1) {
+          linePos[i * 6 + k] = poly.positions[a * 3 + k]!;
+          linePos[i * 6 + 3 + k] = poly.positions[b * 3 + k]!;
+        }
+      });
+      const lines = new THREE.LineSegments(
+        new THREE.BufferGeometry()
+          .setAttribute("position", new THREE.BufferAttribute(linePos, 3))
+          .setAttribute("color", new THREE.BufferAttribute(new Float32Array(linePos.length), 3)),
+        new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.85, depthTest: true }),
       );
-      this.editWire.renderOrder = 9;
-      node.built.group.add(this.editPoints, this.editWire);
-      this.editFor = { id: obj.id, mesh: shape };
+      lines.renderOrder = 9;
+      const tris = cageTriangles(poly);
+      const cagePositions = new THREE.Float32BufferAttribute(poly.positions, 3);
+      const fill = new THREE.Mesh(
+        new THREE.BufferGeometry().setAttribute("position", cagePositions),
+        new THREE.MeshBasicMaterial({
+          color: SELECT_COLOR,
+          transparent: true,
+          opacity: 0.3,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+        }),
+      );
+      fill.renderOrder = 8;
+      const pickGeometry = new THREE.BufferGeometry().setAttribute("position", cagePositions);
+      pickGeometry.setIndex(new THREE.BufferAttribute(tris.indices, 1));
+      const pick = new THREE.Mesh(pickGeometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+      pick.visible = false;
+      for (const o of [points, lines, fill, pick]) o.userData.edit = true;
+      node.built.group.add(points, lines, fill, pick);
+      const body = node.built.body as THREE.Mesh | null;
+      const surface = body?.isMesh ? (body.material as THREE.Material) : null;
+      if (surface) {
+        surface.polygonOffset = true;
+        surface.polygonOffsetFactor = 1;
+        surface.polygonOffsetUnits = 1;
+        surface.needsUpdate = true;
+      }
+      this.edit = { id: obj.id, poly, mode: state.selectMode, points, lines, edgeKeys, fill, pick, triFace: tris.triFace, surface };
     }
-    const colors = this.editPoints!.geometry.getAttribute("color") as THREE.BufferAttribute;
-    const n = shape.positions.length / 3;
+    const edit = this.edit!;
+    const n = poly.positions.length / 3;
+    const colors = edit.points.geometry.getAttribute("color") as THREE.BufferAttribute;
     for (let i = 0; i < n; i += 1) {
       const c = state.vertexSelection.has(i) ? VERTEX_SELECTED : VERTEX_COLOR;
       colors.setXYZ(i, c.r, c.g, c.b);
     }
     colors.needsUpdate = true;
-  }
-
-  /** The vertices sharing `index`'s position in the edited mesh, itself included. */
-  private seamGroup(index: number): number[] {
-    const target = this.editTarget(useEditor.getState());
-    if (!target) return [index];
-    if (this.editRoots?.shape !== target.shape) {
-      const roots = colocated(target.shape);
-      const groups = new Map<number, number[]>();
-      roots.forEach((r, i) => {
-        if (r !== i) groups.set(r, [...(groups.get(r) ?? [r]), i]);
-      });
-      this.editRoots = { shape: target.shape, roots, groups };
+    edit.points.visible = state.selectMode !== "face";
+    const lineColors = edit.lines.geometry.getAttribute("color") as THREE.BufferAttribute;
+    edit.edgeKeys.forEach((key, i) => {
+      const [a, b] = edgeEnds(key);
+      const c = state.vertexSelection.has(a) && state.vertexSelection.has(b) ? VERTEX_SELECTED : poly.sharp.has(key) ? EDGE_SHARP : EDGE_COLOR;
+      lineColors.setXYZ(i * 2, c.r, c.g, c.b);
+      lineColors.setXYZ(i * 2 + 1, c.r, c.g, c.b);
+    });
+    lineColors.needsUpdate = true;
+    // Selected faces, filled: picked ones in face mode, fully selected ones otherwise.
+    const tris = cageTriangles(poly);
+    const chosen: number[] = [];
+    const faceOn = (f: number) =>
+      state.selectMode === "face" ? state.faceSelection.has(f) : poly.faces[f]!.every((v) => state.vertexSelection.has(v));
+    for (let t = 0; t < tris.triFace.length; t += 1) {
+      if (faceOn(tris.triFace[t]!)) chosen.push(tris.indices[t * 3]!, tris.indices[t * 3 + 1]!, tris.indices[t * 3 + 2]!);
     }
-    const root = this.editRoots.roots[index] ?? index;
-    return this.editRoots.groups.get(root) ?? [index];
+    edit.fill.geometry.setIndex(chosen);
+    edit.fill.visible = chosen.length > 0;
   }
 
   private clearEditOverlay(): void {
-    for (const o of [this.editPoints, this.editWire]) {
-      if (!o) continue;
+    const edit = this.edit;
+    if (!edit) return;
+    if (edit.surface) {
+      edit.surface.polygonOffset = false;
+      edit.surface.needsUpdate = true;
+    }
+    for (const o of [edit.points, edit.lines, edit.fill, edit.pick]) {
       o.removeFromParent();
       o.geometry.dispose();
       (o.material as THREE.Material).dispose();
     }
-    this.editPoints = null;
-    this.editWire = null;
-    this.editFor = null;
+    this.edit = null;
   }
 
   private vertexCenter(state: EditorState): THREE.Vector3 | null {
     const target = this.editTarget(state);
     if (!target || state.vertexSelection.size === 0) return null;
     const { node, shape } = target;
+    const p = polyOf(shape).positions;
     node.built.group.updateWorldMatrix(true, false);
     const c = new THREE.Vector3();
-    const v = new THREE.Vector3();
+    let n = 0;
     for (const i of state.vertexSelection) {
-      c.add(v.set(shape.positions[i * 3]!, shape.positions[i * 3 + 1]!, shape.positions[i * 3 + 2]!));
+      if (i * 3 >= p.length) continue;
+      c.x += p[i * 3]!;
+      c.y += p[i * 3 + 1]!;
+      c.z += p[i * 3 + 2]!;
+      n += 1;
     }
-    return c.divideScalar(state.vertexSelection.size).applyMatrix4(node.built.group.matrixWorld);
+    if (!n) return null;
+    return c.divideScalar(n).applyMatrix4(node.built.group.matrixWorld);
+  }
+
+  /** The cage edge under the pointer: the nearest edge of the face hit, or an edge hit directly. */
+  private pickEdge(): [number, number] | null {
+    const edit = this.edit;
+    if (!edit) return null;
+    const hits = this.raycaster.intersectObject(edit.pick, false);
+    const hit = hits[0];
+    if (hit && hit.faceIndex !== undefined && hit.faceIndex !== null) {
+      const f = edit.triFace[hit.faceIndex]!;
+      const face = edit.poly.faces[f]!;
+      const local = edit.pick.worldToLocal(hit.point.clone());
+      const at = (v: number) => new THREE.Vector3(edit.poly.positions[v * 3], edit.poly.positions[v * 3 + 1], edit.poly.positions[v * 3 + 2]);
+      let best: [number, number] | null = null;
+      let bestD = Infinity;
+      const seg = new THREE.Line3();
+      const closest = new THREE.Vector3();
+      for (let c = 0; c < face.length; c += 1) {
+        const a = face[c]!;
+        const b = face[(c + 1) % face.length]!;
+        seg.set(at(a), at(b)).closestPointToPoint(local, true, closest);
+        const d = closest.distanceToSquared(local);
+        if (d < bestD) {
+          bestD = d;
+          best = [a, b];
+        }
+      }
+      return best;
+    }
+    const distance = this.camera.position.distanceTo(this.controls.target);
+    this.raycaster.params.Line = { threshold: distance * 0.01 };
+    const lineHit = this.raycaster.intersectObject(edit.lines, false)[0];
+    if (lineHit?.index === undefined) return null;
+    return edgeEnds(edit.edgeKeys[Math.floor(lineHit.index / 2)]!);
   }
 
   // ── gestures: one drag is one preview stream and one commit ───────────────
@@ -655,16 +768,25 @@ export class Viewport {
       const target = this.editTarget(state);
       if (!target) return;
       const world = target.node.built.group.matrixWorld.clone();
+      const base = withCage(target.shape);
+      const poly = base.poly!;
+      const picks = [...state.vertexSelection].filter((v) => v * 3 < poly.positions.length);
+      const mirror = new Map<number, number>();
+      if (state.xMirror) {
+        const q = (x: number) => Math.round(x * 1e4);
+        const byPos = new Map<string, number>();
+        for (let v = 0; v < poly.positions.length / 3; v += 1) {
+          byPos.set(`${q(poly.positions[v * 3]!)},${q(poly.positions[v * 3 + 1]!)},${q(poly.positions[v * 3 + 2]!)}`, v);
+        }
+        for (const v of picks) {
+          const m = byPos.get(`${q(-poly.positions[v * 3]!)},${q(poly.positions[v * 3 + 1]!)},${q(poly.positions[v * 3 + 2]!)}`);
+          if (m !== undefined) mirror.set(v, m);
+        }
+      }
       this.gesture = {
         pivotStart: this.pivot.matrixWorld.clone(),
         starts: new Map(),
-        vertexStarts: {
-          id: target.obj.id,
-          world,
-          inverse: world.clone().invert(),
-          base: target.shape,
-          picks: [...state.vertexSelection],
-        },
+        vertexStarts: { id: target.obj.id, world, inverse: world.clone().invert(), base, picks, mirror },
         before: state.snapshot([], [target.obj.id]),
       };
       return;
@@ -691,18 +813,27 @@ export class Viewport {
     const state = useEditor.getState();
     const vs = this.gesture.vertexStarts;
     if (vs) {
-      const positions = vs.base.positions.slice();
+      const src = vs.base.poly!.positions;
+      const positions = src.slice();
       const v = new THREE.Vector3();
       // world-space delta, applied to each picked vertex and taken back into
       // the object's own space.
       const m = vs.inverse.clone().multiply(delta).multiply(vs.world);
       for (const i of vs.picks) {
-        v.set(vs.base.positions[i * 3]!, vs.base.positions[i * 3 + 1]!, vs.base.positions[i * 3 + 2]!).applyMatrix4(m);
+        v.set(src[i * 3]!, src[i * 3 + 1]!, src[i * 3 + 2]!).applyMatrix4(m);
         positions[i * 3] = v.x;
         positions[i * 3 + 1] = v.y;
         positions[i * 3 + 2] = v.z;
       }
-      state.preview([], [{ id: vs.id, shape: { positions, indices: vs.base.indices } }]);
+      for (const [i, j] of vs.mirror) {
+        if (i === j) positions[i * 3] = 0; // on the mirror plane: stays on it
+        else if (!vs.mirror.has(j) || i < j) {
+          positions[j * 3] = -positions[i * 3]!;
+          positions[j * 3 + 1] = positions[i * 3 + 1]!;
+          positions[j * 3 + 2] = positions[i * 3 + 2]!;
+        }
+      }
+      state.preview([], [{ id: vs.id, shape: movedShape(vs.base, positions) }]);
       return;
     }
     const moved: SceneObject[] = [];
@@ -724,9 +855,9 @@ export class Viewport {
     const tool = state.tool === "rotate" ? "Rotate" : state.tool === "scale" ? "Scale" : "Move";
     if (vs) {
       const shape = state.meshes.get(vs.id)?.shape;
-      if (shape && shape !== vs.base) {
-        const rounded = { positions: shape.positions.map((x) => Math.round(x * 1e5) / 1e5), indices: shape.indices };
-        state.commit({ puts: [], deletes: [], meshes: [{ id: vs.id, shape: rounded }] }, `${tool} vertices`, gesture.before);
+      if (shape?.poly && shape !== vs.base && shape !== gesture.before.meshes.get(vs.id)) {
+        const rounded = shape.poly.positions.map((x) => Math.round(x * 1e5) / 1e5);
+        state.commit({ puts: [], deletes: [], meshes: [{ id: vs.id, shape: movedShape(vs.base, rounded) }] }, `${tool} vertices`, gesture.before);
       }
     } else {
       const puts = [...gesture.starts.keys()].map((id) => state.objects.get(id)).filter((o): o is SceneObject => !!o);
@@ -745,7 +876,7 @@ export class Viewport {
     }
     // A press on a gizmo handle belongs to the gizmo.
     if (this.gizmo.axis !== null) return;
-    this.pointerDown = { x: e.clientX, y: e.clientY, button: e.button, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey };
+    this.pointerDown = { x: e.clientX, y: e.clientY, button: e.button, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, alt: e.altKey || this.altHeld };
   };
 
   private onPointerMove = (e: PointerEvent): void => {
@@ -769,7 +900,7 @@ export class Viewport {
     const moved = Math.abs(e.clientX - down.x) > CLICK_SLOP || Math.abs(e.clientY - down.y) > CLICK_SLOP;
     const mode = down.shift ? "toggle" : down.ctrl ? "add" : "replace";
     if (!moved) {
-      this.click(e, mode);
+      this.click(e, mode, down.alt);
     } else if (useEditor.getState().tool === "select") {
       this.boxSelect(down.x, down.y, e.clientX, e.clientY, mode === "toggle" ? "add" : mode);
     }
@@ -781,6 +912,7 @@ export class Viewport {
   };
 
   private onKey = (e: KeyboardEvent): void => {
+    this.altHeld = e.type === "keydown" ? e.altKey || e.key === "Alt" : e.altKey && e.key !== "Alt";
     const held = e.ctrlKey || e.metaKey;
     if (held !== this.ctrlHeld) {
       this.ctrlHeld = held;
@@ -793,21 +925,50 @@ export class Viewport {
     return new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
   }
 
-  private click(e: PointerEvent, mode: "replace" | "add" | "toggle"): void {
+  private click(e: PointerEvent, mode: "replace" | "add" | "toggle", alt = false): void {
     const state = useEditor.getState();
     this.raycaster.setFromCamera(this.ndc(e.clientX, e.clientY), this.camera);
-    if (state.mode === "edit" && this.editPoints) {
+    if (state.mode === "edit" && this.edit) {
+      const edit = this.edit;
+      if (alt) {
+        const edge = this.pickEdge();
+        if (edge) selectLoop(edge[0], edge[1], mode === "add", mode !== "replace");
+        return;
+      }
+      if (state.selectMode === "face") {
+        const hit = this.raycaster.intersectObject(edit.pick, false)[0];
+        const f = hit?.faceIndex != null ? edit.triFace[hit.faceIndex] : undefined;
+        if (f === undefined) {
+          if (mode === "replace") state.setFaceSelection(new Set(), new Set());
+          return;
+        }
+        const next = mode === "replace" ? new Set<number>() : new Set(state.faceSelection);
+        if (mode === "toggle" && next.has(f)) next.delete(f);
+        else next.add(f);
+        state.setFaceSelection(next, vertsOfFaces(edit.poly, next));
+        return;
+      }
+      if (state.selectMode === "edge") {
+        const edge = this.pickEdge();
+        if (!edge) {
+          if (mode === "replace") state.setVertexSelection(new Set());
+          return;
+        }
+        const next = mode === "replace" ? new Set<number>() : new Set(state.vertexSelection);
+        if (mode === "toggle" && next.has(edge[0]) && next.has(edge[1])) edge.forEach((v) => next.delete(v));
+        else edge.forEach((v) => next.add(v));
+        state.setVertexSelection(next);
+        return;
+      }
       const distance = this.camera.position.distanceTo(this.controls.target);
       this.raycaster.params.Points = { threshold: distance * 0.012 };
-      const hits = this.raycaster.intersectObject(this.editPoints, false);
+      const hits = this.raycaster.intersectObject(edit.points, false);
       if (hits.length) {
         // Hits come nearest-first: the vertex under the pointer closest to the camera.
         const index = hits[0]!.index!;
         const next = mode === "replace" ? new Set<number>() : new Set(state.vertexSelection);
-        // Every vertex at that position — both sides of a UV seam move as one.
-        const group = this.seamGroup(index);
-        if (mode === "toggle" && next.has(index)) for (const i of group) next.delete(i);
-        else for (const i of group) next.add(i);
+        if (mode === "toggle" && next.has(index)) next.delete(index);
+        else next.add(index);
         state.setVertexSelection(next);
       } else if (mode === "replace") {
         state.setVertexSelection(new Set());
@@ -836,13 +997,22 @@ export class Viewport {
       const target = this.editTarget(state);
       if (!target) return;
       const world = target.node.built.group.matrixWorld;
+      const poly = polyOf(target.shape);
+      const p = poly.positions;
+      if (state.selectMode === "face") {
+        const faces = mode === "add" ? new Set(state.faceSelection) : new Set<number>();
+        poly.faces.forEach((face, f) => {
+          const c = faceCenter(poly, face);
+          if (inside(v.set(c[0], c[1], c[2]).applyMatrix4(world).project(this.camera))) faces.add(f);
+        });
+        state.setFaceSelection(faces, vertsOfFaces(poly, faces));
+        return;
+      }
       const next = mode === "add" ? new Set(state.vertexSelection) : new Set<number>();
-      const p = target.shape.positions;
       for (let i = 0; i < p.length / 3; i += 1) {
         v.set(p[i * 3]!, p[i * 3 + 1]!, p[i * 3 + 2]!).applyMatrix4(world).project(this.camera);
         if (inside(v)) next.add(i);
       }
-      for (const i of [...next]) for (const j of this.seamGroup(i)) next.add(j);
       state.setVertexSelection(next);
       return;
     }

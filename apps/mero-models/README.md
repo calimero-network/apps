@@ -18,7 +18,12 @@ apps/mero-models/
 └── app/                       Vite + React + TypeScript + three.js
     ├── src/editor/            the modeller: no React in here except hooks.ts
     │   ├── model.ts           kinds, limits, hierarchy rules (mirrors the contract)
-    │   ├── geometry.ts        typed-array meshes with UVs: subdivide/smooth/extrude/merge/decimate
+    │   ├── geometry.ts        typed-array triangle meshes with UVs: import, decimate, the draw path
+    │   ├── poly.ts            the polygon cage: quads/n-gons, a UV per face corner, hard edges
+    │   ├── polyops.ts         the modelling tools: loop cut, bevel, inset, extrude, bridge, knife…
+    │   ├── modifiers.ts       the modifier stack: mirror, subdivision surface, array, solidify
+    │   ├── polymesh.ts        cage ⇄ triangles: triangulate, split hard edges, recover quads
+    │   ├── examples.ts        example assets, each built step by step with those tools
     │   ├── meshcodec.ts       the mesh blob format: compressed, deterministic, validated on read
     │   ├── blobs.ts           upload/download with the context id, IndexedDB-cached by blob id
     │   ├── textures.ts        blob → image → three.js texture, per colour space
@@ -55,7 +60,10 @@ invite link; tick **Can edit** beside someone to let them build.
 | **Transform** | `G` move · `R` rotate · `S` scale · `W` box select; hold `Ctrl` to snap; Global/Local space; numbers in Properties scrub when dragged and take arithmetic when typed |
 | **Edit** | `Shift+D` duplicate · `X`/`Delete` delete · `H` hide, `Alt+H` show · `Ctrl+Z` / `Ctrl+Shift+Z` undo/redo · Array… |
 | **Hierarchy** | drag rows in the outliner · `Ctrl+G` group · `Ctrl+P` parent to active · `Alt+P` clear parent |
-| **Mesh** | `Tab` edit vertices (converts a primitive) · `A` select all · `E` extrude faces · `M` merge · subdivide, smooth, decimate, flip normals, `Ctrl+J` join, `Ctrl+A` apply transforms, origin to geometry, mirror |
+| **Object** | subdivide, smooth, decimate, flip normals, `Ctrl+J` join, `Ctrl+A` apply transforms, origin to geometry, mirror; a **modifier stack** per mesh in Properties (mirror, subdivision surface, array, solidify), saved with the mesh |
+| **Edit mode** | `Tab` (converts a primitive to a cage of quads) · `1`/`2`/`3` vertex/edge/face select · `Alt`-click an edge for its loop, `Ctrl+Alt`-click for its ring (a face loop in face mode) · `Ctrl+L` linked · X-mirror moves |
+| **Modelling** | `E` extrude (faces along normals, or an open border outward) · `I` inset · `Ctrl+B` bevel · `Ctrl+R` loop cut · `K` knife plane · `J` connect · bridge edge loops · `F` fill · `M` merge · `Ctrl+X` dissolve · smooth, subdivide, symmetrize · mark/clear sharp, sharp by angle · `X` delete. The panel bottom-left adjusts the last tool (width, cuts, thickness…) after the fact |
+| **Examples** | Add → Examples: a sci-fi crate, a fuel drum, a sword, a modular corridor kit, a rock and tree — or all of them on one floor. Each is an ordinary editable cage, built by the same tools (`examples.ts` reads as the recipe) |
 | **View** | `F` frame selected · `Home` frame all · `1`/`3`/`7` front/right/top (`Shift` for the opposite) · `5` ortho · `Z` cycles wireframe/solid/material |
 | **Files** | import OBJ, STL, glTF/GLB, or a scene `.json`; export GLB, OBJ, STL or scene `.json`; `F12` renders a PNG |
 
@@ -91,6 +99,14 @@ Three decisions carry the design:
   every honest node refuses anyone else's write to it; two people checking out
   the same asset offline resolve to one holder when they meet. Check-outs lapse
   (1 hour to 1 week), and an admin can release one.
+- **Meshes are cages.** A mesh that has been modelled is stored as its
+  polygon cage — faces of any size, a UV per face corner, its hard edges and
+  its modifier stack (mesh blob format 2) — and the triangles are derived on
+  every node that reads it. A triangle mesh imported from a DCC stays format 1,
+  byte for byte, until someone edits it; then its triangles are paired back
+  into the quads they came from. Edges steeper than 60° always draw hard;
+  marking an edge sharp hardens a softer one and makes it a crease under
+  subdivision.
 - **Presence is not state.** Selections and cameras stream over the node's
   ephemeral channel. Moving the camera is never a transaction; moving an object
   is one, sent once when the drag ends.
@@ -108,13 +124,19 @@ triangles a mesh; 16 384 pixels a side and 512 MiB a texture or mesh blob
 relay); 1 000 textures a scene. Vertex editing in the browser stops at
 250 000 vertices — heavier meshes are edited in a DCC and re-imported as a new
 version. An import over the mesh limit is decimated to fit, and the status bar
-says by how much.
+says by how much. A modifier stack stops before any modifier that would take a
+mesh past 4 000 000 face corners, and says which it skipped.
+
+Edit-mode selection is by vertex: an edge is selected when both ends are, and
+switching to face mode selects every face whose corners are all selected (as
+in Blender). Bevel makes one segment; the knife cuts along a plane, not a
+drawn line.
 
 ## Tests
 
 ```bash
 cargo test -p mero-models            # contract rules + two-replica convergence
-pnpm -F mero-models test             # geometry, hierarchy, store, sync, codegen drift
+pnpm -F mero-models test             # geometry, the cage tools and modifiers, examples, store, sync, codegen drift
 pnpm -F mero-models test:e2e         # Playwright against a real merod (needs the .mpk)
 ```
 
