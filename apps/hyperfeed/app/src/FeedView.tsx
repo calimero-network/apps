@@ -14,7 +14,6 @@ import {
   progressLine,
   REPLACED,
   resolvable,
-  rowTitle,
   saysMore,
   statusOf,
   timeLabel,
@@ -22,7 +21,7 @@ import {
   typedFacts,
   type Lane,
 } from "./format";
-import { agentDigest, digestLine, headlineOf, isAgent } from "./team";
+import { agentDigest, digestLine, isAgent } from "./team";
 import { TASKS_SHOWN, taskCandidates, taskOf, type TaskPost } from "./tasks";
 import { answersYou, mayAnswer, placeOf, sentenceOf, useChainRoot, type Sentence } from "./people";
 import { milestonesOf, trackLine, type Milestone } from "./milestones";
@@ -81,13 +80,10 @@ export function FeedView({
   newFeed,
   onChat,
   openLink,
-  people = false,
 }: {
   feed: Feed;
   query: string;
   newFeed?: NewFeed;
-  /** The new feed: each row said as who did what ("Agent in Chat posted your stand-up"). */
-  people?: boolean;
   /** Open a chat with your agent; without it, a new conversation opens in place. */
   onChat?: (chain: string) => void;
   /** The signed-in address that shows a row in its app; without it, rows have no Open. */
@@ -203,7 +199,6 @@ export function FeedView({
 
   const rowProps = {
     feed,
-    people,
     onChat,
     onOpenApp: openLink ? openApp : undefined,
     onArchive: archive,
@@ -260,7 +255,6 @@ export function FeedView({
             <TaskPosts
               feed={feed}
               candidates={candidates}
-              people={people}
               onOpen={(chain) => {
                 if (onChat) return onChat(chain);
                 setOpen(chain);
@@ -474,15 +468,12 @@ function TaskPosts({
   candidates,
   onOpen,
   onOpenApp,
-  people = false,
 }: {
   feed: Feed;
   candidates: FeedItem[];
   onOpen: (chain: string) => void;
   /** Opens a linked thing in its app beside the feed. */
   onOpenApp?: (item: FeedItem) => void;
-  /** The new feed: each post tells its story in milestones. */
-  people?: boolean;
 }) {
   const [tasks, setTasks] = useState<TaskPost[]>([]);
   // Where each task stands, as your agent last wrote it: behind "Where it stands" on its post.
@@ -516,7 +507,6 @@ function TaskPosts({
           task={t}
           onOpen={() => onOpen(t.chain)}
           onOpenApp={onOpenApp}
-          people={people}
           checkpoint={checkpoints.get(t.chain)}
           feed={feed}
         />
@@ -529,14 +519,12 @@ function TaskCard({
   task,
   onOpen,
   onOpenApp,
-  people = false,
   checkpoint,
   feed,
 }: {
   task: TaskPost;
   onOpen: () => void;
   onOpenApp?: (item: FeedItem) => void;
-  people?: boolean;
   /** Where it stands, as your agent last wrote it. */
   checkpoint?: CheckpointView;
   /** For the task's watches still waiting, with Cancel. */
@@ -563,7 +551,7 @@ function TaskCard({
           <span className="row-time">{timeLabel(task.at)}</span>
         </span>
         <span className="task-goal">{task.goal}</span>
-        {people && task.track.length > 0 && <Track track={task.track} />}
+        {task.track.length > 0 && <Track track={task.track} />}
         {task.live && <span className="task-live">{task.live}</span>}
         {task.apps.length > 0 && (
           <span className="task-apps" aria-label={`In ${task.apps.map(appName).join(", ")}`}>
@@ -739,16 +727,6 @@ export function linkLabel(link: LinkView, rows: FeedItem[]): string {
 /** A link as a row, for opening it in its app. */
 function linkItem(link: LinkView, label: string): FeedItem {
   return { app: link.app, source_context: link.context, source_label: label } as Partial<FeedItem> as FeedItem;
-}
-
-/** A row's avatar: its app's, or your agent's for a conversation. */
-function RowBadge({ item }: { item: FeedItem }) {
-  if (item.kind !== "message") return <Badge app={item.app} />;
-  return (
-    <span className={`badge badge-md ${item.from === "you" ? "badge-you" : "badge-agent"}`} aria-hidden="true">
-      {item.from === "you" ? "You" : <Spark />}
-    </span>
-  );
 }
 
 function Spark() {
@@ -974,7 +952,6 @@ function Row({
   onOpenApp,
   onArchive,
   onLater,
-  people = false,
 }: {
   item: FeedItem;
   lane: Lane;
@@ -983,7 +960,6 @@ function Row({
   expanded: boolean;
   onToggle: () => void;
   feed: Feed;
-  people?: boolean;
   onChat?: (chain: string) => void;
   onOpenApp?: (item: FeedItem) => void;
   onArchive: (item: FeedItem) => void;
@@ -997,29 +973,14 @@ function Row({
   const body = extraBody(item);
   const command = localCommand(item);
   const openable = Boolean(onOpenApp) && canOpen(item);
-  // In the new feed, your agent's answer in a chat you started reads as that chat: the answer stays in its thread.
-  const root = useChainRoot(people && mayAnswer(item) ? item.chain : "", feed.loadChain);
-  const chat = people && answersYou(item, root) ? root : null;
+  // Your agent's answer in a chat you started reads as that chat: the answer stays in its thread.
+  const root = useChainRoot(mayAnswer(item) ? item.chain : "", feed.loadChain);
+  const chat = answersYou(item, root) ? root : null;
   const noRetry = noRetryLine(item, appName);
   return (
     <li ref={ref} className={`row ${card ? "need" : ""} ${expanded ? "open" : ""} ${item.needs_you ? "needs" : ""}`}>
       <button type="button" className={card ? "need-line" : "row-line"} aria-expanded={expanded} aria-controls={bodyId} onClick={onToggle}>
-        {card ? (
-          <NeedHead item={item} people={people} />
-        ) : people ? (
-          <PeopleLine item={item} chat={chat} />
-        ) : (
-          <>
-            <RowBadge item={item} />
-            <span className="row-text">
-              <span className="row-title">{rowTitle(item, appName)}</span>
-              <span className="row-where">{progressLine(item) ? `Working: ${progressLine(item)}` : whereOf(item)}</span>
-            </span>
-            <Status item={item} />
-            {item.chain_len > 1 && <span className="row-steps">{item.chain_len}</span>}
-            <span className="row-time">{timeLabel(item.chain_at || item.at)}</span>
-          </>
-        )}
+        {card ? <NeedHead item={item} /> : <PeopleLine item={item} chat={chat} />}
       </button>
       {/* On a card the answer is always there: the reason the strip exists. */}
       {card && <Settle item={item} feed={feed} onArchive={onArchive} />}
@@ -1087,8 +1048,7 @@ function Row({
             )}
           </div>
           <LinkChips feed={feed} chain={item.chain} onOpenApp={onOpenApp} canAdd={false} />
-          {item.chain_len > 1 &&
-            (people ? <Story chain={item.chain} lead={item} feed={feed} /> : <Flow chain={item.chain} lead={item.id} feed={feed} />)}
+          {item.chain_len > 1 && <Story chain={item.chain} lead={item} feed={feed} />}
           <AskAgent
             key={item.chain}
             feed={feed}
@@ -1119,7 +1079,7 @@ function Face({ s, item, size }: { s: Sentence; item: FeedItem; size: "sm" | "md
 }
 
 /**
- * A row in the new feed: who did what, as one sentence, with where under it.
+ * A row: who did what, as one sentence, with where under it.
  * `chat` is the message of yours that started the chain when the row is your
  * agent's answer to it: the row is that conversation, and the answer is in its thread.
  */
@@ -1146,29 +1106,16 @@ function PeopleLine({ item, chat }: { item: FeedItem; chat: FeedItem | null }) {
 }
 
 /** A card's head: who wants what, as a sentence, with where and when under it. */
-function NeedHead({ item, people = false }: { item: FeedItem; people?: boolean }) {
-  const h = headlineOf(item, appName);
-  const s = people ? sentenceOf(item, appName) : null;
+function NeedHead({ item }: { item: FeedItem }) {
+  const s = sentenceOf(item, appName);
   const working = progressLine(item);
   return (
     <>
-      {s ? (
-        <Face s={s} item={item} size="sm" />
-      ) : h.person ? (
-        <span className="badge badge-sm badge-person" title={h.who} aria-hidden="true">
-          {h.initials}
-        </span>
-      ) : item.kind === "notification" ? (
-        <Badge app={item.app} size="sm" />
-      ) : (
-        <span className="badge badge-sm badge-agent" aria-hidden="true">
-          <Spark />
-        </span>
-      )}
+      <Face s={s} item={item} size="sm" />
       <span className="need-text">
         <span className="need-sentence">
-          <strong>{s ? s.who : h.who}</strong> {s ? s.verb : h.verb}
-          {(s ? s.what : h.object) && <span className="need-object">{s ? s.what : h.object}</span>}
+          <strong>{s.who}</strong> {s.verb}
+          {s.what && <span className="need-object">{s.what}</span>}
         </span>
         <span className="need-where">
           {working
@@ -1241,7 +1188,7 @@ function Track({ track }: { track: Milestone[] }) {
 }
 
 /**
- * In the new feed, an open chain tells its story in milestones, with the
+ * An open chain tells its story in milestones, with the
  * whole flow behind "More". A chain with no story to tell shows its flow.
  */
 function Story({ chain, lead, feed }: { chain: string; lead: FeedItem; feed: Feed }) {

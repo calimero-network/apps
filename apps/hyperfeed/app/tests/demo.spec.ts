@@ -34,7 +34,7 @@ test("in the demo, a choice is answered in place and the agent delivers it", asy
   await vote.getByRole("button", { name: "Lisbon" }).click();
   // Answered, then the pretend agent reports it delivered: it moves to done.
   await expect(vote.locator(".note")).toContainText("Lisbon");
-  await expect(page.getByRole("region", { name: "Done" })).toContainText('Vote: "Offsite location"', { timeout: 15_000 });
+  await expect(page.getByRole("region", { name: "Done" })).toContainText(/vote: "Offsite location"/i, { timeout: 15_000 });
 
   expect(errors, "an unhandled error escaped to the page").toEqual([]);
 });
@@ -56,13 +56,14 @@ test("in the demo, you ask your agent and the pretend agent answers in the same 
   const thread = page.getByRole("log");
   await expect(thread).toContainText("What's left before the board meeting?");
   await explain(expect(thread.getByText(/pretend agent/)).toBeVisible({ timeout: 15_000 }));
-  // The same chain, in the feed: in your agent's digest.
+  // The same chain, in the feed: in your agent's digest, as your question with its answer in the thread.
   await page.getByRole("link", { name: "Feed", exact: true }).click();
   const agent = page.getByRole("region", { name: "Your agent today" });
   await agent.getByRole("button", { name: /^Show/ }).click();
-  const answer = agent.locator("li.row", { hasText: "pretend agent" });
-  await answer.locator(".row-line, .need-line").click();
-  await expect(answer.getByRole("list", { name: "The whole flow" })).toContainText("What's left before the board meeting?");
+  const chat = agent.locator("li.row", { hasText: "What's left before the board meeting?" });
+  await expect(chat).toContainText("Agent replied");
+  await chat.locator(".row-line, .need-line").click();
+  await expect(chat.getByRole("list", { name: "The whole flow" })).toContainText("pretend agent");
 });
 
 test("in the demo, the chat page holds your chats with your agent", async ({ page }) => {
