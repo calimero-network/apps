@@ -24,7 +24,8 @@ export interface BoardDetail {
    */
   lists: ListView[];
   /**
-   * Unarchived cards, sorted by rank.
+   * Every card of the board, archived ones included, sorted by rank;
+   * filter `archived` for the board view.
    */
   cards: CardView[];
 }
@@ -506,8 +507,9 @@ export class BoardClient {
   /**
    * get_board
    *
-   * A board with its lists and unarchived cards, both sorted by rank. One
-   * call renders a board.
+   * A board with its lists and every card (archived ones included, each
+   * flagged `archived`), both sorted by rank. One call renders a board;
+   * filter `archived` for the board view.
    *
    * # Examples
    * ```json
@@ -771,7 +773,8 @@ export class BoardClient {
   /**
    * set_card_archived
    *
-   * Archive or unarchive a card. Archived cards leave the board view.
+   * Archive or unarchive a card. Archived cards stay in `get_board`, flagged
+   * `archived`, and are hidden from the board view by clients.
    *
    * # Examples
    * ```json
