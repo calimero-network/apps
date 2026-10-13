@@ -24,7 +24,7 @@ use calimero_sdk::env;
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_sdk::AccountId;
-use calimero_storage::collections::{Authored, IndexedMap, StoreError};
+use calimero_storage::collections::{Authored, IndexedMap, LwwRegister, StoreError};
 use calimero_storage::env as storage_env;
 
 pub mod events;
@@ -329,6 +329,125 @@ impl Board {
         by_rank(&mut out, |b| (b.rank.clone(), b.id.clone()));
         Ok(out)
     }
+
+    // ----- lists ----------------------------------------------------------
+
+    /// Add a list (column) to a board and return its id (`list-<ms>-<8 hex>`).
+    ///
+    /// # Arguments
+    /// * `name` - 1 to 64 characters.
+    /// * `rank` - optional position among the board's lists; omitted appends last.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"board_id":"<board id>","name":"In progress","rank":null}
+    /// ```
+    pub fn create_list(
+        &mut self,
+        board_id: String,
+        name: String,
+        rank: Option<String>,
+    ) -> app::Result<String> {
+        validate_name("name", &name)?;
+        if !self.board_exists(&board_id)? {
+            app::bail!(Error::NotFound(board_id));
+        }
+        let rank = match rank {
+            Some(r) => {
+                check_rank(&r)?;
+                r
+            }
+            None => rank_after(
+                self.lists_of_board(&board_id)?
+                    .last()
+                    .map(|l| l.rank.as_str()),
+            ),
+        };
+        let id = new_id("list", now_ms());
+        let _ = self
+            .lists
+            .insert(
+                id.clone(),
+                ListRow {
+                    board_id: LwwRegister::new(board_id.clone()),
+                    name: LwwRegister::new(name),
+                    rank: LwwRegister::new(rank),
+                },
+            )
+            .map_err(store_err("lists.insert"))?;
+        app::emit!(Event::ListCreated {
+            id: &id,
+            board_id: &board_id
+        });
+        Ok(id)
+    }
+
+    /// Rename a list.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"list_id":"<list id>","name":"Doing"}
+    /// ```
+    #[app::idempotent]
+    pub fn rename_list(&mut self, list_id: String, name: String) -> app::Result<()> {
+        validate_name("name", &name)?;
+        let board_id = self.require_list(&list_id)?;
+        let _ = self
+            .lists
+            .update(&list_id, |l| l.name.set(name))
+            .map_err(store_err("lists.update"))?;
+        app::emit!(Event::ListChanged {
+            id: &list_id,
+            board_id: &board_id
+        });
+        Ok(())
+    }
+
+    /// Reorder a list among its board's lists.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"list_id":"<list id>","rank":"n"}
+    /// ```
+    #[app::idempotent]
+    pub fn move_list(&mut self, list_id: String, rank: String) -> app::Result<()> {
+        check_rank(&rank)?;
+        let board_id = self.require_list(&list_id)?;
+        let _ = self
+            .lists
+            .update(&list_id, |l| l.rank.set(rank))
+            .map_err(store_err("lists.update"))?;
+        app::emit!(Event::ListChanged {
+            id: &list_id,
+            board_id: &board_id
+        });
+        Ok(())
+    }
+
+    /// Delete a list. Fails while it still holds an unarchived card.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"list_id":"<list id>"}
+    /// ```
+    #[app::destructive]
+    pub fn delete_list(&mut self, list_id: String) -> app::Result<()> {
+        let board_id = self.require_list(&list_id)?;
+        if self.live_cards_in_list(&list_id)? > 0 {
+            app::bail!(Error::Invalid(
+                "list still holds cards; move or archive them first".into()
+            ));
+        }
+        let _ = self
+            .lists
+            .remove(&list_id)
+            .map_err(store_err("lists.remove"))?;
+        app::emit!(Event::ListDeleted {
+            id: &list_id,
+            board_id: &board_id
+        });
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -391,6 +510,72 @@ impl Board {
             .update(id, edit)
             .map_err(store_err("boards.update"))?;
         Ok(())
+    }
+
+    fn list_row(&self, list_id: &str) -> app::Result<Option<ListRow>> {
+        Ok(self
+            .lists
+            .get(list_id)
+            .map_err(store_err("lists.get"))?
+            .map(|row| row.clone()))
+    }
+
+    /// The list's board id, or NotFound.
+    fn require_list(&self, list_id: &str) -> app::Result<String> {
+        match self.list_row(list_id)? {
+            Some(row) => Ok(row.board_id.get().clone()),
+            None => Err(AppError::from(Error::NotFound(list_id.to_owned()))),
+        }
+    }
+
+    pub(crate) fn lists_of_board(&self, board_id: &str) -> app::Result<Vec<ListView>> {
+        let mut out: Vec<ListView> = self
+            .lists
+            .query("board_id")
+            .eq(board_id)
+            .entries()
+            .map_err(store_err("lists.query"))?
+            .into_iter()
+            .map(|(id, row)| ListView {
+                id,
+                board_id: row.board_id.get().clone(),
+                name: row.name.get().clone(),
+                rank: row.rank.get().clone(),
+            })
+            .collect();
+        by_rank(&mut out, |l| (l.rank.clone(), l.id.clone()));
+        Ok(out)
+    }
+
+    /// Unarchived cards in a list. Filled in with cards in the next task; a
+    /// list with no card rows at all reports 0.
+    fn live_cards_in_list(&self, list_id: &str) -> app::Result<u64> {
+        let mut n = 0u64;
+        for (id, row) in self
+            .cards
+            .query("list_id")
+            .eq(list_id)
+            .entries()
+            .map_err(store_err("cards.query"))?
+        {
+            if !*row.archived.get() && self.card_exists(&id)? {
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
+
+    fn card_holder(&self, id: &String) -> app::Result<Option<(AccountId, CardHeader)>> {
+        Ok(self
+            .card_headers
+            .entries_at(id)
+            .map_err(store_err("card_headers.entries_at"))?
+            .into_iter()
+            .min_by_key(|(owner, _)| *owner))
+    }
+
+    fn card_exists(&self, id: &str) -> app::Result<bool> {
+        Ok(self.card_holder(&id.to_owned())?.is_some())
     }
 }
 
@@ -468,5 +653,57 @@ mod tests {
         app.call(|s| s.rename_board(a.clone(), "Back".into()))
             .unwrap();
         assert_eq!(app.view(|s| s.list_boards(false)).unwrap()[0].name, "Back");
+    }
+
+    pub(crate) fn board_with_list(app: &mut TestHost<Board>) -> (String, String) {
+        let b = app.call(|s| s.create_board("B".into(), None)).unwrap();
+        let l = app
+            .call(|s| s.create_list(b.clone(), "Todo".into(), None))
+            .unwrap();
+        (b, l)
+    }
+
+    #[test]
+    fn lists_are_created_in_rank_order_per_board() {
+        let mut app = host();
+        let (b, todo) = board_with_list(&mut app);
+        let doing = app
+            .call(|s| s.create_list(b.clone(), "Doing".into(), None))
+            .unwrap();
+        let other = app.call(|s| s.create_board("Other".into(), None)).unwrap();
+        let _ = app
+            .call(|s| s.create_list(other.clone(), "Elsewhere".into(), None))
+            .unwrap();
+        let lists = app.view(|s| s.lists_of_board(&b)).unwrap();
+        assert_eq!(
+            lists.iter().map(|l| l.id.as_str()).collect::<Vec<_>>(),
+            vec![todo.as_str(), doing.as_str()]
+        );
+        assert!(lists[0].rank < lists[1].rank);
+        assert!(app
+            .call(|s| s.create_list("board-nope".into(), "x".into(), None))
+            .is_err());
+        assert!(app
+            .call(|s| s.create_list(b.clone(), "".into(), None))
+            .is_err());
+    }
+
+    #[test]
+    fn rename_move_and_delete_list() {
+        let mut app = host();
+        let (b, todo) = board_with_list(&mut app);
+        let doing = app
+            .call(|s| s.create_list(b.clone(), "Doing".into(), None))
+            .unwrap();
+        app.call(|s| s.rename_list(todo.clone(), "Backlog".into()))
+            .unwrap();
+        app.call(|s| s.move_list(todo.clone(), "z".into())).unwrap();
+        let lists = app.view(|s| s.lists_of_board(&b)).unwrap();
+        assert_eq!(lists[0].id, doing);
+        assert_eq!(lists[1].name, "Backlog");
+        app.call(|s| s.delete_list(doing.clone())).unwrap();
+        assert_eq!(app.view(|s| s.lists_of_board(&b)).unwrap().len(), 1);
+        assert!(app.call(|s| s.delete_list(doing.clone())).is_err());
+        assert!(app.call(|s| s.move_list(todo.clone(), "".into())).is_err());
     }
 }
