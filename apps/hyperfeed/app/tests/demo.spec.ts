@@ -118,7 +118,7 @@ for (const [device, size] of [
   ["a computer", { width: 1280, height: 800 }],
   ["a phone", { width: 360, height: 740 }],
 ] as const) {
-  test(`on ${device}, you delete a chat after confirming, and Undo brings it back`, async ({ page }) => {
+  test(`on ${device}, you archive a chat after confirming, restore it from Archived chats, and Undo brings it back`, async ({ page }) => {
     const explain = watch(page);
     await page.setViewportSize(size);
     await page.goto("/demo/chat");
@@ -127,18 +127,27 @@ for (const [device, size] of [
     await page.getByLabel("Message your agent").press("Enter");
     await expect(page.getByRole("log").getByText("Throwaway question", { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Delete chat" }).click();
-    const ask = page.getByRole("group", { name: "Delete this chat?" });
+    await page.getByRole("button", { name: "Archive chat" }).click();
+    const ask = page.getByRole("group", { name: "Archive this chat?" });
     await expect(ask).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await ask.getByRole("button", { name: "Delete" }).click();
+    await ask.getByRole("button", { name: "Archive" }).click();
 
     const chats = page.getByRole("navigation", { name: "Chats" });
-    await expect(page.getByRole("status").filter({ hasText: "Chat deleted" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Chat archived" })).toBeVisible();
     await expect(chats).toBeVisible();
     await explain(expect(chats.getByRole("button", { name: /Throwaway question/ })).toHaveCount(0));
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(chats.getByRole("button", { name: /Throwaway question/ })).toBeVisible();
+
+    // Archived again, it waits under Archived chats, and Restore brings it back.
+    await chats.getByRole("button", { name: /Throwaway question/ }).click();
+    await page.getByRole("button", { name: "Archive chat" }).click();
+    await page.getByRole("group", { name: "Archive this chat?" }).getByRole("button", { name: "Archive" }).click();
+    await chats.getByRole("button", { name: /Show archived chats/ }).click();
+    const shelf = chats.getByRole("list", { name: "Archived chats" });
+    await shelf.getByRole("button", { name: "Restore" }).first().click();
+    await expect(chats.getByRole("button", { name: /Throwaway question/ })).toHaveCount(1);
   });
 }
 
