@@ -103,10 +103,6 @@ export async function resolveNamespaceApp(cfg: Config): Promise<{ namespaceId: s
   return { namespaceId: match.namespaceId, applicationId: match.targetApplicationId };
 }
 
-// The app's legacy workspace bootstrap alias (removed); ignore leftovers from
-// older nodes so it never surfaces as a repo name.
-const RESERVED_ALIAS_NAMES = new Set(['board']);
-
 /**
  * The alias-list envelope has two shapes in the wild: mero-js's .d.ts type
  * wraps entries as {data: {aliases: [{name, value}]}}, but the real node
@@ -139,10 +135,10 @@ export async function listNamespaceRepos(cfg: Config, namespaceId: string): Prom
   const aliasesJson = await aliasesRes.json();
   const contexts = contextsJson?.data ?? [];
 
-  // First non-reserved alias per context id, for contexts the group-entry has no name for.
+  // First alias per context id, for contexts the group-entry has no name for.
   const aliasNameByContextId = new Map<string, string>();
   for (const a of parseAliasEntries(aliasesJson)) {
-    if (RESERVED_ALIAS_NAMES.has(a.name) || aliasNameByContextId.has(a.value)) continue;
+    if (aliasNameByContextId.has(a.value)) continue;
     aliasNameByContextId.set(a.value, a.name);
   }
 

@@ -33,6 +33,7 @@
 
 use std::collections::BTreeSet;
 
+use board_types::{generate_id, validate_label, Error};
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
@@ -43,7 +44,6 @@ use calimero_sdk::AccountId;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{Authored, IndexedMap, LwwRegister, Mergeable, StoreError};
 use calimero_storage::env as storage_env;
-use board_types::{generate_id, validate_label, Error};
 
 pub mod events;
 use events::Event;

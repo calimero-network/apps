@@ -44,7 +44,7 @@ repo, else it errors listing what's available.
 | `TRACKER_CONTEXT` | no | - | Direct pin to a single context id or alias (backward compat). When set, it bypasses namespace/repo resolution entirely and every `repo` param is ignored. |
 | `CALIMERO_AUTH_TOKEN` | no | - | Bearer token sent to both `/admin-api` and `/jsonrpc`. |
 | `TRACKER_EXECUTOR` | no | - | Executor public key for RPC calls. If unset, resolved from the node's first owned identity for the target context (`GET /admin-api/contexts/{id}/identities-owned`), mirroring `useWorkspace.ts`. |
-| `TRACKER_SERVICE` | no | `issue-tracker` | Service name passed to `createContext` by `add_repo`. |
+| `TRACKER_SERVICE` | no | `board` | Service name passed to `createContext` by `add_repo`. |
 
 ## Run it
 

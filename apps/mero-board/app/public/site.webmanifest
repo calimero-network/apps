@@ -1,7 +1,7 @@
 {
   "name": "Mero Board",
   "short_name": "Mero Board",
-  "description": "Issue tracking on Calimero — peer-to-peer projects, issues and comments with no central server.",
+  "description": "Kanban boards on Calimero",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0e140f",

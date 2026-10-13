@@ -220,7 +220,7 @@ export async function addRepo(
   } catch (err) {
     // stderr only - stdout is reserved for the MCP protocol stream.
     console.error(
-      `[issue-tracker-mcp] alias creation for "${name}" failed (${err instanceof Error ? err.message : String(err)}); repo created without an alias.`,
+      `[board-mcp] alias creation for "${name}" failed (${err instanceof Error ? err.message : String(err)}); repo created without an alias.`,
     );
   }
 
@@ -242,7 +242,7 @@ function errorResult(err: unknown) {
 // ---- Server wiring ----
 
 export function createServer(cfg: Config = loadConfig()): McpServer {
-  const server = new McpServer({ name: 'issue-tracker-mcp', version: '0.1.0' });
+  const server = new McpServer({ name: 'board-mcp', version: '0.1.0' });
 
   // Resolved per repo and reused across every tool call in the process's lifetime.
   const target = createTargetResolver(cfg);

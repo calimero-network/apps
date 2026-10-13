@@ -495,17 +495,6 @@ test('listNamespaceRepos prefers the group-entry name over the alias when both a
   assert.deepEqual(repos, [{ contextId: 'ctx-1', name: 'core' }]);
 });
 
-test('listNamespaceRepos ignores the legacy issue-tracker bootstrap alias', async () => {
-  const repos = await withFetch(
-    reposFetch(
-      [{ contextId: 'ctx-1' }],
-      [{ name: 'board', value: 'ctx-1' }],
-    ),
-    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
-  );
-  assert.deepEqual(repos, []);
-});
-
 test('listNamespaceRepos dedupes when two aliases point at the same context', async () => {
   const repos = await withFetch(
     reposFetch(
