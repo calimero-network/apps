@@ -3,7 +3,7 @@
  * (setMemberMetadata), resolved to a display name and falling back to a
  * truncated key when a member has none. `useWorkspace` owns the member map;
  * `makeAliases` adapts it into the small `UseAliasesReturn` surface the
- * members list, issue detail, and sidebar already consume.
+ * members list, board views, and sidebar already consume.
  */
 import { truncateKey } from '../utils/display';
 

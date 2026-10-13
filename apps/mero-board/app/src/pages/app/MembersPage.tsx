@@ -149,7 +149,7 @@ export default function MembersPage(): React.ReactElement {
             <strong>New members join without permissions.</strong>
             <p>
               Anyone invited to this workspace will be able to open it but not add a
-              repository or invite anyone else. This happens when the permission
+              folder or invite anyone else. This happens when the permission
               defaults could not be set when the workspace was created.
             </p>
           </div>
@@ -225,7 +225,7 @@ export default function MembersPage(): React.ReactElement {
                 {roles.canManageMembers && !isAdminRole(role) && (
                   <span className="toggles">
                     <CapToggle
-                      label="Add repos"
+                      label="Add folders"
                       bit={CAP.CAN_CREATE_CONTEXT}
                       effective={effective}
                       disabled={busyAccount === account}

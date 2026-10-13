@@ -5,9 +5,6 @@ import { ToastProvider } from '@calimero-network/mero-ui';
 
 import LandingPage from './pages/landing/LandingPage';
 import AppPage from './pages/app/AppPage';
-import IssuesView from './pages/app/IssuesView';
-import IssueDetailPage from './pages/app/IssueDetailPage';
-import BoardPage from './pages/app/BoardPage';
 import MembersPage from './pages/app/MembersPage';
 import InvitationRouteGate from './components/InvitationRouteGate';
 import { AppThemeProvider } from './theme';
@@ -95,13 +92,11 @@ export default function App() {
                   already pressed to get there. The path stays as a redirect so a
                   bookmark lands on the front door instead of a blank route. */}
               <Route path="/login" element={<Navigate to="/" replace />} />
-              {/* Tracker shell + routed views. The index stays at APP_ROUTE (no
-                  URL redirect) so the "All Issues" list is the default and the
-                  post-auth resting URL is unchanged. */}
+              {/* Board shell + routed views. Task 10 replaces the placeholder
+                  index with the board pages; the post-auth resting URL stays
+                  APP_ROUTE. */}
               <Route path={APP_ROUTE} element={<RequireAuth><AppPage /></RequireAuth>}>
-                <Route index element={<IssuesView />} />
-                <Route path="issues/:id" element={<IssueDetailPage />} />
-                <Route path="board" element={<BoardPage />} />
+                <Route index element={<div data-testid="folder-home" />} />
                 <Route path="members" element={<MembersPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

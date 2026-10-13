@@ -1,5 +1,5 @@
 // Shared modal styling primitives, factored out of SetAliasModal/JoinModal so
-// the onboarding dialogs (create namespace, add repo, alias gate) share one
+// the onboarding dialogs (create namespace, add folder, alias gate) share one
 // look without re-deriving the same styled blocks each time.
 import styled, { keyframes } from 'styled-components';
 import { tokens as t } from '../theme';

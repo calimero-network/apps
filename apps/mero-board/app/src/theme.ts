@@ -122,28 +122,7 @@ export const tokens = {
 
 export type Tokens = typeof tokens;
 
-/** Ordered issue statuses (match the backend + e2e). */
-export const STATUSES = ['Open', 'In progress', 'Blocked', 'Done'] as const;
-/** Ordered issue priorities, low → urgent. */
-export const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
-
-/** Status-dot colour per status. */
-export const STATUS_COLOR: Record<string, string> = {
-  Open: '#8A909C',
-  'In progress': tokens.color.high,
-  Blocked: tokens.color.urgent,
-  Done: tokens.color.done,
-};
-
-/** Priority-glyph colour per priority. */
-export const PRIORITY_COLOR: Record<string, string> = {
-  low: tokens.color.low,
-  medium: tokens.color.medium,
-  high: tokens.color.high,
-  urgent: tokens.color.urgent,
-};
-
-/** Wraps the tracker in the dark token theme (brief: ThemeProvider in App.tsx). */
+/** Wraps the app in the dark token theme (brief: ThemeProvider in App.tsx). */
 export function AppThemeProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   return React.createElement(ThemeProvider, { theme: tokens }, children);
 }

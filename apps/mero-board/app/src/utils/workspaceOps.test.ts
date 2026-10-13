@@ -1,5 +1,5 @@
 /**
- * The admin writes behind "create a workspace" and "add a repo".
+ * The admin writes behind "create a workspace" and "add a folder".
  *
  * What is pinned: every call goes to the admin client the function is GIVEN
  * (the session's `useMero().admin`), nothing is reached for anywhere else, and
@@ -83,7 +83,7 @@ describe('createWorkspaceContext', () => {
       applicationId: 'app-1',
       groupId: NS,
       serviceName: 'board',
-      name: 'Q3 repo',
+      name: 'Q3 folder',
     });
     expect(id).toBe(CTX);
     expect(createContext).toHaveBeenCalledWith({
@@ -91,7 +91,7 @@ describe('createWorkspaceContext', () => {
       groupId: NS,
       serviceName: 'board',
       initializationParams: [],
-      name: 'Q3 repo',
+      name: 'Q3 folder',
     });
   });
 });

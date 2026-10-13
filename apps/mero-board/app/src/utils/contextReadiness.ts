@@ -35,7 +35,7 @@
  * the exact message strings above. Everything else is a real error and is
  * surfaced immediately.
  *
- * And even a match is only ever a REPRIEVE, not an exemption: `useIssues` starts
+ * And even a match is only ever a REPRIEVE, not an exemption: the board data hook starts
  * a clock on the first one and promotes it to a real error if it does not clear
  * (see `WARMUP_GRACE_MS`). A context stuck uninitialized forever is a genuine
  * fault and has to be reportable.

@@ -1,24 +1,24 @@
 /**
  * useWorkspace - the single owner of workspace resolution.
  *
- * Namespace/repo model:
+ * Namespace/folder model:
  *  - A namespace is a team workspace. It is created or joined explicitly
  *    (no silent auto-create). `activeNs` is persisted in localStorage.
- *  - A context inside the namespace is ONE repo. Repos are added explicitly
- *    (name + GitHub URL); `activeRepo` (a contextId) is persisted per
- *    namespace and feeds every issue view.
+ *  - A context inside the namespace is ONE folder. Folders are added explicitly
+ *    (by name); `activeFolder` (a contextId) is persisted per
+ *    namespace and feeds every board view.
  *  - Every human-readable NAME lives somewhere replicated, because a name only
  *    one node can read is worse than no name at all: the creator sees "Platform
  *    team" and everyone they invite sees `20150f8a`.
  *      * workspace name -> `createNamespace({name})` + the group metadata record
  *        it is served from, and `groupAlias` inside the invitation payload so
  *        `joinNamespace({groupName})` can record it at join time;
- *      * repo name      -> the context metadata record (`setContextMetadata`),
+ *      * folder name      -> the context metadata record (`setContextMetadata`),
  *        not just `createContext({name})`, which is a label local to the node
  *        that created it;
  *      * people names   -> namespace member metadata (`setMemberMetadata`).
  *  - Desktop SSO: when the auth callback carries a contextId + identity, we
- *    treat that context as the active repo and resolve its namespace, skipping
+ *    treat that context as the active folder and resolve its namespace, skipping
  *    the pickers entirely.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -38,7 +38,6 @@ import { PRIMARY_SERVICE } from '../config';
 import { buildInvitePayload } from '../utils/invitePayload';
 import { redeemInviteCode } from '../utils/redeemInvite';
 import { createWorkspaceContext, foundWorkspace, publishContextName } from '../utils/workspaceOps';
-import { BoardClient } from '../generated/BoardClient';
 import { useApplicationId } from './useApplicationId';
 import { decideActiveNs, useAnswered } from './activeNamespace';
 import { useMemberRoles, type UseMemberRolesReturn } from './useMemberRoles';
@@ -47,14 +46,14 @@ import {
   readActiveNs,
   writeActiveNs,
   dropLegacyActiveNs,
-  readActiveRepo,
-  writeActiveRepo,
+  readActiveFolder,
+  writeActiveFolder,
   clearPersistedWorkspace,
 } from './workspacePersistence';
 import { markNamespaceJustJoined, useJoinSync } from '@calimero-apps/join-sync';
 import type { RedeemOutcome } from '@calimero-apps/invite';
 
-export interface RepoEntry {
+export interface FolderEntry {
   contextId: string;
   /** Display name (context label) or a truncated id fallback. */
   name: string;
@@ -76,8 +75,8 @@ export interface CreateWorkspaceResult {
 
 export interface UseWorkspaceReturn {
   /**
-   * A workspace joined this session whose repos have not replicated yet. The
-   * sidebar shows "syncing" instead of "No repos yet", which is otherwise what
+   * A workspace joined this session whose folders have not replicated yet. The
+   * sidebar shows "syncing" instead of "No folders yet", which is otherwise what
    * a brand-new member reads about a workspace full of them.
    */
   isSyncing: boolean;
@@ -104,14 +103,14 @@ export interface UseWorkspaceReturn {
   invite: () => Promise<string>;
   inviteLoading: boolean;
 
-  // repos (contexts inside the active namespace)
-  repos: RepoEntry[];
-  activeRepo: string | null;
-  selectRepo: (contextId: string) => void;
-  addRepo: (name: string, repoUrl: string) => Promise<string | null>;
-  addRepoLoading: boolean;
-  addRepoError: Error | null;
-  reposLoading: boolean;
+  // folders (contexts inside the active namespace)
+  folders: FolderEntry[];
+  activeFolder: string | null;
+  selectFolder: (contextId: string) => void;
+  addFolder: (name: string) => Promise<string | null>;
+  addFolderLoading: boolean;
+  addFolderError: Error | null;
+  foldersLoading: boolean;
 
   // people (namespace members) + identity
   contextId: string | null;
@@ -125,10 +124,6 @@ export interface UseWorkspaceReturn {
   membersLoaded: boolean;
   setMemberName: (name: string) => Promise<void>;
   refetchMembers: () => Promise<void>;
-
-  // active repo metadata (shared state)
-  repoUrl: string;
-  setRepoUrl: (url: string) => Promise<void>;
 
   // status
   ready: boolean;
@@ -250,31 +245,31 @@ export function useWorkspace(): UseWorkspaceReturn {
     writeActiveNs(id);
   }, []);
 
-  // --- Contexts (repos) in the active namespace ---
-  const { contexts, loading: reposLoading, refetch: refetchContexts } =
+  // --- Contexts (folders) in the active namespace ---
+  const { contexts, loading: foldersLoading, refetch: refetchContexts } =
     useGroupContexts(activeNs);
 
-  // Repo names, from the REPLICATED context metadata record.
+  // Folder names, from the REPLICATED context metadata record.
   //
   // `createContext({name})` gives the context a label on the CREATOR's node.
   // `listGroupContexts` then reports it there and the creator sees "mero-core"
-  // — but an invited member's node never received that label, so the same repo
+  // — but an invited member's node never received that label, so the same folder
   // rendered as `a1b2c3d4` for everyone else. `setContextMetadata` writes a CRDT
   // `MetadataRecord` against the managing group, which is the only place a name
   // written on one node is readable on another (this app ships the pattern as
-  // `recipes/context-metadata`; `addRepo` now writes it).
+  // `recipes/context-metadata`; `addFolder` now writes it).
   //
   // Keyed off the context IDS rather than the array, because `refetchContexts`
   // returns a fresh array on every poll and would otherwise re-fetch metadata
-  // for every repo on every refetch.
+  // for every folder on every refetch.
   const contextIdsKey = useMemo(
     () => contexts.map((c) => c.contextId).join(','),
     [contexts],
   );
-  const [repoMetaNames, setRepoMetaNames] = useState<Map<string, string>>(new Map());
+  const [folderMetaNames, setFolderMetaNames] = useState<Map<string, string>>(new Map());
   useEffect(() => {
     const ids = contextIdsKey ? contextIdsKey.split(',') : [];
-    if (!admin || !activeNs || ids.length === 0) { setRepoMetaNames(new Map()); return; }
+    if (!admin || !activeNs || ids.length === 0) { setFolderMetaNames(new Map()); return; }
     let cancelled = false;
     (async () => {
       const entries = await Promise.all(
@@ -289,62 +284,62 @@ export function useWorkspace(): UseWorkspaceReturn {
         }),
       );
       if (cancelled) return;
-      setRepoMetaNames(new Map(entries.filter((e): e is [string, string] => e !== null)));
+      setFolderMetaNames(new Map(entries.filter((e): e is [string, string] => e !== null)));
     })();
     return () => { cancelled = true; };
   }, [admin, activeNs, contextIdsKey]);
 
-  const repos = useMemo<RepoEntry[]>(
+  const folders = useMemo<FolderEntry[]>(
     () =>
       contexts.map((c) => ({
         contextId: c.contextId,
         // Shared record first: the listing's `name` is this node's own label and
         // is absent on a node that did not create the context.
         name:
-          repoMetaNames.get(c.contextId) ||
+          folderMetaNames.get(c.contextId) ||
           c.name?.trim() ||
           c.contextId.slice(0, 8),
       })),
-    [contexts, repoMetaNames],
+    [contexts, folderMetaNames],
   );
 
-  // --- Active repo (a contextId; persisted per namespace) ---
-  const [activeRepo, setActiveRepo] = useState<string | null>(callbackContextId);
-  const userSelectedRepo = useRef(false);
+  // --- Active folder (a contextId; persisted per namespace) ---
+  const [activeFolder, setActiveFolder] = useState<string | null>(callbackContextId);
+  const userSelectedFolder = useRef(false);
 
-  // On a namespace switch, drop the previous namespace's repo so a stale
+  // On a namespace switch, drop the previous namespace's folder so a stale
   // contextId never leaks into the new namespace's views before its context
-  // list resolves. The SSO path pins its own repo and is exempt.
+  // list resolves. The SSO path pins its own folder and is exempt.
   useEffect(() => {
     if (callbackContextId) return;
-    userSelectedRepo.current = false;
-    setActiveRepo(null);
+    userSelectedFolder.current = false;
+    setActiveFolder(null);
   }, [activeNs, callbackContextId]);
 
-  // Prefer the SSO callback context; otherwise auto-select the persisted repo
-  // if it still exists, else the first repo, else none (add-repo empty state).
+  // Prefer the SSO callback context; otherwise auto-select the persisted folder
+  // if it still exists, else the first folder, else none (add-folder empty state).
   useEffect(() => {
-    if (callbackContextId) { setActiveRepo(callbackContextId); return; }
-    if (!activeNs) { setActiveRepo(null); return; }
-    if (userSelectedRepo.current && activeRepo && repos.some((r) => r.contextId === activeRepo)) {
+    if (callbackContextId) { setActiveFolder(callbackContextId); return; }
+    if (!activeNs) { setActiveFolder(null); return; }
+    if (userSelectedFolder.current && activeFolder && folders.some((r) => r.contextId === activeFolder)) {
       return;
     }
-    const persisted = readActiveRepo(activeNs);
-    if (persisted && repos.some((r) => r.contextId === persisted)) {
-      setActiveRepo(persisted);
+    const persisted = readActiveFolder(activeNs);
+    if (persisted && folders.some((r) => r.contextId === persisted)) {
+      setActiveFolder(persisted);
       return;
     }
-    if (activeRepo && repos.some((r) => r.contextId === activeRepo)) return;
-    setActiveRepo(repos[0]?.contextId ?? null);
-  }, [callbackContextId, activeNs, repos, activeRepo]);
+    if (activeFolder && folders.some((r) => r.contextId === activeFolder)) return;
+    setActiveFolder(folders[0]?.contextId ?? null);
+  }, [callbackContextId, activeNs, folders, activeFolder]);
 
-  const selectRepo = useCallback((contextId: string) => {
-    userSelectedRepo.current = true;
-    setActiveRepo(contextId);
-    if (activeNs) writeActiveRepo(activeNs, contextId);
+  const selectFolder = useCallback((contextId: string) => {
+    userSelectedFolder.current = true;
+    setActiveFolder(contextId);
+    if (activeNs) writeActiveFolder(activeNs, contextId);
   }, [activeNs]);
 
-  // --- Executor identity for the active repo context (for RPC) ---
+  // --- Executor identity for the active folder context (for RPC) ---
   const [executorPublicKey, setExecutorPublicKey] = useState<string | null>(
     callbackContextIdentity,
   );
@@ -362,33 +357,33 @@ export function useWorkspace(): UseWorkspaceReturn {
     // the node's own client on a node login, and on an account the account
     // admin, whose `joinContext` joins the context's group as the account and
     // whose `getContextIdentitiesOwned` answers with the account itself.
-    if (!mero || !admin || !activeRepo) { setExecutorPublicKey(callbackContextIdentity); return; }
-    if (activeRepo === callbackContextId && callbackContextIdentity) return;
+    if (!mero || !admin || !activeFolder) { setExecutorPublicKey(callbackContextIdentity); return; }
+    if (activeFolder === callbackContextId && callbackContextIdentity) return;
     let cancelled = false;
     setExecutorPublicKey(null);
     (async () => {
       try {
-        const { identities } = await admin.getContextIdentitiesOwned(activeRepo);
+        const { identities } = await admin.getContextIdentitiesOwned(activeFolder);
         if (cancelled) return;
         if (identities.length > 0) { setExecutorPublicKey(identities[0]); return; }
 
         // No identity in this context yet. Auto-follow enrols a member in
         // contexts created AFTER they joined the namespace and in no others, so
-        // every repo that already existed when someone accepted an invitation
+        // every folder that already existed when someone accepted an invitation
         // lands here — and without an executor key `ready` never flips, which
         // read as "the invite worked but the app is stuck loading forever".
         // Joining is an explicit call; membership in the namespace is what
         // authorises it.
-        const joined = await admin.joinContext(activeRepo);
+        const joined = await admin.joinContext(activeFolder);
         if (!cancelled && joined?.memberPublicKey) {
           setExecutorPublicKey(joined.memberPublicKey);
         }
       } catch {
-        /* leave null - useItems stays not-ready until an identity resolves */
+        /* leave null - the workspace stays not-ready until an identity resolves */
       }
     })();
     return () => { cancelled = true; };
-  }, [mero, admin, activeRepo, callbackContextId, callbackContextIdentity]);
+  }, [mero, admin, activeFolder, callbackContextId, callbackContextIdentity]);
 
   // --- Namespace members (people names live here) ---
   const {
@@ -453,39 +448,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     [activeNs, selfIdentity, setMemberMetadata, refetchMembers],
   );
 
-  // --- Active repo's shared repo_url ---
-  const repoClient = useMemo(
-    () =>
-      mero && activeRepo && executorPublicKey
-        ? new BoardClient(mero, activeRepo)
-        : null,
-    [mero, activeRepo, executorPublicKey],
-  );
-  const [repoUrl, setRepoUrlState] = useState('');
-  useEffect(() => {
-    if (!repoClient) { setRepoUrlState(''); return; }
-    let cancelled = false;
-    (async () => {
-      try {
-        const info = await repoClient.getRepoInfo();
-        if (!cancelled) setRepoUrlState(info?.repo_url ?? '');
-      } catch {
-        if (!cancelled) setRepoUrlState('');
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [repoClient]);
-
-  const setRepoUrl = useCallback(
-    async (url: string) => {
-      if (!repoClient) throw new Error('Workspace not ready');
-      await repoClient.setRepoUrl({ url });
-      setRepoUrlState(url);
-    },
-    [repoClient],
-  );
-
-  // --- Mutations: create namespace / add repo / join / invite ---
+  // --- Mutations: create namespace / add folder / join / invite ---
   const [createNamespaceLoading, setCreateNamespaceLoading] = useState(false);
   const [createNamespaceError, setCreateNamespaceError] = useState<Error | null>(null);
   const createNamespace = useCallback(
@@ -522,29 +485,24 @@ export function useWorkspace(): UseWorkspaceReturn {
     [admin, applicationId, refetchNamespaces, selectNamespace],
   );
 
-  const [addRepoLoading, setAddRepoLoading] = useState(false);
-  const [addRepoError, setAddRepoError] = useState<Error | null>(null);
-  const addRepo = useCallback(
-    async (name: string, url: string): Promise<string | null> => {
+  const [addFolderLoading, setAddFolderLoading] = useState(false);
+  const [addFolderError, setAddFolderError] = useState<Error | null>(null);
+  const addFolder = useCallback(
+    async (name: string): Promise<string | null> => {
       if (!mero || !admin || !applicationId || !activeNs) return null;
       const trimmedName = name.trim();
-      const trimmedUrl = url.trim();
       if (!trimmedName) {
-        setAddRepoError(new Error('Repo name is required'));
+        setAddFolderError(new Error('Folder name is required'));
         return null;
       }
-      setAddRepoLoading(true);
-      setAddRepoError(null);
+      setAddFolderLoading(true);
+      setAddFolderError(null);
       try {
         const contextId = await createWorkspaceContext(admin, {
           applicationId,
           groupId: activeNs,
           serviceName: PRIMARY_SERVICE.name,
           name: trimmedName,
-        });
-        // Save the repo URL into shared state (hard-fail: it's the whole point).
-        await new BoardClient(mero, contextId).setRepoUrl({
-          url: trimmedUrl,
         });
         // The replicated name (context metadata) for every other member, and
         // on a node a local alias too - an account has no node to keep one in,
@@ -555,16 +513,16 @@ export function useWorkspace(): UseWorkspaceReturn {
           { isDelegated },
         );
         await refetchContexts();
-        selectRepo(contextId);
+        selectFolder(contextId);
         return contextId;
       } catch (err) {
-        setAddRepoError(err instanceof Error ? err : new Error(String(err)));
+        setAddFolderError(err instanceof Error ? err : new Error(String(err)));
         return null;
       } finally {
-        setAddRepoLoading(false);
+        setAddFolderLoading(false);
       }
     },
-    [mero, admin, isDelegated, applicationId, activeNs, refetchContexts, selectRepo],
+    [mero, admin, isDelegated, applicationId, activeNs, refetchContexts, selectFolder],
   );
 
   /**
@@ -600,8 +558,8 @@ export function useWorkspace(): UseWorkspaceReturn {
     const outcome = await redeemInviteCode(code, admin);
     if (outcome.status === 'failed') return outcome;
     const nsId = outcome.namespaceId;
-    // Joined (or already in it); this workspace's repos have not replicated yet.
-    // Flagged so the sidebar says "syncing" rather than "No repos yet" — which
+    // Joined (or already in it); this workspace's folders have not replicated yet.
+    // Flagged so the sidebar says "syncing" rather than "No folders yet" — which
     // is what a joiner currently reads about a workspace full of them.
     markNamespaceJustJoined(nsId);
     // The refresh is not the join: a refresh that throws must not turn a real
@@ -616,14 +574,14 @@ export function useWorkspace(): UseWorkspaceReturn {
     return outcome;
   }, [admin, refetchNamespaces, refetchContexts, selectNamespace]);
 
-  // `reposLoading` going false is the signal the repo list answered — for the
+  // `foldersLoading` going false is the signal the folder list answered — for the
   // namespace that was active when it did, which is why the id is recorded
   // rather than just a boolean.
   const [listedForNs, setListedForNs] = useState<string | null>(null);
   useEffect(() => {
-    if (!activeNs || reposLoading) return;
+    if (!activeNs || foldersLoading) return;
     setListedForNs(activeNs);
-  }, [activeNs, reposLoading]);
+  }, [activeNs, foldersLoading]);
 
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
     namespaceId: activeNs,
@@ -647,14 +605,14 @@ export function useWorkspace(): UseWorkspaceReturn {
     join,
     invite,
     inviteLoading,
-    repos,
-    activeRepo,
-    selectRepo,
-    addRepo,
-    addRepoLoading,
-    addRepoError,
-    reposLoading,
-    contextId: activeRepo,
+    folders,
+    activeFolder,
+    selectFolder,
+    addFolder,
+    addFolderLoading,
+    addFolderError,
+    foldersLoading,
+    contextId: activeFolder,
     executorPublicKey,
     selfIdentity,
     members,
@@ -664,10 +622,8 @@ export function useWorkspace(): UseWorkspaceReturn {
     membersLoaded,
     setMemberName,
     refetchMembers,
-    repoUrl,
-    setRepoUrl,
-    ready: activeRepo !== null && executorPublicKey !== null,
-    loading: resolvingApplicationId || nsLoading || reposLoading,
+    ready: activeFolder !== null && executorPublicKey !== null,
+    loading: resolvingApplicationId || nsLoading || foldersLoading,
     error: null,
     clearPersisted,
   };

@@ -314,38 +314,6 @@ export function uniqueName(prefix: string): string {
   return `${prefix} ${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export interface NewIssueFields {
-  title: string;
-  summary?: string;
-  impact?: string;
-  repro?: string;
-  resolutionCriteria?: string;
-  priority?: string;
-  labels?: string;
-}
-
-/**
- * Open the New-issue modal, fill the title plus the four required sections
- * (summary/impact/repro/resolution criteria - all four are mandatory to
- * submit), and create it. Unspecified sections get a unique placeholder so
- * callers that don't care about their content don't have to fill them.
- */
-export async function createIssue(page: Page, fields: NewIssueFields): Promise<void> {
-  await page.getByTestId('open-new-issue-btn').click();
-  await page.getByTestId('field-title').fill(fields.title);
-  await page.getByTestId('field-description').fill(fields.summary ?? uniqueName('summary'));
-  await page.getByTestId('field-impact').fill(fields.impact ?? uniqueName('impact'));
-  await page.getByTestId('field-repro').fill(fields.repro ?? uniqueName('repro'));
-  await page.getByTestId('field-resolution_criteria').fill(fields.resolutionCriteria ?? uniqueName('resolution'));
-  if (fields.priority) {
-    await page.getByTestId('field-priority').click();
-    // Case-insensitive: the styled option capitalises its label via CSS.
-    await page.getByRole('listbox').getByRole('option', { name: fields.priority }).click();
-  }
-  if (fields.labels) await page.getByTestId('field-labels').fill(fields.labels);
-  await page.getByTestId('action-create_issue').click();
-}
-
 /**
  * Navigate to the app with auth tokens in the URL hash for a specific node.
  * MeroProvider's parseAuthCallback picks these up automatically.
@@ -359,7 +327,7 @@ export async function loginViaHash(page: Page, nodeIndex = 0, opts: { inject?: b
   logAdminApiErrors(page);
   const node = getNode(nodeIndex);
   // `inject: false` skips the SSO context injection so the app lands on the
-  // explicit onboarding (empty state) instead of a pre-provisioned repo.
+  // explicit onboarding (empty state) instead of a pre-provisioned folder.
   const inject = opts.inject !== false;
   const injection = ISOLATION && inject ? await isolatedInjection(nodeIndex) : null;
   const hash = buildAuthHash(
@@ -563,7 +531,7 @@ async function clickPastAliasGate(page: Page, locator: ReturnType<Page['locator'
 
 /**
  * Drive the explicit onboarding from the namespace empty state: create a
- * namespace, skip the alias gate, and add a repo (so the board becomes ready).
+ * namespace, skip the alias gate, and add a folder (so the workspace becomes ready).
  * Used by createWorkspace as the non-isolated fallback and available to specs.
  */
 export async function driveOnboarding(page: Page) {
@@ -571,14 +539,13 @@ export async function driveOnboarding(page: Page) {
   await page.getByTestId('ns-create-name').fill(uniqueName('workspace'));
   await page.getByTestId('ns-create-submit').click();
   await skipAliasGate(page);
-  await page.getByTestId('repo-add-btn').click();
-  await page.getByTestId('repo-add-name').fill(uniqueName('repo'));
-  await page.getByTestId('repo-add-url').fill(`https://github.com/acme/${Date.now().toString(36)}`);
-  await page.getByTestId('repo-add-submit').click();
+  await page.getByTestId('folder-add-btn').click();
+  await page.getByTestId('folder-add-name').fill(uniqueName('folder'));
+  await page.getByTestId('folder-add-submit').click();
 }
 
 /**
- * Ensure `page` is inside a ready workspace (a repo is selected). Isolated runs
+ * Ensure `page` is inside a ready workspace (a folder is selected). Isolated runs
  * land there directly via the injected SSO context; a non-isolated fresh session
  * drives the onboarding. Then skips the alias gate so the board is interactive.
  * Idempotent. Caller must have logged the page in first (loginViaHash).
@@ -593,7 +560,7 @@ export async function createWorkspace(page: Page) {
   // The empty state can flash briefly while the injected SSO context (or an
   // auto-selected namespace) resolves into a live workspace. Prefer the live
   // workspace: onboarding a NEW namespace here while a callback context is
-  // still binding leaves activeNs/activeRepo split across two namespaces, so
+  // still binding leaves activeNs/activeFolder split across two namespaces, so
   // only drive onboarding when no workspace materialises and the empty state
   // is the stable landing.
   if (!(await ready.isVisible().catch(() => false))) {
@@ -648,10 +615,6 @@ export async function inviteAndJoin(inviterPage: Page, joinerPage: Page): Promis
   if (!code) throw new Error(`invite code never populated.${recordedErrorsTail(inviterPage)}`);
   // Close the invite modal (Escape) so it doesn't overlay the joiner flow.
   await inviterPage.keyboard.press('Escape').catch(() => {});
-  // Restore the inviter to the issues list: this helper detoured through the
-  // Members view to reach the Invite button, but callers expect to be back on
-  // the board (where issue cards live) once the invite is sent.
-  await inviterPage.getByRole('link', { name: /All Issues/ }).click().catch(() => {});
 
   // Joiner: isolated runs inject the shared context, so the joiner lands in the
   // workspace on its own. Wait for it to settle into a ready workspace (rather
@@ -694,10 +657,10 @@ export async function clearAuth(page: Page) {
         'mero-board:activeNs',
         'mero-board:activeNs:v2',
       ].forEach((k) => localStorage.removeItem(k));
-      // Per-namespace repo selection + alias-gate markers.
+      // Per-namespace folder selection + alias-gate markers.
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith('mero-board:activeRepo:') || k.startsWith('mero-board:alias-set:'))) {
+        if (k && (k.startsWith('mero-board:activeFolder:') || k.startsWith('mero-board:alias-set:'))) {
           localStorage.removeItem(k);
         }
       }

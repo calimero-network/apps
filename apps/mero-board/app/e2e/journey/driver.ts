@@ -243,21 +243,20 @@ export const driver: AppDriver = {
 
   async createSpace(actor, name) {
     const page = actor.page;
-    await press(actor, page.getByTestId("repo-add-btn"));
-    await page.getByTestId("repo-add-name").fill(name);
-    await page.getByTestId("repo-add-url").fill(`https://github.com/journey/${name}`);
-    await page.getByTestId("repo-add-submit").click();
-    await expect(page.getByTestId("repo-add-name")).toHaveCount(0, { timeout: 30_000 });
-    await expect(page.getByTestId("repo-header-name")).toHaveText(name, { timeout: 30_000 });
+    await press(actor, page.getByTestId("folder-add-btn"));
+    await page.getByTestId("folder-add-name").fill(name);
+    await page.getByTestId("folder-add-submit").click();
+    await expect(page.getByTestId("folder-add-name")).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.getByTestId("folder-header-name")).toHaveText(name, { timeout: 30_000 });
     await waitForBoard(actor);
   },
 
   async openSpace(actor, name) {
     const page = actor.page;
-    const item = page.getByTestId("repo-list-item").filter({ hasText: name });
-    await eventually(actor, async () => (await item.count()) > 0, `${actor.name} sees the repo ${name}`);
+    const item = page.getByTestId("folder-list-item").filter({ hasText: name });
+    await eventually(actor, async () => (await item.count()) > 0, `${actor.name} sees the folder ${name}`);
     await press(actor, item.first());
-    await expect(page.getByTestId("repo-header-name")).toHaveText(name, { timeout: 30_000 });
+    await expect(page.getByTestId("folder-header-name")).toHaveText(name, { timeout: 30_000 });
     await waitForBoard(actor);
   },
 

@@ -67,7 +67,7 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
       <Dialog onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="ns-create-title">
         <Close onClick={() => !busy && onClose()} aria-label="Close">×</Close>
         <h3 id="ns-create-title">New workspace</h3>
-        <p className="sub">Name your team workspace. You will add repositories to it next.</p>
+        <p className="sub">Name your team workspace. You will add folders to it next.</p>
         <Field>
           <label htmlFor="ns-create-name">Workspace name</label>
           <input

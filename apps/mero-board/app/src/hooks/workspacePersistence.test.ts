@@ -3,8 +3,8 @@ import {
   readActiveNs,
   writeActiveNs,
   dropLegacyActiveNs,
-  readActiveRepo,
-  writeActiveRepo,
+  readActiveFolder,
+  writeActiveFolder,
   clearPersistedWorkspace,
 } from './workspacePersistence';
 
@@ -43,22 +43,22 @@ describe('readActiveNs', () => {
   });
 });
 
-describe('activeRepo persistence', () => {
+describe('activeFolder persistence', () => {
   it('is namespace-scoped and round-trips an explicit selection', () => {
-    writeActiveRepo('ns-1', 'repo-a');
-    expect(readActiveRepo('ns-1')).toBe('repo-a');
-    expect(readActiveRepo('ns-2')).toBeNull();
+    writeActiveFolder('ns-1', 'folder-a');
+    expect(readActiveFolder('ns-1')).toBe('folder-a');
+    expect(readActiveFolder('ns-2')).toBeNull();
   });
 });
 
 describe('clearPersistedWorkspace', () => {
-  it('drops the active namespace and every per-namespace repo/alias key', () => {
+  it('drops the active namespace and every per-namespace folder/alias key', () => {
     writeActiveNs('ns-1');
-    writeActiveRepo('ns-1', 'repo-a');
+    writeActiveFolder('ns-1', 'folder-a');
     localStorage.setItem('mero-board:alias-set:ns-1', '1');
     clearPersistedWorkspace();
     expect(readActiveNs()).toBeNull();
-    expect(readActiveRepo('ns-1')).toBeNull();
+    expect(readActiveFolder('ns-1')).toBeNull();
     expect(localStorage.getItem('mero-board:alias-set:ns-1')).toBeNull();
   });
 });

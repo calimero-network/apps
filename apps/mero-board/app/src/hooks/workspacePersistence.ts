@@ -1,5 +1,5 @@
 /**
- * Namespace/repo selection persistence.
+ * Namespace/folder selection persistence.
  *
  * Versioned so a prior build's silently auto-entered selection can never
  * leak back in as "the user's choice" - only writes from explicit selection
@@ -8,7 +8,7 @@
  */
 const LEGACY_ACTIVE_NS_KEY = 'mero-board:activeNs';
 const ACTIVE_NS_KEY = 'mero-board:activeNs:v2';
-const activeRepoKey = (nsId: string) => `mero-board:activeRepo:v2:${nsId}`;
+const activeFolderKey = (nsId: string) => `mero-board:activeFolder:v2:${nsId}`;
 
 function readLs(key: string): string | null {
   try {
@@ -37,11 +37,11 @@ export function dropLegacyActiveNs(): void {
   writeLs(LEGACY_ACTIVE_NS_KEY, null);
 }
 
-export function readActiveRepo(nsId: string): string | null {
-  return readLs(activeRepoKey(nsId));
+export function readActiveFolder(nsId: string): string | null {
+  return readLs(activeFolderKey(nsId));
 }
-export function writeActiveRepo(nsId: string, id: string | null): void {
-  writeLs(activeRepoKey(nsId), id);
+export function writeActiveFolder(nsId: string, id: string | null): void {
+  writeLs(activeFolderKey(nsId), id);
 }
 
 export function clearPersistedWorkspace(): void {
@@ -49,7 +49,7 @@ export function clearPersistedWorkspace(): void {
   try {
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
-      if (k && (k.startsWith('mero-board:activeRepo:') || k.startsWith('mero-board:alias-set:'))) {
+      if (k && (k.startsWith('mero-board:activeFolder:') || k.startsWith('mero-board:alias-set:'))) {
         localStorage.removeItem(k);
       }
     }

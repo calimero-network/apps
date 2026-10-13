@@ -21,7 +21,7 @@ import {
   MEMBER_CAPABILITIES,
   ROLE_ADMIN,
   ROLE_MEMBER,
-  canCreateRepo,
+  canCreateFolder,
   canInvite,
   canManageMembers,
   defaultIsUsable,
@@ -119,12 +119,12 @@ describe('the three questions this app asks', () => {
 
   it('an admin may do all three', () => {
     expect(canManageMembers(admin)).toBe(true);
-    expect(canCreateRepo(admin)).toBe(true);
+    expect(canCreateFolder(admin)).toBe(true);
     expect(canInvite(admin)).toBe(true);
   });
 
   it('a member on this app’s default may work but not manage members', () => {
-    expect(canCreateRepo(plainMember)).toBe(true);
+    expect(canCreateFolder(plainMember)).toBe(true);
     expect(canInvite(plainMember)).toBe(true);
     // Promoting people stays the admin's job — MEMBER_CAPABILITIES deliberately
     // omits MANAGE_MEMBERS.
@@ -133,7 +133,7 @@ describe('the three questions this app asks', () => {
 
   it('a member of an unrepaired workspace may do nothing at all', () => {
     // This is the state a swallowed setDefaultCapabilities leaves everyone in.
-    expect(canCreateRepo(strandedMember)).toBe(false);
+    expect(canCreateFolder(strandedMember)).toBe(false);
     expect(canInvite(strandedMember)).toBe(false);
     expect(canManageMembers(strandedMember)).toBe(false);
   });
@@ -141,9 +141,9 @@ describe('the three questions this app asks', () => {
 
 describe('describeCapabilities', () => {
   it('names what the mask permits, in the order a person cares about', () => {
-    expect(describeCapabilities(MEMBER_CAPABILITIES)).toEqual(['Add repos', 'Invite people']);
+    expect(describeCapabilities(MEMBER_CAPABILITIES)).toEqual(['Add folders', 'Invite people']);
     expect(describeCapabilities(ALL_CAPABILITIES)).toEqual([
-      'Add repos',
+      'Add folders',
       'Invite people',
       'Manage members',
     ]);

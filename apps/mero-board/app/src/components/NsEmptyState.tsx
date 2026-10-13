@@ -38,7 +38,7 @@ export default function NsEmptyState({ namespaces, onSelect, onCreate, onJoin }:
             />
           </>
         ) : (
-          <p>Create a team workspace to start tracking repositories and issues, or join one you were invited to.</p>
+          <p>Create a team workspace to start organising folders and boards, or join one you were invited to.</p>
         )}
         <div className="row">
           <button className="primary" data-testid="ns-create-btn" onClick={onCreate}>Create workspace</button>

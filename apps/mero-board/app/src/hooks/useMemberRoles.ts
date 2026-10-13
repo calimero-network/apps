@@ -19,7 +19,7 @@ import {
   ROLE_ADMIN,
   ROLE_MEMBER,
   type WorkspaceRole,
-  canCreateRepo as canCreate,
+  canCreateFolder as canCreate,
   canInvite as canInviteFn,
   canManageMembers as canManage,
   effectiveCapabilities,
@@ -41,7 +41,7 @@ export type DefaultCapabilitiesAdmin = Pick<AdminApiClient, 'getDefaultCapabilit
  * alike: the account admin serves reads from the relay, and a refused or
  * reshaped wrapper left `defaultCapabilities` null for every Member of a
  * workspace an account opened - so their effective mask read 0 and the Add
- * repo / Invite controls vanished for people the default plainly grants
+ * folder / Invite controls vanished for people the default plainly grants
  * them to. The group info record is the source the wrapper reads from, so it
  * is asked directly before giving up.
  */
@@ -73,8 +73,8 @@ export interface UseMemberRolesReturn {
   myRole: WorkspaceRole;
   /** True when the signed-in member may promote/demote others. */
   canManageMembers: boolean;
-  /** True when the signed-in member may add a repo (create a context) here. */
-  canAddRepo: boolean;
+  /** True when the signed-in member may add a folder (create a context) here. */
+  canAddFolder: boolean;
   /** True when the signed-in member may invite people to this workspace. */
   canInvite: boolean;
   /** Promote to Admin / demote to Member. Refetches before returning. */
@@ -206,7 +206,7 @@ export function useMemberRoles(
     () => (selfAccount ? canManage(selfInput) : false),
     [selfAccount, selfInput],
   );
-  const canAddRepo = useMemo(
+  const canAddFolder = useMemo(
     () => (selfAccount ? canCreate(selfInput) : false),
     [selfAccount, selfInput],
   );
@@ -250,7 +250,7 @@ export function useMemberRoles(
     defaultCapabilities,
     myRole,
     canManageMembers,
-    canAddRepo,
+    canAddFolder,
     canInvite,
     setRole,
     setCapabilities,

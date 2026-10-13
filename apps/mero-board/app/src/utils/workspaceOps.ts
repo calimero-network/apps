@@ -1,5 +1,5 @@
 /**
- * The admin writes behind "create a workspace" and "add a repo", kept free
+ * The admin writes behind "create a workspace" and "add a folder", kept free
  * of React so they can be exercised against a fake admin client.
  *
  * Every call here goes through the SESSION's admin (`useMero().admin`), never
@@ -20,7 +20,7 @@ export type FoundAdmin = Pick<
   'createNamespace' | 'setGroupMetadata' | 'setDefaultCapabilities'
 >;
 
-/** The admin calls adding a repo makes, narrowed. */
+/** The admin calls adding a folder makes, narrowed. */
 export type ContextAdmin = Pick<
   AdminApiClient,
   'createContext' | 'setContextMetadata' | 'createContextAlias'
@@ -70,7 +70,7 @@ export async function foundWorkspace(
   try {
     await admin.setGroupMetadata(ns.namespaceId, { name: input.name });
   } catch { /* createNamespace's own name stands */ }
-  // What every member of this workspace may do: add a repo and invite
+  // What every member of this workspace may do: add a folder and invite
   // people (MEMBER_CAPABILITIES, defined once in utils/roles). This is the
   // DEFAULT, so it applies to members who join later, not retroactively.
   try {
@@ -87,7 +87,7 @@ export async function foundWorkspace(
   return { namespaceId: ns.namespaceId, haError: haErrorOf(ns) };
 }
 
-/** Create one context (a repo) inside the workspace and return its id. */
+/** Create one context (a folder) inside the workspace and return its id. */
 export async function createWorkspaceContext(
   admin: Pick<ContextAdmin, 'createContext'>,
   input: { applicationId: string; groupId: string; serviceName: string; name: string },
@@ -110,10 +110,10 @@ export async function createWorkspaceContext(
  * `createContext({name})` gives the context a label on the CREATOR's node and
  * travels nowhere; the context metadata record is a CRDT against the managing
  * group, so it reaches everyone the namespace does. Without this an invited
- * teammate sees `a1b2c3d4` where the creator sees the repo's name.
+ * teammate sees `a1b2c3d4` where the creator sees the folder's name.
  *
- * Both writes are best-effort: a nameless repo still works, and neither is
- * worth failing an otherwise-created repo over.
+ * Both writes are best-effort: a nameless folder still works, and neither is
+ * worth failing an otherwise-created folder over.
  */
 export async function publishContextName(
   admin: Pick<ContextAdmin, 'setContextMetadata' | 'createContextAlias'>,
@@ -124,7 +124,7 @@ export async function publishContextName(
     await admin.setContextMetadata(input.groupId, input.contextId, { name: input.name });
   } catch { /* the local label still names it on the creator's node */ }
   // An alias is a node's own lookup table (`/admin-api/alias/...`), so tools
-  // on that node can resolve the repo by name. An account has no node of
+  // on that node can resolve the folder by name. An account has no node of
   // its own to keep one in, and the account admin refuses the call by name
   // (`NotForAccountError`) - skip it rather than ask and swallow.
   if (session.isDelegated) return;

@@ -7,35 +7,18 @@ import Topbar from './Topbar';
 /** App frame: sidebar rail + main column (topbar over the routed view). */
 export default function Shell({
   sidebar,
-  repoName,
-  repoUrl,
-  onNewIssue,
-  searchQuery,
-  onSearchChange,
-  searchInputRef,
+  folderName,
   children,
 }: {
   sidebar: SidebarProps;
-  repoName: string | null;
-  repoUrl: string;
-  onNewIssue: () => void;
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
-  searchInputRef: React.RefObject<HTMLInputElement | null>;
+  folderName: string | null;
   children: React.ReactNode;
 }): React.ReactElement {
   return (
     <Grid>
       <Sidebar {...sidebar} />
       <Main>
-        <Topbar
-          onNewIssue={onNewIssue}
-          repoName={repoName}
-          repoUrl={repoUrl}
-          searchQuery={searchQuery}
-          onSearchChange={onSearchChange}
-          searchInputRef={searchInputRef}
-        />
+        <Topbar folderName={folderName} />
         {children}
       </Main>
     </Grid>

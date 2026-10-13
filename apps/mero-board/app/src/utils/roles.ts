@@ -66,7 +66,7 @@ export const ALL_CAPABILITIES = Object.values(CAPABILITIES).reduce(
 );
 
 /**
- * What an ordinary member of THIS app needs to be useful: add a repo (a context)
+ * What an ordinary member of THIS app needs to be useful: add a folder (a context)
  * and invite a teammate. Anything less and an invited member can see the
  * workspace and do nothing in it, which is the failure this app kept shipping.
  *
@@ -138,8 +138,8 @@ export function canManageMembers(input: EffectiveInput): boolean {
   return hasCapability(effectiveCapabilities(input), CAP.MANAGE_MEMBERS);
 }
 
-/** May this member add a repo (create a context)? */
-export function canCreateRepo(input: EffectiveInput): boolean {
+/** May this member add a folder (create a context)? */
+export function canCreateFolder(input: EffectiveInput): boolean {
   return hasCapability(effectiveCapabilities(input), CAP.CAN_CREATE_CONTEXT);
 }
 
@@ -157,7 +157,7 @@ export function canInvite(input: EffectiveInput): boolean {
  */
 export function describeCapabilities(capabilities: number): string[] {
   const out: string[] = [];
-  if (hasCapability(capabilities, CAP.CAN_CREATE_CONTEXT)) out.push('Add repos');
+  if (hasCapability(capabilities, CAP.CAN_CREATE_CONTEXT)) out.push('Add folders');
   if (hasCapability(capabilities, CAP.CAN_INVITE_MEMBERS)) out.push('Invite people');
   if (hasCapability(capabilities, CAP.MANAGE_MEMBERS)) out.push('Manage members');
   return out;
@@ -180,7 +180,7 @@ export function withCapability(base: number, bit: number, enabled: boolean): num
  *
  * `setDefaultCapabilities` is called once, at namespace creation, and swallowed
  * on failure — so a namespace can exist whose every invited member can neither
- * add a repo nor invite anyone, with nothing anywhere saying so. This is what
+ * add a folder nor invite anyone, with nothing anywhere saying so. This is what
  * the members page uses to offer the repair.
  */
 export function defaultIsUsable(groupDefault: number | null | undefined): boolean {

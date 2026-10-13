@@ -1,39 +1,30 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Outlet, useSearchParams } from 'react-router-dom';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Outlet } from 'react-router-dom';
 import styled from 'styled-components';
 import { useMero } from '@calimero-network/mero-react';
-import { useToast } from '@calimero-network/mero-ui';
 import { shouldRetain } from '@calimero-apps/invite';
 import { tokens as t } from '../../theme';
 import { useWorkspace } from '../../hooks/useWorkspace';
-import { useIssues } from '../../hooks/useItems';
 import { makeAliases } from '../../hooks/useAliases';
-import { describeError } from '../../utils/errors';
 import Shell from '../../components/Shell';
-import NewIssueModal from '../../components/NewIssueModal';
 import InviteModal from '../../components/InviteModal';
 import JoinModal from '../../components/JoinModal';
 import NamespaceCreateDialog from '../../components/NamespaceCreateDialog';
-import AddRepoDialog from '../../components/AddRepoDialog';
+import AddFolderDialog from '../../components/AddFolderDialog';
 import NsEmptyState from '../../components/NsEmptyState';
 import AliasGate from '../../components/AliasGate';
 import { usePendingInvitation } from '../../hooks/usePendingInvitation';
-import type { AppCtx, Filters } from './appContext';
-
-const EMPTY_FILTERS: Filters = { status: '', priority: '', assignee: '', label: '' };
+import type { AppCtx } from './appContext';
 
 /**
- * Tracker root: owns workspace resolution (namespace + repo), the issue data
- * hook scoped to the active repo, filter state, and every modal. Onboarding is
- * explicit: no active namespace -> full-pane empty state (with a picker if
- * namespaces exist); a namespace with no repo -> add-repo prompt; a member
- * with no name -> blocking alias gate.
+ * Board root: owns workspace resolution (namespace + folder) and every modal.
+ * Onboarding is explicit: no active namespace -> full-pane empty state (with a
+ * picker if namespaces exist); a namespace with no folder -> add-folder
+ * prompt; a member with no name -> blocking alias gate.
  */
 export default function AppPage(): React.ReactElement | null {
   const { contextIdentity } = useMero();
   const ws = useWorkspace();
-  const toast = useToast();
-  const [searchParams] = useSearchParams();
 
   // Two different ids, and they are NOT interchangeable since core rc.21.
   //
@@ -49,21 +40,11 @@ export default function AppPage(): React.ReactElement | null {
   // members from a signing PublicKey to an AccountId and they no longer do, so
   // resolving the executor key just returns a truncated key forever.
   const selfMember = ws.selfIdentity ?? '';
-  const myIssues = searchParams.get('assignee') === 'me';
 
   const aliases = useMemo(
     () => makeAliases(ws.memberNames, ws.setMemberName, ws.refetchMembers, ws.membersLoading, ws.membersLoaded),
     [ws.memberNames, ws.setMemberName, ws.refetchMembers, ws.membersLoading, ws.membersLoaded],
   );
-
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const setFilter = useCallback((patch: Partial<Filters>) => {
-    setFilters((f) => ({ ...f, ...patch }));
-  }, []);
-  const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), []);
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // An invitation captured from a link — however it arrived (cold-open URL, the
   // launcher's warm `deep-link` event, the PWA launch queue). Capture happens
@@ -81,100 +62,19 @@ export default function AppPage(): React.ReactElement | null {
     pendingInvitation?.resolve();
   }, [pendingInvitation]);
 
-  const effectiveAssignee = myIssues ? (selfMember ? aliases.resolve(selfMember) : '') : filters.assignee;
-  const hookFilters = useMemo(
-    () => ({ status: filters.status, assignee: effectiveAssignee, label: filters.label }),
-    [filters.status, effectiveAssignee, filters.label],
-  );
-
-  const data = useIssues({
-    contextId: ws.contextId,
-    executorPublicKey: ws.executorPublicKey,
-    filters: hookFilters,
-  });
-
-  // One toast per distinct problem, not one per failed read.
-  //
-  // `data.error` is a fresh Error object on every failure, so this effect used
-  // to fire on each one — a burst of sync events during a join produced a burst
-  // of identical toasts. `useIssues` now withholds the transient
-  // "context not initialized yet" case entirely (see utils/contextReadiness), so
-  // that burst no longer reaches here at all; this dedupe is the second line of
-  // defence, and it also stops a genuinely repeating failure from stacking up.
-  //
-  // Keyed on the MESSAGE rather than the object: identical text is the same
-  // problem as far as anyone reading it is concerned. Cleared when the error
-  // does, so the same failure recurring after a recovery is reported again.
-  const lastToastRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!data.error) { lastToastRef.current = null; return; }
-    const description = describeError(data.error);
-    if (description === lastToastRef.current) return;
-    lastToastRef.current = description;
-    toast.show({ variant: 'error', description });
-  }, [data.error, toast]);
-
-  const [showNew, setShowNew] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [showCreateNs, setShowCreateNs] = useState(false);
-  const [showAddRepo, setShowAddRepo] = useState(false);
+  const [showAddFolder, setShowAddFolder] = useState(false);
 
-  const openNewIssue = useCallback(() => setShowNew(true), []);
   const openInvite = useCallback(() => setShowInvite(true), []);
 
-  // `C` opens New issue; `/` focuses search. `Esc` closes an open New-issue
-  // modal. Ignore while typing or when any other modal/gate is open.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const anyModal = showNew || showInvite || showJoin || showCreateNs || showAddRepo;
-      if (e.key === 'Escape' && showNew) { setShowNew(false); return; }
-      const tag = (e.target as HTMLElement)?.tagName;
-      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-      if ((e.key === 'c' || e.key === 'C') && !anyModal && !typing) {
-        e.preventDefault();
-        setShowNew(true);
-      }
-      if (e.key === '/' && !anyModal && !typing) {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [showNew, showInvite, showJoin, showCreateNs, showAddRepo]);
-
-  const createIssue = useCallback(
-    async (
-      title: string,
-      summary: string,
-      impact: string,
-      repro: string,
-      resolutionCriteria: string,
-      priority: string,
-      labels: string[],
-    ) => {
-      try {
-        await data.createIssue(title, summary, impact, repro, resolutionCriteria, priority, labels);
-      } catch (err) {
-        toast.show({ variant: 'error', description: describeError(err) });
-        throw err;
-      }
-    },
-    [data, toast],
-  );
-
-  const totalIssues = Object.values(data.counts).reduce((a, b) => a + b, 0);
   const membersCount = Math.max(ws.members.length, 1);
-  const activeRepoName = ws.repos.find((r) => r.contextId === ws.activeRepo)?.name ?? null;
+  const activeFolderName = ws.folders.find((r) => r.contextId === ws.activeFolder)?.name ?? null;
 
-  const ctx: AppCtx = {
-    data, currentUser, members: ws.members, aliases, filters, myIssues, repoUrl: ws.repoUrl,
-    searchQuery, setSearchQuery, setFilter, clearFilters, openNewIssue, openInvite, ws,
-  };
+  const ctx: AppCtx = { currentUser, members: ws.members, aliases, openInvite, ws };
 
   const sidebar = {
-    totalIssues,
     membersCount,
     currentUser,
     currentUserLabel: selfMember ? aliases.resolve(selfMember) : '',
@@ -184,13 +84,13 @@ export default function AppPage(): React.ReactElement | null {
     onSelectNamespace: ws.selectNamespace,
     onNewNamespace: () => setShowCreateNs(true),
     onJoinNamespace: () => setShowJoin(true),
-    repos: ws.repos,
-    reposSyncing: ws.isSyncing,
-    onDismissReposSyncing: ws.dismissSyncing,
-    activeRepo: ws.activeRepo,
-    onSelectRepo: ws.selectRepo,
-    onAddRepo: () => setShowAddRepo(true),
-    canAddRepo: ws.roles.canAddRepo,
+    folders: ws.folders,
+    foldersSyncing: ws.isSyncing,
+    onDismissFoldersSyncing: ws.dismissSyncing,
+    activeFolder: ws.activeFolder,
+    onSelectFolder: ws.selectFolder,
+    onAddFolder: () => setShowAddFolder(true),
+    canAddFolder: ws.roles.canAddFolder,
   };
 
   // Shared modals rendered regardless of which pane is up, so the empty-state
@@ -220,8 +120,8 @@ export default function AppPage(): React.ReactElement | null {
           onClose={() => { forgetPendingInvite(); setShowJoin(false); }}
         />
       )}
-      {showAddRepo && (
-        <AddRepoDialog onAdd={ws.addRepo} onClose={() => setShowAddRepo(false)} />
+      {showAddFolder && (
+        <AddFolderDialog onAdd={ws.addFolder} onClose={() => setShowAddFolder(false)} />
       )}
     </>
   );
@@ -236,7 +136,7 @@ export default function AppPage(): React.ReactElement | null {
 
   // No active namespace (none yet, or a stale/invalid prior choice): never
   // silently enter one, and never fall through to the Shell either - that
-  // flashed the repo UI over an empty workspace. Onboarding also offers a
+  // flashed the folder UI over an empty workspace. Onboarding also offers a
   // picker when namespaces exist.
   if (!ws.activeNs) {
     return (
@@ -263,41 +163,32 @@ export default function AppPage(): React.ReactElement | null {
   );
 
   return (
-    <Shell
-      sidebar={sidebar}
-      repoName={activeRepoName}
-      repoUrl={ws.repoUrl}
-      onNewIssue={openNewIssue}
-      searchQuery={searchQuery}
-      onSearchChange={setSearchQuery}
-      searchInputRef={searchInputRef}
-    >
-      {ws.activeRepo ? (
+    <Shell sidebar={sidebar} folderName={activeFolderName}>
+      {ws.activeFolder ? (
         <Ready data-testid="workspace-ready">
           <Outlet context={ctx} />
         </Ready>
       ) : (
-        <RepoGate>
+        <FolderGate>
           <div className="panel">
-            <h2>No repository yet</h2>
-            <p>Add a repository to this workspace to start tracking its issues.</p>
-            {ws.roles.canAddRepo ? (
-              <button className="primary" data-testid="repo-add-cta" onClick={() => setShowAddRepo(true)}>Add a repository</button>
+            <h2>No folder yet</h2>
+            <p>Add a folder to this workspace to start a board.</p>
+            {ws.roles.canAddFolder ? (
+              <button className="primary" data-testid="folder-add-cta" onClick={() => setShowAddFolder(true)}>Add a folder</button>
             ) : (
               // Honest dead end rather than a button that 403s: the person
               // cannot fix this themselves, so say who can.
-              <p className="gated" data-testid="repo-add-denied">
+              <p className="gated" data-testid="folder-add-denied">
                 Ask a workspace admin to add one, or to give you permission to add
-                repositories.
+                folders.
               </p>
             )}
           </div>
-        </RepoGate>
+        </FolderGate>
       )}
 
       {aliasGate}
       {dialogs}
-      {showNew && <NewIssueModal onCreate={createIssue} onClose={() => setShowNew(false)} />}
       {showInvite && <InviteModal onInvite={ws.invite} onClose={() => setShowInvite(false)} />}
     </Shell>
   );
@@ -308,7 +199,7 @@ export default function AppPage(): React.ReactElement | null {
 const Ready = styled.div`
   display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
 `;
-const RepoGate = styled.div`
+const FolderGate = styled.div`
   flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px;
   .panel {
     max-width: 400px; text-align: center; padding: 32px 28px;

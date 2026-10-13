@@ -1,9 +1,9 @@
-// Alias coverage: the repo context alias registered by Add repo, and an
+// Alias coverage: the folder context alias registered by Add folder, and an
 // identity alias set through the UI resolving back onto the current identity.
 import { test, expect } from '@playwright/test';
 import { loginViaHash, clearAuth, createWorkspace, getNode, openAliasModal } from './helpers';
 
-test.describe('aliases: repo context alias + identity alias set via the UI', () => {
+test.describe('aliases: folder context alias + identity alias set via the UI', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaHash(page, 0);
     await createWorkspace(page);
@@ -13,26 +13,25 @@ test.describe('aliases: repo context alias + identity alias set via the UI', () 
     await clearAuth(page);
   });
 
-  test('the repo alias created by Add repo resolves to the active repo context', async ({ page }) => {
-    // createWorkspace's isolated fixture provisions its base repo straight
-    // through the admin-api (no alias); add a repo through the UI so addRepo's
+  test('the folder alias created by Add folder resolves to the active folder context', async ({ page }) => {
+    // createWorkspace's isolated fixture provisions its base folder straight
+    // through the admin-api (no alias); add a folder through the UI so addFolder's
     // createContextAlias path actually runs, with a name we control. Node
     // aliases only allow [A-Za-z0-9._-] (no spaces), unlike uniqueName's
     // human-readable "prefix timestamp-rand" form.
-    const repoName = `aliased-repo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-    await page.getByTestId('repo-add-btn').click();
-    await page.getByTestId('repo-add-name').fill(repoName);
-    await page.getByTestId('repo-add-url').fill(`https://github.com/acme/${Date.now().toString(36)}`);
-    await page.getByTestId('repo-add-submit').click();
-    await expect(page.getByTestId('repo-list-item').filter({ hasText: repoName })).toBeVisible({ timeout: 10_000 });
+    const folderName = `aliased-folder-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    await page.getByTestId('folder-add-btn').click();
+    await page.getByTestId('folder-add-name').fill(folderName);
+    await page.getByTestId('folder-add-submit').click();
+    await expect(page.getByTestId('folder-list-item').filter({ hasText: folderName })).toBeVisible({ timeout: 10_000 });
 
-    // addRepo registers the alias right after createContext; it is best-effort,
+    // addFolder registers the alias right after createContext; it is best-effort,
     // so poll the admin-api until the lookup resolves to a context.
     const node = getNode(0);
     let value: string | undefined;
     for (let i = 0; i < 20 && !value; i++) {
       const res = await fetch(
-        `${node.adminUrl}/admin-api/alias/lookup/context/${encodeURIComponent(repoName)}`,
+        `${node.adminUrl}/admin-api/alias/lookup/context/${encodeURIComponent(folderName)}`,
         {
           method: 'POST',
           headers: {
@@ -48,7 +47,7 @@ test.describe('aliases: repo context alias + identity alias set via the UI', () 
       }
       if (!value) await new Promise((r) => setTimeout(r, 500));
     }
-    expect(value, `context alias "${repoName}" never resolved to a context id`).toBeTruthy();
+    expect(value, `context alias "${folderName}" never resolved to a context id`).toBeTruthy();
   });
 
   test('an identity alias set via the UI resolves onto the current identity', async ({ page }) => {
