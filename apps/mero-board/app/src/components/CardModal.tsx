@@ -20,12 +20,14 @@ export interface CardModalProps {
   currentUser: string;
   members: string[];
   lists: ListView[];
+  /** Move the card to the end of a list (also rescues a card that lost its list). */
+  onMoveToList: (listId: string) => Promise<unknown>;
   onClose: () => void;
   onChanged: () => Promise<void> | void;
 }
 
 /** The card detail dialog: title, description, assignee, due, labels, checklist, comments. */
-export default function CardModal({ cardId, ws, aliases, currentUser, members, lists, onClose, onChanged }: CardModalProps): React.ReactElement {
+export default function CardModal({ cardId, ws, aliases, currentUser, members, lists, onMoveToList, onClose, onChanged }: CardModalProps): React.ReactElement {
   const card = useCard(ws, cardId);
   const toast = useToast();
   const d = card.detail;
@@ -91,6 +93,15 @@ export default function CardModal({ cardId, ws, aliases, currentUser, members, l
               in <b>{listName || '—'}</b> · created {relativeTime(d.card.created_at)} by {aliases.resolve(d.card.created_by)}
               {d.card.archived && ' · archived'}
             </p>
+
+            <Section>
+              <h3>List</h3>
+              <select data-testid="field-list" aria-label="Move to list" value={listName ? d.card.list_id : ''}
+                onChange={(e) => { if (e.target.value) void run(onMoveToList(e.target.value)); }}>
+                {!listName && <option value="">Unsorted: pick a list</option>}
+                {lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </Section>
 
             <Section>
               <h3>Description</h3>
@@ -199,7 +210,7 @@ const Panel = styled(Dialog)`
   display: flex; flex-direction: column; gap: 6px;
   .muted { font-size: 12.5px; color: ${t.color.text3}; margin: 0; }
   .muted b { color: ${t.color.text2}; font-weight: 600; }
-  input:not([type='checkbox']), textarea {
+  input:not([type='checkbox']), textarea, select {
     width: 100%; box-sizing: border-box; font-family: inherit; font-size: 13px;
     color: ${t.color.text}; background: ${t.color.raised};
     border: 1px solid ${t.color.border}; border-radius: ${t.radius}; padding: 8px 10px; outline: none;

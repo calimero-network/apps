@@ -10,7 +10,7 @@ import { useAppCtx } from './appContext';
 
 /** The active folder: its boards in a grid, plus create and the archived toggle. */
 export default function FolderPage(): React.ReactElement {
-  const { ws } = useAppCtx();
+  const { ws, currentUser } = useAppCtx();
   const navigate = useNavigate();
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -28,7 +28,10 @@ export default function FolderPage(): React.ReactElement {
       {data.warmingUp && <p className="muted" data-testid="folder-syncing">Syncing this folder…</p>}
       <Grid>
         {data.boards.map((b) => (
-          <BoardTile key={b.id} board={b} onOpen={() => navigate(`${APP_ROUTE}/b/${b.id}`)} />
+          <BoardTile key={b.id} board={b} onOpen={() => navigate(`${APP_ROUTE}/b/${b.id}`)} currentUser={currentUser}
+            onRename={(name) => data.renameBoard(b.id, name)}
+            onArchive={(archived) => data.archiveBoard(b.id, archived)}
+            onDelete={() => data.deleteBoard(b.id)} />
         ))}
         {creating ? (
           <div className="new">

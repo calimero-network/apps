@@ -45,7 +45,12 @@ export default function InlineForm({ placeholder, submitLabel, testId, onSubmit,
         placeholder={placeholder}
         autoFocus={autoFocus}
         onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Escape') onCancel?.(); }}
+        onKeyDown={(e) => {
+          if (e.key !== 'Escape') return;
+          // Keep Escape here: the card modal closes on a document-level Escape.
+          e.stopPropagation();
+          onCancel?.();
+        }}
       />
       <div className="row">
         <button type="submit" className="primary" data-testid={submitTestId ?? `${testId}-submit`} disabled={busy || !value.trim()}>{submitLabel}</button>

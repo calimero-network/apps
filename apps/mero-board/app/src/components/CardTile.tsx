@@ -18,10 +18,10 @@ interface Props {
 /** A card in a list column: sortable within and across lists. */
 export default function CardTile({ card, aliases, onOpen }: Props): React.ReactElement {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id, data: { type: 'card' } });
-  const style = { transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+  const style = { transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.4 : card.archived ? 0.55 : 1 };
   return (
     <Tile ref={setNodeRef} style={style} {...attributes} {...listeners}
-      data-testid="item-card" data-card-id={card.id} onClick={onOpen}
+      data-testid="item-card" data-card-id={card.id} data-archived={card.archived ? 'true' : undefined} onClick={onOpen}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); }
@@ -69,6 +69,7 @@ const Tile = styled.div`
   background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: 8px;
   padding: 10px 11px; cursor: grab; display: flex; flex-direction: column; gap: 6px; touch-action: none;
   &:hover { border-color: ${t.color.accent}; }
+  &[data-archived='true'] { border-style: dashed; }
   .labels { display: flex; gap: 4px; flex-wrap: wrap; }
   .title { font-size: 13.5px; line-height: 1.35; }
   .meta { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: ${t.color.text3}; min-height: 18px; }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { useDroppable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { CardView, ListView } from '../generated/BoardClient';
 import { tokens as t } from '../theme';
 import CardTile from './CardTile';
@@ -19,15 +19,25 @@ interface Props {
   onDelete: () => Promise<unknown>;
 }
 
+/**
+ * A list column. The column is sortable among the board's lists by its header
+ * (the drag handle), and the whole column is the drop target for cards.
+ */
 export default function ListColumn({ list, cards, aliases, onOpenCard, onCreateCard, onRename, onDelete }: Props): React.ReactElement {
-  const { setNodeRef, isOver } = useDroppable({ id: list.id, data: { type: 'list' } });
+  const { setNodeRef, setActivatorNodeRef, attributes, listeners, transform, transition, isDragging, isOver, active } =
+    useSortable({ id: list.id, data: { type: 'list' } });
+  // Columns shift only while a LIST is dragged; a card hovering a column must
+  // not displace the columns (the horizontal strategy would otherwise apply).
+  const listDrag = active?.data.current?.type === 'list';
+  const style = listDrag ? { transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.5 : 1 } : undefined;
+  const cardOver = isOver && !listDrag;
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Col ref={setNodeRef} data-testid="item-list" data-list-id={list.id} $over={isOver}>
-      <Head>
+    <Col ref={setNodeRef} style={style} data-testid="item-list" data-list-id={list.id} $over={cardOver}>
+      <Head ref={setActivatorNodeRef} {...(renaming ? {} : { ...attributes, ...listeners })} data-testid="list-handle">
         {renaming ? (
           <InlineForm initial={list.name} placeholder="List name" submitLabel="Save" testId="list-rename"
             onSubmit={async (n) => { await onRename(n); setRenaming(false); }} onCancel={() => setRenaming(false)} />
@@ -68,7 +78,7 @@ const Col = styled.div<{ $over: boolean }>`
   .err { margin: 0; font-size: 12px; color: ${t.color.danger}; }
 `;
 const Head = styled.div`
-  display: flex; align-items: center; gap: 8px; padding: 2px 4px;
+  display: flex; align-items: center; gap: 8px; padding: 2px 4px; cursor: grab; touch-action: none;
   .name { font-size: 13px; font-weight: 600; flex: 1; }
   .count { font-size: 11.5px; color: ${t.color.text3}; }
   .menu summary { list-style: none; cursor: pointer; color: ${t.color.text3}; padding: 0 4px; }
