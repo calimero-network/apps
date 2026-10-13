@@ -11,15 +11,17 @@ function Harness({
   backend,
   newFeed,
   openLink,
+  onChat,
 }: {
   backend: DemoBackend;
   newFeed?: NewFeed;
   openLink?: (item: FeedItem) => Promise<string | null>;
+  onChat?: (chain: string) => void;
 }) {
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
   const feed = useFeed(backend, nudge);
-  return <FeedView feed={feed} query="" newFeed={newFeed} openLink={openLink} />;
+  return <FeedView feed={feed} query="" newFeed={newFeed} openLink={openLink} onChat={onChat} />;
 }
 
 const stream = () => screen.getByRole("main");
@@ -788,6 +790,26 @@ describe("FeedView", () => {
       fireEvent.click(within(linked2).getByRole("button", { name: "Take Sync bug off the task" }));
     });
     await waitFor(() => expect(within(linked2).queryByRole("button", { name: /Sync bug/ })).not.toBeInTheDocument());
+  });
+
+  it("gives a task started from a chat its own post, with a link back to the chat", async () => {
+    const backend = new DemoBackend(false, 0);
+    const opened: string[] = [];
+    render(<Harness backend={backend} onChat={(c) => opened.push(c)} />);
+    const chat = await act(async () => backend.say("", "Plan the roadmap"));
+    const task = await act(async () => backend.startTask(chat.chain, "Build safe merge: merge only green PRs", "Safe merge"));
+    expect(task.chain).not.toBe(chat.chain);
+
+    const tasks = await screen.findByRole("region", { name: "Your tasks" });
+    const post = await within(tasks).findByRole("article", { name: "Build safe merge: merge only green PRs" });
+    const back = await within(post).findByRole("button", { name: /From: Plan the roadmap/ });
+    // The chat's own post points at the task it started.
+    const chatPost = within(tasks).getByRole("article", { name: "Plan the roadmap" });
+    expect(await within(chatPost).findByRole("button", { name: /Started: Safe merge/ })).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(back);
+    });
+    expect(opened).toEqual([chat.chain]);
   });
 
   it("refuses a pasted link that is not one of your apps", async () => {

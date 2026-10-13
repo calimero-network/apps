@@ -2261,6 +2261,23 @@ export class HyperfeedClient {
   }
 
   /**
+   * start_task
+   *
+   * Spin a task off the chat in `from`: `text` is your message that opens
+   * it, in a chain of its own, with its own post, workspace, checkpoint
+   * and PRs. The chat keeps a link to the task (`hyperfeed:task:<chain>`)
+   * and the task one back (`hyperfeed:from:<chain>`). Takes a `headline`
+   * as [`Self::say`] does, which names the task's link. Returns the
+   * task's first message; its chain is the task.
+   *
+   * @intent mutating
+   */
+  public async startTask(params: { from: string; text: string; headline: string | null }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'start_task', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
    * stop
    *
    * You ask your agent to stop working on one of your messages. One it has

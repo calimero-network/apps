@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNod
 import type { FeedItem, LinkView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
-import { canOpen, subjectFromLink } from "./links";
+import { canOpen, chainLink, subjectFromLink } from "./links";
 import { agentLive, notPickedUp } from "./theme";
 import {
   choicesFor,
@@ -507,6 +507,7 @@ function TaskPosts({
           task={t}
           onOpen={() => onOpen(t.chain)}
           onOpenApp={onOpenApp}
+          onOpenChat={onOpen}
           checkpoint={checkpoints.get(t.chain)}
           feed={feed}
         />
@@ -519,12 +520,15 @@ function TaskCard({
   task,
   onOpen,
   onOpenApp,
+  onOpenChat,
   checkpoint,
   feed,
 }: {
   task: TaskPost;
   onOpen: () => void;
   onOpenApp?: (item: FeedItem) => void;
+  /** Opens the chat it was started from, or a task started from it. */
+  onOpenChat?: (chain: string) => void;
   /** Where it stands, as your agent last wrote it. */
   checkpoint?: CheckpointView;
   /** For the task's watches still waiting, with Cancel. */
@@ -561,7 +565,7 @@ function TaskCard({
           </span>
         )}
       </button>
-      {feed && <LinkChips feed={feed} chain={task.chain} onOpenApp={onOpenApp} />}
+      {feed && <LinkChips feed={feed} chain={task.chain} onOpenApp={onOpenApp} onOpenChat={onOpenChat} />}
       {checkpoint && <CheckpointDetails checkpoint={checkpoint} />}
       {feed && <WatchList feed={feed} chain={task.chain} activeOnly />}
     </article>
@@ -579,11 +583,14 @@ export function LinkChips({
   feed,
   chain,
   onOpenApp,
+  onOpenChat,
   canAdd = true,
 }: {
   feed: Feed;
   chain: string;
   onOpenApp?: (item: FeedItem) => void;
+  /** Opens another chat or task: one started from this one, or the one it came from. */
+  onOpenChat?: (chain: string) => void;
   /** Offer "+ Link"; without, a chain with no links shows nothing. */
   canAdd?: boolean;
 }) {
@@ -626,6 +633,18 @@ export function LinkChips({
     <div className="links" role="group" aria-label="Linked">
       <div className="link-chips">
         {links.map((l) => {
+          const to = chainLink(l);
+          if (to) {
+            // A task started from this chat, or the chat this task came from: opens it here.
+            return (
+              <span key={l.subject} className="link-chip link-chain">
+                <button type="button" className="link-main" title={to.label} disabled={!onOpenChat} onClick={() => onOpenChat?.(to.chain)}>
+                  <span className="link-label">{to.label}</span>
+                  <span aria-hidden="true">{to.started ? "→" : "←"}</span>
+                </button>
+              </span>
+            );
+          }
           const label = linkLabel(l, rows);
           return (
             <span key={l.subject} className={`link-chip${open === l.subject ? " open" : ""}`}>
@@ -1047,7 +1066,7 @@ function Row({
               </>
             )}
           </div>
-          <LinkChips feed={feed} chain={item.chain} onOpenApp={onOpenApp} canAdd={false} />
+          <LinkChips feed={feed} chain={item.chain} onOpenApp={onOpenApp} onOpenChat={onChat} canAdd={false} />
           {item.chain_len > 1 && <Story chain={item.chain} lead={item} feed={feed} />}
           <AskAgent
             key={item.chain}

@@ -130,6 +130,10 @@ A session can end mid-task. So the next one can pick the task up, keep a checkpo
   "questions": [], "author": "mero-bot@studio" } }
 ```
 
+### Split a chat into tasks
+
+One feature per task. When the user asks to start a feature from a chat ("Start X", or a "Start: X" option you offered), or a chat has turned into a list of separate features, spin each one off instead of working on it in the chat: `start_task(from, text, headline)`, with `from` the chat's chain, `text` a brief that stands on its own (what to build, what was decided, which repos), and `headline` its name ("Safe merge"). It posts the brief as the user's message in a new chain, which gets its own task post, workspace, checkpoint and PRs, and links the two: `hyperfeed:task:<task chain>` on the chat and `hyperfeed:from:<chat chain>` on the task (read them with `links`). Then say in the chat what started. Work on the task only in its own chain; read the chat it came from for background.
+
 ### Wait for something, then act: set a watch
 
 "Merge #434 when it's green" or "watch main and fix it if red" is a watch in the feed, not a loop in your session: a session ends, a watch does not.

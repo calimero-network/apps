@@ -1,4 +1,4 @@
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem, LinkView } from "./generated/HyperfeedClient";
 
 /**
  * Where each first-party app lives on the web, by app key: the `frontend` its
@@ -70,6 +70,17 @@ export function appLink(item: FeedItem, ctx: LinkContext): string | null {
     ...(ctx.applicationId ? { application_id: ctx.applicationId } : {}),
   });
   return `${base}${where}#${hash.toString()}`;
+}
+
+/**
+ * A link between a chat and a task started from it (`hyperfeed:task:<chain>`
+ * on the chat, `hyperfeed:from:<chain>` on the task): the other chain, which
+ * way it points, and what it says. null for a link to another app.
+ */
+export function chainLink(link: Pick<LinkView, "app" | "context" | "item" | "label">): { chain: string; started: boolean; label: string } | null {
+  if (link.app !== "hyperfeed" || !link.item || (link.context !== "task" && link.context !== "from")) return null;
+  const started = link.context === "task";
+  return { chain: link.item, started, label: `${started ? "Started" : "From"}: ${link.label || (started ? "a task" : "a chat")}` };
 }
 
 /**
