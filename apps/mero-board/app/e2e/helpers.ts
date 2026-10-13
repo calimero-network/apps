@@ -757,6 +757,41 @@ export async function dragCard(page: Page, cardTitle: string, toListName: string
   await expect(target.getByTestId('item-card').filter({ hasText: cardTitle })).toBeVisible({ timeout: 15_000 });
 }
 
+/**
+ * Drag a list column by its header onto another column. The pointer moves by
+ * the distance between the two columns, so the dragged column lands on the
+ * target's rect and closestCorners resolves the drop to it.
+ */
+export async function dragList(page: Page, fromName: string, toName: string) {
+  const source = listByName(page, fromName);
+  const handle = source.getByTestId('list-title');
+  const target = listByName(page, toName);
+  await handle.scrollIntoViewIfNeeded();
+  const h = (await handle.boundingBox())!;
+  const col = (await source.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  const x0 = h.x + h.width / 2;
+  const y0 = h.y + h.height / 2;
+  const dx = to.x - col.x;
+  await page.mouse.move(x0, y0);
+  await page.mouse.down();
+  await page.mouse.move(x0 - 12, y0, { steps: 6 });
+  await page.mouse.move(x0 + dx, y0, { steps: 20 });
+  // One more move over the target: dnd-kit resolves the drop target on pointer MOVE.
+  await page.mouse.move(x0 + dx + 2, y0, { steps: 2 });
+  await page.mouse.up();
+}
+
+/** The open board's list names, left to right. */
+export async function listOrder(page: Page): Promise<string[]> {
+  return page.getByTestId('item-list').getByTestId('list-title').allInnerTexts();
+}
+
+/** Open a `<details>` menu if it is closed. */
+export async function openMenu(menu: ReturnType<Page['getByTestId']>) {
+  if (!(await menu.evaluate((el) => (el as HTMLDetailsElement).open))) await menu.locator('summary').first().click();
+}
+
 /** Open a card's modal from its tile. */
 export async function openCard(page: Page, title: string) {
   await page.getByTestId('item-card').filter({ hasText: title }).first().click();

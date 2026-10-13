@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import {
   loginViaHash, createWorkspace, addFolder, createBoard, addList, addCard, dragCard, openCard, listByName,
-  uniqueName, clearAuth,
+  uniqueName, clearAuth, dragList, listOrder,
 } from './helpers';
 
 test.describe('cards', () => {
@@ -71,5 +71,57 @@ test.describe('cards', () => {
     await page.getByTestId('confirm-delete_card').click();
     await expect(modal).toHaveCount(0);
     await expect(page.getByTestId('item-card').filter({ hasText: 'Book the venue' })).toHaveCount(0);
+  });
+
+  test('archive a card, show it muted with the toggle, unarchive and move it from the modal', async ({ page }) => {
+    await loginViaHash(page, 0);
+    await createWorkspace(page);
+    await addFolder(page, uniqueName('folder'));
+    await createBoard(page, 'Launch');
+    await addList(page, 'Todo');
+    await addList(page, 'Doing');
+    await addCard(page, 'Todo', 'Keep');
+    await addCard(page, 'Todo', 'Shelve');
+    const todo = listByName(page, 'Todo');
+    const shelve = page.getByTestId('item-card').filter({ hasText: 'Shelve' });
+
+    await openCard(page, 'Shelve');
+    const modal = page.getByTestId('card-modal');
+    // Escape in a nested form cancels the form, not the modal.
+    await page.getByTestId('action-add_label').click();
+    await page.getByTestId('field-label').press('Escape');
+    await expect(page.getByTestId('field-label')).toHaveCount(0);
+    await expect(modal).toBeVisible();
+
+    await page.getByTestId('action-archive_card').click();
+    await expect(page.getByTestId('action-archive_card')).toHaveText('Unarchive', { timeout: 30_000 });
+    await page.getByTestId('action-close').click();
+    await expect(todo.getByTestId('item-card').filter({ hasText: 'Shelve' })).toHaveCount(0, { timeout: 30_000 });
+    await expect(todo.getByTestId('item-card').filter({ hasText: 'Keep' })).toBeVisible();
+
+    await page.getByTestId('toggle-archived-cards').check();
+    await expect(shelve).toBeVisible({ timeout: 30_000 });
+    await expect(shelve).toHaveAttribute('data-archived', 'true');
+    await expect(shelve).toHaveCSS('opacity', '0.55');
+
+    // A card added after the archived one still lands last, below it.
+    await addCard(page, 'Todo', 'Fresh');
+    await expect.poll(() => todo.getByTestId('card-title').allInnerTexts()).toEqual(['Keep', 'Shelve', 'Fresh']);
+
+    await openCard(page, 'Shelve');
+    await page.getByTestId('action-archive_card').click();
+    await expect(page.getByTestId('action-archive_card')).toHaveText('Archive', { timeout: 30_000 });
+    await page.getByTestId('field-list').selectOption({ label: 'Doing' });
+    await page.getByTestId('action-close').click();
+    await page.getByTestId('toggle-archived-cards').uncheck();
+    const moved = listByName(page, 'Doing').getByTestId('item-card').filter({ hasText: 'Shelve' });
+    await expect(moved).toBeVisible({ timeout: 30_000 });
+    await expect(moved).not.toHaveAttribute('data-archived', 'true');
+
+    // Card drags still work with sortable columns, and a list drag carries its cards.
+    await dragCard(page, 'Keep', 'Doing');
+    await dragList(page, 'Doing', 'Todo');
+    await expect.poll(() => listOrder(page), { timeout: 15_000 }).toEqual(['Doing', 'Todo']);
+    await expect(listByName(page, 'Doing').getByTestId('item-card')).toHaveCount(2);
   });
 });

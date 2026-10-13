@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { loginViaHash, createWorkspace, addFolder, createBoard, addList, uniqueName, listByName, clearAuth } from './helpers';
+import {
+  loginViaHash, createWorkspace, addFolder, createBoard, addList, uniqueName, listByName, clearAuth, dragList, listOrder, openMenu,
+} from './helpers';
 
 test.describe('boards and lists', () => {
   test.afterEach(async ({ page }) => { await clearAuth(page); });
@@ -40,5 +42,50 @@ test.describe('boards and lists', () => {
     await expect(page.getByTestId('item-board')).toHaveCount(1, { timeout: 30_000 });
     await page.reload();
     await expect(page.getByTestId('item-board').filter({ hasText: 'Launch' })).toBeVisible({ timeout: 30_000 });
+  });
+
+  test('drag a list to the front; rename, archive and delete the board from its menu', async ({ page }) => {
+    await loginViaHash(page, 0);
+    await createWorkspace(page);
+    await addFolder(page, uniqueName('folder'));
+    await createBoard(page, 'Roadmap');
+    await addList(page, 'Now');
+    await addList(page, 'Next');
+    await addList(page, 'Later');
+    await expect.poll(() => listOrder(page)).toEqual(['Now', 'Next', 'Later']);
+
+    await dragList(page, 'Later', 'Now');
+    await expect.poll(() => listOrder(page), { timeout: 15_000 }).toEqual(['Later', 'Now', 'Next']);
+    await page.reload();
+    await expect(page.getByTestId('item-list')).toHaveCount(3, { timeout: 30_000 });
+    await expect.poll(() => listOrder(page), { timeout: 30_000 }).toEqual(['Later', 'Now', 'Next']);
+
+    const menu = page.getByTestId('board-menu');
+    await openMenu(menu);
+    await menu.getByTestId('board-rename').click();
+    await menu.getByTestId('board-rename-input').fill('Roadmap 2');
+    await menu.getByTestId('board-rename-submit').click();
+    await expect(page.getByTestId('board-name')).toHaveText('Roadmap 2', { timeout: 30_000 });
+
+    await openMenu(menu);
+    await menu.getByTestId('board-archive').click();
+    await expect(page.getByTestId('board-archived-tag')).toBeVisible({ timeout: 30_000 });
+
+    await page.getByTestId('action-back').click();
+    await expect(page.getByTestId('folder-page')).toBeVisible();
+    const tile = page.getByTestId('item-board').filter({ hasText: 'Roadmap 2' });
+    await expect(tile).toHaveCount(0, { timeout: 30_000 });
+    await page.getByTestId('toggle-archived').check();
+    await expect(tile).toBeVisible({ timeout: 30_000 });
+    await expect(tile).toHaveAttribute('data-archived', 'true');
+
+    await tile.click();
+    await expect(page.getByTestId('board-name')).toHaveText('Roadmap 2', { timeout: 30_000 });
+    await openMenu(menu);
+    await menu.getByTestId('board-delete').click();
+    await menu.getByTestId('confirm-delete_board').click();
+    await expect(page.getByTestId('folder-page')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('toggle-archived').check();
+    await expect(page.getByTestId('item-board').filter({ hasText: 'Roadmap 2' })).toHaveCount(0, { timeout: 30_000 });
   });
 });
