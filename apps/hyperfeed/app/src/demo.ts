@@ -20,8 +20,8 @@ import type {
 import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter, type NotificationMode } from "./backend";
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
 import { mergeWatchInput, moveWatch, newWatch } from "./watches";
-import { replySubject } from "./subject";
-import type { PrInput, PrView, WatchInput, WatchView } from "./generated/HyperfeedClient";
+import { replySubject, splitSubject } from "./subject";
+import type { LinkView, PrInput, PrView, WatchInput, WatchView } from "./generated/HyperfeedClient";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 
@@ -713,6 +713,70 @@ export class DemoBackend implements FeedBackend {
       .map((p) => ({ ...p, failing: [...p.failing] }));
   }
 
+  // ── a task's links, as `logic/src/links.rs` keeps them ──
+
+  private linkRows = new Map<string, { chain: string; subject: string; label: string; by: string; added_at: number; removed: boolean }>();
+
+  /** Link `subject` to `chain`; one you took off comes back only when you add it. */
+  private link(chain: string, subject: string, label: string, by: "agent" | "you") {
+    const key = `${chain}|${subject}`;
+    const prior = this.linkRows.get(key);
+    if (prior?.removed && by !== "you") return;
+    if (!prior && [...this.linkRows.values()].filter((l) => l.chain === chain && !l.removed).length >= 30) {
+      if (by === "you") throw new Error("a task has at most 30 links; take one off first");
+      return;
+    }
+    const added = !prior || prior.removed;
+    this.linkRows.set(key, {
+      chain,
+      subject,
+      label: label || prior?.label || "",
+      by: added ? by : prior.by,
+      added_at: added ? this.tick() : prior.added_at,
+      removed: false,
+    });
+  }
+
+  async links(chain: string): Promise<LinkView[]> {
+    const about = [...this.items.values()].filter((i) => i.kind === "notification" && i.chain === chain && i.subject);
+    return [...this.linkRows.values()]
+      .filter((l) => l.chain === chain && !l.removed)
+      .sort((a, b) => a.added_at - b.added_at)
+      .map((l) => {
+        const [app, context, item] = splitSubject(l.subject);
+        const mine = about.filter((i) => i.subject === l.subject);
+        return {
+          chain,
+          subject: l.subject,
+          app,
+          context,
+          item,
+          label: l.label,
+          by: l.by,
+          added_at: l.added_at,
+          activity: mine.length,
+          last_at: Math.max(0, ...mine.map((i) => i.at)),
+        };
+      });
+  }
+
+  async addLink(chain: string, subject: string, label: string): Promise<LinkView> {
+    if (!this.chainExists(chain)) throw new Error(`no chain ${chain}`);
+    if (!splitSubject(subject)[1]) throw new Error("subject must be <app>:<context>[:<id>], with a context");
+    this.link(chain, subject, label.trim(), "you");
+    this.subjectChains.set(subject, chain);
+    this.changed();
+    return (await this.links(chain)).find((l) => l.subject === subject)!;
+  }
+
+  async removeLink(chain: string, subject: string): Promise<void> {
+    const row = this.linkRows.get(`${chain}|${subject}`);
+    if (!row) throw new Error(`${subject} is not linked to ${chain}`);
+    row.removed = true;
+    if (this.subjectChains.get(subject) === chain) this.subjectChains.delete(subject);
+    this.changed();
+  }
+
   /** The runtime fires a watch, then says how it went, as `fire_watch` and `finish_watch` do. */
   moveWatch(id: string, to: "cancelled" | "firing" | "done" | "failed", note = ""): WatchView {
     const w = this.watchRows.get(id);
@@ -955,7 +1019,11 @@ export class DemoBackend implements FeedBackend {
       history: [{ status, note: input.note, at: t }],
       subject: input.subject ?? "",
     });
-    if (item.subject) this.subjectChains.set(item.subject, item.chain);
+    // A thing you took off this task stays off it.
+    if (item.subject && !this.linkRows.get(`${item.chain}|${item.subject}`)?.removed) {
+      this.subjectChains.set(item.subject, item.chain);
+      this.link(item.chain, item.subject, "", "agent");
+    }
     this.changed();
     return item;
   }

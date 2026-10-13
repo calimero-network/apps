@@ -701,9 +701,112 @@ describe("FeedView", () => {
     expect(tasks.compareDocumentPosition(needs()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // It opens its chain in place.
     await act(async () => {
-      fireEvent.click(within(post).getByRole("button"));
+      fireEvent.click(within(post).getByRole("button", { name: /Fix the agent digest card/ }));
     });
     expect(await within(digest()).findByRole("button", { name: /Fix the agent digest card/, expanded: true })).toBeInTheDocument();
+  });
+
+  it("shows a task's links as chips: what teammates did there grouped under each, opened in its app, added and taken off by hand", async () => {
+    const backend = new DemoBackend(false, 0);
+    await backend.setPolicy("issue-tracker", "act", "feed");
+    const opened: string[] = [];
+    render(
+      <Harness
+        backend={backend}
+        openLink={async (item) => {
+          opened.push(`${item.app}:${item.source_context}`);
+          return `https://example.test/${item.app}?context-id=${item.source_context}`;
+        }}
+      />,
+    );
+    const asked = await act(async () => backend.say("", "Fix the sync bug"));
+    const blankAsk = { kind: "", prompt: "", options: [], draft: "" };
+    await act(async () => {
+      await backend.recordAction({
+        app: "issue-tracker", source_context: "repo", source_label: "", method: "set_status", category: "", writes: true, undoable: false,
+        title: "Moved the sync bug to In progress", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
+        chain: asked.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"),
+      });
+      await backend.recordNotification({
+        key: "repo:a>b:0", app: "issue-tracker", source_context: "repo", source_label: "", from: "Xabi Ortiz", title: "Commented on your issue Sync bug",
+        body: "", event: "CommentAdded", needs_you: true, chain: "", ask: { kind: "reply", prompt: "Reply in the thread", options: [], draft: "" },
+        item_type: "message", fields: JSON.stringify({ from: "Xabi Ortiz", text: "Repro attached", where: "Sync bug", is_dm: false }),
+        reply_call: JSON.stringify({ method: "add_comment", args: { issue_id: "issue-7", body: "=answer" } }),
+      });
+    });
+    const tasks = await screen.findByRole("region", { name: "Your tasks" });
+    const post = await within(tasks).findByRole("article", { name: "Fix the sync bug" });
+    const linked = await within(post).findByRole("group", { name: "Linked" });
+    // The chip: the issue as a teammate's notification names it, and how much happened there.
+    const chip = await within(linked).findByRole("button", { name: /Sync bug/, expanded: false });
+    expect(within(chip).getByLabelText("1 from teammates")).toBeInTheDocument();
+
+    // What teammates did there, grouped under the link, answerable in place.
+    await act(async () => {
+      fireEvent.click(chip);
+    });
+    const group = within(linked).getByRole("list", { name: "In Sync bug" });
+    expect(group).toHaveTextContent("Xabi Ortiz");
+    expect(group).toHaveTextContent("Repro attached");
+    fireEvent.change(within(group).getByRole("textbox"), { target: { value: "Thanks, on it" } });
+    await act(async () => {
+      fireEvent.click(within(group).getByRole("button", { name: "Send" }));
+    });
+    await waitFor(() =>
+      expect(backend.sent).toContainEqual(
+        expect.objectContaining({ method: "add_comment", args: expect.objectContaining({ issue_id: "issue-7", body: "Thanks, on it" }) }),
+      ),
+    );
+
+    // It opens in its app, beside the feed. (Answering re-renders the post: read it again.)
+    const linkedNow = async () =>
+      within(await within(screen.getByRole("region", { name: "Your tasks" })).findByRole("article", { name: "Fix the sync bug" })).getByRole("group", {
+        name: "Linked",
+      });
+    await act(async () => {
+      fireEvent.click(within(await linkedNow()).getByRole("button", { name: "Open Sync bug in Issue Tracker" }));
+    });
+    expect(opened).toEqual(["issue-tracker:repo"]);
+    expect(await screen.findByRole("complementary", { name: /Issue Tracker/ })).toBeInTheDocument();
+
+    // Linked by hand from its address, and taken off again.
+    let linked2 = await linkedNow();
+    await act(async () => {
+      fireEvent.click(within(linked2).getByRole("button", { name: "+ Link" }));
+    });
+    linked2 = await linkedNow();
+    fireEvent.change(within(linked2).getByLabelText("Link to add: an app's address"), {
+      target: { value: "https://mero-chat-pwa.vercel.app/?context-id=launch" },
+    });
+    await act(async () => {
+      fireEvent.click(within(linked2).getByRole("button", { name: "Add" }));
+    });
+    expect(await within(linked2).findByRole("button", { name: /^Chat/ })).toBeInTheDocument();
+    expect((await backend.links(asked.chain)).map((l) => [l.subject, l.by])).toEqual([
+      ["issue-tracker:repo:issue-7", "agent"],
+      ["chat:launch", "you"],
+    ]);
+    await act(async () => {
+      fireEvent.click(within(linked2).getByRole("button", { name: "Take Sync bug off the task" }));
+    });
+    await waitFor(() => expect(within(linked2).queryByRole("button", { name: /Sync bug/ })).not.toBeInTheDocument());
+  });
+
+  it("refuses a pasted link that is not one of your apps", async () => {
+    const backend = new DemoBackend(false, 0);
+    render(<Harness backend={backend} />);
+    const asked = await act(async () => backend.say("", "Plan the offsite"));
+    const post = await within(await screen.findByRole("region", { name: "Your tasks" })).findByRole("article", { name: "Plan the offsite" });
+    const linked = within(post).getByRole("group", { name: "Linked" });
+    await act(async () => {
+      fireEvent.click(within(linked).getByRole("button", { name: "+ Link" }));
+    });
+    fireEvent.change(within(linked).getByLabelText("Link to add: an app's address"), { target: { value: "https://example.com/x" } });
+    await act(async () => {
+      fireEvent.click(within(linked).getByRole("button", { name: "Add" }));
+    });
+    expect(within(linked).getByText("Not an address of one of your apps")).toBeInTheDocument();
+    expect(await backend.links(asked.chain)).toEqual([]);
   });
 
   describe("the new feed", () => {

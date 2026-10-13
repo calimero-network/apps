@@ -60,6 +60,9 @@ A notification about the same thing (its reply goes to the same issue, chat or b
 
 A write that has no row of its own (a step you report with `agent_work` on the user's message) names its subject with `touch_subject(chain, subject)`.
 
+Every subject a task touches becomes one of its **links**: a chip on the task's post that opens the thing in its app and groups what teammates did there. `links(chain)` lists them, each with its `app`, `context`, `item`, `label` and `activity` (teammates' notifications about it in the task).
+When you create something for a task (an issue, a doc, a board), name it: `add_link(chain, { subject, label: "<its title>", by: "agent" })`. A link the user took off (`remove_link` is theirs) stays off: adding it again is refused.
+
 ### Propose something the user resolves in one tap
 
 Use an `ask` on a proposal:

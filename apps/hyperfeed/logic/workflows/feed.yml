@@ -1615,3 +1615,61 @@ steps:
     type: assert
     statements:
       - "is_set({{intruder_touch_error}})"
+
+  # ── A task's links: chips for the things it works on ──
+
+  - name: You link a board to the task by hand
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_link
+    args:
+      chain: "{{subject_task}}"
+      input: { subject: "design:ctx-board", label: "Feed redesign", by: "you" }
+    outputs:
+      board_link: result.output
+
+  - name: The task's links read back, the agent's and yours
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: links
+    args: { chain: "{{subject_task}}" }
+    outputs:
+      link_first: result.output.0
+      link_last: result.output.2
+
+  - name: You take the board off the task
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: remove_link
+    args: { chain: "{{subject_task}}", subject: "design:ctx-board" }
+
+  - name: node-2 cannot link anything
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: add_link
+    args:
+      chain: "{{subject_task}}"
+      input: { subject: "chat:ctx-launch", label: "", by: "you" }
+    expected_failure: true
+    outputs:
+      intruder_link_error: error
+
+  - name: Assert the links
+    type: json_assert
+    statements:
+      - 'json_subset({{board_link}}, {"subject": "design:ctx-board", "app": "design", "context": "ctx-board", "item": "", "label": "Feed redesign", "by": "you"})'
+      - 'json_subset({{link_first}}, {"subject": "issue-tracker:ctx-repo:issue-7", "by": "agent", "activity": 1})'
+      - 'json_subset({{link_last}}, {"subject": "design:ctx-board", "by": "you"})'
+
+  - name: Assert the refused link
+    type: assert
+    statements:
+      - "is_set({{intruder_link_error}})"

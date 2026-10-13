@@ -32,14 +32,17 @@ export const TASKS_SHOWN = 3;
 
 /**
  * The chains that may be tasks, newest first: the ones your agent leads that
- * are underway, need you, or moved since the start of today. Whether one is a
- * task is only known once its chain is read (`taskOf`).
+ * are underway, need you, or moved since the start of today. A teammate's
+ * notification that joined a chain (one thread per task) may lead it too, and
+ * the task stays a task. Whether one is a task is only known once its chain is
+ * read (`taskOf`).
  */
 export function taskCandidates(items: FeedItem[], now = Date.now()): FeedItem[] {
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
+  const joined = (i: FeedItem) => i.kind === "notification" && i.chain !== i.id;
   return items
-    .filter((i) => isAgent(i) && (i.needs_you || laneOf(i) === "progress" || (i.chain_at || i.at) >= today.getTime()))
+    .filter((i) => (isAgent(i) || joined(i)) && (i.needs_you || laneOf(i) === "progress" || (i.chain_at || i.at) >= today.getTime()))
     .sort((a, b) => (b.chain_at || b.at) - (a.chain_at || a.at));
 }
 

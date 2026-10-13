@@ -303,6 +303,10 @@ export interface Event_LensChanged {
   status: string;
 }
 
+export interface Event_LinksChanged {
+  chain: string;
+}
+
 export interface Event_MessageChanged {
   id: string;
   status: string;
@@ -610,6 +614,10 @@ export interface Hyperfeed {
    * The chain that last touched each subject, by its key.
    */
   subject_chains: Record<string, Subject>;
+  /**
+   * Each task's links, by `<chain>|<subject>`. See [`links`].
+   */
+  links: Record<string, Link>;
 }
 
 /**
@@ -684,6 +692,66 @@ export interface LensView {
   summary: string;
   status: string;
   updated_at: number;
+}
+
+/**
+ * One link of a task, kept by `<chain>|<subject>`. Taking it off keeps the
+ * row with `removed: true`, so your agent touching the thing again does not
+ * bring it back; only you adding it does.
+ */
+export interface Link {
+  chain: string;
+  subject: string;
+  label: string;
+  by: string;
+  added_at: number;
+  removed: boolean;
+  updated_at: number;
+}
+
+/**
+ * What [`crate::Hyperfeed::add_link`] takes.
+ */
+export interface LinkInput {
+  /**
+   * `<app>:<context>[:<id>]`, as [`crate::subject_key`] makes it.
+   */
+  subject: string;
+  /**
+   * What the chip says ("Agent digest card"); `""` keeps the one it has,
+   * and a client names an unlabelled one from what it knows.
+   */
+  label: string;
+  /**
+   * `agent` or `you`.
+   */
+  by: string;
+}
+
+/**
+ * A link as [`crate::Hyperfeed::links`] returns it.
+ */
+export interface LinkView {
+  chain: string;
+  subject: string;
+  /**
+   * The subject's parts: the app's key, its context, and the one thing in
+   * it (`""` for the whole context: a chat, a board).
+   */
+  app: string;
+  context: string;
+  item: string;
+  label: string;
+  by: string;
+  added_at: number;
+  /**
+   * Notifications in the task about it: what teammates did there.
+   */
+  activity: number;
+  /**
+   * The latest of them (ms); 0 with none.
+   */
+  last_at: number;
 }
 
 /**
@@ -1227,6 +1295,7 @@ export interface Work {
 
 
 
+
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }
   | { name: "ActionRecorded"; payload: Event_ActionRecorded }
@@ -1257,6 +1326,13 @@ export type AbiEvent =
      */
     name: "LensChanged";
     payload: Event_LensChanged;
+  }
+  | {
+    /**
+     * A task's links changed: re-read `links`.
+     */
+    name: "LinksChanged";
+    payload: Event_LinksChanged;
   }
   | { name: "MessageChanged"; payload: Event_MessageChanged }
   | {
@@ -1307,6 +1383,21 @@ export class HyperfeedClient {
   constructor(client: ExecuteTransport | { readonly rpc: ExecuteTransport }, contextId: string) {
     this._transport = 'execute' in client ? client : client.rpc;
     this._contextId = contextId;
+  }
+
+  /**
+   * add_link
+   *
+   * Link a thing in another app to the task in `chain`: `subject` as
+   * [`subject_key`] makes it, a `label` for its chip, `by` you or your
+   * agent. What teammates do there joins the task from now on. Adding one
+   * again relabels it; you adding one you took off brings it back.
+   *
+   * @intent mutating
+   */
+  public async addLink(params: { chain: string; input: LinkInput }): Promise<LinkView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add_link', argsJson: params });
+    return response as LinkView;
   }
 
   /**
@@ -1714,6 +1805,19 @@ export class HyperfeedClient {
   }
 
   /**
+   * links
+   *
+   * The links of the task in `chain`, oldest first, each with how much
+   * teammates did there (its notifications in the task).
+   *
+   * @intent read_only
+   */
+  public async links(params: { chain: string }): Promise<LinkView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'links', argsJson: params });
+    return response as LinkView[];
+  }
+
+  /**
    * mark_all_seen
    *
    * Mark every notification seen.
@@ -1855,6 +1959,19 @@ export class HyperfeedClient {
   public async releaseChain(params: { chain: string; session: string }): Promise<boolean> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'release_chain', argsJson: params });
     return response as boolean;
+  }
+
+  /**
+   * remove_link
+   *
+   * Take a link off the task in `chain`. Nothing new about it joins the
+   * task, and your agent touching it again does not bring it back.
+   *
+   * @intent mutating
+   */
+  public async removeLink(params: { chain: string; subject: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'remove_link', argsJson: params });
+    return response as void;
   }
 
   /**

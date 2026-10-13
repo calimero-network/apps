@@ -34,3 +34,9 @@ export function replySubject(app: string, context: string, replyCall: string): s
   const id = SUBJECT_ARGS.map((k) => named[k]).find((v): v is string => typeof v === "string" && v !== "") ?? "";
   return subjectKey(app, context, id);
 }
+
+/** A subject's parts: app, context, item (`""` for the whole context). Missing parts are `""`. */
+export function splitSubject(subject: string): [string, string, string] {
+  const [app = "", context = "", ...rest] = subject.split(":");
+  return [app, context, rest.join(":")];
+}

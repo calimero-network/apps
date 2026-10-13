@@ -3107,3 +3107,131 @@ body {
 .watch-cancel {
   margin-left: auto;
 }
+
+/* ── A task's links: chips for the things it works on ── */
+
+.links {
+  margin: 0 12px 8px;
+}
+
+.task .links {
+  margin: 0;
+  padding: 6px 14px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.link-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.link-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  max-width: 100%;
+}
+
+.link-chip.open {
+  border-color: var(--accent);
+}
+
+.link-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 4px 0 4px;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.link-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.link-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.link-icon {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.link-new {
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+}
+
+.link-add {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.link-add input {
+  min-width: 240px;
+  min-height: 28px;
+  font-size: 13px;
+}
+
+.link-bad {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.link-group {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 8px 0 0 10px;
+  border-left: 2px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.link-step {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.link-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.link-step-body p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.link-empty {
+  color: var(--ink-2);
+  font-size: 13px;
+}
