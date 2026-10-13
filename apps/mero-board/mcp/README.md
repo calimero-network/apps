@@ -83,7 +83,7 @@ pnpm --filter @calimero-network/mero-board-mcp start
 ## Wire it into Claude Code
 
 The primary path is `npx`, no clone required (needs the package published to
-npm - see "Publishing" below):
+npm, which is not wired up yet - see "Publishing" below):
 
 ```bash
 claude mcp add board --scope user \
@@ -147,18 +147,8 @@ Outside the pnpm workspace: `cd mcp && pnpm install --ignore-workspace --no-lock
 
 ## Publishing
 
-`.github/workflows/publish-mcp.yml` releases this package automatically:
-merging a conventional commit that touches `mcp/` into `main` runs
-semantic-release, which bumps the version, writes `CHANGELOG.md`, tags the
-release (`mero-board-mcp-v<version>`), and publishes to npm via
-trusted publishing (GitHub Actions OIDC - no token secret). It can also be
-triggered manually from the Actions tab. Commit types map to release types
-per `mcp/.releaserc.json` (`feat` = minor, `fix`/`chore`/`docs`/`refactor`/
-`perf` = patch, `test`/`build`/`ci` = no release).
-
-This requires the package's trusted publisher to be configured on
-npmjs.com to point at this repo and the `publish-mcp.yml` workflow filename
-before the first publish will work.
+Publishing to npm is not wired up yet: there is no release workflow for this
+package, so until there is, run it from source (above).
 
 ## Live smoke test
 

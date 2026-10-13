@@ -7,6 +7,6 @@
     "app:dev": "pnpm --filter ./app dev",
     "app:build": "pnpm --filter ./app build",
     "app:codegen": "pnpm --filter ./app codegen",
-    "test:smoke": "cd logic && merobox bootstrap run workflows/probes/smoke.yml"
+    "test:smoke": "cd logic && merobox bootstrap run workflows/smoke.yml"
   }
 }

@@ -209,23 +209,36 @@ function encodeICO(entries) {
 }
 
 // ---- art -------------------------------------------------------------------
-// A check mark, built as two thick quads with round caps at the joints rather
-// than as SVG path data — the rasteriser only knows hard predicates, and a
-// polyline with real caps is what keeps the corner from reading as a notch at
-// 16 px. Calimero green (#b6ff5e, this app's accent) on its own near-black.
+// A kanban mark: three rounded columns hanging from one top edge, at differing
+// heights, the way a board's lists fill unevenly. Calimero green (#b6ff5e,
+// this app's accent) on its own near-black. BARS is the single source for both
+// the raster icons and favicon.svg, so the two cannot drift.
 
 const BG = "#0e140f";
+const GRAD = { x0: 16, y0: 50, x1: 48, y1: 14, from: "#b6ff5e", to: "#a4ff11" };
+// [x, y, w, h, r] in design units
+const BARS = [
+  [13, 14, 10, 36, 3.5],
+  [27, 14, 10, 22, 3.5],
+  [41, 14, 10, 29, 3.5],
+];
 
 function mark(c, fit) {
-  const paint = grad(16, 44, 48, 18, "#b6ff5e", "#a4ff11");
-  // short leg, then long leg
-  draw(c, poly([[21.5, 29.5], [30.5, 38.5], [25.5, 43.5], [16.5, 34.5]]), paint, fit);
-  draw(c, poly([[29.6, 43.35], [48.6, 22.35], [43.4, 17.65], [24.4, 38.65]]), paint, fit);
-  // round caps + the elbow, so the two quads read as one stroke
-  draw(c, circle(19, 32, 3.5), paint, fit);
-  draw(c, circle(27.5, 41, 3.5), paint, fit);
-  draw(c, circle(46, 20, 3.5), paint, fit);
+  const paint = grad(GRAD.x0, GRAD.y0, GRAD.x1, GRAD.y1, GRAD.from, GRAD.to);
+  for (const [x, y, w, h, r] of BARS) draw(c, rrect(x, y, w, h, r), paint, fit);
 }
+
+const SVG = `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mero Board logo">
+  <defs>
+    <linearGradient id="g" x1="${GRAD.x0}" y1="${GRAD.y0}" x2="${GRAD.x1}" y2="${GRAD.y1}" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${GRAD.from}"/>
+      <stop offset="1" stop-color="${GRAD.to}"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="${BG}"/>
+${BARS.map(([x, y, w, h, r]) => `  <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="url(#g)"/>`).join("\n")}
+</svg>
+`;
 
 // ---- variants --------------------------------------------------------------
 // Two framings, and the difference is not cosmetic:
@@ -252,4 +265,5 @@ writeFileSync(
 writeFileSync(join(OUT, "apple-touch-icon.png"), encodePNG(render(180, false)));
 writeFileSync(join(OUT, "icon-192.png"), encodePNG(render(192, false)));
 writeFileSync(join(OUT, "icon-512.png"), encodePNG(render(512, false)));
-console.log("wrote favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png →", OUT);
+writeFileSync(join(OUT, "favicon.svg"), SVG);
+console.log("wrote favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png, favicon.svg →", OUT);
