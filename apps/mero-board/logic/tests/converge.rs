@@ -33,7 +33,7 @@ fn concurrent_moves_of_one_card_converge_to_one_list() {
         .ops(|s| {
             let d = only_board(s);
             let card = d.cards[0].id.clone();
-            // Each replica picks a different list and rank.
+            // Every replica moves the card to the same list (computed from its own state, which is identical); the test checks one surviving card and equal Merkle roots.
             let n = s.list_cards(None, None, None, None, true).unwrap().len();
             let list = d.lists[n % d.lists.len()].id.clone();
             let _ = s.move_card(card, list, "n".into());

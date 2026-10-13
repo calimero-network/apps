@@ -2,108 +2,100 @@
 
 ## Overview
 
-Mero Board is a private issue board for a small engineering team.
-Issues use a structured format built for handing a bug to a coding agent:
+Mero Board is a private kanban board for a team. A folder holds boards; a board holds lists (columns); a list holds cards. A card has a `title`, a `description`, an optional `assignee`, an optional `due_at`, `labels`, a checklist and a comment thread. Any member may edit, move, archive or relabel anything. Only a board's creator may delete the board, only a card's creator may delete the card, and only a comment's author may edit or delete the comment.
 
-- `summary`: what is wrong, in one or two sentences.
-- `impact`: who or what it affects and how badly.
-- `repro`: the steps, logs or conditions that trigger it.
-- `resolution_criteria`: what "fixed" must satisfy.
-
-Each issue also has a `title`, a `status`, a `priority`, an optional `assignee`, `labels` and a comment thread.
-
-- Statuses, in board column order: `Open`, `In progress`, `Blocked`, `Done`. New issues start `Open`.
-- Priorities: `low`, `medium`, `high`, `urgent`.
-- Issue ids look like `issue-1727000000000-1a2b3c4d`, comment ids like `comment-1727000000000-5e6f7a8b`; both are assigned by the contract.
-- `created_at` and `edited_at` are unix milliseconds. `created_by` and comment `author` are the writer's account id (64 hex).
+- Ids look like `board-1727000000000-1a2b3c4d`, `list-…`, `card-…`, `item-…`, `comment-…`; all assigned by the contract.
+- `created_at`, `due_at` and `edited_at` are unix milliseconds. `created_by` and comment `author` are the writer's account id (64 hex).
+- Order is a `rank`: a short string of `0-9a-z` that sorts lexicographically. Siblings (boards in a folder, lists on a board, cards in a list, checklist items on a card) are shown in `(rank, id)` order. To place something between two neighbours, pass a rank strictly between their ranks (`"i"` and `"r"` → `"n"`); omit `rank` to append last.
 
 ## Context model
 
 - A workspace is a namespace of this app.
-- A repo is one context in the workspace namespace, running the service `issue-tracker`. It holds that repo's issues, comments, labels and its `repo_url`.
-- A repo's name is the context's `name`, which `list_contexts` shows. The node that added the repo also keeps a context alias of the same name; aliases are local to one node. Repo names are unique within a workspace.
-- The service takes no init arguments; a new repo has an empty `repo_url` until `set_repo_url`.
-- Every member of the workspace may read and triage every issue. Only a comment's author may edit or delete it, and only an issue's creator may delete it.
+- A folder is one context in the workspace, running the service `board`. The context's `name` is the folder name. All of a folder's boards replicate to everyone who joined the folder. A team that wants boards nobody else sees uses another folder.
+- The service takes no init arguments; a new folder has no boards.
 
 ## Getting started
 
-Every app tool (and `call`) takes an `app_handle`. Get one from `select_app` with `app` and `context`; the handle binds the repo the call runs against. Selecting another repo gives another handle; keep one per repo. The JSON examples in this guide show only the method's own arguments.
+Every app tool (and `call`) takes an `app_handle`. Get one from `select_app` with `app` and `context`; the handle binds the folder. Keep one handle per folder.
 
 1. `list_applications` and find the package `com.calimero.mero-board`.
 2. `list_namespaces` and pick the workspace, or `create_namespace` with `application` set to the package and `name` set to the workspace name.
-3. `list_contexts` for the application: the contexts whose `groupId` is the workspace namespace are its repos, and each one's `name` is the repo name.
-4. If the repo you need does not exist, follow "Add a repo".
-5. `select_app` with `app` set to the package and `context` set to the repo's context id; keep the returned `app_handle`.
+3. `list_contexts` for the application: the contexts whose `groupId` is the workspace namespace are its folders, each one's `name` is the folder name.
+4. If the folder you need does not exist, follow "Add a folder".
+5. `select_app` with `app` set to the package and `context` set to the folder's context id; keep the returned `app_handle`.
 
-To invite a teammate, `invite_to_namespace` for the workspace and hand over the invitation.
-They run `join_namespace` on their node, then `join_context` with each repo's context id they need.
+To invite a teammate, `invite_to_namespace` for the workspace and hand over the invitation. They run `join_namespace` on their node, then `join_context` with each folder's context id they need.
 
 ## Procedures
 
-### Add a repo
+### Add a folder
 
-1. Make sure no context of the workspace already has that `name` (Getting started step 3).
-2. `create_context` with `application`, `namespace` set to the workspace namespace id, `service` `issue-tracker` and `name` set to the repo name, e.g. `apps`.
+1. Make sure no context of the workspace already has that `name`.
+2. `create_context` with `application`, `namespace` set to the workspace namespace id, `service` `board` and `name` set to the folder name, e.g. `marketing`.
 3. `select_app` with `app` set to the package and `context` set to the new context id.
-4. Call `set_repo_url`:
+4. `create_alias` with `alias` set to the folder name and `contextId` set to the new context id. If the alias already exists, keep going.
 
-   ```json
-   {"url": "https://github.com/calimero-network/apps"}
-   ```
+### Create a board
 
-5. `create_alias` with `alias` set to the repo name and `contextId` set to the new context id, so later calls on this node can name the repo. If the alias already exists, keep going.
-
-### List repos
-
-`list_contexts` for the application; the contexts whose `groupId` is the workspace namespace are its repos, named by `name`.
-Select one and call `get_repo_info` with `{}` for its URL.
-
-### File an issue
-
-Call `create_issue`; it returns the new issue id:
+`create_board` returns the board id. Then add lists with `create_list`, in the order you want them (omitting `rank` appends).
 
 ```json
-{"title": "Flaky CI", "summary": "The e2e job fails intermittently.", "impact": "Merges are blocked.", "repro": "Re-run the e2e job on main.", "resolution_criteria": "Ten consecutive green runs.", "priority": "high", "labels": ["ci"]}
+{"name": "Q4 launch", "rank": null}
+```
+```json
+{"board_id": "<board id>", "name": "Todo", "rank": null}
 ```
 
-### Find issues
+`list_boards` with `{"include_archived": false}` lists the folder's boards by rank. `rename_board`, `move_board` (`{"board_id", "rank"}`) and `set_board_archived` (`{"board_id", "archived"}`) change one.
 
-`list_issues` filters by exact `status`, `assignee` and `label`; `null` means no filter.
-Results are ordered by creation time.
+### Read a board
+
+`get_board` with `{"board_id": "<board id>"}` returns `{board, lists, cards}`: lists by rank and the unarchived cards by rank, each card with its `list_id`, `labels` and `checklist_done` / `checklist_total`. Group cards by `list_id` to draw the columns.
+
+### Add a card
+
+`create_card` returns the card id. `description`, `assignee`, `due_at`, `labels` and `rank` are optional.
 
 ```json
-{"status": "Open", "assignee": null, "label": "ci"}
+{"board_id": "<board id>", "list_id": "<list id>", "title": "Write the launch post", "description": "Draft is in the shared doc.", "assignee": null, "due_at": 1767225600000, "labels": ["marketing"], "rank": null}
 ```
 
-`get_issue` with `{"issue_id": "<issue id>"}` returns the issue and its comments.
-`get_status_counts` with `{}` returns the count per column.
+### Move a card
 
-### Triage an issue
+`move_card` with the target list (must be on the same board) and a rank between the new neighbours. To put a card last in a list, use a rank after the last card's rank; to put it first, use a rank before the first card's.
 
-- Status: `set_status` with `{"issue_id": "<issue id>", "status": "In progress"}`.
-- Priority: `set_priority` with `{"issue_id": "<issue id>", "priority": "urgent"}`.
-- Assignee: `set_assignee` with `{"issue_id": "<issue id>", "assignee": "<account id>"}`; `null` clears it. The app suggests workspace members' account ids from `list_group_members`, but any text is accepted.
-- Labels: `add_label` / `remove_label` with `{"issue_id": "<issue id>", "label": "ci"}`.
-- Sections: `set_summary`, `set_impact`, `set_repro`, `set_resolution_criteria`, each with `issue_id` and the new text, e.g. `{"issue_id": "<issue id>", "summary": "Fails on every third run."}`.
+```json
+{"card_id": "<card id>", "list_id": "<list id>", "rank": "n"}
+```
 
-### Discuss an issue
+### Edit a card
 
-`add_comment` with `{"issue_id": "<issue id>", "body": "Seen again on main."}` returns the comment id.
-The author may `edit_comment` with `{"comment_id": "<comment id>", "new_body": "Seen twice on main."}` or `delete_comment` with `{"comment_id": "<comment id>"}`.
+`set_card_title`, `set_card_description`, `set_card_assignee` (`null` clears), `set_card_due` (`null` clears), `set_card_archived`, `add_label`, `remove_label`, each with `card_id` and the new value, e.g. `{"card_id": "<card id>", "assignee": "<account id>"}`. The app suggests members' account ids from `list_group_members`, but any text is accepted.
 
-### Delete an issue
+### Checklist
 
-As its creator, `delete_issue` with `{"issue_id": "<issue id>"}`. Its triage state, labels and your own comments on it go with it. Comments other teammates left on it are not deleted, but become unreachable once the issue is gone.
+`add_checklist_item` with `{"card_id", "text", "rank"}` returns the item id. `set_checklist_item_done` with `{"item_id", "done"}` ticks it; `set_checklist_item_text`, `move_checklist_item` and `remove_checklist_item` edit, reorder and remove.
 
-### Build a fix prompt
+### Find cards
 
-Call `get_issue` and `get_repo_info` on the repo, then give the coding agent: the issue id and title, the repository URL, the four sections under their own headings, and these instructions: reproduce first, find the root cause, make the smallest correct fix, add a regression test and prove every resolution criterion, then open a pull request with a test plan.
+`list_cards` filters by exact `board_id`, `list_id`, `assignee` and `label`; `null` means no filter; `include_archived` hides or shows archived cards. Sorted by board then rank. `get_card` with `{"card_id"}` returns the card with its checklist and comments.
+
+```json
+{"board_id": null, "list_id": null, "assignee": "<account id>", "label": null, "include_archived": false}
+```
+
+### Discuss a card
+
+`add_comment` with `{"card_id", "body"}` returns the comment id. The author may `edit_comment` with `{"comment_id", "body"}` or `delete_comment` with `{"comment_id"}`.
+
+### Delete
+
+`delete_list` with `{"list_id"}` fails while the list holds unarchived cards: move or archive them first. As the creator, `delete_card` with `{"card_id"}` or `delete_board` with `{"board_id"}`. A delete takes the shared rows and the caller's own comments with it; other people's comments (and, for a board, other people's cards) are not deleted but become unreachable.
 
 ## Rules and limits
 
-- `title` and each label: 1 to 64 characters. `summary`, `impact`, `repro`, `resolution_criteria` and comment bodies must not be empty.
-- `status` and `priority` must be exactly one of the listed values; the status values are case-sensitive and `In progress` has a space.
-- `repo_url` must start with `http://` or `https://`.
+- `name` and `title`: 1 to 64 characters. Labels: 1 to 32 characters. Comment bodies and checklist text must not be empty.
+- A `rank` must be non-empty, use only `0-9a-z`, and not end in `0`.
+- `move_card` and `create_card` reject a list that is not on the card's board. A card belongs to one board: to move it across boards, create it again and delete the original.
 - Adding a label twice keeps one; removing a missing label succeeds.
-- Deleting an issue removes its triage state and labels for every member, plus the creator's own comments on it; comments left by other teammates are not removed but are no longer reachable.
-- An issue belongs to one repo: to move it, file it again in the other repo and delete the original.
+- Archiving hides; deleting removes. Archived boards and cards still answer `get_board` / `get_card` and `include_archived: true` queries.
