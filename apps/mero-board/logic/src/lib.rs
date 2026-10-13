@@ -168,7 +168,6 @@ fn validate_name(field: &str, value: &str) -> app::Result<()> {
     validate_label(field, value).map_err(AppError::from)
 }
 
-#[allow(dead_code)] // used from the card tasks onward
 fn validate_text(field: &str, value: &str) -> app::Result<()> {
     if value.trim().is_empty() {
         app::bail!(Error::Invalid(format!("{field} must not be empty")));
@@ -696,6 +695,186 @@ impl Board {
             comments: self.comments_of(&card_id)?,
         })
     }
+
+    // ----- checklist ------------------------------------------------------
+
+    /// Add a checklist line to a card and return its id (`item-<ms>-<8 hex>`).
+    ///
+    /// # Examples
+    /// ```json
+    /// {"card_id":"<card id>","text":"Book the venue","rank":null}
+    /// ```
+    pub fn add_checklist_item(
+        &mut self,
+        card_id: String,
+        text: String,
+        rank: Option<String>,
+    ) -> app::Result<String> {
+        validate_text("text", &text)?;
+        let _ = self.require_card(&card_id)?;
+        let rank = match rank {
+            Some(r) => {
+                check_rank(&r)?;
+                r
+            }
+            None => rank_after(self.checklist_of(&card_id)?.last().map(|i| i.rank.as_str())),
+        };
+        let id = new_id("item", now_ms());
+        let _ = self
+            .checklist
+            .insert(
+                id.clone(),
+                ChecklistItemRow {
+                    card_id: LwwRegister::new(card_id.clone()),
+                    text: LwwRegister::new(text),
+                    done: LwwRegister::new(false),
+                    rank: LwwRegister::new(rank),
+                },
+            )
+            .map_err(store_err("checklist.insert"))?;
+        app::emit!(Event::ChecklistChanged { card_id: &card_id });
+        Ok(id)
+    }
+
+    /// Replace a checklist line's text.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"item_id":"<item id>","text":"Book the venue by Friday"}
+    /// ```
+    #[app::idempotent]
+    pub fn set_checklist_item_text(&mut self, item_id: String, text: String) -> app::Result<()> {
+        validate_text("text", &text)?;
+        let card_id = self.require_item(&item_id)?;
+        let _ = self
+            .checklist
+            .update(&item_id, |i| i.text.set(text))
+            .map_err(store_err("checklist.update"))?;
+        app::emit!(Event::ChecklistChanged { card_id: &card_id });
+        Ok(())
+    }
+
+    /// Tick or untick a checklist line.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"item_id":"<item id>","done":true}
+    /// ```
+    #[app::idempotent]
+    pub fn set_checklist_item_done(&mut self, item_id: String, done: bool) -> app::Result<()> {
+        let card_id = self.require_item(&item_id)?;
+        let _ = self
+            .checklist
+            .update(&item_id, |i| i.done.set(done))
+            .map_err(store_err("checklist.update"))?;
+        app::emit!(Event::ChecklistChanged { card_id: &card_id });
+        Ok(())
+    }
+
+    /// Reorder a checklist line.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"item_id":"<item id>","rank":"n"}
+    /// ```
+    #[app::idempotent]
+    pub fn move_checklist_item(&mut self, item_id: String, rank: String) -> app::Result<()> {
+        check_rank(&rank)?;
+        let card_id = self.require_item(&item_id)?;
+        let _ = self
+            .checklist
+            .update(&item_id, |i| i.rank.set(rank))
+            .map_err(store_err("checklist.update"))?;
+        app::emit!(Event::ChecklistChanged { card_id: &card_id });
+        Ok(())
+    }
+
+    /// Remove a checklist line.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"item_id":"<item id>"}
+    /// ```
+    #[app::destructive]
+    pub fn remove_checklist_item(&mut self, item_id: String) -> app::Result<()> {
+        let card_id = self.require_item(&item_id)?;
+        let _ = self
+            .checklist
+            .remove(&item_id)
+            .map_err(store_err("checklist.remove"))?;
+        app::emit!(Event::ChecklistChanged { card_id: &card_id });
+        Ok(())
+    }
+
+    // ----- comments -------------------------------------------------------
+
+    /// Post a comment on a card and return its id (`comment-<ms>-<8 hex>`).
+    ///
+    /// # Examples
+    /// ```json
+    /// {"card_id":"<card id>","body":"Venue confirmed."}
+    /// ```
+    pub fn add_comment(&mut self, card_id: String, body: String) -> app::Result<String> {
+        validate_text("body", &body)?;
+        let _ = self.require_card(&card_id)?;
+        let now = now_ms();
+        let id = new_id("comment", now);
+        self.comments
+            .insert(
+                id.clone(),
+                Comment {
+                    id: id.clone(),
+                    card_id: card_id.clone(),
+                    body: LwwRegister::new(body),
+                    created_at: now,
+                    edited_at: LwwRegister::new(None),
+                },
+            )
+            .map_err(store_err("comments.insert"))?;
+        app::emit!(Event::CommentAdded {
+            id: &id,
+            card_id: &card_id
+        });
+        Ok(id)
+    }
+
+    /// Replace a comment's text. Only its author may edit it.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"comment_id":"<comment id>","body":"Venue confirmed for the 12th."}
+    /// ```
+    #[app::idempotent]
+    pub fn edit_comment(&mut self, comment_id: String, body: String) -> app::Result<()> {
+        validate_text("body", &body)?;
+        self.require_comment_author(&comment_id, "edit")?;
+        let now = now_ms();
+        self.comments
+            .modify(&comment_id, |c| {
+                c.body.set(body);
+                c.edited_at.set(Some(now));
+            })
+            .map_err(store_err("comments.modify"))?;
+        app::emit!(Event::CommentEdited { id: &comment_id });
+        Ok(())
+    }
+
+    /// Delete a comment. Only its author may delete it.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"comment_id":"<comment id>"}
+    /// ```
+    #[app::destructive]
+    pub fn delete_comment(&mut self, comment_id: String) -> app::Result<()> {
+        self.require_comment_author(&comment_id, "delete")?;
+        let _ = self
+            .comments
+            .remove(&comment_id)
+            .map_err(store_err("comments.remove"))?;
+        app::emit!(Event::CommentDeleted { id: &comment_id });
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -980,13 +1159,96 @@ impl Board {
         Ok(out)
     }
 
-    /// Stubs completed in the checklist/comments task.
-    fn checklist_of(&self, _card_id: &str) -> app::Result<Vec<ChecklistItemView>> {
-        Ok(Vec::new())
+    fn require_item(&self, item_id: &str) -> app::Result<String> {
+        match self
+            .checklist
+            .get(item_id)
+            .map_err(store_err("checklist.get"))?
+        {
+            Some(row) => Ok(row.card_id.get().clone()),
+            None => Err(AppError::from(Error::NotFound(item_id.to_owned()))),
+        }
     }
 
-    fn comments_of(&self, _card_id: &str) -> app::Result<Vec<CommentView>> {
-        Ok(Vec::new())
+    fn checklist_of(&self, card_id: &str) -> app::Result<Vec<ChecklistItemView>> {
+        let mut out: Vec<ChecklistItemView> = self
+            .checklist
+            .query("card_id")
+            .eq(card_id)
+            .entries()
+            .map_err(store_err("checklist.query"))?
+            .into_iter()
+            .map(|(id, row)| ChecklistItemView {
+                id,
+                card_id: row.card_id.get().clone(),
+                text: row.text.get().clone(),
+                done: *row.done.get(),
+                rank: row.rank.get().clone(),
+            })
+            .collect();
+        by_rank(&mut out, |i| (i.rank.clone(), i.id.clone()));
+        Ok(out)
+    }
+
+    fn comments_of(&self, card_id: &str) -> app::Result<Vec<CommentView>> {
+        let mut out = Vec::new();
+        for (id, c) in self
+            .comments
+            .query("thread")
+            .eq(card_id)
+            .entries()
+            .map_err(store_err("comments.query"))?
+        {
+            let author = self
+                .comment_author(&id, &c)?
+                .map(|a| a.to_string())
+                .unwrap_or_default();
+            out.push(CommentView {
+                id,
+                card_id: c.card_id,
+                author,
+                body: c.body.get().clone(),
+                created_at: c.created_at,
+                edited_at: *c.edited_at.get(),
+            });
+        }
+        out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+        Ok(out)
+    }
+
+    fn require_comment_author(&self, comment_id: &String, action: &str) -> app::Result<()> {
+        if self
+            .comments
+            .owned_by_me(comment_id)
+            .map_err(store_err("comments.owned_by_me"))?
+        {
+            return Ok(());
+        }
+        if self
+            .comments
+            .entries_at(comment_id)
+            .map_err(store_err("comments.entries_at"))?
+            .is_empty()
+        {
+            app::bail!(Error::NotFound(comment_id.clone()));
+        }
+        app::bail!(Error::Forbidden(format!(
+            "only the author may {action} this comment"
+        )));
+    }
+
+    fn comment_author(&self, id: &String, c: &Comment) -> app::Result<Option<AccountId>> {
+        let Ok(row) = calimero_sdk::borsh::to_vec(c) else {
+            return Ok(None);
+        };
+        Ok(self
+            .comments
+            .entries_at(id)
+            .map_err(store_err("comments.entries_at"))?
+            .into_iter()
+            .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|b| b == row))
+            .map(|(owner, _)| owner)
+            .min())
     }
 }
 
@@ -1320,5 +1582,118 @@ mod tests {
         .unwrap();
         assert_eq!(app.view(|s| s.cards_of_board(&b, true)).unwrap().len(), 0);
         assert!(app.view(|s| s.get_card("card-forged".into())).is_err());
+    }
+
+    #[test]
+    fn checklist_roundtrip_counts_and_order() {
+        let mut app = host();
+        let (b, l) = board_with_list(&mut app);
+        let c = new_card(&mut app, &b, &l, "One");
+        let i1 = app
+            .call(|s| s.add_checklist_item(c.clone(), "first".into(), None))
+            .unwrap();
+        let i2 = app
+            .call(|s| s.add_checklist_item(c.clone(), "second".into(), None))
+            .unwrap();
+        app.call(|s| s.set_checklist_item_done(i1.clone(), true))
+            .unwrap();
+        app.call(|s| s.set_checklist_item_text(i2.clone(), "2nd".into()))
+            .unwrap();
+        app.call(|s| s.move_checklist_item(i2.clone(), "a".into()))
+            .unwrap();
+        let d = app.view(|s| s.get_card(c.clone())).unwrap();
+        assert_eq!((d.card.checklist_done, d.card.checklist_total), (1, 2));
+        assert_eq!(
+            d.checklist
+                .iter()
+                .map(|i| i.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![i2.as_str(), i1.as_str()]
+        );
+        assert_eq!(
+            (
+                d.checklist[0].text.as_str(),
+                d.checklist[0].done,
+                d.checklist[1].done
+            ),
+            ("2nd", false, true)
+        );
+        app.call(|s| s.remove_checklist_item(i1.clone())).unwrap();
+        assert_eq!(
+            app.view(|s| s.get_card(c.clone())).unwrap().checklist.len(),
+            1
+        );
+        assert!(app.call(|s| s.remove_checklist_item(i1.clone())).is_err());
+        assert!(app
+            .call(|s| s.add_checklist_item(c.clone(), " ".into(), None))
+            .is_err());
+        assert!(app
+            .call(|s| s.add_checklist_item("card-nope".into(), "x".into(), None))
+            .is_err());
+    }
+
+    #[test]
+    fn comments_thread_and_author_gate() {
+        let mut app = host();
+        let (b, l) = board_with_list(&mut app);
+        let c = new_card(&mut app, &b, &l, "One");
+        let m1 = app
+            .call(|s| s.add_comment(c.clone(), "first".into()))
+            .unwrap();
+        let m2 = app
+            .call(|s| s.add_comment(c.clone(), "second".into()))
+            .unwrap();
+        let me = app.view(|_| caller());
+        let d = app.view(|s| s.get_card(c.clone())).unwrap();
+        assert_eq!(
+            d.comments.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec![m1.as_str(), m2.as_str()]
+        );
+        assert_eq!(d.comments[0].author, me);
+        assert_eq!(d.comments[0].edited_at, None);
+        app.call(|s| s.edit_comment(m1.clone(), "first!".into()))
+            .unwrap();
+        assert!(app.view(|s| s.get_card(c.clone())).unwrap().comments[0]
+            .edited_at
+            .is_some());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s
+                .edit_comment(m1.clone(), "hax".into()))
+            .is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_comment(m1.clone()))
+            .is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s
+                .comments
+                .modify(&m1, |m| m.body.set("hax".into())))
+            .is_err());
+        app.call(|s| s.delete_comment(m2.clone())).unwrap();
+        let d = app.view(|s| s.get_card(c.clone())).unwrap();
+        assert_eq!(d.comments.len(), 1);
+        assert_eq!(d.comments[0].body, "first!");
+        assert!(app.call(|s| s.add_comment(c.clone(), "".into())).is_err());
+        assert!(app
+            .call(|s| s.edit_comment("comment-nope".into(), "x".into()))
+            .is_err());
+    }
+
+    #[test]
+    fn the_authors_other_device_can_edit_their_comment() {
+        let mut app = host();
+        let (b, l) = board_with_list(&mut app);
+        let c = new_card(&mut app, &b, &l, "One");
+        let m = app
+            .call(|s| s.add_comment(c.clone(), "mine".into()))
+            .unwrap();
+        let same_person_other_device = [0x33u8; 32];
+        app.call_as(same_person_other_device, |s| {
+            s.edit_comment(m.clone(), "mine, edited".into())
+        })
+        .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_card(c)).unwrap().comments[0].body,
+            "mine, edited"
+        );
     }
 }
