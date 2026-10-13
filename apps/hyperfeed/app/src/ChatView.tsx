@@ -45,9 +45,12 @@ export function ChatView({
   const [composing, setComposing] = useState(false);
   // Finished chats are out of the way until you ask for them; the open one always shows.
   const [showDone, setShowDone] = useState(false);
-  // Delete asks once, in place; opening another chat drops the question.
+  // Archived chats are kept, out of the list until you ask for them, and can be restored.
+  const [archived, setArchived] = useState<FeedItem[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  // Archive asks once, in place; opening another chat drops the question.
   const [confirming, setConfirming] = useState(false);
-  const { chats: listChats, loadChain, page } = feed;
+  const { chats: listChats, archivedChats, loadChain, page } = feed;
   useEffect(() => setConfirming(false), [chain]);
 
   // `page` changes on every re-read, which follows every event on the feed:
@@ -55,10 +58,12 @@ export function ChatView({
   useEffect(() => {
     let live = true;
     void listChats().then((c) => live && setChats(c), () => live && setChats([]));
+    void archivedChats().then((c) => live && setArchived(c), () => live && setArchived([]));
     return () => {
       live = false;
     };
-  }, [listChats, page]);
+  }, [listChats, archivedChats, page]);
+  const isArchived = chain !== "" && archived.some((c) => c.chain === chain);
   useEffect(() => {
     let live = true;
     if (!chain) setThread([]);
@@ -106,15 +111,37 @@ export function ChatView({
     [feed, chain, onOpen, loadChain],
   );
 
-  // Deleting a chat archives its chain: it leaves your chats and your feed,
-  // comes back if anything new happens in it, and can be undone.
-  const remove = useCallback(async () => {
+  // Archiving a chat puts its chain away, every message kept: it leaves your
+  // chats and your feed, comes back if anything new happens in it, and
+  // Restore (or Undo) brings it back.
+  const archive = useCallback(async () => {
     setConfirming(false);
     // Refused (the error shows above the chat): stay on it.
-    if (!(await feed.archive([chain], "Chat deleted"))) return;
+    if (!(await feed.archive([chain], "Chat archived"))) return;
     setComposing(false);
     onOpen("");
   }, [feed, chain, onOpen]);
+  const restore = useCallback((c: string) => void feed.unarchive([c]), [feed]);
+
+  const item = (c: FeedItem) => (
+    <button
+      type="button"
+      className={`chat-item${c.chain === chain ? " on" : ""}`}
+      aria-current={c.chain === chain ? "page" : undefined}
+      onClick={() => {
+        setComposing(false);
+        onOpen(c.chain);
+      }}
+    >
+      <span className="chat-item-text">
+        {c.from === "agent" ? "" : "You: "}
+        {c.headline || c.body || c.title}
+      </span>
+      <span className="chat-item-meta">{timeLabel(c.chain_at)}</span>
+      {/* Which agent session is on this chat now, maybe on another machine. */}
+      {heldLine(c, clock()) && <span className="chat-item-held">{heldLine(c, clock())}</span>}
+    </button>
+  );
 
   return (
     <div className={`chat${chain || composing ? " chat-open" : ""}`}>
@@ -132,32 +159,36 @@ export function ChatView({
         </button>
         {chats === null ? (
           <p className="chat-hint">Loading…</p>
-        ) : chats.length === 0 ? (
+        ) : chats.length === 0 && archived.length === 0 ? (
           <p className="chat-hint">No chats yet. Ask your agent anything and it answers here.</p>
         ) : (
           <ChatList chats={chats} open={chain} showDone={showDone} onShowDone={setShowDone}>
-            {(c) => (
-              <li key={c.chain}>
-                <button
-                  type="button"
-                  className={`chat-item${c.chain === chain ? " on" : ""}`}
-                  aria-current={c.chain === chain ? "page" : undefined}
-                  onClick={() => {
-                    setComposing(false);
-                    onOpen(c.chain);
-                  }}
-                >
-                  <span className="chat-item-text">
-                    {c.from === "agent" ? "" : "You: "}
-                    {c.headline || c.body || c.title}
-                  </span>
-                  <span className="chat-item-meta">{timeLabel(c.chain_at)}</span>
-                  {/* Which agent session is on this chat now, maybe on another machine. */}
-                  {heldLine(c, clock()) && <span className="chat-item-held">{heldLine(c, clock())}</span>}
-                </button>
-              </li>
-            )}
+            {(c) => <li key={c.chain}>{item(c)}</li>}
           </ChatList>
+        )}
+        {archived.length > 0 && (
+          <>
+            <button
+              type="button"
+              className="link small chat-done-toggle"
+              aria-pressed={showArchived}
+              onClick={() => setShowArchived(!showArchived)}
+            >
+              {showArchived ? "Hide archived chats" : `Show archived chats (${archived.length})`}
+            </button>
+            {showArchived && (
+              <ul className="chat-archived" aria-label="Archived chats">
+                {archived.map((c) => (
+                  <li key={c.chain} className="chat-archived-item">
+                    {item(c)}
+                    <button type="button" className="link small chat-restore" disabled={feed.busy} onClick={() => restore(c.chain)}>
+                      Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </nav>
 
@@ -180,19 +211,26 @@ export function ChatView({
               </span>
             )}
             {chain &&
-              (confirming ? (
-                <div className="chat-delete-confirm" role="group" aria-label="Delete this chat?">
-                  <span>Delete this chat? It leaves your chats and your feed, and comes back if anything new happens in it.</span>
-                  <button type="button" className="small chat-delete-yes" disabled={feed.busy} onClick={() => void remove()}>
-                    Delete
+              (isArchived ? (
+                <button type="button" className="link small chat-archive" disabled={feed.busy} onClick={() => restore(chain)}>
+                  Restore chat
+                </button>
+              ) : confirming ? (
+                <div className="chat-archive-confirm" role="group" aria-label="Archive this chat?">
+                  <span>
+                    Archive this chat? Every message is kept. It leaves your chats and your feed, comes back if anything new happens in
+                    it, and you can restore it from Archived chats.
+                  </span>
+                  <button type="button" className="small chat-archive-yes" disabled={feed.busy} onClick={() => void archive()}>
+                    Archive
                   </button>
                   <button type="button" className="small" onClick={() => setConfirming(false)}>
                     Cancel
                   </button>
                 </div>
               ) : (
-                <button type="button" className="link small chat-delete" onClick={() => setConfirming(true)}>
-                  Delete chat
+                <button type="button" className="link small chat-archive" onClick={() => setConfirming(true)}>
+                  Archive chat
                 </button>
               ))}
           </div>

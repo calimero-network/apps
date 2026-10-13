@@ -47,6 +47,8 @@ export interface Feed {
    * message. Each comes as that latest message. A read, like `loadChain`.
    */
   chats: () => Promise<FeedItem[]>;
+  /** The chats you archived, newest first, as `chats` gives them. A read. */
+  archivedChats: () => Promise<FeedItem[]>;
   /** Every row in a chain, oldest first. A read: no busy state, no refresh. */
   loadChain: (chain: string) => Promise<FeedItem[]>;
   /** Where the task in a chain stands, as your agent last wrote it, or null. A read, like `loadChain`. */
@@ -234,6 +236,10 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     stop: useCallback((id) => run((b) => b.stop(id)), [run]),
     chats: useCallback(
       async () => (backend ? (await backend.feed("agent", "")).items.filter((i) => i.kind === "message") : []),
+      [backend],
+    ),
+    archivedChats: useCallback(
+      async () => (backend ? (await backend.feed("archived", "")).items.filter((i) => i.kind === "message") : []),
       [backend],
     ),
     loadChain: useCallback(async (chain) => (backend ? backend.chain(chain) : []), [backend]),
