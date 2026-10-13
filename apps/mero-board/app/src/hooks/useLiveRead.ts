@@ -28,6 +28,39 @@ export function coalesceReads(read: () => Promise<void>): () => Promise<void> {
   return run;
 }
 
+export interface ReadSink<T> {
+  start: () => void;
+  data: (next: T) => void;
+  error: (err: unknown) => void;
+  settle: () => void;
+}
+
+/**
+ * A coalesced runner for one generation of `read`. When the read changes
+ * (folder, board or filter switch) the hook bumps its generation; a result
+ * from an older generation still in flight is dropped instead of overwriting
+ * the newer one.
+ */
+export function generationRunner<T>(
+  read: () => (() => Promise<T>) | null,
+  isCurrent: () => boolean,
+  sink: ReadSink<T>,
+): () => Promise<void> {
+  return coalesceReads(async () => {
+    const r = read();
+    if (!r || !isCurrent()) return;
+    sink.start();
+    try {
+      const next = await r();
+      if (isCurrent()) sink.data(next);
+    } catch (err) {
+      if (isCurrent()) sink.error(err);
+    } finally {
+      if (isCurrent()) sink.settle();
+    }
+  });
+}
+
 export interface LiveRead<T> {
   data: T | null;
   loading: boolean;
@@ -48,26 +81,34 @@ export function useLiveRead<T>(contextId: string | null, read: (() => Promise<T>
   readRef.current = read;
 
   const runRef = useRef<() => Promise<void>>(async () => {});
+  const generationRef = useRef(0);
   useEffect(() => {
-    runRef.current = coalesceReads(async () => {
-      const r = readRef.current;
-      if (!r) return;
-      setLoading(true);
-      try {
-        const next = await r();
-        setData(next);
-        setError(null);
-        setWarmingUp(false);
-        warmingSinceRef.current = null;
-      } catch (err) {
-        const outcome = classifyReadError(err, warmingSinceRef.current);
-        warmingSinceRef.current = outcome.warmingSince;
-        setWarmingUp(outcome.warmingUp);
-        setError(outcome.error);
-      } finally {
-        setLoading(false);
-      }
-    });
+    const generation = ++generationRef.current;
+    setData(null);
+    setError(null);
+    setWarmingUp(false);
+    setLoading(false);
+    warmingSinceRef.current = null;
+    runRef.current = generationRunner<T>(
+      () => readRef.current,
+      () => generationRef.current === generation,
+      {
+        start: () => setLoading(true),
+        data: (next) => {
+          setData(next);
+          setError(null);
+          setWarmingUp(false);
+          warmingSinceRef.current = null;
+        },
+        error: (err) => {
+          const outcome = classifyReadError(err, warmingSinceRef.current);
+          warmingSinceRef.current = outcome.warmingSince;
+          setWarmingUp(outcome.warmingUp);
+          setError(outcome.error);
+        },
+        settle: () => setLoading(false),
+      },
+    );
     void runRef.current();
   }, [read]);
 

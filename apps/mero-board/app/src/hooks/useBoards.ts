@@ -23,17 +23,18 @@ export function useBoards(ws: Workspace, includeArchived = false): UseBoardsRetu
     [client, includeArchived],
   );
   const live = useLiveRead<BoardView[]>(ws.contextId, read);
+  const { refresh: refreshLive } = live;
   const boards = live.data ?? [];
 
-  const after = useCallback(async (p: Promise<unknown>) => { await p; await live.refresh(); }, [live]);
+  const after = useCallback(async (p: Promise<unknown>) => { await p; await refreshLive(); }, [refreshLive]);
 
   const createBoard = useCallback(async (name: string) => {
     if (!client) return null;
     const rank = rankAfter(boards.length ? boards[boards.length - 1].rank : null);
     const id = await client.createBoard({ name, rank });
-    await live.refresh();
+    await refreshLive();
     return id;
-  }, [client, boards, live]);
+  }, [client, boards, refreshLive]);
 
   return {
     boards,

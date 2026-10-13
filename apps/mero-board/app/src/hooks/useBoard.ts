@@ -35,19 +35,20 @@ export function useBoard(ws: Workspace, boardId: string | null): UseBoardReturn 
     [client, boardId],
   );
   const live = useLiveRead<BoardDetail>(ws.contextId, read);
+  const { refresh: refreshLive, patch: patchLive } = live;
   const detail = live.data;
   const cardsByList = useMemo(() => groupCards(detail?.lists ?? [], detail?.cards ?? []), [detail]);
 
-  const after = useCallback(async (p: Promise<unknown>) => { await p; await live.refresh(); }, [live]);
+  const after = useCallback(async (p: Promise<unknown>) => { await p; await refreshLive(); }, [refreshLive]);
 
   const createList = useCallback(async (name: string) => {
     if (!client || !boardId) return null;
     const lists = detail?.lists ?? [];
     const rank = rankAfter(lists.length ? lists[lists.length - 1].rank : null);
     const id = await client.createList({ board_id: boardId, name, rank });
-    await live.refresh();
+    await refreshLive();
     return id;
-  }, [client, boardId, detail, live]);
+  }, [client, boardId, detail, refreshLive]);
 
   const createCard = useCallback(async (listId: string, title: string) => {
     if (!client || !boardId) return null;
@@ -56,22 +57,22 @@ export function useBoard(ws: Workspace, boardId: string | null): UseBoardReturn 
     const id = await client.createCard({
       board_id: boardId, list_id: listId, title, description: null, assignee: null, due_at: null, labels: [], rank,
     });
-    await live.refresh();
+    await refreshLive();
     return id;
-  }, [client, boardId, cardsByList, live]);
+  }, [client, boardId, cardsByList, refreshLive]);
 
   const moveCard = useCallback(async (cardId: string, listId: string, rank: string) => {
     if (!client) return;
-    live.patch((prev) => prev && {
+    patchLive((prev) => prev && {
       ...prev,
       cards: prev.cards.map((c) => (c.id === cardId ? { ...c, list_id: listId, rank } : c)),
     });
     try {
       await client.moveCard({ card_id: cardId, list_id: listId, rank });
     } finally {
-      await live.refresh();
+      await refreshLive();
     }
-  }, [client, live]);
+  }, [client, patchLive, refreshLive]);
 
   return {
     detail,

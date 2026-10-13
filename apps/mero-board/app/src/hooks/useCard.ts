@@ -32,9 +32,10 @@ export function useCard(ws: Workspace, cardId: string | null): UseCardReturn {
     [client, cardId],
   );
   const live = useLiveRead<CardDetail>(ws.contextId, read);
+  const { refresh: refreshLive } = live;
   const detail = live.data;
   const id = cardId ?? '';
-  const after = useCallback(async (p: Promise<unknown>) => { await p; await live.refresh(); }, [live]);
+  const after = useCallback(async (p: Promise<unknown>) => { await p; await refreshLive(); }, [refreshLive]);
 
   const addChecklistItem = useCallback(async (text: string) => {
     if (!client) return;

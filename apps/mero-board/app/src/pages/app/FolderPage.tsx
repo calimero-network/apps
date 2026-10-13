@@ -36,7 +36,7 @@ export default function FolderPage(): React.ReactElement {
               placeholder="Board name"
               submitLabel="Create board"
               testId="board-create"
-              onSubmit={async (name) => { const id = await data.createBoard(name); setCreating(false); if (id) navigate(`${APP_ROUTE}/b/${id}`); }}
+              onSubmit={async (name) => { const id = await data.createBoard(name); if (!id) throw new Error('This folder is not ready yet; try again in a moment.'); setCreating(false); navigate(`${APP_ROUTE}/b/${id}`); }}
               onCancel={() => setCreating(false)}
             />
           </div>
