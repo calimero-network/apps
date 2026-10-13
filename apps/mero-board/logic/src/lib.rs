@@ -875,6 +875,208 @@ impl Board {
         app::emit!(Event::CommentDeleted { id: &comment_id });
         Ok(())
     }
+
+    // ----- deletes and queries --------------------------------------------
+
+    /// Delete a card with its checklist, labels and the caller's own comments.
+    /// Only the card's creator may delete it. Other people's comments are not
+    /// removed but become unreachable.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"card_id":"<card id>"}
+    /// ```
+    #[app::destructive]
+    pub fn delete_card(&mut self, card_id: String) -> app::Result<()> {
+        let board_id = self.require_card(&card_id)?;
+        if !self
+            .card_headers
+            .owned_by_me(&card_id)
+            .map_err(store_err("card_headers.owned_by_me"))?
+        {
+            app::bail!(Error::Forbidden(
+                "only the creator may delete this card".into()
+            ));
+        }
+        self.remove_card_rows(&card_id)?;
+        let _ = self
+            .card_headers
+            .remove(&card_id)
+            .map_err(store_err("card_headers.remove"))?;
+        app::emit!(Event::CardDeleted {
+            id: &card_id,
+            board_id: &board_id
+        });
+        Ok(())
+    }
+
+    /// Delete a board with its lists, every card's shared rows, checklist
+    /// items and labels, and the caller's own card headers and comments. Only
+    /// the board's creator may delete it. Other people's cards and comments
+    /// become unreachable.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"board_id":"<board id>"}
+    /// ```
+    #[app::destructive]
+    pub fn delete_board(&mut self, board_id: String) -> app::Result<()> {
+        if !self.board_exists(&board_id)? {
+            app::bail!(Error::NotFound(board_id));
+        }
+        if !self
+            .board_headers
+            .owned_by_me(&board_id)
+            .map_err(store_err("board_headers.owned_by_me"))?
+        {
+            app::bail!(Error::Forbidden(
+                "only the creator may delete this board".into()
+            ));
+        }
+        let card_ids: Vec<String> = self
+            .cards_of_board(&board_id, true)?
+            .into_iter()
+            .map(|c| c.id)
+            .collect();
+        for card_id in card_ids {
+            self.remove_card_rows(&card_id)?;
+            if self
+                .card_headers
+                .owned_by_me(&card_id)
+                .map_err(store_err("card_headers.owned_by_me"))?
+            {
+                let _ = self
+                    .card_headers
+                    .remove(&card_id)
+                    .map_err(store_err("card_headers.remove"))?;
+            }
+        }
+        let list_ids: Vec<String> = self
+            .lists_of_board(&board_id)?
+            .into_iter()
+            .map(|l| l.id)
+            .collect();
+        for list_id in list_ids {
+            let _ = self
+                .lists
+                .remove(&list_id)
+                .map_err(store_err("lists.remove"))?;
+        }
+        let _ = self
+            .boards
+            .remove(&board_id)
+            .map_err(store_err("boards.remove"))?;
+        let _ = self
+            .board_headers
+            .remove(&board_id)
+            .map_err(store_err("board_headers.remove"))?;
+        app::emit!(Event::BoardDeleted { id: &board_id });
+        Ok(())
+    }
+
+    /// A board with its lists and unarchived cards, both sorted by rank. One
+    /// call renders a board.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"board_id":"<board id>"}
+    /// ```
+    pub fn get_board(&self, board_id: String) -> app::Result<BoardDetail> {
+        let board = self
+            .board_view(board_id.clone())?
+            .ok_or_else(|| AppError::from(Error::NotFound(board_id.clone())))?;
+        Ok(BoardDetail {
+            board,
+            lists: self.lists_of_board(&board_id)?,
+            cards: self.cards_of_board(&board_id, false)?,
+        })
+    }
+
+    /// Cards across the folder, filtered. `null` means no filter. Sorted by
+    /// `(board_id, rank)`.
+    ///
+    /// # Arguments
+    /// * `board_id` - exact board match, or `null`.
+    /// * `list_id` - exact list match, or `null`.
+    /// * `assignee` - exact account id, or `null`.
+    /// * `label` - exact label, or `null`.
+    /// * `include_archived` - `false` hides archived cards.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"board_id":null,"list_id":null,"assignee":"<account id>","label":null,"include_archived":false}
+    /// ```
+    pub fn list_cards(
+        &self,
+        board_id: Option<String>,
+        list_id: Option<String>,
+        assignee: Option<String>,
+        label: Option<String>,
+        include_archived: bool,
+    ) -> app::Result<Vec<CardView>> {
+        let ids: BTreeSet<String> = if let Some(list_id) = &list_id {
+            self.cards
+                .query("list_id")
+                .eq(list_id.as_str())
+                .keys()
+                .map_err(store_err("cards.query"))?
+                .into_iter()
+                .collect()
+        } else if let Some(label) = &label {
+            self.labels
+                .query("label")
+                .eq(label.as_str())
+                .entries()
+                .map_err(store_err("labels.query"))?
+                .into_iter()
+                .map(|(_, tag)| tag.card_id.get().clone())
+                .collect()
+        } else if let Some(board_id) = &board_id {
+            self.card_headers
+                .query("board_id")
+                .eq(board_id.as_str())
+                .keys()
+                .map_err(store_err("card_headers.query"))?
+                .into_iter()
+                .collect()
+        } else {
+            self.card_headers
+                .entries()
+                .map_err(store_err("card_headers.entries"))?
+                .map(|(id, _)| id)
+                .collect()
+        };
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            let Some(v) = self.card_view(id)? else {
+                continue;
+            };
+            if !include_archived && v.archived {
+                continue;
+            }
+            if board_id.as_ref().is_some_and(|b| &v.board_id != b) {
+                continue;
+            }
+            if list_id.as_ref().is_some_and(|l| &v.list_id != l) {
+                continue;
+            }
+            if assignee
+                .as_ref()
+                .is_some_and(|a| v.assignee.as_deref() != Some(a.as_str()))
+            {
+                continue;
+            }
+            if label
+                .as_ref()
+                .is_some_and(|l| !v.labels.iter().any(|x| x == l))
+            {
+                continue;
+            }
+            out.push(v);
+        }
+        out.sort_by(|a, b| (&a.board_id, &a.rank, &a.id).cmp(&(&b.board_id, &b.rank, &b.id)));
+        Ok(out)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -974,8 +1176,7 @@ impl Board {
         Ok(out)
     }
 
-    /// Unarchived cards in a list. Filled in with cards in the next task; a
-    /// list with no card rows at all reports 0.
+    /// Unarchived cards in a list; a list with no card rows reports 0.
     fn live_cards_in_list(&self, list_id: &str) -> app::Result<u64> {
         let mut n = 0u64;
         for (id, row) in self
@@ -1083,7 +1284,7 @@ impl Board {
         Ok(out.into_iter().collect())
     }
 
-    /// `(done, total)` for a card's checklist. Filled in by the checklist task.
+    /// `(done, total)` for a card's checklist.
     fn checklist_counts(&self, card_id: &str) -> app::Result<(u64, u64)> {
         let mut done = 0u64;
         let mut total = 0u64;
@@ -1131,7 +1332,6 @@ impl Board {
 
     /// Every card whose HEADER names the board (so a card survives a removed
     /// shared row), sorted by rank.
-    #[allow(dead_code)] // used by get_board in the next task
     pub(crate) fn cards_of_board(
         &self,
         board_id: &str,
@@ -1249,6 +1449,62 @@ impl Board {
             .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|b| b == row))
             .map(|(owner, _)| owner)
             .min())
+    }
+
+    /// Remove a card's shared row, checklist, labels and the caller's own
+    /// comments. The header is the caller's business.
+    fn remove_card_rows(&mut self, card_id: &str) -> app::Result<()> {
+        let item_ids = self
+            .checklist
+            .query("card_id")
+            .eq(card_id)
+            .keys()
+            .map_err(store_err("checklist.query"))?;
+        let label_keys = self
+            .labels
+            .query("card_id")
+            .eq(card_id)
+            .keys()
+            .map_err(store_err("labels.query"))?;
+        let mut my_comments = Vec::new();
+        for id in self
+            .comments
+            .query("thread")
+            .eq(card_id)
+            .keys()
+            .map_err(store_err("comments.query"))?
+        {
+            if self
+                .comments
+                .owned_by_me(&id)
+                .map_err(store_err("comments.owned_by_me"))?
+            {
+                my_comments.push(id);
+            }
+        }
+        for id in item_ids {
+            let _ = self
+                .checklist
+                .remove(&id)
+                .map_err(store_err("checklist.remove"))?;
+        }
+        for key in label_keys {
+            let _ = self
+                .labels
+                .remove(&key)
+                .map_err(store_err("labels.remove"))?;
+        }
+        for id in my_comments {
+            let _ = self
+                .comments
+                .remove(&id)
+                .map_err(store_err("comments.remove"))?;
+        }
+        let _ = self
+            .cards
+            .remove(card_id)
+            .map_err(store_err("cards.remove"))?;
+        Ok(())
     }
 }
 
@@ -1400,6 +1656,19 @@ mod tests {
     fn create_card_fills_defaults_and_appends() {
         let mut app = host();
         let (b, l) = board_with_list(&mut app);
+        let (_, other_list) = board_with_list(&mut app);
+        assert!(app
+            .call(|s| s.create_card(
+                b.clone(),
+                other_list.clone(),
+                "x".into(),
+                None,
+                None,
+                None,
+                None,
+                None
+            ))
+            .is_err());
         let c1 = new_card(&mut app, &b, &l, "One");
         let c2 = new_card(&mut app, &b, &l, "Two");
         let me = app.view(|_| caller());
@@ -1694,6 +1963,140 @@ mod tests {
         assert_eq!(
             app.view(|s| s.get_card(c)).unwrap().comments[0].body,
             "mine, edited"
+        );
+    }
+
+    #[test]
+    fn creator_deletes_card_and_cascades() {
+        let mut app = host();
+        let (b, l) = board_with_list(&mut app);
+        let c = new_card(&mut app, &b, &l, "One");
+        let _ = app
+            .call(|s| s.add_checklist_item(c.clone(), "x".into(), None))
+            .unwrap();
+        let _ = app
+            .call(|s| s.add_comment(c.clone(), "mine".into()))
+            .unwrap();
+        let theirs = app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+                s.add_comment(c.clone(), "theirs".into())
+            })
+            .unwrap();
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_card(c.clone()))
+            .is_err());
+        app.call(|s| s.delete_card(c.clone())).unwrap();
+        assert!(app.view(|s| s.get_card(c.clone())).is_err());
+        assert_eq!(app.view(|s| s.cards_of_board(&b, true)).unwrap().len(), 0);
+        assert_eq!(app.view(|s| s.checklist_of(&c)).unwrap().len(), 0);
+        assert_eq!(app.view(|s| s.labels_of(&c)).unwrap().len(), 0);
+        // The other person's comment row survives in storage but is unreachable.
+        assert_eq!(
+            app.view(|s| s.comments.entries_at(&theirs).unwrap().len()),
+            1
+        );
+        assert!(app.call(|s| s.delete_card(c.clone())).is_err());
+    }
+
+    #[test]
+    fn creator_deletes_board_and_cascades() {
+        let mut app = host();
+        let (b, l) = board_with_list(&mut app);
+        let c = new_card(&mut app, &b, &l, "One");
+        let _ = app
+            .call(|s| s.add_comment(c.clone(), "mine".into()))
+            .unwrap();
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_board(b.clone()))
+            .is_err());
+        app.call(|s| s.delete_board(b.clone())).unwrap();
+        assert_eq!(app.view(|s| s.list_boards(true)).unwrap().len(), 0);
+        assert_eq!(app.view(|s| s.lists_of_board(&b)).unwrap().len(), 0);
+        assert!(app.view(|s| s.get_card(c.clone())).is_err());
+        assert!(app.view(|s| s.get_board(b.clone())).is_err());
+    }
+
+    #[test]
+    fn get_board_returns_lists_and_live_cards_by_rank() {
+        let mut app = host();
+        let (b, todo) = board_with_list(&mut app);
+        let doing = app
+            .call(|s| s.create_list(b.clone(), "Doing".into(), None))
+            .unwrap();
+        let c1 = new_card(&mut app, &b, &todo, "One");
+        let c2 = new_card(&mut app, &b, &todo, "Two");
+        let c3 = new_card(&mut app, &b, &doing, "Three");
+        app.call(|s| s.move_card(c2.clone(), todo.clone(), "a".into()))
+            .unwrap();
+        app.call(|s| s.set_card_archived(c3.clone(), true)).unwrap();
+        let d = app.view(|s| s.get_board(b.clone())).unwrap();
+        assert_eq!(d.board.id, b);
+        assert_eq!(d.lists.len(), 2);
+        assert_eq!(
+            d.cards.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            vec![c2.as_str(), c1.as_str()]
+        );
+        assert!(app.view(|s| s.get_board("board-nope".into())).is_err());
+    }
+
+    #[test]
+    fn list_cards_filters() {
+        let mut app = host();
+        let (b, todo) = board_with_list(&mut app);
+        let doing = app
+            .call(|s| s.create_list(b.clone(), "Doing".into(), None))
+            .unwrap();
+        let (b2, l2) = board_with_list(&mut app);
+        let c1 = new_card(&mut app, &b, &todo, "One");
+        let c2 = new_card(&mut app, &b, &doing, "Two");
+        let c3 = new_card(&mut app, &b2, &l2, "Three");
+        app.call(|s| s.set_card_assignee(c2.clone(), Some("alice".into())))
+            .unwrap();
+        app.call(|s| s.add_label(c3.clone(), "ops".into())).unwrap();
+        app.call(|s| s.set_card_archived(c1.clone(), true)).unwrap();
+        let ids = |v: Vec<CardView>| v.into_iter().map(|c| c.id).collect::<Vec<_>>();
+        assert_eq!(
+            ids(app
+                .view(|s| s.list_cards(None, None, None, None, false))
+                .unwrap()),
+            vec![c2.clone(), c3.clone()]
+        );
+        assert_eq!(
+            ids(app
+                .view(|s| s.list_cards(None, None, None, None, true))
+                .unwrap())
+            .len(),
+            3
+        );
+        assert_eq!(
+            ids(app
+                .view(|s| s.list_cards(Some(b.clone()), None, None, None, true))
+                .unwrap()),
+            vec![c1.clone(), c2.clone()]
+        );
+        assert_eq!(
+            ids(app
+                .view(|s| s.list_cards(None, Some(doing.clone()), None, None, false))
+                .unwrap()),
+            vec![c2.clone()]
+        );
+        assert_eq!(
+            ids(app
+                .view(|s| s.list_cards(None, None, Some("alice".into()), None, false))
+                .unwrap()),
+            vec![c2.clone()]
+        );
+        assert_eq!(
+            ids(app
+                .view(|s| s.list_cards(None, None, None, Some("ops".into()), false))
+                .unwrap()),
+            vec![c3.clone()]
+        );
+        assert_eq!(
+            ids(app
+                .view(|s| s.list_cards(Some(b2), None, None, Some("bug".into()), false))
+                .unwrap()),
+            vec![c3]
         );
     }
 }
