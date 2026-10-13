@@ -628,6 +628,20 @@
           "doc": "Headlines of messages written with one, by the message's id."
         },
         {
+          "name": "modes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MessageMode"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Which agent each of your messages sent with a mode is for, by the message's id."
+        },
+        {
           "name": "superseded",
           "type": {
             "kind": "map",
@@ -994,6 +1008,18 @@
             "items": {
               "$ref": "Step"
             }
+          }
+        }
+      ]
+    },
+    "MessageMode": {
+      "kind": "record",
+      "doc": "Which of your agents a message of yours is for: one of [`MESSAGE_MODES`].\nKept beside the message, keyed by its id, so messages written before\nmodes keep their layout.",
+      "fields": [
+        {
+          "name": "mode",
+          "type": {
+            "kind": "string"
           }
         }
       ]

@@ -192,6 +192,11 @@ pub const AGENT_MODES: &[&str] = &["act", "ask", "read", "off"];
 /// The mode for an app nobody has set a policy for. Asking is the only safe
 /// default: an agent that discovers a new app should not get to act in it.
 pub const DEFAULT_AGENT_MODE: &str = "ask";
+/// Which of your agents a message of yours is for: `chat`, a private model
+/// for everyday work, or `code`, one that works in repositories. Your agent's
+/// runtime maps each to a model. Not [`AGENT_MODES`], which say how freely the
+/// agent may act in an app.
+pub const MESSAGE_MODES: &[&str] = &["chat", "code"];
 
 /// Where an app's notifications go: the feed and a push, the feed only, or
 /// nowhere (still recorded, so un-muting brings them back).
@@ -526,6 +531,27 @@ impl Mergeable for Headline {
         // Written once with its message, never changed.
         if other.text > self.text {
             self.text = other.text.clone();
+        }
+        Ok(())
+    }
+}
+
+/// Which of your agents a message of yours is for: one of [`MESSAGE_MODES`].
+/// Kept beside the message, keyed by its id, so messages written before
+/// modes keep their layout.
+#[app::mergeable(id = "hyperfeed::MessageMode")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct MessageMode {
+    pub mode: String,
+}
+
+impl Mergeable for MessageMode {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Written once with its message, never changed.
+        if other.mode > self.mode {
+            self.mode = other.mode.clone();
         }
         Ok(())
     }
@@ -1154,6 +1180,13 @@ pub struct FeedItem {
     /// is the message's first line and a client may derive a shorter one.
     #[serde(default)]
     pub headline: String,
+    // ── which agent a message of yours is for ──
+    /// On a message of yours sent with a mode: `chat` or `code` (see
+    /// [`MESSAGE_MODES`]). `""` when it was sent without one, and for every
+    /// other row; your agent's runtime then decides, usually by the chain's
+    /// last message that had one.
+    #[serde(default)]
+    pub mode: String,
     // ── questions a newer one replaced ──
     /// On a question (your agent's, or a notification's) that a newer one in
     /// its chain replaced before you answered it: the newer one's id. Its
@@ -1254,6 +1287,10 @@ pub struct SettingsView {
     /// Rules your agent suggested that wait for you, newest first.
     #[serde(default)]
     pub rule_proposals: Vec<RuleProposalView>,
+    /// The modes a message of yours may be sent with ([`MESSAGE_MODES`]).
+    /// Empty on a feed made before modes, which refuses a `mode` argument.
+    #[serde(default)]
+    pub message_modes: Vec<String>,
 }
 
 /// One of your standing rules, as settings shows it.
@@ -1329,6 +1366,8 @@ pub struct Hyperfeed {
     stops: UnorderedMap<String, StopRequest>,
     /// Headlines of messages written with one, by the message's id.
     headlines: UnorderedMap<String, Headline>,
+    /// Which agent each of your messages sent with a mode is for, by the message's id.
+    modes: UnorderedMap<String, MessageMode>,
     /// Questions a newer one in their chain replaced, by the question's id.
     superseded: UnorderedMap<String, Superseded>,
     /// The question each of your messages sent from its buttons answers, by
@@ -1459,6 +1498,7 @@ impl Hyperfeed {
             work: UnorderedMap::new(),
             stops: UnorderedMap::new(),
             headlines: UnorderedMap::new(),
+            modes: UnorderedMap::new(),
             superseded: UnorderedMap::new(),
             answers: UnorderedMap::new(),
             leases: UnorderedMap::new(),
@@ -1731,6 +1771,7 @@ impl Hyperfeed {
             draft: String::new(),
             stop_at: 0,
             headline: String::new(),
+            mode: String::new(),
             superseded_by: String::new(),
             answers: String::new(),
             answers_superseded: false,
@@ -1821,6 +1862,7 @@ impl Hyperfeed {
             draft: String::new(),
             stop_at: 0,
             headline: String::new(),
+            mode: String::new(),
             superseded_by: String::new(),
             answers: String::new(),
             answers_superseded: false,
@@ -1875,6 +1917,9 @@ impl Hyperfeed {
         if let Some(h) = self.headlines.get(&m.id)? {
             item.headline = h.text.clone();
             item.title = h.text.clone();
+        }
+        if let Some(md) = self.modes.get(&m.id)? {
+            item.mode = md.mode.clone();
         }
         if let Some(a) = self.attachments.get(&m.id)? {
             item.attachments = a.items.clone();
@@ -1933,6 +1978,7 @@ impl Hyperfeed {
             draft: String::new(),
             stop_at: 0,
             headline: String::new(),
+            mode: String::new(),
             superseded_by: String::new(),
             answers: String::new(),
             answers_superseded: false,
@@ -1969,6 +2015,21 @@ impl Hyperfeed {
             }
         }
         Ok(())
+    }
+
+    /// The mode a message of yours was sent with, if any: one of
+    /// [`MESSAGE_MODES`]. Empty is none, so a client may always send the field.
+    fn check_message_mode(mode: Option<String>) -> app::Result<Option<String>> {
+        let Some(mode) = mode.filter(|m| !m.is_empty()) else {
+            return Ok(None);
+        };
+        if !MESSAGE_MODES.contains(&mode.as_str()) {
+            return Err(AppError::msg(format!(
+                "mode must be one of {}, not {mode}",
+                MESSAGE_MODES.join(", ")
+            )));
+        }
+        Ok(Some(mode))
     }
 
     /// A message's text and headline within their limits, and the headline
@@ -2219,6 +2280,7 @@ impl Hyperfeed {
         ask: Option<Ask>,
         attachments: Vec<Attachment>,
         headline: Option<String>,
+        mode: Option<String>,
     ) -> app::Result<FeedItem> {
         // Strictly after what it follows in its chain: a message posted in the
         // same millisecond as the row it answers still reads after it.
@@ -2249,6 +2311,9 @@ impl Hyperfeed {
         }
         if let Some(text) = headline {
             self.headlines.insert(m.id.clone(), Headline { text })?;
+        }
+        if let Some(mode) = mode {
+            self.modes.insert(m.id.clone(), MessageMode { mode })?;
         }
         let item = self.message_row(&m)?;
         self.messages.insert(m.id.clone(), m)?;
@@ -2562,6 +2627,7 @@ impl Hyperfeed {
             ask,
             Vec::new(),
             headline,
+            None,
         )?;
         if asks {
             self.supersede_asks(&item.chain, &item.id)?;
@@ -2710,13 +2776,18 @@ impl Hyperfeed {
     ///
     /// A long message takes a `headline`, as [`Self::agent_say`] does. Older
     /// clients omit it.
+    ///
+    /// `mode` says which of your agents it is for: `chat` or `code` (see
+    /// [`MESSAGE_MODES`]). Omitted or empty, it has none, and your agent's
+    /// runtime decides. Older clients omit it.
     pub fn say(
         &mut self,
         chain: String,
         text: String,
         headline: Option<String>,
+        mode: Option<String>,
     ) -> app::Result<FeedItem> {
-        self.say_with(chain, text, Vec::new(), headline)
+        self.say_with(chain, text, Vec::new(), headline, mode)
     }
 
     /// [`Self::say`] with images: up to four, each a blob you uploaded to your
@@ -2727,11 +2798,13 @@ impl Hyperfeed {
         text: String,
         attachments: Vec<Attachment>,
         headline: Option<String>,
+        mode: Option<String>,
     ) -> app::Result<FeedItem> {
         self.require_owner()?;
         Self::check_len("chain", &chain, MAX_KEY, false)?;
         let headline = Self::check_message(&text, headline, attachments.is_empty())?;
         Self::check_attachments(&attachments)?;
+        let mode = Self::check_message_mode(mode)?;
         if !chain.is_empty() && !self.chain_exists(&chain)? {
             return Err(AppError::msg(format!("no chain {chain}")));
         }
@@ -2747,6 +2820,7 @@ impl Hyperfeed {
             None,
             attachments,
             headline,
+            mode,
         )
     }
 
@@ -2785,6 +2859,7 @@ impl Hyperfeed {
             STATUS_WAITING,
             None,
             Vec::new(),
+            None,
             None,
         )?;
         self.answers
@@ -4046,6 +4121,7 @@ impl Hyperfeed {
             agents,
             rules: self.active_rules()?,
             rule_proposals: self.waiting_rule_proposals()?,
+            message_modes: MESSAGE_MODES.iter().map(|m| (*m).to_owned()).collect(),
         })
     }
 }

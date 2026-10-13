@@ -13,6 +13,7 @@ import { WorkBlock } from "./WorkBlock";
 import { WatchList } from "./WatchList";
 import { isActive } from "./watches";
 import { chainLink } from "./links";
+import { chainMode, feedModes, ModeChip, ModePicker, type MessageMode } from "./modes";
 
 /**
  * Chats with your agent.
@@ -138,8 +139,8 @@ export function ChatView({
   }, [chain, prs, watches, mergeWhenGreen, cancelWatch]);
 
   const send = useCallback(
-    async (text: string, attachments: Attachment[]) => {
-      const posted = await feed.say(chain, text, attachments);
+    async (text: string, attachments: Attachment[], mode?: MessageMode) => {
+      const posted = await feed.say(chain, text, attachments, mode);
       if (!posted) return false;
       if (!chain) onOpen(posted.chain);
       else setThread(await loadChain(chain));
@@ -315,7 +316,15 @@ export function ChatView({
               ))}
           </ul>
         )}
-        <Composer key={chain} busy={feed.busy} fresh={!chain} images={feed.images} onSend={send} />
+        <Composer
+          key={chain}
+          busy={feed.busy}
+          fresh={!chain}
+          images={feed.images}
+          modes={feedModes(feed.settings)}
+          chatMode={chainMode(thread)}
+          onSend={send}
+        />
       </section>
 
       {feed.toast && (
@@ -448,7 +457,10 @@ function Thread({
               )}
               {/* PRs and CI runs it links to, as cards; Merge sets a merge watch on this chat's task. */}
               {m.body && <RefCards text={m.body} busy={busy} onSend={onAnswer} merge={merge} />}
-              <span className="bubble-time">{timeLabel(m.at)}</span>
+              <span className="bubble-time">
+                {m.from === "you" && <ModeChip mode={m.mode} />}
+                {timeLabel(m.at)}
+              </span>
             </div>
             <WorkBlock item={m} clock={clock} busy={busy} onStop={onStop} />
           </Fragment>
@@ -561,16 +573,25 @@ function Composer({
   busy,
   fresh,
   images,
+  modes,
+  chatMode,
   onSend,
 }: {
   busy: boolean;
   fresh: boolean;
   /** Where images go; without one, the composer takes text only. */
   images: BlobStore | null;
-  onSend: (text: string, attachments: Attachment[]) => Promise<boolean>;
+  /** The modes this feed takes; none on a feed made before modes, which shows no picker. */
+  modes: MessageMode[];
+  /** The chat's mode, from its last message of yours that had one: the picker starts there. */
+  chatMode: MessageMode;
+  onSend: (text: string, attachments: Attachment[], mode?: MessageMode) => Promise<boolean>;
 }) {
   const id = useId();
   const [text, setText] = useState("");
+  // What you picked here; until then, the chat's own mode (which loads with the chat).
+  const [pickedMode, setPickedMode] = useState<MessageMode | null>(null);
+  const mode = pickedMode ?? chatMode;
   const [picked, setPicked] = useState<Picked[]>([]);
   const [refused, setRefused] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -616,7 +637,7 @@ function Composer({
         setUploading(false);
       }
     }
-    if (await onSend(t, attachments)) {
+    if (await onSend(t, attachments, modes.length > 0 ? mode : undefined)) {
       setText("");
       picked.forEach((p) => URL.revokeObjectURL(p.preview));
       setPicked([]);
@@ -708,6 +729,7 @@ function Composer({
             }
           }}
         />
+        <ModePicker modes={modes} value={mode} onChange={setPickedMode} disabled={busy || uploading} />
         <button type="submit" className="button primary" disabled={!sendable}>
           {uploading ? "Uploading…" : "Send"}
         </button>

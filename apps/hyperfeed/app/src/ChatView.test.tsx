@@ -808,3 +808,56 @@ describe("chat with your agent", () => {
     expect(task.chain).not.toBe(chat.chain);
   });
 });
+
+describe("which agent a message is for", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fakeGitHub([]));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearGithubCache();
+  });
+
+  it("sends to the agent you pick, and the chat keeps it for the next message", async () => {
+    const backend = new DemoBackend(false, 0);
+    render(<Harness backend={backend} />);
+    const picker = await screen.findByRole("radiogroup", { name: "Which agent" });
+    expect(within(picker).getByRole("radio", { name: "Private" })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(within(picker).getByRole("radio", { name: "Code" }));
+    await say("Fix the flaky test");
+    const [first] = (await backend.feed("agent", "")).items;
+    expect(first!.mode).toBe("code");
+    expect(await within(thread()).findByText("Code")).toBeInTheDocument();
+
+    // The chat now opens on Code: the next message goes there unless you switch.
+    await waitFor(() =>
+      expect(within(screen.getByRole("radiogroup", { name: "Which agent" })).getByRole("radio", { name: "Code" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      ),
+    );
+    await say("And open a PR");
+    const flow = await backend.chain(first!.chain);
+    expect(flow.map((m) => m.mode)).toEqual(["code", "code"]);
+  });
+
+  it("on a feed made before modes, shows no picker and sends no mode", async () => {
+    class OlderFeed extends DemoBackend {
+      modesSent: (string | undefined)[] = [];
+      override async settings() {
+        return { ...(await super.settings()), message_modes: [] };
+      }
+      override async say(chain: string, text: string, attachments = [] as Parameters<DemoBackend["say"]>[2], mode?: string) {
+        this.modesSent.push(mode);
+        return super.say(chain, text, attachments);
+      }
+    }
+    const backend = new OlderFeed(false, 0);
+    render(<Harness backend={backend} />);
+    await within(list()).findByText(/No chats yet/);
+    expect(screen.queryByRole("radiogroup", { name: "Which agent" })).not.toBeInTheDocument();
+    await say("Hello");
+    expect(backend.modesSent).toEqual([undefined]);
+  });
+});

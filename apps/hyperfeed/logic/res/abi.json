@@ -1174,6 +1174,13 @@
           "doc": "The headline the message was written with, which is also its `title`;\n`\"\"` when it has none, and for every other row. Without one, `title`\nis the message's first line and a client may derive a shorter one."
         },
         {
+          "name": "mode",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "On a message of yours sent with a mode: `chat` or `code` (see\n[`MESSAGE_MODES`]). `\"\"` when it was sent without one, and for every\nother row; your agent's runtime then decides, usually by the chain's\nlast message that had one."
+        },
+        {
           "name": "superseded_by",
           "type": {
             "kind": "string"
@@ -1539,6 +1546,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Headlines of messages written with one, by the message's id."
+        },
+        {
+          "name": "modes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MessageMode"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Which agent each of your messages sent with a mode is for, by the message's id."
         },
         {
           "name": "superseded",
@@ -2081,6 +2102,18 @@
             "items": {
               "$ref": "Step"
             }
+          }
+        }
+      ]
+    },
+    "MessageMode": {
+      "kind": "record",
+      "doc": "Which of your agents a message of yours is for: one of [`MESSAGE_MODES`].\nKept beside the message, keyed by its id, so messages written before\nmodes keep their layout.",
+      "fields": [
+        {
+          "name": "mode",
+          "type": {
+            "kind": "string"
           }
         }
       ]
@@ -3122,6 +3155,16 @@
             }
           },
           "doc": "Rules your agent suggested that wait for you, newest first."
+        },
+        {
+          "name": "message_modes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "The modes a message of yours may be sent with ([`MESSAGE_MODES`]).\nEmpty on a feed made before modes, which refuses a `mode` argument."
         }
       ]
     },
@@ -4620,7 +4663,7 @@
     },
     {
       "name": "say",
-      "doc": "Talk to your agent: about a chain (`chain` = its id), or about\nanything (`chain` empty, which starts a new chain). Your agent picks it\nup, answers in the chain, and may propose or act there under your rules.\n\nA long message takes a `headline`, as [`Self::agent_say`] does. Older\nclients omit it.",
+      "doc": "Talk to your agent: about a chain (`chain` = its id), or about\nanything (`chain` empty, which starts a new chain). Your agent picks it\nup, answers in the chain, and may propose or act there under your rules.\n\nA long message takes a `headline`, as [`Self::agent_say`] does. Older\nclients omit it.\n\n`mode` says which of your agents it is for: `chat` or `code` (see\n[`MESSAGE_MODES`]). Omitted or empty, it has none, and your agent's\nruntime decides. Older clients omit it.",
       "params": [
         {
           "name": "chain",
@@ -4636,6 +4679,13 @@
         },
         {
           "name": "headline",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "mode",
           "type": {
             "kind": "string"
           },
@@ -4674,6 +4724,13 @@
         },
         {
           "name": "headline",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "mode",
           "type": {
             "kind": "string"
           },

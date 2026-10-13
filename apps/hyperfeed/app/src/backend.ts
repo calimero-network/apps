@@ -82,8 +82,10 @@ export interface FeedBackend {
   /**
    * Talk to your agent about a chain, or about anything with `chain` "" (a new
    * chain). With images (uploaded with {@link FeedBackend.images}), `text` may be empty.
+   * `mode` says which of your agents it is for; pass it only to a feed whose
+   * settings list `message_modes`, since an older feed refuses the argument.
    */
-  say(chain: string, text: string, attachments?: Attachment[]): Promise<FeedItem>;
+  say(chain: string, text: string, attachments?: Attachment[], mode?: string): Promise<FeedItem>;
   /**
    * Answer one of your agent's questions from its buttons: your next message
    * in its chain (`chain`), marked as answering that question. A feed made
@@ -175,10 +177,11 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
     removePushDevice: (endpoint) => client.removePushDevice({ endpoint }).then(() => undefined),
     // Text alone keeps to `say`, which every feed has; only images need `say_with`.
     // No `headline` key: a feed made before headlines refuses any argument it does not know.
-    say: (chain, text, attachments = []) =>
+    // `mode` only when given, for the same reason: callers give it to a feed that lists modes.
+    say: (chain, text, attachments = [], mode) =>
       attachments.length
-        ? client.sayWith({ chain, text, attachments } as Parameters<HyperfeedClient["sayWith"]>[0])
-        : client.say({ chain, text } as Parameters<HyperfeedClient["say"]>[0]),
+        ? client.sayWith({ chain, text, attachments, ...(mode ? { mode } : {}) } as Parameters<HyperfeedClient["sayWith"]>[0])
+        : client.say({ chain, text, ...(mode ? { mode } : {}) } as Parameters<HyperfeedClient["say"]>[0]),
     answerAsk: (id, chain, text) =>
       client.answerAsk({ id, text }).catch((e: unknown) => {
         if (!lacksMethod(e, "answer_ask")) throw e;

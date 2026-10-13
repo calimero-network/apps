@@ -434,9 +434,16 @@ mod tests {
     const STRANGER: [u8; 32] = [0xE0; 32];
 
     fn task(app: &mut TestHost<Hyperfeed>) -> String {
-        app.call(|s| s.say(String::new(), "Merge #434 when it's green".to_owned(), None))
-            .expect("say")
-            .chain
+        app.call(|s| {
+            s.say(
+                String::new(),
+                "Merge #434 when it's green".to_owned(),
+                None,
+                None,
+            )
+        })
+        .expect("say")
+        .chain
     }
 
     fn merge_434(chain: &str) -> WatchInput {
@@ -584,7 +591,7 @@ mod tests {
         let mut app = TestHost::new(Hyperfeed::init);
         let one = task(&mut app);
         let two = app
-            .call(|s| s.say(String::new(), "Watch main".to_owned(), None))
+            .call(|s| s.say(String::new(), "Watch main".to_owned(), None, None))
             .unwrap()
             .chain;
         add(&mut app, merge_434(&one)).unwrap();

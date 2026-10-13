@@ -100,7 +100,7 @@ steps:
   - name: Assert the policy and the guard are stored
     type: json_assert
     statements:
-      - 'json_subset({{settings_1}}, {"output": {"paused": false, "policies": [{"app": "chat", "agent": "act", "notifications": "push"}]}})'
+      - 'json_subset({{settings_1}}, {"output": {"paused": false, "policies": [{"app": "chat", "agent": "act", "notifications": "push"}], "message_modes": ["chat", "code"]}})'
 
   - name: The agent checks before acting in chat
     type: call
@@ -438,9 +438,15 @@ steps:
     context_id: "{{context_id}}"
     executor_public_key: "{{owner_key}}"
     method: say
-    args: { chain: "{{mention_id}}", text: "Which numbers did you send Maya?" }
+    args: { chain: "{{mention_id}}", text: "Which numbers did you send Maya?", mode: "chat" }
     outputs:
       question_id: result.output.id
+      question_posted: result
+
+  - name: Assert the question says which agent it is for
+    type: json_assert
+    statements:
+      - 'json_subset({{question_posted}}, {"output": {"from": "you", "mode": "chat"}})'
 
   - name: The agent's open questions hold it
     type: call
