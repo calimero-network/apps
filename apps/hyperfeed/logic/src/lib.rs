@@ -88,6 +88,18 @@ use calimero_sdk::{app, env, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{LwwRegister, Mergeable, UnorderedMap};
 
+mod checkpoint;
+pub use checkpoint::{
+    Checkpoint, CheckpointInput, CheckpointView, MAX_CHECKPOINT_AUTHOR, MAX_CHECKPOINT_ENTRIES,
+    MAX_CHECKPOINT_ENTRY, MAX_CHECKPOINT_TEXT,
+};
+
+mod watches;
+pub use watches::{
+    Watch, WatchInput, WatchView, MAX_ACTIVE_WATCHES, WATCH_ACTIONS, WATCH_CANCELLED,
+    WATCH_CONDITIONS, WATCH_DONE, WATCH_FAILED, WATCH_FIRING, WATCH_WATCHING,
+};
+
 #[cfg(test)]
 mod tests;
 
@@ -1234,11 +1246,15 @@ pub struct Hyperfeed {
     answers: UnorderedMap<String, Answers>,
     /// Which agent session works on each chain, by chain id.
     leases: UnorderedMap<String, Lease>,
+    /// "When X, do Y", polled by your agent's runtime, by id. See [`watches`].
+    watches: UnorderedMap<String, Watch>,
 
     /// Your standing rules, by id.
     rules: UnorderedMap<String, Rule>,
     /// Rules your agent suggested, by id.
     rule_proposals: UnorderedMap<String, RuleProposal>,
+    /// Where each task stands, as your agent last wrote it, by chain id.
+    checkpoints: UnorderedMap<String, Checkpoint>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1287,8 +1303,18 @@ pub enum Event<'a> {
     StopRequested {
         id: &'a str,
     },
+    /// A watch was set, fired, finished or cancelled: re-read `watches`.
+    WatchChanged {
+        id: &'a str,
+        chain: &'a str,
+        status: &'a str,
+    },
     /// An agent session took a chain, or let it go: re-read who is on it.
     ChainLeaseChanged {
+        chain: &'a str,
+    },
+    /// Your agent wrote where a task stands: re-read its `checkpoint`.
+    CheckpointChanged {
         chain: &'a str,
     },
 }
@@ -1322,9 +1348,11 @@ impl Hyperfeed {
             superseded: UnorderedMap::new(),
             answers: UnorderedMap::new(),
             leases: UnorderedMap::new(),
+            watches: UnorderedMap::new(),
 
             rules: UnorderedMap::new(),
             rule_proposals: UnorderedMap::new(),
+            checkpoints: UnorderedMap::new(),
         }
     }
 
@@ -3152,6 +3180,34 @@ impl Hyperfeed {
             .map(|l| Self::lease_view(&chain, &l)))
     }
 
+    /// Your agent writes where the task in `chain` stands: what is done, the
+    /// next step, its branches, worktrees and PRs, and what is still open. It
+    /// replaces the chain's last checkpoint, so a new session can pick the
+    /// task up from it. The limits are in `checkpoint.rs`.
+    pub fn set_checkpoint(
+        &mut self,
+        chain: String,
+        input: CheckpointInput,
+    ) -> app::Result<CheckpointView> {
+        self.require_owner()?;
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        if !self.chain_exists(&chain)? {
+            return Err(AppError::msg(format!("no chain {chain}")));
+        }
+        let prior_at = self.checkpoints.get(&chain)?.map_or(0, |c| c.updated_at);
+        let checkpoint = Checkpoint::from_input(input, now_ms().max(prior_at + 1))?;
+        let view = checkpoint.view(&chain);
+        self.checkpoints.insert(chain.clone(), checkpoint)?;
+        app::emit!(Event::CheckpointChanged { chain: &chain });
+        Ok(view)
+    }
+
+    /// The latest checkpoint on `chain`, or none: read it before acting there.
+    pub fn checkpoint(&self, chain: String) -> app::Result<Option<CheckpointView>> {
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        Ok(self.checkpoints.get(&chain)?.map(|c| c.view(&chain)))
+    }
+
     /// A standing rule's text: one short line, trimmed.
     fn check_rule(text: &str) -> app::Result<String> {
         let text = text.trim();
@@ -3350,6 +3406,51 @@ impl Hyperfeed {
             status: p.status.clone(),
             created_at: p.created_at,
         }
+    }
+
+    // ── watches: "when X, do Y", kept here so it outlives a session ─────────
+
+    /// Set a watch: when its condition is met (a PR's checks green or red, a
+    /// PR merged, a branch's CI green or red), its action runs once (merge
+    /// the PR, start an agent turn with `text`, or tell you), reported in its
+    /// chain. Your agent's runtime polls it; the same watch twice is kept once.
+    pub fn add_watch(&mut self, input: WatchInput) -> app::Result<WatchView> {
+        self.watch_add(input)
+    }
+
+    /// Cancel a watch still watching, with an optional note why. A watch that
+    /// already fired cannot be called back.
+    pub fn cancel_watch(&mut self, id: String, note: Option<String>) -> app::Result<WatchView> {
+        self.watch_cancel(&id, note.as_deref().unwrap_or_default())
+    }
+
+    /// The runtime takes a watch whose condition it saw met, before it acts:
+    /// `watching → firing`, refused for any other status. Of every session
+    /// polling, exactly one gets it, once.
+    pub fn fire_watch(&mut self, id: String, session: String) -> app::Result<WatchView> {
+        self.watch_fire(&id, &session)
+    }
+
+    /// How the fired action went: `done` or `failed`, with a note.
+    pub fn finish_watch(
+        &mut self,
+        id: String,
+        outcome: String,
+        note: String,
+    ) -> app::Result<WatchView> {
+        self.watch_finish(&id, &outcome, &note)
+    }
+
+    /// What the runtime last saw of a watching watch's condition, as one line
+    /// ("3 of 5 checks passed, 2 running"). Only a change is written.
+    pub fn watch_seen(&mut self, id: String, seen: String) -> app::Result<WatchView> {
+        self.watch_seen_impl(&id, &seen)
+    }
+
+    /// The watches in `chain` (`""`: every chain), oldest first, whatever
+    /// their status.
+    pub fn watches(&self, chain: String) -> app::Result<Vec<WatchView>> {
+        self.watch_list(&chain)
     }
 
     /// An agent saying it is running. The feed shows it as live while it

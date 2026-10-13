@@ -292,6 +292,72 @@
         }
       ]
     },
+    "Checkpoint": {
+      "kind": "record",
+      "doc": "The latest checkpoint on one chain, kept by chain id. A new one replaces\nit whole: last writer wins.",
+      "fields": [
+        {
+          "name": "done",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "next",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "branches",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "worktrees",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "prs",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "questions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Guard": {
       "kind": "record",
       "doc": "One \"always ask me before\" switch.",
@@ -604,6 +670,20 @@
           "doc": "Which agent session works on each chain, by chain id."
         },
         {
+          "name": "watches",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Watch"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "\"When X, do Y\", polled by your agent's runtime, by id. See [`watches`]."
+        },
+        {
           "name": "rules",
           "type": {
             "kind": "map",
@@ -630,6 +710,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Rules your agent suggested, by id."
+        },
+        {
+          "name": "checkpoints",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Checkpoint"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Where each task stands, as your agent last wrote it, by chain id."
         }
       ]
     },
@@ -1122,6 +1216,113 @@
             "kind": "string"
           },
           "doc": "A JSON object `{ \"method\", \"args\" }`: what your client calls in the\nsource context to answer, with `\"=$answer\"` where your answer goes.\nEmpty: answered by your agent, or not answerable from the feed."
+        }
+      ]
+    },
+    "Watch": {
+      "kind": "record",
+      "doc": "One watch, kept by id.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "repo",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pr",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "branch",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "action",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Who set it: \"mero-bot@studio\", or \"\" for you."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "[`WATCH_WATCHING`], [`WATCH_FIRING`], [`WATCH_DONE`], [`WATCH_FAILED`]\nor [`WATCH_CANCELLED`]."
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "How the action went, or why it was cancelled."
+        },
+        {
+          "name": "seen",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What the runtime last saw, as one line: \"3 of 5 checks passed, 2 running\"."
+        },
+        {
+          "name": "seen_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "fired_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The session that fired it, and when."
+        },
+        {
+          "name": "fired_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
         }
       ]
     },

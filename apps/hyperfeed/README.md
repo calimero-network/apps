@@ -163,6 +163,9 @@ the feed context, then:
 - **Turns events into turns.** Something new that needs you starts a triage turn, where the agent
   prepares proposals (a drafted reply, options, an action) instead of acting on its own. What you
   approve or answer here starts a turn that carries it out and reports back.
+- **Fires your watches.** "Merge #434 when it's green" becomes a watch in the feed, and mero-bot's
+  runtime polls it through `gh` and fires it once, even after the session that set it ended (see
+  [Watches](#api-for-agents)).
 
 So the agent learns what is happening from the node's live event stream, and it acts only through
 proposals you settle here, or where your rules let it act. See mero-bot's README for the flags
@@ -202,6 +205,43 @@ account (your node's own identity, or your account through a warrant); anything 
 | `chain` | `chain: string` | `FeedItem[]`, every row in the chain, oldest first |
 | `feed` | `filter: "all" \| "agent" \| "notifications" \| "needs_you", app_key: string, limit: u32, before: u64` | `FeedPage { items, counts, apps, next_before }`: one row per chain |
 | `settings` | none | `SettingsView { owner, paused, policies, guards }` |
+| `set_checkpoint` | `chain: string, input: CheckpointInput { done, next, branches, worktrees, prs, questions, author }` | `CheckpointView`, now the chain's latest; it replaces the last one |
+| `checkpoint` | `chain: string` | `CheckpointView { chain, done, next, branches, worktrees, prs, questions, author, updated_at }` or `null` |
+
+**Checkpoints: tasks a new session can pick up.** An agent session can end mid-task and take its
+plan with it. So at each milestone, and before a turn ends with work outstanding, the agent writes a
+short checkpoint on the task's chain with `set_checkpoint`: what is done, the next step, the
+branches, worktrees and PRs it works on, and what is still open. There is one per chain, and each
+write replaces the last (`CheckpointChanged { chain }`). A new session reads `checkpoint(chain)`
+before it acts there and resumes from it; mero-bot puts it in the turn's prompt. The app shows it
+behind "Where it stands" on the task. Limits: `done` and `next` up to 1000 bytes (at least one of
+them), each list up to 10 one-line entries of up to 300 bytes, `author` up to 120 bytes.
+
+**Watches: "when X, do Y" that outlives a session.** "Merge #434 when it's green" or "watch main
+and fix it if red" used to live in an agent session's background shell and die with it. A watch is
+kept in the feed instead: a condition, an action, and the chain it reports to.
+
+| Method | Args | Returns |
+| --- | --- | --- |
+| `add_watch` | `input: WatchInput { chain, condition, repo, pr, branch, action, text, agent }` | `WatchView`; the same watch twice is kept once |
+| `cancel_watch` | `id: string, note?: string` | `WatchView`, `cancelled`; refused once it fired |
+| `fire_watch` | `id: string, session: string` | `WatchView`, `firing`; refused unless it is `watching` |
+| `finish_watch` | `id: string, outcome: "done" \| "failed", note: string` | `WatchView`; only a `firing` watch |
+| `watch_seen` | `id: string, seen: string` | `WatchView`: where the condition stood when last looked at, one line |
+| `watches` | `chain: string` (`""`: every chain) | `WatchView[]`, oldest first |
+
+`condition` is `pr_green`, `pr_red`, `pr_merged` (with the PR's number in `pr`), `branch_green` or
+`branch_red` (CI on `branch`'s head; `""` is the default branch; `pr` 0). `action` is `merge` (with
+`pr_green` only), `turn` (start an agent turn in the chain with `text`) or `notify` (tell you `text`
+in the chain). At most 50 wait at once. The contract cannot read GitHub: the agent's runtime polls
+the conditions (mero-bot, through `gh`). When one is met it takes the watch with `fire_watch` before
+it acts, so of every session polling exactly one acts, once, and a restarted one never acts again;
+then it reports with `finish_watch`. A watch's status only moves forward (`watching → firing →
+done | failed`, or `watching → cancelled`), also when two devices' copies merge. A merge applies the
+safe-merge rules when it fires: open, not a draft, no conflicts, every check passed, and the base is
+the default branch, so a stacked PR is refused. The app shows the watches still waiting on their
+task, and every watch in its chat, with where each stands and Cancel. Each change emits
+`WatchChanged { id, chain, status }`.
 
 `ActionInput`, every field required (use `""` when there is nothing to say):
 
@@ -276,7 +316,8 @@ in the row's `note` while it is current.
 An outcome recorded where the rules said `ask` or `refuse` is still stored, with `breach` set, and
 stays in "Needs you" until you keep it or undo it. Events the contract emits: `ActionRecorded`,
 `ActionChanged`, `NotificationRecorded`, `NotificationChanged`, `NotificationsSeen`,
-`SettingsChanged`, `MessagePosted`, `MessageChanged`, `LensChanged`, `ArchiveChanged`.
+`SettingsChanged`, `MessagePosted`, `MessageChanged`, `LensChanged`, `ArchiveChanged`,
+`WatchChanged`.
 
 7. Report in while you run: `agent_seen(name)`, about every 30 seconds (mero-bot sends
    `mero-bot@<host>`). `settings().agents` lists who reported and when.

@@ -26,6 +26,9 @@ import { agentDigest, digestLine, headlineOf, isAgent } from "./team";
 import { TASKS_SHOWN, taskCandidates, taskOf, type TaskPost } from "./tasks";
 import { answersYou, mayAnswer, placeOf, sentenceOf, useChainRoot, type Sentence } from "./people";
 import { milestonesOf, trackLine, type Milestone } from "./milestones";
+import { CheckpointDetails } from "./CheckpointDetails";
+import { WatchList } from "./WatchList";
+import type { CheckpointView } from "./checkpoint";
 
 const appName = (key: string) => appLook(key).name;
 
@@ -478,30 +481,53 @@ function TaskPosts({
   people?: boolean;
 }) {
   const [tasks, setTasks] = useState<TaskPost[]>([]);
-  const { loadChain, page } = feed;
+  // Where each task stands, as your agent last wrote it: behind "Where it stands" on its post.
+  const [checkpoints, setCheckpoints] = useState<Map<string, CheckpointView>>(new Map());
+  const { loadChain, loadCheckpoint, page } = feed;
   useEffect(() => {
     let live = true;
     const read = candidates.slice(0, TASKS_READ);
     Promise.all(read.map((lead) => loadChain(lead.chain).then((rows) => taskOf(rows, lead, appName), () => null)))
-      .then((all) => live && setTasks(all.filter((t): t is TaskPost => t !== null).slice(0, TASKS_SHOWN)))
+      .then(async (all) => {
+        const shown = all.filter((t): t is TaskPost => t !== null).slice(0, TASKS_SHOWN);
+        if (!live) return;
+        setTasks(shown);
+        if (!loadCheckpoint) return;
+        const found = await Promise.all(shown.map((t) => loadCheckpoint(t.chain).catch(() => null)));
+        if (live) setCheckpoints(new Map(found.filter((c): c is CheckpointView => !!c).map((c) => [c.chain, c])));
+      })
       .catch(() => undefined);
     return () => {
       live = false;
     };
     // `page` is the point: re-read the tasks whenever the feed changes.
-  }, [candidates, loadChain, page]);
+  }, [candidates, loadChain, loadCheckpoint, page]);
 
   if (tasks.length === 0) return null;
   return (
     <section className="tasks" aria-label="Your tasks">
       {tasks.map((t) => (
-        <TaskCard key={t.chain} task={t} onOpen={() => onOpen(t.chain)} people={people} />
+        <TaskCard key={t.chain} task={t} onOpen={() => onOpen(t.chain)} people={people} checkpoint={checkpoints.get(t.chain)} feed={feed} />
       ))}
     </section>
   );
 }
 
-function TaskCard({ task, onOpen, people = false }: { task: TaskPost; onOpen: () => void; people?: boolean }) {
+function TaskCard({
+  task,
+  onOpen,
+  people = false,
+  checkpoint,
+  feed,
+}: {
+  task: TaskPost;
+  onOpen: () => void;
+  people?: boolean;
+  /** Where it stands, as your agent last wrote it. */
+  checkpoint?: CheckpointView;
+  /** For the task's watches still waiting, with Cancel. */
+  feed?: Feed;
+}) {
   return (
     <article className={`task tone-${task.status.tone}`} aria-label={task.goal}>
       <button type="button" className="task-line" onClick={onOpen}>
@@ -533,6 +559,8 @@ function TaskCard({ task, onOpen, people = false }: { task: TaskPost; onOpen: ()
           </span>
         )}
       </button>
+      {checkpoint && <CheckpointDetails checkpoint={checkpoint} />}
+      {feed && <WatchList feed={feed} chain={task.chain} activeOnly />}
     </article>
   );
 }

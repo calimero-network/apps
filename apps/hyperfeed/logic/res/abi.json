@@ -442,6 +442,212 @@
         }
       ]
     },
+    "Checkpoint": {
+      "kind": "record",
+      "doc": "The latest checkpoint on one chain, kept by chain id. A new one replaces\nit whole: last writer wins.",
+      "fields": [
+        {
+          "name": "done",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "next",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "branches",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "worktrees",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "prs",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "questions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CheckpointInput": {
+      "kind": "record",
+      "doc": "What the agent writes: [`crate::Hyperfeed::set_checkpoint`]'s `input`.\n`done` and `next` are prose; the lists may be empty.",
+      "fields": [
+        {
+          "name": "done",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What is done so far."
+        },
+        {
+          "name": "next",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The next step, as the session that picks it up should take it."
+        },
+        {
+          "name": "branches",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Git branches the task works on."
+        },
+        {
+          "name": "worktrees",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Worktrees (absolute paths) the task works in."
+        },
+        {
+          "name": "prs",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Pull requests: links, or `repo#number`."
+        },
+        {
+          "name": "questions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "What is still open: questions for the user, or doubts to settle."
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Who writes it: \"mero-bot@studio\"."
+        }
+      ]
+    },
+    "CheckpointView": {
+      "kind": "record",
+      "doc": "A chain's latest checkpoint, as [`crate::Hyperfeed::checkpoint`] returns it.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "done",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "next",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "branches",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "worktrees",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "prs",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "questions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When it was written (ms)."
+        }
+      ]
+    },
     "Event_ActionChanged": {
       "kind": "record",
       "fields": [
@@ -488,6 +694,17 @@
       ]
     },
     "Event_ChainLeaseChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CheckpointChanged": {
       "kind": "record",
       "fields": [
         {
@@ -599,6 +816,29 @@
       "fields": [
         {
           "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_WatchChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
           "type": {
             "kind": "string"
           }
@@ -1307,6 +1547,20 @@
           "doc": "Which agent session works on each chain, by chain id."
         },
         {
+          "name": "watches",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Watch"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "\"When X, do Y\", polled by your agent's runtime, by id. See [`watches`]."
+        },
+        {
           "name": "rules",
           "type": {
             "kind": "map",
@@ -1333,6 +1587,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Rules your agent suggested, by id."
+        },
+        {
+          "name": "checkpoints",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Checkpoint"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Where each task stands, as your agent last wrote it, by chain id."
         }
       ]
     },
@@ -2175,6 +2443,283 @@
         }
       ]
     },
+    "Watch": {
+      "kind": "record",
+      "doc": "One watch, kept by id.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "repo",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pr",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "branch",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "action",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Who set it: \"mero-bot@studio\", or \"\" for you."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "[`WATCH_WATCHING`], [`WATCH_FIRING`], [`WATCH_DONE`], [`WATCH_FAILED`]\nor [`WATCH_CANCELLED`]."
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "How the action went, or why it was cancelled."
+        },
+        {
+          "name": "seen",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What the runtime last saw, as one line: \"3 of 5 checks passed, 2 running\"."
+        },
+        {
+          "name": "seen_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "fired_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The session that fired it, and when."
+        },
+        {
+          "name": "fired_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "WatchInput": {
+      "kind": "record",
+      "doc": "What [`crate::Hyperfeed::add_watch`] takes. Every field is required; use\n`\"\"` or `0` where it does not apply.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The chain it reports to: the task it belongs to."
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`WATCH_CONDITIONS`]."
+        },
+        {
+          "name": "repo",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The GitHub repository, `owner/name`."
+        },
+        {
+          "name": "pr",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "The pull request's number, for a `pr_*` condition; 0 otherwise."
+        },
+        {
+          "name": "branch",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The branch, for a `branch_*` condition; `\"\"` is the repository's\ndefault branch. `\"\"` for a `pr_*` condition."
+        },
+        {
+          "name": "action",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`WATCH_ACTIONS`]. `merge` goes with `pr_green` only."
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The prompt for a `turn`, or what a `notify` tells you; may be `\"\"` for\na `merge`."
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Who sets it: \"mero-bot@studio\"; `\"\"` for you."
+        }
+      ]
+    },
+    "WatchView": {
+      "kind": "record",
+      "doc": "A watch, as the feed returns it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "repo",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pr",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "branch",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "action",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "seen",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "seen_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "fired_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fired_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Work": {
       "kind": "record",
       "doc": "Your agent's turn on one of your messages, as it goes: its steps, and the\nanswer it has written so far. Kept beside the message by id and replaced\nwhole by each report, so a long turn adds no rows.",
@@ -2218,6 +2763,22 @@
       ],
       "returns": {
         "$ref": "RuleView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_watch",
+      "doc": "Set a watch: when its condition is met (a PR's checks green or red, a\nPR merged, a branch's CI green or red), its action runs once (merge\nthe PR, start an agent turn with `text`, or tell you), reported in its\nchain. Your agent's runtime polls it; the same watch twice is kept once.",
+      "params": [
+        {
+          "name": "input",
+          "type": {
+            "$ref": "WatchInput"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "WatchView"
       },
       "intent": "mutating"
     },
@@ -2480,6 +3041,29 @@
       "intent": "mutating"
     },
     {
+      "name": "cancel_watch",
+      "doc": "Cancel a watch still watching, with an optional note why. A watch that\nalready fired cannot be called back.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "WatchView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "chain",
       "doc": "Every row in a chain, oldest first: the whole flow, muted apps included.",
       "params": [
@@ -2539,6 +3123,22 @@
       ],
       "returns": {
         "$ref": "Verdict"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "checkpoint",
+      "doc": "The latest checkpoint on `chain`, or none: read it before acting there.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "CheckpointView"
       },
       "intent": "read_only"
     },
@@ -2710,6 +3310,56 @@
         "$ref": "FeedPage"
       },
       "intent": "read_only"
+    },
+    {
+      "name": "finish_watch",
+      "doc": "How the fired action went: `done` or `failed`, with a note.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "outcome",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "WatchView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "fire_watch",
+      "doc": "The runtime takes a watch whose condition it saw met, before it acts:\n`watching → firing`, refused for any other status. Of every session\npolling, exactly one gets it, once.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "session",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "WatchView"
+      },
+      "intent": "mutating"
     },
     {
       "name": "init",
@@ -3043,6 +3693,28 @@
       "intent": "mutating"
     },
     {
+      "name": "set_checkpoint",
+      "doc": "Your agent writes where the task in `chain` stands: what is done, the\nnext step, its branches, worktrees and PRs, and what is still open. It\nreplaces the chain's last checkpoint, so a new session can pick the\ntask up from it. The limits are in `checkpoint.rs`.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "input",
+          "type": {
+            "$ref": "CheckpointInput"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "CheckpointView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "set_guard",
       "params": [
         {
@@ -3148,6 +3820,47 @@
         "kind": "u32"
       },
       "intent": "mutating"
+    },
+    {
+      "name": "watch_seen",
+      "doc": "What the runtime last saw of a watching watch's condition, as one line\n(\"3 of 5 checks passed, 2 running\"). Only a change is written.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "seen",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "WatchView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "watches",
+      "doc": "The watches in `chain` (`\"\"`: every chain), oldest first, whatever\ntheir status.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "WatchView"
+        }
+      },
+      "intent": "read_only"
     }
   ],
   "events": [
@@ -3176,6 +3889,13 @@
         "$ref": "Event_ChainLeaseChanged"
       },
       "doc": "An agent session took a chain, or let it go: re-read who is on it."
+    },
+    {
+      "name": "CheckpointChanged",
+      "payload": {
+        "$ref": "Event_CheckpointChanged"
+      },
+      "doc": "Your agent wrote where a task stands: re-read its `checkpoint`."
     },
     {
       "name": "LensChanged",
@@ -3224,6 +3944,13 @@
         "$ref": "Event_StopRequested"
       },
       "doc": "You asked your agent to stop working on message `id`: it ends the turn\nand marks the message failed, \"Stopped by you\"."
+    },
+    {
+      "name": "WatchChanged",
+      "payload": {
+        "$ref": "Event_WatchChanged"
+      },
+      "doc": "A watch was set, fired, finished or cancelled: re-read `watches`."
     }
   ],
   "state_root": "Hyperfeed",

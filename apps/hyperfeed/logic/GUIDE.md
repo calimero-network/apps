@@ -104,6 +104,35 @@ their answer goes back. You write it from the app's ABI; the user approves it.
 
 Before you start work on a chain, `claim_chain(chain, session, ttl_ms, agent)` with your session's own id and a name ("mero-bot@host"). It is refused while another session holds an unexpired lease: leave that chain to it. Renew with `renew_chain` while you work and `release_chain` at the end; a lease that runs out (a session that died) can be claimed again.
 
+### Leave a checkpoint on a task
+
+A session can end mid-task. So the next one can pick the task up, keep a checkpoint on its chain:
+
+- Before you act on a chain, read `checkpoint(chain)`. If there is one, resume from its `next` step; check its branches, worktrees and PRs are still where it says.
+- At each milestone (a plan made, a branch pushed, a PR opened, tests green) and before you stop with work outstanding, `set_checkpoint(chain, input)`. Each write replaces the last.
+- `input` is `{ done, next, branches, worktrees, prs, questions, author }`: `done` and `next` up to 1000 bytes each (at least one of them), each list up to 10 one-line entries of up to 300 bytes, `author` your name ("mero-bot@host"). Say only what a fresh session needs, not a log.
+
+```json
+{ "chain": "<chain>", "input": { "done": "Found the bug in ChatView; fix written", "next": "Run the app tests, then open a PR",
+  "branches": ["mero-bot/chain-1a2b"], "worktrees": ["/Users/me/workspace/apps-chain-1a2b"], "prs": [],
+  "questions": [], "author": "mero-bot@studio" } }
+```
+
+### Wait for something, then act: set a watch
+
+"Merge #434 when it's green" or "watch main and fix it if red" is a watch in the feed, not a loop in your session: a session ends, a watch does not.
+
+- `add_watch(input)` with `input` `{ chain, condition, repo, pr, branch, action, text, agent }`. `condition` is `pr_green` (every check on the PR passed), `pr_red` (one failed), `pr_merged`, `branch_green` or `branch_red` (CI on a branch's head; `branch: ""` is the default branch). `pr` is the PR's number for `pr_*` and 0 otherwise. `action` is `merge` (with `pr_green` only), `turn` (start an agent turn in the chain with `text` as its instructions) or `notify` (tell the user `text` in the chain). `repo` is `owner/name`. The same watch twice is kept once; at most 50 wait at once.
+- `watches(chain)` lists them (`""`: every chain) with `status` (`watching`, `firing`, `done`, `failed`, `cancelled`), `seen` (where the condition stood when last looked at) and `note` (how the action went). `cancel_watch(id, note?)` cancels one still `watching`.
+- The agent's runtime, not a model turn, polls them (mero-bot does, through `gh`, about every 45 s). When a condition is met it first calls `fire_watch(id, session)`, which moves `watching → firing` and is refused for any other status, and acts only if that succeeded: exactly one session acts, once, even after a restart. Then `finish_watch(id, "done" | "failed", note)`. `watch_seen(id, seen)` records where a condition stands. A merge keeps the safe-merge rules at that moment: the PR is open, not a draft, has no conflicts, every check passed, and its base is the default branch; a stacked PR (based on another PR's branch) is refused.
+
+```json
+{ "input": { "chain": "<chain>", "condition": "pr_green", "repo": "calimero-network/apps", "pr": 434, "branch": "",
+  "action": "merge", "text": "", "agent": "mero-bot@studio" } }
+```
+
+With mero-bot, set them through its `watch`, `unwatch` and `watches` tools.
+
 ### Keep to the user's standing rules
 
 - `settings` returns `rules`: short lines the user wants kept on every turn ("Never push to main"). Read them when you start and on `SettingsChanged`, and keep to every one.

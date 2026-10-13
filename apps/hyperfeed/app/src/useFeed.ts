@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Attachment, FeedItem, FeedPage, LensView, SettingsView } from "./generated/HyperfeedClient";
+import type { Attachment, CheckpointView, FeedItem, FeedPage, LensView, SettingsView, WatchView } from "./generated/HyperfeedClient";
 import { fillReplyCall } from "./lens/lens";
 import type { AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
 import type { BlobStore } from "./attachments";
@@ -49,6 +49,12 @@ export interface Feed {
   chats: () => Promise<FeedItem[]>;
   /** Every row in a chain, oldest first. A read: no busy state, no refresh. */
   loadChain: (chain: string) => Promise<FeedItem[]>;
+  /** Where the task in a chain stands, as your agent last wrote it, or null. A read, like `loadChain`. */
+  loadCheckpoint?: (chain: string) => Promise<CheckpointView | null>;
+  /** The watches in a chain ("when X, do Y"), oldest first. A read, like `loadChain`. */
+  loadWatches?: (chain: string) => Promise<WatchView[]>;
+  /** Cancel a watch that has not fired yet. */
+  cancelWatch?: (id: string) => Promise<void>;
   markSeen: (ids: string[]) => Promise<void>;
   markAllSeen: () => Promise<void>;
   setPolicy: (appKey: string, agent: AgentMode, notifications: NotificationMode) => Promise<void>;
@@ -207,6 +213,9 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       [backend],
     ),
     loadChain: useCallback(async (chain) => (backend ? backend.chain(chain) : []), [backend]),
+    loadCheckpoint: useCallback(async (chain: string) => (backend?.checkpoint ? backend.checkpoint(chain) : null), [backend]),
+    loadWatches: useCallback(async (chain: string) => (backend?.watches ? backend.watches(chain) : []), [backend]),
+    cancelWatch: useCallback((id: string) => run((b) => (b.cancelWatch ? b.cancelWatch(id) : Promise.resolve())), [run]),
     markSeen: useCallback((ids) => run((b) => b.markSeen(ids)), [run]),
     markAllSeen: useCallback(() => run((b) => b.markAllSeen()), [run]),
     setPolicy: useCallback((k, agent, notifications) => run((b) => b.setPolicy(k, agent, notifications)), [run]),

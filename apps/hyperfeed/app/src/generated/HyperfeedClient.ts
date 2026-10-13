@@ -202,6 +202,74 @@ export interface Attachments {
   items: Attachment[];
 }
 
+/**
+ * The latest checkpoint on one chain, kept by chain id. A new one replaces
+ * it whole: last writer wins.
+ */
+export interface Checkpoint {
+  done: string;
+  next: string;
+  branches: string[];
+  worktrees: string[];
+  prs: string[];
+  questions: string[];
+  author: string;
+  updated_at: number;
+}
+
+/**
+ * What the agent writes: [`crate::Hyperfeed::set_checkpoint`]'s `input`.
+ * `done` and `next` are prose; the lists may be empty.
+ */
+export interface CheckpointInput {
+  /**
+   * What is done so far.
+   */
+  done: string;
+  /**
+   * The next step, as the session that picks it up should take it.
+   */
+  next: string;
+  /**
+   * Git branches the task works on.
+   */
+  branches: string[];
+  /**
+   * Worktrees (absolute paths) the task works in.
+   */
+  worktrees: string[];
+  /**
+   * Pull requests: links, or `repo#number`.
+   */
+  prs: string[];
+  /**
+   * What is still open: questions for the user, or doubts to settle.
+   */
+  questions: string[];
+  /**
+   * Who writes it: "mero-bot@studio".
+   */
+  author: string;
+}
+
+/**
+ * A chain's latest checkpoint, as [`crate::Hyperfeed::checkpoint`] returns it.
+ */
+export interface CheckpointView {
+  chain: string;
+  done: string;
+  next: string;
+  branches: string[];
+  worktrees: string[];
+  prs: string[];
+  questions: string[];
+  author: string;
+  /**
+   * When it was written (ms).
+   */
+  updated_at: number;
+}
+
 export interface Event_ActionChanged {
   id: string;
   status: string;
@@ -217,6 +285,10 @@ export interface Event_ArchiveChanged {
 }
 
 export interface Event_ChainLeaseChanged {
+  chain: string;
+}
+
+export interface Event_CheckpointChanged {
   chain: string;
 }
 
@@ -251,6 +323,12 @@ export interface Event_NotificationsSeen {
 
 export interface Event_StopRequested {
   id: string;
+}
+
+export interface Event_WatchChanged {
+  id: string;
+  chain: string;
+  status: string;
 }
 
 export interface FeedCounts {
@@ -489,6 +567,10 @@ export interface Hyperfeed {
    */
   leases: Record<string, Lease>;
   /**
+   * "When X, do Y", polled by your agent's runtime, by id. See [`watches`].
+   */
+  watches: Record<string, Watch>;
+  /**
    * Your standing rules, by id.
    */
   rules: Record<string, Rule>;
@@ -496,6 +578,10 @@ export interface Hyperfeed {
    * Rules your agent suggested, by id.
    */
   rule_proposals: Record<string, RuleProposal>;
+  /**
+   * Where each task stands, as your agent last wrote it, by chain id.
+   */
+  checkpoints: Record<string, Checkpoint>;
 }
 
 /**
@@ -863,6 +949,108 @@ export interface Verdict {
 }
 
 /**
+ * One watch, kept by id.
+ */
+export interface Watch {
+  chain: string;
+  condition: string;
+  repo: string;
+  pr: number;
+  branch: string;
+  action: string;
+  text: string;
+  /**
+   * Who set it: "mero-bot@studio", or "" for you.
+   */
+  agent: string;
+  /**
+   * [`WATCH_WATCHING`], [`WATCH_FIRING`], [`WATCH_DONE`], [`WATCH_FAILED`]
+   * or [`WATCH_CANCELLED`].
+   */
+  status: string;
+  /**
+   * How the action went, or why it was cancelled.
+   */
+  note: string;
+  /**
+   * What the runtime last saw, as one line: "3 of 5 checks passed, 2 running".
+   */
+  seen: string;
+  seen_at: number;
+  /**
+   * The session that fired it, and when.
+   */
+  fired_by: string;
+  fired_at: number;
+  created_at: number;
+  updated_at: number;
+}
+
+/**
+ * What [`crate::Hyperfeed::add_watch`] takes. Every field is required; use
+ * `""` or `0` where it does not apply.
+ */
+export interface WatchInput {
+  /**
+   * The chain it reports to: the task it belongs to.
+   */
+  chain: string;
+  /**
+   * One of [`WATCH_CONDITIONS`].
+   */
+  condition: string;
+  /**
+   * The GitHub repository, `owner/name`.
+   */
+  repo: string;
+  /**
+   * The pull request's number, for a `pr_*` condition; 0 otherwise.
+   */
+  pr: number;
+  /**
+   * The branch, for a `branch_*` condition; `""` is the repository's
+   * default branch. `""` for a `pr_*` condition.
+   */
+  branch: string;
+  /**
+   * One of [`WATCH_ACTIONS`]. `merge` goes with `pr_green` only.
+   */
+  action: string;
+  /**
+   * The prompt for a `turn`, or what a `notify` tells you; may be `""` for
+   * a `merge`.
+   */
+  text: string;
+  /**
+   * Who sets it: "mero-bot@studio"; `""` for you.
+   */
+  agent: string;
+}
+
+/**
+ * A watch, as the feed returns it.
+ */
+export interface WatchView {
+  id: string;
+  chain: string;
+  condition: string;
+  repo: string;
+  pr: number;
+  branch: string;
+  action: string;
+  text: string;
+  agent: string;
+  status: string;
+  note: string;
+  seen: string;
+  seen_at: number;
+  fired_by: string;
+  fired_at: number;
+  created_at: number;
+  updated_at: number;
+}
+
+/**
  * Your agent's turn on one of your messages, as it goes: its steps, and the
  * answer it has written so far. Kept beside the message by id and replaced
  * whole by each report, so a long turn adds no rows.
@@ -875,6 +1063,8 @@ export interface Work {
   draft: string;
   at: number;
 }
+
+
 
 
 
@@ -907,6 +1097,13 @@ export type AbiEvent =
   }
   | {
     /**
+     * Your agent wrote where a task stands: re-read its `checkpoint`.
+     */
+    name: "CheckpointChanged";
+    payload: Event_CheckpointChanged;
+  }
+  | {
+    /**
      * A lens was proposed, approved or turned down: re-read `lenses`.
      */
     name: "LensChanged";
@@ -931,6 +1128,13 @@ export type AbiEvent =
      */
     name: "StopRequested";
     payload: Event_StopRequested;
+  }
+  | {
+    /**
+     * A watch was set, fired, finished or cancelled: re-read `watches`.
+     */
+    name: "WatchChanged";
+    payload: Event_WatchChanged;
   }
 ;
 
@@ -959,6 +1163,21 @@ export class HyperfeedClient {
   public async addRule(params: { text: string }): Promise<RuleView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'add_rule', argsJson: params });
     return response as RuleView;
+  }
+
+  /**
+   * add_watch
+   *
+   * Set a watch: when its condition is met (a PR's checks green or red, a
+   * PR merged, a branch's CI green or red), its action runs once (merge
+   * the PR, start an agent turn with `text`, or tell you), reported in its
+   * chain. Your agent's runtime polls it; the same watch twice is kept once.
+   *
+   * @intent mutating
+   */
+  public async addWatch(params: { input: WatchInput }): Promise<WatchView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add_watch', argsJson: params });
+    return response as WatchView;
   }
 
   /**
@@ -1121,6 +1340,19 @@ export class HyperfeedClient {
   }
 
   /**
+   * cancel_watch
+   *
+   * Cancel a watch still watching, with an optional note why. A watch that
+   * already fired cannot be called back.
+   *
+   * @intent mutating
+   */
+  public async cancelWatch(params: { id: string; note: string | null }): Promise<WatchView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'cancel_watch', argsJson: params });
+    return response as WatchView;
+  }
+
+  /**
    * chain
    *
    * Every row in a chain, oldest first: the whole flow, muted apps included.
@@ -1154,6 +1386,18 @@ export class HyperfeedClient {
   public async checkAction(params: { app_key: string; category: string; writes: boolean }): Promise<Verdict> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'check_action', argsJson: params });
     return response as Verdict;
+  }
+
+  /**
+   * checkpoint
+   *
+   * The latest checkpoint on `chain`, or none: read it before acting there.
+   *
+   * @intent read_only
+   */
+  public async checkpoint(params: { chain: string }): Promise<CheckpointView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'checkpoint', argsJson: params });
+    return response as CheckpointView;
   }
 
   /**
@@ -1248,6 +1492,32 @@ export class HyperfeedClient {
   public async feed(params: { filter: string; app_key: string; limit: number; before: number }): Promise<FeedPage> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'feed', argsJson: params });
     return response as FeedPage;
+  }
+
+  /**
+   * finish_watch
+   *
+   * How the fired action went: `done` or `failed`, with a note.
+   *
+   * @intent mutating
+   */
+  public async finishWatch(params: { id: string; outcome: string; note: string }): Promise<WatchView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'finish_watch', argsJson: params });
+    return response as WatchView;
+  }
+
+  /**
+   * fire_watch
+   *
+   * The runtime takes a watch whose condition it saw met, before it acts:
+   * `watching → firing`, refused for any other status. Of every session
+   * polling, exactly one gets it, once.
+   *
+   * @intent mutating
+   */
+  public async fireWatch(params: { id: string; session: string }): Promise<WatchView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'fire_watch', argsJson: params });
+    return response as WatchView;
   }
 
   /**
@@ -1476,6 +1746,21 @@ export class HyperfeedClient {
   }
 
   /**
+   * set_checkpoint
+   *
+   * Your agent writes where the task in `chain` stands: what is done, the
+   * next step, its branches, worktrees and PRs, and what is still open. It
+   * replaces the chain's last checkpoint, so a new session can pick the
+   * task up from it. The limits are in `checkpoint.rs`.
+   *
+   * @intent mutating
+   */
+  public async setCheckpoint(params: { chain: string; input: CheckpointInput }): Promise<CheckpointView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_checkpoint', argsJson: params });
+    return response as CheckpointView;
+  }
+
+  /**
    * set_guard
    *
    * @intent mutating
@@ -1545,6 +1830,32 @@ export class HyperfeedClient {
   public async unarchive(params: { chains: string[] }): Promise<number> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'unarchive', argsJson: params });
     return response as number;
+  }
+
+  /**
+   * watch_seen
+   *
+   * What the runtime last saw of a watching watch's condition, as one line
+   * ("3 of 5 checks passed, 2 running"). Only a change is written.
+   *
+   * @intent mutating
+   */
+  public async watchSeen(params: { id: string; seen: string }): Promise<WatchView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'watch_seen', argsJson: params });
+    return response as WatchView;
+  }
+
+  /**
+   * watches
+   *
+   * The watches in `chain` (`""`: every chain), oldest first, whatever
+   * their status.
+   *
+   * @intent read_only
+   */
+  public async watches(params: { chain: string }): Promise<WatchView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'watches', argsJson: params });
+    return response as WatchView[];
   }
 
 }
