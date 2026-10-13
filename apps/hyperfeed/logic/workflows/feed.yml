@@ -121,13 +121,19 @@ steps:
     args: {}
     outputs:
       settings_1: result
+      # `json_subset` compares lists whole, so the access entry and the reach
+      # line (each carrying a timestamp) are pulled out and checked on their own.
+      access_1: result.output.access.0
+      reach_1: result.output.reach.0
+      reach_line_1: result.output.reach.0.lines.0
 
   - name: Assert the policy and the guard are stored
     type: json_assert
     statements:
       - 'json_subset({{settings_1}}, {"output": {"paused": false, "policies": [{"app": "chat", "agent": "act", "notifications": "push"}], "message_modes": ["private", "public"]}})'
-      - 'json_subset({{settings_1}}, {"output": {"access": [{"agent": "mero-bot@laptop", "folders": [{"path": "~/workspace", "write": true}, {"path": "/srv/specs", "write": false}], "shell": false, "web": true}]}})'
-      - 'json_subset({{settings_1}}, {"output": {"reach": [{"agent": "mero-bot@laptop", "lines": [{"serves": "private", "profile": "near", "attested": true}]}]}})'
+      - 'json_subset({{access_1}}, {"agent": "mero-bot@laptop", "folders": [{"path": "~/workspace", "write": true}, {"path": "/srv/specs", "write": false}], "shell": false, "web": true})'
+      - 'json_subset({{reach_1}}, {"agent": "mero-bot@laptop"})'
+      - 'json_subset({{reach_line_1}}, {"serves": "private", "profile": "near", "attested": true, "folders": [], "shell": false, "web": false})'
 
   - name: The agent checks before acting in chat
     type: call
