@@ -29,3 +29,14 @@ test('after:<id> outside the list throws', () => {
 test('an empty list gives the first rank', () => {
   assert.equal(resolveRank(cards, 'empty', 'bottom'), 'i');
 });
+test('get_board includes archived cards, so a rank never lands on a hidden neighbour', () => {
+  // h is archived and sits between the visible a and b; get_board returns it.
+  const withArchived = [
+    { id: 'a', list_id: 'todo', rank: 'i' },
+    { id: 'h', list_id: 'todo', rank: 'n', archived: true },
+    { id: 'b', list_id: 'todo', rank: 'r' },
+  ];
+  const r = resolveRank(withArchived, 'todo', 'after:a');
+  assert.ok(r > 'i' && r < 'n', r);
+  assert.ok(resolveRank(withArchived, 'todo', 'after:h') > 'n');
+});

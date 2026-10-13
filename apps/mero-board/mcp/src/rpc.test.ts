@@ -162,10 +162,36 @@ test('decodeFunctionCallErrorData falls back to the raw decoded text when it is 
   assert.equal(decodeFunctionCallErrorData(`the method call returned an error: ${JSON.stringify(bytes)}`), 'boom');
 });
 
+test('decodeFunctionCallErrorData reads the rc.81+ text shape: a {kind, data} contract error', () => {
+  assert.equal(
+    decodeFunctionCallErrorData(
+      'the method call returned an error: {"data":"list still holds cards; move or archive them first","kind":"Invalid"}',
+    ),
+    'Invalid: list still holds cards; move or archive them first',
+  );
+});
+
+test('decodeFunctionCallErrorData reads the rc.81+ text shape: a quoted or bare string', () => {
+  assert.equal(
+    decodeFunctionCallErrorData('the method call returned an error: "not found: board-1"'),
+    'not found: board-1',
+  );
+  assert.equal(decodeFunctionCallErrorData('the method call returned an error: title must not be empty'), 'title must not be empty');
+});
+
+test('decodeFunctionCallErrorData decodes a byte-list {kind, data} the same way as its text form', () => {
+  const bytes = [...Buffer.from('{"data":"only the creator may delete this card","kind":"Forbidden"}', 'utf8')];
+  assert.equal(
+    decodeFunctionCallErrorData(`the method call returned an error: ${JSON.stringify(bytes)}`),
+    'Forbidden: only the creator may delete this card',
+  );
+});
+
 test('decodeFunctionCallErrorData returns undefined for non-string, absent, or non-array data', () => {
   assert.equal(decodeFunctionCallErrorData(undefined), undefined);
   assert.equal(decodeFunctionCallErrorData(42), undefined);
   assert.equal(decodeFunctionCallErrorData('no brackets here'), undefined);
+  assert.equal(decodeFunctionCallErrorData('the method call returned an error: '), undefined);
 });
 
 test('callMethod throws on non-2xx HTTP status', async () => {

@@ -34,7 +34,7 @@ Boards:
 - `archive_board` - `board_id`, `archived` (`true` archives, `false` restores).
 - `delete_board` - `board_id`. Creator only.
 - `get_board` - `board_id`. Returns `{ board, lists, cards }`, lists and
-  unarchived cards by rank.
+  every card by rank; archived cards are included with `archived: true`.
 
 Lists:
 

@@ -236,13 +236,17 @@ export async function resolveTarget(cfg: Config): Promise<ResolvedTarget> {
   return { contextId, executorPublicKey };
 }
 
+/** A cached folder list; `invalidate()` drops the cached list so the next call re-lists. */
+export type FolderLister = (() => Promise<NamespaceFolder[]>) & { invalidate: () => void };
+
 /**
  * Returns a resolver that caches namespace + folder-list lookups for the process
  * lifetime, but only on success - a rejected promise must not stick, or one
  * transient startup failure (node not up yet, network blip) bricks every
- * later call.
+ * later call. `invalidate()` forgets the folder list (not the namespace), for
+ * after a folder is added here or elsewhere.
  */
-export function createFolderLister(cfg: Config): () => Promise<NamespaceFolder[]> {
+export function createFolderLister(cfg: Config): FolderLister {
   let namespaceCached: Promise<string> | null = null;
   const resolveNamespace = () =>
     (namespaceCached ??= resolveNamespaceId(cfg).catch((err) => {
@@ -251,26 +255,37 @@ export function createFolderLister(cfg: Config): () => Promise<NamespaceFolder[]
     }));
 
   let foldersCached: Promise<NamespaceFolder[]> | null = null;
-  return () =>
+  const list = () =>
     (foldersCached ??= resolveNamespace()
       .then((namespaceId) => listNamespaceFolders(cfg, namespaceId))
       .catch((err) => {
         foldersCached = null;
         throw err;
       }));
+  return Object.assign(list, {
+    invalidate: () => {
+      foldersCached = null;
+    },
+  });
 }
+
+/** A per-call target resolver; `invalidate()` forgets every cached folder and target. */
+export type TargetResolver = ((folderParam?: string) => Promise<ResolvedTarget>) & { invalidate: () => void };
 
 /**
  * Returns a per-call target resolver. When BOARD_CONTEXT is set it pins a
  * single context directly (folder param ignored). Otherwise it
  * resolves `folderParam` against the BOARD_NAMESPACE's folders, per pickFolder's
  * order. Caches per resolved folder name for the process lifetime, only on
- * success (see createFolderLister).
+ * success (see createFolderLister). A named folder that is not in the cached
+ * list triggers ONE fresh listing before the miss is reported, so a folder
+ * added in the app (or by another process) is found without a restart. Pass
+ * `listFolders` to share the folder cache with the `list_folders` tool.
  */
-export function createTargetResolver(cfg: Config): (folderParam?: string) => Promise<ResolvedTarget> {
+export function createTargetResolver(cfg: Config, listFolders: FolderLister = createFolderLister(cfg)): TargetResolver {
   if (cfg.contextRaw) {
     let cached: Promise<ResolvedTarget> | null = null;
-    return (folderParam) => {
+    const pinned = (folderParam?: string) => {
       if (folderParam) {
         // stderr only - stdout is reserved for the MCP protocol stream.
         console.error(
@@ -282,17 +297,27 @@ export function createTargetResolver(cfg: Config): (folderParam?: string) => Pro
         throw err;
       }));
     };
+    return Object.assign(pinned, {
+      invalidate: () => {
+        cached = null;
+      },
+    });
   }
 
-  const listFolders = createFolderLister(cfg);
   const targetCache = new Map<string, Promise<ResolvedTarget>>();
-  return (folderParam) => {
+  const pick = async (wanted: string | undefined): Promise<NamespaceFolder> => {
+    const folders = await listFolders();
+    if (!wanted || folders.some((f) => f.name === wanted)) return pickFolder(folders, wanted);
+    // A miss on a named folder: the cached list may predate it. Re-list once.
+    listFolders.invalidate();
+    return pickFolder(await listFolders(), wanted);
+  };
+  const resolve = (folderParam?: string) => {
     const key = folderParam ?? '';
     let cached = targetCache.get(key);
     if (!cached) {
       cached = (async () => {
-        const folders = await listFolders();
-        const folder = pickFolder(folders, folderParam?.trim() || cfg.folderDefault);
+        const folder = await pick(folderParam?.trim() || cfg.folderDefault);
         const executorPublicKey = await resolveExecutor(cfg, folder.contextId);
         return { contextId: folder.contextId, executorPublicKey };
       })().catch((err) => {
@@ -303,6 +328,12 @@ export function createTargetResolver(cfg: Config): (folderParam?: string) => Pro
     }
     return cached;
   };
+  return Object.assign(resolve, {
+    invalidate: () => {
+      targetCache.clear();
+      listFolders.invalidate();
+    },
+  });
 }
 
 interface JsonRpcResponse {
@@ -312,33 +343,67 @@ interface JsonRpcResponse {
   error?: { code?: number; message?: string; type?: string; data?: unknown };
 }
 
+const METHOD_ERROR_PREFIX = 'the method call returned an error: ';
+
+/** A byte list (`[108, 97, ...]`) as UTF-8 text, or undefined if `value` is not one. */
+function bytesToText(value: unknown): string | undefined {
+  if (!Array.isArray(value) || value.length === 0 || !value.every((b) => Number.isInteger(b) && b >= 0 && b <= 255)) {
+    return undefined;
+  }
+  return Buffer.from(value as number[]).toString('utf8').trim() || undefined;
+}
+
+/**
+ * The guest's error text, made readable: a JSON string is unquoted, a contract
+ * `{kind, data}` error becomes `"<kind>: <data>"`, anything else is kept.
+ */
+function formatGuestError(text: string): string {
+  const trimmed = text.trim();
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (typeof parsed === 'string' && parsed.trim()) return parsed.trim();
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const { kind, data } = parsed as { kind?: unknown; data?: unknown };
+      if (typeof kind === 'string' && typeof data === 'string' && data) return `${kind}: ${data}`;
+      if (typeof kind === 'string') return kind;
+    }
+  } catch {
+    /* not JSON - the text itself is the message */
+  }
+  return trimmed;
+}
+
 /**
  * A guest (WASM app) error has no top-level `message` - only `type:
- * "FunctionCallError"` plus `data`, a Rust Debug-formatted string like
- * "the method call returned an error: [108, 97, 98, 101, 108, ...]" (the
- * error text's UTF-8 bytes as a decimal array, not JSON). Recover the real
- * message so callers see it instead of the opaque "FunctionCallError" type.
+ * "FunctionCallError"` plus `data`, a string behind the prefix "the method
+ * call returned an error: ". Two shapes, the same logic as the app's
+ * `utils/errors.ts`:
+ * - before core rc.81, the error's UTF-8 bytes as a decimal list
+ *   (`[34, 108, ...]`), which decode to JSON;
+ * - from rc.81 on, that JSON as text: `{"kind":"Invalid","data":"..."}` or a
+ *   quoted string, or a bare string.
+ * Recover the real message so callers see it instead of "FunctionCallError".
  */
 export function decodeFunctionCallErrorData(data: unknown): string | undefined {
   if (typeof data !== 'string') return undefined;
+  const at = data.indexOf(METHOD_ERROR_PREFIX);
+  if (at !== -1) {
+    const rest = data.slice(at + METHOD_ERROR_PREFIX.length).trim();
+    if (!rest) return undefined;
+    let text = rest;
+    try {
+      text = bytesToText(JSON.parse(rest)) ?? rest;
+    } catch {
+      /* text shape: keep it as it is */
+    }
+    return formatGuestError(text) || undefined;
+  }
+  // No prefix: an embedded byte list is still decodable.
   const match = data.match(/\[[\d,\s]+\]/);
   if (!match) return undefined;
   try {
-    const bytes: unknown = JSON.parse(match[0]);
-    if (!Array.isArray(bytes) || bytes.length === 0 || !bytes.every((b) => Number.isInteger(b) && b >= 0 && b <= 255)) {
-      return undefined;
-    }
-    const text = Buffer.from(bytes as number[]).toString('utf8').trim();
-    if (!text) return undefined;
-    // The guest serializes its error as a JSON string, so the decoded bytes
-    // are themselves JSON-quoted (e.g. `"label must be..."`); unwrap it.
-    try {
-      const inner: unknown = JSON.parse(text);
-      if (typeof inner === 'string' && inner.trim()) return inner.trim();
-    } catch {
-      /* not JSON-wrapped - use the raw decoded text below */
-    }
-    return text;
+    const text = bytesToText(JSON.parse(match[0]));
+    return text ? formatGuestError(text) || undefined : undefined;
   } catch {
     return undefined;
   }

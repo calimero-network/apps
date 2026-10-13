@@ -387,8 +387,8 @@ const EXPECTED_TOOLS = [
   'delete_card',
 ];
 
-async function connectedClient() {
-  const server = createServer(cfg);
+async function connectedClient(serverCfg: Config = cfg) {
+  const server = createServer(serverCfg);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const client = new Client({ name: 'test', version: '0' });
@@ -456,4 +456,122 @@ test('pass-through tools drop folder and send the contract args (create_board pa
     ],
   );
   assert.ok(sent.every((c) => c.contextId === 'ctx-1' && c.executorPublicKey === 'exec-1'));
+});
+
+/**
+ * A namespace whose folder list grows: `contexts` is the live list the node
+ * answers; POST /admin-api/contexts appends to it, as the real node would.
+ */
+function growingNamespaceFetch(contexts: Array<{ contextId: string; name: string }>) {
+  const listings = { count: 0 };
+  const sent: SentCall[] = [];
+  const impl = (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    if (u.endsWith('/admin-api/namespaces')) {
+      return new Response(
+        JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team', targetApplicationId: 'app-1' }] }),
+        { status: 200 },
+      );
+    }
+    if (u.includes('/admin-api/groups/') && u.endsWith('/contexts')) {
+      listings.count += 1;
+      return new Response(JSON.stringify({ data: [...contexts] }), { status: 200 });
+    }
+    if (u.includes('/alias/list/context')) return new Response(JSON.stringify({ data: {} }), { status: 200 });
+    if (u.endsWith('/admin-api/contexts') && init?.method === 'POST') {
+      const body = JSON.parse(String(init.body));
+      contexts.push({ contextId: 'ctx-new', name: body.name });
+      return new Response(JSON.stringify({ data: { contextId: 'ctx-new', memberPublicKey: 'member-key' } }), { status: 200 });
+    }
+    if (u.endsWith('/admin-api/alias/create/context')) return new Response(JSON.stringify({ data: {} }), { status: 200 });
+    if (u.includes('/identities-owned')) {
+      const ctx = decodeURIComponent(u.split('/contexts/')[1].split('/')[0]);
+      return new Response(JSON.stringify({ data: { identities: [`exec-${ctx}`] } }), { status: 200 });
+    }
+    if (u.endsWith('/jsonrpc')) {
+      const { params } = JSON.parse(String(init?.body));
+      sent.push({ method: params.method, args: params.argsJson, contextId: params.contextId, executorPublicKey: params.executorPublicKey });
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: [] } }), { status: 200 });
+    }
+    throw new Error(`unexpected fetch: ${u}`);
+  }) as typeof fetch;
+  return { impl, listings, sent };
+}
+
+const textOf = (r: unknown) => ((r as { content: Array<{ text: string }> }).content)[0].text;
+
+test('after add_folder, list_folders and folder=<new> see the new folder without a restart', async () => {
+  const { impl, sent } = growingNamespaceFetch([{ contextId: 'ctx-1', name: 'frontend' }]);
+  await withFetch(impl, async () => {
+    const client = await connectedClient(nsCfg);
+    // Warm both caches with the one-folder listing.
+    assert.deepEqual(JSON.parse(textOf(await client.callTool({ name: 'list_folders', arguments: {} }))), [
+      { name: 'frontend', context_id: 'ctx-1' },
+    ]);
+    await client.callTool({ name: 'list_boards', arguments: { folder: 'frontend' } });
+
+    const added = await client.callTool({ name: 'add_folder', arguments: { name: 'marketing' } });
+    assert.equal(added.isError, undefined, textOf(added));
+
+    assert.deepEqual(JSON.parse(textOf(await client.callTool({ name: 'list_folders', arguments: {} }))), [
+      { name: 'frontend', context_id: 'ctx-1' },
+      { name: 'marketing', context_id: 'ctx-new' },
+    ]);
+    const boards = await client.callTool({ name: 'list_boards', arguments: { folder: 'marketing' } });
+    assert.equal(boards.isError, undefined, textOf(boards));
+    await client.close();
+  });
+  assert.deepEqual(
+    sent.map((c) => [c.contextId, c.executorPublicKey]),
+    [
+      ['ctx-1', 'exec-ctx-1'],
+      ['ctx-new', 'exec-ctx-new'],
+    ],
+  );
+});
+
+test('a folder added elsewhere (e.g. in the app) resolves after one re-list on the miss', async () => {
+  const contexts = [{ contextId: 'ctx-1', name: 'frontend' }];
+  const { impl, listings, sent } = growingNamespaceFetch(contexts);
+  await withFetch(impl, async () => {
+    const client = await connectedClient(nsCfg);
+    await client.callTool({ name: 'list_boards', arguments: { folder: 'frontend' } });
+    assert.equal(listings.count, 1);
+    contexts.push({ contextId: 'ctx-ui', name: 'design' });
+    const boards = await client.callTool({ name: 'list_boards', arguments: { folder: 'design' } });
+    assert.equal(boards.isError, undefined, textOf(boards));
+    assert.equal(listings.count, 2, 'exactly one fresh listing on the miss');
+    const missing = await client.callTool({ name: 'list_boards', arguments: { folder: 'nope' } });
+    assert.equal(missing.isError, true);
+    assert.match(textOf(missing), /Folder "nope" not found/);
+    assert.equal(listings.count, 3, 'a real miss re-lists once, then reports');
+    await client.close();
+  });
+  assert.deepEqual(sent.map((c) => c.contextId), ['ctx-1', 'ctx-ui']);
+});
+
+test('a guest error in the rc.81+ text shape reaches the agent as the contract message', async () => {
+  const impl = (async (url: string | URL) => {
+    const u = String(url);
+    if (u.includes('/alias/lookup/context/')) return new Response(JSON.stringify({ data: { value: 'ctx-1' } }), { status: 200 });
+    if (u.includes('/identities-owned')) return new Response(JSON.stringify({ data: { identities: ['exec-1'] } }), { status: 200 });
+    return new Response(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        error: {
+          type: 'FunctionCallError',
+          data: 'the method call returned an error: {"data":"list still holds cards; move or archive them first","kind":"Invalid"}',
+        },
+      }),
+      { status: 200 },
+    );
+  }) as typeof fetch;
+  await withFetch(impl, async () => {
+    const client = await connectedClient();
+    const res = await client.callTool({ name: 'delete_list', arguments: { list_id: 'list-1' } });
+    assert.equal(res.isError, true);
+    assert.equal(textOf(res), 'Error: Invalid: list still holds cards; move or archive them first');
+    await client.close();
+  });
 });

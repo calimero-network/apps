@@ -253,8 +253,10 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
   const server = new McpServer({ name: 'board-mcp', version: '0.1.0' });
 
   // Resolved per folder and reused across every tool call in the process's lifetime.
-  const target = createTargetResolver(cfg);
+  // One folder cache, shared by the resolver and list_folders, so add_folder
+  // can invalidate both at once.
   const listFoldersCache = createFolderLister(cfg);
+  const target = createTargetResolver(cfg, listFoldersCache);
 
   /** Registers a tool whose handler result is returned as JSON text, errors as an MCP error result. */
   function tool<K extends keyof typeof shapes>(
@@ -301,7 +303,12 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     'add_folder',
     'Create a folder: a new board context in BOARD_NAMESPACE, aliased by name. Returns its context id. Requires BOARD_NAMESPACE.',
     'addFolder',
-    (args) => addFolder(cfg, args),
+    async (args) => {
+      const created = await addFolder(cfg, args);
+      // The new folder must show in list_folders and resolve as folder=<name> now.
+      target.invalidate();
+      return created;
+    },
   );
 
   // Boards
@@ -311,8 +318,19 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
   );
   passThrough('rename_board', 'Rename a board.', 'renameBoard', 'rename_board', ok);
   passThrough('archive_board', 'Archive (archived: true) or restore (false) a board.', 'archiveBoard', 'set_board_archived', ok);
-  passThrough('delete_board', "Delete a board (creator only); takes its lists and the caller's cards and comments with it.", 'deleteBoard', 'delete_board', ok);
-  passThrough('get_board', 'Get a board with its lists and unarchived cards, both by rank. Group cards by list_id for columns.', 'getBoard', 'get_board');
+  passThrough(
+    'delete_board',
+    "Delete a board with its lists, every card's shared data, and the caller's own comments; other members' cards and comments become unreachable. Creator only.",
+    'deleteBoard',
+    'delete_board',
+    ok,
+  );
+  passThrough(
+    'get_board',
+    'Get a board with its lists and every card, both by rank. Archived cards are included with archived: true; skip them for the board view. Group cards by list_id for columns.',
+    'getBoard',
+    'get_board',
+  );
 
   // Lists
   tool('create_list', 'Add a list (column) at the end of a board and return its id.', 'createList', async (args) =>
@@ -340,7 +358,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
   passThrough('get_card', 'Get a card with its checklist and comments.', 'getCard', 'get_card');
   tool(
     'move_card',
-    "Move a card to a list on the same board at 'top', 'bottom', or 'after:<card id>'. To change boards, create the card again and delete the original.",
+    "Move a card to a list on the same board at 'top', 'bottom', or 'after:<card id>'. A card stays on its board; moving across boards is not supported.",
     'moveCard',
     async (args) => moveCard(cfg, await target(args.folder), args),
   );
