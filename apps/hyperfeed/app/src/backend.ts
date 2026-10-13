@@ -9,11 +9,13 @@ import type {
   LensView,
   NotificationInput,
   PolicyView,
+  PrView,
   RuleProposalView,
   RuleView,
   SettingsView,
   WatchView,
 } from "./generated/HyperfeedClient";
+import { mergeWatchInput } from "./watches";
 
 export type Filter = "all" | "agent" | "notifications" | "needs_you" | "archived";
 export type Decision = "approve" | "decline" | "undo" | "keep";
@@ -51,6 +53,14 @@ export interface FeedBackend {
   watches?(chain: string): Promise<WatchView[]>;
   /** Cancel a watch that has not fired yet. */
   cancelWatch?(id: string): Promise<WatchView>;
+  /**
+   * A PR card's Merge, or Merge when green: a merge watch on the task's chain
+   * (`pr_green` → `merge`). Your agent's runtime fires it once every check
+   * passed, and merges only by the safe-merge rules.
+   */
+  mergeWhenGreen?(chain: string, repo: string, pr: number): Promise<WatchView>;
+  /** The PRs your agent's runtime recorded as it saw them on GitHub (`""`: every chain); [] when the feed predates them. */
+  prs?(chain: string): Promise<PrView[]>;
   /**
    * Talk to your agent about a chain, or about anything with `chain` "" (a new
    * chain). With images (uploaded with {@link FeedBackend.images}), `text` may be empty.
@@ -120,6 +130,12 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
         throw e;
       }),
     cancelWatch: (id) => client.cancelWatch({ id, note: null }),
+    mergeWhenGreen: (chain, repo, pr) => client.addWatch({ input: mergeWatchInput(chain, repo, pr) }),
+    prs: (chain) =>
+      client.prs({ chain }).catch((e: unknown) => {
+        if (lacksMethod(e, "prs")) return [];
+        throw e;
+      }),
     // Text alone keeps to `say`, which every feed has; only images need `say_with`.
     // No `headline` key: a feed made before headlines refuses any argument it does not know.
     say: (chain, text, attachments = []) =>

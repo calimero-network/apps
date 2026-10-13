@@ -166,6 +166,10 @@ the feed context, then:
 - **Fires your watches.** "Merge #434 when it's green" becomes a watch in the feed, and mero-bot's
   runtime polls it through `gh` and fires it once, even after the session that set it ended (see
   [Watches](#api-for-agents)).
+- **Keeps merges safe.** It records what it sees of the PRs your tasks link to (`record_pr`), so a
+  PR card can offer Merge only when every check passed and the base is the default branch. Your
+  Merge is a merge watch it fires at once when the checks are green; the agent merges only through
+  the same rules (its `merge` tool), and a raw `gh pr merge` in its shell is refused.
 
 So the agent learns what is happening from the node's live event stream, and it acts only through
 proposals you settle here, or where your rules let it act. See mero-bot's README for the flags
@@ -243,6 +247,29 @@ the default branch, so a stacked PR is refused. The app shows the watches still 
 task, and every watch in its chat, with where each stands and Cancel. Each change emits
 `WatchChanged { id, chain, status }`.
 
+**PRs: what the runtime sees on GitHub, for the merge button.** The browser holds no GitHub token,
+so it reads only public repos, 60 requests an hour. The agent's runtime reads GitHub with your
+login and records each PR a task links to, one row per `owner/name#number`.
+
+| Method | Args | Returns |
+| --- | --- | --- |
+| `record_pr` | `input: PrInput { chain, repo, pr, title, state, draft, base, default_branch, conflicts, head_sha, checks, checks_total, checks_passed, checks_pending, failing, stacked_on, stacked_merged }` | `PrView` with `seen_at`; owner only |
+| `prs` | `chain: string` (`""`: every chain) | `PrView[]`, most recently seen first |
+
+`state` is `open`, `merged` or `closed`; `checks` is `green`, `red` (exactly when `failing` names a
+check, at most 10) or `pending`; `stacked_on` is the number of the PR whose branch `base` is (0 when
+`base` is the default branch). `chain` `""` keeps the chain already recorded. At most 200 are kept;
+one more drops the one seen longest ago. Each write emits `PrChanged { key }`.
+
+A PR card in a chat shows the newer of the browser's own read and this record, and its merge
+control goes by the safe-merge rules: **Merge** when every check passed and the base is the default
+branch, **Merge when green** while checks run, held with the failing check named on red (or for a
+draft or a conflict). Both set a merge watch (`pr_green` → `merge`) on the chat's chain, which the
+card then shows (waiting with Cancel, merging, merged, or not merged and why). A PR whose base is
+another PR's branch has no Merge: "Base merged: retarget to main" once that PR merged (asked of
+your agent), or a line saying it is stacked and can't merge into the default branch. The row is
+advisory: the runtime checks GitHub again when the watch fires.
+
 `ActionInput`, every field required (use `""` when there is nothing to say):
 
 | Field | Meaning |
@@ -317,7 +344,7 @@ An outcome recorded where the rules said `ask` or `refuse` is still stored, with
 stays in "Needs you" until you keep it or undo it. Events the contract emits: `ActionRecorded`,
 `ActionChanged`, `NotificationRecorded`, `NotificationChanged`, `NotificationsSeen`,
 `SettingsChanged`, `MessagePosted`, `MessageChanged`, `LensChanged`, `ArchiveChanged`,
-`WatchChanged`.
+`WatchChanged`, `PrChanged`.
 
 7. Report in while you run: `agent_seen(name)`, about every 30 seconds (mero-bot sends
    `mero-bot@<host>`). `settings().agents` lists who reported and when.

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Attachment, CheckpointView, FeedItem, FeedPage, LensView, SettingsView, WatchView } from "./generated/HyperfeedClient";
+import type { Attachment, CheckpointView, FeedItem, FeedPage, LensView, PrView, SettingsView, WatchView } from "./generated/HyperfeedClient";
 import { fillReplyCall } from "./lens/lens";
 import type { AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
 import type { BlobStore } from "./attachments";
@@ -55,6 +55,10 @@ export interface Feed {
   loadWatches?: (chain: string) => Promise<WatchView[]>;
   /** Cancel a watch that has not fired yet. */
   cancelWatch?: (id: string) => Promise<void>;
+  /** A PR card's Merge: a merge watch on the chain, fired by your agent's runtime once every check passed. */
+  mergeWhenGreen?: (chain: string, repo: string, pr: number) => Promise<void>;
+  /** The PRs your agent's runtime saw on GitHub (`""`: every chain). A read, like `loadChain`. */
+  loadPrs?: (chain: string) => Promise<PrView[]>;
   markSeen: (ids: string[]) => Promise<void>;
   markAllSeen: () => Promise<void>;
   setPolicy: (appKey: string, agent: AgentMode, notifications: NotificationMode) => Promise<void>;
@@ -169,6 +173,11 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     [backend, refresh],
   );
 
+  const mergeWhenGreen = useCallback(
+    (chain: string, repo: string, pr: number) => run((b) => (b.mergeWhenGreen ? b.mergeWhenGreen(chain, repo, pr) : Promise.resolve())),
+    [run],
+  );
+
   return {
     page,
     settings,
@@ -216,6 +225,9 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     loadCheckpoint: useCallback(async (chain: string) => (backend?.checkpoint ? backend.checkpoint(chain) : null), [backend]),
     loadWatches: useCallback(async (chain: string) => (backend?.watches ? backend.watches(chain) : []), [backend]),
     cancelWatch: useCallback((id: string) => run((b) => (b.cancelWatch ? b.cancelWatch(id) : Promise.resolve())), [run]),
+    // Only a feed that keeps watches has it; without, a card's Merge asks your agent in the chat.
+    mergeWhenGreen: backend?.mergeWhenGreen ? mergeWhenGreen : undefined,
+    loadPrs: useCallback(async (chain: string) => (backend?.prs ? backend.prs(chain) : []), [backend]),
     markSeen: useCallback((ids) => run((b) => b.markSeen(ids)), [run]),
     markAllSeen: useCallback(() => run((b) => b.markAllSeen()), [run]),
     setPolicy: useCallback((k, agent, notifications) => run((b) => b.setPolicy(k, agent, notifications)), [run]),

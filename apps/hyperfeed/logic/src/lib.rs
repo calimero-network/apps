@@ -100,6 +100,9 @@ pub use watches::{
     WATCH_CONDITIONS, WATCH_DONE, WATCH_FAILED, WATCH_FIRING, WATCH_WATCHING,
 };
 
+mod prs;
+pub use prs::{PrInput, PrSeen, PrView, CHECK_STATES, MAX_FAILING, MAX_PRS, PR_STATES};
+
 #[cfg(test)]
 mod tests;
 
@@ -1255,6 +1258,9 @@ pub struct Hyperfeed {
     rule_proposals: UnorderedMap<String, RuleProposal>,
     /// Where each task stands, as your agent last wrote it, by chain id.
     checkpoints: UnorderedMap<String, Checkpoint>,
+    /// The PRs your tasks link to, as your agent's runtime last saw them on
+    /// GitHub, by `owner/name#number`. See [`prs`].
+    prs: UnorderedMap<String, PrSeen>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1317,6 +1323,11 @@ pub enum Event<'a> {
     CheckpointChanged {
         chain: &'a str,
     },
+    /// Your agent's runtime saw a PR change on GitHub (`owner/name#number`):
+    /// re-read `prs`.
+    PrChanged {
+        key: &'a str,
+    },
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -1353,6 +1364,7 @@ impl Hyperfeed {
             rules: UnorderedMap::new(),
             rule_proposals: UnorderedMap::new(),
             checkpoints: UnorderedMap::new(),
+            prs: UnorderedMap::new(),
         }
     }
 
@@ -3451,6 +3463,22 @@ impl Hyperfeed {
     /// their status.
     pub fn watches(&self, chain: String) -> app::Result<Vec<WatchView>> {
         self.watch_list(&chain)
+    }
+
+    // ── PRs: what the runtime sees on GitHub, for the PR card's merge button ─
+
+    /// Your agent's runtime records a PR a task links to as GitHub shows it
+    /// now: state, base and default branch, conflicts, head commit, checks
+    /// (the failing ones named) and the PR it is stacked on. Owner only; one
+    /// row per PR, the oldest of [`MAX_PRS`] dropped to make room.
+    pub fn record_pr(&mut self, input: PrInput) -> app::Result<PrView> {
+        self.pr_record(input)
+    }
+
+    /// The PRs the runtime recorded for `chain` (`""`: every chain), the most
+    /// recently seen first.
+    pub fn prs(&self, chain: String) -> app::Result<Vec<PrView>> {
+        self.pr_list(&chain)
     }
 
     /// An agent saying it is running. The feed shows it as live while it

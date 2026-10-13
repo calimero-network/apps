@@ -1496,6 +1496,16 @@ thead th {
   color: var(--muted);
 }
 
+/* The runtime refused the last merge, or the PR is stacked: why, in full. */
+.ref-refused {
+  color: var(--bad-ink);
+  flex-basis: 100%;
+}
+
+.ref-stacked {
+  flex-basis: 100%;
+}
+
 .bubble-time {
   font-size: 11px;
   opacity: 0.75;

@@ -298,12 +298,16 @@ export type MergeOffer =
   | { kind: "when-green"; request: string }
   | { kind: "retarget"; request: string; label: string }
   | { kind: "blocked"; label: string; why: string }
+  /** Its base is not the default branch, and is still live: no merge button at all, only why. */
+  | { kind: "stacked"; why: string }
   | { kind: "none" };
 
 /**
- * Merge only through your agent, and only when it is safe: every check
- * green and the base is the default branch. Pending checks offer "Merge when
- * green"; a PR stacked on another PR's branch is never merged into it.
+ * Merge only when it is safe: every check green and the base is the default
+ * branch. Pending checks offer "Merge when green"; red checks, a draft or a
+ * conflict hold the button with why. A PR stacked on another PR's branch is
+ * never merged into it: once that PR merged, the card offers to retarget this
+ * one to the default branch; until then it only says it is stacked.
  */
 export function mergeOffer(pr: PullRequest): MergeOffer {
   if (pr.state !== "open") return { kind: "none" };
@@ -316,9 +320,10 @@ export function mergeOffer(pr: PullRequest): MergeOffer {
       };
     }
     return {
-      kind: "blocked",
-      label: "Merge",
-      why: pr.stackedOn ? `Stacked on #${pr.stackedOn.number}: merge that first, then retarget this to ${pr.defaultBranch}` : `Its base is ${pr.base}, not ${pr.defaultBranch}`,
+      kind: "stacked",
+      why: pr.stackedOn
+        ? `Stacked on #${pr.stackedOn.number}, so it can't merge into ${pr.defaultBranch}: merge #${pr.stackedOn.number} first, then retarget this to ${pr.defaultBranch}`
+        : `Its base is ${pr.base}, not ${pr.defaultBranch}, so it can't merge into ${pr.defaultBranch}`,
     };
   }
   if (pr.draft) return { kind: "blocked", label: "Merge", why: "Still a draft" };
@@ -326,4 +331,75 @@ export function mergeOffer(pr: PullRequest): MergeOffer {
   if (pr.checks.state === "red") return { kind: "blocked", label: "Merge", why: `Checks failed: ${pr.checks.failing.join(", ")}` };
   if (pr.checks.state === "pending") return { kind: "when-green", request: `merge PR ${pr.url} when green` };
   return { kind: "merge", request: `merge PR ${pr.url}` };
+}
+
+// ── what your agent's runtime saw, from the feed ─────────────────────────────
+
+/**
+ * A PR as your agent's runtime last recorded it in the feed (`record_pr`):
+ * it reads GitHub with your login, so it sees private repos and is not held
+ * to the browser's 60 requests an hour.
+ */
+export interface SeenPr {
+  repo: string;
+  pr: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  base: string;
+  default_branch: string;
+  conflicts: boolean;
+  head_sha: string;
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  failing: string[];
+  stacked_on: number;
+  stacked_merged: boolean;
+  seen_at: number;
+}
+
+/** How a PR is keyed in the feed and on a card: `owner/name#number`, GitHub's names being case-blind. */
+export const prKey = (repo: string, number: number) => `${repo.toLowerCase()}#${number}`;
+
+const STATES = new Set(["open", "merged", "closed"]);
+const CHECK_STATES = new Set(["green", "red", "pending"]);
+
+/** The feed's record as the card's PullRequest. */
+export function fromSeen(seen: SeenPr): PullRequest {
+  return {
+    title: seen.title || `${seen.repo}#${seen.pr}`,
+    repo: seen.repo,
+    number: seen.pr,
+    url: `https://github.com/${seen.repo}/pull/${seen.pr}`,
+    state: (STATES.has(seen.state) ? seen.state : "open") as PullRequest["state"],
+    draft: seen.draft,
+    base: seen.base,
+    defaultBranch: seen.default_branch,
+    conflicts: seen.conflicts,
+    headSha: seen.head_sha,
+    checks: {
+      state: (CHECK_STATES.has(seen.checks) ? seen.checks : "pending") as Checks["state"],
+      total: seen.checks_total,
+      passed: seen.checks_passed,
+      pending: seen.checks_pending,
+      failing: [...seen.failing],
+    },
+    stackedOn: seen.stacked_on ? { number: seen.stacked_on, url: `https://github.com/${seen.repo}/pull/${seen.stacked_on}`, merged: seen.stacked_merged } : null,
+  };
+}
+
+/**
+ * What the card shows: the newer of the browser's own read of GitHub (`read`,
+ * read at `readAt`) and the runtime's record in the feed. Either may be
+ * missing: a private repo or a used-up rate limit leaves only the record, a
+ * feed without mero-bot only the browser's read. The title is GitHub's when
+ * the browser has it.
+ */
+export function pickPr(read: PullRequest | undefined, readAt: number, seen: SeenPr | undefined): { pr: PullRequest; from: "github" | "feed" } | undefined {
+  if (!seen) return read ? { pr: read, from: "github" } : undefined;
+  const recorded = fromSeen(seen);
+  if (!read || seen.seen_at > readAt) return { pr: read && !seen.title ? { ...recorded, title: read.title } : recorded, from: "feed" };
+  return { pr: read, from: "github" };
 }

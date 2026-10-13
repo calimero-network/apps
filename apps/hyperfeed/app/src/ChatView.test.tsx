@@ -12,6 +12,7 @@ import {
   fakeGitHub,
   greenRuns,
   jobs,
+  openBase,
   openPr,
   openStacked,
   pendingRuns,
@@ -461,7 +462,7 @@ describe("chat with your agent", () => {
     }
     const card = () => screen.findByRole("group", { name: "Pull request calimero-network/apps#435" });
 
-    it("shows a PR's title, repo, base, checks and state, and Merge asks your agent in the chat", async () => {
+    it("shows a PR's title, repo, base, checks and state, and Merge sets a merge watch your agent's runtime fires", async () => {
       const { backend, chain, github } = await agentLinks(`Opened ${PR_URL}, all green.`, prRoutes(openPr(), greenRuns()));
       const pr = await card();
       expect(within(pr).getByRole("link", { name: /a failure no retry can fix offers Archive/ })).toHaveAttribute("href", PR_URL);
@@ -469,17 +470,29 @@ describe("chat with your agent", () => {
       expect(pr).toHaveTextContent("into main");
       expect(within(pr).getByText("Open")).toBeInTheDocument();
       expect(within(pr).getByText("Checks passed (34)")).toBeInTheDocument();
+      expect(within(pr).getByRole("button", { name: "Merge" })).toBeEnabled();
 
       await act(async () => {
         fireEvent.click(within(pr).getByRole("button", { name: "Merge" }));
       });
-      // A request to your agent, in this chat; nothing sent to GitHub but reads.
-      const sent = await backend.chain(chain);
-      expect(sent[sent.length - 1]).toMatchObject({ from: "you", body: `merge PR ${PR_URL}` });
+      // A merge watch on this chat's task; no message to your agent, and nothing sent to GitHub but reads.
+      const [w] = await backend.watches(chain);
+      expect(w).toMatchObject({ chain, condition: "pr_green", repo: "calimero-network/apps", pr: 435, action: "merge", status: "watching" });
+      expect((await backend.chain(chain)).filter((m) => m.from === "you")).toHaveLength(1);
       expect(github.mock.calls.every(([, init]) => (init?.method ?? "GET") === "GET")).toBe(true);
+      const merge = await within(await card()).findByRole("status", { name: "Merge" });
+      expect(merge).toHaveTextContent("Merging on your agent's next look");
+      expect(within(await card()).queryByRole("button", { name: "Merge" })).not.toBeInTheDocument();
+
+      // The runtime takes it, then merges.
+      await act(async () => void backend.moveWatch(w!.id, "firing", "studio-1"));
+      expect(await within(await card()).findByText("Merging…")).toBeInTheDocument();
+      expect(within(await card()).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+      await act(async () => void backend.moveWatch(w!.id, "done", "Merged #435 into main"));
+      expect(await within(await card()).findByText("Merged by your agent: Merged #435 into main")).toBeInTheDocument();
     });
 
-    it("offers Merge when green while checks run, and sends that request", async () => {
+    it("offers Merge when green while checks run: a watch that waits, with Cancel", async () => {
       const { backend, chain } = await agentLinks(`CI is running on ${PR_URL}`, prRoutes(openPr(), pendingRuns()));
       const pr = await card();
       expect(within(pr).getByText("Checks running: 2 of 34 left")).toBeInTheDocument();
@@ -487,8 +500,75 @@ describe("chat with your agent", () => {
       await act(async () => {
         fireEvent.click(within(pr).getByRole("button", { name: "Merge when green" }));
       });
-      const sent = await backend.chain(chain);
-      expect(sent[sent.length - 1]).toMatchObject({ body: `merge PR ${PR_URL} when green` });
+      const [w] = await backend.watches(chain);
+      expect(w).toMatchObject({ condition: "pr_green", action: "merge", pr: 435, status: "watching" });
+      expect(await within(await card()).findByText("Merges when every check passes")).toBeInTheDocument();
+
+      // Cancel while it waits: the button is back.
+      const cancel = within(await card()).getByRole("button", { name: "Cancel" });
+      await act(async () => {
+        fireEvent.click(cancel);
+      });
+      expect((await backend.watches(chain))[0]!.status).toBe("cancelled");
+      expect(await within(await card()).findByRole("button", { name: "Merge when green" })).toBeEnabled();
+    });
+
+    it("says why the runtime refused a merge, and offers it again", async () => {
+      const { backend, chain } = await agentLinks(`Opened ${PR_URL}`, prRoutes(openPr(), greenRuns()));
+      const pr = await card();
+      await act(async () => {
+        fireEvent.click(within(pr).getByRole("button", { name: "Merge" }));
+      });
+      const [w] = await backend.watches(chain);
+      await act(async () => {
+        backend.moveWatch(w!.id, "firing", "studio-1");
+        backend.moveWatch(w!.id, "failed", "Refused to merge: #435 conflicts with main");
+      });
+      expect(await within(await card()).findByText("Not merged: Refused to merge: #435 conflicts with main")).toBeInTheDocument();
+      expect(within(await card()).getByRole("button", { name: "Merge" })).toBeEnabled();
+    });
+
+    it("has no Merge on a PR stacked on one not merged yet: it says it can't merge into main", async () => {
+      const url = "https://github.com/calimero-network/apps/pull/433";
+      await agentLinks(`Stacked: ${url}`, prRoutes(openStacked(), greenRuns(), undefined, openBase()));
+      const pr = await screen.findByRole("group", { name: "Pull request calimero-network/apps#433" });
+      expect(pr).toHaveTextContent("into fix/hyperfeed-session-grant");
+      expect(within(pr).queryByRole("button")).not.toBeInTheDocument();
+      expect(within(pr).getByText(/^Stacked on #\d+, so it can't merge into main: merge #\d+ first, then retarget this to main$/)).toBeInTheDocument();
+    });
+
+    it("shows a private repo's PR as your agent's runtime saw it, held on red", async () => {
+      const secret = "https://github.com/calimero-network/secret/pull/7";
+      const github = fakeGitHub([]);
+      vi.stubGlobal("fetch", github);
+      const backend = new DemoBackend(false, 0);
+      const q = await backend.say("", "status?");
+      backend.agentSay(q.chain, q.id, `Opened ${secret}`);
+      backend.recordPr({
+        chain: q.chain,
+        repo: "calimero-network/secret",
+        pr: 7,
+        title: "Private fix",
+        state: "open",
+        draft: false,
+        base: "main",
+        default_branch: "main",
+        conflicts: false,
+        head_sha: "abc123",
+        checks: "red",
+        checks_total: 4,
+        checks_passed: 3,
+        checks_pending: 0,
+        failing: ["E2E (hyperfeed / feed)"],
+        stacked_on: 0,
+        stacked_merged: false,
+      });
+      render(<Harness backend={backend} start={q.chain} />);
+      const pr = await screen.findByRole("group", { name: "Pull request calimero-network/secret#7" });
+      expect(within(pr).getByRole("link", { name: "Private fix" })).toHaveAttribute("href", secret);
+      expect(within(pr).getAllByText("Checks failed: E2E (hyperfeed / feed)").length).toBeGreaterThan(0);
+      expect(within(pr).getByRole("button", { name: "Merge" })).toBeDisabled();
+      expect(within(pr).getByText(/^As your agent saw it on GitHub/)).toBeInTheDocument();
     });
 
     it("names the failing job and won't merge on red", async () => {

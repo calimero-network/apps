@@ -133,6 +133,12 @@ A session can end mid-task. So the next one can pick the task up, keep a checkpo
 
 With mero-bot, set them through its `watch`, `unwatch` and `watches` tools.
 
+### Merge a PR only by the safe-merge rules
+
+Merge a PR only when it is open, not a draft, free of conflicts, every check passed, and its base is the repository's default branch. Never merge a PR stacked on another PR's branch into that branch: once the base PR merged, retarget it to the default branch first. Never use `gh pr merge --auto`, which merges at once where checks are not required. To merge when the checks go green, set a `merge` watch (above); to merge now, name the head commit you checked (`gh pr merge --squash --match-head-commit <sha>`). With mero-bot, use its `merge` tool: a raw `gh pr merge` in its shell is refused.
+
+`fire_watch`, `finish_watch`, `watch_seen` and `record_pr` are the runtime's, not a model turn's. The runtime records what it sees of the PRs a task links to with `record_pr(input)` (one row per `owner/name#number`: state, draft, base and default branch, conflicts, head sha, checks with the failing ones named, the PR it is stacked on) so the app's PR card can show a safe merge button; `prs(chain)` lists them.
+
 ### Keep to the user's standing rules
 
 - `settings` returns `rules`: short lines the user wants kept on every turn ("Never push to main"). Read them when you start and on `SettingsChanged`, and keep to every one.

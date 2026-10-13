@@ -10,18 +10,31 @@ import { describeWatch, isActive, watchState } from "./watches";
  * even after the session that set it ended. `activeOnly` keeps to the ones
  * still waiting, for the task's card in the feed.
  */
-export function WatchList({ feed, chain, activeOnly = false }: { feed: Feed; chain: string; activeOnly?: boolean }) {
-  const [watches, setWatches] = useState<WatchView[]>([]);
+export function WatchList({
+  feed,
+  chain,
+  activeOnly = false,
+  watches: given,
+}: {
+  feed: Feed;
+  chain: string;
+  activeOnly?: boolean;
+  /** The chain's watches, when the caller already reads them. */
+  watches?: WatchView[];
+}) {
+  const [read, setWatches] = useState<WatchView[]>([]);
   const { loadWatches, page } = feed;
+  const watches = given ?? read;
   // `page` changes on every re-read, which follows every event on the feed.
   useEffect(() => {
     let live = true;
+    if (given) return;
     if (!chain || !loadWatches) setWatches([]);
     else void loadWatches(chain).then((w) => live && setWatches(w), () => live && setWatches([]));
     return () => {
       live = false;
     };
-  }, [loadWatches, chain, page]);
+  }, [loadWatches, chain, page, given]);
 
   const shown = activeOnly ? watches.filter(isActive) : watches.filter((w) => w.status !== "cancelled");
   if (shown.length === 0) return null;

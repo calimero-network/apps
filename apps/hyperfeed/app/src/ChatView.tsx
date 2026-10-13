@@ -1,12 +1,13 @@
-import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import type { Attachment, FeedItem } from "./generated/HyperfeedClient";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import type { Attachment, FeedItem, PrView, WatchView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
 import { NewFeedButton, type NewFeed } from "./FeedView";
 import { RuleSuggestion } from "./ControlsView";
 import { heldLine, laneOf, REPLACED, statusOf, timeLabel } from "./format";
 import { Markdown } from "./markdown";
-import { RefCards } from "./RefCards";
+import { RefCards, type MergeContext } from "./RefCards";
+import { prKey } from "./github";
 import { agentLive, notPickedUp } from "./theme";
 import { WorkBlock } from "./WorkBlock";
 import { WatchList } from "./WatchList";
@@ -66,6 +67,33 @@ export function ChatView({
       live = false;
     };
   }, [loadChain, chain, page]);
+
+  // The chain's watches and the PRs your agent's runtime saw on GitHub: what
+  // each PR card's merge control goes by. Read again with the feed.
+  const [watches, setWatches] = useState<WatchView[]>([]);
+  const [prs, setPrs] = useState<PrView[]>([]);
+  const { loadWatches, loadPrs, mergeWhenGreen, cancelWatch } = feed;
+  useEffect(() => {
+    let live = true;
+    if (!chain || !loadWatches) setWatches([]);
+    else void loadWatches(chain).then((w) => live && setWatches(w), () => live && setWatches([]));
+    if (!chain || !loadPrs) setPrs([]);
+    else void loadPrs("").then((p) => live && setPrs(p), () => live && setPrs([]));
+    return () => {
+      live = false;
+    };
+  }, [loadWatches, loadPrs, chain, page]);
+  const merge = useMemo<MergeContext | undefined>(() => {
+    if (!chain) return undefined;
+    const seen = new Map<string, PrView>();
+    for (const p of prs) seen.set(prKey(p.repo, p.pr), p);
+    return {
+      watches,
+      seen,
+      onMerge: mergeWhenGreen ? (repo, pr) => void mergeWhenGreen(chain, repo, pr) : undefined,
+      onCancel: cancelWatch ? (id) => void cancelWatch(id) : undefined,
+    };
+  }, [chain, prs, watches, mergeWhenGreen, cancelWatch]);
 
   const send = useCallback(
     async (text: string, attachments: Attachment[]) => {
@@ -190,9 +218,10 @@ export function ChatView({
           onAnswer={(a) => void send(a, [])}
           onPick={(m, o) => void feed.answerAsk(m, o)}
           onStop={(id) => void feed.stop(id)}
+          merge={merge}
         />
         {/* What your agent is watching for in this chat ("merge #434 when green"), with Cancel. */}
-        {chain && <WatchList feed={feed} chain={chain} />}
+        {chain && <WatchList feed={feed} chain={chain} watches={watches} />}
         {/* A rule your agent suggested after you corrected it here: one tap makes it yours. */}
         {chain && (feed.settings?.rule_proposals ?? []).some((p) => p.chain === chain) && (
           <ul className="rule-suggestions chat-rules" aria-label="Rules your agent suggests">
@@ -260,6 +289,7 @@ function Thread({
   onAnswer,
   onPick,
   onStop,
+  merge,
 }: {
   items: FeedItem[];
   clock: () => number;
@@ -272,6 +302,8 @@ function Thread({
   onPick: (question: FeedItem, option: string) => void;
   /** Ask your agent to stop working on one of your messages. */
   onStop: (id: string) => void;
+  /** What the PR cards' merge control goes by, in this chat. */
+  merge?: MergeContext;
 }) {
   const end = useRef<HTMLDivElement>(null);
   const last = items[items.length - 1];
@@ -313,8 +345,8 @@ function Thread({
               {m.status === "asked" && !m.superseded_by && m.ask.kind === "reply" && (
                 <span className="bubble-asks">{m.ask.prompt || "Your agent is waiting for your answer"} · reply below</span>
               )}
-              {/* PRs and CI runs it links to, as cards; Merge asks your agent in this chat. */}
-              {m.body && <RefCards text={m.body} busy={busy} onSend={onAnswer} />}
+              {/* PRs and CI runs it links to, as cards; Merge sets a merge watch on this chat's task. */}
+              {m.body && <RefCards text={m.body} busy={busy} onSend={onAnswer} merge={merge} />}
               <span className="bubble-time">{timeLabel(m.at)}</span>
             </div>
             <WorkBlock item={m} clock={clock} busy={busy} onStop={onStop} />
