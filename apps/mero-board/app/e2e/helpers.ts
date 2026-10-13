@@ -1,4 +1,4 @@
-import { Page, test } from '@playwright/test';
+import { Page, test, expect } from '@playwright/test';
 import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -666,4 +666,98 @@ export async function clearAuth(page: Page) {
       }
     });
   } catch { /* page may be closed */ }
+}
+
+// ── Boards, lists, cards ───────────────────────────────────────────────
+
+/** Add a folder (from the empty-state CTA or the sidebar) and wait until it is the open one. */
+export async function addFolder(page: Page, name: string) {
+  if (await page.getByTestId('folder-add-cta').isVisible().catch(() => false)) {
+    await page.getByTestId('folder-add-cta').click();
+  } else {
+    await page.getByTestId('folder-add-btn').click();
+  }
+  await page.getByTestId('folder-add-name').fill(name);
+  await page.getByTestId('folder-add-submit').click();
+  await expect(page.getByTestId('folder-add-name')).toHaveCount(0, { timeout: 30_000 });
+  // The previous folder's page is already up, so key on the header naming the NEW one.
+  await expect(page.getByTestId('folder-header-name')).toHaveText(name, { timeout: 30_000 });
+  await page.locator(READY).first().waitFor({ state: 'visible', timeout: 30_000 });
+  await page.getByTestId('folder-page').waitFor({ state: 'visible', timeout: 30_000 });
+}
+
+/** Create a board in the open folder; returns its id (from the URL the app navigates to). */
+export async function createBoard(page: Page, name: string): Promise<string> {
+  const btn = page.getByTestId('board-create-btn');
+  await expect(btn).toBeEnabled({ timeout: 30_000 });
+  await btn.click();
+  await page.getByTestId('board-create-input').fill(name);
+  await page.getByTestId('board-create-submit').click();
+  await page.getByTestId('board-page').waitFor({ state: 'visible', timeout: 30_000 });
+  await expect(page.getByTestId('board-name')).toHaveText(name, { timeout: 30_000 });
+  return page.url().split('/b/')[1].split('/')[0];
+}
+
+export function listByName(page: Page, name: string) {
+  return page.getByTestId('item-list').filter({
+    has: page.getByTestId('list-title').filter({ hasText: new RegExp(`^${escapeRe(name)}$`) }),
+  });
+}
+
+function escapeRe(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Add a list on the open board. The add-list form stays open after a submit, so reuse it. */
+export async function addList(page: Page, name: string) {
+  const input = page.getByTestId('list-create-input');
+  if (!(await input.isVisible().catch(() => false))) {
+    const btn = page.getByTestId('list-create-btn');
+    await expect(btn).toBeEnabled({ timeout: 30_000 });
+    await btn.click();
+  }
+  await input.fill(name);
+  await page.getByTestId('list-create-submit').click();
+  await expect(listByName(page, name)).toBeVisible({ timeout: 30_000 });
+}
+
+/** Add a card to a list. The add-card form stays open after a submit, so reuse it. */
+export async function addCard(page: Page, listName: string, title: string) {
+  const list = listByName(page, listName);
+  const input = list.getByTestId('card-create-input');
+  if (!(await input.isVisible().catch(() => false))) {
+    await list.getByTestId('card-create-btn').click();
+  }
+  await input.fill(title);
+  await list.getByTestId('card-create-submit').click();
+  await expect(list.getByTestId('item-card').filter({ hasText: title })).toBeVisible({ timeout: 30_000 });
+}
+
+/**
+ * Drag a card onto another list with the mouse. dnd-kit's PointerSensor only
+ * activates after the pointer travels more than 6 px from mouse.down, so the
+ * first short move arms the drag and the second carries it to the target.
+ */
+export async function dragCard(page: Page, cardTitle: string, toListName: string) {
+  const card = page.getByTestId('item-card').filter({ hasText: cardTitle }).first();
+  const target = listByName(page, toListName);
+  await card.scrollIntoViewIfNeeded();
+  const from = (await card.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  const x0 = from.x + from.width / 2;
+  const y0 = from.y + from.height / 2;
+  await page.mouse.move(x0, y0);
+  await page.mouse.down();
+  await page.mouse.move(x0 + 12, y0 + 12, { steps: 6 });
+  await page.mouse.move(to.x + to.width / 2, to.y + Math.min(60, to.height / 2), { steps: 20 });
+  await page.mouse.move(to.x + to.width / 2, to.y + Math.min(64, to.height / 2), { steps: 2 });
+  await page.mouse.up();
+  await expect(target.getByTestId('item-card').filter({ hasText: cardTitle })).toBeVisible({ timeout: 15_000 });
+}
+
+/** Open a card's modal from its tile. */
+export async function openCard(page: Page, title: string) {
+  await page.getByTestId('item-card').filter({ hasText: title }).first().click();
+  await page.getByTestId('card-modal').waitFor({ state: 'visible' });
+  await expect(page.getByTestId('field-title')).toBeVisible({ timeout: 30_000 });
 }
