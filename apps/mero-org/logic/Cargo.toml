@@ -1,0 +1,36 @@
+[package]
+name = "mero-org"
+description = "Mero Org — one place to manage the company: people, groups and which apps each group reaches"
+# NOT the release version: the registry owns the number (see hyperfeed).
+version = "0.0.1"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.calimero]
+package = "com.calimero.mero-org"
+name = "Mero Org"
+description = "Invite people once, place them in groups, and decide which applications each group reaches. A browser-side reconciler turns the graph into governance in every app namespace, and a hash-chained activity log records each change."
+author = "Calimero"
+slug = "com.calimero.mero-org"
+icon = "../app/public/icon-512.png"
+category = "productivity"
+tags = ["organization", "members", "groups", "governance", "access"]
+github = "https://github.com/calimero-network/apps"
+min-runtime-version = "0.11.0-rc.83"
+frontend = "https://mero-org.vercel.app"
+
+[dependencies]
+calimero-sdk.workspace            = true
+calimero-storage.workspace        = true
+calimero-storage-macros.workspace = true
+sha2.workspace                    = true
+hex.workspace                     = true
+
+[dev-dependencies]
+calimero-storage = { workspace = true, features = ["testing"] }
