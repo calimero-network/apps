@@ -6,6 +6,8 @@ import { ToastProvider } from '@calimero-network/mero-ui';
 import LandingPage from './pages/landing/LandingPage';
 import AppPage from './pages/app/AppPage';
 import MembersPage from './pages/app/MembersPage';
+import FolderPage from './pages/app/FolderPage';
+import BoardPage from './pages/app/BoardPage';
 import InvitationRouteGate from './components/InvitationRouteGate';
 import { AppThemeProvider } from './theme';
 import { APP_PACKAGE, APP_ROUTE } from './config';
@@ -92,11 +94,13 @@ export default function App() {
                   already pressed to get there. The path stays as a redirect so a
                   bookmark lands on the front door instead of a blank route. */}
               <Route path="/login" element={<Navigate to="/" replace />} />
-              {/* Board shell + routed views. Task 10 replaces the placeholder
-                  index with the board pages; the post-auth resting URL stays
-                  APP_ROUTE. */}
+              {/* Board shell + routed views. The folder is the active context
+                  from useWorkspace, not a URL segment; the post-auth resting
+                  URL stays APP_ROUTE. */}
               <Route path={APP_ROUTE} element={<RequireAuth><AppPage /></RequireAuth>}>
-                <Route index element={<div data-testid="folder-home" />} />
+                <Route index element={<FolderPage />} />
+                <Route path="b/:boardId" element={<BoardPage />} />
+                <Route path="b/:boardId/c/:cardId" element={<BoardPage />} />
                 <Route path="members" element={<MembersPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

@@ -13,7 +13,7 @@
  *      * workspace name -> `createNamespace({name})` + the group metadata record
  *        it is served from, and `groupAlias` inside the invitation payload so
  *        `joinNamespace({groupName})` can record it at join time;
- *      * folder name      -> the context metadata record (`setContextMetadata`),
+ *      * folder name    -> the context metadata record (`setContextMetadata`),
  *        not just `createContext({name})`, which is a label local to the node
  *        that created it;
  *      * people names   -> namespace member metadata (`setMemberMetadata`).
@@ -321,15 +321,15 @@ export function useWorkspace(): UseWorkspaceReturn {
   useEffect(() => {
     if (callbackContextId) { setActiveFolder(callbackContextId); return; }
     if (!activeNs) { setActiveFolder(null); return; }
-    if (userSelectedFolder.current && activeFolder && folders.some((r) => r.contextId === activeFolder)) {
+    if (userSelectedFolder.current && activeFolder && folders.some((f) => f.contextId === activeFolder)) {
       return;
     }
     const persisted = readActiveFolder(activeNs);
-    if (persisted && folders.some((r) => r.contextId === persisted)) {
+    if (persisted && folders.some((f) => f.contextId === persisted)) {
       setActiveFolder(persisted);
       return;
     }
-    if (activeFolder && folders.some((r) => r.contextId === activeFolder)) return;
+    if (activeFolder && folders.some((f) => f.contextId === activeFolder)) return;
     setActiveFolder(folders[0]?.contextId ?? null);
   }, [callbackContextId, activeNs, folders, activeFolder]);
 

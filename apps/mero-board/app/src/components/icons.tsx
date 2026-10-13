@@ -22,25 +22,6 @@ export function ChevronDown({ size = 10 }: IconProps): React.ReactElement {
   );
 }
 
-export function IconAllIssues(): React.ReactElement {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-      <rect x="2" y="3" width="11" height="1.6" rx="0.8" fill="currentColor" />
-      <rect x="2" y="6.7" width="11" height="1.6" rx="0.8" fill="currentColor" />
-      <rect x="2" y="10.4" width="11" height="1.6" rx="0.8" fill="currentColor" />
-    </svg>
-  );
-}
-
-export function IconMyIssues(): React.ReactElement {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-      <circle cx="7.5" cy="5" r="2.6" stroke="currentColor" strokeWidth="1.3" />
-      <path d="M2.6 12.4c0-2.4 2.2-4 4.9-4s4.9 1.6 4.9 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 export function IconBoard(): React.ReactElement {
   return (
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">

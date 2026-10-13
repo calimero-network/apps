@@ -105,16 +105,16 @@ export default function Sidebar({
           ) : folders.length === 0 ? (
             <span className="folders-empty">No folders yet</span>
           ) : (
-            folders.map((r) => (
+            folders.map((f) => (
               <button
-                key={r.contextId}
+                key={f.contextId}
                 data-testid="folder-list-item"
-                className={`folder-item${r.contextId === activeFolder ? ' active' : ''}`}
-                onClick={() => onSelectFolder(r.contextId)}
-                title={r.name}
+                className={`folder-item${f.contextId === activeFolder ? ' active' : ''}`}
+                onClick={() => onSelectFolder(f.contextId)}
+                title={f.name}
               >
                 <span className="folder-dot" aria-hidden="true" />
-                <span className="folder-name">{r.name}</span>
+                <span className="folder-name">{f.name}</span>
               </button>
             ))
           )}
