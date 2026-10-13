@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useMero } from '@calimero-network/mero-react';
 import { shouldRetain } from '@calimero-apps/invite';
@@ -14,6 +14,7 @@ import AddFolderDialog from '../../components/AddFolderDialog';
 import NsEmptyState from '../../components/NsEmptyState';
 import AliasGate from '../../components/AliasGate';
 import { usePendingInvitation } from '../../hooks/usePendingInvitation';
+import { APP_ROUTE } from '../../config';
 import type { AppCtx } from './appContext';
 
 /**
@@ -69,6 +70,21 @@ export default function AppPage(): React.ReactElement | null {
 
   const openInvite = useCallback(() => setShowInvite(true), []);
 
+  // A board id belongs to one folder's context, so changing the folder from a
+  // board (or card) route must leave that route: otherwise the board page goes
+  // on asking the new folder for a board it does not hold.
+  const navigate = useNavigate();
+  const { selectFolder: wsSelectFolder, addFolder: wsAddFolder } = ws;
+  const selectFolder = useCallback((contextId: string) => {
+    wsSelectFolder(contextId);
+    navigate(APP_ROUTE);
+  }, [wsSelectFolder, navigate]);
+  const addFolder = useCallback(async (name: string) => {
+    const id = await wsAddFolder(name);
+    if (id) navigate(APP_ROUTE);
+    return id;
+  }, [wsAddFolder, navigate]);
+
   const membersCount = Math.max(ws.members.length, 1);
   const activeFolderName = ws.folders.find((r) => r.contextId === ws.activeFolder)?.name ?? null;
 
@@ -88,7 +104,7 @@ export default function AppPage(): React.ReactElement | null {
     foldersSyncing: ws.isSyncing,
     onDismissFoldersSyncing: ws.dismissSyncing,
     activeFolder: ws.activeFolder,
-    onSelectFolder: ws.selectFolder,
+    onSelectFolder: selectFolder,
     onAddFolder: () => setShowAddFolder(true),
     canAddFolder: ws.roles.canAddFolder,
   };
@@ -121,7 +137,7 @@ export default function AppPage(): React.ReactElement | null {
         />
       )}
       {showAddFolder && (
-        <AddFolderDialog onAdd={ws.addFolder} onClose={() => setShowAddFolder(false)} />
+        <AddFolderDialog onAdd={addFolder} onClose={() => setShowAddFolder(false)} />
       )}
     </>
   );
