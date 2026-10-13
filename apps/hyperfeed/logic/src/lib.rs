@@ -103,6 +103,9 @@ pub use watches::{
 mod prs;
 pub use prs::{PrInput, PrSeen, PrView, CHECK_STATES, MAX_FAILING, MAX_PRS, PR_STATES};
 
+mod links;
+pub use links::{split_subject, Link, LinkInput, LinkView, LINK_BY, MAX_LINKS};
+
 #[cfg(test)]
 mod tests;
 
@@ -1341,6 +1344,8 @@ pub struct Hyperfeed {
     action_subjects: UnorderedMap<String, Subject>,
     /// The chain that last touched each subject, by its key.
     subject_chains: UnorderedMap<String, Subject>,
+    /// Each task's links, by `<chain>|<subject>`. See [`links`].
+    links: UnorderedMap<String, Link>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1408,6 +1413,10 @@ pub enum Event<'a> {
     PrChanged {
         key: &'a str,
     },
+    /// A task's links changed: re-read `links`.
+    LinksChanged {
+        chain: &'a str,
+    },
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -1447,6 +1456,7 @@ impl Hyperfeed {
             prs: UnorderedMap::new(),
             action_subjects: UnorderedMap::new(),
             subject_chains: UnorderedMap::new(),
+            links: UnorderedMap::new(),
         }
     }
 
@@ -2314,8 +2324,12 @@ impl Hyperfeed {
             };
             self.action_subjects
                 .insert(action.id.clone(), seen.clone())?;
-            self.subject_chains
-                .insert(seen.subject.clone(), seen.clone())?;
+            // A thing you took off this task stays off it.
+            if !self.link_removed(&seen.chain, &seen.subject)? {
+                self.subject_chains
+                    .insert(seen.subject.clone(), seen.clone())?;
+                self.link_subject(&seen.chain, &seen.subject, "", "agent", false)?;
+            }
             item.subject = seen.subject;
         }
         self.actions.insert(action.id.clone(), action)?;
@@ -2337,6 +2351,10 @@ impl Hyperfeed {
         if !self.chain_exists(&chain)? {
             return Err(AppError::msg(format!("no chain {chain}")));
         }
+        if self.link_removed(&chain, &subject)? {
+            return Ok(());
+        }
+        self.link_subject(&chain, &subject, "", "agent", false)?;
         let seen = Subject {
             subject,
             chain,
@@ -3633,6 +3651,26 @@ impl Hyperfeed {
     /// recently seen first.
     pub fn prs(&self, chain: String) -> app::Result<Vec<PrView>> {
         self.pr_list(&chain)
+    }
+
+    /// Link a thing in another app to the task in `chain`: `subject` as
+    /// [`subject_key`] makes it, a `label` for its chip, `by` you or your
+    /// agent. What teammates do there joins the task from now on. Adding one
+    /// again relabels it; you adding one you took off brings it back.
+    pub fn add_link(&mut self, chain: String, input: LinkInput) -> app::Result<LinkView> {
+        self.link_add(chain, input)
+    }
+
+    /// Take a link off the task in `chain`. Nothing new about it joins the
+    /// task, and your agent touching it again does not bring it back.
+    pub fn remove_link(&mut self, chain: String, subject: String) -> app::Result<()> {
+        self.link_remove(chain, subject)
+    }
+
+    /// The links of the task in `chain`, oldest first, each with how much
+    /// teammates did there (its notifications in the task).
+    pub fn links(&self, chain: String) -> app::Result<Vec<LinkView>> {
+        self.link_list(&chain)
     }
 
     /// An agent saying it is running. The feed shows it as live while it

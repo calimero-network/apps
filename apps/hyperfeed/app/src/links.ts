@@ -71,3 +71,25 @@ export function appLink(item: FeedItem, ctx: LinkContext): string | null {
   });
   return `${base}${where}#${hash.toString()}`;
 }
+
+/**
+ * The subject (`<app>:<context>[:<id>]`) a link you paste names: an app's
+ * address (`…/?context-id=…`, Design's `…/projects/<context>`), or a subject
+ * as is. `""` for anything else.
+ */
+export function subjectFromLink(text: string): string {
+  const raw = text.trim();
+  if (/^[a-z0-9.-]+:[^\s:/]+(?::\S+)?$/.test(raw)) return raw;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return "";
+  }
+  // The first key per address is its own: `issue-tracker`, not its alias `issues`.
+  const app = Object.keys(FRONTENDS).find((k) => new URL(FRONTENDS[k]!).origin === url.origin);
+  const context = url.searchParams.get("context-id") ?? /\/projects\/([^/?#]+)/.exec(url.pathname)?.[1] ?? "";
+  if (!app || !context) return "";
+  const item = url.searchParams.get("issue") ?? url.searchParams.get("doc") ?? "";
+  return item ? `${app}:${decodeURIComponent(context)}:${item}` : `${app}:${decodeURIComponent(context)}`;
+}

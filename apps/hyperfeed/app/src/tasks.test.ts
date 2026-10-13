@@ -76,6 +76,14 @@ describe("taskCandidates", () => {
     const old = row({ id: "o", chain: "old", status: "answered", chain_at: NOW - 3 * 86_400_000 });
     const today = row({ id: "t", chain: "today", status: "answered", chain_at: NOW - 3_600_000 });
     const working = row({ id: "w", chain: "w", status: "thinking", chain_at: NOW - 2 * 86_400_000 });
-    expect(taskCandidates([old, xabi, working, today], NOW).map((i) => i.chain)).toEqual(["today", "w"]);
+    // A notification in a chain of its own is not your agent's.
+    const alone = { ...xabi, chain: xabi.id };
+    expect(taskCandidates([old, alone, working, today], NOW).map((i) => i.chain)).toEqual(["today", "w"]);
+  });
+
+  it("keeps a task whose lead is a teammate's notification that joined it", () => {
+    const joined = row({ id: "n1", kind: "notification", chain: "task", needs_you: true, chain_at: NOW - 60_000 });
+    const own = row({ id: "n2", kind: "notification", chain: "n2", needs_you: true, chain_at: NOW - 30_000 });
+    expect(taskCandidates([joined, own], NOW).map((i) => i.chain)).toEqual(["task"]);
   });
 });

@@ -2747,3 +2747,180 @@ fn a_step_of_a_turn_touches_a_subject_without_a_row() {
             .touch_subject(task.chain.clone(), subject.clone()))
         .is_err());
 }
+
+// ── a task's links ───────────────────────────────────────────────────────────
+
+fn add(
+    app: &mut TestHost<Hyperfeed>,
+    chain: &str,
+    subject: &str,
+    label: &str,
+    by: &str,
+) -> app::Result<LinkView> {
+    let input = LinkInput {
+        subject: subject.to_owned(),
+        label: label.to_owned(),
+        by: by.to_owned(),
+    };
+    app.call(|s| s.add_link(chain.to_owned(), input))
+}
+
+fn links_of(app: &TestHost<Hyperfeed>, chain: &str) -> Vec<LinkView> {
+    app.view(|s| s.links(chain.to_owned())).unwrap()
+}
+
+#[test]
+fn what_the_agent_touches_is_linked_to_the_task() {
+    let mut app = acting_in("issue-tracker");
+    let task = app
+        .call(|s| s.record_notification(notification("mero-bot:task", "mero-bot", false)))
+        .unwrap();
+    touched(&mut app, &task.chain, "issue-7");
+    app.call(|s| s.touch_subject(task.chain.clone(), "chat:launch".to_owned()))
+        .unwrap();
+    // Touching it again keeps one link.
+    touched(&mut app, &task.chain, "issue-7");
+
+    let links = links_of(&app, &task.chain);
+    assert_eq!(links.len(), 2);
+    assert_eq!(
+        (
+            links[0].app.as_str(),
+            links[0].context.as_str(),
+            links[0].item.as_str(),
+            links[0].by.as_str()
+        ),
+        ("issue-tracker", "repo-ctx", "issue-7", "agent")
+    );
+    assert_eq!(
+        (links[1].app.as_str(), links[1].item.as_str()),
+        ("chat", "")
+    );
+    assert_eq!(links[0].activity, 0);
+}
+
+#[test]
+fn a_link_counts_what_teammates_did_there() {
+    let mut app = acting_in("issue-tracker");
+    let task = app
+        .call(|s| s.record_notification(notification("mero-bot:task", "mero-bot", false)))
+        .unwrap();
+    touched(&mut app, &task.chain, "issue-7");
+    let first = app
+        .call(|s| s.record_notification(comment_on("issue-7", "repo-ctx:a>b:0")))
+        .unwrap();
+    app.call(|s| s.record_notification(comment_on("issue-7", "repo-ctx:b>c:0")))
+        .unwrap();
+    let link = &links_of(&app, &task.chain)[0];
+    assert_eq!(link.activity, 2);
+    assert!(link.last_at >= first.at);
+}
+
+#[test]
+fn you_link_a_thing_by_hand_and_what_happens_there_joins_the_task() {
+    let mut app = acting_in("issue-tracker");
+    let task = app
+        .call(|s| s.record_notification(notification("mero-bot:task", "mero-bot", false)))
+        .unwrap();
+    let subject = subject_key("issue-tracker", "repo-ctx", "issue-9");
+    let link = add(&mut app, &task.chain, &subject, "Flaky CI", "you").unwrap();
+    assert_eq!(
+        (link.label.as_str(), link.by.as_str(), link.item.as_str()),
+        ("Flaky CI", "you", "issue-9")
+    );
+    let comment = app
+        .call(|s| s.record_notification(comment_on("issue-9", "repo-ctx:a>b:0")))
+        .unwrap();
+    assert_eq!(comment.chain, task.chain);
+    // Adding it again relabels it, still one link.
+    add(&mut app, &task.chain, &subject, "Flaky CI on main", "agent").unwrap();
+    let links = links_of(&app, &task.chain);
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].label, "Flaky CI on main");
+}
+
+#[test]
+fn a_link_you_take_off_stays_off() {
+    let mut app = acting_in("issue-tracker");
+    let task = app
+        .call(|s| s.record_notification(notification("mero-bot:task", "mero-bot", false)))
+        .unwrap();
+    touched(&mut app, &task.chain, "issue-7");
+    let subject = subject_key("issue-tracker", "repo-ctx", "issue-7");
+    app.call(|s| s.remove_link(task.chain.clone(), subject.clone()))
+        .unwrap();
+    assert!(links_of(&app, &task.chain).is_empty());
+
+    // Nothing new about it joins the task, and the agent touching it does not bring it back.
+    let comment = app
+        .call(|s| s.record_notification(comment_on("issue-7", "repo-ctx:a>b:0")))
+        .unwrap();
+    assert_eq!(comment.chain, comment.id);
+    touched(&mut app, &task.chain, "issue-7");
+    app.call(|s| s.touch_subject(task.chain.clone(), subject.clone()))
+        .unwrap();
+    assert!(links_of(&app, &task.chain).is_empty());
+    let later = app
+        .call(|s| s.record_notification(comment_on("issue-7", "repo-ctx:b>c:0")))
+        .unwrap();
+    assert_eq!(later.chain, later.id);
+
+    // Only you bring it back.
+    assert!(add(&mut app, &task.chain, &subject, "", "agent").is_err());
+    assert!(links_of(&app, &task.chain).is_empty());
+    add(&mut app, &task.chain, &subject, "", "you").unwrap();
+    assert_eq!(links_of(&app, &task.chain).len(), 1);
+}
+
+#[test]
+fn a_link_needs_a_real_chain_a_whole_subject_and_the_owner() {
+    let mut app = acting_in("issue-tracker");
+    let task = app
+        .call(|s| s.record_notification(notification("mero-bot:task", "mero-bot", false)))
+        .unwrap();
+    assert!(add(&mut app, "no-such-chain", "chat:launch", "", "you").is_err());
+    assert!(
+        add(&mut app, &task.chain, "chat", "", "you").is_err(),
+        "no context"
+    );
+    assert!(add(&mut app, &task.chain, "chat:", "", "you").is_err());
+    assert!(add(&mut app, &task.chain, "chat:launch", "", "someone").is_err());
+    assert!(add(
+        &mut app,
+        &task.chain,
+        "chat:launch",
+        &"x".repeat(MAX_TITLE + 1),
+        "you"
+    )
+    .is_err());
+    assert!(
+        app.call(|s| s.remove_link(task.chain.clone(), "chat:launch".to_owned()))
+            .is_err(),
+        "not linked"
+    );
+    let input = LinkInput {
+        subject: "chat:launch".to_owned(),
+        label: String::new(),
+        by: "you".to_owned(),
+    };
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s
+            .add_link(task.chain.clone(), input))
+        .is_err());
+}
+
+#[test]
+fn a_task_takes_a_bounded_number_of_links() {
+    let mut app = acting_in("issue-tracker");
+    let task = app
+        .call(|s| s.record_notification(notification("mero-bot:task", "mero-bot", false)))
+        .unwrap();
+    for n in 0..MAX_LINKS {
+        add(&mut app, &task.chain, &format!("chat:ctx-{n}"), "", "you").unwrap();
+    }
+    assert!(add(&mut app, &task.chain, "chat:one-more", "", "you").is_err());
+    // The agent touching one more is not an error: it is just not linked.
+    app.call(|s| s.touch_subject(task.chain.clone(), "chat:agent-more".to_owned()))
+        .unwrap();
+    assert_eq!(links_of(&app, &task.chain).len(), MAX_LINKS);
+}

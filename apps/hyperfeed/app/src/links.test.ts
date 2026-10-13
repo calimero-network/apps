@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { appLink, canOpen } from "./links";
+import { appLink, canOpen, subjectFromLink } from "./links";
 import { laneOf } from "./format";
 
 const row = (patch: Partial<FeedItem>): FeedItem =>
@@ -56,5 +56,17 @@ describe("laneOf", () => {
     expect(laneOf(row({ kind: "action", status: "done" }))).toBe("done");
     expect(laneOf(row({ status: "delivered" }))).toBe("done");
     expect(laneOf(row({}))).toBe("done");
+  });
+});
+
+describe("subjectFromLink", () => {
+  it("reads a subject from an app's address, or takes one as is", () => {
+    expect(subjectFromLink("https://mero-issue-tracker-app.vercel.app/?context-id=repo1&issue=issue-7#access_token=x")).toBe("issue-tracker:repo1:issue-7");
+    expect(subjectFromLink("https://mero-chat-pwa.vercel.app/?context-id=launch")).toBe("chat:launch");
+    expect(subjectFromLink("https://mero-design.vercel.app/teams/g1/projects/board9")).toBe("design:board9");
+    expect(subjectFromLink("issue-tracker:repo1:issue-7")).toBe("issue-tracker:repo1:issue-7");
+    expect(subjectFromLink("https://example.com/?context-id=x")).toBe("");
+    expect(subjectFromLink("https://mero-chat-pwa.vercel.app/")).toBe("");
+    expect(subjectFromLink("just words")).toBe("");
   });
 });

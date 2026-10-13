@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Attachment, CheckpointView, FeedItem, FeedPage, LensView, PrView, SettingsView, WatchView } from "./generated/HyperfeedClient";
+import type { Attachment, CheckpointView, FeedItem, FeedPage, LensView, LinkView, PrView, SettingsView, WatchView } from "./generated/HyperfeedClient";
 import { fillReplyCall } from "./lens/lens";
 import type { AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
 import type { BlobStore } from "./attachments";
@@ -59,6 +59,12 @@ export interface Feed {
   mergeWhenGreen?: (chain: string, repo: string, pr: number) => Promise<void>;
   /** The PRs your agent's runtime saw on GitHub (`""`: every chain). A read, like `loadChain`. */
   loadPrs?: (chain: string) => Promise<PrView[]>;
+  /** A task's links, oldest first. A read, like `loadChain`. */
+  loadLinks?: (chain: string) => Promise<LinkView[]>;
+  /** Link a thing to a task by hand; absent when the feed predates links. */
+  addLink?: (chain: string, subject: string, label: string) => Promise<void>;
+  /** Take a link off a task. */
+  removeLink?: (chain: string, subject: string) => Promise<void>;
   markSeen: (ids: string[]) => Promise<void>;
   markAllSeen: () => Promise<void>;
   setPolicy: (appKey: string, agent: AgentMode, notifications: NotificationMode) => Promise<void>;
@@ -177,6 +183,15 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     (chain: string, repo: string, pr: number) => run((b) => (b.mergeWhenGreen ? b.mergeWhenGreen(chain, repo, pr) : Promise.resolve())),
     [run],
   );
+  const addLink = useCallback(
+    (chain: string, subject: string, label: string) =>
+      run((b) => (b.addLink ? b.addLink(chain, subject, label).then(() => undefined) : Promise.resolve())),
+    [run],
+  );
+  const removeLink = useCallback(
+    (chain: string, subject: string) => run((b) => (b.removeLink ? b.removeLink(chain, subject) : Promise.resolve())),
+    [run],
+  );
 
   return {
     page,
@@ -228,6 +243,9 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     // Only a feed that keeps watches has it; without, a card's Merge asks your agent in the chat.
     mergeWhenGreen: backend?.mergeWhenGreen ? mergeWhenGreen : undefined,
     loadPrs: useCallback(async (chain: string) => (backend?.prs ? backend.prs(chain) : []), [backend]),
+    loadLinks: useCallback(async (chain: string) => (backend?.links ? backend.links(chain) : []), [backend]),
+    addLink: backend?.addLink ? addLink : undefined,
+    removeLink: backend?.removeLink ? removeLink : undefined,
     markSeen: useCallback((ids) => run((b) => b.markSeen(ids)), [run]),
     markAllSeen: useCallback(() => run((b) => b.markAllSeen()), [run]),
     setPolicy: useCallback((k, agent, notifications) => run((b) => b.setPolicy(k, agent, notifications)), [run]),

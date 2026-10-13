@@ -739,6 +739,17 @@
         }
       ]
     },
+    "Event_LinksChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_MessageChanged": {
       "kind": "record",
       "fields": [
@@ -1668,6 +1679,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "The chain that last touched each subject, by its key."
+        },
+        {
+          "name": "links",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Link"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Each task's links, by `<chain>|<subject>`. See [`links`]."
         }
       ]
     },
@@ -1832,6 +1857,150 @@
           "type": {
             "kind": "u64"
           }
+        }
+      ]
+    },
+    "Link": {
+      "kind": "record",
+      "doc": "One link of a task, kept by `<chain>|<subject>`. Taking it off keeps the\nrow with `removed: true`, so your agent touching the thing again does not\nbring it back; only you adding it does.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "removed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "LinkInput": {
+      "kind": "record",
+      "doc": "What [`crate::Hyperfeed::add_link`] takes.",
+      "fields": [
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`<app>:<context>[:<id>]`, as [`crate::subject_key`] makes it."
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What the chip says (\"Agent digest card\"); `\"\"` keeps the one it has,\nand a client names an unlabelled one from what it knows."
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`agent` or `you`."
+        }
+      ]
+    },
+    "LinkView": {
+      "kind": "record",
+      "doc": "A link as [`crate::Hyperfeed::links`] returns it.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The subject's parts: the app's key, its context, and the one thing in\nit (`\"\"` for the whole context: a chat, a board)."
+        },
+        {
+          "name": "context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "item",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "activity",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Notifications in the task about it: what teammates did there."
+        },
+        {
+          "name": "last_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "The latest of them (ms); 0 with none."
         }
       ]
     },
@@ -3199,6 +3368,28 @@
   },
   "methods": [
     {
+      "name": "add_link",
+      "doc": "Link a thing in another app to the task in `chain`: `subject` as\n[`subject_key`] makes it, a `label` for its chip, `by` you or your\nagent. What teammates do there joins the task from now on. Adding one\nagain relabels it; you adding one you took off brings it back.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "input",
+          "type": {
+            "$ref": "LinkInput"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "LinkView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "add_rule",
       "doc": "Add a standing rule: one short line your agent keeps to on every turn.\nOnly you add rules; the same rule twice is kept once.",
       "params": [
@@ -3846,6 +4037,25 @@
       "intent": "read_only"
     },
     {
+      "name": "links",
+      "doc": "The links of the task in `chain`, oldest first, each with how much\nteammates did there (its notifications in the task).",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "LinkView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "mark_all_seen",
       "doc": "Mark every notification seen.",
       "params": [],
@@ -4033,6 +4243,28 @@
       ],
       "returns": {
         "kind": "bool"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_link",
+      "doc": "Take a link off the task in `chain`. Nothing new about it joins the\ntask, and your agent touching it again does not bring it back.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       },
       "intent": "mutating"
     },
@@ -4408,6 +4640,13 @@
         "$ref": "Event_LensChanged"
       },
       "doc": "A lens was proposed, approved or turned down: re-read `lenses`."
+    },
+    {
+      "name": "LinksChanged",
+      "payload": {
+        "$ref": "Event_LinksChanged"
+      },
+      "doc": "A task's links changed: re-read `links`."
     },
     {
       "name": "MessageChanged",

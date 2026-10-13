@@ -766,6 +766,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "The chain that last touched each subject, by its key."
+        },
+        {
+          "name": "links",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Link"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Each task's links, by `<chain>|<subject>`. See [`links`]."
         }
       ]
     },
@@ -846,6 +860,54 @@
             "kind": "string"
           },
           "doc": "[`LENS_PROPOSED`], [`LENS_APPROVED`] or [`LENS_REJECTED`]."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Link": {
+      "kind": "record",
+      "doc": "One link of a task, kept by `<chain>|<subject>`. Taking it off keeps the\nrow with `removed: true`, so your agent touching the thing again does not\nbring it back; only you adding it does.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "subject",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "removed",
+          "type": {
+            "kind": "bool"
+          }
         },
         {
           "name": "updated_at",

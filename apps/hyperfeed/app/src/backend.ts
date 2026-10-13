@@ -7,6 +7,7 @@ import type {
   FeedPage,
   HyperfeedClient,
   LensView,
+  LinkView,
   NotificationInput,
   PolicyView,
   PrView,
@@ -61,6 +62,12 @@ export interface FeedBackend {
   mergeWhenGreen?(chain: string, repo: string, pr: number): Promise<WatchView>;
   /** The PRs your agent's runtime recorded as it saw them on GitHub (`""`: every chain); [] when the feed predates them. */
   prs?(chain: string): Promise<PrView[]>;
+  /** The things a task works on in your other apps, as chips; [] when the feed predates links. */
+  links?(chain: string): Promise<LinkView[]>;
+  /** Link a thing (`<app>:<context>[:<id>]`) to a task by hand; what teammates do there joins it. */
+  addLink?(chain: string, subject: string, label: string): Promise<LinkView>;
+  /** Take a link off a task: your agent touching the thing again does not bring it back. */
+  removeLink?(chain: string, subject: string): Promise<void>;
   /**
    * Talk to your agent about a chain, or about anything with `chain` "" (a new
    * chain). With images (uploaded with {@link FeedBackend.images}), `text` may be empty.
@@ -136,6 +143,13 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
         if (lacksMethod(e, "prs")) return [];
         throw e;
       }),
+    links: (chain) =>
+      client.links({ chain }).catch((e: unknown) => {
+        if (lacksMethod(e, "links")) return [];
+        throw e;
+      }),
+    addLink: (chain, subject, label) => client.addLink({ chain, input: { subject, label, by: "you" } }),
+    removeLink: (chain, subject) => client.removeLink({ chain, subject }).then(() => undefined),
     // Text alone keeps to `say`, which every feed has; only images need `say_with`.
     // No `headline` key: a feed made before headlines refuses any argument it does not know.
     say: (chain, text, attachments = []) =>

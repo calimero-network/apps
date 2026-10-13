@@ -379,6 +379,23 @@ describe("one thread per task", () => {
     expect(later.chain).toBe(later.id);
   });
 
+  it("links what the task touches, and a link you take off stays off, as the contract does", async () => {
+    const b = fresh();
+    await b.setPolicy("issue-tracker", "act", "feed");
+    const t = await task(b, "mero-bot:links");
+    const subject = subjectKey("issue-tracker", "repo", "issue-7");
+    await b.recordAction(action("issue-tracker", "done", { source_context: "repo", chain: t.chain, subject }));
+    await b.recordNotification(comment("issue-7", "repo:l>m:0"));
+    expect((await b.links(t.chain)).map((l) => [l.subject, l.by, l.activity])).toEqual([[subject, "agent", 1]]);
+    await b.removeLink(t.chain, subject);
+    await b.recordAction(action("issue-tracker", "done", { source_context: "repo", chain: t.chain, subject }));
+    expect(await b.links(t.chain)).toEqual([]);
+    const later = await b.recordNotification(comment("issue-7", "repo:m>n:0"));
+    expect(later.chain).toBe(later.id);
+    await b.addLink(t.chain, subject, "Sync bug");
+    expect((await b.links(t.chain)).map((l) => [l.label, l.by])).toEqual([["Sync bug", "you"]]);
+  });
+
   it("keys subjects as the contract does", () => {
     expect(subjectKey("chat", "ctx", "")).toBe("chat:ctx");
     expect(subjectKey("chat", "", "x")).toBe("");

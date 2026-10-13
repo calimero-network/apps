@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem, LinkView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
-import { canOpen } from "./links";
+import { canOpen, subjectFromLink } from "./links";
 import { agentLive, notPickedUp } from "./theme";
 import {
   choicesFor,
@@ -265,6 +265,7 @@ export function FeedView({
                 if (onChat) return onChat(chain);
                 setOpen(chain);
               }}
+              onOpenApp={openLink ? (item) => void openApp(item) : undefined}
             />
             <section className="needs-strip" aria-label="Needs you">
               <header className="lane-head needs-head">
@@ -472,11 +473,14 @@ function TaskPosts({
   feed,
   candidates,
   onOpen,
+  onOpenApp,
   people = false,
 }: {
   feed: Feed;
   candidates: FeedItem[];
   onOpen: (chain: string) => void;
+  /** Opens a linked thing in its app beside the feed. */
+  onOpenApp?: (item: FeedItem) => void;
   /** The new feed: each post tells its story in milestones. */
   people?: boolean;
 }) {
@@ -507,7 +511,15 @@ function TaskPosts({
   return (
     <section className="tasks" aria-label="Your tasks">
       {tasks.map((t) => (
-        <TaskCard key={t.chain} task={t} onOpen={() => onOpen(t.chain)} people={people} checkpoint={checkpoints.get(t.chain)} feed={feed} />
+        <TaskCard
+          key={t.chain}
+          task={t}
+          onOpen={() => onOpen(t.chain)}
+          onOpenApp={onOpenApp}
+          people={people}
+          checkpoint={checkpoints.get(t.chain)}
+          feed={feed}
+        />
       ))}
     </section>
   );
@@ -516,12 +528,14 @@ function TaskPosts({
 function TaskCard({
   task,
   onOpen,
+  onOpenApp,
   people = false,
   checkpoint,
   feed,
 }: {
   task: TaskPost;
   onOpen: () => void;
+  onOpenApp?: (item: FeedItem) => void;
   people?: boolean;
   /** Where it stands, as your agent last wrote it. */
   checkpoint?: CheckpointView;
@@ -559,10 +573,172 @@ function TaskCard({
           </span>
         )}
       </button>
+      {feed && <LinkChips feed={feed} chain={task.chain} onOpenApp={onOpenApp} />}
       {checkpoint && <CheckpointDetails checkpoint={checkpoint} />}
       {feed && <WatchList feed={feed} chain={task.chain} activeOnly />}
     </article>
   );
+}
+
+/**
+ * A task's links: the things it works on in your other apps, as chips (the
+ * app's badge, what it is, how many times teammates did something there).
+ * A chip opens what teammates did there, grouped under it, with a reply box
+ * where the app takes one; ↗ opens the thing in its app beside the feed;
+ * × takes it off the task. "Link" adds one by hand from its address.
+ */
+export function LinkChips({
+  feed,
+  chain,
+  onOpenApp,
+  canAdd = true,
+}: {
+  feed: Feed;
+  chain: string;
+  onOpenApp?: (item: FeedItem) => void;
+  /** Offer "+ Link"; without, a chain with no links shows nothing. */
+  canAdd?: boolean;
+}) {
+  const { loadLinks, loadChain, removeLink, page } = feed;
+  const addLink = canAdd ? feed.addLink : undefined;
+  const [links, setLinks] = useState<LinkView[]>([]);
+  const [rows, setRows] = useState<FeedItem[]>([]);
+  const [open, setOpen] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [paste, setPaste] = useState("");
+  const [bad, setBad] = useState(false);
+  useEffect(() => {
+    if (!loadLinks) return;
+    let live = true;
+    Promise.all([loadLinks(chain), loadChain(chain)])
+      .then(([l, r]) => {
+        if (!live) return;
+        setLinks(l);
+        setRows(r);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+    // `page` is the point: re-read whenever the feed changes.
+  }, [chain, loadLinks, loadChain, page]);
+
+  if (!loadLinks || (links.length === 0 && !addLink)) return null;
+  const shown = links.find((l) => l.subject === open);
+  const about = shown ? rows.filter((r) => r.kind === "notification" && r.subject === shown.subject) : [];
+  const add = async () => {
+    const subject = subjectFromLink(paste);
+    if (!subject || !addLink) return setBad(true);
+    await addLink(chain, subject, "");
+    setPaste("");
+    setAdding(false);
+    setBad(false);
+  };
+  return (
+    <div className="links" role="group" aria-label="Linked">
+      <div className="link-chips">
+        {links.map((l) => {
+          const label = linkLabel(l, rows);
+          return (
+            <span key={l.subject} className={`link-chip${open === l.subject ? " open" : ""}`}>
+              <button
+                type="button"
+                className="link-main"
+                aria-expanded={open === l.subject}
+                title={`${appName(l.app)}: ${label}`}
+                onClick={() => setOpen(open === l.subject ? null : l.subject)}
+              >
+                <Badge app={l.app} size="sm" />
+                <span className="link-label">{label}</span>
+                {l.activity > 0 && (
+                  <span className="link-count" aria-label={`${l.activity} from teammates`}>
+                    {l.activity}
+                  </span>
+                )}
+              </button>
+              {onOpenApp && canOpen(linkItem(l, label)) && (
+                <button type="button" className="link-icon" aria-label={`Open ${label} in ${appName(l.app)}`} onClick={() => onOpenApp(linkItem(l, label))}>
+                  ↗
+                </button>
+              )}
+              {removeLink && (
+                <button type="button" className="link-icon" aria-label={`Take ${label} off the task`} onClick={() => void removeLink(chain, l.subject)}>
+                  ×
+                </button>
+              )}
+            </span>
+          );
+        })}
+        {addLink &&
+          (adding ? (
+            <span className="link-add">
+              <input
+                aria-label="Link to add: an app's address"
+                placeholder="Paste an issue, board or chat address"
+                value={paste}
+                autoFocus
+                onChange={(e) => {
+                  setPaste(e.target.value);
+                  setBad(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void add();
+                  if (e.key === "Escape") setAdding(false);
+                }}
+              />
+              <button type="button" className="chip" onClick={() => void add()} disabled={!paste.trim()}>
+                Add
+              </button>
+              {bad && <span className="link-bad">Not an address of one of your apps</span>}
+            </span>
+          ) : (
+            <button type="button" className="link-icon link-new" onClick={() => setAdding(true)}>
+              + Link
+            </button>
+          ))}
+      </div>
+      {shown && (
+        <ul className="link-group" aria-label={`In ${linkLabel(shown, rows)}`}>
+          {about.length === 0 && <li className="link-empty">Nothing from teammates there yet.</li>}
+          {about.map((n) => {
+            const s = sentenceOf(n, appName);
+            const text = fieldsOf(n).text;
+            return (
+              <li key={n.id} className="link-step">
+                <Face s={s} item={n} size="sm" />
+                <span className="link-step-body">
+                  <span>
+                    <strong>{s.who}</strong> <span className="row-time">{timeLabel(n.at)}</span>
+                  </span>
+                  <p>{typeof text === "string" && text ? text : n.title}</p>
+                  {resolvable(n) && <Resolver key={n.id} item={n} feed={feed} />}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What a link's chip says: its label; else where a teammate's notification
+ * about it says it is (an issue's title, "#launch"); else the app and the thing's id.
+ */
+export function linkLabel(link: LinkView, rows: FeedItem[]): string {
+  if (link.label) return link.label;
+  for (const r of rows) {
+    if (r.subject !== link.subject) continue;
+    const where = fieldsOf(r).where;
+    if (typeof where === "string" && where) return where;
+  }
+  return link.item ? `${appName(link.app)} ${link.item.length > 14 ? `…${link.item.slice(-8)}` : link.item}` : appName(link.app);
+}
+
+/** A link as a row, for opening it in its app. */
+function linkItem(link: LinkView, label: string): FeedItem {
+  return { app: link.app, source_context: link.context, source_label: label } as Partial<FeedItem> as FeedItem;
 }
 
 /** A row's avatar: its app's, or your agent's for a conversation. */
@@ -910,6 +1086,7 @@ function Row({
               </>
             )}
           </div>
+          <LinkChips feed={feed} chain={item.chain} onOpenApp={onOpenApp} canAdd={false} />
           {item.chain_len > 1 &&
             (people ? <Story chain={item.chain} lead={item} feed={feed} /> : <Flow chain={item.chain} lead={item.id} feed={feed} />)}
           <AskAgent

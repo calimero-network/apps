@@ -41,6 +41,7 @@ same warrant path it uses everywhere else.
 | **Pause** | you | while paused, every write the agent wants to make becomes a proposal |
 | **Archived** | you | per chain: put away, with the chain's latest activity then and an optional return time ("later"). It is out of the feed until something new happens in it or that time passes |
 | **Presence** | your agent | per agent name: when it last reported in. The app shows "Agent live" for 90 seconds after a report |
+| **Link** | your agent, or you | per task: a subject it works on (`<app>:<context>[:<id>]`) with a label, shown as a chip on the task's post. Your agent's writes add them; you add one from its address or take one off, and a link you took off stays off. The chip counts and groups what teammates did there, and opens it in its app beside the feed |
 | **Subject** | your agent | what an action touched in another app, as `<app>:<context>[:<id>]` (the id from its `issue_id`, `doc_id` or `thread_id` arg), kept beside the action by id, and the chain that last touched each subject. A typed notification whose reply call goes to the same subject, recorded with no chain of its own, joins that chain unless you put it away: one thread per task, teammates' comments included |
 
 Every record merges deterministically:
