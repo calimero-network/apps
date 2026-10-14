@@ -251,8 +251,14 @@ export function TrusteePanel({
           {t} of {n}
         </span>
       </div>
+      {/*
+        A table on a wide screen. On a phone (index.css, ≤640px) each row stacks
+        into a card: the trustee on top, then one labelled line per step. The
+        `cell-label`s are what label those lines; the header row does it on a
+        wide screen, so they are hidden there.
+      */}
       <div className="table-wrap">
-        <table>
+        <table className="trustee-table">
           <thead>
             <tr>
               <th>Trustee</th>
@@ -271,8 +277,12 @@ export function TrusteePanel({
                     {x.account === me && <span className="muted">(you)</span>}
                   </span>
                 </td>
-                <td>{cell(x.transport_published, "waiting", "Published")}</td>
                 <td>
+                  <span className="cell-label">Transport key</span>
+                  {cell(x.transport_published, "waiting", "Published")}
+                </td>
+                <td>
+                  <span className="cell-label">Shares dealt</span>
                   {x.qualified === false ? (
                     x.complaints_against > 0 ? (
                       <span className="badge danger">
@@ -291,7 +301,10 @@ export function TrusteePanel({
                     cell(x.dealing_published, phase === "KeyCeremony" ? "waiting" : "—", "Dealt")
                   )}
                 </td>
-                <td>{cell(x.partial_published, phase === "Closed" ? "waiting" : "—", "Published")}</td>
+                <td>
+                  <span className="cell-label">Decryption</span>
+                  {cell(x.partial_published, phase === "Closed" ? "waiting" : "—", "Published")}
+                </td>
               </tr>
             ))}
           </tbody>
