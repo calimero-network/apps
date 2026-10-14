@@ -111,8 +111,11 @@ def reaches(
 
 
 def git(*args: str) -> str:
+    # Never wait on a credential prompt: a fetch that needs one fails, and the
+    # caller falls back to building.
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     return subprocess.run(
-        ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True
+        ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True, env=env
     ).stdout
 
 
@@ -124,6 +127,22 @@ def have(rev: str) -> bool:
         return False
 
 
+def repo_url() -> str | None:
+    """The repository's public URL, from Vercel's own variables.
+
+    Vercel's checkout has no `origin` that main can be fetched from, so a PR's
+    first push could not read main and built every app. The repository is
+    public, so its URL serves main without credentials.
+    """
+    if url := os.environ.get("VERCEL_IGNORE_REPO_URL", "").strip():
+        return url
+    owner = os.environ.get("VERCEL_GIT_REPO_OWNER", "").strip()
+    slug = os.environ.get("VERCEL_GIT_REPO_SLUG", "").strip()
+    if os.environ.get("VERCEL_GIT_PROVIDER", "github") == "github" and owner and slug:
+        return f"https://github.com/{owner}/{slug}.git"
+    return None
+
+
 def ensure(rev: str) -> bool:
     """Make `rev` readable. Vercel clones shallow (depth 10), and the last
     deployed commit is often older; a diff needs only the two trees, so one
@@ -132,11 +151,17 @@ def ensure(rev: str) -> bool:
         return True
     remote = rev.removeprefix("origin/")
     refspec = f"{remote}:refs/remotes/origin/{remote}" if remote != rev else rev
-    try:
-        git("fetch", "--quiet", "--depth=1", "origin", refspec)
-    except subprocess.CalledProcessError:
-        return False
-    return have(rev)
+    for source in ("origin", repo_url()):
+        if not source:
+            continue
+        try:
+            git("fetch", "--quiet", "--depth=1", source, refspec)
+        except subprocess.CalledProcessError as e:
+            print(f"note: cannot fetch {rev} from {source}: {e.stderr.strip()[:200]}")
+            continue
+        if have(rev):
+            return True
+    return False
 
 
 def changed_between(base: str, head: str) -> list[str] | None:
