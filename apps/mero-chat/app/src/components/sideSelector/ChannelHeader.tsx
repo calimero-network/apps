@@ -33,7 +33,7 @@ const TextBold = styled.div`
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
 `;
 
 const PlusButton = styled.div`
@@ -44,12 +44,12 @@ const PlusButton = styled.div`
   width: 20px;
   height: 20px;
   border-radius: 5px;
-  color: rgba(255, 255, 255, 0.25);
+  color: color-mix(in srgb, var(--glass-ink) 25%, transparent);
   transition: all 0.15s ease;
 
   &:hover {
-    color: #a5ff11;
-    background: rgba(165, 255, 17, 0.1);
+    color: var(--glass-accent);
+    background: color-mix(in srgb, var(--glass-accent) 10%, transparent);
   }
 
   svg {

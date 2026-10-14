@@ -6,6 +6,7 @@ import { useCanvasStore, type Background } from "../store/canvasStore";
 import { fileToDataUrl } from "../utils/export";
 import { getImageDimensions } from "../utils/image";
 import Logo from "./Logo";
+import ThemeToggle from "./ThemeToggle";
 import styles from "./Toolbar.module.css";
 import type { Member, CursorState } from "../types";
 import { validateSnapshot, type ProjectSnapshot } from "../utils/projectFile";
@@ -97,6 +98,18 @@ const IconSticky = () => (
   <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
     <path d="M2.5 2.5h11v7l-4 4h-7z"/>
     <path d="M13.5 9.5h-4v4"/>
+  </svg>
+);
+const IconSliders = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+    <path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6"/>
+    <circle cx="10" cy="4.5" r="1.5"/>
+    <circle cx="6" cy="11.5" r="1.5"/>
+  </svg>
+);
+const IconChevron = () => (
+  <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 6l4 4 4-4"/>
   </svg>
 );
 const IconMembers = () => (
@@ -273,7 +286,7 @@ export default function Toolbar({
   return (
     <div className={styles.bar}>
       <button className={styles.backBtn} onClick={onBack} title="Back to projects">←</button>
-      <span className={styles.logo}><Logo size={20} /> Mero Design</span>
+      <span className={styles.logo}><Logo size={28} /> <span className={styles.brandText}>Mero Design</span></span>
 
       <div className={styles.divider} />
 
@@ -321,7 +334,9 @@ export default function Toolbar({
           data-testid="options-btn"
           title="Options"
         >
-          Options ▾
+          <IconSliders />
+          <span className={styles.optionsLabel}>Options</span>
+          <IconChevron />
         </button>
         {optionsOpen && (
           <div className={styles.optionsDropdown} data-testid="options-dropdown">
@@ -455,7 +470,7 @@ export default function Toolbar({
           <IconComment />
         </button>
       )}
-      <button className={styles.previewBtn} onClick={onPreview} title="Preview canvas (Esc to exit)">
+      <button className={`${styles.previewBtn} ${styles.hideNarrow}`} onClick={onPreview} title="Preview canvas (Esc to exit)">
         Preview
       </button>
       {onPresent && (
@@ -469,9 +484,10 @@ export default function Toolbar({
         </button>
       )}
 
-      <div className={styles.divider} />
+      <div className={`${styles.divider} ${styles.hideNarrow}`} />
 
-      <button className={styles.logoutBtn} onClick={onLogout} title="Logout">Logout</button>
+      <ThemeToggle className={styles.iconBtn} />
+      <button className={`${styles.logoutBtn} ${styles.hideNarrow}`} onClick={onLogout} title="Logout">Logout</button>
 
       <input
         ref={fileInputRef}

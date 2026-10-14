@@ -2,21 +2,24 @@ import { useState } from "react";
 import SettingsPopup from "../popups/SettingsPopup";
 import { styled } from "styled-components";
 
-const SettingsIconWrapper = styled.div`
+const SettingsIconWrapper = styled.button`
   cursor: pointer;
+  border: none;
+  background: transparent;
+  fill: none;
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  border-radius: 6px;
-  stroke: #777583;
+  border-radius: 999px;
+  stroke: var(--glass-muted);
   padding: 0.375rem;
   width: 36px;
   height: 36px;
   justify-content: center;
   transition: all 0.15s ease;
   &:hover {
-    background-color: rgba(165, 255, 17, 0.08);
-    stroke: #a5ff11;
+    background-color: color-mix(in srgb, var(--glass-accent) 8%, transparent);
+    stroke: var(--glass-accent);
   }
 `;
 
@@ -24,8 +27,7 @@ export default function SettingsIcon() {
   const [isOpen, setIsOpen] = useState(false);
 
   const settingsIcon = (
-    <SettingsIconWrapper
-    >
+    <SettingsIconWrapper type="button" aria-label="Settings">
       <svg
         width="18"
         height="18"
@@ -33,6 +35,7 @@ export default function SettingsIcon() {
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
+        aria-hidden="true"
       >
         <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
         <circle cx="12" cy="12" r="3" />

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  ActionSetView,
   Attachment,
   CheckpointView,
   FeedItem,
@@ -14,8 +15,9 @@ import type {
   SettingsView,
   WatchView,
 } from "./generated/HyperfeedClient";
+import type { NameLink } from "./links";
 import { fillReplyCall } from "./lens/lens";
-import type { AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
+import type { ActionMode, AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
 import type { BlobStore } from "./attachments";
 
 export interface Feed {
@@ -23,6 +25,8 @@ export interface Feed {
   settings: SettingsView | null;
   /** What your agent learned for each app version, newest first. */
   lenses: LensView[];
+  /** What your agent can do in each app version, newest first; [] on a feed made before actions. */
+  actionSets: ActionSetView[];
   /**
    * The feed was made by a Hyperfeed from before lenses: it works, but holds
    * no lenses or typed rows until it is created again with the latest one.
@@ -45,6 +49,9 @@ export interface Feed {
    */
   answer: (id: string, answer: string) => Promise<void>;
   decideLens: (appKey: string, applicationId: string, decision: "approve" | "reject") => Promise<void>;
+  decideActions: (appKey: string, applicationId: string, decision: "approve" | "reject") => Promise<void>;
+  /** Set one action apart from its app's mode; absent on a feed made before actions. */
+  setActionMode?: (appKey: string, action: string, mode: ActionMode) => Promise<void>;
   /**
    * Talk to your agent about a chain ("" starts a new one). Resolves to your
    * message, so the caller can open its chain; null when the node refused it.
@@ -80,6 +87,8 @@ export interface Feed {
   loadPrs?: (chain: string) => Promise<PrView[]>;
   /** A task's links, oldest first. A read, like `loadChain`. */
   loadLinks?: (chain: string) => Promise<LinkView[]>;
+  /** A link's name from the thing itself ("#launch", "DM with Ronit"), `""` when it cannot say; absent off a node. */
+  nameLink?: NameLink;
   /** Link a thing to a task by hand; absent when the feed predates links. */
   addLink?: (chain: string, subject: string, label: string) => Promise<void>;
   /** Take a link off a task. */
@@ -98,6 +107,9 @@ export interface Feed {
   setAccess?: (agent: string, folders: Folder[], shell: boolean, web: boolean) => Promise<void>;
   /** Which agent works in an app; absent on a feed made before assignments. */
   setAssignment?: (app: string, agent: string) => Promise<void>;
+  /** Agents with accounts of their own (cloud agents); absent on a feed made before them. */
+  addAgentAccount?: (account: string, name: string) => Promise<void>;
+  removeAgentAccount?: (account: string) => Promise<void>;
   setPaused: (paused: boolean) => Promise<void>;
   /** Your standing rules: add one, remove one, or approve or dismiss one your agent suggested. */
   addRule: (text: string) => Promise<void>;
@@ -144,6 +156,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
   const [page, setPage] = useState<FeedPage | null>(null);
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [lenses, setLenses] = useState<LensView[]>([]);
+  const [actionSets, setActionSets] = useState<ActionSetView[]>([]);
   const [outdated, setOutdated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -174,10 +187,12 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
           if (/method "?lenses"? not found/i.test(messageOf(e))) return null;
           throw e;
         });
-        const [p, s, l] = await Promise.all([backend.feed(filter, appKey), backend.settings(), lensesOrOld]);
+        const actionsOrNone = backend.actionSets ? backend.actionSets() : Promise.resolve([]);
+        const [p, s, l, a] = await Promise.all([backend.feed(filter, appKey), backend.settings(), lensesOrOld, actionsOrNone]);
         setPage(p);
         setSettings(s);
         setLenses(l ?? []);
+        setActionSets(a);
         setOutdated(l === null);
         const stale = readError.current;
         readError.current = null;
@@ -226,8 +241,22 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       run((b) => (b.setAccess ? b.setAccess(agent, folders, shell, web) : Promise.resolve())),
     [run],
   );
+  const setActionMode = useCallback(
+    (app: string, action: string, mode: ActionMode) =>
+      run((b) => (b.setActionMode ? b.setActionMode(app, action, mode) : Promise.resolve())),
+    [run],
+  );
   const setAssignment = useCallback(
     (app: string, agent: string) => run((b) => (b.setAssignment ? b.setAssignment(app, agent) : Promise.resolve())),
+    [run],
+  );
+  const addAgentAccount = useCallback(
+    (account: string, name: string) =>
+      run((b) => (b.addAgentAccount ? b.addAgentAccount(account, name) : Promise.resolve())),
+    [run],
+  );
+  const removeAgentAccount = useCallback(
+    (account: string) => run((b) => (b.removeAgentAccount ? b.removeAgentAccount(account) : Promise.resolve())),
     [run],
   );
   const addAgentRule = useCallback(
@@ -266,6 +295,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     page,
     settings,
     lenses,
+    actionSets,
     outdated,
     error,
     busy,
@@ -275,7 +305,17 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     setAppKey,
     refresh,
     dismissError: useCallback(() => setError(null), []),
-    resolve: useCallback((id, decision, answer) => run((b) => b.resolveAction(id, decision, answer)), [run]),
+    resolve: useCallback(
+      (id, decision, answer) =>
+        run(async (b) => {
+          const item = await b.resolveAction(id, decision, answer);
+          // A draft for you to send: approving it sends it, from here, as you.
+          if (item.reply_call && (item.status === "approved" || item.status === "retrying")) {
+            await send(b, item, answer ?? "");
+          }
+        }),
+      [run],
+    ),
     answer: useCallback(
       (id, answer) =>
         run(async (b) => {
@@ -288,6 +328,12 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       (appKey, applicationId, decision) => run((b) => b.decideLens(appKey, applicationId, decision)),
       [run],
     ),
+    decideActions: useCallback(
+      (appKey, applicationId, decision) =>
+        run((b) => (b.decideActions ? b.decideActions(appKey, applicationId, decision) : Promise.resolve())),
+      [run],
+    ),
+    setActionMode: backend?.setActionMode ? setActionMode : undefined,
     say: useCallback(
       async (chain, text, attachments, mode) => {
         let posted: FeedItem | null = null;
@@ -326,6 +372,8 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     setGuard: useCallback((category, enabled) => run((b) => b.setGuard(category, enabled)), [run]),
     setAccess: backend?.setAccess ? setAccess : undefined,
     setAssignment: backend?.setAssignment ? setAssignment : undefined,
+    addAgentAccount: backend?.addAgentAccount ? addAgentAccount : undefined,
+    removeAgentAccount: backend?.removeAgentAccount ? removeAgentAccount : undefined,
     setPaused: useCallback((paused) => run((b) => b.setPaused(paused)), [run]),
     addRule: useCallback((text) => run((b) => b.addRule(text)), [run]),
     removeRule: useCallback((id) => run((b) => b.removeRule(id)), [run]),
@@ -394,6 +442,23 @@ export async function deliver(b: FeedBackend, item: FeedItem, answer: string): P
     throw e;
   }
   await b.completeAnswer(item.id, "delivered", item.source_label ? `Sent in ${item.source_label}` : "Sent");
+}
+
+/**
+ * A draft your agent wrote for you to send, sent as you with the call it
+ * drafted, then reported. The agent never sends these. A refusal goes back to
+ * you as failed, with the app's own words, and can be approved again.
+ */
+export async function send(b: FeedBackend, item: FeedItem, answer: string): Promise<void> {
+  try {
+    // The answer is your edit of the draft; with none, the draft as written.
+    const call = fillReplyCall(item.reply_call, answer || item.ask.draft);
+    await b.callApp(item.source_context, call.method, call.args);
+  } catch (e) {
+    await b.completeAction(item.id, "failed", messageOf(e).slice(0, 900));
+    throw e;
+  }
+  await b.completeAction(item.id, "done", item.source_label ? `Sent in ${item.source_label}` : "Sent");
 }
 
 /** The item a list row refers to, or the first one when nothing is picked. */

@@ -22,8 +22,8 @@ const styles: CSSProperties = {
   fontSize: "1.5rem",
   lineHeight: "1.75rem",
   cursor: "pointer",
-  background: "rgb(17, 17, 17)",
-  borderRadius: "4px",
+  background: "var(--glass-surface-solid)",
+  borderRadius: "8px",
   paddingTop: "7px",
   paddingBottom: "7px",
   paddingRight: "2px",
@@ -35,14 +35,14 @@ const EmojiContainer = styled.span`
   width: 24px;
   height: 24px;
   font-size: 16px;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
   text-align: center;
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 6px;
-  color: #fff;
+  color: var(--glass-ink);
   @media (max-width: 1024px) {
     -webkit-user-select: none;
     -khtml-user-select: none;
@@ -56,17 +56,17 @@ const ActionContainer = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #fff;
-  font-family: Helvetica Neue;
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
   padding: 6px 12px 6px 12px;
   font-size: 14px;
   font-weight: 400;
   line-height: 24px;
   letter-spacing: 0em;
   text-align: left;
-  border-radius: 4px;
+  border-radius: 8px;
   &:hover {
-    background-color: #2e2f3d;
+    background-color: var(--glass-sunken);
   }
 `;
 
@@ -77,9 +77,9 @@ const MoreActionContainer = styled.div`
   width: 226px;
   left: -38px;
   padding: 2px;
-  border-radius: 4px;
+  border-radius: 8px;
   gap: 4px;
-  background-color: rgb(17, 17, 17);
+  background-color: var(--glass-surface-solid);
 `;
 
 const reactionsArray = [

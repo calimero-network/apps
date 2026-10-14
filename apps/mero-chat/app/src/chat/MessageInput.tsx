@@ -37,27 +37,27 @@ const MentionDropdown = styled.ul`
   bottom: calc(100% + 4px);
   left: 16px;
   right: 16px;
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  border-radius: 6px;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line);
+  border-radius: 10px;
   list-style: none;
   margin: 0;
   padding: 4px 0;
   z-index: 200;
   max-height: 200px;
   overflow-y: auto;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--chat-pop-shadow);
 `;
 
 const MentionItem = styled.li<{ $active: boolean }>`
   padding: 6px 12px;
   cursor: pointer;
   font-size: 13px;
-  color: ${(p) => (p.$active ? "#fff" : "#aaa")};
-  background: ${(p) => (p.$active ? "#2a2a2a" : "transparent")};
+  color: ${(p) => (p.$active ? "var(--glass-ink)" : "var(--glass-ink-2)")};
+  background: ${(p) => (p.$active ? "var(--glass-sunken)" : "transparent")};
   &:hover {
-    background: #2a2a2a;
-    color: #fff;
+    background: var(--glass-sunken);
+    color: var(--glass-ink);
   }
 `;
 
@@ -108,7 +108,7 @@ const Container = styled.div`
   transform: translateZ(0);
   @media (min-width: 1025px) {
     gap: 8px;
-    border-radius: 4px;
+    border-radius: 8px;
     /* Prevent layout shifts when modals open on desktop */
     will-change: transform;
     backface-visibility: hidden;
@@ -160,25 +160,25 @@ const DropOverlay = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px dashed #4e95ff;
-  border-radius: 4px;
-  background-color: rgba(17, 17, 17, 0.92);
-  color: #fff;
+  border: 1px dashed var(--glass-accent);
+  border-radius: 20px;
+  background-color: var(--glass-surface-solid);
+  color: var(--glass-ink);
   font-size: 14px;
   pointer-events: none;
 `;
 
 const UploadContainer = styled.div`
-  background-color: rgb(17, 17, 17);
-  border-radius: 4px;
-  border: 1px solid rgb(42, 42, 42);
+  background-color: var(--glass-surface-solid);
+  border-radius: 8px;
+  border: 1px solid var(--glass-line);
 `;
 
 const Wrapper = styled.div`
   flex: 1;
   display: flex;
   align-items: start;
-  background-color: #111111;
+  background-color: transparent;
   min-width: 0;
 `;
 
@@ -226,7 +226,7 @@ export const IconEmoji = () => {
         xmlns="http://www.w3.org/2000/svg"
         width="18"
         height="18"
-        fill="#686672"
+        fill="var(--glass-muted)"
         className={`bi bi-emoji-wink ${hovered ? "hidden-svg" : "visible-svg"}`}
         viewBox="0 0 16 16"
       >
@@ -237,7 +237,7 @@ export const IconEmoji = () => {
         xmlns="http://www.w3.org/2000/svg"
         width="18"
         height="18"
-        fill="#73B30C"
+        fill="var(--glass-accent)"
         className={`bi bi-emoji-wink-fill ${
           hovered ? "visible-svg" : "hidden-svg"
         }`}
@@ -258,21 +258,21 @@ export const IconUploadSvg = styled.div`
   cursor: pointer;
 
   svg {
-    fill: #686672;
+    fill: var(--glass-muted);
   }
 
   .stroke-path {
-    stroke: #686672;
+    stroke: var(--glass-muted);
   }
 
   &:hover {
     svg {
-      fill: #73b30c;
+      fill: var(--glass-accent);
     }
 
     .stroke-path {
-      stroke: #73b30c;
-      fill: #73b30c;
+      stroke: var(--glass-accent);
+      fill: var(--glass-accent);
     }
   }
 `;
@@ -283,7 +283,7 @@ export const IconUpload = ({ onClick }: { onClick: () => void }) => (
       width="20px"
       height="20px"
       viewBox="0 0 24 24"
-      fill="#686672"
+      fill="var(--glass-muted)"
       xmlns="http://www.w3.org/2000/svg"
     >
       <path
@@ -307,7 +307,7 @@ export const IconUpload = ({ onClick }: { onClick: () => void }) => (
 export const IconSendSvg = styled.svg`
   margin-bottom: 8px;
   :hover {
-    fill: #73b30c;
+    fill: var(--glass-accent);
   }
   cursor: pointer;
 `;
@@ -325,7 +325,7 @@ export const IconSend = ({
     xmlns="http://www.w3.org/2000/svg"
     width="18"
     height="18"
-    fill={`${isActive ? "#73B30C" : "#686672"}`}
+    fill={`${isActive ? "var(--glass-accent)" : "var(--glass-muted)"}`}
     className="bi bi-send-fill"
     viewBox="0 0 16 16"
   >
@@ -335,31 +335,31 @@ export const IconSend = ({
 
 const DraftBadge = styled.span`
   font-size: 0.66rem;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
   letter-spacing: 0.04em;
   white-space: nowrap;
 `;
 
 const ReadOnlyField = styled.div<{ $banned?: boolean }>`
-  background-color: ${(p) => (p.$banned ? "rgba(255, 59, 59, 0.07)" : "#111111")};
+  background-color: ${(p) => (p.$banned ? "rgba(255, 59, 59, 0.07)" : "var(--glass-surface-solid)")};
   border: 1px solid
     ${(p) => (p.$banned ? "rgba(255, 59, 59, 0.25)" : "transparent")};
   height: 2rem;
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 4px 10px;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-family: Helvetica Neue;
+  font-family: var(--glass-font);
   font-size: 16px;
   font-style: normal;
   font-weight: ${(p) => (p.$banned ? 600 : 400)};
   line-height: 150%;
-  color: ${(p) => (p.$banned ? "#ff6b6b" : "#797978")};
+  color: ${(p) => (p.$banned ? "var(--glass-bad-ink)" : "var(--glass-muted)")};
   flex: 1;
   @media (max-width: 1024px) {
     font-size: 14px;
@@ -376,7 +376,7 @@ export const StatusBar = styled.div`
   padding: 0 25px;
   font-size: 12px;
   line-height: 18px;
-  color: #686672;
+  color: var(--glass-muted);
   pointer-events: none;
   white-space: nowrap;
   overflow: hidden;
@@ -388,15 +388,15 @@ export const StatusBar = styled.div`
 
   .typing {
     font-style: italic;
-    color: #9ca3af;
+    color: var(--glass-muted);
   }
 
   .upload {
-    color: #9ca3af;
+    color: var(--glass-muted);
   }
 
   .separator {
-    color: #4b4954;
+    color: var(--glass-muted);
   }
 `;
 
