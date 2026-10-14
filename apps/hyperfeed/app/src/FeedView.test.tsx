@@ -806,7 +806,7 @@ describe("FeedView", () => {
         await backend.recordAction({
           app: "chat", source_context: ctx, source_label: "", method: "send_message", category: "", writes: true, undoable: false,
           title: "Sent a message", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-          chain: asked.chain, ask: blankAsk, grant: "", subject: subjectKey("chat", ctx, ""),
+          chain: asked.chain, ask: blankAsk, grant: "", send_call: "", subject: subjectKey("chat", ctx, ""),
         });
       }
     });
