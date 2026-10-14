@@ -60,7 +60,7 @@ export default function ChannelDetailsPopup({
   });
 
   const groupId = getGroupId();
-  const { members: groupMembers, teeEnabled, fetchAll } = useGroupAdmin();
+  const { members: groupMembers, fetchAll } = useGroupAdmin();
 
   // Membership authority over a channel belongs to the CHANNEL's own group,
   // never to the namespace root.
@@ -204,7 +204,6 @@ export default function ChannelDetailsPopup({
       nonInvitedUserList={nonInvitedUserList}
       nonChannelMembers={nonChannelMembers}
       channelMeta={channelMeta}
-      teeEnabled={teeEnabled}
       isOwner={isOwner}
       canManageMembers={canAdminChannelGroup}
       handleDeleteChannel={handleDeleteChannel}

@@ -371,7 +371,7 @@ export function useGroupAdmin() {
   return {
     group,
     members,
-    teeEnabled: teeMembers.length > 0,
+    teeMembers,
     subgroupCount,
     upgradeStatus,
     loading,

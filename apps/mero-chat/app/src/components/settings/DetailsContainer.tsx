@@ -35,24 +35,6 @@ const ChannelIconWrap = styled.div`
   color: var(--glass-accent);
 `;
 
-// Shown instead of listing the TEE node as a member: it is infrastructure the
-// namespace runs on, not someone in the channel.
-const TeeBadge = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin-left: auto;
-  flex-shrink: 0;
-  padding: 0.125rem 0.5rem;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--glass-accent);
-  background: color-mix(in srgb, var(--glass-accent) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--glass-accent) 18%, transparent);
-  white-space: nowrap;
-`;
-
 const ChannelTitle = styled.h2`
   color: var(--glass-ink);
   font-size: 14px;
@@ -74,8 +56,6 @@ interface DetailsContainerProps {
   nonInvitedUserList: UserId[];
   nonChannelMembers?: Map<string, string>;
   channelMeta: ChannelMeta;
-  /** A TEE node is admitted to the namespace. */
-  teeEnabled?: boolean;
   isOwner?: boolean;
   canManageMembers?: boolean;
   handleDeleteChannel?: () => void;
@@ -122,17 +102,6 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
           )}
         </ChannelIconWrap>
         <ChannelTitle>{channelName}</ChannelTitle>
-        {props.teeEnabled && (
-          <TeeBadge
-            data-testid="tee-enabled-badge"
-            title="This namespace is backed by a TEE node (hardware-attested replica)"
-          >
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 0 1.5 2.5v5C1.5 11.6 4.3 15 8 16c3.7-1 6.5-4.4 6.5-8.5v-5L8 0Zm-1 11.4L3.8 8.2l1.1-1.1L7 9.2l4.1-4.1 1.1 1.1L7 11.4Z" />
-            </svg>
-            TEE enabled
-          </TeeBadge>
-        )}
       </ChannelHeader>
     );
   };
