@@ -107,17 +107,17 @@ const PreviewCard = styled.a`
   gap: 10px;
   margin-top: 6px;
   padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  border-left: 3px solid #a5ff11;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
+  background: color-mix(in srgb, var(--glass-ink) 3%, transparent);
+  border-left: 3px solid var(--glass-accent);
   text-decoration: none;
   max-width: 480px;
   cursor: pointer;
   transition: background 0.15s ease;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
   }
 `;
 
@@ -127,7 +127,7 @@ const PreviewImage = styled.img`
   object-fit: cover;
   border-radius: 5px;
   flex-shrink: 0;
-  background: #222;
+  background: var(--glass-surface-solid);
 `;
 
 const PreviewText = styled.div`
@@ -140,7 +140,7 @@ const PreviewText = styled.div`
 const PreviewTitle = styled.div`
   font-size: 13px;
   font-weight: 600;
-  color: #fff;
+  color: var(--glass-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -148,7 +148,7 @@ const PreviewTitle = styled.div`
 
 const PreviewDescription = styled.div`
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--glass-ink) 50%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -156,7 +156,7 @@ const PreviewDescription = styled.div`
 
 const PreviewDomain = styled.div`
   font-size: 11px;
-  color: #a5ff11;
+  color: var(--glass-accent);
   margin-top: 2px;
 `;
 

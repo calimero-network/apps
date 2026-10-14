@@ -6,9 +6,9 @@ const FileContainer = styled.div<{ $truncate: boolean }>`
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background-color: #1d1d21;
-  border: 1px solid #3e3e42;
-  border-radius: 6px;
+  background-color: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line);
+  border-radius: 10px;
   padding: 6px;
   margin: 4px 6px 0 0;
   max-width: ${({ $truncate }) => ($truncate ? "160px" : "100%")};
@@ -20,8 +20,8 @@ const IconContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #73b30c;
-  border-radius: 4px;
+  background-color: var(--glass-ink);
+  border-radius: 8px;
   width: 32px;
   height: 32px;
 `;
@@ -36,7 +36,7 @@ const FileInfo = styled.div`
 `;
 
 const FileTitle = styled.span<{ $truncate: boolean }>`
-  color: #ffffff;
+  color: var(--glass-ink);
   font-size: 13px;
   font-weight: 500;
   line-height: 140%;
@@ -61,13 +61,13 @@ const IconButton = styled.button`
 `;
 
 const DownloadButton = styled(IconButton)`
-  color: #73b30c;
+  color: var(--glass-accent);
   font-size: 16px;
   padding: 0 3px;
 `;
 
 const CloseButton = styled(IconButton)`
-  color: #ff6b6b;
+  color: var(--glass-bad-ink);
   font-size: 16px;
   padding: 0 3px;
 `;
@@ -77,7 +77,7 @@ const FileIcon = ({ className }: { className?: string }) => (
     xmlns="http://www.w3.org/2000/svg"
     width="18"
     height="18"
-    fill="white"
+    fill="var(--glass-on-ink)"
     className={className ?? "bi bi-file-earmark-fill"}
     viewBox="0 0 16 16"
   >

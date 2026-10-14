@@ -12,16 +12,18 @@ function Harness({
   newFeed,
   openLink,
   onChat,
+  nameLink,
 }: {
   backend: DemoBackend;
   newFeed?: NewFeed;
   openLink?: (item: FeedItem) => Promise<string | null>;
   onChat?: (chain: string) => void;
+  nameLink?: Feed["nameLink"];
 }) {
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
   const feed = useFeed(backend, nudge);
-  return <FeedView feed={feed} query="" newFeed={newFeed} openLink={openLink} onChat={onChat} />;
+  return <FeedView feed={nameLink ? { ...feed, nameLink } : feed} query="" newFeed={newFeed} openLink={openLink} onChat={onChat} />;
 }
 
 const stream = () => screen.getByRole("main");
@@ -295,7 +297,7 @@ describe("FeedView", () => {
     await backend.recordAction({
       app: "sheets", source_context: "ctx", source_label: "", method: "update", category: "", writes: true, undoable: false,
       title: "Pulled the numbers into a sheet", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-      chain: mention.chain, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "",
+      chain: mention.chain, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "", send_call: "",
     });
     render(<Harness backend={backend} />);
     const row = await rowFor(/can you share the numbers/i);
@@ -320,7 +322,7 @@ describe("FeedView", () => {
     await backend.recordAction({
       app: "sheets", source_context: "", source_label: "", method: "update", category: "", writes: true, undoable: false,
       title: "Pulled the numbers into a sheet", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-      chain: mention.id, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "",
+      chain: mention.id, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "", send_call: "",
     });
     render(<Harness backend={backend} />);
     // Your reply is still being delivered: the chain is in progress, not done.
@@ -443,7 +445,7 @@ describe("FeedView", () => {
     await backend.recordAction({
       app: "issue-tracker", source_context: "repo", source_label: "", method: "set_status", category: "", writes: true, undoable: false,
       title: "Moved the sync bug to In progress", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-      chain: task.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"),
+      chain: task.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"), send_call: "",
     });
     const comment = await backend.recordNotification({
       key: "repo:a>b:0", app: "issue-tracker", source_context: "repo", source_label: "", from: "Xabi", title: "Commented on your issue Sync bug",
@@ -725,7 +727,7 @@ describe("FeedView", () => {
       await backend.recordAction({
         app: "issue-tracker", source_context: "repo", source_label: "", method: "set_status", category: "", writes: true, undoable: false,
         title: "Moved the sync bug to In progress", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-        chain: asked.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"),
+        chain: asked.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"), send_call: "",
       });
       await backend.recordNotification({
         key: "repo:a>b:0", app: "issue-tracker", source_context: "repo", source_label: "", from: "Xabi Ortiz", title: "Commented on your issue Sync bug",
@@ -790,6 +792,31 @@ describe("FeedView", () => {
       fireEvent.click(within(linked2).getByRole("button", { name: "Take Sync bug off the task" }));
     });
     await waitFor(() => expect(within(linked2).queryByRole("button", { name: /Sync bug/ })).not.toBeInTheDocument());
+  });
+
+  it("names each chat a task touched by the chat itself, never just \"Chat\" twice", async () => {
+    // The task that showed four chips all reading "Chat": each was a different context.
+    const backend = new DemoBackend(false, 0);
+    const names: Record<string, string> = { "ctx-dm": "DM with Ronit", "ctx-launch": "#launch" };
+    render(<Harness backend={backend} nameLink={async (l) => names[l.context] ?? ""} />);
+    const asked = await act(async () => backend.say("", "Send a message to Ronit"));
+    const blankAsk = { kind: "", prompt: "", options: [], draft: "" };
+    await act(async () => {
+      for (const ctx of ["ctx-dm", "ctx-launch", "ctx-other"]) {
+        await backend.recordAction({
+          app: "chat", source_context: ctx, source_label: "", method: "send_message", category: "", writes: true, undoable: false,
+          title: "Sent a message", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
+          chain: asked.chain, ask: blankAsk, grant: "", send_call: "", subject: subjectKey("chat", ctx, ""),
+        });
+      }
+    });
+    const tasks = await screen.findByRole("region", { name: "Your tasks" });
+    const post = await within(tasks).findByRole("article", { name: "Send a message to Ronit" });
+    const linked = await within(post).findByRole("group", { name: "Linked" });
+    expect(await within(linked).findByRole("button", { name: "Take DM with Ronit off the task" })).toBeInTheDocument();
+    expect(await within(linked).findByRole("button", { name: "Take #launch off the task" })).toBeInTheDocument();
+    // One the chat could not name: as before, the app's name.
+    expect(within(linked).getByRole("button", { name: "Take Chat off the task" })).toBeInTheDocument();
   });
 
   it("gives a task started from a chat its own post, with a link back to the chat", async () => {

@@ -35,7 +35,7 @@ interface SideSelectorProps {
 
 const HorizontalSeparatorLine = styled.div<{ $isMobile: boolean }>`
   height: 1px;
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: color-mix(in srgb, var(--glass-ink) 6%, transparent);
   margin: 0.5rem 0.75rem;
   @media (max-width: 1024px) {
     width: calc(100% - 1.5rem);
@@ -44,15 +44,21 @@ const HorizontalSeparatorLine = styled.div<{ $isMobile: boolean }>`
 `;
 
 const SideMenu = styled.div<{ $isCollapsed: boolean }>`
-  background-color: #0e0e10;
+  background-color: var(--glass-surface);
+  /* No backdrop-filter: it would make this the containing block for the
+     position: fixed modals rendered inside it. Nothing sharp scrolls under
+     the frame, only the soft fields, so the translucent fill reads the same. */
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+  margin: 12px 0 12px 16px;
   padding-top: 0.5rem;
   width: ${(props) => (props.$isCollapsed ? "60px" : "244px")};
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 75px);
+  height: calc(100vh - 109px);
   overflow-y: scroll;
   transition: width 0.3s ease-in-out;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
 
   @media (max-width: 1024px) {
     display: none;
@@ -63,7 +69,8 @@ const SideMenu = styled.div<{ $isCollapsed: boolean }>`
 
 const SideMenuMobile = styled.div<{ $isOpen: boolean }>`
   display: none;
-  background-color: #0e0e10;
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
   padding-top: 0.75rem;
   overflow-y: scroll;
   height: 100vh;
@@ -92,18 +99,18 @@ const SearchChannelsWrapper = styled.div<{ $isCollapsed: boolean; $active: boole
   gap: 6px;
   padding: 0.4rem 0.75rem;
   margin: 0 0.375rem 0.25rem;
-  border-radius: 7px;
+  border-radius: 10px;
   cursor: pointer;
   justify-content: ${(props) => (props.$isCollapsed ? "center" : "flex-start")};
-  color: ${(props) => (props.$active ? "#a5ff11" : "#777583")};
-  fill: ${(props) => (props.$active ? "#a5ff11" : "#777583")};
-  background: ${(props) => (props.$active ? "rgba(165,255,17,0.08)" : "transparent")};
+  color: ${(props) => (props.$active ? "var(--glass-accent)" : "var(--glass-muted)")};
+  fill: ${(props) => (props.$active ? "var(--glass-accent)" : "var(--glass-muted)")};
+  background: ${(props) => (props.$active ? "color-mix(in srgb, var(--glass-accent) 8%, transparent)" : "transparent")};
   transition: all 0.15s ease;
 
   &:hover {
-    background: rgba(165, 255, 17, 0.06);
-    color: rgba(165, 255, 17, 0.85);
-    fill: rgba(165, 255, 17, 0.85);
+    background: color-mix(in srgb, var(--glass-accent) 6%, transparent);
+    color: color-mix(in srgb, var(--glass-accent) 85%, transparent);
+    fill: color-mix(in srgb, var(--glass-accent) 85%, transparent);
   }
 
   .searchTitle {
@@ -126,7 +133,7 @@ const CollapseButton = styled.button`
   color: inherit;
   cursor: pointer;
   padding: 0.2rem;
-  border-radius: 4px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -189,12 +196,12 @@ const MobileHeaderWrapper = styled.div`
   align-items: center;
   padding-left: 1rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 6%, transparent);
   margin-bottom: 0.5rem;
 `;
 
 const SectionLabel = styled.div`
-  color: rgba(165, 255, 17, 0.35);
+  color: color-mix(in srgb, var(--glass-accent) 35%, transparent);
   font-size: 9px;
   font-weight: 700;
   text-align: center;

@@ -166,7 +166,7 @@ fn branch(field: &str, value: &str) -> app::Result<String> {
 
 impl Hyperfeed {
     pub(crate) fn pr_record(&mut self, input: PrInput) -> app::Result<PrView> {
-        self.require_owner()?;
+        self.require_agent()?;
         let repo = input.repo.trim().to_owned();
         check_repo(&repo)?;
         if input.pr == 0 {

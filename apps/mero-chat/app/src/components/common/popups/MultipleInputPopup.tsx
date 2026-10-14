@@ -23,8 +23,8 @@ const Text = styled.div`
   display: flex;
   column-gap: 0.5rem;
   align-items: center;
-  color: #fff;
-  font-family: Helvetica Neue;
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
   font-size: 24px;
   font-style: normal;
   font-weight: 500;
@@ -33,9 +33,9 @@ const Text = styled.div`
 `;
 
 const CloseButton = styled.div`
-  color: #fff;
+  color: var(--glass-ink);
   :hover {
-    color: #5765f2;
+    color: var(--glass-accent);
   }
   position: absolute;
   right: 1rem;
@@ -48,32 +48,32 @@ const UserList = styled.div`
   max-height: 200px;
   min-height: 120px;
   width: 100%;
-  background-color: #1d1d21;
-  border-radius: 4px;
+  background-color: var(--glass-surface-solid);
+  border-radius: 8px;
   padding: 8px;
-  scrollbar-color: black black;
+  scrollbar-color: var(--glass-line-strong) var(--glass-line-strong);
   ::-webkit-scrollbar {
     width: 6px;
   }
   ::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
+    background-color: var(--glass-line-strong);
+    border-radius: 10px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background-color: black;
+    background-color: var(--glass-line-strong);
   }
   * {
-    scrollbar-color: black black;
+    scrollbar-color: var(--glass-line-strong) var(--glass-line-strong);
   }
   html::-webkit-scrollbar {
     width: 12px;
   }
   html::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
+    background-color: var(--glass-line-strong);
+    border-radius: 10px;
   }
   html::-webkit-scrollbar-thumb:hover {
-    background-color: black;
+    background-color: var(--glass-line-strong);
   }
 `;
 
@@ -81,7 +81,7 @@ const UserListItem = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #777583;
+  color: var(--glass-muted);
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
   padding-left: 1rem;
@@ -89,7 +89,7 @@ const UserListItem = styled.div`
   border-radius: 0.5rem;
   cursor: pointer;
   :hover {
-    background-color: #25252a;
+    background-color: var(--glass-sunken);
   }
 `;
 
@@ -106,8 +106,8 @@ const UserText = styled.div`
 `;
 
 const RulesWrapper = styled.div`
-  color: #6c757d;
-  font-family: Helvetica Neue;
+  color: var(--glass-muted);
+  font-family: var(--glass-font);
   font-size: 14px;
   font-style: normal;
   font-weight: 400;
@@ -126,19 +126,19 @@ const SelectedAccountsWrapper = styled.div`
   margin-top: 16px;
   border-top-left-radius: 4px;
   border-top-right-radius: 4px;
-  background-color: #0e0e10;
+  background-color: var(--glass-surface-solid);
   border: none;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
 
   .selectedItem {
-    background-color: #1d1d21;
+    background-color: var(--glass-surface-solid);
     padding: 4px 8px;
-    border-radius: 4px;
+    border-radius: 8px;
     display: flex;
     width: fit-content;
-    color: #fff;
+    color: var(--glass-ink);
   }
   .accountName {
     margin-right: 8px;
@@ -281,18 +281,18 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
                     width="12"
                     height="12"
                     viewBox="0 0 12 12"
-                    fill="#fff"
+                    fill="var(--glass-ink)"
                     xmlns="http://www.w3.org/2000/svg"
                   >
                     <g clipPath="url(#clip0_972_45209)">
                       <path
                         d="M12 6C12 7.5913 11.3679 9.11742 10.2426 10.2426C9.11742 11.3679 7.5913 12 6 12C4.4087 12 2.88258 11.3679 1.75736 10.2426C0.632141 9.11742 0 7.5913 0 6C0 4.4087 0.632141 2.88258 1.75736 1.75736C2.88258 0.632141 4.4087 0 6 0C7.5913 0 9.11742 0.632141 10.2426 1.75736C11.3679 2.88258 12 4.4087 12 6ZM4.0155 3.4845C3.94509 3.41408 3.84958 3.37453 3.75 3.37453C3.65042 3.37453 3.55491 3.41408 3.4845 3.4845C3.41408 3.55491 3.37453 3.65042 3.37453 3.75C3.37453 3.84958 3.41408 3.94509 3.4845 4.0155L5.46975 6L3.4845 7.9845C3.44963 8.01937 3.42198 8.06076 3.40311 8.10631C3.38424 8.15187 3.37453 8.20069 3.37453 8.25C3.37453 8.29931 3.38424 8.34813 3.40311 8.39369C3.42198 8.43924 3.44963 8.48063 3.4845 8.5155C3.55491 8.58591 3.65042 8.62547 3.75 8.62547C3.79931 8.62547 3.84813 8.61576 3.89369 8.59689C3.93924 8.57802 3.98063 8.55037 4.0155 8.5155L6 6.53025L7.9845 8.5155C8.01937 8.55037 8.06076 8.57802 8.10631 8.59689C8.15187 8.61576 8.20069 8.62547 8.25 8.62547C8.29931 8.62547 8.34813 8.61576 8.39369 8.59689C8.43924 8.57802 8.48063 8.55037 8.5155 8.5155C8.55037 8.48063 8.57802 8.43924 8.59689 8.39369C8.61576 8.34813 8.62547 8.29931 8.62547 8.25C8.62547 8.20069 8.61576 8.15187 8.59689 8.10631C8.57802 8.06076 8.55037 8.01937 8.5155 7.9845L6.53025 6L8.5155 4.0155C8.55037 3.98063 8.57802 3.93924 8.59689 3.89369C8.61576 3.84813 8.62547 3.79931 8.62547 3.75C8.62547 3.70069 8.61576 3.65187 8.59689 3.60631C8.57802 3.56076 8.55037 3.51937 8.5155 3.4845C8.48063 3.44963 8.43924 3.42198 8.39369 3.40311C8.34813 3.38424 8.29931 3.37453 8.25 3.37453C8.20069 3.37453 8.15187 3.38424 8.10631 3.40311C8.06076 3.42198 8.01937 3.44963 7.9845 3.4845L6 5.46975L4.0155 3.4845Z"
-                        fill="white"
+                        fill="var(--glass-ink)"
                       />
                     </g>
                     <defs>
                       <clipPath id="clip0_972_45209">
-                        <rect width="12" height="12" fill="white" />
+                        <rect width="12" height="12" fill="var(--glass-ink)" />
                       </clipPath>
                     </defs>
                   </svg>
