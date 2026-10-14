@@ -16,12 +16,12 @@ const List = styled.div`
 `;
 
 const ContextRow = styled.div<{ $expanded: boolean }>`
-  border-radius: 6px;
+  border-radius: 10px;
   transition: background 0.12s ease;
   background: ${({ $expanded }) =>
-    $expanded ? "rgba(255, 255, 255, 0.03)" : "transparent"};
+    $expanded ? "color-mix(in srgb, var(--glass-ink) 3%, transparent)" : "transparent"};
   &:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: color-mix(in srgb, var(--glass-ink) 4%, transparent);
   }
 `;
 
@@ -35,13 +35,13 @@ const ContextHeader = styled.div`
 
 const ContextName = styled.span`
   font-size: 0.82rem;
-  color: #fff;
+  color: var(--glass-ink);
   font-weight: 500;
 `;
 
 const ContextId = styled.span`
   font-size: 0.68rem;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   margin-left: 0.5rem;
 `;
 
@@ -51,21 +51,21 @@ const VisibilityBadge = styled.span<{ $restricted: boolean }>`
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 0.125rem 0.375rem;
-  border-radius: 4px;
+  border-radius: 8px;
   background: ${({ $restricted }) =>
-    $restricted ? "rgba(239, 68, 68, 0.12)" : "rgba(165, 255, 17, 0.1)"};
+    $restricted ? "rgba(239, 68, 68, 0.12)" : "color-mix(in srgb, var(--glass-accent) 10%, transparent)"};
   color: ${({ $restricted }) =>
-    $restricted ? "#f87171" : "#a5ff11"};
+    $restricted ? "var(--glass-bad-ink)" : "var(--glass-accent)"};
 `;
 
 const DetailPanel = styled.div`
   padding: 0.5rem 0.625rem 0.75rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  border-top: 1px solid color-mix(in srgb, var(--glass-ink) 4%, transparent);
 `;
 
 const SectionLabel = styled.div`
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: color-mix(in srgb, var(--glass-ink) 40%, transparent);
   margin-bottom: 0.375rem;
   margin-top: 0.5rem;
 `;
@@ -79,11 +79,11 @@ const ToggleRow = styled.div`
 
 const ToggleButton = styled.button<{ $active: boolean }>`
   background: ${({ $active }) =>
-    $active ? "rgba(165, 255, 17, 0.12)" : "rgba(255, 255, 255, 0.06)"};
+    $active ? "color-mix(in srgb, var(--glass-accent) 12%, transparent)" : "color-mix(in srgb, var(--glass-ink) 6%, transparent)"};
   border: 1px solid
     ${({ $active }) =>
-      $active ? "rgba(165, 255, 17, 0.3)" : "rgba(255, 255, 255, 0.08)"};
-  color: ${({ $active }) => ($active ? "#a5ff11" : "rgba(255, 255, 255, 0.5)")};
+      $active ? "color-mix(in srgb, var(--glass-accent) 30%, transparent)" : "color-mix(in srgb, var(--glass-ink) 8%, transparent)"};
+  color: ${({ $active }) => ($active ? "var(--glass-accent)" : "color-mix(in srgb, var(--glass-ink) 50%, transparent)")};
   font-size: 0.72rem;
   font-weight: 500;
   padding: 0.25rem 0.625rem;
@@ -91,7 +91,7 @@ const ToggleButton = styled.button<{ $active: boolean }>`
   cursor: pointer;
   transition: all 0.15s ease;
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: color-mix(in srgb, var(--glass-ink) 10%, transparent);
   }
   &:disabled {
     opacity: 0.4;
@@ -110,24 +110,24 @@ const AllowlistChip = styled.div`
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 4px;
+  background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
+  border-radius: 8px;
   padding: 0.2rem 0.375rem;
   font-size: 0.68rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: color-mix(in srgb, var(--glass-ink) 60%, transparent);
 `;
 
 const ChipRemove = styled.button`
   background: transparent;
   border: none;
-  color: rgba(239, 68, 68, 0.6);
+  color: var(--glass-bad-ink);
   cursor: pointer;
   font-size: 0.7rem;
   padding: 0;
   line-height: 1;
   &:hover {
-    color: #f87171;
+    color: var(--glass-bad-ink);
   }
 `;
 
@@ -138,30 +138,30 @@ const InputRow = styled.div`
 
 const AllowlistInput = styled.input`
   flex: 1;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
   border-radius: 5px;
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 0.75rem;
   padding: 0.375rem 0.5rem;
   outline: none;
   &:focus {
-    border-color: rgba(165, 255, 17, 0.4);
+    border-color: color-mix(in srgb, var(--glass-accent) 40%, transparent);
   }
 `;
 
 const SmallButton = styled.button`
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.6);
+  background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
+  color: color-mix(in srgb, var(--glass-ink) 60%, transparent);
   font-size: 0.7rem;
   padding: 0.25rem 0.5rem;
   border-radius: 5px;
   cursor: pointer;
   transition: all 0.15s ease;
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    background: color-mix(in srgb, var(--glass-ink) 10%, transparent);
+    color: var(--glass-ink);
   }
   &:disabled {
     opacity: 0.4;
@@ -172,12 +172,12 @@ const SmallButton = styled.button`
 const EmptyState = styled.div`
   text-align: center;
   padding: 1.5rem;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   font-size: 0.82rem;
 `;
 
 const LoadingText = styled.div`
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   font-size: 0.75rem;
   padding: 0.5rem 0;
 `;
@@ -383,7 +383,7 @@ export default function ChannelsTab({
                             <span
                               style={{
                                 fontSize: "0.72rem",
-                                color: "rgba(255,255,255,0.3)",
+                                color: "color-mix(in srgb, var(--glass-ink) 30%, transparent)",
                               }}
                             >
                               No entries

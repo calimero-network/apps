@@ -13,8 +13,8 @@ interface AboutDetailsProps {
 }
 
 const InfoCard = styled.div`
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: color-mix(in srgb, var(--glass-ink) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 0.75rem;
@@ -27,20 +27,20 @@ const InfoRow = styled.div`
   padding: 0.65rem 0.875rem;
 
   & + & {
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid color-mix(in srgb, var(--glass-ink) 6%, transparent);
   }
 `;
 
 const InfoLabel = styled.span`
   font-size: 0.75rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.4);
+  color: color-mix(in srgb, var(--glass-ink) 40%, transparent);
 `;
 
 const InfoValue = styled.span`
   font-size: 0.78rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
+  color: color-mix(in srgb, var(--glass-ink) 85%, transparent);
   max-width: 60%;
   text-align: right;
   overflow: hidden;
@@ -54,7 +54,7 @@ const ActionButton = styled.button<{ $danger?: boolean }>`
   background: rgba(255, 59, 59, 0.07);
   border: 1px solid rgba(255, 59, 59, 0.2);
   border-radius: 10px;
-  color: #ff6b6b;
+  color: var(--glass-bad-ink);
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
@@ -68,7 +68,7 @@ const ActionButton = styled.button<{ $danger?: boolean }>`
   &:hover:not(:disabled) {
     background: rgba(255, 59, 59, 0.12);
     border-color: rgba(255, 59, 59, 0.35);
-    color: #ff8585;
+    color: var(--glass-bad-ink);
   }
 
   &:disabled {

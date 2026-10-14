@@ -17,7 +17,12 @@ import {
 import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
 import { setStoredTeamName, teamLabel } from "../utils/teamName";
 import type { Team } from "../types";
-import styles from "./TeamsPage.module.css";
+import ThemeToggle from "../components/ThemeToggle";
+import { EmptyTeamsArt } from "../components/Artwork";
+import { initialsOf, tileGradient } from "../utils/artwork";
+import { IconLink, IconPlus } from "../components/HomeIcons";
+import { truncateMiddle } from "../utils/format";
+import styles from "./Home.module.css";
 
 export default function TeamsPage() {
   const navigate = useNavigate();
@@ -221,17 +226,71 @@ export default function TeamsPage() {
     navigate("/");
   }
 
+  const createField = (
+    <div className={styles.field}>
+      <input
+        className={styles.input}
+        placeholder="New team name…"
+        aria-label="New team name"
+        value={newName}
+        onChange={(e) => setNewName(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && createTeam()}
+      />
+      <button className={styles.btn} onClick={createTeam} disabled={creating}>
+        Create
+      </button>
+    </div>
+  );
+
+  const joinCard = (
+    <section className={`${styles.panel} ${styles.actionCard}`}>
+      <div className={styles.actionHead}>
+        <span className={`${styles.actionIcon} ${styles.actionIconAlt}`} aria-hidden="true">
+          <IconLink />
+        </span>
+        <span>
+          <span className={styles.actionTitle}>Got an invitation? Join your team!</span>
+          <span className={styles.actionHint}>Paste the link or code a teammate sent you.</span>
+        </span>
+      </div>
+      <div className={styles.field}>
+        <input
+          className={styles.input}
+          placeholder="Paste invitation code…"
+          aria-label="Invitation code"
+          value={joinCode}
+          onChange={(e) => setJoinCode(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && joinTeam()}
+        />
+        <button className={styles.btn} onClick={() => void joinTeam()} disabled={joining || !joinCode.trim()}>
+          {joining ? "Joining…" : "Join"}
+        </button>
+      </div>
+      {joinError && <p className={styles.errorText}>{joinError}</p>}
+    </section>
+  );
+
   return (
     <div className={styles.root}>
       <header className={styles.header}>
-        <span className={styles.logo}><Logo size={24} /> Mero Design</span>
+        <span className={styles.brand}><Logo size={30} /> <span className={styles.brandText}>Mero Design</span></span>
         <div className={styles.headerRight}>
+          <ThemeToggle className={styles.iconBtn} />
           <button className={styles.logoutBtn} onClick={handleLogout}>Logout</button>
         </div>
       </header>
 
       <main className={styles.main}>
-        <h1 className={styles.title}>Your Teams</h1>
+        <div className={styles.hero}>
+          <div>
+            <p className={styles.eyebrow}>Workspace</p>
+            <h1 className={styles.title}>Your Teams</h1>
+            <p className={styles.subtitle}>
+              A team is the people you design with. Its boards live on its members&rsquo; nodes and sync
+              between them directly, with no server keeping a copy.
+            </p>
+          </div>
+        </div>
 
         {/* Following an invite link used to land here with nothing on screen
             for as long as the join took — up to 95s when no member of the
@@ -241,77 +300,95 @@ export default function TeamsPage() {
           noun="team"
           onRetry={invite.retry}
           onDismiss={invite.dismiss}
-          style={{ marginBottom: "1rem" }}
+          style={{ marginBottom: "1.5rem" }}
         />
 
-        <div className={styles.createRow}>
-          <input
-            className={styles.input}
-            placeholder="New team name…"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && createTeam()}
-          />
-          <button className={styles.btn} onClick={createTeam} disabled={creating}>
-            Create
-          </button>
-        </div>
-
         {loading ? (
-          <p className={styles.empty}>Loading…</p>
+          <div className={styles.grid} aria-busy="true" aria-label="Loading teams">
+            {[0, 1, 2].map((i) => <div key={i} className={styles.skeleton} />)}
+          </div>
         ) : teams.length === 0 ? (
-          <p className={styles.empty}>No teams yet. Create one above.</p>
+          <>
+            <section className={`${styles.panel} ${styles.empty}`}>
+              <EmptyTeamsArt />
+              <h2 className={styles.emptyTitle}>Start your first team</h2>
+              <p className={styles.emptyText}>
+                No teams yet. Name one and create it, then invite people from its page.
+              </p>
+              <div className={styles.emptyField}>{createField}</div>
+            </section>
+            {joinCard}
+          </>
         ) : (
-          <div className={styles.grid}>
-            {teams.map((t) => (
-              <div key={t.groupId} className={styles.cardWrap} ref={menuOpenId === t.groupId ? menuRef : null}>
-                <button
-                  className={styles.card}
-                  onClick={() => navigate(`/teams/${t.groupId}/projects`)}
-                >
-                  <span className={styles.cardName}>{teamLabel(t.groupId, t.name)}</span>
-                  <span className={styles.cardSub}>Team</span>
-                </button>
-                <button
-                  className={styles.menuBtn}
-                  onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === t.groupId ? null : t.groupId); }}
-                  title="More options"
-                >⋯</button>
-                {menuOpenId === t.groupId && (
-                  <div className={styles.dropdown}>
-                    <button className={styles.dropdownItem} onClick={() => { setMenuOpenId(null); setSettingsTeam(t); }}>
-                      Settings
+          <>
+            <div className={styles.actions}>
+              <section className={`${styles.panel} ${styles.actionCard}`}>
+                <div className={styles.actionHead}>
+                  <span className={styles.actionIcon} aria-hidden="true"><IconPlus /></span>
+                  <span>
+                    <span className={styles.actionTitle}>New team</span>
+                    <span className={styles.actionHint}>Name it, then invite people from inside.</span>
+                  </span>
+                </div>
+                {createField}
+              </section>
+              {joinCard}
+            </div>
+
+            <div className={styles.sectionHead}>
+              <h2 className={styles.sectionTitle}>Teams</h2>
+              <span className={styles.count}>{teams.length}</span>
+            </div>
+            <div className={styles.grid}>
+              {teams.map((t) => {
+                const label = teamLabel(t.groupId, t.name);
+                const open = menuOpenId === t.groupId;
+                return (
+                  <div
+                    key={t.groupId}
+                    className={`${styles.cardWrap} ${open ? styles.cardWrapOpen : ""}`}
+                    ref={open ? menuRef : null}
+                  >
+                    <button
+                      className={styles.card}
+                      onClick={() => navigate(`/teams/${t.groupId}/projects`)}
+                    >
+                      <span className={styles.teamBanner} style={{ background: tileGradient(t.groupId) }}>
+                        <span className={styles.avatar} aria-hidden="true">{initialsOf(label)}</span>
+                      </span>
+                      <span className={styles.cardBody}>
+                        <span className={styles.cardName}>{label}</span>
+                        <span className={styles.cardMeta}>
+                          Team <span className={styles.metaDot} aria-hidden="true" />
+                          <span className={styles.metaId}>{truncateMiddle(t.groupId, 6, 4)}</span>
+                        </span>
+                      </span>
                     </button>
-                    {/* Deleting a namespace is a node's own operation; an
-                        account's relay has no form of it. */}
-                    {!isDelegated && (
-                      <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteTeam(t.groupId)}>
-                        Delete
-                      </button>
+                    <button
+                      className={styles.menuBtn}
+                      onClick={(e) => { e.stopPropagation(); setMenuOpenId(open ? null : t.groupId); }}
+                      title="More options"
+                    >⋯</button>
+                    {open && (
+                      <div className={styles.dropdown}>
+                        <button className={styles.dropdownItem} onClick={() => { setMenuOpenId(null); setSettingsTeam(t); }}>
+                          Settings
+                        </button>
+                        {/* Deleting a namespace is a node's own operation; an
+                            account's relay has no form of it. */}
+                        {!isDelegated && (
+                          <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteTeam(t.groupId)}>
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
-
-        <div className={styles.joinSection}>
-          <p className={styles.joinLabel}>Got an invitation? Join your team!</p>
-          <div className={styles.joinRow}>
-            <input
-              className={styles.input}
-              placeholder="Paste invitation code…"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && joinTeam()}
-            />
-            <button className={styles.btn} onClick={() => void joinTeam()} disabled={joining || !joinCode.trim()}>
-              {joining ? "Joining…" : "Join"}
-            </button>
-          </div>
-          {joinError && <p className={styles.joinError}>{joinError}</p>}
-        </div>
       </main>
 
       {settingsTeam && (

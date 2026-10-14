@@ -1,10 +1,10 @@
 import styled from "styled-components";
 
 const Container = styled.div`
-  color: #777583;
+  color: var(--glass-muted);
   cursor: pointer;
   &:hover {
-    color: #fff;
+    color: var(--glass-ink);
   }
 `;
 

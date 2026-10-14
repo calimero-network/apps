@@ -1,0 +1,93 @@
+[
+  {
+    "id": "read",
+    "label": "See documents and signatures",
+    "description": "Documents, who must sign them, and the signatures on file.",
+    "category": "",
+    "writes": false,
+    "methods": [
+      "get_context_details",
+      "get_context_id",
+      "get_document_signatures",
+      "get_identity_mapping",
+      "get_shared_identity",
+      "get_user_permission",
+      "has_consented",
+      "is_default_private_context",
+      "list_documents",
+      "list_joined_contexts",
+      "list_participants",
+      "list_signatures",
+      "resolve_private_identity",
+      "search_document_by_embedding",
+      "whoami"
+    ]
+  },
+  {
+    "id": "upload",
+    "label": "Upload documents",
+    "description": "Add a document to be signed.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "upload_document"
+    ]
+  },
+  {
+    "id": "signature",
+    "label": "Save your signature",
+    "description": "Store a signature image to sign with.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "create_signature"
+    ]
+  },
+  {
+    "id": "sign",
+    "label": "Sign documents",
+    "description": "Consent to sign, sign, and confirm your signature on a document.",
+    "category": "sign",
+    "writes": true,
+    "methods": [
+      "set_consent",
+      "sign_document",
+      "mark_participant_signed"
+    ]
+  },
+  {
+    "id": "participants",
+    "label": "Add and remove signers",
+    "description": "Who may sign a shared document, and their permission.",
+    "category": "invite",
+    "writes": true,
+    "methods": [
+      "add_participant",
+      "remove_participant",
+      "set_participant_permission"
+    ]
+  },
+  {
+    "id": "spaces",
+    "label": "Join and leave shared spaces",
+    "description": "Join a space you were invited to, or leave one.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "join_shared_context",
+      "register_self_as_participant",
+      "leave_shared_context"
+    ]
+  },
+  {
+    "id": "delete",
+    "label": "Delete documents and signatures",
+    "description": "Removes them for good.",
+    "category": "delete",
+    "writes": true,
+    "methods": [
+      "delete_document",
+      "delete_signature"
+    ]
+  }
+]

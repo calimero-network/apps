@@ -13,8 +13,8 @@ const AutocompleteWrapper = styled.div`
   position: absolute;
   z-index: 60;
   margin-bottom: 4px;
-  background-color: #1d1d21;
-  border-radius: 8px;
+  background-color: var(--glass-surface-solid);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -23,7 +23,7 @@ const AutocompleteWrapper = styled.div`
   padding-bottom: 6px;
   padding-left: 12px;
   padding-right: 12px;
-  color: #fff;
+  color: var(--glass-ink);
   overflow-y: scroll;
 
   .listItem {
@@ -31,12 +31,12 @@ const AutocompleteWrapper = styled.div`
     align-items: center;
     padding: 3px;
     cursor: pointer;
-    border-radius: 8px;
+    border-radius: 12px;
     width: 100%;
   }
   .accountIdText {
-    color: #686672;
-    font-family: Helvetica Neue;
+    color: var(--glass-muted);
+    font-family: var(--glass-font);
     font-size: 12px;
     font-style: normal;
     font-weight: 400;
@@ -46,8 +46,8 @@ const AutocompleteWrapper = styled.div`
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #fff;
-    font-family: Helvetica Neue;
+    color: var(--glass-ink);
+    font-family: var(--glass-font);
     font-size: 12px;
     font-style: normal;
     font-weight: 400;
