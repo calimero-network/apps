@@ -13,11 +13,11 @@
     <meta name="google" content="notranslate">
     
     <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#f6f7fb" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Calimero Chat" />
-    <meta name="msapplication-TileColor" content="#000000" />
+    <meta name="msapplication-TileColor" content="#f6f7fb" />
     <meta name="msapplication-tap-highlight" content="no" />
     
     <!-- PWA Manifest -->
@@ -32,6 +32,20 @@
     <!-- Microsoft Tiles -->
     <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
     <meta name="msapplication-config" content="/browserconfig.xml" />
+
+    <!-- Theme before first paint: light unless the person picked dark
+         (src/theme/theme.ts owns the key and does the same at runtime). -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem('mero-chat:theme') === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            var m = document.querySelector('meta[name="theme-color"]');
+            if (m) m.setAttribute('content', '#0b0e18');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

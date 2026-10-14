@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useApplicationContexts, useMero } from "@calimero-network/mero-react";
 import { openFeed, useNewFeed } from "./newFeed";
 import { HyperfeedClient } from "./generated/HyperfeedClient";
+import { refusalMessage } from "./refused";
 import {
   confirmText,
   deleteFeed,
@@ -163,7 +164,7 @@ function useDeleteFeed(onDeleted: () => void) {
         await deleteFeed(admin as unknown as FeedAdmin, id);
         onDeleted();
       } catch (e) {
-        setFailed(e instanceof Error ? e.message : String(e));
+        setFailed(refusalMessage(e, "delete a feed"));
       } finally {
         setBusy(null);
       }

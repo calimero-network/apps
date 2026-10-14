@@ -45,10 +45,13 @@
 .popup {
   position: absolute;
   pointer-events: all;
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  /* A popover over the board: solid, never frosted. */
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow-float);
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
   width: 220px;
   z-index: 120;
   padding: 10px 12px;
@@ -66,7 +69,7 @@
 .popupAuthor {
   font-size: 11px;
   font-weight: 600;
-  color: #555;
+  color: var(--glass-ink-2);
   font-family: monospace;
 }
 
@@ -74,15 +77,15 @@
   background: none;
   border: none;
   font-size: 12px;
-  color: #aaa;
+  color: var(--glass-muted);
   cursor: pointer;
   padding: 0 2px;
 }
-.popupClose:hover { color: #333; }
+.popupClose:hover { color: var(--glass-ink); }
 
 .popupContent {
   font-size: 12px;
-  color: #222;
+  color: var(--glass-ink);
   line-height: 1.4;
   white-space: pre-wrap;
 }
@@ -93,20 +96,20 @@
   gap: 5px;
   align-items: flex-start;
   padding: 5px 0;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--glass-line);
 }
 
 .replyAuthor {
   font-size: 10px;
   font-weight: 600;
-  color: #888;
+  color: var(--glass-muted);
   font-family: monospace;
   flex-shrink: 0;
 }
 
 .replyContent {
   font-size: 11px;
-  color: #333;
+  color: var(--glass-ink);
   flex: 1;
   line-height: 1.4;
 }
@@ -116,7 +119,7 @@
   background: none;
   border: none;
   font-size: 14px;
-  color: #ccc;
+  color: var(--glass-muted);
   cursor: pointer;
   padding: 0;
   line-height: 1;
@@ -131,35 +134,37 @@
 .replyInput {
   flex: 1;
   padding: 4px 8px;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 8px;
+  background: var(--glass-surface-solid);
+  color: var(--glass-ink);
   font-size: 11px;
   outline: none;
 }
-.replyInput:focus { border-color: #2563eb; }
+.replyInput:focus { border-color: var(--glass-accent-solid); }
 
 .replyBtn {
   padding: 4px 8px;
-  background: #111;
-  color: #fff;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
   border: none;
-  border-radius: 4px;
+  border-radius: 999px;
   font-size: 12px;
   cursor: pointer;
 }
-.replyBtn:hover { background: #333; }
+.replyBtn:hover { background: var(--glass-ink-2); }
 
 .deleteCommentBtn {
   width: 100%;
   padding: 5px;
   border: 1px solid #fad7d4;
-  border-radius: 4px;
+  border-radius: 999px;
   background: none;
   font-size: 11px;
   color: #c0392b;
   cursor: pointer;
 }
-.deleteCommentBtn:hover { background: #fdf3f2; }
+.deleteCommentBtn:hover { background: var(--glass-bad-bg); }
 
 /* New comment input */
 .addTextarea {
@@ -167,14 +172,16 @@
   min-height: 60px;
   resize: none;
   padding: 6px 8px;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 8px;
+  background: var(--glass-surface-solid);
+  color: var(--glass-ink);
   font-size: 12px;
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
 }
-.addTextarea:focus { border-color: #2563eb; }
+.addTextarea:focus { border-color: var(--glass-accent-solid); }
 
 .addBtns {
   display: flex;
@@ -185,25 +192,25 @@
 .addCancelBtn {
   padding: 5px 10px;
   background: none;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 999px;
   font-size: 11px;
   cursor: pointer;
-  color: #555;
+  color: var(--glass-ink-2);
 }
-.addCancelBtn:hover { background: #f5f5f5; }
+.addCancelBtn:hover { background: var(--glass-sunken); }
 
 .addSubmitBtn {
   padding: 5px 12px;
-  background: #111;
-  color: #fff;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
   border: none;
-  border-radius: 4px;
+  border-radius: 999px;
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
 }
-.addSubmitBtn:hover:not(:disabled) { background: #2563eb; }
+.addSubmitBtn:hover:not(:disabled) { background: var(--glass-ink-2); }
 .addSubmitBtn:disabled { opacity: 0.4; }
 
 /* Add hint */
@@ -212,11 +219,13 @@
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0,0,0,0.7);
-  color: #fff;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
   font-size: 12px;
+  font-weight: 600;
   padding: 6px 14px;
-  border-radius: 20px;
+  border-radius: 999px;
+  box-shadow: var(--glass-shadow-float);
   pointer-events: none;
   white-space: nowrap;
 }

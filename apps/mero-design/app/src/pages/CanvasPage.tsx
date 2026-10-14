@@ -726,6 +726,23 @@ export default function CanvasPage() {
             onCancelAdd={() => setAddingComment(false)}
             readOnly={!canEdit}
           />
+          {elements.length === 0 && (
+            // A blank board says what to do next. It never takes a pointer:
+            // the first drag has to land on the canvas under it.
+            <div className={styles.emptyHint} aria-hidden="true" data-testid="board-empty-hint">
+              <span className={styles.emptyHintIcons}>
+                <svg viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="5" width="18" height="14" rx="3" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg>
+                <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg>
+                <svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 6h14M12 6v13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+              </span>
+              <strong className={styles.emptyHintTitle}>{canEdit ? "A blank board" : "Nothing on this board yet"}</strong>
+              <span className={styles.emptyHintText}>
+                {canEdit
+                  ? "Pick a shape from the toolbar and drag on the board to draw it."
+                  : "You can look around; editors will fill it in."}
+              </span>
+            </div>
+          )}
         </div>
         <PropertiesPanel contextId={projectId ?? ""} readOnly={!canEdit} />
       </div>

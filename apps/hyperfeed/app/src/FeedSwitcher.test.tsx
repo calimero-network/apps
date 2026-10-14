@@ -131,6 +131,32 @@ describe("Switching feeds", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
+  it("says what to do when the node refuses this session the delete, not a bare 403", async () => {
+    openFeed("feed-aaaa-1111");
+    deleted.length = 0;
+    const deleteContext = admin.deleteContext;
+    admin.deleteContext = async () => {
+      throw Object.assign(new Error("HTTP 403 Forbidden"), { status: 403 });
+    };
+    try {
+      render(<Harness />);
+      fireEvent.click(screen.getByTitle("Switch feed"));
+      await waitFor(() => expect(screen.getByText("Unnamed feed")).toBeInTheDocument());
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete feed Unnamed feed · feed-bbb" }));
+      await act(async () => {
+        fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+      });
+
+      expect(
+        screen.getByText("This session may not delete a feed. Open Hyperfeed from Calimero Desktop, which lets it."),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("HTTP 403 Forbidden")).toBeNull();
+      expect(deleted).toEqual([]);
+    } finally {
+      admin.deleteContext = deleteContext;
+    }
+  });
+
   it("names a new feed as it is made, on its namespace and its context", async () => {
     openFeed("feed-aaaa-1111");
     render(<Harness />);

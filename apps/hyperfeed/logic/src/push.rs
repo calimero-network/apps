@@ -131,7 +131,7 @@ impl Hyperfeed {
         public_key: String,
         by: String,
     ) -> app::Result<PushKeyView> {
-        self.require_owner()?;
+        self.require_agent_as(&by)?;
         base64url("public_key", &public_key)?;
         Self::check_len("by", &by, MAX_KEY, true)?;
         let now = now_ms();
