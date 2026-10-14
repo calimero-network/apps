@@ -84,6 +84,12 @@
   --shadow-md: var(--glass-shadow-float);
   --shadow: var(--shadow-md);
   --shadow-button: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
+  /* A solid content card resting on the glass ground, and its hover. */
+  --shadow-card: 0 1px 2px rgba(14, 18, 34, 0.04), 0 10px 28px -18px rgba(40, 50, 110, 0.35),
+    0 0 0 1px var(--glass-line);
+  --shadow-lift: 0 2px 4px rgba(14, 18, 34, 0.05), 0 22px 44px -24px rgba(40, 50, 110, 0.45),
+    0 0 0 1px var(--glass-line-strong);
+  --radius-card: 18px;
   --ring: 0 0 0 3px color-mix(in srgb, var(--glass-accent-solid) 35%, transparent);
   --overlay: rgba(14, 18, 34, 0.32);
 
@@ -129,6 +135,8 @@
   --shadow-xs: inset 0 1px 0 rgba(255, 255, 255, 0.04), var(--glass-shadow);
   --shadow-sm: inset 0 1px 0 rgba(255, 255, 255, 0.04), var(--glass-shadow);
   --shadow-button: 0 10px 24px -12px rgba(0, 0, 0, 0.8);
+  --shadow-card: 0 14px 32px -22px rgba(0, 0, 0, 0.85), 0 0 0 1px var(--glass-line);
+  --shadow-lift: 0 22px 44px -24px rgba(0, 0, 0, 0.9), 0 0 0 1px var(--glass-line-strong);
   --overlay: rgba(0, 0, 0, 0.55);
 }
 

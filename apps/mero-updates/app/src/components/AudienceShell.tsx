@@ -7,23 +7,27 @@ import {
   useRef,
   useState,
 } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useSubscription } from "@calimero-network/mero-react";
 
 import SessionMenu from "./SessionMenu";
-import AppHeader from "./AppHeader";
+import ThemeToggle from "./ThemeToggle";
+import { BrandMark } from "./AppHeader";
 import {
   BarChartIcon,
   ChevronLeftIcon,
+  ChevronRightIcon,
   HandIcon,
   HashIcon,
   HelpCircleIcon,
   InboxIcon,
   LayersIcon,
+  MenuIcon,
   PenSquareIcon,
   SettingsIcon,
   UserPlusIcon,
   UsersIcon,
+  XIcon,
 } from "./icons";
 import { useStreamReconnect } from "../hooks/useStreamReconnect";
 import type {
@@ -129,6 +133,18 @@ function ShellBody() {
   const isTeam = !!me.data?.is_team;
   const o = overview.data;
 
+  // The phone nav drawer. It is the sidebar itself, slid in over the page, so
+  // there is one nav and one identity footer, never a copy to keep in step.
+  const [navOpen, setNavOpen] = useState(false);
+  const location = useLocation();
+  useEffect(() => setNavOpen(false), [location.pathname]);
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setNavOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navOpen]);
+
   const toAudiences = () => {
     const ns = getActiveNamespaceId();
     navigate(ns ? `/companies/${ns}` : "/companies");
@@ -137,82 +153,117 @@ function ShellBody() {
 
   return (
     <AudienceDataContext.Provider value={data}>
-      <div className="shellRoot">
-        <AppHeader
-          crumbs={[
-            { label: company || "Company", onClick: toAudiences, icon: <LayersIcon size={14} /> },
-            ...(audienceName ? [{ label: audienceName, icon: <HashIcon size={14} /> }] : []),
-          ]}
-          right={
-            <>
-              {roleLabel && (
-                <span className="roleTag" data-team={isTeam}>
-                  {roleLabel}
-                </span>
-              )}
-              <SessionMenu />
-            </>
-          }
-        />
-
-        <div className="app">
-          <aside className="sidebar">
-            <button className="back sideBack" onClick={toAudiences}>
-              <ChevronLeftIcon size={14} />
-              Audiences
+      <div className="shell" data-nav-open={navOpen}>
+        {/* ⚠️ No backdrop-filter, filter or transform on .shell or .shellMain:
+            any of them would become the containing block for the fixed
+            drawer, scrim and menus below and trap them inside it. */}
+        <aside className="sidebar" id="audience-nav" data-testid="mobile-nav" aria-label="Audience">
+          <div className="sideBrand">
+            <BrandMark />
+            <span className="brandName">Mero Updates</span>
+            <button
+              type="button"
+              className="iconBtn sideClose"
+              aria-label="Close menu"
+              onClick={() => setNavOpen(false)}
+            >
+              <XIcon size={18} />
             </button>
-            <div className="appTitle">
-              <span className="appTile" aria-hidden>
-                <HashIcon size={16} />
-              </span>
-              <span className="appTitleText">
-                <span className="appCompany" data-testid="company-name">
-                  {company || "Your company"}
-                </span>
-                {audienceName && <span className="appAudience">{audienceName}</span>}
-              </span>
-            </div>
+          </div>
 
-            <nav className="appNav" aria-label="Sections">
-              <NavLink to="/a" end className="navItem">
-                <InboxIcon size={16} />
-                Updates
-                {!!o?.unread_updates && <span className="badge">{o.unread_updates}</span>}
+          <button className="back sideBack" onClick={toAudiences}>
+            <ChevronLeftIcon size={14} />
+            Audiences
+          </button>
+          <div className="appTitle">
+            <span className="appTile" aria-hidden>
+              <HashIcon size={16} />
+            </span>
+            <span className="appTitleText">
+              <span className="appCompany" data-testid="company-name">
+                {company || "Your company"}
+              </span>
+              {audienceName && <span className="appAudience">{audienceName}</span>}
+            </span>
+          </div>
+
+          <nav className="appNav" aria-label="Sections">
+            <NavLink to="/a" end className="navItem">
+              <InboxIcon size={17} />
+              Updates
+              {!!o?.unread_updates && <span className="badge">{o.unread_updates}</span>}
+            </NavLink>
+            {isTeam && (
+              <NavLink to="/a/compose" className="navItem">
+                <PenSquareIcon size={17} />
+                Compose
               </NavLink>
-              {isTeam && (
-                <NavLink to="/a/compose" className="navItem">
-                  <PenSquareIcon size={16} />
-                  Compose
-                </NavLink>
-              )}
-              <NavLink to="/a/asks" className="navItem">
-                <HandIcon size={16} />
-                Asks
-                {!!o?.open_asks && <span className="badge soft">{o.open_asks}</span>}
+            )}
+            <NavLink to="/a/asks" className="navItem">
+              <HandIcon size={17} />
+              Asks
+              {!!o?.open_asks && <span className="badge soft">{o.open_asks}</span>}
+            </NavLink>
+            <NavLink to="/a/metrics" className="navItem">
+              <BarChartIcon size={17} />
+              KPIs
+            </NavLink>
+            <NavLink to="/a/questions" className="navItem">
+              <HelpCircleIcon size={17} />
+              Q&amp;A
+              {!!o?.open_questions && isTeam && <span className="badge">{o.open_questions}</span>}
+            </NavLink>
+            <NavLink to="/a/people" className="navItem">
+              <UsersIcon size={17} />
+              People
+            </NavLink>
+            {isTeam && (
+              <NavLink to="/a/settings" className="navItem">
+                <SettingsIcon size={17} />
+                Settings
               </NavLink>
-              <NavLink to="/a/metrics" className="navItem">
-                <BarChartIcon size={16} />
-                KPIs
-              </NavLink>
-              <NavLink to="/a/questions" className="navItem">
-                <HelpCircleIcon size={16} />
-                Q&amp;A
-                {!!o?.open_questions && isTeam && (
-                  <span className="badge">{o.open_questions}</span>
-                )}
-              </NavLink>
-              <NavLink to="/a/people" className="navItem">
-                <UsersIcon size={16} />
-                People
-              </NavLink>
-              {isTeam && (
-                <NavLink to="/a/settings" className="navItem">
-                  <SettingsIcon size={16} />
-                  Settings
-                </NavLink>
+            )}
+          </nav>
+
+          <div className="grow" />
+          <SessionMenu me={me.data} roleLabel={roleLabel} />
+        </aside>
+        {navOpen && <div className="navScrim" aria-hidden onClick={() => setNavOpen(false)} />}
+
+        <div className="shellMain">
+          <header className="topBar">
+            <button
+              type="button"
+              className="iconBtn menuBtn"
+              aria-label="Open menu"
+              aria-expanded={navOpen}
+              aria-controls="audience-nav"
+              onClick={() => setNavOpen(true)}
+              data-testid="mobile-nav-btn"
+            >
+              <MenuIcon size={20} />
+            </button>
+            <span className="topBrand" aria-hidden>
+              <BrandMark />
+            </span>
+            <nav className="crumbs" aria-label="Breadcrumb">
+              <button type="button" className="crumb" onClick={toAudiences}>
+                <LayersIcon size={14} />
+                <span className="crumbLabel">{company || "Company"}</span>
+              </button>
+              {audienceName && (
+                <>
+                  <ChevronRightIcon size={14} className="crumbSep" />
+                  <span className="crumb current" aria-current="page">
+                    <HashIcon size={14} />
+                    <span className="crumbLabel">{audienceName}</span>
+                  </span>
+                </>
               )}
             </nav>
-          </aside>
+            <div className="grow" />
+            <ThemeToggle />
+          </header>
 
           <div className="appBody">
             {me.error && <div className="error">{me.error}</div>}

@@ -5,13 +5,14 @@
  * choice and only ever used as a tint/border, never as a text ink.
  */
 
-/* ── App header (shared by every signed-in screen) ───────────────────────── */
-/* The floating glass header the fleet shares. */
+/* ── Picker top bar (companies, audiences) ─────────────────────────────── */
+/* The floating glass header the fleet shares. Inside an audience the shell
+   draws a sidebar and its own .topBar instead (below). */
 .appHeader {
   position: sticky;
   top: 12px;
   z-index: 30;
-  height: 60px;
+  height: 64px;
   margin: 12px 16px 0;
   border: 1px solid var(--edge);
   border-radius: 20px;
@@ -25,13 +26,13 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 12px 0 20px;
+  padding: 0 12px 0 16px;
   min-width: 0;
 }
 .appHeaderRight {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex: none;
 }
 .brand {
@@ -41,48 +42,52 @@
   flex: none;
 }
 .brandMark {
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--glass-tint);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--glass-tint) 82%, #ffffff), var(--glass-tint));
   color: #ffffff;
   border: 0;
-  box-shadow: 0 8px 18px -10px var(--glass-tint);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 18px -10px var(--glass-tint);
 }
 .brandName {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 19px;
-  letter-spacing: -0.035em;
+  font-size: 17px;
+  letter-spacing: -0.03em;
   color: var(--text);
+  white-space: nowrap;
 }
 .crumbs {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
   overflow: hidden;
 }
 .crumbSep {
   flex: none;
-  color: var(--border-strong);
+  color: var(--text-faint);
+  opacity: 0.6;
 }
 .crumb {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
   max-width: 260px;
-  height: 30px;
-  padding: 0 10px;
+  height: 34px;
+  padding: 0 12px;
   border-radius: 999px;
   border: 0;
   background: transparent;
   font: inherit;
   font-size: 14px;
+  font-weight: 500;
   color: var(--text-dim);
   white-space: nowrap;
 }
@@ -103,75 +108,101 @@ button.crumb:hover {
 }
 .crumb.current {
   color: var(--text);
-  font-weight: 500;
+  font-weight: 600;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
-.roleTag {
+/* Log out as a labelled pill (picker top bars, Settings → Your account). */
+.logoutPill {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 9px;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px;
   border-radius: 999px;
-  font-size: 12px;
-  font-weight: 500;
-  background: var(--bg-subtle);
-  color: var(--text-dim);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
 }
-.roleTag[data-team="true"] {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-  border-color: color-mix(in srgb, var(--accent-ink) 20%, transparent);
+.logoutPill:hover {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 40%, var(--border));
+  background: var(--danger-soft);
+}
+.themeToggle {
+  width: 38px;
+  height: 38px;
+  color: var(--text-dim);
 }
 
-/* ── In-audience layout: sidebar + content ───────────────────────────────── */
-.shellRoot {
-  min-height: 100vh;
-}
-.app {
+/* ── In-audience shell: frosted sidebar + top bar + content ─────────────── */
+/* ⚠️ Never put backdrop-filter, filter or transform on .shell or .shellMain:
+   they would become the containing block of the fixed phone drawer and its
+   scrim, and trap them inside the column. */
+.shell {
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
-  gap: 40px;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 32px;
+  grid-template-columns: 268px minmax(0, 1fr);
+  gap: 24px;
+  min-height: 100vh;
+  padding: 12px 24px 0 12px;
 }
 .sidebar {
   position: sticky;
-  /* Below the floating header: 12px above it, 60px tall. */
-  top: 72px;
+  top: 12px;
   align-self: start;
-  height: calc(100vh - 72px);
+  height: calc(100vh - 24px);
   overflow-y: auto;
-  padding: 20px 0 24px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  padding: 16px 14px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 24px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
+}
+.sideBrand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px 14px;
+}
+.sideClose {
+  display: none;
+  margin-left: auto;
 }
 .sideBack {
   align-self: flex-start;
-  margin: 0 0 6px -4px;
+  margin: 0 0 4px 0;
+  padding: 4px 10px 4px 6px;
   color: var(--text-faint);
+  font-size: 12.5px;
 }
 .appTitle {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
-  margin-bottom: 10px;
-  border: 1px solid var(--edge);
-  border-radius: var(--radius-lg);
-  background: var(--surface-glass);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  box-shadow: var(--shadow-xs);
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 14px;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
   min-width: 0;
 }
 .appTile {
   flex: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -184,15 +215,16 @@ button.crumb:hover {
   min-width: 0;
 }
 .appCompany {
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: 700;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .appAudience {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -206,15 +238,15 @@ button.crumb:hover {
 .navItem {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 36px;
+  gap: 12px;
+  height: 42px;
   padding: 0 12px;
-  border-radius: 12px;
-  font-size: 14px;
+  border-radius: 14px;
+  font-size: 14.5px;
   font-weight: 500;
   color: var(--text-dim);
   white-space: nowrap;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 .navItem svg {
   flex: none;
@@ -228,7 +260,8 @@ button.crumb:hover {
 .navItem.active {
   background: var(--surface);
   color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--border), var(--shadow-xs);
+  font-weight: 600;
+  box-shadow: var(--shadow-card);
 }
 .navItem.active svg {
   color: var(--accent-ink);
@@ -237,14 +270,14 @@ button.crumb:hover {
   margin-left: auto;
 }
 .badge {
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
   border-radius: 999px;
   background: var(--accent);
   color: var(--accent-text);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
@@ -255,44 +288,86 @@ button.crumb:hover {
   color: var(--text-dim);
   box-shadow: inset 0 0 0 1px var(--border);
 }
-.appBody {
+.navScrim {
+  display: none;
+}
+
+.shellMain {
   min-width: 0;
-  padding: 28px 0 120px;
+  display: flex;
+  flex-direction: column;
+}
+.topBar {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 64px;
+  padding: 0 12px 0 14px;
+  border: 1px solid var(--edge);
+  border-radius: 20px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
+}
+.menuBtn,
+.topBrand {
+  display: none;
+}
+.menuBtn {
+  width: 40px;
+  height: 40px;
+  color: var(--text);
+}
+.appBody {
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 40px 8px 120px;
 }
 .appMain {
-  max-width: 880px;
   min-height: 50vh;
 }
 
 /* ── Page structure ──────────────────────────────────────────────────────── */
 .pageHead {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 .pageTitle {
-  margin: 0 0 4px;
+  margin: 0 0 6px;
   font-family: var(--font-display);
-  font-size: 30px;
-  line-height: 1.15;
+  font-size: 36px;
+  line-height: 1.1;
   font-weight: 800;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.04em;
 }
 .pageSub {
   margin: 0;
   max-width: 64ch;
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.pageHead button.primary {
+  height: 44px;
+  padding: 0 20px;
+  font-size: 14.5px;
 }
 .sectionTitle {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 32px 0 12px;
-  font-size: 16px;
-  font-weight: 600;
+  margin: 36px 0 14px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   color: var(--text);
 }
 .sectionTitle svg {
@@ -349,9 +424,9 @@ button.crumb:hover {
 
 .iconTile {
   flex: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -363,8 +438,11 @@ button.crumb:hover {
   color: var(--accent-ink);
 }
 .iconTile.lg {
-  width: 40px;
-  height: 40px;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 /* ── shared bits ─────────────────────────────────────────────────────────── */
@@ -487,14 +565,17 @@ button.crumb:hover {
 .tabs {
   display: inline-flex;
   gap: 2px;
-  padding: 3px;
+  padding: 4px;
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
 .tab {
-  height: 28px;
-  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -507,7 +588,8 @@ button.crumb:hover {
 .tab:hover {
   color: var(--text);
 }
-.tab[aria-selected="true"] {
+.tab[aria-selected="true"],
+.tab[aria-checked="true"] {
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-xs), inset 0 0 0 1px var(--border);
@@ -519,29 +601,29 @@ button.crumb:hover {
 /* Category chips. */
 .chips {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 .chip {
   --chip: var(--text-faint);
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 26px;
-  padding: 0 10px;
+  height: 32px;
+  padding: 0 14px;
   border-radius: 999px;
   font: inherit;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 500;
-  border: 1px solid color-mix(in srgb, var(--chip) 30%, var(--border));
-  background: color-mix(in srgb, var(--chip) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--chip) 28%, var(--border));
+  background: color-mix(in srgb, var(--chip) 8%, var(--surface));
   color: var(--text-dim);
   white-space: nowrap;
 }
 .meta .chip {
-  height: 22px;
-  padding: 0 8px;
+  height: 24px;
+  padding: 0 10px;
   font-size: 12px;
 }
 button.chip {
@@ -598,17 +680,18 @@ button.chip:hover {
   align-items: center;
   gap: 6px;
   text-align: center;
-  padding: 40px 24px;
+  padding: 48px 28px;
   color: var(--text-dim);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
   border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-lg);
+  border-radius: 22px;
 }
 .emptyState .iconTile {
   margin-bottom: 6px;
 }
 .emptyState strong {
-  font-size: 15px;
+  font-size: 17px;
+  letter-spacing: -0.01em;
   font-weight: 600;
   color: var(--text);
 }
@@ -642,9 +725,8 @@ button.chip:hover {
 .profilePrompt {
   display: grid;
   gap: 12px;
-  padding: 16px 20px;
-  margin-bottom: 24px;
-  max-width: 880px;
+  padding: 20px 22px;
+  margin-bottom: 28px;
   border: 1px solid color-mix(in srgb, var(--accent-ink) 25%, var(--border));
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -671,41 +753,44 @@ button.chip:hover {
 /* ── updates feed ────────────────────────────────────────────────────────── */
 .updateList {
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
 .updateRow {
+  position: relative;
   display: flex;
   gap: 16px;
   align-items: center;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 18px 20px;
+  padding: 22px 24px;
   box-shadow: var(--shadow-xs);
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition: box-shadow 160ms ease, transform 160ms ease;
 }
 .updateRow:hover {
   text-decoration: none;
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-1px);
 }
-.updateRow[data-unread="true"] {
-  border-color: color-mix(in srgb, var(--accent-ink) 30%, var(--border));
+@media (prefers-reduced-motion: reduce) {
+  .updateRow:hover {
+    transform: none;
+  }
 }
 .updateRow[data-unread="true"] .updateTitle {
-  font-weight: 700;
+  font-weight: 800;
 }
 .updateRowMain {
   flex: 1;
   min-width: 0;
 }
 .updateTitle {
-  margin: 8px 0 4px;
+  margin: 14px 0 6px;
   font-family: var(--font-display);
-  font-size: 18px;
-  line-height: 1.3;
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  font-size: 21px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
 .excerpt {
   margin: 0;
@@ -719,8 +804,10 @@ button.chip:hover {
 .updateFoot {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-top: 14px;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
   flex-wrap: wrap;
 }
 .byline {
@@ -739,10 +826,11 @@ button.chip:hover {
 .updateStats {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-left: auto;
-  font-size: 13px;
-  color: var(--text-faint);
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -750,9 +838,55 @@ button.chip:hover {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+}
+.updateStats svg {
+  color: var(--text-faint);
+}
+.readMore {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.updateRow:hover .readMore {
+  color: var(--text);
+}
+.newTag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.updateRow[data-unread="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 22px;
+  bottom: 22px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: var(--glass-grad);
 }
 .rowChevron {
   flex: none;
+  color: var(--text-faint);
+}
+.byline .bylineDate {
+  font-weight: 400;
   color: var(--text-faint);
 }
 
@@ -767,8 +901,8 @@ button.chip:hover {
 .due {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 16px;
+  padding: 20px 22px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -781,15 +915,31 @@ button.chip:hover {
   font-size: 13px;
 }
 .dueText strong {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.due {
+  border: 0;
+  background:
+    radial-gradient(420px 160px at 0% 0%, color-mix(in srgb, var(--glass-tint) 16%, transparent), transparent 70%),
+    var(--surface);
+  box-shadow: var(--shadow-card);
+  border-radius: 20px;
+}
+.due .iconTile {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .due[data-overdue="true"] {
   border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
   background: var(--warning-soft);
 }
 .due[data-overdue="true"] .iconTile {
-  background: var(--surface);
+  background: color-mix(in srgb, var(--warning) 14%, var(--surface));
   color: var(--warning);
 }
 .due[data-overdue="true"] strong {
@@ -797,15 +947,15 @@ button.chip:hover {
 }
 .templates {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
 }
 .templateBtn {
   text-align: left;
   display: grid;
   align-content: start;
   gap: 4px;
-  padding: 16px;
+  padding: 18px;
   cursor: pointer;
   font: inherit;
   border: 1px solid var(--border);
@@ -816,18 +966,21 @@ button.chip:hover {
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .templateBtn .iconTile {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  margin-bottom: 8px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  margin-bottom: 10px;
 }
 .templateBtn strong {
   font-size: 14px;
   font-weight: 600;
 }
 .templateBtn:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-lift);
+}
+.templateBtn:first-child .iconTile.accent {
+  background: var(--accent);
+  color: var(--accent-text);
 }
 .templateBtn > span:not(.iconTile) {
   font-size: 13px;
@@ -840,25 +993,19 @@ button.chip:hover {
 .drafts .sectionTitle {
   margin-bottom: 8px;
 }
+.draftsCard {
+  overflow: hidden;
+}
 .draftRow {
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 12px 16px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
   font-size: 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-bottom-width: 0;
 }
-.draftRow:first-of-type {
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-}
-.draftRow:last-child {
-  border-bottom-width: 1px;
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-}
-.draftRow:first-of-type:last-child {
-  border-radius: var(--radius-lg);
+.draftRow + .draftRow {
+  border-top: 1px solid var(--border);
 }
 .draftRow a {
   font-weight: 600;
@@ -867,8 +1014,8 @@ button.chip:hover {
   text-decoration: underline;
 }
 .checklist {
-  margin: 20px 0 0;
-  padding: 6px 0;
+  margin: 28px 0 0;
+  padding: 8px 0;
   list-style: none;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -879,10 +1026,19 @@ button.chip:hover {
 }
 .checklist li {
   display: flex;
-  gap: 10px;
+  gap: 4px 12px;
   align-items: center;
   flex-wrap: wrap;
-  padding: 8px 16px;
+  padding: 9px 20px;
+}
+/* The step's text stays beside its check mark however narrow the card; only
+   the trailing hint drops to its own line. */
+.checklist li:not(.checklistHead) {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+}
+.checklist li:not(.checklistHead) > .muted {
+  grid-column: 2;
 }
 .checklist .checklistHead {
   justify-content: space-between;
@@ -892,8 +1048,8 @@ button.chip:hover {
 }
 .checkMark {
   flex: none;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -922,13 +1078,18 @@ button.chip:hover {
 
 /* ── a single post: the reading view ─────────────────────────────────────── */
 .post {
-  max-width: 720px;
+  max-width: 780px;
+  padding: 36px 44px 40px;
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 .postNav {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
 }
 .postNav .back {
   margin: 0;
@@ -953,17 +1114,23 @@ button.ghost.dangerGhost:hover:not(:disabled) {
   background: var(--danger-soft);
 }
 .postHead {
-  padding-bottom: 20px;
-  margin-bottom: 24px;
+  padding-bottom: 24px;
+  margin-bottom: 28px;
   border-bottom: 1px solid var(--border);
 }
 .postTitle {
-  margin: 12px 0 16px;
+  margin: 14px 0 18px;
   font-family: var(--font-display);
-  font-size: 34px;
-  line-height: 1.15;
-  font-weight: 700;
-  letter-spacing: -0.015em;
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+.postByline .avatar {
+  width: 40px;
+  height: 40px;
+  font-size: 14px;
 }
 .postByline {
   display: flex;
@@ -991,11 +1158,11 @@ button.ghost.dangerGhost:hover:not(:disabled) {
   font-variant-numeric: tabular-nums;
 }
 .tldr {
-  margin: 0 0 24px;
-  padding: 16px 18px;
-  border-radius: var(--radius);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  margin: 0 0 28px;
+  padding: 18px 20px 18px 22px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--glass-tint) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--glass-tint) 18%, var(--border));
   color: var(--text);
   white-space: pre-wrap;
   line-height: 1.6;
@@ -1003,22 +1170,23 @@ button.ghost.dangerGhost:hover:not(:disabled) {
 }
 .tldrLabel {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--accent-ink);
 }
 .postSection {
-  margin-top: 28px;
+  margin-top: 32px;
 }
 .postSection h2 {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 19px;
-  font-weight: 600;
-  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
 }
 .postSection p {
   margin: 0;
@@ -1042,23 +1210,26 @@ button.ghost.dangerGhost:hover:not(:disabled) {
 .preview {
   max-width: none;
   border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  padding: 24px 28px;
+  box-shadow: none;
 }
 
 .kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 12px;
   margin: 0 0 8px;
+}
+/* Inside the paper card a KPI tile is a tinted well, not another card. */
+.post .kpi {
+  background: var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
 .kpi,
 .metricCard {
   display: grid;
   align-content: start;
   gap: 6px;
-  padding: 16px;
+  padding: 18px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -1073,10 +1244,10 @@ button.ghost.dangerGhost:hover:not(:disabled) {
 }
 .kpiValue {
   font-family: var(--font-display);
-  font-size: 26px;
+  font-size: 28px;
   line-height: 1.1;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 .kpiValue small {
@@ -1133,7 +1304,7 @@ button.ghost.dangerGhost:hover:not(:disabled) {
   gap: 16px;
 }
 .metricCard {
-  padding: 18px 18px 12px;
+  padding: 22px 22px 14px;
 }
 .metricTop {
   display: flex;
@@ -1142,7 +1313,7 @@ button.ghost.dangerGhost:hover:not(:disabled) {
   gap: 8px;
 }
 .metricCard .kpiValue {
-  font-size: 32px;
+  font-size: 36px;
   margin-top: 4px;
 }
 .sparkWrap {
@@ -1233,7 +1404,7 @@ details[open] > summary .summaryChevron {
   margin: 0;
 }
 .ask {
-  padding: 16px 18px;
+  padding: 18px 20px;
   display: grid;
   gap: 8px;
   border: 1px solid var(--border);
@@ -1241,7 +1412,12 @@ details[open] > summary .summaryChevron {
   background: var(--surface);
   box-shadow: var(--shadow-xs);
 }
-.ask[data-status="resolved"] {
+.post .ask {
+  background: var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.ask[data-status="resolved"],
+.post .ask[data-status="resolved"] {
   background: var(--bg-subtle);
   box-shadow: none;
 }
@@ -1405,8 +1581,8 @@ details[open] > summary .summaryChevron {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 13px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -1424,8 +1600,10 @@ details[open] > summary .summaryChevron {
   background: var(--accent-soft);
 }
 .reaction.add {
-  color: var(--text-faint);
-  padding: 0 8px;
+  color: var(--text-dim);
+  width: 36px;
+  padding: 0;
+  justify-content: center;
 }
 .reaction.add:hover {
   color: var(--text);
@@ -1440,23 +1618,24 @@ details[open] > summary .summaryChevron {
 }
 .reactMenu {
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 8px);
   left: 0;
-  z-index: 5;
+  z-index: 20;
   display: flex;
   gap: 2px;
-  padding: 4px;
+  padding: 6px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--edge);
   border-radius: 999px;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-shadow-float);
 }
 .reactMenu button {
   border: 0;
   background: transparent;
-  font-size: 18px;
-  width: 34px;
-  height: 34px;
+  font-size: 20px;
+  width: 40px;
+  height: 40px;
+  transition: transform 120ms ease, background 120ms ease;
   border-radius: 999px;
   cursor: pointer;
 }
@@ -1464,21 +1643,49 @@ details[open] > summary .summaryChevron {
 .reactMenu button[aria-checked="true"] {
   background: var(--surface-hover);
 }
+.reactMenu button:hover {
+  transform: scale(1.12);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reactMenu button:hover {
+    transform: none;
+  }
+}
 
 .thread {
-  margin-top: 28px;
+  margin-top: 32px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
 .thread > .sectionTitle {
   margin-top: 20px;
 }
+/* The reply composer: one rounded well holding the text and its Send. */
 .replyBox {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  padding: 6px 8px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  background: var(--surface-sunken);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.replyBox:focus-within {
+  border-color: var(--text);
+  box-shadow: var(--ring);
 }
 .replyBox textarea {
-  margin-bottom: 8px;
-  background: var(--surface);
+  margin: 0;
+  min-height: 56px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 8px 8px 4px;
+  resize: none;
+}
+.replyBox textarea:hover:not(:focus),
+.replyBox textarea:focus-visible {
+  border: 0;
+  box-shadow: none;
 }
 .replyBox .row.end {
   gap: 12px;
@@ -1490,7 +1697,11 @@ details[open] > summary .summaryChevron {
   display: flex;
   gap: 12px;
   align-items: flex-start;
-  padding: 16px 0;
+  padding: 18px 0;
+}
+.comment > .avatar {
+  width: 36px;
+  height: 36px;
 }
 .commentBody {
   min-width: 0;
@@ -1510,7 +1721,9 @@ details[open] > summary .summaryChevron {
   font-size: 15px;
 }
 .reply {
-  padding-left: 44px;
+  margin-left: 18px;
+  padding-left: 30px;
+  border-left: 2px solid var(--border);
 }
 .reply .comment {
   padding-top: 0;
@@ -1538,8 +1751,8 @@ details[open] > summary .summaryChevron {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xs);
-  padding: 20px;
-  margin-bottom: 16px;
+  padding: 24px 26px;
+  margin-bottom: 18px;
 }
 .editorCard > .cardTitle {
   margin-bottom: 12px;
@@ -1549,10 +1762,10 @@ details[open] > summary .summaryChevron {
 }
 .titleInput {
   font-family: var(--font-display);
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  min-height: 52px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  min-height: 56px;
   padding: 6px 0;
   border-color: transparent;
   border-radius: 0;
@@ -1582,12 +1795,12 @@ details[open] > summary .summaryChevron {
 .sectionEditor,
 .askEditor,
 .categoryEditor {
-  padding: 12px;
-  margin-bottom: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
   display: grid;
   gap: 8px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 16px;
   background: var(--surface-sunken);
 }
 .sectionEditor input,
@@ -1641,19 +1854,23 @@ button.ghost.accent {
 .metricRow input:nth-child(2) {
   font-variant-numeric: tabular-nums;
 }
+/* A floating glass dock: Publish is always one reach away. */
 .publishBar {
   position: sticky;
-  bottom: 0;
+  bottom: 16px;
   z-index: 5;
   display: flex;
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
   margin-top: 24px;
-  padding: 14px 0;
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
-  backdrop-filter: blur(6px);
-  border-top: 1px solid var(--border);
+  padding: 10px 10px 10px 20px;
+  border: 1px solid var(--edge);
+  border-radius: 22px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow-float);
 }
 .blocker {
   display: inline-flex;
@@ -1661,14 +1878,14 @@ button.ghost.accent {
   gap: 6px;
 }
 .publishBar button.primary {
-  height: 40px;
-  padding: 0 18px;
+  height: 44px;
+  padding: 0 22px;
 }
 
 /* ── Q&A ─────────────────────────────────────────────────────────────────── */
 .askBox {
-  padding: 18px 20px;
-  margin-bottom: 24px;
+  padding: 22px 24px;
+  margin-bottom: 28px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -1684,7 +1901,7 @@ button.ghost.accent {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 18px;
+  padding: 16px 20px;
   transition: background 120ms ease;
 }
 .questionRow + .questionRow {
@@ -1730,11 +1947,16 @@ button.ghost.accent {
 }
 .person {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   align-items: center;
   flex-wrap: wrap;
-  min-height: 60px;
-  padding: 12px 16px;
+  min-height: 68px;
+  padding: 14px 20px;
+}
+.person > .avatar {
+  width: 40px;
+  height: 40px;
+  font-size: 13px;
 }
 .person + .person {
   border-top: 1px solid var(--border);
@@ -1824,7 +2046,7 @@ button.ghost.accent {
   color: var(--success);
 }
 .myProfile {
-  padding: 16px 18px;
+  padding: 20px 22px;
   margin-bottom: 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -1855,8 +2077,8 @@ button.ghost.accent {
 .card.form {
   display: grid;
   gap: 2px;
-  padding: 20px;
-  margin-bottom: 16px;
+  padding: 24px 26px;
+  margin-bottom: 18px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -1911,55 +2133,175 @@ button.ghost.accent {
   justify-self: start;
   margin-top: 4px;
 }
+.accountRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 10px;
+}
+.accountRow .avatar {
+  width: 44px;
+  height: 44px;
+  font-size: 15px;
+}
+.accountWho {
+  display: grid;
+  line-height: 1.35;
+}
+.accountWho strong {
+  font-size: 15px;
+}
+.tabs.segmented {
+  justify-self: start;
+  margin-bottom: 16px;
+}
+.accountActions {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── glass: content cards on the frosted frame ──────────────────────────── */
+/* Last in the file on purpose: it restyles the cards above without touching
+   their layout. The frame (sidebar, top bar, publish bar) is frosted glass;
+   everything you read or act on is a solid card with a soft shadow resting on
+   it, and everything that floats (menus, dialogs, toasts) is solid too. */
+.updateRow,
+.templateBtn,
+.checklist,
+.profilePrompt,
+.metricCard,
+.kpi,
+.peopleList,
+.ledgerList,
+.engagement,
+.myProfile,
+.card.form,
+.editorCard,
+.askBox,
+.listCard,
+.ask,
+.draftsCard {
+  background: var(--surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 0;
+  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-card);
+}
+.updateRow,
+.card.form,
+.editorCard,
+.askBox,
+.metricCard,
+.profilePrompt,
+.engagement,
+.myProfile {
+  border-radius: 20px;
+}
+
+.tabs,
+.tab {
+  border-radius: 999px;
+}
+.teamTag {
+  border-radius: 999px;
+}
 
 /* ── responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 1080px) {
+  .shell {
+    grid-template-columns: 236px minmax(0, 1fr);
+    gap: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* Phone and small tablet: no rail. The sidebar becomes a drawer the top
+   bar's menu button slides in, over a scrim. */
 @media (max-width: 900px) {
-  .app {
+  .shell {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
-    padding: 0 16px;
+    padding: 8px 8px 0;
   }
   .sidebar {
-    position: sticky;
-    top: 76px;
-    z-index: 20;
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    bottom: 8px;
+    z-index: 60;
+    width: min(300px, calc(100vw - 56px));
     height: auto;
-    padding: 6px;
-    margin: 8px 0 0;
-    border: 1px solid var(--edge);
-    border-radius: 999px;
-    background: var(--surface-glass);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-    box-shadow: var(--shadow-xs);
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: var(--glass-shadow-float);
+    transform: translateX(calc(-100% - 16px));
+    visibility: hidden;
+    transition: transform 220ms ease, visibility 220ms;
   }
-  .sideBack,
-  .appTitle {
-    display: none;
+  .shell[data-nav-open="true"] .sidebar {
+    transform: none;
+    visibility: visible;
   }
-  .appNav {
-    flex-direction: row;
-    overflow-x: auto;
+  .navScrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: var(--overlay);
   }
-  .navItem .badge {
-    margin-left: 2px;
+  .sideClose,
+  .menuBtn,
+  .topBrand {
+    display: inline-flex;
+  }
+  .topBar {
+    top: 8px;
+    height: 58px;
+    padding: 0 8px 0 6px;
+    gap: 6px;
+  }
+  .topBrand .brandMark {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
   }
   .appBody {
-    padding-top: 20px;
+    padding: 24px 4px 100px;
   }
   .appHeader {
     margin: 8px 8px 0;
     top: 8px;
+    height: 58px;
   }
   .appHeaderInner {
-    padding: 0 8px 0 14px;
+    padding: 0 8px 0 12px;
+  }
+}
+@media (max-width: 900px) and (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
   }
 }
 
 @media (max-width: 560px) {
-  .brandName,
-  .crumbs {
+  .appHeader .brandName,
+  .appHeader .crumbs {
     display: none;
+  }
+  .topBar .crumb {
+    padding: 0 8px;
+    max-width: 200px;
+  }
+  /* One crumb on a phone: the audience. The company is in the drawer. */
+  .topBar .crumbs > button.crumb:not(:only-child),
+  .topBar .crumbSep {
+    display: none;
+  }
+  .topBar .crumb.current {
+    box-shadow: none;
+    background: transparent;
   }
   .metricRow {
     grid-template-columns: 1fr 1fr 32px;
@@ -1971,11 +2313,11 @@ button.ghost.accent {
   .engagementCols {
     grid-template-columns: 1fr;
   }
-  .updateStats {
-    display: none;
-  }
   .postTitle {
-    font-size: 26px;
+    font-size: 28px;
+  }
+  .pageTitle {
+    font-size: 28px;
   }
   .pageHead {
     flex-wrap: wrap;
@@ -1983,65 +2325,37 @@ button.ghost.accent {
   .personPct {
     display: none;
   }
-}
-
-/* ── glass: the frosted frame every screen shares ────────────────────────── */
-/* Last in the file on purpose: it restyles the cards above without touching
-   their layout. Lists, panels and summary cards are frosted; what is read
-   closely (a post's body, the editor, asks and replies) stays on the solid
-   --surface, and so does everything that floats (menus, dialogs, toasts). */
-.updateRow,
-.due,
-.templateBtn,
-.checklist,
-.emptyState,
-.profilePrompt,
-.metricCard,
-.peopleList,
-.ledgerList,
-.engagement,
-.myProfile,
-.card.form {
-  background: var(--surface-glass);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border-color: var(--edge);
-  box-shadow: var(--shadow-xs);
-}
-
-.updateRow,
-.due,
-.checklist,
-.peopleList,
-.ledgerList,
-.engagement,
-.myProfile,
-.card.form {
-  border-radius: var(--radius-xl);
-}
-
-.updateRow[data-unread="true"] {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.45),
-    0 16px 36px -26px color-mix(in srgb, var(--glass-tint) 80%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--glass-tint) 35%, transparent);
-}
-
-.tabs,
-.tab {
-  border-radius: 999px;
-}
-
-.appTile {
-  border-radius: 10px;
-}
-
-.teamTag {
-  border-radius: 999px;
-}
-
-.publishBar {
-  background: color-mix(in srgb, var(--bg) 70%, transparent);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
+  .post {
+    padding: 22px 18px 26px;
+    border-radius: 20px;
+  }
+  .updateRow {
+    padding: 18px;
+  }
+  .editorCard,
+  .card.form,
+  .askBox {
+    padding: 18px 16px;
+  }
+  .templates {
+    grid-template-columns: 1fr 1fr;
+  }
+  /* A question row wraps: title and byline on top, status and count under. */
+  .questionRow {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 16px;
+  }
+  .questionMain {
+    flex: 1 1 calc(100% - 60px);
+  }
+  .questionTitle {
+    white-space: normal;
+  }
+  .questionRow .pill {
+    margin-left: 48px;
+  }
+  .questionRow .rowChevron {
+    margin-left: auto;
+  }
 }

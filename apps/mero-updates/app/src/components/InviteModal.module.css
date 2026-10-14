@@ -1,11 +1,11 @@
 .dialog {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
+  border: 1px solid var(--edge);
+  border-radius: 24px;
   background: var(--surface);
   color: var(--text);
   padding: 0;
   width: min(calc(100vw - 32px), 500px);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-shadow-float);
 }
 
 .dialog::backdrop {
@@ -14,7 +14,7 @@
 }
 
 .body {
-  padding: 24px;
+  padding: 26px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -34,7 +34,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--accent-soft);
   color: var(--accent-ink);
 }
@@ -46,8 +46,9 @@
 
 .title {
   margin: 0 0 2px;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text);
 }
 
