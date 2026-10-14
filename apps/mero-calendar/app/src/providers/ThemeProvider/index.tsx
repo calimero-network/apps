@@ -13,10 +13,21 @@ import {
 // through the toggle, and a saved choice is always kept). All calendar/app colors are CSS custom properties (see
 // src/styles/theme.css) keyed off [data-theme], so flipping the attribute
 // re-themes the whole app with no React re-render of the calendar.
+//
+// index.html carries an inline copy of `readStoredTheme` + `applyTheme` so the
+// saved theme is on <html> before the first paint (no light flash on a dark
+// reload); keep the key and the colours in step with it.
 
 export type Theme = "light" | "dark";
 
-const STORAGE_KEY = "mc-theme";
+export const THEME_STORAGE_KEY = "mc-theme";
+
+// The browser chrome colour (PWA title bar, mobile address bar) follows the
+// glass ground of each theme.
+const THEME_COLOR: Record<Theme, string> = {
+  light: "#f6f7fb",
+  dark: "#0b0e18",
+};
 
 interface ThemeCtx {
   theme: Theme;
@@ -34,10 +45,9 @@ export function useTheme(): ThemeCtx {
   return useContext(Ctx);
 }
 
-function getInitialTheme(): Theme {
+function readStoredTheme(): Theme {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "light" || stored === "dark") return stored;
+    if (localStorage.getItem(THEME_STORAGE_KEY) === "dark") return "dark";
   } catch {
     /* ignore */
   }
@@ -45,23 +55,34 @@ function getInitialTheme(): Theme {
   return "light";
 }
 
+function applyTheme(theme: Theme): void {
+  document.documentElement.setAttribute("data-theme", theme);
+  document
+    .querySelectorAll('meta[name="theme-color"]')
+    .forEach((meta) => meta.setAttribute("content", THEME_COLOR[theme]));
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+  const [theme, setThemeState] = useState<Theme>(readStoredTheme);
 
   // Reflect the theme onto <html data-theme="…"> so the CSS variables apply.
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    try {
-      localStorage.setItem(STORAGE_KEY, theme);
-    } catch {
-      /* ignore */
-    }
+    applyTheme(theme);
   }, [theme]);
 
-  const setTheme = useCallback((t: Theme) => setThemeState(t), []);
+  // Only an explicit choice is written. Writing the default on mount made
+  // "light because nobody chose" indistinguishable from "light on purpose".
+  const setTheme = useCallback((t: Theme) => {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, t);
+    } catch {
+      /* storage unavailable: the choice lasts for this page only */
+    }
+    setThemeState(t);
+  }, []);
   const toggleTheme = useCallback(
-    () => setThemeState((t) => (t === "dark" ? "light" : "dark")),
-    [],
+    () => setTheme(theme === "dark" ? "light" : "dark"),
+    [setTheme, theme],
   );
 
   return (

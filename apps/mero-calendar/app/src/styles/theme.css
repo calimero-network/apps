@@ -149,11 +149,12 @@ body {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 36px;
-  padding: 0 16px;
+  height: 40px;
+  padding: 0 18px;
   border-radius: 999px;
   background: var(--glass-surface-solid);
   color: var(--text);
+  font-family: var(--font);
   font-size: 13.5px;
   font-weight: 600;
   border: 1px solid var(--border-strong);
@@ -204,18 +205,23 @@ body {
 
 .mc-input {
   width: 100%;
-  height: 36px;
-  padding: 0 12px;
+  height: 42px;
+  padding: 0 14px;
   background: var(--bg-1);
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  border-radius: 14px;
   color: var(--text);
-  font-size: 13px;
+  font-family: var(--font);
+  font-size: 14px;
   outline: none;
-  transition: border-color 0.12s;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.mc-input::placeholder {
+  color: var(--text-dim);
 }
 .mc-input:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .mc-overlay {
@@ -225,28 +231,74 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
   z-index: 3000;
+  animation: mc-fade-in 0.15s ease-out;
+}
+:root[data-theme="dark"] .mc-overlay {
+  background: rgba(0, 0, 0, 0.55);
 }
 
-/* Sun/moon theme toggle button */
+/* Sun/moon theme toggle: a quiet round icon button, as in Chat and Design. */
 .mc-theme-toggle {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  border: 1px solid var(--border-strong);
-  background: var(--glass-surface-solid);
-  color: var(--text);
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--glass-ink-2);
   cursor: pointer;
-  font-size: 16px;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  transition: background 0.15s, color 0.15s;
 }
 .mc-theme-toggle:hover {
-  background: var(--bg-3);
-  border-color: var(--border-strong);
-  color: var(--accent);
+  background: var(--glass-sunken);
+  color: var(--glass-ink);
+}
+
+/* Log out: a ghost pill at the end of every signed-in top bar. The label
+   folds away on a phone; the icon and the accessible name stay. */
+.mc-logout {
+  height: 38px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+  color: var(--glass-ink-2);
+  font: 600 13.5px/1 var(--font);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.mc-logout:hover {
+  background: var(--glass-sunken);
+  color: var(--glass-ink);
+}
+@media (max-width: 640px) {
+  .mc-logout {
+    width: 38px;
+    padding: 0;
+    justify-content: center;
+  }
+  .mc-logout__label {
+    display: none;
+  }
+}
+
+/* One focus ring for every control the app draws itself. */
+.mc-btn:focus-visible,
+.mc-theme-toggle:focus-visible,
+.mc-logout:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 @keyframes mc-fade-in {

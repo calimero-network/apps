@@ -28,6 +28,70 @@ test.describe("Theme toggle", () => {
 });
 
 /**
+ * Light / dark bootstrap. The in-app switch itself sits in the signed-in top
+ * bar (src/providers/ThemeProvider/ThemeProvider.test.tsx covers it, and the
+ * node-backed journey presses it); what only a real browser shows is that
+ * index.html puts the saved theme on <html> before the first paint, so a dark
+ * reload never flashes light first.
+ */
+test.describe("Theme bootstrap", () => {
+  test("defaults to light with nothing saved", async ({ page }) => {
+    await page.goto("/teams");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    expect(await page.evaluate(() => localStorage.getItem("mc-theme"))).toBeNull();
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+      "content",
+      "#f6f7fb",
+    );
+  });
+
+  test("a saved dark theme is on <html> before the app runs, across reloads", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.evaluate(() => localStorage.setItem("mc-theme", "dark"));
+
+    // Record what <html> says the moment the document is parsed, before any
+    // module script has run.
+    await page.addInitScript(() => {
+      document.addEventListener("readystatechange", () => {
+        if (document.readyState === "interactive") {
+          (window as unknown as { __themeAtParse?: string | null }).__themeAtParse =
+            document.documentElement.getAttribute("data-theme");
+        }
+      });
+    });
+
+    for (let i = 0; i < 2; i++) {
+      await page.reload();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+      const atParse = await page.evaluate(
+        () => (window as unknown as { __themeAtParse?: string | null }).__themeAtParse,
+      );
+      expect(atParse).toBe("dark");
+    }
+
+    await page.evaluate(() => localStorage.setItem("mc-theme", "light"));
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  });
+
+  test("the font is the self-hosted Figtree, not a Google Fonts download", async ({
+    page,
+  }) => {
+    const google: string[] = [];
+    page.on("request", (r) => {
+      if (/fonts\.(googleapis|gstatic)\.com/.test(r.url())) google.push(r.url());
+    });
+    await page.goto("/teams");
+    await page.waitForLoadState("networkidle");
+    expect(google).toEqual([]);
+    const family = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
+    expect(family).toContain("Figtree");
+  });
+});
+
+/**
  * The glass palette (@calimero-apps/glass).
  *
  * The Calimero lime this app used to ship is gone: the fleet's light-glass look
