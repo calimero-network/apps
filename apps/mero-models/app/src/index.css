@@ -1910,3 +1910,97 @@ select:focus {
     height: 55%;
   }
 }
+
+/* ── Texturing ────────────────────────────────────────────────────────────── */
+
+.swatch-inline {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--line-2);
+  vertical-align: -2px;
+}
+
+.layers {
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.layers summary {
+  cursor: pointer;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.tex-layer {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  margin-bottom: 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.tex-layer-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tex-layer-head input[type="color"] {
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.tex-layer-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.tex-layer-head select {
+  font-size: 11px;
+}
+
+.tex-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.tex-progress {
+  position: relative;
+  height: 26px;
+  border-radius: var(--radius);
+  background: var(--field);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  font-size: 11px;
+}
+
+.tex-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  transition: width 0.2s;
+}
+
+.tex-progress span {
+  position: relative;
+  display: block;
+  padding: 5px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.button-row button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1b1208;
+  font-weight: 600;
+}

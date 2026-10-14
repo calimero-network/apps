@@ -24,6 +24,10 @@ apps/mero-models/
     │   ├── modifiers.ts       the modifier stack: mirror, subdivision surface, array, solidify
     │   ├── polymesh.ts        cage ⇄ triangles: triangulate, split hard edges, recover quads
     │   ├── uv.ts              UV seams, conformal (LSCM) unwrap, smart project, island packing
+    │   ├── bake.ts            texture baking: AO (ray traced, own BVH), edge/cavity masks, high→low normals
+    │   ├── texgen.ts          smart materials: layered masks → base colour, ORM and normal textures
+    │   ├── texturing.ts       bake → generate → upload as texture assets → plug into the material
+    │   ├── png.ts             a deterministic PNG encoder for generated textures
     │   ├── examples.ts        example assets, each built step by step with those tools
     │   ├── meshcodec.ts       the mesh blob format: compressed, deterministic, validated on read
     │   ├── blobs.ts           upload/download with the context id, IndexedDB-cached by blob id
@@ -65,6 +69,7 @@ invite link; tick **Can edit** beside someone to let them build.
 | **Edit mode** | `Tab` (converts a primitive to a cage of quads) · `1`/`2`/`3` vertex/edge/face select · `Alt`-click an edge for its loop, `Ctrl+Alt`-click for its ring (a face loop in face mode) · `Ctrl+L` linked · X-mirror moves |
 | **Modelling** | `E` extrude (faces along normals, or an open border outward) · `I` inset · `Ctrl+B` bevel · `Ctrl+R` loop cut · `K` knife plane · `J` connect · bridge edge loops · `F` fill · `M` merge · `Ctrl+X` dissolve · smooth, subdivide, symmetrize · mark/clear sharp, sharp by angle · `X` delete. The panel bottom-left adjusts the last tool (width, cuts, thickness…) after the fact |
 | **UVs** | Mark seams on edges (they draw red) and `U` unwrap — each piece is flattened conformally and the islands are packed into the 0–1 square at one texel density; or Smart project, which needs no seams. The **UV** button opens the UV editor: click an island to select it (Ctrl for one face), drag to move, box-select on empty space, rotate/flip/scale, Stretch colours faces by distortion, and the footer gives islands, px/m for a 512–4096 texture and coverage. **Checker** puts a numbered UV grid on every mesh |
+| **Texturing** | Properties → Texturing: pick a smart material (worn painted metal, rusted iron, scuffed plastic, gun metal, gold, rubber, concrete, mossy stone, bark, foliage), tune its layers, and **Bake & texture**. It bakes occlusion, worn edges and cavities into the UV space, paints the layers through those masks, and uploads base colour, occlusion·roughness·metal and normal textures as the scene's assets — regenerating is a new version of the same three. Normals can come from the mesh's own subdivision (which is then switched off) or from a selected high-poly. With several objects selected each gets its own suggested material |
 | **Examples** | Add → Examples: a sci-fi crate, a fuel drum, a sword, a modular corridor kit, a rock and tree — or all of them on one floor. Each is an ordinary editable cage, built by the same tools (`examples.ts` reads as the recipe) |
 | **View** | `F` frame selected · `Home` frame all · `1`/`3`/`7` front/right/top (`Shift` for the opposite) · `5` ortho · `Z` cycles wireframe/solid/material |
 | **Files** | import OBJ, STL, glTF/GLB, or a scene `.json`; export GLB, OBJ, STL or scene `.json`; `F12` renders a PNG |
@@ -134,6 +139,12 @@ Edit-mode selection is by vertex: an edge is selected when both ends are, and
 switching to face mode selects every face whose corners are all selected (as
 in Blender). Bevel makes one segment; the knife cuts along a plane, not a
 drawn line.
+
+Texturing runs in the page and takes a few seconds an object at 1024²
+(occlusion is traced at a quarter of that and filtered up); a mesh whose UVs
+overlap is laid out afresh first. There is no hand painting yet, and the
+normal map is baked in a per-texel tangent frame that matches three.js's
+closely but not MikkTSpace exactly.
 
 Unwrapping a closed piece with no seam through it projects it instead (the
 status bar says how many faces); the UV editor moves the selected faces' UVs

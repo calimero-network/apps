@@ -31,6 +31,7 @@ import { activeObject, useEditor, type Snapshot } from "../editor/store";
 import { ColorField, NumberField, Section, Toggle } from "../ui/fields";
 import { CheckoutSection, HistorySection, TextureLibrary, TextureSlots } from "./AssetPanels";
 import { EditModeSection, ModifierSection } from "./MeshPanels";
+import { TextureSection } from "./TexturePanel";
 
 const DEG = 180 / Math.PI;
 
@@ -209,6 +210,8 @@ export function Properties({ onEnvironment }: { onEnvironment: (env: Environment
       )}
 
       {isSolid(active.kind) && <ModifierSection id={active.id} canEdit={canEdit} />}
+
+      {solids.length > 0 && <TextureSection canEdit={canEdit} />}
 
       {solids.length > 0 && (
         <Section title={solids.length > 1 ? `Material · ${solids.length} objects` : "Material"}>

@@ -158,6 +158,35 @@ test.describe("Mero Models", () => {
     errors.assertClean();
   });
 
+  test("bakes and textures a mesh with a smart material, and the node keeps the textures", async ({ page, browser }) => {
+    const errors = watchForErrors(page);
+    await login(page);
+    await waitForStudio(page);
+
+    await page.getByTestId("add-cube").click();
+    const name = "Worn block";
+    await page.getByLabel("Object name").fill(name);
+    await page.getByLabel("Object name").press("Enter");
+    await expect(outlinerRow(page, name)).toHaveCount(1);
+    await page.getByTestId("smart-material").selectOption("painted-metal");
+    await page.getByTestId("texture-size").selectOption("256");
+    await page.getByTestId("generate-textures").click();
+    await expect(page.getByTestId("texture-progress")).toBeVisible();
+    await expect(page.getByTestId("texture-progress")).toBeHidden({ timeout: 120_000 });
+    // Three generated textures fill the material's slots.
+    const slot = (p: typeof page, label: string) => p.getByLabel(`${label} texture`).locator("option:checked");
+    await expect(slot(page, "Base colour")).toContainText(`${name} · base colour`);
+    await expect(slot(page, "Occlusion · Rough · Metal")).toContainText(`${name} · occlusion·rough·metal`);
+    await expect(slot(page, "Normal")).toContainText(`${name} · normal`);
+    await expect(page.locator(".save-state")).toHaveText("Saved to your node", { timeout: 30_000 });
+
+    const other = await freshView(browser);
+    await outlinerRow(other, name).click();
+    await expect(other.getByLabel("Base colour texture").locator("option:checked")).toContainText(`${name} · base colour`, { timeout: 30_000 });
+
+    errors.assertClean();
+  });
+
   test("loads the example assets, built from the modelling tools", async ({ page, browser }) => {
     const errors = watchForErrors(page);
     await login(page);

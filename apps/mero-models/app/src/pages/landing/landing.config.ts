@@ -24,7 +24,7 @@ export const CONFIG: LandingConfig = {
   availability: "web+desktop",
   trust: ["No server holds your models", "Editing enforced by the contract", "OBJ · STL · glTF in and out"],
   explainer: [
-    "A Blender-style modeller in the browser: add primitives, move, rotate and scale them with a gizmo, model in quads with loop cuts, bevels, insets, extrusions and a modifier stack, give things materials and lights, and export the result as glTF, OBJ or STL. A scene is a Calimero context, and it replicates between its members’ own nodes.",
+    "A Blender-style modeller in the browser: add primitives, move, rotate and scale them with a gizmo, model in quads with loop cuts, bevels, insets, extrusions and a modifier stack, unwrap UVs, bake and paint PBR textures with smart materials, give things materials and lights, and export the result as glTF, OBJ or STL. A scene is a Calimero context, and it replicates between its members’ own nodes.",
     "Everyone in the scene sees every change as it lands, and sees each other: what the others have selected and where they are looking from streams over ephemeral presence, which never touches storage. Who may change the model is decided by the scene’s admin and enforced by the contract on every node.",
   ],
   features: [
@@ -110,7 +110,7 @@ export const CONFIG: LandingConfig = {
       steps: [
         { title: "Connect a node", body: "Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup." },
         { title: "Start a scene", body: "Name it and press New scene. That creates a namespace you own and a scene inside it, with you as its admin." },
-        { title: "Build", body: "Shift+A adds a primitive. Drag the gizmo to move it; G, R and S switch between move, rotate and scale, Tab models the mesh — 1, 2 and 3 pick vertices, edges or faces; E, I, Ctrl+B and Ctrl+R extrude, inset, bevel and loop-cut — and Ctrl+Z undoes. Mark seams and press U to unwrap for texturing, and Add → Examples loads finished assets built the same way." },
+        { title: "Build", body: "Shift+A adds a primitive. Drag the gizmo to move it; G, R and S switch between move, rotate and scale, Tab models the mesh — 1, 2 and 3 pick vertices, edges or faces; E, I, Ctrl+B and Ctrl+R extrude, inset, bevel and loop-cut — and Ctrl+Z undoes. Mark seams and press U to unwrap, then Bake & texture paints a smart material onto it. Add → Examples loads finished assets built the same way." },
         { title: "Invite", body: "Share mints a link. Whoever opens it can watch at once; tick Can edit beside their name to let them build too." },
       ],
     },
