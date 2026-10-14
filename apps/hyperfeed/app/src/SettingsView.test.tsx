@@ -36,9 +36,15 @@ describe("Settings: one section at a time", () => {
   it("lists its sections, marks the open one, and shows only that one", async () => {
     render(<Harness backend={new DemoBackend(true, 0)} />);
     const links = within(await nav()).getAllByRole("link");
-    expect(links.map((l) => l.textContent?.replace(/\d+$/, ""))).toEqual(["Controls", "Rules", "Agents", "Lenses"]);
+    expect(links.map((l) => l.textContent?.replace(/\d+$/, ""))).toEqual(["Controls", "Actions", "Rules", "Agents", "Lenses"]);
     expect(within(await nav()).getByRole("link", { current: "page" })).toHaveTextContent("Controls");
-    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/settings/controls", "/settings/rules", "/settings/agents", "/settings/lenses"]);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual([
+      "/settings/controls",
+      "/settings/actions",
+      "/settings/rules",
+      "/settings/agents",
+      "/settings/lenses",
+    ]);
     expect(await screen.findByRole("region", { name: "Always ask me before" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "General rules" })).toBeNull();
     expect(screen.queryByRole("region", { name: "What your feed reads from each app" })).toBeNull();
@@ -64,6 +70,20 @@ describe("Settings: one section at a time", () => {
     expect(within(agents).getByText("demo agent").closest("li")).toHaveTextContent("Live");
     expect(screen.getByRole("region", { name: "Connect your agent" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "General rules" })).toBeNull();
+  });
+
+  it("adds a cloud agent by its account id, and removes it", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} section="agents" />);
+    const panel = await screen.findByRole("region", { name: "Cloud agents" });
+    expect(within(panel).getByText("No cloud agent yet.")).toBeInTheDocument();
+    fireEvent.change(within(panel).getByLabelText("Agent account id"), { target: { value: "a1b2c3d4e5f6a7b8c9d0" } });
+    fireEvent.change(within(panel).getByLabelText("Name it reports in with"), { target: { value: "cloud" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Add" }));
+    expect(await within(panel).findByText("cloud")).toBeInTheDocument();
+    expect((await backend.settings()).agent_accounts).toEqual([expect.objectContaining({ account: "a1b2c3d4e5f6a7b8c9d0", name: "cloud" })]);
+    fireEvent.click(within(panel).getByRole("button", { name: "Remove cloud" }));
+    await waitFor(() => expect(within(panel).getByText("No cloud agent yet.")).toBeInTheDocument());
   });
 
   it("says no agent has reported in yet", async () => {
@@ -117,6 +137,48 @@ describe("Settings → Controls: what your agent may do, app by app", () => {
   it("lists the usual apps until the node says what is installed", async () => {
     render(<Harness backend={new DemoBackend(false, 0)} />);
     expect(await names()).toEqual(DEFAULT_APPS.map((a) => appLook(a).name));
+  });
+});
+
+describe("Settings → Actions: what your agent can do in each app", () => {
+  it("lists an app's actions in words, with what each covers and your setting", async () => {
+    render(<Harness backend={new DemoBackend(true, 0)} section="actions" />);
+    const chat = await screen.findByRole("list", { name: "Actions in Chat" });
+    expect(within(chat).getByText("Edit your messages")).toBeInTheDocument();
+    expect(within(chat).getByText("Only reads", { exact: false })).toBeInTheDocument();
+    expect(within(chat).getByText("Always asks: Deleting anything")).toBeInTheDocument();
+    const edit = within(chat).getByRole("group", { name: "Edit your messages in Chat" });
+    expect(within(edit).getByRole("button", { name: "Act" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(chat).getAllByText(/What this covers/).length).toBeGreaterThan(0);
+  });
+
+  it("sets one action apart from its app, and back", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} section="actions" />);
+    const send = await screen.findByRole("group", { name: "Send messages in Chat" });
+    fireEvent.click(within(send).getByRole("button", { name: "Off" }));
+    await waitFor(() => expect(backend.verdict("chat", "", true, "send_message").decision).toBe("refuse"));
+    fireEvent.click(within(send).getByRole("button", { name: "Follow app" }));
+    await waitFor(() => expect(backend.verdict("chat", "", true, "send_message").decision).not.toBe("refuse"));
+  });
+
+  it("counts the actions waiting for you, and approves them", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} section="actions" />);
+    const link = within(await screen.findByRole("navigation", { name: "Settings" })).getByRole("link", { name: /Actions/ });
+    expect(await within(link).findByLabelText("7 waiting for you")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Actions in Docs" })).toBeNull();
+    const docs = await screen.findByRole("listitem", { name: "Docs" });
+    fireEvent.click(within(docs).getByRole("button", { name: "Approve" }));
+    expect(await screen.findByRole("list", { name: "Actions in Docs" })).toBeInTheDocument();
+    expect(backend.verdict("docs", "", true, "delete_doc").reason).toContain('"delete"');
+  });
+
+  it("says what to do on a feed made before actions", async () => {
+    const backend = new DemoBackend(false, 0);
+    Object.assign(backend, { setActionMode: undefined });
+    render(<Harness backend={backend} section="actions" />);
+    expect(await screen.findByText(/can't hold actions/)).toBeInTheDocument();
   });
 });
 
@@ -449,6 +511,20 @@ describe("Settings → Agents: who works in each app", () => {
       fireEvent.change(code, { target: { value: "" } });
     });
     expect((await backend.settings()).assignments).toEqual([]);
+  });
+
+  it("offers Install, not an agent, for the core apps not on your node", async () => {
+    const install = vi.fn(async () => undefined);
+    render(<Harness backend={new DemoBackend(true, 0)} section="agents" installed={["chat", "drive-docs"]} install={install} />);
+    const panel = await section();
+    expect(within(panel).getByRole("combobox", { name: "Agent for Code" })).toBeInTheDocument();
+    expect(within(panel).getByRole("combobox", { name: "Agent for Chat" })).toBeInTheDocument();
+    expect(within(panel).getByRole("combobox", { name: "Agent for Drive Docs" })).toBeInTheDocument();
+    expect(within(panel).queryByRole("combobox", { name: "Agent for Calendar" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Install Calendar" }));
+    });
+    expect(install).toHaveBeenCalledWith("com.calimero.mero-calendar");
   });
 
   it("says any agent takes an app while no private agent reports in", async () => {

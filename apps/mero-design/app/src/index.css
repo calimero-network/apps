@@ -5,16 +5,47 @@
 }
 
 :root {
-  --color-bg: #ffffff;
-  --color-surface: #f5f5f5;
-  --color-border: #e0e0e0;
-  --color-text: #111111;
-  --color-text-secondary: #666666;
+  /* The fleet's light glass (@calimero-apps/glass), tinted with this app's colour.
+     The app's own tokens keep their names and take glass values; the board itself
+     (the Fabric canvas, its white and its dot grid) is content and is not touched. */
+  --glass-tint: #bef264;
+
+  --color-bg: var(--glass-surface-solid);
+  --color-surface: var(--glass-sunken);
+  --color-border: var(--glass-line-strong);
+  --color-text: var(--glass-ink);
+  --color-text-secondary: var(--glass-ink-2);
+  /* The editor's own blue: the on-canvas text editor's outline and the
+     presentation player read it, and both are part of the board, not the chrome. */
   --color-accent: #0d99ff;
   --color-accent-hover: #0a7fd4;
   --color-danger: #e03e3e;
-  --radius: 6px;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --radius: 999px;
+  --font: var(--glass-font);
+
+  /* What the board (and a project card's picture of it) sits on. The Fabric
+     canvas paints the same colours itself; see FabricCanvas `boardDisplayColor`. */
+  --md-board: #ffffff;
+  /* The illustrations' fills (components/Artwork). */
+  --md-art-a: #d9f99d;
+  --md-art-b: #c7d2fe;
+  --md-art-c: #fbcfe8;
+  --md-art-d: #a5b4fc;
+  /* The lime that tints this app's glass, deep enough to read as a mark. */
+  --md-lime-ink: #3f6212;
+  --md-lift: 0 28px 50px -28px rgba(30, 40, 90, 0.45), 0 0 0 1px var(--glass-line);
+}
+
+/* Dark: smoked glass (the glass tokens switch themselves on the same marker). */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --md-board: #141925;
+  --md-art-a: #4d7c0f;
+  --md-art-b: #4338ca;
+  --md-art-c: #9d174d;
+  --md-art-d: #6366f1;
+  --md-lime-ink: #bef264;
+  --md-lift: 0 30px 60px -28px rgba(0, 0, 0, 0.85), 0 0 0 1px var(--glass-line-strong);
 }
 
 html, body, #root {
@@ -22,7 +53,17 @@ html, body, #root {
   font-family: var(--font);
   font-size: 13px;
   color: var(--color-text);
-  background: var(--color-bg);
+}
+
+/* The ground under everything, so nothing past the body's box shows white. */
+html { background-color: var(--glass-ground); }
+
+/* The app shell: the glass ground and its tinted fields, behind every frosted panel. */
+body {
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
 }
 
 @keyframes md-toast-in {

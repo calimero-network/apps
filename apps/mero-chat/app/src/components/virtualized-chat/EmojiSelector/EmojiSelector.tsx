@@ -10,7 +10,7 @@ const CloseIcon = (props: CloseIconProps) => (
     xmlns="http://www.w3.org/2000/svg"
     width="16"
     height="16"
-    fill="#fff"
+    fill="var(--glass-ink)"
     viewBox="0 0 16 16"
     onClick={props.onClose}
   >
@@ -27,9 +27,9 @@ const EmojiSelector = (props: EmojiSelectorProps) => {
   const EmojiSelectorWrapper = styled.div`
     pointer-events: auto;
     position: relative;
-    border-radius: 8px;
-    background: #0e0e10;
-    border: 1px solid #777583;
+    border-radius: 12px;
+    background: var(--glass-surface-solid);
+    border: 1px solid var(--glass-line-strong);
     width: 375px;
     padding: 16px;
     height: 200px;
@@ -53,8 +53,8 @@ const EmojiSelector = (props: EmojiSelectorProps) => {
       align-items: center;
     }
     .title {
-      color: #b5b5b5;
-      font-family: Helvetica Neue;
+      color: var(--glass-ink-2);
+      font-family: var(--glass-font);
       font-size: 12px;
       font-style: normal;
       font-weight: 500;

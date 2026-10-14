@@ -21,7 +21,8 @@ const Overlay = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--chat-scrim);
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -30,17 +31,17 @@ const Overlay = styled.div`
 `;
 
 const PopupContainer = styled.div`
-  background: #1a1a1f;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--glass-surface-solid);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
   border-radius: 12px;
   padding: 2rem;
   width: 90%;
   max-width: 480px;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--chat-dialog-shadow);
 `;
 
 const Title = styled.h2`
-  color: #ffffff;
+  color: var(--glass-ink);
   font-size: 1.4rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
@@ -48,7 +49,7 @@ const Title = styled.h2`
 `;
 
 const Subtitle = styled.p`
-  color: #b8b8d1;
+  color: var(--glass-ink-2);
   font-size: 0.85rem;
   text-align: center;
   margin-bottom: 1.5rem;
@@ -67,13 +68,13 @@ const StepDot = styled.div<{ $active: boolean; $done: boolean }>`
   height: 8px;
   border-radius: 50%;
   background: ${({ $active, $done }) =>
-    $done ? "#27ae60" : $active ? "#7c3aed" : "rgba(255, 255, 255, 0.15)"};
+    $done ? "#27ae60" : $active ? "var(--chat-violet)" : "color-mix(in srgb, var(--glass-ink) 15%, transparent)"};
   transition: background 0.2s;
 `;
 
 const Message = styled.div<{ $type?: "success" | "error" | "info" }>`
   padding: 0.75rem;
-  border-radius: 6px;
+  border-radius: 10px;
   font-size: 0.85rem;
   text-align: center;
   margin-bottom: 1rem;
@@ -82,7 +83,7 @@ const Message = styled.div<{ $type?: "success" | "error" | "info" }>`
       ? "#27ae60"
       : $type === "error"
         ? "#e74c3c"
-        : "#b8b8d1"};
+        : "var(--glass-ink-2)"};
   background: ${({ $type }) =>
     $type === "success"
       ? "rgba(39, 174, 96, 0.1)"
@@ -100,7 +101,7 @@ const InputGroup = styled.div`
 const Label = styled.label`
   font-size: 0.75rem;
   font-weight: 500;
-  color: #b8b8d1;
+  color: var(--glass-ink-2);
 `;
 
 const ButtonGroup = styled.div`
@@ -248,7 +249,7 @@ export default function CreateWorkspacePopup({
               >
                 Create
               </Button>
-              <Button onClick={onCancel} variant="secondary" style={{ flex: 1 }}>
+              <Button onClick={onCancel} variant="secondary" style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", flex: 1 }}>
                 Cancel
               </Button>
             </ButtonGroup>
@@ -275,7 +276,7 @@ export default function CreateWorkspacePopup({
               <Button onClick={installAndCreate} variant="primary" style={{ flex: 1 }}>
                 Install
               </Button>
-              <Button onClick={onCancel} variant="secondary" style={{ flex: 1 }}>
+              <Button onClick={onCancel} variant="secondary" style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", flex: 1 }}>
                 Cancel
               </Button>
             </ButtonGroup>
@@ -303,7 +304,7 @@ export default function CreateWorkspacePopup({
               >
                 Try again
               </Button>
-              <Button onClick={onCancel} variant="secondary" style={{ flex: 1 }}>
+              <Button onClick={onCancel} variant="secondary" style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", flex: 1 }}>
                 Cancel
               </Button>
             </ButtonGroup>
