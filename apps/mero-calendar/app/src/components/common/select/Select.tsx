@@ -1,7 +1,6 @@
 import React, { FC, useRef, useState } from "react";
 import { useClickOutside } from "../../../hooks/useClickOutside";
 import SelectOption from "./components/select-option/SelectOption";
-import cn from "classnames";
 
 import styles from './select.module.scss';
 import { ChevronDownIcon } from "../icons/Icons";
@@ -32,7 +31,7 @@ const Select: FC<SelectProps> = ({
       ref={selectContainerRef}
     >
       <div
-        className={cn(styles.select__header, "button")}
+        className={styles.select__header}
         onClick={toggling}
       >
         <div className={styles.select__header__title}>{selectedOption}</div>
@@ -45,6 +44,7 @@ const Select: FC<SelectProps> = ({
               <SelectOption
                 key={option}
                 option={option}
+                selected={option === selectedOption}
                 onChangeOption={onChangeOption}
                 close={close}
               />

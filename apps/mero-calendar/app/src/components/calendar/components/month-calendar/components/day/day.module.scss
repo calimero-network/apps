@@ -1,37 +1,50 @@
 .day {
   display: flex;
-  width: 100%;
+  min-width: 0;
   flex-direction: column;
   align-items: center;
   border-right: 1px solid var(--mc-grid-line);
   border-bottom: 1px solid var(--mc-grid-line);
   height: 100%;
+  cursor: pointer;
+  transition: background 0.15s;
 
-  &:nth-of-type(7n + 1) {
-    border-left: 1px solid var(--mc-grid-line);
+  &:nth-of-type(7n) {
+    border-right: 0;
+  }
+
+  &:hover {
+    background: color-mix(in srgb, var(--glass-sunken) 60%, transparent);
+  }
+
+  // Days spilling in from the neighbouring months sit on a faint wash, so the
+  // month itself reads as one block.
+  &_additional {
+    background: color-mix(in srgb, var(--glass-sunken) 70%, transparent);
   }
 
   &__label {
-    margin-top: 3px;
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.3px;
+    margin-top: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
     text-align: center;
     width: max-content;
-    min-width: 24px;
+    min-width: 26px;
+    padding: 0 6px;
     color: var(--mc-text);
-    line-height: 24px;
-    border-radius: 50%;
+    line-height: 26px;
+    border-radius: 999px;
     white-space: nowrap;
     cursor: pointer;
 
     &:hover {
-      background-color: var(--mc-hover);
+      background-color: var(--glass-sunken);
     }
 
     &_additional {
       color: var(--mc-text-dim);
-      opacity: 0.7;
+      font-weight: 500;
     }
 
     &_active {
@@ -47,7 +60,7 @@
   &__events {
     width: 100%;
     position: relative;
-    margin-top: 7px;
+    margin-top: 6px;
 
     &::-webkit-scrollbar {
       width: 0;
@@ -59,15 +72,15 @@
   }
 
   &__more__btn {
+    left: 1%;
     font-size: 12px;
     height: 22px;
     padding: 0 8px;
-    line-height: 20px;
-    border-radius: 4px;
+    line-height: 22px;
+    border-radius: 7px;
     overflow: hidden;
-    color: var(--mc-text);
-    background-color: inherit;
-    margin-bottom: 3px;
+    color: var(--glass-ink-2);
+    background-color: transparent;
     cursor: pointer;
     text-align: start;
     width: 98%;
@@ -76,10 +89,11 @@
     position: absolute;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 500;
+    font-weight: 650;
 
     &:hover {
-      background-color: var(--mc-hover);
+      background-color: var(--glass-sunken);
+      color: var(--glass-ink);
     }
   }
 }

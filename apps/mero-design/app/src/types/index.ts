@@ -79,6 +79,13 @@ export interface Element {
   /** A line/arrow docked to a shape: "<element id>:<top|right|bottom|left>" (utils/connectors). */
   startBinding?: string;
   endBinding?: string;
+  /**
+   * Locked: still painted, but the canvas will not select, move, resize or
+   * delete it. Select it from the layers panel to unlock it. Absent = unlocked.
+   */
+  locked?: boolean;
+  /** Hidden: not painted, not hit, and left out of every export. Absent = shown. */
+  hidden?: boolean;
 }
 
 export type StrokeStyle = "solid" | "dashed" | "dotted" | "dashdot" | "dotted3" | "long";

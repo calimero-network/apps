@@ -13,8 +13,9 @@ import { listNamespaces } from "../../api/admin";
 import { useEnsureAppId } from "../../hooks/useEnsureAppId";
 import CalendarLogo from "../../components/common/logo/CalendarLogo";
 import ThemeToggle from "../../components/common/theme-toggle/ThemeToggle";
+import LogoutButton from "../../components/common/logout-button/LogoutButton";
 import { useToast } from "../../contexts/ToastContext";
-import { extractErrorMessage, humanizeError } from "../../utils/errorMessage";
+import { extractErrorMessage } from "../../utils/errorMessage";
 import {
   decodeInvitationObject,
   encodeInvitationObject,
@@ -47,7 +48,7 @@ export default function TeamsPage() {
   // one: the node's own client on a node login, and on an account the account
   // admin, which founds through the relay, signs invitations as the account
   // and redeems them through the admitter's route.
-  const { admin, isDelegated, logout } = useMero();
+  const { admin, isDelegated } = useMero();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -320,11 +321,6 @@ export default function TeamsPage() {
     showToast("Invitation link copied to clipboard.", "success");
   }
 
-  function handleLogout() {
-    logout();
-    navigate("/");
-  }
-
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -333,9 +329,7 @@ export default function TeamsPage() {
         </span>
         <div className={styles.headerRight}>
           <ThemeToggle />
-          <button className="mc-btn mc-btn--ghost" onClick={handleLogout}>
-            Logout
-          </button>
+          <LogoutButton />
         </div>
       </header>
 

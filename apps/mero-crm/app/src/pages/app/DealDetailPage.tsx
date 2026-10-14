@@ -92,7 +92,7 @@ export default function DealDetailPage(): React.ReactElement {
     return (
       <Empty>
         <strong>This deal no longer exists</strong>
-        It may have been deleted by its creator. <a href={APP_ROUTE} onClick={(e) => { e.preventDefault(); navigate(APP_ROUTE); }} style={{ color: t.color.accent }}>Back to the pipeline</a>
+        It may have been deleted by its creator. <a href={APP_ROUTE} onClick={(e) => { e.preventDefault(); navigate(APP_ROUTE); }} style={{ color: t.color.accentText }}>Back to the pipeline</a>
       </Empty>
     );
   }
@@ -330,7 +330,7 @@ export default function DealDetailPage(): React.ReactElement {
           </Panel>
 
           <Panel>
-            <h3>Activities <span style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}>{activities.filter((a) => !a.done).length} open</span></h3>
+            <h3>Activities <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: t.color.text3 }}>{activities.filter((a) => !a.done).length} open</span></h3>
             <ScheduleForm onSchedule={(kind, subject, due) => schedule(kind, subject, due)} />
             <List>
               {activities.length === 0 && <div className="muted" style={{ padding: '8px 0' }}>Nothing scheduled yet.</div>}
@@ -453,80 +453,92 @@ function NoteForm({ onAdd }: { onAdd: (body: string) => Promise<void> }) {
 
 const Header = styled.div`
   display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap;
-  .left { flex: 1; min-width: 240px; }
-  h1 { font-size: 20px; font-weight: 650; letter-spacing: -0.02em; margin: 0; }
-  .sub { font-size: 13px; color: ${t.color.text2}; margin-top: 4px; strong { color: ${t.color.text}; } }
+  .left { flex: 1 1 260px; min-width: 0; }
+  .left > div:first-child { flex-wrap: wrap; }
+  h1 { font-size: 26px; font-weight: 750; letter-spacing: -0.035em; line-height: 1.15; margin: 0; overflow-wrap: anywhere; }
+  .sub { font-size: 13.5px; color: ${t.color.text2}; margin-top: 6px; line-height: 1.5; strong { color: ${t.color.text}; font-weight: 700; } }
+  @media (max-width: 720px) { h1 { font-size: 22px; } }
 `;
+/* The stage track: one segmented pill, the current stage filled with ink. */
 const Stepper = styled.div`
-  display: flex; gap: 3px; overflow-x: auto;
+  display: flex; gap: 4px; overflow-x: auto; padding: 5px;
+  background: ${t.color.glass}; border: 1px solid ${t.color.edge}; border-radius: ${t.radiusPill};
+  box-shadow: ${t.shadow};
   button {
-    flex: 1 1 0; min-width: 90px; font-family: inherit; font-size: 11.5px; font-weight: 600;
-    padding: 7px 10px; border: none; cursor: pointer; color: ${t.color.text2};
-    background: ${t.color.raised}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%, 8px 50%);
-    &:first-child { clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%); border-radius: 5px 0 0 5px; }
-    &:hover:not(:disabled) { background: ${t.color.raised2}; color: ${t.color.text}; }
+    flex: 1 1 0; min-width: 96px; min-height: 34px; font-family: inherit; font-size: 12.5px; font-weight: 600;
+    padding: 0 14px; border: none; border-radius: ${t.radiusPill}; cursor: pointer; color: ${t.color.text2};
+    background: transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: background 150ms ease-out, color 150ms ease-out;
+    &:hover:not(:disabled) { background: ${t.color.hover}; color: ${t.color.text}; }
     &:disabled { cursor: default; }
-    &.past { background: rgba(165,255,63,0.22); color: ${t.color.text}; }
-    &.current { background: ${t.color.accent}; color: ${t.color.onAccent}; }
+    &.past { background: ${t.color.accentDim}; color: ${t.color.text}; }
+    &.current { background: ${t.color.accent}; color: ${t.color.onAccent}; box-shadow: 0 8px 18px -10px rgba(14, 18, 34, 0.55); }
   }
 `;
 const Grid = styled.div`
-  display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 16px; align-items: start;
-  @media (max-width: 980px) { grid-template-columns: 1fr; }
-  .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-  .form { display: flex; flex-direction: column; gap: 10px; }
-  .facts { font-size: 11.5px; color: ${t.color.text3}; margin-top: 12px; }
-  .muted { font-size: 12px; color: ${t.color.text3}; }
-  .link { color: ${t.color.text2}; font-size: 12.5px; &:hover { color: ${t.color.accent}; } }
-  .actions { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
-  .actions .label { font-size: 11px; color: ${t.color.text3}; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+  display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 18px; align-items: start;
+  @media (max-width: 980px) { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .form { display: flex; flex-direction: column; gap: 12px; }
+  .facts { font-size: 12px; color: ${t.color.text3}; margin-top: 14px; }
+  .muted { font-size: 12.5px; color: ${t.color.text3}; }
+  .link { color: ${t.color.accentText}; font-size: 13px; &:hover { text-decoration: underline; } }
+  .actions { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+  .actions .label { font-size: 12px; color: ${t.color.text2}; font-weight: 650; }
+  @media (max-width: 980px) { .col { gap: 14px; } }
 `;
 const HealthRow = styled.div`
-  display: flex; gap: 14px; align-items: flex-start;
+  display: flex; gap: 16px; align-items: flex-start;
   .gauge {
-    width: 54px; height: 54px; border-radius: 50%; flex: 0 0 auto; display: grid; place-items: center;
+    width: 64px; height: 64px; border-radius: 50%; flex: 0 0 auto; display: grid; place-items: center;
     background: conic-gradient(var(--c) var(--p), ${t.color.raised2} 0);
     position: relative;
-    &::before { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: ${t.color.panel}; }
-    span { position: relative; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+    &::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: ${t.color.panel}; }
+    span { position: relative; font-weight: 750; font-size: 18px; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
   }
-  .lvl { font-weight: 650; font-size: 13.5px; }
-  .reasons { margin: 6px 0 0 16px; font-size: 12px; color: ${t.color.text2}; line-height: 1.6; }
+  .lvl { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+  .reasons { margin: 8px 0 0 16px; font-size: 12.5px; color: ${t.color.text2}; line-height: 1.65; }
 `;
+/* Assistant suggestions wear the fleet's "prepared for you" gradient outline
+   (glass.css \`glass-suggested\`): nothing happens until you press it. */
 const Suggestion = styled.div`
-  display: flex; align-items: center; gap: 12px; padding: 9px 11px;
-  background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: 8px;
-  > div { flex: 1; min-width: 0; }
-  .t { font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-  .why { font-size: 11.5px; color: ${t.color.text3}; margin-top: 2px; }
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; flex-wrap: wrap;
+  background: linear-gradient(135deg, rgba(62, 99, 245, 0.08), rgba(236, 72, 153, 0.06)), ${t.color.raised};
+  border: 1px solid rgba(139, 92, 246, 0.25); border-radius: 14px;
+  > div { flex: 1 1 200px; min-width: 0; }
+  .t { font-size: 13px; font-weight: 650; display: flex; align-items: center; gap: 7px; }
+  .why { font-size: 12px; color: ${t.color.text3}; margin-top: 2px; line-height: 1.5; }
 `;
 const EmailBox = styled.div`
-  margin-top: 12px; background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: 8px; padding: 12px;
-  display: flex; flex-direction: column; gap: 10px;
-  .subj { font-size: 12.5px; font-weight: 600; span { color: ${t.color.text3}; font-weight: 500; margin-right: 6px; } }
-  pre { font-family: inherit; font-size: 12.5px; white-space: pre-wrap; margin: 0; color: ${t.color.text2}; line-height: 1.55; }
-  .mail { font-size: 11.5px; font-weight: 600; color: ${t.color.accent}; align-self: center; }
+  margin-top: 14px; background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: 14px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+  .subj { font-size: 13px; font-weight: 650; span { color: ${t.color.text3}; font-weight: 500; margin-right: 6px; } }
+  pre { font-family: inherit; font-size: 13px; white-space: pre-wrap; margin: 0; color: ${t.color.text2}; line-height: 1.6; }
+  .mail { font-size: 12px; font-weight: 650; color: ${t.color.accentText}; align-self: center; }
 `;
 const List = styled.ul`
-  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column;
+  list-style: none; margin: 4px -8px 0; padding: 0; display: flex; flex-direction: column;
   li {
-    display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid ${t.color.border};
-    color: ${t.color.text2}; font-size: 12.5px;
+    display: flex; align-items: center; gap: 10px; padding: 11px 8px; border-top: 1px solid ${t.color.border};
+    border-radius: 12px; color: ${t.color.text2}; font-size: 13px; flex-wrap: wrap; transition: background 120ms ease-out;
   }
+  li:hover { background: ${t.color.hover}; }
+  li > svg { color: ${t.color.text3}; flex: 0 0 auto; }
   li.done .subj { text-decoration: line-through; color: ${t.color.text3}; }
-  .body { flex: 1; min-width: 0; }
-  .subj { color: ${t.color.text}; }
-  .note { font-size: 11.5px; color: ${t.color.text3}; white-space: pre-wrap; margin-top: 2px; max-height: 3.2em; overflow: hidden; }
+  .body { flex: 1 1 160px; min-width: 0; }
+  .subj { color: ${t.color.text}; font-weight: 550; }
+  .note { font-size: 12px; color: ${t.color.text3}; white-space: pre-wrap; margin-top: 2px; max-height: 3.2em; overflow: hidden; }
   .note-item { align-items: flex-start; }
-  .note-body { color: ${t.color.text}; white-space: pre-wrap; line-height: 1.5; }
-  .muted { font-size: 11.5px; color: ${t.color.text3}; white-space: nowrap; }
-  input[type='checkbox'] { accent-color: ${t.color.accent}; width: 15px; height: 15px; cursor: pointer; }
+  .note-body { color: ${t.color.text}; white-space: pre-wrap; line-height: 1.55; }
+  .muted { font-size: 12px; color: ${t.color.text3}; white-space: nowrap; }
+  input[type='checkbox'] { accent-color: ${t.color.accent}; width: 17px; height: 17px; cursor: pointer; flex: 0 0 auto; }
   .x {
-    background: none; border: none; color: ${t.color.text3}; cursor: pointer; font-size: 16px; padding: 0 4px;
+    width: 28px; height: 28px; border-radius: 999px; flex: 0 0 auto;
+    background: none; border: none; color: ${t.color.text3}; cursor: pointer; font-size: 17px;
     opacity: 0; transition: opacity 120ms ease-out;
-    &:hover { color: ${t.color.danger}; }
+    &:hover { color: ${t.color.danger}; background: ${t.color.badBg}; }
     &:focus-visible { opacity: 1; }
   }
   li:hover .x { opacity: 1; }
+  @media (hover: none) { .x { opacity: 1; } }
 `;

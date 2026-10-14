@@ -1,19 +1,26 @@
+// An all-day (or multi-day) event: the same soft tint and leading bar as a
+// timed event in the week grid. `--ev` is the event colour, set inline; the
+// arrows that say "continues from / into the next week" take the same tint.
 .event {
+  --ev-tint: color-mix(in srgb, var(--ev, var(--accent)) 20%, var(--mc-bg));
+
   height: 22px;
   width: 100%;
   position: absolute;
   top: 0;
-  left: 0;
-  border: 1px solid #fff;
-  border-radius: 6px;
+  left: 1%;
   margin-bottom: 3px;
-  color: #fff;
+  color: var(--mc-text);
   font-size: 12px;
-  letter-spacing: .1px;
+  font-weight: 650;
   z-index: 1;
   cursor: pointer;
   overflow: hidden;
   white-space: nowrap;
+
+  &:hover {
+    --ev-tint: color-mix(in srgb, var(--ev, var(--accent)) 30%, var(--mc-bg));
+  }
 
   &_right {
     padding-right: 10px;
@@ -23,42 +30,46 @@
     padding-left: 10px;
   }
 
-  &_private {
-    outline: 1.5px dashed rgba(255, 255, 255, 0.85);
-    outline-offset: -2px;
-    border-radius: 6px;
+  &_private &__container {
+    outline: 1.5px dashed var(--ev, var(--accent));
+    outline-offset: -1.5px;
   }
 
   &__container {
     position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
     width: 100%;
     height: 100%;
-    padding: 4px;
-    background-color: cornflowerblue;
+    padding: 0 8px 0 9px;
+    border-radius: 7px;
+    background: var(--ev-tint);
+    box-shadow: inset 3px 0 0 var(--ev, var(--accent));
   }
 
+  // Drawn just outside the container, in the event's side padding; the event
+  // itself clips, so the title can never run past the arrow.
   &__arrow {
     position: absolute;
-    width: 11px;
-    -webkit-box-sizing: border-box;
-    box-sizing: border-box;
-    top: -1px;
-    bottom: 2px;
+    width: 0;
+    top: 0;
+    bottom: 0;
     border-style: solid;
     border-top-width: 11px;
     border-bottom-width: 11px;
     border-color: transparent;
-    
+
     &_right {
-      right: -11px;
+      right: -8px;
       border-left-width: 8px;
-      border-left-color: cornflowerblue;
+      border-left-color: var(--ev-tint);
     }
 
     &_left {
+      left: -8px;
       border-right-width: 8px;
-      left: -11px;
-      border-right-color: cornflowerblue;
+      border-right-color: var(--ev-tint);
     }
   }
 }

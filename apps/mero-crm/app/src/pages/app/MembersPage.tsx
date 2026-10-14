@@ -304,75 +304,90 @@ function CapToggle({
   );
 }
 
-const Wrap = styled.div`padding: 24px 24px 60px; overflow-y: auto; flex: 1;`;
+const Wrap = styled.div`
+  padding: 20px 24px 56px; overflow-y: auto; flex: 1; min-width: 0;
+  @media (max-width: 720px) { padding: 14px 12px 40px; }
+`;
 const Head = styled.div`
-  display: flex; align-items: center; margin-bottom: 18px; gap: 8px;
-  h2 { font-size: 15px; font-weight: 600; margin: 0; }
+  display: flex; align-items: center; margin-bottom: 16px; gap: 8px; flex-wrap: wrap;
+  h2 { font-size: 20px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
   .actions { margin-left: auto; display: flex; gap: 8px; }
   button {
-    border-radius: ${t.radius}; font-size: 12.5px; font-weight: 500; padding: 6px 11px;
-    border: 1px solid ${t.color.border}; cursor: pointer;
+    font-family: inherit; border-radius: ${t.radiusPill}; font-size: 13px; font-weight: 600;
+    min-height: 36px; padding: 0 16px; border: 1px solid ${t.color.borderStrong}; cursor: pointer;
   }
-  .secondary { background: ${t.color.raised}; color: ${t.color.text}; &:hover:not(:disabled) { background: ${t.color.raised2}; } &:disabled { opacity: 0.5; cursor: default; } }
+  .secondary { background: ${t.color.raised}; color: ${t.color.text}; &:hover:not(:disabled) { background: ${t.color.hover}; } &:disabled { opacity: 0.5; cursor: default; } }
   .primary {
-    background: ${t.color.accent}; color: ${t.color.onAccent}; border-color: transparent; font-weight: 600;
-    &:hover:not(:disabled) { background: #b6ff5e; }
+    background: ${t.color.accent}; color: ${t.color.onAccent}; border-color: transparent;
+    box-shadow: 0 8px 20px -12px rgba(14, 18, 34, 0.55);
+    &:hover:not(:disabled) { background: ${t.color.accentHover}; }
     &:disabled { opacity: 0.45; cursor: not-allowed; }
   }
 `;
 const Notice = styled.div`
-  display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px;
-  padding: 13px 15px; border-radius: 8px;
+  display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 14px;
+  padding: 14px 16px; border-radius: 16px;
   border: 1px solid ${t.color.accentBorder}; background: ${t.color.accentDim};
-  strong { font-size: 13px; font-weight: 600; display: block; margin-bottom: 3px; }
-  p { margin: 0; font-size: 12.5px; line-height: 1.55; color: ${t.color.text2}; }
+  strong { font-size: 13.5px; font-weight: 650; display: block; margin-bottom: 3px; }
+  p { margin: 0; font-size: 13px; line-height: 1.55; color: ${t.color.text2}; }
+  > div { flex: 1 1 240px; }
   .fix {
-    margin-left: auto; flex: none; align-self: center; cursor: pointer;
+    margin-left: auto; flex: none; align-self: center; cursor: pointer; font-family: inherit;
     background: ${t.color.accent}; color: ${t.color.onAccent}; border: 1px solid transparent;
-    border-radius: ${t.radius}; font-size: 12.5px; font-weight: 600; padding: 7px 13px;
+    border-radius: ${t.radiusPill}; font-size: 13px; font-weight: 600; min-height: 36px; padding: 0 16px;
     &:disabled { opacity: 0.6; cursor: default; }
   }
 `;
 const ErrorBanner = styled.div`
-  margin-bottom: 14px; padding: 10px 14px; border-radius: 8px; font-size: 12.5px;
-  border: 1px solid ${t.color.danger}; color: ${t.color.danger};
-  background: ${t.color.panel};
+  margin-bottom: 14px; padding: 12px 16px; border-radius: 14px; font-size: 13px;
+  border: 1px solid ${t.color.dangerBorder}; color: ${t.color.danger};
+  background: ${t.color.badBg};
 `;
+/* A frosted card of rows. Its blur traps nothing: the alias dialog renders
+   as its sibling, not inside it. */
 const Table = styled.div`
-  width: 100%; border: 1px solid ${t.color.border}; border-radius: 8px;
-  overflow: hidden; background: ${t.color.panel};
+  width: 100%; border: 1px solid ${t.color.edge}; border-radius: ${t.radiusLg};
+  overflow: hidden; background: ${t.color.glass}; box-shadow: ${t.shadow};
+  -webkit-backdrop-filter: ${t.blur}; backdrop-filter: ${t.blur};
 `;
 const Row = styled.div`
-  display: grid; grid-template-columns: 1.3fr 1.1fr 130px 1.5fr;
-  align-items: center; gap: 12px; padding: 11px 16px;
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 130px minmax(0, 1.6fr);
+  align-items: center; gap: 12px; padding: 14px 20px;
   border-bottom: 1px solid ${t.color.border};
   &:last-child { border-bottom: none; }
-  &.head { background: ${t.color.raised}; }
-  &.head span { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: ${t.color.text3}; font-weight: 600; }
-  .user { display: flex; align-items: center; gap: 10px; }
-  .alias { font-size: 13px; font-weight: 500; }
+  &.head { padding-top: 12px; padding-bottom: 10px; }
+  &.head span { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: ${t.color.text3}; font-weight: 600; }
+  .user { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .alias { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .alias.faded { color: ${t.color.text3}; font-family: ${t.font.mono}; font-size: 12px; font-weight: 400; }
-  .key { font-family: ${t.font.mono}; font-size: 12px; color: ${t.color.text2}; }
+  .key { font-family: ${t.font.mono}; font-size: 12px; color: ${t.color.text2}; overflow: hidden; text-overflow: ellipsis; }
   .you-badge {
-    font-size: 10.5px; color: ${t.color.accent}; border: 1px solid ${t.color.accentBorder};
-    background: ${t.color.accentDim}; border-radius: 4px; padding: 1px 6px; font-weight: 600;
+    font-size: 11px; color: ${t.color.accentText}; background: ${t.color.accentDim};
+    border-radius: 999px; padding: 2px 8px; font-weight: 650;
   }
-  .caps { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+  .caps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .caps em {
-    font-style: normal; font-size: 11px; padding: 2px 7px; border-radius: 4px;
-    background: ${t.color.raised}; color: ${t.color.text2}; border: 1px solid ${t.color.border};
+    font-style: normal; font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
+    background: ${t.color.raised2}; color: ${t.color.text2};
   }
   .caps em.none { color: ${t.color.text3}; font-style: italic; }
-  .toggles { display: inline-flex; gap: 5px; margin-left: 4px; }
+  .toggles { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 4px; }
   .toggle {
-    font-size: 11px; padding: 2px 7px; border-radius: 4px; cursor: pointer;
-    border: 1px dashed ${t.color.border}; background: transparent; color: ${t.color.text3};
-    &:hover:not(:disabled) { color: ${t.color.text}; border-color: ${t.color.borderStrong}; }
-    &.on { border-style: solid; border-color: ${t.color.accentBorder}; color: ${t.color.accent}; }
+    font-family: inherit; font-size: 11.5px; padding: 3px 9px; border-radius: 999px; cursor: pointer;
+    border: 1px dashed ${t.color.borderStrong}; background: transparent; color: ${t.color.text3};
+    &:hover:not(:disabled) { color: ${t.color.text}; border-color: ${t.color.text3}; }
+    &.on { border-style: solid; border-color: ${t.color.accentBorder}; color: ${t.color.accentText}; }
     &:disabled { opacity: 0.5; cursor: default; }
+  }
+  /* A phone stacks each member into a small card instead of four columns. */
+  @media (max-width: 720px) {
+    grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding: 14px 16px;
+    &.head { display: none; }
+    .key { grid-column: 1; grid-row: 2; }
+    .caps { grid-column: 1 / -1; }
   }
 `;
 const Foot = styled.div`
-  display: flex; flex-direction: column; gap: 4px; margin-top: 12px;
-  font-size: 12px; color: ${t.color.text3}; line-height: 1.5;
+  display: flex; flex-direction: column; gap: 4px; margin-top: 14px; padding: 0 4px;
+  font-size: 12.5px; color: ${t.color.text3}; line-height: 1.55;
 `;

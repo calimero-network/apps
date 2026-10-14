@@ -632,3 +632,33 @@
 }
 
 .opacityNumber { flex: 0 0 68px; }
+
+/* ── lock / hide ──────────────────────────────────────────────────── */
+/* Shown on hover like the row's other actions, but always while ON, so a
+   locked or hidden layer can be spotted down the list. */
+.flagBtn {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--glass-muted);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.1s;
+}
+.flagBtn:hover:not(:disabled) { color: var(--glass-accent); background: var(--glass-surface-solid); }
+.flagBtn:disabled { cursor: default; }
+.layerItem:hover .flagBtn,
+.layerItemActive .flagBtn,
+.flagBtn:focus-visible,
+.flagOn { opacity: 1; }
+.flagOn { color: var(--glass-ink-2); }
+.layerItemHidden .layerName,
+.layerItemHidden .layerIcon,
+.layerItemHidden .groupIcon { opacity: 0.45; }

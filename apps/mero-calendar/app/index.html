@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#1d2433" />
+    <meta name="theme-color" content="#f6f7fb" />
     <title>Mero Calendar</title>
     <!-- Served from public/, so these resolve at the site root. The repo used to
          carry a favicon.ico under src/assets/, where Vite never serves it as
@@ -18,13 +18,28 @@
       integrity="sha256-WAgYcAck1C1/zEl5sBl5cfyhxtLgKGdpI3oKyJffVRI="
       crossorigin="anonymous"
     />
-    <link
-      href="https://fonts.googleapis.com/css?family=Roboto:400,500,600&display=swap"
-      rel="stylesheet"
-    />
+    <!-- No webfont link: Figtree is self-hosted by @calimero-apps/glass
+         (glass.css imports its fonts.css), so there is no Google Fonts
+         request to block first paint. -->
     <!-- Font Awesome was here for 8 glyphs; they are inline SVG now
          (src/components/common/icons/Icons.tsx). Do not re-add a
          render-blocking icon CDN for a handful of shapes. -->
+    <!-- Theme before first paint: light unless the person picked dark
+         (src/providers/ThemeProvider owns the key and does the same at
+         runtime). -->
+    <script>
+      (function () {
+        var dark = false;
+        try {
+          dark = localStorage.getItem('mc-theme') === 'dark';
+        } catch (e) {}
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        if (dark) {
+          var m = document.querySelector('meta[name="theme-color"]');
+          if (m) m.setAttribute('content', '#0b0e18');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

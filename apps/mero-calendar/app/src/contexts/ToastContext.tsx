@@ -45,7 +45,7 @@ const viewport: CSSProperties = {
 const base: CSSProperties = {
   pointerEvents: "auto",
   padding: "11px 14px",
-  borderRadius: 8,
+  borderRadius: 14,
   fontSize: 13,
   lineHeight: 1.4,
   fontWeight: 600,

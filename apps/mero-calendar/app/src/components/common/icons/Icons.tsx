@@ -140,6 +140,35 @@ export const ShieldIcon: FC<IconProps> = (p) => (
   </Svg>
 );
 
+/** Theme toggle, offered while the app is dark. */
+export const SunIcon: FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2.5v2M12 19.5v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2.5 12h2M19.5 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+  </Svg>
+);
+
+/** Theme toggle, offered while the app is light. */
+export const MoonIcon: FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <path d="M20.5 13.2A8.5 8.5 0 1 1 10.8 3.5a6.6 6.6 0 0 0 9.7 9.7Z" />
+  </Svg>
+);
+
+/** Log out — a door with the arrow leaving it. */
+export const LogOutIcon: FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <path d="M9.5 20.5H6a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2h3.5" />
+    <path d="M15.5 16.5 20 12l-4.5-4.5M20 12H9.5" />
+  </Svg>
+);
+
+export const PlusIcon: FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <path d="M12 5v14M5 12h14" />
+  </Svg>
+);
+
 /** An ordinary team member. */
 export const UserIcon: FC<IconProps> = (p) => (
   <Svg {...p}>

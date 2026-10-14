@@ -22,7 +22,7 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  background: var(--surface);
+  background: var(--glass-surface-solid);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -32,7 +32,7 @@
   line-height: 1.45;
   text-align: left;
   cursor: pointer;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-shadow-float);
   animation: toast-in 160ms ease-out;
 }
 

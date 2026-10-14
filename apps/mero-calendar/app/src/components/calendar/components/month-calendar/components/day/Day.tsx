@@ -3,7 +3,7 @@ import { IMonthDay, TMonth } from '../../../../../../types/date';
 import { IEvent } from '../../../../../../types/event';
 import { checkIsToday, createDate, getNextStartMinutes, shmoment } from '../../../../../../utils/date';
 import { useModal } from '../../../../../../hooks/useModal';
-import { checkIsEventsShowInCurrentInterval, getStyledForLongEvent } from '../../../../../../utils/helpers';
+import { getStyledForLongEvent } from '../../../../../../utils/helpers';
 import cn from 'classnames';
 import LongEvent from '../../../../../../components/common/long-event/LongEvent';
 import ShortEvent from '../../../../../../components/common/short-event/ShortEvent';
@@ -55,7 +55,7 @@ const Day: FC<IDayProps> = ({
 
   const maxCountLongEvents = isShowMoreBtn ? maxCountEventsInDay - 1 : maxCountEventsInDay;
 
-  const countLongEvents = dayEventsPositionY.slice(0, maxCountLongEvents).reduce((total, _) => total + 1, 0);
+  const countLongEvents = dayEventsPositionY.slice(0, maxCountLongEvents).reduce((total) => total + 1, 0);
 
   const restCountEvents = dayShortEvents.length + dayLongEvents.length - countLongEvents;
   
@@ -76,7 +76,9 @@ const Day: FC<IDayProps> = ({
   
   return (
     <div
-      className={styles.day}
+      className={cn(styles.day, {
+        [styles.day_additional]: day.monthIndex !== selectedMonth.monthIndex
+      })}
       onClick={handleCreateEvent}
     >
       <div className={cn(styles.day__label, {
@@ -91,21 +93,18 @@ const Day: FC<IDayProps> = ({
       <div className={styles.day__events}>
         {dayEventsPositionY.slice(0, maxCountLongEvents).map((eventId, indx) => {
 
-          const event = dayLongEvents.find(event => event.id === eventId);
+          const event = dayLongEvents.find(event => event.id === eventId)!;
 
-          const { width, isShowEvent, isMovingFromPrev, isMovingToNext } = getStyledForLongEvent(weekDays, day, event!);
+          const { width, isShowEvent, isMovingFromPrev, isMovingToNext } = getStyledForLongEvent(weekDays, day, event);
 
           const top = indx * 24;
 
           return (
             <LongEvent
-            //@ts-ignore
               key={event.id}
-              //@ts-ignore
               event={event}
               width={width}
               top={top}
-              //@ts-ignore
               color={event.color}
               isShowEvent={isShowEvent}
               isMovingToNext={isMovingToNext}

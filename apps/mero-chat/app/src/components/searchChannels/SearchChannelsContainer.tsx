@@ -41,8 +41,9 @@ const SearchContainer = styled.div`
     padding: 42px 0 0;
     background-color: var(--glass-surface-solid);
   }
-  /* mero-ui's SearchInput paints its label white inline. */
-  .inputFieldWrapper label {
+  /* mero-ui's SearchInput paints its label and typed text white inline. */
+  .inputFieldWrapper label,
+  .inputFieldWrapper input {
     color: var(--glass-ink) !important;
   }
   .inputFieldWrapper {

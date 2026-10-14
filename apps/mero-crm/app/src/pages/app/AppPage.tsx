@@ -339,15 +339,17 @@ const Ready = styled.div`
 const PipelineGate = styled.div`
   flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px;
   .panel {
-    max-width: 400px; text-align: center; padding: 32px 28px;
-    background: ${t.color.panel}; border: 1px solid ${t.color.border}; border-radius: 12px;
-    h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 8px; }
+    max-width: 420px; text-align: center; padding: 36px 32px;
+    background: ${t.color.glass}; border: 1px solid ${t.color.edge}; border-radius: ${t.radiusModal};
+    -webkit-backdrop-filter: ${t.blur}; backdrop-filter: ${t.blur}; box-shadow: ${t.shadow};
+    h2 { font-size: 21px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 8px; }
     p { font-size: 13.5px; color: ${t.color.text2}; margin: 0 0 22px; line-height: 1.55; }
     p.gated { margin: 0; font-style: italic; }
     .primary {
       background: ${t.color.accent}; color: ${t.color.onAccent}; border: 1px solid transparent;
-      border-radius: ${t.radius}; font-size: 13px; font-weight: 600; padding: 10px 16px; cursor: pointer;
-      &:hover { background: #b6ff5e; }
+      border-radius: ${t.radiusPill}; font-family: inherit; font-size: 13.5px; font-weight: 600; min-height: 40px; padding: 0 20px; cursor: pointer;
+      box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
+      &:hover { background: ${t.color.accentHover}; }
     }
   }
 `;

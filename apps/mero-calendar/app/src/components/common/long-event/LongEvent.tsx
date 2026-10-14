@@ -1,5 +1,5 @@
 import cn from "classnames";
-import React, { FC, MouseEvent } from "react";
+import React, { CSSProperties, FC, MouseEvent } from "react";
 
 import styles from './long-event.module.scss';
 import { IEvent } from "../../../types/event";
@@ -27,16 +27,15 @@ const LongEvent: FC<ILongEventProps> = ({
   isMovingFromPrev
 }) => {
   const { openPopup } = usePopup();
+  // `--ev` carries the owner's colour into the stylesheet, which tints the
+  // chip and its arrows with it (see long-event.module.scss).
   const eventStyle = {
     width: `calc(${width}% - 2%)`,
     top: `${top}px`,
     opacity: isShowEvent ? 1 : 0,
-    zIndex: isShowEvent ? 1 : -1
-  };
-
-  const eventContainerStyle = { background: color };
-  const arrowLeftStyle = { borderRightColor: color };
-  const arrowRightStyle = { borderLeftColor: color };
+    zIndex: isShowEvent ? 1 : -1,
+    '--ev': color,
+  } as CSSProperties;
 
   const handleOpenModal = (e: MouseEvent<HTMLDivElement>) => {
     const { clientX, clientY } = e;
@@ -60,26 +59,17 @@ const LongEvent: FC<ILongEventProps> = ({
       data-testid="event-chip"
       data-private={event.private ? "true" : "false"}
     >
-      <div
-        className={styles.event__container}
-        style={eventContainerStyle}
-      >
+      <div className={styles.event__container}>
         {event.private && <LockIcon title="Private event" size={11} />}
         {event.title}
         {event.type === 'event' && (
           `, ${formatDate(new Date(event.start), 'hh:mm')}`
         )}
         {isMovingFromPrev && (
-          <div
-            className={cn(styles.event__arrow, styles.event__arrow_left)}
-            style={arrowLeftStyle}
-          ></div>
+          <div className={cn(styles.event__arrow, styles.event__arrow_left)}></div>
         )}
         {isMovingToNext && (
-          <div
-            className={cn(styles.event__arrow, styles.event__arrow_right)}
-            style={arrowRightStyle}
-          ></div>
+          <div className={cn(styles.event__arrow, styles.event__arrow_right)}></div>
         )}
       </div>
     </div>

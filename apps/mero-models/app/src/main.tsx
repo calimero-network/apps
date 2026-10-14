@@ -1,3 +1,4 @@
+import "@calimero-apps/glass/glass.css";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { AppMode, MeroProvider } from "@calimero-network/mero-react";
