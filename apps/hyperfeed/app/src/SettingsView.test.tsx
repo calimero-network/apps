@@ -152,9 +152,10 @@ describe("Settings → Actions: what your agent can do in each app", () => {
     const backend = new DemoBackend(true, 0);
     render(<Harness backend={backend} section="actions" />);
     const link = within(await screen.findByRole("navigation", { name: "Settings" })).getByRole("link", { name: /Actions/ });
-    expect(await within(link).findByLabelText("1 waiting for you")).toBeInTheDocument();
+    expect(await within(link).findByLabelText("7 waiting for you")).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Actions in Docs" })).toBeNull();
-    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    const docs = await screen.findByRole("listitem", { name: "Docs" });
+    fireEvent.click(within(docs).getByRole("button", { name: "Approve" }));
     expect(await screen.findByRole("list", { name: "Actions in Docs" })).toBeInTheDocument();
     expect(backend.verdict("docs", "", true, "delete_doc").reason).toContain('"delete"');
   });

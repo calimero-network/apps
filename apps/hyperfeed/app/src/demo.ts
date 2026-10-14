@@ -28,6 +28,12 @@ import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 import chatActions from "./actions/fixtures/chat.json";
 import docsActions from "./actions/fixtures/docs.json";
+import calendarActions from "./actions/fixtures/calendar.json";
+import sheetsActions from "./actions/fixtures/sheets.json";
+import issuesActions from "./actions/fixtures/issues.json";
+import crmActions from "./actions/fixtures/crm.json";
+import signActions from "./actions/fixtures/sign.json";
+import passActions from "./actions/fixtures/pass.json";
 
 /**
  * The Hyperfeed contract's rules, in memory, so the app can be tried without a
@@ -195,6 +201,8 @@ export class DemoBackend implements FeedBackend {
     const answer = (decision: string, reason: string): Verdict => ({ decision, reason });
     if (mode === "off") return answer("refuse", `your agent is off in ${app}`);
     if (label && call.mode === "off") return answer("refuse", `you turned off "${label}" in ${app}`);
+    // A guard covers reads too: "Reading a secret" is about nothing else.
+    if (!call.writes && this.guardOn(call.category)) return answer("ask", `"${call.category}" always needs you`);
     if (!call.writes) return answer("act", `reading in ${app} is allowed`);
     if (mode === "read") return answer("refuse", `your agent may only read in ${app}`);
     if (this.paused) return answer("ask", "your agent is paused");
@@ -609,7 +617,7 @@ export class DemoBackend implements FeedBackend {
     this.changed();
   }
 
-  /** What the pretend agent learned: Chat's actions in force (editing your messages set to act), Docs' waiting for you. */
+  /** What the pretend agent learned: Chat's actions in force (editing your messages set to act), the other core apps' waiting for you. */
   private seedActions() {
     const at = this.now();
     this.actionRows.set("chat@demo-chat", {
@@ -628,6 +636,25 @@ export class DemoBackend implements FeedBackend {
       summary: "Reading, creating, editing and commenting on documents; tags, archive, and deleting.",
       status: "proposed",
       updated_at: at - 4 * MINUTE,
+    });
+    // The other core apps' actions, learned and waiting for you.
+    const waiting: [string, unknown, string][] = [
+      ["calendar", calendarActions, "Reading, adding, changing and deleting events, and your display name."],
+      ["sheets", sheetsActions, "Reading and editing workbooks, comments, charts and links; roles, protected ranges and deleting."],
+      ["issues", issuesActions, "Reading, filing, triaging and commenting on issues, and deleting them."],
+      ["crm", crmActions, "Reading the pipeline; contacts, deals, activities and stages; deleting."],
+      ["sign", signActions, "Reading, uploading and signing documents; signers, shared spaces and deleting."],
+      ["pass", passActions, "Reading the vault and its secrets; adding, trashing and purging secrets; devices and members."],
+    ];
+    waiting.forEach(([app, actions, summary], i) => {
+      this.actionRows.set(`${app}@demo-${app}`, {
+        app,
+        application_id: `demo-${app}`,
+        actions: actions as ActionDef[],
+        summary,
+        status: "proposed",
+        updated_at: at - (5 + i) * MINUTE,
+      });
     });
   }
 

@@ -479,3 +479,14 @@ describe("DemoBackend follows approved actions, as the contract does", () => {
     expect(edit.breach).not.toBe("");
   });
 });
+
+describe("DemoBackend lets a guard cover reads, as the contract does", () => {
+  it("asks before reading a secret once that guard is on", async () => {
+    const b = fresh();
+    await b.setPolicy("pass", "act", "feed");
+    expect(b.verdict("pass", "secret", false).decision).toBe("act");
+    await b.setGuard("secret", true);
+    expect(b.verdict("pass", "secret", false).reason).toContain('"secret"');
+    expect(b.verdict("pass", "", false).decision).toBe("act");
+  });
+});

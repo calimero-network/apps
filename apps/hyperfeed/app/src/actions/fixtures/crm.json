@@ -1,0 +1,97 @@
+[
+  {
+    "id": "read",
+    "label": "Read the pipeline",
+    "description": "Deals, contacts, activities, stages, automations and settings.",
+    "category": "",
+    "writes": false,
+    "methods": [
+      "get_deal",
+      "get_settings",
+      "list_activities",
+      "list_automations",
+      "list_contacts",
+      "list_deals",
+      "list_stages"
+    ]
+  },
+  {
+    "id": "contacts",
+    "label": "Add and edit contacts",
+    "description": "People and their organizations.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "create_contact",
+      "update_contact"
+    ]
+  },
+  {
+    "id": "deals",
+    "label": "Add, edit and move deals",
+    "description": "Create a deal, change it, or move it to another stage. Moving runs that stage's automations.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "create_deal",
+      "update_deal",
+      "move_deal"
+    ]
+  },
+  {
+    "id": "close",
+    "label": "Win, lose or reopen deals",
+    "description": "Close a deal as won or lost, or put it back on the board.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "mark_won",
+      "mark_lost",
+      "reopen_deal"
+    ]
+  },
+  {
+    "id": "activities",
+    "label": "Log activities and notes",
+    "description": "Schedule, reschedule or complete activities, and add notes.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "add_activity",
+      "reschedule_activity",
+      "set_activity_done",
+      "add_note"
+    ]
+  },
+  {
+    "id": "pipeline",
+    "label": "Change the pipeline",
+    "description": "Stages, their order, automations, currency and rotting days.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "add_stage",
+      "update_stage",
+      "reorder_stages",
+      "add_automation",
+      "set_automation_enabled",
+      "set_currency",
+      "set_rotting_days"
+    ]
+  },
+  {
+    "id": "delete",
+    "label": "Delete contacts, deals and more",
+    "description": "Contacts, deals, activities, notes, stages and automations.",
+    "category": "delete",
+    "writes": true,
+    "methods": [
+      "delete_contact",
+      "delete_deal",
+      "delete_activity",
+      "delete_note",
+      "delete_stage",
+      "delete_automation"
+    ]
+  }
+]

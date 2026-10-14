@@ -1885,6 +1885,13 @@ impl Hyperfeed {
                 format!("you turned off \"{label}\" in {app}"),
             ));
         }
+        // A guard covers reads too: "Reading a secret" is about nothing else.
+        if !call.writes && self.guard_on(&call.category)? {
+            return Ok(answer(
+                "ask",
+                format!("\"{}\" always needs you", call.category),
+            ));
+        }
         if !call.writes {
             return Ok(answer("act", format!("reading in {app} is allowed")));
         }

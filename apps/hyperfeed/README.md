@@ -72,6 +72,7 @@ asks you every time. With no approved actions, or an agent that names no method,
 | --- | --- |
 | app mode `off` | refuse |
 | the action is set to `off` | refuse |
+| a read whose category's guard is on ("Reading a secret") | ask |
 | a read (`writes: false`) | act |
 | app mode `read`, and the action writes | refuse |
 | agent paused | ask |
@@ -545,7 +546,8 @@ says the feed is too old.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
   Phone alerts (Settings → Alerts) keep your devices' push subscriptions and the runtime's VAPID
   public key in the feed; mero-bot's sender, which pushes what newly needs you, is a separate change.
-- Actions ship for Chat and Docs as checked fixtures (`app/src/actions/fixtures/`), used by the demo;
+- Actions ship for the core apps (Chat, Docs, Calendar, Sheets, Issues, CRM, Sign and Pass) as fixtures
+  in `app/src/actions/fixtures/`, each checked against its app's ABI and covering every method; the demo uses them;
   on your node they are learned and proposed by your agent. mero-bot does not propose them or pass
   `method` to `check_action` yet; until it does, its own word decides, as before.
 - Lenses for apps other than Chat are learned on your node; none ships for them. A lens is tried on
