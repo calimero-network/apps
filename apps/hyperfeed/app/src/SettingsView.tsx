@@ -119,7 +119,7 @@ export function SettingsView({
         ) : current === "rules" ? (
           <RulesSection feed={feed} />
         ) : current === "agents" ? (
-          <AgentsSection feed={feed} contextId={contextId} />
+          <AgentsSection feed={feed} contextId={contextId} installed={installed} install={install} />
         ) : current === "lenses" ? (
           <LensesSection feed={feed} preview={preview} newFeed={newFeed} />
         ) : (
@@ -299,7 +299,17 @@ function ControlsSection({
 }
 
 /** Who reports in to this feed, what each can reach on its computer, and how to connect one. */
-function AgentsSection({ feed, contextId }: { feed: Feed; contextId: string | null }) {
+function AgentsSection({
+  feed,
+  contextId,
+  installed,
+  install,
+}: {
+  feed: Feed;
+  contextId: string | null;
+  installed: string[] | null;
+  install: ((pkg: string) => Promise<void>) | null;
+}) {
   const settings = feed.settings;
   if (!settings) return null;
   const now = Date.now();
@@ -333,7 +343,7 @@ function AgentsSection({ feed, contextId }: { feed: Feed; contextId: string | nu
       </section>
 
       {/* A feed made before assignments has no `assignments` in its settings, and no setter. */}
-      {feed.setAssignment && Array.isArray(settings.assignments) && <AgentAssignments feed={feed} />}
+      {feed.setAssignment && Array.isArray(settings.assignments) && <AgentAssignments feed={feed} installed={installed} install={install} />}
 
       {/* A feed made before access has no `access` in its settings, and no setter. */}
       {feed.setAccess && Array.isArray(settings.access) && <AgentReach feed={feed} />}
@@ -512,17 +522,37 @@ function PhoneAlerts({ feed }: { feed: Feed }) {
  * "mero-bot": the tools on a computer. Only you set these; mero-bot refuses
  * `set_assignment` to the agent.
  */
-function AgentAssignments({ feed }: { feed: Feed }) {
+function AgentAssignments({
+  feed,
+  installed,
+  install,
+}: {
+  feed: Feed;
+  installed: string[] | null;
+  install: ((pkg: string) => Promise<void>) | null;
+}) {
   const settings = feed.settings!;
   const { page } = feed;
   const { pending, write } = usePending();
+  // As in Controls: on your node, Code and the core apps you have installed,
+  // with Install for the rest; any app already given to an agent stays, so it
+  // can be given back. Until the node says (and in the demo): the usual ones.
+  const missing = useMemo(
+    () => (installed ? CORE_PACKAGES.filter((pkg) => !installed.includes(appKeyForPackage(pkg, ""))) : []),
+    [installed],
+  );
   const apps = useMemo(() => {
+    if (installed) {
+      const keys = new Set([CODE_APP, ...CORE_PACKAGES.map((pkg) => appKeyForPackage(pkg, "")).filter((k) => installed.includes(k))]);
+      for (const a of settings.assignments ?? []) keys.add(a.app);
+      return [...keys];
+    }
     const keys = new Set([CODE_APP, ...DEFAULT_APPS]);
     for (const p of settings.policies) keys.add(p.app);
     for (const a of page?.apps ?? []) keys.add(a.app);
     for (const a of settings.assignments ?? []) keys.add(a.app);
     return [...keys];
-  }, [settings, page]);
+  }, [installed, settings, page]);
   const privates = privateAgents(settings);
   // Every agent that reported in or reported what it reaches, and any you assigned that hasn't yet.
   const agents = [
@@ -583,6 +613,18 @@ function AgentAssignments({ feed }: { feed: Feed }) {
                   </option>
                 ))}
               </select>
+            </li>
+          );
+        })}
+        {missing.map((pkg) => {
+          const app = appKeyForPackage(pkg, "");
+          return (
+            <li key={pkg} className="not-installed">
+              <span className="app-cell">
+                <Badge app={app} size="sm" />
+                {appLook(app).name}
+              </span>
+              <InstallControl pkg={pkg} install={install} />
             </li>
           );
         })}
@@ -936,49 +978,56 @@ export function RuleSuggestion({ proposal, feed }: { proposal: RuleProposalView;
 /** A core app not on your node: Install, in place of what the agent may do there. */
 function InstallRow({ pkg, install }: { pkg: string; install: ((pkg: string) => Promise<void>) | null }) {
   const app = appKeyForPackage(pkg, "");
-  const look = appLook(app);
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
   return (
     <tr className="not-installed">
       <th scope="row">
         <span className="app-cell">
           <Badge app={app} size="sm" />
-          {look.name}
+          {appLook(app).name}
         </span>
       </th>
       <td colSpan={2}>
-        <span className="install-cell">
-          <button
-            type="button"
-            className="ghost small"
-            disabled={!install || busy}
-            aria-label={`Install ${look.name}`}
-            onClick={async () => {
-              if (!install) return;
-              setBusy(true);
-              setFailed(null);
-              try {
-                await install(pkg);
-              } catch (e) {
-                setFailed(messageOf(e));
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            {busy ? "Installing…" : "Install"}
-          </button>
-          {failed ? (
-            <span className="error-text" role="alert">
-              {failed}
-            </span>
-          ) : (
-            <span className="muted small-text">Not on your node</span>
-          )}
-        </span>
+        <InstallControl pkg={pkg} install={install} />
       </td>
     </tr>
+  );
+}
+
+/** Install a core app, and "Not on your node" beside it, or why the install failed. */
+function InstallControl({ pkg, install }: { pkg: string; install: ((pkg: string) => Promise<void>) | null }) {
+  const look = appLook(appKeyForPackage(pkg, ""));
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  return (
+    <span className="install-cell">
+      <button
+        type="button"
+        className="ghost small"
+        disabled={!install || busy}
+        aria-label={`Install ${look.name}`}
+        onClick={async () => {
+          if (!install) return;
+          setBusy(true);
+          setFailed(null);
+          try {
+            await install(pkg);
+          } catch (e) {
+            setFailed(messageOf(e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Installing…" : "Install"}
+      </button>
+      {failed ? (
+        <span className="error-text" role="alert">
+          {failed}
+        </span>
+      ) : (
+        <span className="muted small-text">Not on your node</span>
+      )}
+    </span>
   );
 }
 
