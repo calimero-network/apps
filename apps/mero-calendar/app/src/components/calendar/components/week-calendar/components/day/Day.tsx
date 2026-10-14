@@ -2,6 +2,8 @@ import React, { FC } from 'react';
 import Hour from '../hour/Hour';
 import { IEvent } from '../../../../../../types/event';
 import { IMonthDay } from '../../../../../../types/date';
+import { checkIsToday } from '../../../../../../utils/date';
+import cn from 'classnames';
 
 import styles from './day.module.scss';
 
@@ -24,7 +26,7 @@ const Day: FC<IDayProps> = ({
 
   return (
     <div
-      className={styles.day}
+      className={cn(styles.day, { [styles.day_today]: checkIsToday(dayData.date) })}
       data-day={dayData.dayNumber}
     >
       {hours.map((hour) => {
@@ -33,7 +35,7 @@ const Day: FC<IDayProps> = ({
           (event) => new Date(event.start).getHours() === hour
         );
 
-        const eventsFromPrevDay = prevDayEvents.filter((_) => 0 === hour);
+        const eventsFromPrevDay = prevDayEvents.filter(() => 0 === hour);
         
         const eventsToNextDay = nextDayEvents.filter(
           (event) => new Date(event.start).getHours() === hour

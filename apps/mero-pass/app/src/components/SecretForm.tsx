@@ -6,10 +6,22 @@ import { FIELDS, KINDS, type Kind } from '../lib/secretKinds';
 import { parseTotp } from '../lib/totp';
 import type { Secret, VaultSession } from '../lib/vaultSession';
 import shell from '../styles/shell.module.css';
+import { CloseIcon, RefreshIcon } from './icons';
 import styles from './SecretForm.module.css';
 import { describeError } from '../lib/errors';
 
-const STRENGTH_LABEL = ['Very weak', 'Weak', 'Fair', 'Strong', 'Very strong'];
+const STRENGTH = [
+  ['Very weak', 'var(--danger)'],
+  ['Weak', 'var(--danger)'],
+  ['Fair', 'var(--warning)'],
+  ['Strong', 'var(--success)'],
+  ['Very strong', 'var(--success)'],
+] as const;
+
+/** The generator's length range; 20 is `generatePassword`'s own default. */
+const GEN_MIN = 12;
+const GEN_MAX = 64;
+const GEN_DEFAULT = 20;
 
 /**
  * Add or edit one secret.
@@ -47,6 +59,7 @@ export default function SecretForm({
   const [values, setValues] = useState<Record<string, string>>({});
   const [shown, setShown] = useState<Set<string>>(new Set());
   const [tags, setTags] = useState('');
+  const [genLength, setGenLength] = useState(GEN_DEFAULT);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,6 +76,20 @@ export default function SecretForm({
   }, [open, secret, initialKind]);
 
   const fields = useMemo(() => FIELDS[kind] ?? FIELDS.login, [kind]);
+  // Which fields share a row. A field asks for half a row; it gets one only
+  // when a neighbour does too, so no field sits alone at half width. A field
+  // with a generator always takes the full row, for the generator under it.
+  const halves = useMemo(() => {
+    const half = fields.map((f) => !!f.half && !f.generate);
+    const out = half.map(() => false);
+    for (let i = 0; i < half.length; i++) {
+      if (half[i] && half[i + 1]) {
+        out[i] = out[i + 1] = true;
+        i++;
+      }
+    }
+    return out;
+  }, [fields]);
 
   async function save() {
     const trimmed = name.trim();
@@ -125,7 +152,7 @@ export default function SecretForm({
             onClick={onClose}
             aria-label="Close"
           >
-            ✕
+            <CloseIcon size={18} />
           </button>
         </header>
 
@@ -168,7 +195,7 @@ export default function SecretForm({
         </div>
 
         <div className={styles.grid}>
-          {fields.map((f) => {
+          {fields.map((f, i) => {
             const value = values[f.key] ?? '';
             const visible = !f.secret || shown.has(f.key);
             const set = (v: string) =>
@@ -177,7 +204,7 @@ export default function SecretForm({
               <div
                 key={f.key}
                 className={styles.field}
-                style={f.half ? undefined : { gridColumn: '1 / -1' }}
+                style={halves[i] ? undefined : { gridColumn: '1 / -1' }}
               >
                 <label className={styles.label} htmlFor={`sf-${f.key}`}>
                   {f.label}
@@ -221,22 +248,51 @@ export default function SecretForm({
                         {visible ? 'Hide' : 'Show'}
                       </button>
                     )}
-                    {f.generate && (
-                      <button
-                        type="button"
-                        className={styles.inline}
-                        onClick={() => set(generatePassword())}
-                        data-testid="sf-generate"
-                      >
-                        Generate
-                      </button>
-                    )}
                   </div>
                 )}
-                {f.generate && value && (
-                  <span className={styles.hint}>
-                    {STRENGTH_LABEL[strengthOf(value)]}
-                  </span>
+                {f.generate && (
+                  <div className={styles.generator}>
+                    <div className={styles.strength}>
+                      <span className={styles.meterBar}>
+                        <span
+                          className={styles.meterFill}
+                          style={
+                            value
+                              ? {
+                                  width: `${((strengthOf(value) + 1) / 5) * 100}%`,
+                                  background: STRENGTH[strengthOf(value)][1],
+                                }
+                              : { width: 0 }
+                          }
+                        />
+                      </span>
+                      <span className={styles.strengthLabel}>
+                        {value
+                          ? STRENGTH[strengthOf(value)][0]
+                          : `No ${f.label.toLowerCase()} yet`}
+                      </span>
+                    </div>
+                    <label className={styles.length}>
+                      <span>Length</span>
+                      <input
+                        type="range"
+                        min={GEN_MIN}
+                        max={GEN_MAX}
+                        value={genLength}
+                        onChange={(e) => setGenLength(Number(e.target.value))}
+                        aria-label="Generated length"
+                      />
+                      <span className={styles.lengthValue}>{genLength}</span>
+                    </label>
+                    <button
+                      type="button"
+                      className={styles.inline}
+                      onClick={() => set(generatePassword(genLength))}
+                      data-testid="sf-generate"
+                    >
+                      <RefreshIcon size={14} /> Generate
+                    </button>
+                  </div>
                 )}
               </div>
             );

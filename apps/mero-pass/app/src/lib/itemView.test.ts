@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   hostOf,
+  hueOf,
   matches,
   monogramOf,
   openableUrl,
@@ -63,5 +64,14 @@ describe('itemView', () => {
     expect(monogramOf('  github')).toBe('G');
     expect(monogramOf('🔑 1password')).toBe('1');
     expect(monogramOf('')).toBe('•');
+  });
+
+  it('gives a name the same tile hue every time, whatever its case or padding', () => {
+    expect(hueOf('Acme Ltd')).toBe(hueOf('  acme ltd '));
+    expect(hueOf('Acme Ltd')).not.toBe(hueOf('Home'));
+    for (const n of ['', 'a', 'Ops on-call', '🔑 keys']) {
+      expect(hueOf(n)).toBeGreaterThanOrEqual(0);
+      expect(hueOf(n)).toBeLessThan(360);
+    }
   });
 });

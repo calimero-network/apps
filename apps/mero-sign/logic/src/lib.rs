@@ -948,6 +948,8 @@ impl MeroSignState {
             .entries_at(&document_id.to_owned())
             .map_err(store_err("Failed to get document"))?
             .into_iter()
+            // A document its uploader signed twice is sealed and has no value.
+            .filter_map(|(owner, doc)| Some((owner, doc.value()?)))
             .min_by_key(|(owner, _)| *owner)
             .map(|(owner, doc)| (*owner.as_bytes(), doc)))
     }
@@ -984,6 +986,10 @@ impl MeroSignState {
             .collect();
         for key in keys {
             for (owner, version) in self.document_signatures.entries_at(&key).map_err(&err)? {
+                // A signature its signer signed twice is sealed and counts for nothing.
+                let Some(version) = version.value() else {
+                    continue;
+                };
                 let signer = *owner.as_bytes();
                 let may_sign = doc.required_signers.contains(&signer)
                     || self

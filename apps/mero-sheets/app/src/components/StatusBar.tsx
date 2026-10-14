@@ -27,28 +27,30 @@ export default function StatusBar({ sync, peers, cells }: StatusBarProps) {
   );
 }
 
+/* A quiet line under the sheet card, on the glass ground. */
 const Bar = styled.footer`
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 26px;
+  height: 22px;
   flex-shrink: 0;
-  padding: 0 14px;
-  background: ${C.chrome};
-  border-top: 1px solid ${C.line};
-  font-size: 11.5px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
   color: ${C.muted};
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--glass-font);
+  white-space: nowrap;
+  overflow: hidden;
 `;
 
-const TONE: Record<SyncTone, string> = { ok: C.green, busy: C.muted, warn: '#eda100', off: C.danger };
+const TONE: Record<SyncTone, string> = { ok: 'var(--glass-good-ink)', busy: C.muted, warn: '#eda100', off: C.danger };
 
 const Dot = styled.span<{ $tone: SyncTone }>`
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: ${(p) => TONE[p.$tone]};
-  box-shadow: ${(p) => (p.$tone === 'ok' ? `0 0 6px ${C.green}` : 'none')};
+  box-shadow: ${(p) => (p.$tone === 'ok' ? '0 0 6px var(--glass-good-ink)' : 'none')};
 `;
 
 const Sep = styled.span`

@@ -5,25 +5,29 @@ const APP_ID = 'app-mero-pass';
 // ONE object, as mero-react's context value is. A fresh `mero` per call re-ran
 // every effect that lists it (the vault page's lookup, for one) on every render
 // — an endless render loop that froze the page on the first real click.
-const SESSION = {
-  mero: {
-    admin: {
-      listAccountDevices: async () => [
-        {
-          deviceId: '9c1f2e7a5b3d8f0e1a2b3c4d5e6f708192a3b4c5',
-          isSelf: true,
-          revoked: false,
-          namespaces: ['ns-1', 'ns-p'],
-        },
-        {
-          deviceId: '4e8d1c0b9a7f6e5d4c3b2a1908f7e6d5c4b3a291',
-          isSelf: false,
-          revoked: false,
-          namespaces: ['ns-1'],
-        },
-      ],
+const ADMIN = {
+  listAccountDevices: async () => [
+    {
+      deviceId: '9c1f2e7a5b3d8f0e1a2b3c4d5e6f708192a3b4c5',
+      isSelf: true,
+      revoked: false,
+      namespaces: ['ns-1', 'ns-p'],
     },
-  },
+    {
+      deviceId: '4e8d1c0b9a7f6e5d4c3b2a1908f7e6d5c4b3a291',
+      isSelf: false,
+      revoked: false,
+      namespaces: ['ns-1'],
+    },
+  ],
+};
+
+// The pages read `admin` (the session-aware client) at the top level; `mero`
+// is still there for the few calls that go through the raw client.
+const SESSION = {
+  admin: ADMIN,
+  mero: { admin: ADMIN },
+  isDelegated: false,
   nodeUrl: 'https://node-7.calimero.network:2528',
   logout: () => {},
   applicationId: APP_ID,

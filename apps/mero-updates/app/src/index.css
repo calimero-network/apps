@@ -1,146 +1,161 @@
 /* ── Theme tokens ───────────────────────────────────────────────────────────
  *
- * The Calimero family palette, in its calm LIGHT form: a warm off-white canvas,
- * white cards, hairline borders, near-black ink and the brand lime #a5ff11 as a
- * FILL. Flat fills only — nothing here is a gradient and nothing glows.
+ * The fleet's light glass (@calimero-apps/glass, imported first in main.tsx):
+ * a cool off-white ground under soft blue-tinted colour fields, frosted
+ * surfaces for the frame, one near-black ink as the primary FILL, pill
+ * buttons, Figtree. These are Mero Updates' own token names holding glass
+ * values, so every rule in the app moves with them.
  *
- * LIGHT IS THE DEFAULT. Dark is still here under `data-theme="dark"`, and every
- * colour below is a token so both stay switchable.
+ * LIGHT IS THE DEFAULT. Dark (smoked glass) is still here under
+ * `data-theme="dark"`, which glass.css also switches on.
  *
- * The lime is a FILL, not an ink: #a5ff11 on white is ~1.5:1, so lime-family
- * TEXT uses `--accent-ink` and text ON the lime uses `--accent-text`
- * (near-black). Using --accent for a label is a contrast bug every time.
+ * index.contrast.test.ts reads the inks and the surfaces it holds them
+ * against as hex LITERALS out of the two blocks below, so those stay hex —
+ * each one is the glass token's value (named alongside it). Everything the
+ * test does not read points at the glass token directly. Older token names
+ * (--bg-elev, --green, --red, --amber, --accent-fg, --shadow) are kept as
+ * aliases so no rule anywhere is left pointing at nothing.
  *
- * index.contrast.test.ts holds every ink to WCAG AA against the darkest
- * surface it can land on (`--surface-hover`). Older token names (--bg-elev,
- * --green, --red, --amber, --accent-fg, --shadow) are kept as aliases so no
- * rule anywhere is left pointing at nothing.
+ * --surface stays SOLID: inputs, menus, dialogs and anything read closely sit
+ * on it. The frame (header, sidebar title, list cards) is frosted with
+ * --surface-glass.
  */
-@font-face {
-  font-family: "Power Grotesk";
-  src: url("/fonts/powerGrotesk/PowerGrotesk-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Power Grotesk";
-  src: url("/fonts/powerGrotesk/PowerGrotesk-Bold.woff2") format("woff2");
-  font-weight: 600 700;
-  font-display: swap;
-}
-
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
+  --glass-tint: #3b82f6;
 
-  --bg: #f6f6f3;
-  --bg-subtle: #efefeb;
+  --bg: var(--glass-ground);
+  --bg-subtle: var(--glass-sunken);
+  /* = --glass-surface-solid */
   --bg-elev: #ffffff;
-  --surface: #ffffff;
-  --surface-hover: #f3f3f0;
-  --surface-sunken: #f1f1ee;
-  --surface-strong: #e9e9e4;
-  --border: #e5e5e0;
-  --border-strong: #d4d4ce;
+  --surface: var(--glass-surface-solid);
+  --surface-glass: var(--glass-surface);
+  /* = --glass-sunken composited over --glass-ground */
+  --surface-hover: #ecedf1;
+  --surface-sunken: var(--glass-sunken);
+  --surface-strong: var(--glass-line-strong);
+  --border: var(--glass-line);
+  --border-strong: var(--glass-line-strong);
+  --edge: var(--glass-edge);
 
-  --text: #131215;
-  --text-dim: #4a4a4f;
-  --text-faint: #6b6b70;
+  /* = --glass-ink, --glass-ink-2; --text-faint is --glass-muted (#6f7589)
+     taken a step darker, because the glass value measures 3.9:1 on the hover
+     surface and every faint caption here is small text held to AA. */
+  --text: #0e1222;
+  --text-dim: #3c4256;
+  --text-faint: #646a7e;
 
-  --accent: #a5ff11;
-  --accent-hover: #b4ff3a;
-  --accent-soft: #f0ffd6;
-  /* Text ON the lime fill. */
-  --accent-text: #131215;
-  /* Lime-family TEXT and icons on light surfaces — deep enough for AA. */
-  --accent-ink: #4a7300;
-  --accent-fg: #131215;
+  /* The primary FILL is the glass ink, with white on it. */
+  --accent: #0e1222;
+  --accent-hover: #3c4256;
+  --accent-soft: var(--glass-busy-bg);
+  /* Text ON the ink fill. */
+  --accent-text: #ffffff;
+  /* Accent TEXT and icons: = --glass-accent. */
+  --accent-ink: #3451d1;
+  --accent-fg: #ffffff;
 
-  --success: #2f7a00;
-  --success-soft: #eef8e4;
-  --warning: #9a5b00;
-  --warning-soft: #fff4e0;
-  --info: #1d5fbf;
-  --info-soft: #eaf1fc;
-  --danger-soft: #fdecec;
+  --success: var(--glass-good-ink);
+  --success-soft: var(--glass-good-bg);
+  --warning: var(--glass-wait-ink);
+  --warning-soft: var(--glass-wait-bg);
+  --info: var(--glass-accent);
+  --info-soft: var(--glass-busy-bg);
+  --danger-soft: var(--glass-bad-bg);
 
-  /* Legacy names, mapped onto the set above. */
-  --green: #2f7a00;
-  --red: #c62828;
+  /* Legacy names, mapped onto the set above. = --glass-good-ink */
+  --green: #0b6b43;
+  /* = --glass-bad-ink */
+  --red: #a2194b;
   /* Text ON the red fill. The right ink flips between themes, so it is a token. */
   --red-text: #ffffff;
-  --red-hover: #a51d1d;
-  --danger: #c62828;
-  --amber: #9a5b00;
+  --red-hover: #861339;
+  --danger: var(--glass-bad-ink);
+  /* = --glass-wait-ink */
+  --amber: #6b4e00;
 
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
-  --shadow-xs: 0 1px 2px rgba(19, 18, 21, 0.05);
-  --shadow-sm: 0 1px 2px rgba(19, 18, 21, 0.04), 0 2px 8px rgba(19, 18, 21, 0.05);
-  --shadow-md: 0 4px 12px rgba(19, 18, 21, 0.06), 0 12px 32px rgba(19, 18, 21, 0.08);
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: var(--glass-radius);
+  --radius-xl: var(--glass-radius-lg);
+  --shadow-xs: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+  --shadow-sm: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+  --shadow-md: var(--glass-shadow-float);
   --shadow: var(--shadow-md);
-  --ring: 0 0 0 3px rgba(165, 255, 17, 0.45);
-  --overlay: rgba(19, 18, 21, 0.32);
+  --shadow-button: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
+  /* A solid content card resting on the glass ground, and its hover. */
+  --shadow-card: 0 1px 2px rgba(14, 18, 34, 0.04), 0 10px 28px -18px rgba(40, 50, 110, 0.35),
+    0 0 0 1px var(--glass-line);
+  --shadow-lift: 0 2px 4px rgba(14, 18, 34, 0.05), 0 22px 44px -24px rgba(40, 50, 110, 0.45),
+    0 0 0 1px var(--glass-line-strong);
+  --radius-card: 18px;
+  --ring: 0 0 0 3px color-mix(in srgb, var(--glass-accent-solid) 35%, transparent);
+  --overlay: rgba(14, 18, 34, 0.32);
 
-  --scrollbar: #d4d4ce;
-  --scrollbar-hover: #b4b4ae;
+  --scrollbar: var(--glass-line-strong);
+  --scrollbar-hover: var(--glass-muted);
 
-  --font-display: "Power Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--glass-font);
+  --font: var(--glass-font);
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* Smoked glass. The var() tokens above follow glass.css on this marker; the
+   hex ones the contrast test reads are restated with the dark glass values. */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #131215;
-  --bg-subtle: #18171b;
-  --bg-elev: #1a191d;
-  --surface: #1a191d;
-  --surface-hover: #232227;
-  --surface-sunken: #1f1e23;
-  --surface-strong: #2b2a30;
-  --border: #2a292f;
-  --border-strong: #3a3940;
+  /* = dark --glass-surface-solid */
+  --bg-elev: #161b2b;
+  /* = dark --glass-sunken composited over the dark ground */
+  --surface-hover: #1a1c26;
 
-  --text: #fcfcfc;
-  --text-dim: #b4b4b8;
-  --text-faint: #8e8e8e;
+  /* = dark --glass-ink, --glass-ink-2, --glass-muted */
+  --text: #eceef5;
+  --text-dim: #c7ccd9;
+  --text-faint: #9097ab;
 
-  /* Same lime in both themes. On #131215 it is legible as ink. */
-  --accent: #a5ff11;
-  --accent-hover: #b6ff3d;
-  --accent-soft: #24301a;
-  --accent-text: #131215;
-  --accent-ink: #a5ff11;
-  --accent-fg: #131215;
+  /* The ink fill flips to light, with the dark ground on it. */
+  --accent: #eceef5;
+  --accent-hover: #c7ccd9;
+  --accent-text: #0b0e18;
+  /* = dark --glass-accent */
+  --accent-ink: #9aafff;
+  --accent-fg: #0b0e18;
 
-  --success: #a5ff11;
-  --success-soft: #1f2a16;
-  --warning: #f59e0b;
-  --warning-soft: #2e2414;
-  --info: #7fb0ff;
-  --info-soft: #18243a;
-  --danger-soft: #3a1c1c;
-
-  --green: #a5ff11;
-  --red: #ef4444;
-  --red-text: #131215;
+  /* = dark --glass-good-ink, --glass-bad-ink, --glass-wait-ink */
+  --green: #7fe0b0;
+  --red: #f78bb0;
+  --red-text: #0b0e18;
   /* LIGHTER than --red: every hover in this theme brightens. */
-  --red-hover: #f26060;
-  --danger: #ef4444;
-  --amber: #f59e0b;
+  --red-hover: #f9a8c4;
+  --amber: #f5dc8a;
 
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.5);
-  --shadow: var(--shadow-md);
+  --shadow-xs: inset 0 1px 0 rgba(255, 255, 255, 0.04), var(--glass-shadow);
+  --shadow-sm: inset 0 1px 0 rgba(255, 255, 255, 0.04), var(--glass-shadow);
+  --shadow-button: 0 10px 24px -12px rgba(0, 0, 0, 0.8);
+  --shadow-card: 0 14px 32px -22px rgba(0, 0, 0, 0.85), 0 0 0 1px var(--glass-line);
+  --shadow-lift: 0 22px 44px -24px rgba(0, 0, 0, 0.9), 0 0 0 1px var(--glass-line-strong);
   --overlay: rgba(0, 0, 0, 0.55);
+}
 
-  --scrollbar: #3a3940;
-  --scrollbar-hover: #4a4952;
+/* mero-react's ConnectButton and login modal read --mero-*, which default to
+   the Calimero lime. `html:root` outranks the `:root` rule it injects at
+   runtime (after this stylesheet), so the connect flow wears glass too. */
+html:root {
+  --mero-bg: var(--glass-surface-solid);
+  --mero-bg-secondary: var(--glass-ground);
+  --mero-bg-tertiary: var(--glass-sunken);
+  --mero-text: var(--glass-ink);
+  --mero-text-secondary: var(--glass-muted);
+  --mero-accent: var(--glass-ink);
+  --mero-accent-hover: var(--glass-ink-2);
+  --mero-on-primary: var(--glass-on-ink);
+  --mero-error: var(--glass-bad-ink);
+  --mero-border: var(--glass-line-strong);
+  --mero-overlay: rgba(14, 18, 34, 0.32);
+  --mero-radius: 12px;
 }
 
 * {
@@ -155,8 +170,12 @@ body,
   min-height: 100%;
 }
 
+/* The glass ground with the blue-tinted fields behind everything (on body
+   alone, so it propagates to the whole canvas). */
 body {
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
@@ -208,8 +227,8 @@ select {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  padding: 8px 11px;
+  border-radius: var(--radius);
+  padding: 8px 13px;
   font: inherit;
   font-size: 14px;
   margin: 0 0 8px;
@@ -250,12 +269,12 @@ button.danger:not(.linkBtn) {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 36px;
-  padding: 0 14px;
-  border-radius: 8px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
   font: inherit;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -265,7 +284,8 @@ button.danger:not(.linkBtn) {
 button.primary {
   background: var(--accent);
   color: var(--accent-text);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid transparent;
+  box-shadow: var(--shadow-button);
 }
 button.primary:hover:not(:disabled) {
   background: var(--accent-hover);
@@ -304,8 +324,8 @@ button.danger:not(.linkBtn):hover:not(:disabled) {
 button.small,
 a.small.ghost,
 button.danger.small:not(.linkBtn) {
-  height: 30px;
-  padding: 0 10px;
+  height: 32px;
+  padding: 0 12px;
   font-size: 13px;
   gap: 6px;
 }
@@ -328,7 +348,7 @@ summary:focus-visible {
   width: 32px;
   height: 32px;
   padding: 0;
-  border-radius: 8px;
+  border-radius: 999px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-faint);
@@ -436,8 +456,10 @@ summary:focus-visible {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border: 1px solid var(--edge);
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   color: var(--text-dim);
   border-radius: var(--radius-lg);
   padding: 14px 16px;

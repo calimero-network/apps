@@ -109,8 +109,10 @@ test.describe("mero-standup", () => {
     await page.getByRole("tab", { name: "Week" }).click();
     await expect(page.getByTestId("week-title")).toBeVisible();
     const digest = page.getByTestId("digest");
-    // Yesterday may fall in last week on a Monday.
-    if (!(await digest.getByText("Wrote the spec").isVisible())) {
+    // Weeks start on Monday, so on a Monday yesterday is in last week. Ask the
+    // page's clock, which is the one the app's week strip reads: probing the
+    // digest instead raced its load and turned to last week on any other day.
+    if (await page.evaluate(() => new Date().getDay() === 1)) {
       await page.getByRole("button", { name: "previous week" }).click();
     }
     await expect(digest).toContainText("Wrote the spec", { timeout: 20_000 });

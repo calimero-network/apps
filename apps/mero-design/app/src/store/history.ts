@@ -59,17 +59,26 @@ export function changedFields(from: Element, to: Element): (keyof Element)[] {
 }
 
 /**
- * `entry` with `before` → `after` folded in for one element. The first change to
- * an element in an entry fixes its `before`; later ones only move its `after`.
+ * `entry` with each `[before, after]` folded in. The first change to an element
+ * in an entry fixes its `before`; later ones only move its `after`.
+ *
+ * One copy of `changes` for the whole batch, then written in place: copying it
+ * per element made a batch of n elements cost n² (3,000 pasted shapes took
+ * seconds).
  */
-export function record(entry: HistoryEntry, before: Element | null, after: Element | null, at: number): HistoryEntry {
-  const id = (after ?? before)?.id;
-  if (!id) return entry;
-  const prior = entry.changes[id];
-  return {
-    changes: { ...entry.changes, [id]: { before: prior ? prior.before : before, after } },
-    at,
-  };
+export function record(
+  entry: HistoryEntry,
+  edits: Iterable<readonly [before: Element | null, after: Element | null]>,
+  at: number,
+): HistoryEntry {
+  const changes = { ...entry.changes };
+  for (const [before, after] of edits) {
+    const id = (after ?? before)?.id;
+    if (!id) continue;
+    const prior = changes[id];
+    changes[id] = { before: prior ? prior.before : before, after };
+  }
+  return { changes, at };
 }
 
 /** True when replaying the entry would change nothing (e.g. a shape drawn then deleted). */

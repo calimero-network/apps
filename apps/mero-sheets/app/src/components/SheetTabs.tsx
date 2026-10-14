@@ -172,19 +172,27 @@ export default function SheetTabs({
 
 // ── Styled components ────────────────────────────────────────────────────────
 
+/* The tab strip along the sheet card's foot: each sheet a pill, the active
+   one lifted onto the card's surface. */
 const TabBar = styled.div`
   display: flex;
-  align-items: stretch;
-  height: 36px;
-  background: ${C.paper2};
-  border-top: 1px solid ${C.line};
+  align-items: center;
+  gap: 6px;
+  height: 46px;
+  padding: 0 8px;
+  background: color-mix(in srgb, var(--glass-ink) 3%, var(--glass-surface-solid));
+  border-top: 1px solid var(--glass-line-strong);
   flex-shrink: 0;
-  overflow: hidden;
+  font-family: var(--glass-font);
 `;
 
 const TabScroll = styled.div`
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  min-width: 0;
+  /* Room above the pills for a rename error to show inside the strip. */
   overflow-x: auto;
   flex: 1;
   scrollbar-width: none;
@@ -194,23 +202,24 @@ const TabScroll = styled.div`
 const Tab = styled.div<{ $active: boolean }>`
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 12px;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px 0 14px;
+  border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
   position: relative;
-  background: ${(p) => (p.$active ? C.paper : 'transparent')};
-  border-right: 1px solid ${C.line};
-  border-top: ${(p) => (p.$active ? `2px solid ${C.green}` : '2px solid transparent')};
+  background: ${(p) => (p.$active ? 'var(--glass-surface-solid)' : 'transparent')};
+  box-shadow: ${(p) => (p.$active ? '0 1px 2px rgba(14, 18, 34, 0.08), 0 0 0 1px var(--glass-line-strong)' : 'none')};
   font-size: 13px;
-  font-weight: ${(p) => (p.$active ? 600 : 400)};
-  color: ${(p) => (p.$active ? C.ink : C.muted)};
+  font-weight: ${(p) => (p.$active ? 650 : 500)};
+  color: ${(p) => (p.$active ? C.ink : 'var(--glass-ink-2)')};
   transition: background 0.15s, color 0.15s;
   user-select: none;
 
   &:hover {
-    background: ${(p) => (p.$active ? C.paper : C.paper2)};
+    background: ${(p) => (p.$active ? 'var(--glass-surface-solid)' : 'var(--glass-sunken)')};
     color: ${C.ink};
   }
 `;
@@ -227,12 +236,12 @@ const RenameInput = styled.input<{ $invalid: boolean }>`
   color: ${C.ink};
   background: ${C.paper};
   border: 1px solid ${(p) => (p.$invalid ? C.danger : C.green)};
-  border-radius: 4px;
-  padding: 2px 6px;
-  width: 100px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  width: 110px;
   outline: none;
   box-shadow: 0 0 0 3px
-    ${(p) => (p.$invalid ? 'rgba(220, 38, 38, 0.2)' : 'rgba(164, 255, 17, 0.2)')};
+    ${(p) => (p.$invalid ? 'rgba(220, 38, 38, 0.2)' : 'color-mix(in srgb, var(--glass-accent-solid) 20%, transparent)')};
 `;
 
 /* Floating message shown above the rename input when the engine rejects the
@@ -249,14 +258,14 @@ const RenameError = styled.div`
   line-height: 1.3;
   color: #fff;
   background: ${C.danger};
-  border-radius: 6px;
+  border-radius: 10px;
   box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.4);
   white-space: normal;
 `;
 
 const DeleteBtn = styled.button`
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: grid;
   place-items: center;
   font-size: 14px;
@@ -264,7 +273,7 @@ const DeleteBtn = styled.button`
   color: ${C.mutedSoft};
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: 999px;
   cursor: pointer;
   padding: 0;
   /* Always faintly visible so "delete" is discoverable; brightens on hover. */
@@ -281,21 +290,24 @@ const DeleteBtn = styled.button`
 `;
 
 const AddBtn = styled.button`
-  width: 36px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  font-size: 18px;
-  font-weight: 300;
-  color: ${C.muted};
-  background: transparent;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--glass-ink-2);
+  background: var(--glass-sunken);
   border: none;
-  border-left: 1px solid ${C.line};
+  border-radius: 999px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 
   &:hover {
-    background: ${C.paper};
+    background: var(--glass-line-strong);
     color: ${C.ink};
   }
+  &:focus-visible { outline: 2px solid var(--glass-accent); outline-offset: 2px; }
 `;

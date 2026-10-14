@@ -18,6 +18,7 @@ import { invitationFromRaw } from "../lib/inviteLink";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { hostingProblem } from "../lib/hosting";
 import AppHeader from "../components/AppHeader";
+import LogoutButton from "../components/LogoutButton";
 import {
   AlertIcon,
   ChevronRightIcon,
@@ -25,7 +26,6 @@ import {
   InfoIcon,
   LayersIcon,
   LinkIcon,
-  LogOutIcon,
   MoreIcon,
   PlusIcon,
   TrashIcon,
@@ -59,7 +59,7 @@ export default function CompaniesPage() {
   // admin, which carries creates and joins through the relay. The raw client's
   // admin is the relay's NODE route there, and an account's token gets 403 from
   // every write on it — which is how this page used to sit on "Creating…".
-  const { admin, isDelegated, logout, nodeUrl } = useMero();
+  const { admin, isDelegated, nodeUrl } = useMero();
   const { showToast } = useToast();
   // Resolved from the NODE by package (or the registry, for an account) — see
   // lib/appId and hooks/useApplicationId.
@@ -307,10 +307,7 @@ export default function CompaniesPage() {
                 {nodeLabel}
               </span>
             )}
-            <button className={styles.logoutBtn} onClick={logout} title="Sign out of this node">
-              <LogOutIcon size={15} />
-              Logout
-            </button>
+            <LogoutButton />
           </>
         }
       />

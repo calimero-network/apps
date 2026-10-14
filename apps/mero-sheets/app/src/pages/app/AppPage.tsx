@@ -1,17 +1,19 @@
 /**
  * AppPage — the full spreadsheet workspace.
  *
- * Layout (full viewport):
- *   ┌──────────────────────── TitleBar ───────────────────────────┐
- *   ├──────────────────────── CollabBar ──────────────────────────┤
- *   ├─────────────────────── FormulaBar ──────────────────────────┤
- *   │                                                             │
- *   │                    SpreadsheetGrid                          │
- *   │                                                             │
- *   ├──────────────────────── SheetTabs ──────────────────────────┤
- *   └──────────────────────── StatusBar ──────────────────────────┘
+ * Layout (full viewport, the light-glass look: frosted frame floating on the
+ * tinted ground, the sheet itself one solid card so the grid stays crisp):
+ *   ╭──────── TopBar: back · name · live · people · Invite · ☾ · Log out ──╮
+ *   ╭──────── ToolDock: file · undo/redo · panels ─────────────────────────╮
+ *   ╭──────── SheetCard ───────────────────────────────────────────────────╮
+ *   │ FormatBar                                                            │
+ *   │ FormulaBar                                                           │
+ *   │                         SpreadsheetGrid                              │
+ *   │ SheetTabs                                                            │
+ *   ╰──────────────────────────────────────────────────────────────────────╯
+ *     StatusBar
  *
- * FunctionHelpPanel slides in from the right as an overlay.
+ * Panels (functions, comments, …) float in from the right as overlays.
  *
  * Three states:
  *  1. Workspace picker (!ws.contextId) — open / create / join a workspace
@@ -19,9 +21,12 @@
  *  3. Workspace open — full spreadsheet UI (with ← back to the picker)
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
+import { useNavigate } from 'react-router-dom';
 import { useGroupMembers, useMero } from '@calimero-network/mero-react';
-import { C, useTheme, MoonIcon } from '../../theme';
+import { C } from '../../theme';
+import ThemeToggle from '../../components/ThemeToggle';
+import { field, primaryPill, secondaryPill } from '../../components/glass';
 import { APP_DISPLAY_NAME } from '../../config';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { useSpreadsheet } from '../../hooks/useSpreadsheet';
@@ -85,7 +90,14 @@ export default function AppPage() {
     executorPublicKey: ws.executorPublicKey,
     activeSheetId,
   });
-  const { theme, toggle: toggleTheme } = useTheme();
+  const navigate = useNavigate();
+
+  // Log out: mero-react drops this browser's node session (tokens and all),
+  // and the front door is where a signed-out visitor belongs.
+  const signOut = useCallback(() => {
+    logout();
+    navigate('/', { replace: true });
+  }, [logout, navigate]);
 
   // id↔name resolvers for translating formulas at the frontend boundary: the
   // engine/store deal in canonical sheet ids; the formula bar shows names.
@@ -1232,96 +1244,140 @@ export default function AppPage() {
   //  RENDER
   // ════════════════════════════════════════════════════════════════
 
+  // The account controls every screen carries in its top bar: the light/dark
+  // switch and Log out.
+  const accountControls = (
+    <>
+      <ThemeToggle />
+      <LogoutBtn type="button" onClick={signOut} aria-label="Log out" title="Log out of your node" data-testid="action-logout">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+        <span>Log out</span>
+      </LogoutBtn>
+    </>
+  );
+
   // 1. Workspace picker — shown whenever no workspace is open. Lists every
   //    workspace on this node and lets you open, create, or join one.
   if (!ws.contextId) {
     const listLoading = ws.loading && ws.workspaces.length === 0;
     return (
-      <FullCenter>
-        <WelcomeCard>
-          <WelcomeIcon aria-hidden="true">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M3 9h18M9 21V9" />
-            </svg>
-          </WelcomeIcon>
-          <h2>{ws.namespaceName}</h2>
-          <p>
-            Open a spreadsheet, create a new one, or join a workspace you&rsquo;ve
-            been invited to. All data lives on your node — no central server.
-          </p>
+      <PickerShell>
+        <TopBar>
+          <AppMark aria-hidden="true"><SheetGlyph size={18} /></AppMark>
+          <TitleBlock>
+            <TitleName>{APP_DISPLAY_NAME}</TitleName>
+            <TitleMeta>Spreadsheets on your node</TitleMeta>
+          </TitleBlock>
+          <TopSpacer />
+          {accountControls}
+        </TopBar>
 
-          {ws.workspaces.length > 0 && (
-            <WorkspaceList aria-label={`Spreadsheets in ${ws.namespaceName}`}>
-              {ws.workspaces.map((w) => (
-                <WorkspaceRow
-                  key={w.contextId}
-                  data-testid="workspace-item"
-                  onClick={() => ws.openWorkspace(w.contextId)}
-                  title={`Open ${w.name}`}
-                >
-                  <WorkspaceMeta>
-                    {/* An unnamed row is styled as the placeholder it is rather
-                        than passed off as a title someone chose. */}
-                    <WorkspaceName $placeholder={w.unnamed}>{w.name}</WorkspaceName>
-                    <WorkspaceId>{w.contextId.slice(0, 10)}…</WorkspaceId>
-                  </WorkspaceMeta>
-                  <OpenChevron aria-hidden="true">→</OpenChevron>
-                </WorkspaceRow>
-              ))}
-            </WorkspaceList>
-          )}
+        <PickerMain>
+          <PickerHero>
+            <Eyebrow>Workspace</Eyebrow>
+            <h1>{ws.namespaceName}</h1>
+            <p>
+              Open a spreadsheet, create a new one, or join a workspace you&rsquo;ve
+              been invited to. All data lives on your node — no central server.
+            </p>
+          </PickerHero>
 
-          {/* Joined, but this workspace's spreadsheets have not replicated yet.
-              Without this the list above is empty and reads as "there is
-              nothing here" rather than "it is on its way". */}
-          {ws.isSyncing && (
-            <div style={{ margin: '4px 0 16px' }}>
-              <JoinSyncBanner
-                show
-                what="spreadsheets"
-                onDismiss={ws.dismissSyncing}
+          <PickerGrid>
+            <Card as="section" aria-labelledby="sheets-heading">
+              <CardHead>
+                <h2 id="sheets-heading">Spreadsheets</h2>
+                {ws.workspaces.length > 0 && <CountPill>{ws.workspaces.length}</CountPill>}
+              </CardHead>
+
+              {ws.workspaces.length > 0 && (
+                <WorkspaceList aria-label={`Spreadsheets in ${ws.namespaceName}`}>
+                  {ws.workspaces.map((w) => (
+                    <WorkspaceRow
+                      key={w.contextId}
+                      data-testid="workspace-item"
+                      onClick={() => ws.openWorkspace(w.contextId)}
+                      title={`Open ${w.name}`}
+                    >
+                      <RowIcon aria-hidden="true"><SheetGlyph size={18} /></RowIcon>
+                      <WorkspaceMeta>
+                        {/* An unnamed row is styled as the placeholder it is rather
+                            than passed off as a title someone chose. */}
+                        <WorkspaceName $placeholder={w.unnamed}>{w.name}</WorkspaceName>
+                        <WorkspaceId>{w.contextId.slice(0, 10)}…</WorkspaceId>
+                      </WorkspaceMeta>
+                      <OpenChevron aria-hidden="true">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 12h14M13 6l6 6-6 6" />
+                        </svg>
+                      </OpenChevron>
+                    </WorkspaceRow>
+                  ))}
+                </WorkspaceList>
+              )}
+
+              {/* Joined, but this workspace's spreadsheets have not replicated yet.
+                  Without this the list above is empty and reads as "there is
+                  nothing here" rather than "it is on its way". */}
+              {ws.isSyncing && (
+                <div style={{ margin: '4px 0 12px' }}>
+                  <JoinSyncBanner
+                    show
+                    what="spreadsheets"
+                    onDismiss={ws.dismissSyncing}
+                  />
+                </div>
+              )}
+              {listLoading && !ws.isSyncing && <StatusLine>Loading spreadsheets…</StatusLine>}
+              {!listLoading && !ws.isSyncing && ws.workspaces.length === 0 && (
+                <EmptyList>
+                  <RowIcon aria-hidden="true"><SheetGlyph size={20} /></RowIcon>
+                  <strong>No spreadsheets yet</strong>
+                  <span>Create the first one, or join one you&rsquo;ve been invited to.</span>
+                </EmptyList>
+              )}
+              {ws.notInstalled && (
+                <ErrLine>
+                  This app is not installed on your node, so it has nowhere to keep a
+                  spreadsheet. Install it from the registry and reload.
+                </ErrLine>
+              )}
+            </Card>
+
+            <Card as="section" aria-labelledby="new-heading">
+              <CardHead>
+                <h2 id="new-heading">New spreadsheet</h2>
+              </CardHead>
+              <FieldLabel htmlFor="project-name">Name</FieldLabel>
+              <ProjectNameInput
+                id="project-name"
+                data-testid="field-name"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="e.g. Q3 Budget, Team OKRs…"
               />
-            </div>
-          )}
-          {listLoading && !ws.isSyncing && (
-            <p style={{ margin: '4px 0 16px' }}>Loading spreadsheets…</p>
-          )}
-          {ws.notInstalled && (
-            <ErrLine>
-              This app is not installed on your node, so it has nowhere to keep a
-              spreadsheet. Install it from the registry and reload.
-            </ErrLine>
-          )}
 
-          <label htmlFor="project-name" style={{ display: 'block', textAlign: 'left', marginBottom: 6, fontSize: 13, fontWeight: 600, color: C.muted }}>
-            New spreadsheet name
-          </label>
-          <ProjectNameInput
-            id="project-name"
-            data-testid="field-name"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            placeholder="e.g. Q3 Budget, Team OKRs…"
-          />
+              <ButtonRow>
+                <PrimaryBtn
+                  data-testid="action-init_project"
+                  disabled={!projectName.trim() || ws.loading}
+                  onClick={() => void ws.createWorkspace(projectName.trim())}
+                >
+                  Create spreadsheet
+                </PrimaryBtn>
+                <SecondaryBtn onClick={() => setShowJoin(true)}>
+                  Join with invitation
+                </SecondaryBtn>
+              </ButtonRow>
 
-          <ButtonRow>
-            <PrimaryBtn
-              data-testid="action-init_project"
-              disabled={!projectName.trim() || ws.loading}
-              onClick={() => void ws.createWorkspace(projectName.trim())}
-            >
-              Create spreadsheet
-            </PrimaryBtn>
-            <SecondaryBtn onClick={() => setShowJoin(true)}>
-              Join with invitation
-            </SecondaryBtn>
-          </ButtonRow>
-
-          {ws.status && <StatusLine>{ws.status}</StatusLine>}
-          {ws.error && <ErrLine>{describeError(ws.error)}</ErrLine>}
-        </WelcomeCard>
+              {ws.status && <StatusLine>{ws.status}</StatusLine>}
+              {ws.error && <ErrLine>{describeError(ws.error)}</ErrLine>}
+            </Card>
+          </PickerGrid>
+        </PickerMain>
 
         {showJoin && (
           <JoinModal
@@ -1329,25 +1385,37 @@ export default function AppPage() {
             onClose={() => setShowJoin(false)}
           />
         )}
-      </FullCenter>
+      </PickerShell>
     );
   }
 
   // 2. A workspace is opening — its context identity is still resolving.
   if (!ws.ready) {
     return (
-      <FullCenter>
-        <WelcomeCard>
-          <h2>Opening {ws.activeName}…</h2>
-          {/* This screen used to say "Resolving your identity" and wait forever
-              for an identity that, for anyone who joined by invitation, was
-              never coming. It now names each step, and a failure ends here
-              instead of in a spinner. */}
-          <p>{ws.status ?? 'Getting you into this spreadsheet.'}</p>
-          {ws.error && <ErrLine>{describeError(ws.error)}</ErrLine>}
-          <SecondaryBtn onClick={ws.leaveWorkspace}>← Back to spreadsheets</SecondaryBtn>
-        </WelcomeCard>
-      </FullCenter>
+      <PickerShell>
+        <TopBar>
+          <AppMark aria-hidden="true"><SheetGlyph size={18} /></AppMark>
+          <TitleBlock>
+            <TitleName>{APP_DISPLAY_NAME}</TitleName>
+            <TitleMeta>Spreadsheets on your node</TitleMeta>
+          </TitleBlock>
+          <TopSpacer />
+          {accountControls}
+        </TopBar>
+        <OpeningWrap>
+          <Card>
+            {!ws.error && <Spinner aria-hidden="true" />}
+            <h2>Opening {ws.activeName}…</h2>
+            {/* This screen used to say "Resolving your identity" and wait forever
+                for an identity that, for anyone who joined by invitation, was
+                never coming. It now names each step, and a failure ends here
+                instead of in a spinner. */}
+            <p>{ws.status ?? 'Getting you into this spreadsheet.'}</p>
+            {ws.error && <ErrLine>{describeError(ws.error)}</ErrLine>}
+            <SecondaryBtn onClick={ws.leaveWorkspace}>← Back to spreadsheets</SecondaryBtn>
+          </Card>
+        </OpeningWrap>
+      </PickerShell>
     );
   }
 
@@ -1416,31 +1484,30 @@ export default function AppPage() {
 
   return (
     <AppShell>
-      {/* ── Window chrome: title bar + collaborator bar ─────────────── */}
-      <TitleBar>
-        <Lights aria-hidden="true"><i /><i /><i /></Lights>
+      {/* ── Top bar: where you are, who is here, and your account ───── */}
+      <TopBar>
         <BackBtn
           onClick={async () => { if (isDirty) await commitCellRef.current?.(); ws.leaveWorkspace(); }}
           title="Back to spreadsheets"
           aria-label="Back to spreadsheets"
         >
-          ←
-        </BackBtn>
-        <GridIcon aria-hidden="true">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M19 12H5M11 18l-6-6 6-6" />
           </svg>
-        </GridIcon>
-        <TitleName>{activeWorkspaceName}</TitleName>
-        <NodeTag>· your node</NodeTag>
-        <LivePill $on={connected} title={connected ? 'Live' : 'Offline'}>
-          <span aria-hidden="true">●</span>{connected ? 'live' : 'offline'}
-        </LivePill>
-      </TitleBar>
+        </BackBtn>
+        <AppMark aria-hidden="true" $hideOnPhone><SheetGlyph size={18} /></AppMark>
+        <TitleBlock>
+          <TitleName>{activeWorkspaceName}</TitleName>
+          <TitleMeta>
+            <span>your node</span>
+            <LivePill $on={connected} title={connected ? 'Live' : 'Offline'}>
+              <span aria-hidden="true" />{connected ? 'live' : 'offline'}
+            </LivePill>
+          </TitleMeta>
+        </TitleBlock>
 
-      <CollabBar>
+        <TopSpacer />
+
         <Avatars aria-label={`${collaborators.length} collaborators`}>
           {collaborators.map((c) => (
             <Avatar
@@ -1466,10 +1533,8 @@ export default function AppPage() {
           {collaborators.length} collaborator{collaborators.length === 1 ? '' : 's'}
         </CollabCount>
 
-        <ActionsSpacer />
-
         <PrimaryAction onClick={() => void openInvite()} aria-label="Invite collaborators">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
             <circle cx="9" cy="7" r="4" />
@@ -1478,236 +1543,241 @@ export default function AppPage() {
           <span>Invite</span>
         </PrimaryAction>
 
-        <ToolBtn onClick={() => setShowJoin(true)} aria-label="Join workspace">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-            <polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" />
-          </svg>
-          <span>Join</span>
-        </ToolBtn>
+        {accountControls}
+      </TopBar>
 
-        <ToolBtn
-          data-testid="action-export_all"
-          onClick={handleDownload}
-          title="Download as CSV"
-          aria-label="Download spreadsheet as CSV"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          <span>Download</span>
-        </ToolBtn>
-        <IconBtn onClick={() => void handleDownloadXlsx()} title="Download as Excel (.xlsx)" aria-label="Download spreadsheet as Excel" data-testid="action-export_xlsx">
-          <span style={{ fontSize: 10.5, fontWeight: 700 }}>XLSX</span>
-        </IconBtn>
+      {/* ── Tool dock: file, history and the side panels ─────────────── */}
+      <ToolDock role="toolbar" aria-label="Spreadsheet tools">
+        <ToolGroup>
+          <ToolBtn onClick={() => setShowJoin(true)} aria-label="Join workspace">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+              <polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" />
+            </svg>
+            <span>Join</span>
+          </ToolBtn>
+          <ToolBtn
+            data-testid="action-export_all"
+            onClick={handleDownload}
+            title="Download as CSV"
+            aria-label="Download spreadsheet as CSV"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span>Download</span>
+          </ToolBtn>
+          <IconBtn onClick={() => void handleDownloadXlsx()} title="Download as Excel (.xlsx)" aria-label="Download spreadsheet as Excel" data-testid="action-export_xlsx">
+            <XlsxTag>XLSX</XlsxTag>
+          </IconBtn>
+          <ToolBtn onClick={() => importInput.current?.click()} title="Import a .xlsx, .csv or .tsv file as new sheets" aria-label="Import a file" data-testid="action-import">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <span>Import</span>
+          </ToolBtn>
+          <input
+            ref={importInput}
+            type="file"
+            accept=".xlsx,.csv,.tsv,.txt"
+            hidden
+            data-testid="field-import"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) void handleImport(f);
+            }}
+          />
+        </ToolGroup>
 
-        <ToolBtn onClick={() => importInput.current?.click()} title="Import a .xlsx, .csv or .tsv file as new sheets" aria-label="Import a file" data-testid="action-import">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          <span>Import</span>
-        </ToolBtn>
-        <input
-          ref={importInput}
-          type="file"
-          accept=".xlsx,.csv,.tsv,.txt"
-          hidden
-          data-testid="field-import"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = '';
-            if (f) void handleImport(f);
+        <ToolGroup>
+          <IconBtn onClick={() => void ss.undo()} disabled={!ss.canUndo} title="Undo your last edit (Ctrl/⌘+Z)" aria-label="Undo" data-testid="action-undo">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-4" />
+            </svg>
+          </IconBtn>
+          <IconBtn onClick={() => void ss.redo()} disabled={!ss.canRedo} title="Redo (Ctrl/⌘+Shift+Z)" aria-label="Redo" data-testid="action-redo">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m15 14 5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h4" />
+            </svg>
+          </IconBtn>
+        </ToolGroup>
+
+        <DockSpacer />
+
+        <ToolGroup>
+          <ToolBtn onClick={() => setShowPeople(true)} title="Who can do what" aria-label="Open people" data-testid="action-people">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            <span>People</span>
+          </ToolBtn>
+          <ToolBtn onClick={() => setShowComments(true)} title="Comments on cells" aria-label="Open comments" data-testid="action-comments">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            <span>Comments</span>
+            {openComments.length > 0 && <Badge>{openComments.length}</Badge>}
+          </ToolBtn>
+          <ToolBtn onClick={() => setShowCharts(true)} title="Charts of this sheet" aria-label="Open charts" data-testid="action-charts">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="6" y1="20" x2="6" y2="12" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="18" y1="20" x2="18" y2="9" />
+            </svg>
+            <span>Charts</span>
+          </ToolBtn>
+          <ToolBtn onClick={() => setShowActivity(true)} title="Who changed what" aria-label="Open activity" data-testid="action-activity">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+            </svg>
+            <span>Activity</span>
+          </ToolBtn>
+          <ToolBtn onClick={() => setShowHelp(true)} title="Function reference" aria-label="Open function reference">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span>Functions</span>
+          </ToolBtn>
+        </ToolGroup>
+      </ToolDock>
+
+      {/* ── The sheet: one solid card, so the grid stays crisp ───────── */}
+      <SheetCard>
+        <FormatBar
+          style={(selectedCell && cellStyles.get(`${selectedCell.row}-${selectedCell.col}`)) || {}}
+          format={activeCellFormat}
+          disabled={!activeSheetId || isPrivateActive || !!selectedLock}
+          formatDisabled={!activeSheetId || !!selectedLock}
+          onStyle={(field, value) => {
+            const r = menuRect();
+            if (activeSheetId && r) void ss.applyStyle(activeSheetId, r, field, value);
           }}
+          onFormat={(fmt) => void applyFormat(fmt)}
+          onClear={() => {
+            const r = menuRect();
+            if (!activeSheetId || !r) return;
+            void ss.clearStyles(activeSheetId, r);
+            void applyFormat('');
+          }}
+          onRules={(kind) => { setRulesError(null); setRulesMode(kind); }}
         />
 
-        <IconBtn onClick={() => void ss.undo()} disabled={!ss.canUndo} title="Undo your last edit (Ctrl/⌘+Z)" aria-label="Undo" data-testid="action-undo">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-4" />
-          </svg>
-        </IconBtn>
-        <IconBtn onClick={() => void ss.redo()} disabled={!ss.canRedo} title="Redo (Ctrl/⌘+Shift+Z)" aria-label="Redo" data-testid="action-redo">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m15 14 5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h4" />
-          </svg>
-        </IconBtn>
+        <FormulaRow>
+          <FormulaBar
+            selectedCell={selectedCell}
+            value={formulaInput}
+            onChange={handleFormulaChange}
+            onCommit={handleFormulaCommit}
+            onCancel={handleFormulaCancel}
+            onBeginEdit={handleBeginEdit}
+            functions={ss.functions}
+            disabled={!activeSheetId}
+            inputRef={formulaInputRef}
+            editing={editing}
+            onCopy={handleCopy}
+            onCut={handleCut}
+            onPaste={handlePaste}
+            onGridDelete={handleDelete}
+            onGridClearClipboard={handleClearClipboard}
+            onGridOpenNote={() => { if (selectedCell) openNote(selectedCell.row, selectedCell.col); }}
+            onGridKey={(e) => gridKeyRef.current?.(e)}
+            lockedReason={selectedLock}
+          />
 
-        <ToolBtn onClick={() => setShowPeople(true)} title="Who can do what" aria-label="Open people" data-testid="action-people">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-          </svg>
-          <span>People</span>
-        </ToolBtn>
+          {/* Commit / cancel beside the formula bar (also the accessible test target) */}
+          {isDirty && selectedCell && (
+            <CommitBar>
+              <CommitBtn
+                data-testid="action-set_cell"
+                onClick={handleFormulaCommit}
+                aria-label={`Commit value to cell ${selRef ?? ''}`}
+                title="Confirm (Enter)"
+              >
+                ✓
+              </CommitBtn>
+              <CancelCommitBtn
+                data-testid="action-clear_cell"
+                onClick={handleFormulaCancel}
+                aria-label="Cancel edit"
+                title="Cancel (Escape)"
+              >
+                ✗
+              </CancelCommitBtn>
+            </CommitBar>
+          )}
+        </FormulaRow>
 
-        <ToolBtn onClick={() => setShowComments(true)} title="Comments on cells" aria-label="Open comments" data-testid="action-comments">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-          <span>Comments{openComments.length > 0 ? ` · ${openComments.length}` : ''}</span>
-        </ToolBtn>
+        {/* ── Spreadsheet grid ─────────────────────────────────────── */}
+        <SpreadsheetGrid
+          sheetId={activeSheetId}
+          cells={ss.cells}
+          cursors={presence.cursors}
+          cursorLabel={cursorLabel}
+          editedBy={editedBy}
+          commented={commented}
+          attached={attached}
+          notes={notes}
+          protectedRanges={placed}
+          view={activeView}
+          cellStyles={cellStyles}
+          ruleAt={ruleAt}
+          onToggleCheckbox={(row, col) => {
+            if (!activeSheetId || lockedReason(placed, myRole, row, col)) return;
+            const current = ss.cells.find((c) => c.sheet_id === activeSheetId && c.row === row && c.col === col);
+            void ss.setCell(activeSheetId, row, col, current?.computed_value.toUpperCase() === 'TRUE' ? 'FALSE' : 'TRUE');
+          }}
+          onPickOption={(row, col, options, anchor) => setPick({ row, col, options, x: anchor.left, y: anchor.bottom })}
+          hiddenRows={hidden}
+          filterHeader={filterHeader}
+          onFilterColumn={setFilterCol}
+          keyHandlerRef={gridKeyRef}
+          onResize={canResize ? handleResize : undefined}
+          selectedCell={pickingForeignSheet ? null : selectedCell}
+          selectionRange={pickingForeignSheet ? null : selectionRange}
+          editingValue={pickingForeignSheet ? null : isDirty ? formulaInput : null}
+          pointMode={pointMode}
+          onPointRef={insertRef}
+          onSelectCell={handleSelectCell}
+          onSelectRange={handleSelectRange}
+          onSelectColumn={handleSelectColumn}
+          onSelectRow={handleSelectRow}
+          onEditCell={handleEditCell}
+          onOpenNote={openNote}
+          onCommitAndMove={handleCommitAndMove}
+          onCellContextMenu={handleCellContextMenu}
+          onFill={handleFill}
+          onDelete={handleDelete}
+          onClearClipboard={handleClearClipboard}
+          copiedRegion={clipboard ? { rect: clipboard.sourceRect, cut: clipboard.cut } : null}
+        />
 
-        <ToolBtn onClick={() => setShowCharts(true)} title="Charts of this sheet" aria-label="Open charts" data-testid="action-charts">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="6" y1="20" x2="6" y2="12" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="18" y1="20" x2="18" y2="9" />
-          </svg>
-          <span>Charts</span>
-        </ToolBtn>
-
-        <ToolBtn onClick={() => setShowActivity(true)} title="Who changed what" aria-label="Open activity" data-testid="action-activity">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
-          </svg>
-          <span>Activity</span>
-        </ToolBtn>
-
-        <ToolBtn onClick={() => setShowHelp(true)} title="Function reference" aria-label="Open function reference">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
-          <span>Functions</span>
-        </ToolBtn>
-
-        <IconBtn onClick={toggleTheme} title="Toggle theme" aria-label="Toggle light/dark theme">
-          <MoonIcon filled={theme === 'dark'} size={16} />
-        </IconBtn>
-
-        <SignOutBtn onClick={logout} aria-label="Sign out">Sign out</SignOutBtn>
-      </CollabBar>
-
-      {/* ── Formula bar ──────────────────────────────────────────── */}
-      <FormulaBar
-        selectedCell={selectedCell}
-        value={formulaInput}
-        onChange={handleFormulaChange}
-        onCommit={handleFormulaCommit}
-        onCancel={handleFormulaCancel}
-        onBeginEdit={handleBeginEdit}
-        functions={ss.functions}
-        disabled={!activeSheetId}
-        inputRef={formulaInputRef}
-        editing={editing}
-        onCopy={handleCopy}
-        onCut={handleCut}
-        onPaste={handlePaste}
-        onGridDelete={handleDelete}
-        onGridClearClipboard={handleClearClipboard}
-        onGridOpenNote={() => { if (selectedCell) openNote(selectedCell.row, selectedCell.col); }}
-        onGridKey={(e) => gridKeyRef.current?.(e)}
-        lockedReason={selectedLock}
-      />
-
-      {/* Commit button next to formula bar (accessible test target) */}
-      {isDirty && selectedCell && (
-        <CommitBar>
-          <CommitBtn
-            data-testid="action-set_cell"
-            onClick={handleFormulaCommit}
-            aria-label={`Commit value to cell ${selRef ?? ''}`}
-            title="Confirm (Enter)"
-          >
-            ✓
-          </CommitBtn>
-          <CancelCommitBtn
-            data-testid="action-clear_cell"
-            onClick={handleFormulaCancel}
-            aria-label="Cancel edit"
-            title="Cancel (Escape)"
-          >
-            ✗
-          </CancelCommitBtn>
-        </CommitBar>
-      )}
-
-      {/* ── Format bar ───────────────────────────────────────────── */}
-      <FormatBar
-        style={(selectedCell && cellStyles.get(`${selectedCell.row}-${selectedCell.col}`)) || {}}
-        format={activeCellFormat}
-        disabled={!activeSheetId || isPrivateActive || !!selectedLock}
-        formatDisabled={!activeSheetId || !!selectedLock}
-        onStyle={(field, value) => {
-          const r = menuRect();
-          if (activeSheetId && r) void ss.applyStyle(activeSheetId, r, field, value);
-        }}
-        onFormat={(fmt) => void applyFormat(fmt)}
-        onClear={() => {
-          const r = menuRect();
-          if (!activeSheetId || !r) return;
-          void ss.clearStyles(activeSheetId, r);
-          void applyFormat('');
-        }}
-        onRules={(kind) => { setRulesError(null); setRulesMode(kind); }}
-      />
-
-      {/* ── Spreadsheet grid ─────────────────────────────────────── */}
-      <SpreadsheetGrid
-        sheetId={activeSheetId}
-        cells={ss.cells}
-        cursors={presence.cursors}
-        cursorLabel={cursorLabel}
-        editedBy={editedBy}
-        commented={commented}
-        attached={attached}
-        notes={notes}
-        protectedRanges={placed}
-        view={activeView}
-        cellStyles={cellStyles}
-        ruleAt={ruleAt}
-        onToggleCheckbox={(row, col) => {
-          if (!activeSheetId || lockedReason(placed, myRole, row, col)) return;
-          const current = ss.cells.find((c) => c.sheet_id === activeSheetId && c.row === row && c.col === col);
-          void ss.setCell(activeSheetId, row, col, current?.computed_value.toUpperCase() === 'TRUE' ? 'FALSE' : 'TRUE');
-        }}
-        onPickOption={(row, col, options, anchor) => setPick({ row, col, options, x: anchor.left, y: anchor.bottom })}
-        hiddenRows={hidden}
-        filterHeader={filterHeader}
-        onFilterColumn={setFilterCol}
-        keyHandlerRef={gridKeyRef}
-        onResize={canResize ? handleResize : undefined}
-        selectedCell={pickingForeignSheet ? null : selectedCell}
-        selectionRange={pickingForeignSheet ? null : selectionRange}
-        editingValue={pickingForeignSheet ? null : isDirty ? formulaInput : null}
-        pointMode={pointMode}
-        onPointRef={insertRef}
-        onSelectCell={handleSelectCell}
-        onSelectRange={handleSelectRange}
-        onSelectColumn={handleSelectColumn}
-        onSelectRow={handleSelectRow}
-        onEditCell={handleEditCell}
-        onOpenNote={openNote}
-        onCommitAndMove={handleCommitAndMove}
-        onCellContextMenu={handleCellContextMenu}
-        onFill={handleFill}
-        onDelete={handleDelete}
-        onClearClipboard={handleClearClipboard}
-        copiedRegion={clipboard ? { rect: clipboard.sourceRect, cut: clipboard.cut } : null}
-      />
-
-      {/* ── Sheet tabs ───────────────────────────────────────────── */}
-      <SheetTabs
-        sheets={allSheets}
-        privateIds={privateIds}
-        onAddPrivate={() => void ss.createPrivateSheet(`Private ${ss.privateSheets.length + 1}`)
-          .then((id) => { if (id) void handleSelectSheet(id); })}
-        activeSheetId={activeSheetId}
-        onSelect={handleSelectSheet}
-        onAdd={handleAddSheet}
-        onRename={(id, name) => (privateIds.has(id) ? ss.renamePrivateSheet(id, name) : ss.renameSheet(id, name))}
-        onDelete={(id) => void (privateIds.has(id) ? ss.deletePrivateSheet(id)
-          : allSheets.find((x) => x.id === id)?.linked_from ? ss.unlink(id) : ss.deleteSheet(id))}
-      />
+        {/* ── Sheet tabs ───────────────────────────────────────────── */}
+        <SheetTabs
+          sheets={allSheets}
+          privateIds={privateIds}
+          onAddPrivate={() => void ss.createPrivateSheet(`Private ${ss.privateSheets.length + 1}`)
+            .then((id) => { if (id) void handleSelectSheet(id); })}
+          activeSheetId={activeSheetId}
+          onSelect={handleSelectSheet}
+          onAdd={handleAddSheet}
+          onRename={(id, name) => (privateIds.has(id) ? ss.renamePrivateSheet(id, name) : ss.renameSheet(id, name))}
+          onDelete={(id) => void (privateIds.has(id) ? ss.deletePrivateSheet(id)
+            : allSheets.find((x) => x.id === id)?.linked_from ? ss.unlink(id) : ss.deleteSheet(id))}
+        />
+      </SheetCard>
 
       <StatusBar
         sync={syncView({ connected: ss.connected, loaded: ss.loaded, saving: ss.mutating, info: ss.sync })}
@@ -2037,322 +2107,468 @@ export default function AppPage() {
 
 // ── Styled components ────────────────────────────────────────────────────────
 
+/** The app's mark: a little sheet. Drawn, not an image, so it takes the
+ *  theme's colour. */
+function SheetGlyph({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <path d="M3 9h18M3 15h18M9 3v18" />
+    </svg>
+  );
+}
+
+const spin = keyframes`to { transform: rotate(360deg); }`;
+
 const PickMenu = styled.ul`
-  position: fixed; z-index: 150; margin: 2px 0 0; padding: 4px; list-style: none;
-  min-width: 140px; max-height: 240px; overflow-y: auto;
-  background: ${C.paper}; border: 1px solid ${C.line}; border-radius: 10px;
-  box-shadow: 0 12px 40px -12px rgba(14, 20, 15, 0.35);
-  li { padding: 6px 10px; font-size: 13px; color: ${C.ink}; border-radius: 6px; cursor: pointer; }
-  li:hover { background: ${C.paper2}; }
+  position: fixed; z-index: 150; margin: 4px 0 0; padding: 6px; list-style: none;
+  min-width: 160px; max-height: 260px; overflow-y: auto;
+  background: var(--glass-surface-solid); border: 1px solid var(--glass-edge); border-radius: 14px;
+  box-shadow: var(--glass-shadow-float);
+  li { padding: 8px 12px; font-size: 13px; color: ${C.ink}; border-radius: 9px; cursor: pointer; }
+  li:hover { background: var(--glass-sunken); }
+`;
+
+const toast = `
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 250;
+  display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 12px 10px 16px; border-radius: 999px; font-size: 13px;
+  color: ${C.ink}; background: var(--glass-surface-solid);
+  box-shadow: var(--glass-shadow-float);
 `;
 
 const ErrorToast = styled.div`
-  position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 250;
-  display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px));
-  padding: 10px 14px; border-radius: 12px; font-size: 13px;
-  color: ${C.ink}; background: ${C.paper}; border: 1px solid ${C.danger};
-  box-shadow: 0 12px 40px -12px rgba(14, 20, 15, 0.35);
-  button { font-size: 16px; color: ${C.mutedSoft}; background: none; border: none; cursor: pointer; padding: 0; }
+  ${toast}
+  bottom: 96px;
+  border: 1px solid ${C.danger};
+  button { font-size: 16px; color: ${C.muted}; background: none; border: none; cursor: pointer; padding: 0 4px; }
 `;
 
 const MentionToast = styled.div`
-  position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 250;
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 14px; border-radius: 12px; font-size: 13px;
-  color: ${C.ink}; background: ${C.paper}; border: 1px solid ${C.line};
-  box-shadow: 0 12px 40px -12px rgba(14, 20, 15, 0.35);
-  button { font-size: 12.5px; font-weight: 600; color: ${C.greenDeep}; background: none; border: none; cursor: pointer; padding: 0; }
+  ${toast}
+  bottom: 52px;
+  border: 1px solid var(--glass-edge);
+  button {
+    font-size: 12.5px; font-weight: 650; color: ${C.greenDeep}; background: none; border: none;
+    cursor: pointer; padding: 4px 6px; border-radius: 999px;
+  }
+  button:hover { background: var(--glass-sunken); }
 `;
 
+/* The whole workbook: the glass ground with the frame floating over it. No
+   transform, filter or backdrop-filter here or on the sheet card: overlays,
+   menus and toasts are fixed to the viewport, and any of those would trap them
+   in the box instead. */
 const AppShell = styled.div`
   display: flex;
   flex-direction: column;
-  width: 100vw;
+  gap: 10px;
+  width: 100%;
   height: 100vh;
+  height: 100dvh;
+  padding: 12px 14px 8px;
   overflow: hidden;
-  background: ${C.paper};
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: ${C.ink};
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--glass-font);
+  /* Controls (and the dialogs rendered in here) take the app's type. */
+  button, input, select, textarea { font-family: inherit; }
+  @media (max-width: 640px) { padding: 8px 8px 6px; gap: 8px; }
 `;
 
-const TitleBar = styled.header`
+/* The floating glass header (the fleet's glass-header look). It holds no
+   fixed-position children, so its backdrop blur traps nothing. */
+const TopBar = styled.header`
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 38px;
+  gap: 10px;
+  min-height: 60px;
   flex-shrink: 0;
-  padding: 0 12px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 20px;
   background: ${C.chrome};
-  border-bottom: 1px solid ${C.line};
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
+  position: relative;
+  z-index: 20;
+  @media (max-width: 640px) { gap: 6px; min-height: 54px; padding: 6px 6px 6px 8px; border-radius: 18px; }
 `;
 
-const Lights = styled.div`
+const AppMark = styled.div<{ $hideOnPhone?: boolean }>`
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(140deg, #22c55e 0%, #0ea5e9 100%);
+  box-shadow: 0 8px 18px -10px rgba(14, 120, 80, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  @media (max-width: 640px) { ${(p) => (p.$hideOnPhone ? 'display: none;' : 'width: 34px; height: 34px; border-radius: 11px;')} }
+`;
+
+const TitleBlock = styled.div`
   display: flex;
-  gap: 6px;
-  margin-right: 4px;
-  i {
-    width: 10px; height: 10px; border-radius: 50%;
-    display: block;
-  }
-  i:nth-child(1) { background: #ff5f56; }
-  i:nth-child(2) { background: #ffbd2e; }
-  i:nth-child(3) { background: ${C.green}; }
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 `;
 
 const TitleName = styled.span`
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 15.5px;
+  font-weight: 750;
   color: ${C.ink};
-  letter-spacing: -0.2px;
+  letter-spacing: -0.3px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
-const NodeTag = styled.span`
-  font-size: 12px;
-  color: ${C.muted};
-  white-space: nowrap;
-`;
-
-const LivePill = styled.span<{ $on: boolean }>`
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: ${(p) => (p.$on ? C.green : C.muted)};
-  span { font-size: 8px; }
-`;
-
-const CollabBar = styled.div`
+const TitleMeta = styled.span`
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 46px;
-  flex-shrink: 0;
-  padding: 0 12px;
-  background: ${C.paper};
-  border-bottom: 1px solid ${C.line};
+  font-size: 12px;
+  color: ${C.muted};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const LivePill = styled.span<{ $on: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: ${(p) => (p.$on ? 'var(--glass-good-ink)' : C.muted)};
+  background: ${(p) => (p.$on ? 'var(--glass-good-bg)' : 'var(--glass-sunken)')};
+  span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+`;
+
+const TopSpacer = styled.div`
+  flex: 1;
+  min-width: 4px;
 `;
 
 const Avatars = styled.div`
   display: flex;
   align-items: center;
   padding-left: 6px;
+  @media (max-width: 640px) { display: none; }
 `;
 
 const Avatar = styled.span<{ $self: boolean }>`
-  width: 24px; height: 24px;
-  margin-left: -6px;
+  width: 30px; height: 30px;
+  margin-left: -8px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 10.5px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 750;
   color: ${C.onAccent};
-  border: 2px solid ${C.paper};
+  border: 2px solid var(--glass-surface-solid);
   box-shadow: ${(p) => (p.$self ? `0 0 0 2px ${C.green}` : 'none')};
 `;
 
 const CollabCount = styled.span`
-  font-size: 12px;
+  font-size: 12.5px;
   color: ${C.muted};
   white-space: nowrap;
-  @media (max-width: 700px) { display: none; }
-`;
-
-const ActionsSpacer = styled.div`
-  margin-left: auto;
+  margin-right: 4px;
+  @media (max-width: 900px) { display: none; }
 `;
 
 const PrimaryAction = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: ${C.onAccent};
-  background: ${C.green};
-  border: 1px solid ${C.greenHover};
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.14s, transform 0.12s;
+  ${primaryPill}
+  min-height: 38px;
+  padding: 0 16px;
   svg { flex-shrink: 0; }
-  &:hover { background: ${C.greenHover}; transform: translateY(-1px); }
-  @media (max-width: 700px) { span { display: none; } }
+  @media (max-width: 640px) { width: 38px; padding: 0; span { display: none; } }
 `;
 
-const IconBtn = styled.button`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px; height: 32px;
-  color: ${C.muted};
+const LogoutBtn = styled.button`
+  ${secondaryPill}
+  min-height: 38px;
+  padding: 0 14px;
   background: transparent;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.14s, color 0.14s;
-  &:hover:not(:disabled) { background: ${C.paper2}; color: ${C.ink}; }
-  &:disabled { opacity: 0.35; cursor: default; }
+  svg { flex-shrink: 0; }
+  @media (max-width: 640px) { width: 38px; padding: 0; span { display: none; } }
 `;
 
 const BackBtn = styled.button`
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  font-size: 17px;
-  line-height: 1;
-  color: ${C.muted};
-  background: transparent;
-  border: 1px solid ${C.line};
-  border-radius: 8px;
+  color: var(--glass-ink-2);
+  background: var(--glass-sunken);
+  border: none;
+  border-radius: 999px;
   cursor: pointer;
   transition: background 0.14s, color 0.14s;
-  &:hover { background: ${C.paper2}; color: ${C.ink}; }
+  &:hover { background: var(--glass-line-strong); color: ${C.ink}; }
+  &:focus-visible { outline: 2px solid var(--glass-accent); outline-offset: 2px; }
 `;
 
-const GridIcon = styled.div`
+/* The tool dock: a frosted strip of grouped tools. It scrolls sideways on a
+   phone rather than pushing the page wider. */
+const ToolDock = styled.div`
   display: flex;
   align-items: center;
-  color: ${C.green};
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 6px;
+  border-radius: 16px;
+  background: ${C.chrome};
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+`;
+
+const ToolGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: var(--glass-sunken);
+`;
+
+const DockSpacer = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const toolBase = `
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  color: var(--glass-ink-2);
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s, color 0.14s, box-shadow 0.14s;
+  svg { flex-shrink: 0; }
+  &:hover:not(:disabled) {
+    background: var(--glass-surface-solid);
+    color: ${C.ink};
+    box-shadow: 0 1px 2px rgba(14, 18, 34, 0.08);
+  }
+  &:focus-visible { outline: 2px solid var(--glass-accent); outline-offset: 1px; }
+  &:disabled { opacity: 0.35; cursor: default; }
+`;
+
+const IconBtn = styled.button`
+  ${toolBase}
+  width: 34px;
 `;
 
 const ToolBtn = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 10px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: ${C.muted};
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.14s, color 0.14s;
-
-  svg { flex-shrink: 0; }
-
-  &:hover {
-    background: ${C.paper2};
-    color: ${C.ink};
-  }
-
-  @media (max-width: 700px) { span { display: none; } }
+  ${toolBase}
+  gap: 6px;
+  padding: 0 11px;
+  font: 600 12.5px/1 var(--glass-font);
+  @media (max-width: 1100px) { span { display: none; } padding: 0 9px; }
 `;
 
-const SignOutBtn = styled.button`
-  padding: 6px 12px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: ${C.muted};
-  background: transparent;
-  border: 1px solid ${C.line};
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.14s, color 0.14s;
-  margin-left: 4px;
-
-  &:hover {
-    background: ${C.paper2};
-    color: ${C.ink};
-  }
+const XlsxTag = styled.span`
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 `;
 
-/* Inline commit/cancel buttons shown in formula bar area when cell is dirty */
+const Badge = styled.b`
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 750;
+  color: var(--glass-on-ink);
+  background: var(--glass-accent-solid);
+`;
+
+/* The sheet itself: one solid, rounded card. Solid on purpose — the grid must
+   stay crisp — and free of transform/filter so nothing fixed is trapped. */
+const SheetCard = styled.main`
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: ${C.paper};
+  border: 1px solid var(--glass-edge);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow);
+  @media (max-width: 640px) { border-radius: 14px; }
+`;
+
+/* The formula bar and its commit buttons, which sit at its right end. */
+const FormulaRow = styled.div`
+  position: relative;
+  flex-shrink: 0;
+  z-index: 10;
+`;
+
 const CommitBar = styled.div`
   display: flex;
   align-items: center;
   position: absolute;
-  right: 12px;
-  /* vertically aligned with formula bar (48px toolbar + formula bar starts) */
-  top: 48px;
+  right: 10px;
+  top: 0;
+  bottom: 0;
   z-index: 20;
-  gap: 2px;
+  gap: 4px;
 `;
 
 const CommitBtn = styled.button`
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   font-size: 14px;
-  color: ${C.greenDeep};
-  background: rgba(164, 255, 17, 0.15);
-  border: 1px solid rgba(164, 255, 17, 0.4);
-  border-radius: 6px;
+  color: var(--glass-on-ink);
+  background: var(--glass-ink);
+  border: none;
+  border-radius: 999px;
   cursor: pointer;
   transition: background 0.14s;
-
-  &:hover { background: rgba(164, 255, 17, 0.3); }
+  &:hover { background: var(--glass-ink-2); }
 `;
 
 const CancelCommitBtn = styled.button`
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   font-size: 14px;
   color: ${C.danger};
-  background: transparent;
-  border: 1px solid ${C.line};
-  border-radius: 6px;
+  background: var(--glass-surface-solid);
+  border: none;
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+  border-radius: 999px;
   cursor: pointer;
   transition: background 0.14s;
-
-  &:hover { background: rgba(220, 38, 38, 0.08); }
+  &:hover { background: var(--glass-bad-bg); }
 `;
 
-// ── Welcome gate ─────────────────────────────────────────────────
+// ── Picker and opening screens ───────────────────────────────────
 
-const FullCenter = styled.div`
-  position: fixed;
-  inset: 0;
+const PickerShell = styled.div`
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px 32px;
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
+  color: ${C.ink};
+  font-family: var(--glass-font);
+  button, input, select, textarea { font-family: inherit; }
+  @media (max-width: 640px) { padding: 8px 8px 24px; }
+`;
+
+const PickerMain = styled.div`
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 48px 8px 0;
+  @media (max-width: 640px) { padding: 28px 6px 0; }
+`;
+
+const PickerHero = styled.div`
+  margin-bottom: 28px;
+  h1 {
+    font-size: clamp(30px, 5vw, 44px);
+    font-weight: 800;
+    letter-spacing: -1.2px;
+    line-height: 1.05;
+    margin: 6px 0 12px;
+    color: ${C.ink};
+    overflow-wrap: anywhere;
+  }
+  p { max-width: 560px; font-size: 15.5px; line-height: 1.6; color: ${C.muted}; }
+`;
+
+const Eyebrow = styled.span`
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--glass-accent);
+`;
+
+const PickerGrid = styled.div`
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  @media (max-width: 820px) { grid-template-columns: minmax(0, 1fr); }
+`;
+
+/* A frosted card on the ground. Holds no fixed-position children (the join
+   dialog renders beside the cards, not inside one). */
+const Card = styled.div`
+  padding: 22px;
+  border-radius: 22px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+  h2 { font-size: 17px; font-weight: 750; letter-spacing: -0.3px; color: ${C.ink}; }
+  > p { font-size: 14px; color: ${C.muted}; line-height: 1.6; margin: 0 0 20px; }
+  @media (max-width: 640px) { padding: 18px; border-radius: 20px; }
+`;
+
+const CardHead = styled.div`
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: ${C.paper};
+  gap: 10px;
+  margin-bottom: 16px;
 `;
 
-const WelcomeCard = styled.div`
-  max-width: 460px;
-  width: 100%;
-  padding: 36px 32px;
-  background: ${C.paper2};
-  border: 1px solid ${C.line};
-  border-radius: 20px;
-  text-align: center;
-
-  h2 {
-    font-size: 22px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    color: ${C.ink};
-    margin: 0 0 10px;
-  }
-  p {
-    font-size: 14px;
-    color: ${C.muted};
-    margin: 0 0 24px;
-    line-height: 1.6;
-  }
+const CountPill = styled.span`
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--glass-ink-2);
+  background: var(--glass-sunken);
 `;
 
 const WorkspaceList = styled.div`
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin: 4px 0 20px;
-  max-height: 260px;
+  max-height: 420px;
   overflow-y: auto;
   text-align: left;
 `;
@@ -2360,34 +2576,47 @@ const WorkspaceList = styled.div`
 const WorkspaceRow = styled.button`
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  padding: 12px 14px;
-  background: ${C.paper};
-  border: 1px solid ${C.line};
-  border-radius: 12px;
+  padding: 12px 14px 12px 12px;
+  font-family: inherit;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line);
+  border-radius: 16px;
   cursor: pointer;
   text-align: left;
-  transition: background 0.14s, border-color 0.14s, transform 0.12s;
+  transition: border-color 0.14s, box-shadow 0.16s, transform 0.12s;
 
   &:hover {
-    background: ${C.paper2};
-    border-color: ${C.green};
+    border-color: var(--glass-line-strong);
+    box-shadow: 0 12px 28px -18px rgba(20, 26, 60, 0.45);
     transform: translateY(-1px);
   }
+  &:focus-visible { outline: 2px solid var(--glass-accent); outline-offset: 2px; }
+`;
+
+const RowIcon = styled.span`
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--glass-good-ink);
+  background: var(--glass-good-bg);
 `;
 
 const WorkspaceMeta = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
+  flex: 1;
 `;
 
 const WorkspaceName = styled.span<{ $placeholder?: boolean }>`
-  font-size: 14px;
-  font-weight: ${(p) => (p.$placeholder ? 500 : 600)};
+  font-size: 14.5px;
+  font-weight: ${(p) => (p.$placeholder ? 500 : 650)};
   font-style: ${(p) => (p.$placeholder ? 'italic' : 'normal')};
   color: ${(p) => (p.$placeholder ? C.mutedSoft : C.ink)};
   white-space: nowrap;
@@ -2398,87 +2627,61 @@ const WorkspaceName = styled.span<{ $placeholder?: boolean }>`
 const WorkspaceId = styled.span`
   font-size: 11.5px;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  color: ${C.mutedSoft};
+  color: ${C.muted};
 `;
 
 const OpenChevron = styled.span`
-  font-size: 16px;
-  color: ${C.green};
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
-`;
-
-const WelcomeIcon = styled.div`
-  width: 60px;
-  height: 60px;
-  border-radius: 16px;
-  background: rgba(164, 255, 17, 0.14);
-  border: 1px solid rgba(164, 255, 17, 0.4);
   display: grid;
   place-items: center;
-  margin: 0 auto 20px;
-  color: ${C.greenDeep};
+  border-radius: 999px;
+  color: var(--glass-ink-2);
+  background: var(--glass-sunken);
+`;
+
+const EmptyList = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 32px 20px;
+  text-align: center;
+  border-radius: 18px;
+  border: 1.5px dashed var(--glass-line-strong);
+  strong { margin-top: 8px; font-size: 15px; font-weight: 700; color: ${C.ink}; }
+  span { font-size: 13.5px; color: ${C.muted}; line-height: 1.5; }
+`;
+
+const FieldLabel = styled.label`
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: ${C.muted};
 `;
 
 const ProjectNameInput = styled.input`
-  width: 100%;
-  padding: 11px 14px;
-  font-size: 14px;
-  color: ${C.ink};
-  background: ${C.paper};
-  border: 1px solid ${C.line};
-  border-radius: 10px;
-  outline: none;
-  box-sizing: border-box;
-  margin-bottom: 20px;
-  transition: border-color 0.15s, box-shadow 0.15s;
-
-  &::placeholder { color: ${C.mutedSoft}; }
-  &:focus {
-    border-color: ${C.green};
-    box-shadow: 0 0 0 3px rgba(164, 255, 17, 0.18);
-  }
+  ${field}
+  margin-bottom: 18px;
 `;
 
 const ButtonRow = styled.div`
   display: flex;
   gap: 10px;
-  justify-content: center;
   flex-wrap: wrap;
+  > * { flex: 1 1 auto; }
 `;
 
 const PrimaryBtn = styled.button`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 11px 20px;
-  font-size: 13.5px;
-  font-weight: 600;
-  border-radius: 10px;
-  cursor: pointer;
-  color: ${C.onAccent};
-  background: ${C.green};
-  border: 1px solid #93e60c;
-  transition: background 0.18s, transform 0.15s;
-
-  &:hover:not(:disabled) {
-    background: ${C.greenHover};
-    transform: translateY(-1px);
-  }
-  &:disabled { opacity: 0.5; cursor: default; }
+  ${primaryPill}
+  min-height: 44px;
 `;
 
 const SecondaryBtn = styled.button`
-  padding: 11px 18px;
-  font-size: 13.5px;
-  font-weight: 600;
-  border-radius: 10px;
-  cursor: pointer;
-  color: ${C.ink};
-  background: ${C.paper};
-  border: 1px solid ${C.line};
-  transition: background 0.15s, border-color 0.15s;
-
-  &:hover { background: ${C.paper2}; border-color: ${C.green}; }
+  ${secondaryPill}
+  min-height: 44px;
 `;
 
 const ErrLine = styled.p`
@@ -2491,4 +2694,30 @@ const StatusLine = styled.p`
   margin: 12px 0 0;
   font-size: 13px;
   color: ${C.muted};
+`;
+
+const OpeningWrap = styled.div`
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px 0;
+  > div {
+    width: 100%;
+    max-width: 440px;
+    text-align: center;
+    padding: 32px 28px;
+    h2 { font-size: 20px; margin: 0 0 8px; }
+    p { font-size: 14px; color: ${C.muted}; line-height: 1.6; margin: 0 0 22px; }
+  }
+`;
+
+const Spinner = styled.span`
+  display: block;
+  width: 30px;
+  height: 30px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  border: 3px solid var(--glass-line-strong);
+  border-top-color: var(--glass-ink);
+  animation: ${spin} 0.8s linear infinite;
 `;

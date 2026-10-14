@@ -589,6 +589,10 @@ impl LobbyState {
         let mut counting: Vec<MatchRecord> = Vec::new();
         for key in keys {
             for (owner, record) in self.results.entries_at(&key).map_err(storage)? {
+                // A record its owner signed twice is sealed and has no value.
+                let Some(record) = record.value() else {
+                    continue;
+                };
                 if record.match_id != *match_id {
                     continue;
                 }

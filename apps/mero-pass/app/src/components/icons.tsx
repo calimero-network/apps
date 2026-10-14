@@ -121,3 +121,54 @@ export function ShieldIcon(props: IconProps) {
     </Base>
   );
 }
+
+export function MenuIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </Base>
+  );
+}
+
+export function CloseIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </Base>
+  );
+}
+
+export function VaultsIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="3.5" y="4.5" width="17" height="14" rx="3" />
+      <circle cx="12" cy="11.5" r="3" />
+      <path d="M12 8.5V7M7 18.5V20M17 18.5V20" />
+    </Base>
+  );
+}
+
+export function ChevronIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="m9 6 6 6-6 6" />
+    </Base>
+  );
+}
+
+export function KeyIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <circle cx="8" cy="15" r="4" />
+      <path d="m11 12 8.5-8.5M16 7l2.5 2.5M14 9l2 2" />
+    </Base>
+  );
+}
+
+export function RefreshIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4" />
+    </Base>
+  );
+}

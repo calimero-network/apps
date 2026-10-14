@@ -4,13 +4,14 @@
  * hierarchy and should read as one system. */
 .root {
   min-height: 100vh;
-  background: var(--bg);
+  /* Transparent: the body carries the glass ground and its tinted fields. */
+  background: transparent;
 }
 
 .main {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 32px 32px 80px;
+  padding: 44px 32px 80px;
 }
 
 /* ── Page header ─────────────────────────────────────────────────────────── */
@@ -22,12 +23,12 @@
 }
 .headTile {
   flex: none;
-  width: 44px;
-  height: 44px;
+  width: 52px;
+  height: 52px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--accent-soft);
   color: var(--accent-ink);
   border: 1px solid color-mix(in srgb, var(--accent-ink) 18%, transparent);
@@ -37,18 +38,18 @@
   min-width: 0;
 }
 .title {
-  margin: 0 0 4px;
+  margin: 0 0 6px;
   font-family: var(--font-display);
-  font-size: 28px;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: 38px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
   color: var(--text);
 }
 .sub {
   margin: 0;
   max-width: 68ch;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.55;
   color: var(--text-dim);
 }
@@ -56,11 +57,10 @@
 /* ── Create ──────────────────────────────────────────────────────────────── */
 .createCard {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
-  padding: 16px 20px 20px;
-  margin-bottom: 28px;
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
+  padding: 20px 22px 22px;
+  margin-bottom: 36px;
 }
 .label {
   display: block;
@@ -92,11 +92,12 @@
   padding: 0 16px;
   background: var(--accent);
   color: var(--accent-text);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  box-shadow: var(--shadow-button);
   font: inherit;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: background 120ms ease, border-color 120ms ease;
@@ -112,6 +113,7 @@
   background: var(--surface);
   color: var(--text);
   border-color: var(--border-strong);
+  box-shadow: none;
 }
 .btnSecondary:hover:not(:disabled) {
   background: var(--surface-hover);
@@ -124,26 +126,6 @@
 .btnDanger:hover:not(:disabled) {
   background: var(--red-hover);
   border-color: var(--red-hover);
-}
-
-.logoutBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-.logoutBtn:hover {
-  background: var(--surface-hover);
-  color: var(--text);
 }
 
 .nodeTag {
@@ -164,8 +146,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-ink) 40%, transparent);
+  background: var(--green);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 22%, transparent);
 }
 
 /* ── Status lines ────────────────────────────────────────────────────────── */
@@ -222,8 +204,9 @@
 }
 .sectionTitle {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   color: var(--text);
 }
 .count {
@@ -266,13 +249,13 @@
   align-items: center;
   gap: 14px;
   width: 100%;
-  min-height: 76px;
-  padding: 16px 52px 16px 16px;
+  min-height: 92px;
+  padding: 20px 56px 20px 20px;
   position: relative;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
+  border: 0;
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
   font: inherit;
   color: var(--text);
   text-align: left;
@@ -280,8 +263,7 @@
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .card:hover:not(:disabled) {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-lift);
 }
 .card:disabled {
   cursor: default;
@@ -293,12 +275,12 @@
 }
 .cardTile {
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 15px;
   background: var(--accent-soft);
   color: var(--accent-ink);
 }
@@ -314,8 +296,9 @@
   gap: 3px;
 }
 .cardName {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -360,7 +343,7 @@
   padding: 0;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 999px;
   color: var(--text-faint);
   cursor: pointer;
   z-index: 2;
@@ -383,9 +366,9 @@
   max-width: 280px;
   padding: 6px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-md);
+  border: 1px solid var(--edge);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow-float);
   z-index: 100;
 }
 .dropdownItem {
@@ -393,15 +376,15 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  height: 34px;
-  padding: 0 10px;
+  height: 38px;
+  padding: 0 12px;
   font: inherit;
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--text);
   text-align: left;
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
 }
 .dropdownItem svg {
@@ -447,12 +430,12 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 40px 24px;
-  margin-bottom: 32px;
+  padding: 48px 28px;
+  margin-bottom: 36px;
   text-align: center;
   border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
   font-size: 14px;
   color: var(--text-dim);
 }
@@ -465,14 +448,14 @@
 .joinTile,
 .dangerTile {
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: 46px;
+  height: 46px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  background: var(--bg-subtle);
-  color: var(--text-dim);
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .emptyTile {
   margin-bottom: 6px;
@@ -483,11 +466,12 @@
   display: flex;
   gap: 16px;
   align-items: flex-start;
-  padding: 20px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
+  padding: 22px;
+  background:
+    radial-gradient(380px 150px at 0% 0%, color-mix(in srgb, var(--glass-tint) 12%, transparent), transparent 70%),
+    var(--surface);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
 }
 .joinBody {
   flex: 1;
@@ -495,8 +479,8 @@
 }
 .joinTitle {
   margin: 0 0 2px;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
 }
 .joinLabel {
   margin: 0 0 12px;
@@ -509,12 +493,12 @@
 
 /* ── Destructive confirm ─────────────────────────────────────────────────── */
 .confirmDialog {
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
+  border: 1px solid var(--edge);
+  border-radius: 24px;
+  padding: 26px;
   max-width: 480px;
   width: calc(100vw - 32px);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-shadow-float);
   color: var(--text);
   background: var(--surface);
 }
@@ -533,8 +517,9 @@
   color: var(--red);
 }
 .confirmTitle {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   margin: 0;
 }
 .confirmText {
@@ -566,6 +551,13 @@
   }
   .headTile {
     display: none;
+  }
+  /* The page action drops under the title rather than squeezing it. */
+  .headText {
+    flex: 1 1 100%;
+  }
+  .title {
+    font-size: 30px;
   }
   .joinTile {
     display: none;

@@ -111,17 +111,22 @@ function UpdateRow({ post, categories }: { post: PostCard; categories: CategoryV
     <Link to={`/a/p/${post.id}`} className="updateRow" data-unread={!post.read_by_me} data-testid="update-row">
       <div className="updateRowMain">
         <div className="meta">
-          {!post.read_by_me && <span className="dot" aria-label="Unread" />}
+          <span className="byline">
+            <Avatar name={post.author_name} account={post.author} team={post.author_is_team} />
+            {personLabel(post.author_name, post.author)}
+            <span className="bylineDate">· {formatDate(post.created_at)}</span>
+          </span>
+          <span className="grow" />
+          {!post.read_by_me && (
+            <span className="newTag" aria-label="Unread">
+              New
+            </span>
+          )}
           {cat && <CategoryChip category={cat} />}
-          <span>{formatDate(post.created_at)}</span>
         </div>
         <h2 className="updateTitle">{post.title}</h2>
         {post.summary && <p className="excerpt">{post.summary}</p>}
         <div className="updateFoot">
-          <span className="byline">
-            <Avatar name={post.author_name} account={post.author} team={post.author_is_team} />
-            {personLabel(post.author_name, post.author)}
-          </span>
           {hasStats && (
             <div className="updateStats">
               {post.metric_count > 0 && (
@@ -146,9 +151,12 @@ function UpdateRow({ post, categories }: { post: PostCard; categories: CategoryV
               ))}
             </div>
           )}
+          <span className="readMore">
+            Read update
+            <ChevronRightIcon size={15} />
+          </span>
         </div>
       </div>
-      <ChevronRightIcon size={18} className="rowChevron" />
     </Link>
   );
 }
@@ -218,6 +226,7 @@ function TeamPanel({ hasUpdates }: { hasUpdates: boolean }) {
           <h2 className="sectionTitle">
             Drafts <span className="muted small">· only on this node until you publish</span>
           </h2>
+          <div className="draftsCard">
           {drafts.data!.map((d) => (
             <div key={d.id} className="draftRow">
               <span className="pill">Draft</span>
@@ -235,6 +244,7 @@ function TeamPanel({ hasUpdates }: { hasUpdates: boolean }) {
               </button>
             </div>
           ))}
+          </div>
         </div>
       )}
 

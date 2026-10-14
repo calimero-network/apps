@@ -8,8 +8,9 @@
  * a collaborator's edit keeps the caret where it was.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { C } from '../theme';
+import { closeButton, overlay, sheetHeader, sideSheet } from './glass';
 import {
   NOTE_MARKS, charOffset, formatOps, hasMark, rebase, spansText,
   type NoteMark, type NoteOp, type Span,
@@ -203,7 +204,7 @@ function spanNode(span: Span): HTMLElement {
   if (a.italic) el.style.fontStyle = 'italic';
   const deco = [a.underline && 'underline', a.strike && 'line-through'].filter(Boolean).join(' ');
   if (deco) el.style.textDecoration = deco;
-  if (a.highlight) el.style.background = 'rgba(164, 255, 17, 0.3)';
+  if (a.highlight) el.style.background = 'var(--glass-wait-bg)';
   return el;
 }
 
@@ -258,31 +259,20 @@ function setSelectionOffsets(root: HTMLElement, start: number, end: number) {
   sel.addRange(range);
 }
 
-const slideIn = keyframes`from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; }`;
-const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
-
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 200;
-  background: rgba(14, 20, 15, 0.3); backdrop-filter: blur(2px);
-  animation: ${fadeIn} 0.18s ease;
+  ${overlay}
+  z-index: 200;
   display: flex; justify-content: flex-end;
 `;
 const Panel = styled.div`
-  width: 420px; max-width: 100vw; height: 100%;
-  background: ${C.paper}; border-left: 1px solid ${C.line};
-  display: flex; flex-direction: column;
-  animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: -20px 0 60px -20px rgba(14, 20, 15, 0.25);
+  ${sideSheet}
+  --sheet-w: 420px;
 `;
 const Header = styled.div`
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 18px; border-bottom: 1px solid ${C.line};
-  .title { font-size: 15px; font-weight: 700; color: ${C.ink}; }
+  ${sheetHeader}
 `;
 const CloseBtn = styled.button`
-  width: 30px; height: 30px; font-size: 20px; color: ${C.mutedSoft};
-  background: transparent; border: none; border-radius: 8px; cursor: pointer;
-  &:hover { background: ${C.paper2}; color: ${C.ink}; }
+  ${closeButton}
 `;
 const Toolbar = styled.div`
   display: flex; align-items: center; gap: 4px; padding: 8px 16px; border-bottom: 1px solid ${C.line};
@@ -293,13 +283,13 @@ const FmtBtn = styled.button<{ $mark: NoteMark }>`
   font-weight: ${(p) => (p.$mark === 'bold' ? 700 : 500)};
   font-style: ${(p) => (p.$mark === 'italic' ? 'italic' : 'normal')};
   text-decoration: ${(p) => (p.$mark === 'underline' ? 'underline' : p.$mark === 'strike' ? 'line-through' : 'none')};
-  ${(p) => p.$mark === 'highlight' && 'background: rgba(164, 255, 17, 0.3);'}
-  &:hover { border-color: ${C.green}; }
+  ${(p) => p.$mark === 'highlight' && 'background: var(--glass-wait-bg);'}
+  &:hover { border-color: var(--glass-accent); }
 `;
 const Status = styled.span`margin-left: auto; font-size: 11.5px; color: ${C.mutedSoft};`;
 const Editor = styled.div`
   flex: 1; overflow-y: auto; padding: 14px 18px; outline: none;
-  font: 14px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font: 14px/1.6 var(--glass-font);
   color: ${C.ink}; white-space: pre-wrap; word-break: break-word;
   &:empty::before { content: attr(data-placeholder); color: ${C.mutedSoft}; }
 `;

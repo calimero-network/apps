@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { renderSVG } from 'uqr';
 import { C } from '../theme';
+import { closeButton, dialogSurface, overlay, primaryPill, secondaryPill } from './glass';
 import { shareableInvitation } from '../lib/inviteLink';
 
 /**
@@ -202,32 +203,23 @@ export default function InviteModal({
 
 // ── Styled components ────────────────────────────────────────────────────────
 
-const fadeIn = keyframes`from{opacity:0;}to{opacity:1;}`;
-const pop = keyframes`from{opacity:0;transform:translateY(10px) scale(0.97);}to{opacity:1;transform:none;}`;
-
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 100;
+  ${overlay}
+  z-index: 100;
   display: flex; align-items: center; justify-content: center; padding: 20px;
-  background: rgba(14,20,15,0.45); backdrop-filter: blur(4px);
-  animation: ${fadeIn} 0.18s ease both;
 `;
 
 const Dialog = styled.div`
-  position: relative; width: 100%; max-width: 460px;
+  ${dialogSurface}
+  width: 100%; max-width: 460px;
   max-height: calc(100vh - 40px); overflow-y: auto;
-  background: ${C.paper}; border: 1px solid ${C.line}; border-radius: 18px;
-  padding: 26px 26px 22px; box-shadow: 0 40px 90px -40px rgba(14,20,15,0.5);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  animation: ${pop} 0.22s cubic-bezier(0.22,1,0.36,1) both;
+  padding: 30px 28px 24px;
   h3 { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; color: ${C.ink}; margin: 0 0 6px; }
 `;
 
 const Close = styled.button`
-  position: absolute; top: 14px; right: 14px; width: 30px; height: 30px;
-  display: grid; place-items: center; font-size: 20px; line-height: 1;
-  color: ${C.mutedSoft}; background: transparent; border: none; border-radius: 8px; cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  &:hover { background: ${C.paper2}; color: ${C.ink}; }
+  ${closeButton}
+  position: absolute; top: 16px; right: 16px;
 `;
 
 const Scope = styled.p`
@@ -246,7 +238,7 @@ const LinkBox = styled.code<{ $full: boolean }>`
   flex: 1; min-width: 0;
   display: block; padding: 10px 12px;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; line-height: 1.5;
-  color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 11px;
+  color: ${C.ink}; background: var(--glass-sunken); border: 1px solid var(--glass-line); border-radius: 12px;
   user-select: all;
   ${(p) =>
     p.$full
@@ -256,17 +248,13 @@ const LinkBox = styled.code<{ $full: boolean }>`
 
 const Qr = styled.div`
   flex-shrink: 0; width: 86px; height: 86px; padding: 6px;
-  background: #fff; border: 1px solid ${C.line}; border-radius: 11px;
+  background: #fff; border: 1px solid ${C.line}; border-radius: 12px;
   svg { width: 100%; height: 100%; display: block; }
 `;
 
 const PrimaryBtn = styled.button`
-  display: inline-flex; align-items: center; justify-content: center; width: 100%;
-  padding: 12px 18px; font-size: 13.5px; font-weight: 600; border-radius: 11px; cursor: pointer;
-  color: ${C.onAccent}; background: ${C.green}; border: 1px solid #93e60c;
-  transition: background 0.18s, box-shadow 0.2s, transform 0.15s;
-  &:hover:not(:disabled) { background: ${C.greenHover}; box-shadow: 0 10px 28px rgba(164,255,17,0.4); transform: translateY(-1px); }
-  &:disabled { opacity: 0.6; cursor: default; }
+  ${primaryPill}
+  width: 100%;
 `;
 
 const Hint = styled.p`
@@ -300,14 +288,13 @@ const MoreRow = styled.div`
 const MoreValue = styled.code`
   flex: 1; min-width: 0; padding: 8px 10px;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px;
-  color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 9px;
+  color: ${C.ink}; background: var(--glass-sunken); border: 1px solid var(--glass-line); border-radius: 9px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: all;
 `;
 
 const SecondaryBtn = styled.button`
-  flex-shrink: 0; padding: 8px 14px; font-size: 12.5px; font-weight: 600; border-radius: 9px; cursor: pointer;
-  color: ${C.ink}; background: ${C.paper}; border: 1px solid ${C.line};
-  &:hover { background: ${C.paper2}; border-color: ${C.green}; }
+  ${secondaryPill}
+  flex-shrink: 0;
 `;
 
 const Notice = styled.p<{ $bad: boolean }>`

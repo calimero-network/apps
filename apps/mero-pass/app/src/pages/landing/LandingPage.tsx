@@ -58,21 +58,22 @@ const LINKS = {
 
 /**
  * The node picker in the same language: mero-react's LoginModal takes theme
- * tokens, so it gets the charcoal, the lime and square corners.
+ * tokens (it sets them as CSS custom properties), so it gets the glass ones —
+ * solid, since it floats over the page — and follows light and dark with them.
  */
 const LOGIN_THEME = {
-  primary: '#a4ff11',
-  primaryHover: '#b8ff4a',
-  primaryText: '#131215',
-  background: '#1a191c',
-  backgroundSecondary: '#131215',
-  backgroundTertiary: '#211f23',
-  border: '#404040',
-  text: '#fcfcfc',
-  textSecondary: '#8e8e8e',
-  error: '#ff6b6b',
-  overlay: 'rgba(0, 0, 0, 0.72)',
-  radius: '0',
+  primary: 'var(--glass-ink)',
+  primaryHover: 'var(--glass-ink-2)',
+  primaryText: 'var(--glass-on-ink)',
+  background: 'var(--glass-surface-solid)',
+  backgroundSecondary: 'var(--glass-ground)',
+  backgroundTertiary: 'var(--glass-sunken)',
+  border: 'var(--glass-line-strong)',
+  text: 'var(--glass-ink)',
+  textSecondary: 'var(--glass-muted)',
+  error: 'var(--glass-bad-ink)',
+  overlay: 'rgba(14, 18, 34, 0.32)',
+  radius: '18px',
 };
 
 /** The chapters, in page order. The header links to four of them. */

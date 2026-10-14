@@ -156,3 +156,10 @@ export const AnchorIcon = icon(
     <path d="M12 22V8M5 12H2a10 10 0 0 0 20 0h-3" />
   </>,
 );
+export const SunIcon = icon(
+  <>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+  </>,
+);
+export const MoonIcon = icon(<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z" />);

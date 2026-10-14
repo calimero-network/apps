@@ -1,11 +1,11 @@
 .dialog {
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  border: 1px solid var(--edge);
+  border-radius: 24px;
   background: var(--surface);
   color: var(--text);
   padding: 0;
   width: min(calc(100vw - 32px), 500px);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-shadow-float);
 }
 
 .dialog::backdrop {
@@ -14,7 +14,7 @@
 }
 
 .body {
-  padding: 24px;
+  padding: 26px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -34,7 +34,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--accent-soft);
   color: var(--accent-ink);
 }
@@ -46,8 +46,9 @@
 
 .title {
   margin: 0 0 2px;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text);
 }
 
@@ -63,7 +64,7 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 999px;
 }
 
 .close:hover {
@@ -92,7 +93,7 @@
   min-height: 38px;
   background: var(--surface-sunken);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius);
 }
 
 .linkIcon {
@@ -135,8 +136,8 @@
   font-size: 14px;
   color: var(--accent-text);
   background: var(--accent);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   padding: 0 16px;
   cursor: pointer;
   transition: background 120ms ease;
@@ -161,7 +162,7 @@
   line-height: 1.5;
   color: var(--text-dim);
   background: var(--bg-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius);
 }
 
 .disclosure {
@@ -227,7 +228,7 @@
   color: var(--text-dim);
   background: var(--surface-sunken);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 8px 10px;
   white-space: nowrap;
   overflow: hidden;
@@ -245,7 +246,7 @@
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: 999px;
   padding: 0 10px;
   cursor: pointer;
   white-space: nowrap;

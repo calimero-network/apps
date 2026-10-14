@@ -17,13 +17,13 @@ import InviteModal from "../components/InviteModal";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { hostingProblem } from "../lib/hosting";
 import AppHeader from "../components/AppHeader";
+import LogoutButton from "../components/LogoutButton";
 import {
   AlertIcon,
   ChevronRightIcon,
   CopyIcon,
   HashIcon,
   LayersIcon,
-  LogOutIcon,
   MoreIcon,
   PlusIcon,
   TrashIcon,
@@ -58,7 +58,7 @@ export default function AudiencesPage() {
   // `admin`, never `mero.admin`: the session-aware admin (see CompaniesPage).
   // On an account session the raw client's admin is the relay's node route and
   // answers 403 to every create and join.
-  const { admin, isDelegated, logout } = useMero();
+  const { admin, isDelegated } = useMero();
   const { showToast } = useToast();
   // Resolved from the NODE by package (or the registry, for an account) — see
   // lib/appId and hooks/useApplicationId.
@@ -303,12 +303,7 @@ export default function AudiencesPage() {
           { label: "Companies", onClick: () => navigate("/companies"), icon: <LayersIcon size={14} /> },
           { label: nsName || "Company" },
         ]}
-        right={
-          <button className={styles.logoutBtn} onClick={logout} title="Sign out of this node">
-            <LogOutIcon size={15} />
-            Logout
-          </button>
-        }
+        right={<LogoutButton />}
       />
 
       <main className={styles.main}>

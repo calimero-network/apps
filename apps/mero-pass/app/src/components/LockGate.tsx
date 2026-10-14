@@ -1,8 +1,10 @@
 import { type ReactNode, useEffect, useState } from 'react';
+import { Lock } from '@calimero-network/mero-icons';
 
 import { useDeviceUnlocked } from '../hooks/useDeviceLock';
 import { type Protection, deviceKeeper } from '../lib/deviceKey';
 import shell from '../styles/shell.module.css';
+import gate from '../styles/gate.module.css';
 import { describeError } from '../lib/errors';
 
 /**
@@ -64,82 +66,90 @@ export default function LockGate({ children }: { children: ReactNode }) {
   };
 
   return (
-    <section className={shell.section} data-testid="lock-gate">
-      <h2 className={shell.sectionTitle}>Locked</h2>
-      <p className={shell.sectionHint}>
-        Your vault keys were cleared from memory. Nothing is readable on this
-        screen until you unlock.
-      </p>
-      {error && <p className={shell.error}>{error}</p>}
-      <div className={shell.createRow}>
-        {protection === 'passphrase' && (
-          <input
-            className={shell.input}
-            type="password"
-            autoComplete="current-password"
-            placeholder="Device passphrase"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void unlock()}
-            data-testid="unlock-passphrase"
-            autoFocus
-          />
-        )}
-        <button
-          type="button"
-          className={shell.btn}
-          onClick={() => void unlock()}
-          disabled={
-            busy ||
-            protection === null ||
-            (protection === 'passphrase' && !passphrase)
-          }
-          data-testid="unlock"
-        >
-          {busy
-            ? 'Unlocking…'
-            : protection === 'passkey'
-              ? 'Unlock with passkey'
-              : 'Unlock'}
-        </button>
-      </div>
-      {protection !== null && protection !== 'none' && (
-        <div className={shell.createRow}>
-          {!confirmReset ? (
-            <button
-              type="button"
-              className={shell.btnGhost}
-              onClick={() => setConfirmReset(true)}
-            >
-              Forgot your {protection}?
-            </button>
-          ) : (
-            <>
-              <p className={shell.sectionHint}>
-                Resetting forgets this browser's key. Vaults that another of
-                your devices, a teammate or your recovery key can open come back
-                after approval or a restore; a vault only this browser held is
-                lost.
-              </p>
-              <button
-                type="button"
-                className={shell.btnDanger}
-                onClick={() => void reset()}
-                data-testid="reset-device"
-              >
-                Reset this browser
-              </button>
-              <button
-                type="button"
-                className={shell.btnGhost}
-                onClick={() => setConfirmReset(false)}
-              >
-                Cancel
-              </button>
-            </>
+    <section className={gate.gate} data-testid="lock-gate">
+      <div className={gate.card}>
+        <span className={gate.icon} aria-hidden="true">
+          <Lock size={28} />
+        </span>
+        <h2 className={gate.title}>Locked</h2>
+        <p className={gate.hint}>
+          Your vault keys were cleared from memory. Nothing is readable on this
+          screen until you unlock.
+        </p>
+        {error && <p className={shell.error}>{error}</p>}
+        <div className={gate.form}>
+          {protection === 'passphrase' && (
+            <input
+              className={shell.input}
+              type="password"
+              autoComplete="current-password"
+              placeholder="Device passphrase"
+              aria-label="Device passphrase"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void unlock()}
+              data-testid="unlock-passphrase"
+              autoFocus
+            />
           )}
+          <button
+            type="button"
+            className={`${shell.btn} ${gate.unlock}`}
+            onClick={() => void unlock()}
+            disabled={
+              busy ||
+              protection === null ||
+              (protection === 'passphrase' && !passphrase)
+            }
+            data-testid="unlock"
+          >
+            {busy
+              ? 'Unlocking…'
+              : protection === 'passkey'
+                ? 'Unlock with passkey'
+                : 'Unlock'}
+          </button>
         </div>
-      )}
+        {protection !== null && protection !== 'none' && (
+          <div className={gate.forgot}>
+            {!confirmReset ? (
+              <button
+                type="button"
+                className={gate.link}
+                onClick={() => setConfirmReset(true)}
+              >
+                Forgot your {protection}?
+              </button>
+            ) : (
+              <>
+                <p className={gate.hint}>
+                  Resetting forgets this browser's key. Vaults that another of
+                  your devices, a teammate or your recovery key can open come
+                  back after approval or a restore; a vault only this browser
+                  held is lost.
+                </p>
+                <div className={gate.form}>
+                  <button
+                    type="button"
+                    className={shell.btnDanger}
+                    onClick={() => void reset()}
+                    data-testid="reset-device"
+                  >
+                    Reset this browser
+                  </button>
+                  <button
+                    type="button"
+                    className={shell.btnGhost}
+                    onClick={() => setConfirmReset(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

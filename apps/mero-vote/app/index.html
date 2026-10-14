@@ -8,11 +8,25 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <meta name="theme-color" content="#f6f6f3" />
+    <meta name="theme-color" content="#f6f7fb" />
     <meta property="og:title" content="Mero Vote — Calimero" />
     <meta property="og:image" content="/icon-512.png" />
     <meta name="twitter:title" content="Mero Vote — Calimero" />
     <meta name="twitter:image" content="/icon-512.png" />
+
+    <!-- Theme before first paint: light unless the person picked dark
+         (src/theme.ts owns the key and does the same at runtime). -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem('mero-vote:theme') === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            var m = document.querySelector('meta[name="theme-color"]');
+            if (m) m.setAttribute('content', '#0b0e18');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

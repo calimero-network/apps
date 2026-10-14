@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { choicesFor, firstSentence, heldLine, headlineOfMessage, localCommand, htmlText, plainMethod, rowTitle, saysMore, stepsOf, writeText } from "./format";
+import { choicesFor, firstSentence, previewOf, heldLine, headlineOfMessage, localCommand, htmlText, plainMethod, rowTitle, saysMore, stepsOf, writeText } from "./format";
 
 const row = (patch: Partial<FeedItem>): FeedItem =>
   ({
@@ -163,5 +163,42 @@ describe("writeText", () => {
 
   it("leaves text without tags alone, a < in prose included", () => {
     expect(htmlText("2 < 3 and 4 > 1")).toBe("2 < 3 and 4 > 1");
+  });
+});
+
+describe("previewOf", () => {
+  it("keeps a message that fits whole", () => {
+    expect(previewOf("One line.\nTwo lines.")).toBe("One line.\nTwo lines.");
+  });
+
+  it("keeps the first lines of a long one", () => {
+    const text = Array.from({ length: 10 }, (_, i) => `Line ${i + 1}`).join("\n");
+    expect(previewOf(text)).toBe(Array.from({ length: 6 }, (_, i) => `Line ${i + 1}`).join("\n"));
+  });
+
+  it("stops at the character budget, on a whole line", () => {
+    const line = "x".repeat(250);
+    expect(previewOf([line, line, line].join("\n"))).toBe([line, line].join("\n"));
+  });
+
+  it("never leaves a code block open: it cuts before it", () => {
+    const text = ["Here is the fix:", "```ts", "a();", "b();", "c();", "d();", "e();", "```"].join("\n");
+    expect(previewOf(text)).toBe("Here is the fix:");
+  });
+
+  it("keeps a code block that closes inside the preview", () => {
+    const text = ["Run:", "```", "npm test", "```", "Then:", "more", "and more", "and more"].join("\n");
+    expect(previewOf(text)).toBe(["Run:", "```", "npm test", "```", "Then:", "more"].join("\n"));
+  });
+
+  it("cuts one long line at a word, with an ellipsis", () => {
+    const text = Array.from({ length: 200 }, () => "word").join(" ");
+    const preview = previewOf(text);
+    expect(preview.endsWith("word…")).toBe(true);
+    expect(preview.length).toBeLessThanOrEqual(601);
+  });
+
+  it("shows nothing before More when the message opens with a long code block", () => {
+    expect(previewOf(["```", ...Array.from({ length: 10 }, (_, i) => `line ${i}`), "```"].join("\n"))).toBe("");
   });
 });

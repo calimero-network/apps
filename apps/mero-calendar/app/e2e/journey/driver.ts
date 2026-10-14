@@ -88,12 +88,43 @@ async function eventually(actor: Actor, check: () => Promise<boolean>): Promise<
     .toBe(true);
 }
 
+// The dialog's scrim must cover the whole viewport. A `backdrop-filter`,
+// `filter` or `transform` on an ancestor becomes the containing block of a
+// `position: fixed` element and shrinks it to that box — the frosted top bar
+// and rail are exactly such ancestors, so this guards the dialog staying out of
+// them.
+async function expectCoversViewport(page: Page, scrim: Locator): Promise<void> {
+  const box = await scrim.boundingBox();
+  const vp = page.viewportSize();
+  if (!box || !vp) throw new Error("the dialog scrim has no box");
+  expect(box.x).toBeLessThanOrEqual(0);
+  expect(box.y).toBeLessThanOrEqual(0);
+  expect(box.width).toBeGreaterThanOrEqual(vp.width);
+  expect(box.height).toBeGreaterThanOrEqual(vp.height);
+}
+
+// Light by default; the top bar's sun/moon flips it, and the choice survives a
+// reload (index.html applies it before the app mounts). Left light again.
+async function checkThemeSwitch(page: Page): Promise<void> {
+  const html = page.locator("html");
+  const toggle = page.getByTestId("theme-toggle");
+  await expect(html).toHaveAttribute("data-theme", "light");
+  await toggle.click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await page.reload();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByTestId("logout-btn")).toBeVisible({ timeout: 30_000 });
+  await toggle.click();
+  await expect(html).toHaveAttribute("data-theme", "light");
+}
+
 async function createEvent(actor: Actor): Promise<void> {
   const page = actor.page;
   await waitForCalendar(actor);
   const title = nextTitle(actor, "event");
   (events[actor.name] ??= []).push(title);
   await page.getByTestId("add-event-btn").click();
+  await expectCoversViewport(page, page.locator(".overlay").first());
   await page.getByPlaceholder("Title", { exact: true }).fill(title);
   const [start, end] = actor.name === "alice" ? ["09:00", "10:00"] : ["13:00", "14:00"];
   const times = page.locator('input[type="time"]');
@@ -193,6 +224,7 @@ export const driver: AppDriver = {
   async login(actor) {
     await defaultLogin(actor);
     await expect(actor.page.getByTestId("create-team-btn")).toBeVisible({ timeout: 60_000 });
+    await checkThemeSwitch(actor.page);
   },
 
   async createNamespace(actor, name) {

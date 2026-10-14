@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 import { decodeInvite, type PassInvitePayload } from '../lib/inviteCodec';
-import {
-  onInvitation,
-  type CapturedInvitation,
-} from "@calimero-apps/invite";
+import { onInvitation, type CapturedInvitation } from '@calimero-apps/invite';
 import { useRedeemInvitation } from '../hooks/useRedeemInvitation';
+import { CloseIcon } from './icons';
 import styles from './InvitationPrompt.module.css';
 
 /**
@@ -101,7 +99,7 @@ export default function InvitationPrompt() {
             onClick={() => setError(null)}
             aria-label="Dismiss"
           >
-            ✕
+            <CloseIcon size={18} />
           </button>
         </div>
       </div>
