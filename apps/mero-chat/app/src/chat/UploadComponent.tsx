@@ -12,9 +12,9 @@ const ButtonUpload = styled.div`
     gap: 6px;
     justify-content: start;
     align-items: center;
-    color: #777584;
+    color: var(--glass-muted);
     padding: 4px 8px;
-    font-family: "Helvetica Neue";
+    font-family: var(--glass-font);
     font-size: 14px;
     @media (max-width: 1024px) {
       font-size: 12px;
@@ -40,8 +40,8 @@ const ButtonUpload = styled.div`
     }
 
     &:hover {
-      background-color: rgb(37, 37, 42);
-      color: #fff;
+      background-color: var(--glass-sunken);
+      color: var(--glass-ink);
     }
   }
 `;
