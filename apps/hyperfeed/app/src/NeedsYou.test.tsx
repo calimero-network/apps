@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { DemoBackend } from "./demo";
 import { useFeed } from "./useFeed";
@@ -12,7 +12,7 @@ function Harness({ backend, onOpen = () => undefined }: { backend: DemoBackend; 
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
   const feed = useFeed(backend, nudge);
-  return <NeedsYou feed={feed} attention={attention} onOpen={(i) => onOpen(i.chain)} onClose={() => undefined} />;
+  return <NeedsYou feed={feed} attention={attention} onOpen={(i) => onOpen(i.chain)} onSettings={() => undefined} onClose={() => undefined} />;
 }
 
 async function approvalInChat(backend: DemoBackend) {
@@ -65,6 +65,25 @@ describe("Needs you, behind the bell", () => {
     });
     expect((await backend.chain(chain)).find((i) => i.kind === "action")!.status).toBe("approved");
     expect(await within(panel).findAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("lists the lenses and rules waiting in Settings, and approves a lens in place", async () => {
+    const backend = new DemoBackend(false, 0);
+    // The pretend agent's lenses: Chat approved, Vote proposed.
+    (backend as unknown as { seedLenses(): void }).seedLenses();
+    backend.proposeRule("Never post in #general without asking");
+    render(<Harness backend={backend} />);
+
+    const settings = await screen.findByRole("list", { name: "In Settings" });
+    const lens = await within(settings).findByRole("listitem", { name: "Lens for Vote" });
+    expect(within(settings).queryByRole("listitem", { name: "Lens for Chat" })).toBeNull();
+    expect(within(settings).getByText("Never post in #general without asking")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(within(lens).getByRole("button", { name: "Approve" }));
+    });
+    expect((await backend.lenses()).find((l) => l.app === "vote")!.status).toBe("approved");
+    await waitFor(() => expect(within(settings).queryByRole("listitem", { name: "Lens for Vote" })).toBeNull());
   });
 
   it("says so when nothing needs you", async () => {

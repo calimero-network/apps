@@ -15,7 +15,7 @@ import { appLink } from "./links";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { AGENT_LIVE_MS, useTheme } from "./theme";
 import { useAttention } from "./useAttention";
-import { NeedsYou, opensIn } from "./NeedsYou";
+import { NeedsYou, opensIn, waitingCount } from "./NeedsYou";
 import type { NewFeed } from "./FeedView";
 import LandingPage from "./pages/landing/LandingPage";
 import DocsPage from "./pages/landing/DocsPage";
@@ -285,8 +285,8 @@ function Shell({
   const paused = feed?.settings?.paused ?? false;
   const [theme, toggleTheme] = useTheme();
   const agent = feed?.settings?.agents?.find((a) => Date.now() - a.seen_at < AGENT_LIVE_MS);
-  const attention = useAttention(feed?.page ?? null, base);
-  const waiting = feed?.page?.counts.needs_you ?? 0;
+  const waiting = waitingCount(feed);
+  const attention = useAttention(feed?.page ?? null, base, waiting);
   const [needsOpen, setNeedsOpen] = useState(false);
   const closeNeeds = useCallback(() => setNeedsOpen(false), []);
   const navigate = useNavigate();
@@ -364,6 +364,10 @@ function Shell({
                   feed={feed}
                   attention={attention}
                   onClose={closeNeeds}
+                  onSettings={(section) => {
+                    setNeedsOpen(false);
+                    navigate(`${base}/settings/${section}`);
+                  }}
                   onOpen={(item) => {
                     setNeedsOpen(false);
                     navigate(opensIn(item) === "chat" ? `${base}/chat/${encodeURIComponent(item.chain)}` : base || "/");

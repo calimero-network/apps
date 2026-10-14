@@ -1944,6 +1944,15 @@ body {
   color: var(--muted);
 }
 
+.needs-panel-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .needs-panel-list {
   list-style: none;
   margin: 0;
