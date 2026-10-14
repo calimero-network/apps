@@ -18,9 +18,12 @@ import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage, humanizeError } from "../utils/errorMessage";
 import { encodeInvitationObject, invitationLink } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
-import { getStoredTeamName } from "../utils/teamName";
+import { getStoredTeamName, teamLabel } from "../utils/teamName";
 import type { Project } from "../types";
-import styles from "./ProjectsPage.module.css";
+import ThemeToggle from "../components/ThemeToggle";
+import { EmptyBoardsArt, InviteArt } from "../components/Artwork";
+import { IconBack, IconPlus } from "../components/HomeIcons";
+import styles from "./Home.module.css";
 
 type Tab = "projects" | "invitations";
 
@@ -211,130 +214,198 @@ export default function ProjectsPage() {
     }, 5000);
   }
 
+  const teamName = teamId ? teamLabel(teamId) : "Team";
+
+  const createField = (
+    <div className={styles.field}>
+      <input
+        className={styles.input}
+        placeholder="New project name…"
+        aria-label="New project name"
+        value={newName}
+        onChange={(e) => setNewName(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && createProject()}
+        data-testid="new-project-input"
+      />
+      <button
+        className={styles.btn}
+        onClick={createProject}
+        disabled={creating}
+        data-testid="create-project-btn"
+      >
+        Create
+      </button>
+    </div>
+  );
+
   return (
     <div className={styles.root}>
       <header className={styles.header}>
-        <button className={styles.back} onClick={() => navigate("/teams")}>← Teams</button>
-        <span className={styles.logo}><Logo size={22} /> Mero Design</span>
+        <button className={styles.back} onClick={() => navigate("/teams")}><IconBack /> Teams</button>
+        <span className={styles.brand}><Logo size={30} /> <span className={styles.brandText}>Mero Design</span></span>
+        <span className={styles.crumbSep} aria-hidden="true">/</span>
+        <span className={styles.crumb} title={teamName}>{teamName}</span>
         <div className={styles.headerRight}>
+          <ThemeToggle className={styles.iconBtn} />
           <button className={styles.logoutBtn} onClick={handleLogout}>Logout</button>
         </div>
       </header>
 
       <main className={styles.main}>
-        <div className={styles.tabs}>
-          <button
-            className={`${styles.tab} ${tab === "projects" ? styles.tabActive : ""}`}
-            onClick={() => setTab("projects")}
-          >Projects</button>
-          <button
-            className={`${styles.tab} ${tab === "invitations" ? styles.tabActive : ""}`}
-            onClick={() => setTab("invitations")}
-          >Invitations</button>
+        <div className={styles.hero}>
+          <div>
+            <p className={styles.eyebrow}>Team</p>
+            <h1 className={styles.title}>{teamName}</h1>
+            <p className={styles.subtitle}>
+              Every project is a shared design board. Open one to draw, comment and present together in real time.
+            </p>
+          </div>
+          <div className={styles.tabs}>
+            <button
+              className={`${styles.tab} ${tab === "projects" ? styles.tabActive : ""}`}
+              aria-pressed={tab === "projects"}
+              onClick={() => setTab("projects")}
+            >Projects</button>
+            <button
+              className={`${styles.tab} ${tab === "invitations" ? styles.tabActive : ""}`}
+              aria-pressed={tab === "invitations"}
+              onClick={() => setTab("invitations")}
+            >Invitations</button>
+          </div>
         </div>
 
         {tab === "projects" && (
-          <>
-            <div className={styles.createRow}>
-              <input
-                className={styles.input}
-                placeholder="New project name…"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && createProject()}
-                data-testid="new-project-input"
-              />
-              <button
-                className={styles.btn}
-                onClick={createProject}
-                disabled={creating}
-                data-testid="create-project-btn"
-              >
-                Create
-              </button>
+          loading ? (
+            <div className={styles.grid} aria-busy="true" aria-label="Loading">
+              {[0, 1, 2].map((i) => <div key={i} className={styles.skeleton} />)}
             </div>
-
-            {loading ? (
-              <p className={styles.empty}>Loading…</p>
-            ) : projects.length === 0 ? (
-              <p className={styles.empty} data-testid="empty-projects">No projects yet. Create one above.</p>
-            ) : (
-              <div className={styles.grid}>
-                {projects.map((p) => (
-                  <div key={p.contextId} className={styles.cardWrap} ref={menuOpenId === p.contextId ? menuRef : null}>
-                    <button
-                      className={styles.card}
-                      data-testid={`project-card-${p.contextId}`}
-                      onClick={() => navigate(`/teams/${teamId}/projects/${p.contextId}`)}
-                    >
-                      <ProjectThumbnail contextId={p.contextId} className={styles.cardThumb} />
-                      <span className={styles.cardName}>{p.name || p.contextId.slice(0, 8)}</span>
-                    </button>
-                    <button
-                      className={styles.menuBtn}
-                      onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === p.contextId ? null : p.contextId); }}
-                      title="More options"
-                    >⋯</button>
-                    {menuOpenId === p.contextId && (
-                      <div className={styles.dropdown}>
-                        <button className={styles.dropdownItem} data-testid={`project-settings-${p.contextId}`} onClick={() => { setMenuOpenId(null); setSettingsProject(p); }}>
-                          Settings
-                        </button>
-                        {/* Deleting a context is a node's own operation; an
-                            account's relay has no form of it. */}
-                        {!isDelegated && (
-                          <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} data-testid={`project-delete-${p.contextId}`} onClick={() => deleteProject(p.contextId)}>
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    )}
+          ) : projects.length === 0 ? (
+            <section className={`${styles.panel} ${styles.empty}`} data-testid="empty-projects">
+              <EmptyBoardsArt />
+              <h2 className={styles.emptyTitle}>No projects yet</h2>
+              <p className={styles.emptyText}>
+                Create one to get a fresh board. Everyone in {teamName} can open it and draw along.
+              </p>
+              <div className={styles.emptyField}>{createField}</div>
+            </section>
+          ) : (
+            <>
+              <div className={styles.actions}>
+                <section className={`${styles.panel} ${styles.actionCard}`}>
+                  <div className={styles.actionHead}>
+                    <span className={styles.actionIcon} aria-hidden="true"><IconPlus /></span>
+                    <span>
+                      <span className={styles.actionTitle}>New project</span>
+                      <span className={styles.actionHint}>A blank board, shared with the whole team.</span>
+                    </span>
                   </div>
-                ))}
+                  {createField}
+                </section>
               </div>
-            )}
-          </>
+
+              <div className={styles.sectionHead}>
+                <h2 className={styles.sectionTitle}>Boards</h2>
+                <span className={styles.count}>{projects.length}</span>
+              </div>
+              <div className={styles.grid}>
+                {projects.map((p) => {
+                  const name = p.name || p.contextId.slice(0, 8);
+                  const open = menuOpenId === p.contextId;
+                  return (
+                    <div
+                      key={p.contextId}
+                      className={`${styles.cardWrap} ${open ? styles.cardWrapOpen : ""}`}
+                      ref={open ? menuRef : null}
+                    >
+                      <button
+                        className={styles.card}
+                        data-testid={`project-card-${p.contextId}`}
+                        onClick={() => navigate(`/teams/${teamId}/projects/${p.contextId}`)}
+                      >
+                        <ProjectThumbnail contextId={p.contextId} name={name} className={styles.cardThumb} />
+                        <span className={styles.cardBody}>
+                          <span className={styles.cardName}>{name}</span>
+                          <span className={styles.cardMeta}>
+                            Design board <span className={styles.metaDot} aria-hidden="true" />
+                            <span className={styles.metaId}>{truncateMiddle(p.contextId, 6, 4)}</span>
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        className={styles.menuBtn}
+                        onClick={(e) => { e.stopPropagation(); setMenuOpenId(open ? null : p.contextId); }}
+                        title="More options"
+                      >⋯</button>
+                      {open && (
+                        <div className={styles.dropdown}>
+                          <button className={styles.dropdownItem} data-testid={`project-settings-${p.contextId}`} onClick={() => { setMenuOpenId(null); setSettingsProject(p); }}>
+                            Settings
+                          </button>
+                          {/* Deleting a context is a node's own operation; an
+                              account's relay has no form of it. */}
+                          {!isDelegated && (
+                            <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} data-testid={`project-delete-${p.contextId}`} onClick={() => deleteProject(p.contextId)}>
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )
         )}
 
         {tab === "invitations" && (
-          <div className={styles.inviteSection}>
-            <p className={styles.inviteDesc}>
-              Generate an invitation link and share it with teammates. Opening it launches
-              the desktop app where installed, and the web build otherwise — or they can
-              paste it on the Teams page to join.
-            </p>
-            {invitation ? (
-              inviteCopying ? (
-                <div className={styles.tokenBox} data-testid="invite-copying">
-                  <span className={styles.inviteSpinner} aria-hidden="true" />
-                  <span className={styles.copiedMsg}>Copied! Resetting invitation…</span>
-                </div>
+          <section className={`${styles.panel} ${styles.invite}`}>
+            <InviteArt />
+            <div className={styles.inviteBody}>
+              <h2 className={styles.inviteTitle}>Invite people to {teamName}</h2>
+              <p className={styles.inviteDesc}>
+                Generate an invitation link and share it with teammates. Opening it launches
+                the desktop app where installed, and the web build otherwise — or they can
+                paste it on the Teams page to join.
+              </p>
+              <ol className={styles.inviteSteps}>
+                <li><b>1</b> Generate</li>
+                <li><b>2</b> Copy the link</li>
+                <li><b>3</b> Send it to a teammate</li>
+              </ol>
+              {invitation ? (
+                inviteCopying ? (
+                  <div className={styles.tokenBox} data-testid="invite-copying">
+                    <span className={styles.inviteSpinner} aria-hidden="true" />
+                    <span className={styles.copiedMsg}>Copied! Resetting invitation…</span>
+                  </div>
+                ) : (
+                  <div className={styles.tokenBox}>
+                    <code
+                      className={styles.token}
+                      data-testid="invite-token"
+                      title={invitationLink(invitation)}
+                    >
+                      {truncateMiddle(invitationLink(invitation), 28, 10)}
+                    </code>
+                    <button className={styles.copyBtn} onClick={copyInvite} data-testid="copy-invite">
+                      Copy
+                    </button>
+                  </div>
+                )
               ) : (
-                <div className={styles.tokenBox}>
-                  <code
-                    className={styles.token}
-                    data-testid="invite-token"
-                    title={invitationLink(invitation)}
-                  >
-                    {truncateMiddle(invitationLink(invitation), 28, 10)}
-                  </code>
-                  <button className={styles.copyBtn} onClick={copyInvite} data-testid="copy-invite">
-                    Copy
-                  </button>
-                </div>
-              )
-            ) : (
-              <button
-                className={styles.btn}
-                onClick={generateInvite}
-                disabled={inviteLoading}
-                data-testid="generate-invite"
-              >
-                {inviteLoading ? "Generating…" : "Generate invitation"}
-              </button>
-            )}
-            {inviteError && <p className={styles.inviteError}>{inviteError}</p>}
-          </div>
+                <button
+                  className={`${styles.btn} ${styles.btnLg}`}
+                  onClick={generateInvite}
+                  disabled={inviteLoading}
+                  data-testid="generate-invite"
+                >
+                  {inviteLoading ? "Generating…" : "Generate invitation"}
+                </button>
+              )}
+              {inviteError && <p className={styles.errorText}>{inviteError}</p>}
+            </div>
+          </section>
         )}
       </main>
 
