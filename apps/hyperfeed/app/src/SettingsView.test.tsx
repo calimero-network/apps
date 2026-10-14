@@ -40,7 +40,7 @@ describe("Settings: one section at a time", () => {
     expect(within(await nav()).getByRole("link", { current: "page" })).toHaveTextContent("Controls");
     expect(links.map((l) => l.getAttribute("href"))).toEqual(["/settings/controls", "/settings/rules", "/settings/agents", "/settings/lenses"]);
     expect(await screen.findByRole("region", { name: "Always ask me before" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Standing rules" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "General rules" })).toBeNull();
     expect(screen.queryByRole("region", { name: "What your feed reads from each app" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Connect your agent" })).toBeNull();
   });
@@ -63,7 +63,7 @@ describe("Settings: one section at a time", () => {
     const agents = await screen.findByRole("region", { name: "Your agents" });
     expect(within(agents).getByText("demo agent").closest("li")).toHaveTextContent("Live");
     expect(screen.getByRole("region", { name: "Connect your agent" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Standing rules" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "General rules" })).toBeNull();
   });
 
   it("says no agent has reported in yet", async () => {
@@ -157,7 +157,7 @@ describe("Settings → Lenses: what your feed reads from each app", () => {
 });
 
 describe("Settings → Rules: standing rules", () => {
-  const section = () => screen.findByRole("region", { name: "Standing rules" });
+  const section = () => screen.findByRole("region", { name: "General rules" });
 
   it("starts with none, then adds and removes your rules", async () => {
     const backend = new DemoBackend(true, 0);
@@ -168,7 +168,7 @@ describe("Settings → Rules: standing rules", () => {
     await act(async () => {
       fireEvent.click(within(rules).getByRole("button", { name: "Add" }));
     });
-    const list = await within(rules).findByRole("list", { name: "Your standing rules" });
+    const list = await within(rules).findByRole("list", { name: "Your general rules" });
     expect(within(list).getByText("Never push to main")).toBeInTheDocument();
     expect(within(rules).getByLabelText("New rule")).toHaveValue("");
     expect((await backend.settings()).rules.map((r) => r.text)).toEqual(["Never push to main"]);
@@ -190,7 +190,7 @@ describe("Settings → Rules: standing rules", () => {
     await act(async () => {
       fireEvent.click(within(suggestion).getByRole("button", { name: "Approve" }));
     });
-    const list = await within(rules).findByRole("list", { name: "Your standing rules" });
+    const list = await within(rules).findByRole("list", { name: "Your general rules" });
     expect(within(list).getByText("Open a PR instead of pushing to main")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Suggested by your agent" })).not.toBeInTheDocument();
     const settings = await backend.settings();
@@ -208,6 +208,45 @@ describe("Settings → Rules: standing rules", () => {
     });
     expect(screen.queryByRole("region", { name: "Suggested by your agent" })).not.toBeInTheDocument();
     expect((await backend.settings()).rules).toEqual([]);
+  });
+});
+
+describe("Settings → Rules: rules for one agent", () => {
+  const section = () => screen.findByRole("region", { name: "Rules for one agent" });
+
+  it("says to connect an agent while none has reported in", async () => {
+    render(<Harness backend={new DemoBackend(true, 0)} section="rules" />);
+    expect(within(await section()).getByText(/No agent has reported in yet/)).toBeInTheDocument();
+  });
+
+  it("adds a rule for the picked agent only, beside the general rules every agent keeps", async () => {
+    const backend = new DemoBackend(true, 0);
+    backend.agentReach("mero-bot@studio", []);
+    backend.agentReach("mero-bot@phone", []);
+    await backend.addRule("Never push to main");
+    render(<Harness backend={backend} section="rules" />);
+    const panel = await section();
+    expect(within(panel).getByLabelText("Agent")).toHaveValue("mero-bot@phone");
+    fireEvent.change(within(panel).getByLabelText("Agent"), { target: { value: "mero-bot@studio" } });
+    expect(within(panel).getByText("mero-bot@studio also keeps your language and 1 general rule.")).toBeInTheDocument();
+    fireEvent.change(within(panel).getByLabelText("New rule"), { target: { value: "Run the tests first" } });
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Add" }));
+    });
+    const list = await within(panel).findByRole("list", { name: "Rules for mero-bot@studio" });
+    expect(within(list).getByText("Run the tests first")).toBeInTheDocument();
+    let settings = await backend.settings();
+    expect(settings.agent_rules.map((r) => [r.agent, r.text])).toEqual([["mero-bot@studio", "Run the tests first"]]);
+    expect(settings.rules.map((r) => r.text)).toEqual(["Never push to main"]);
+
+    fireEvent.change(within(panel).getByLabelText("Agent"), { target: { value: "mero-bot@phone" } });
+    expect(within(panel).getByText("No rules for mero-bot@phone yet.")).toBeInTheDocument();
+    fireEvent.change(within(panel).getByLabelText("Agent"), { target: { value: "mero-bot@studio" } });
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: 'Remove "Run the tests first"' }));
+    });
+    settings = await backend.settings();
+    expect(settings.agent_rules).toEqual([]);
   });
 });
 
@@ -252,7 +291,7 @@ describe("Settings → Rules: the language your agent answers in", () => {
     await backend.addRule("Never push to main");
     render(<Harness backend={backend} section="rules" />);
     expect(within(await language()).getByLabelText("Answers in")).toHaveValue("English");
-    const list = await within(await screen.findByRole("region", { name: "Standing rules" })).findByRole("list", { name: "Your standing rules" });
+    const list = await within(await screen.findByRole("region", { name: "General rules" })).findByRole("list", { name: "Your general rules" });
     expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["1Never push to mainRemove"]);
   });
 });

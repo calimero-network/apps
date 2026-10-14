@@ -159,10 +159,10 @@ Merge a PR only when it is open, not a draft, free of conflicts, every check pas
 
 ### Keep to the user's standing rules
 
-- `settings` returns `rules`: short lines the user wants kept on every turn ("Never push to main"). Read them when you start and on `SettingsChanged`, and keep to every one.
+- `settings` returns `rules`: short lines the user wants every agent to keep on every turn ("Never push to main"). It also returns `agent_rules`: lines for one agent only, each with the `agent` name it is for. Keep to every one of `rules`, then to the `agent_rules` whose `agent` is the name you report in with `agent_seen`; another agent's are not yours. Read them when you start and on `SettingsChanged`.
 - After the user corrects you in a way that should hold from now on, suggest a rule with `propose_rule` (`text`: one line, `why`: the correction, `chain`: where it happened). It waits for the user's one-tap Approve; only they add, remove or approve rules.
 
 ### Never
 
-Never call `say`, `resolve_action`, `answer_notification`, `decide_lens`, `set_policy`, `set_guard`, `set_paused`, `add_rule`, `remove_rule`, `approve_rule`, `dismiss_rule`, `archive`, `unarchive`, `mark_seen` or `mark_all_seen`. Do call `agent_seen(name)` about every 30 seconds while you run.
+Never call `say`, `resolve_action`, `answer_notification`, `decide_lens`, `set_policy`, `set_guard`, `set_paused`, `add_rule`, `remove_rule`, `add_agent_rule`, `remove_agent_rule`, `approve_rule`, `dismiss_rule`, `archive`, `unarchive`, `mark_seen` or `mark_all_seen`. Do call `agent_seen(name)` about every 30 seconds while you run.
 Those are the user's decisions.

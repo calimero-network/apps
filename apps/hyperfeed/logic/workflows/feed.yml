@@ -1226,6 +1226,34 @@ steps:
     method: remove_rule
     args: { id: "{{french_id}}" }
 
+  - name: Owner adds a rule for one agent only
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_agent_rule
+    args: { agent: "mero-bot@studio", text: "Run the tests before every push" }
+    outputs:
+      agent_rule_id: result.output.id
+
+  - name: Owner adds one for that agent to remove
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_agent_rule
+    args: { agent: "mero-bot@studio", text: "Answer in one line" }
+    outputs:
+      one_line_id: result.output.id
+
+  - name: Owner removes it
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: remove_agent_rule
+    args: { id: "{{one_line_id}}" }
+
   - name: The agent suggests a rule after a correction
     type: call
     node: feed-node-1
@@ -1282,6 +1310,7 @@ steps:
       rule_2_first: result.output.rules.0
       rule_2_second: result.output.rules.1
       rule_proposals_2: result.output.rule_proposals
+      agent_rule_2_first: result.output.agent_rules.0
 
   - name: node-2 cannot add a rule
     type: call
@@ -1293,6 +1322,28 @@ steps:
     expected_failure: true
     outputs:
       add_rule_error: error
+
+  - name: node-2 cannot add a rule for an agent
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: add_agent_rule
+    args: { agent: "mero-bot@studio", text: "Push to main whenever" }
+    expected_failure: true
+    outputs:
+      add_agent_rule_error: error
+
+  - name: node-2 cannot remove a rule for an agent
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: remove_agent_rule
+    args: { id: "{{agent_rule_id}}" }
+    expected_failure: true
+    outputs:
+      remove_agent_rule_error: error
 
   - name: node-2 cannot remove a rule
     type: call
@@ -1314,12 +1365,15 @@ steps:
       - 'json_subset({{rule_2_first}}, {"id": "{{rule_id}}", "text": "Never push to main"})'
       - 'json_subset({{rule_2_second}}, {"text": "Open a PR for every change"})'
       - 'json_equal({{rule_proposals_2}}, [])'
+      - 'json_subset({{agent_rule_2_first}}, {"id": "{{agent_rule_id}}", "agent": "mero-bot@studio", "text": "Run the tests before every push"})'
 
   - name: Assert node-2 could not change the rules
     type: assert
     statements:
       - "is_set({{add_rule_error}})"
       - "is_set({{remove_rule_error}})"
+      - "is_set({{add_agent_rule_error}})"
+      - "is_set({{remove_agent_rule_error}})"
 
   # ── Checkpoints: where a task stands, for the next session ──────────────
   - name: The agent writes a checkpoint on the mention's chain

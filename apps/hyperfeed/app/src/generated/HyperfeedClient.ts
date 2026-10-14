@@ -130,6 +130,33 @@ export interface ActionInput {
 }
 
 /**
+ * A standing rule for one agent only ("Reply in one paragraph" for your
+ * phone's agent): it goes into that agent's turns after your general rules,
+ * which every agent keeps. Only you add or remove one; removing keeps the
+ * row with `removed`, like [`Rule`].
+ */
+export interface AgentRule {
+  /**
+   * The agent's name, as it reports in: "mero-bot@studio".
+   */
+  agent: string;
+  text: string;
+  created_at: number;
+  removed: boolean;
+  updated_at: number;
+}
+
+/**
+ * One of your rules for one agent, as settings shows it.
+ */
+export interface AgentRuleView {
+  id: string;
+  agent: string;
+  text: string;
+  created_at: number;
+}
+
+/**
  * The agent's global switch, stored under the single key `"main"`.
  */
 export interface AgentState {
@@ -705,6 +732,10 @@ export interface Hyperfeed {
    * Which agent works in each app, by app key. See [`Assignment`].
    */
   assignments: Record<string, Assignment>;
+  /**
+   * Your rules for one agent only, by id. See [`AgentRule`].
+   */
+  agent_rules: Record<string, AgentRule>;
 }
 
 /**
@@ -1283,6 +1314,11 @@ export interface SettingsView {
    * is your default agent's. Absent on a feed made before assignments.
    */
   assignments: AssignmentView[];
+  /**
+   * Your rules for one agent only, by agent then oldest first. Each agent
+   * keeps `rules` and then its own. Absent on a feed made before them.
+   */
+  agent_rules: AgentRuleView[];
 }
 
 /**
@@ -1615,6 +1651,20 @@ export class HyperfeedClient {
   constructor(client: ExecuteTransport | { readonly rpc: ExecuteTransport }, contextId: string) {
     this._transport = 'execute' in client ? client : client.rpc;
     this._contextId = contextId;
+  }
+
+  /**
+   * add_agent_rule
+   *
+   * Add a rule for one agent only: it keeps it after your general rules,
+   * which every agent keeps. Only you add rules; the same rule twice for
+   * the same agent is kept once.
+   *
+   * @intent mutating
+   */
+  public async addAgentRule(params: { agent: string; text: string }): Promise<AgentRuleView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add_agent_rule', argsJson: params });
+    return response as AgentRuleView;
   }
 
   /**
@@ -2242,6 +2292,18 @@ export class HyperfeedClient {
   public async releaseChain(params: { chain: string; session: string }): Promise<boolean> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'release_chain', argsJson: params });
     return response as boolean;
+  }
+
+  /**
+   * remove_agent_rule
+   *
+   * Remove one of your rules for one agent.
+   *
+   * @intent mutating
+   */
+  public async removeAgentRule(params: { id: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'remove_agent_rule', argsJson: params });
+    return response as void;
   }
 
   /**
