@@ -17,7 +17,7 @@ const Container = styled.div`
 const ReplyText = styled.div`
   font-size: 12px;
   line-height: 150%;
-  color: #A5FF11;
+  color: var(--glass-accent);
   text-decoration: none;
   &:hover {
     text-decoration: underline;
@@ -27,7 +27,7 @@ const ReplyText = styled.div`
 const TimestampText = styled.div`
   font-size: 12px;
   line-height: 100%;
-  color: #777583;
+  color: var(--glass-muted);
   padding-left: 0.5rem;
 `;
 
@@ -35,7 +35,7 @@ const LeftContainer = styled.div`
   display: flex;
   align-items: center;
   column-gap: 0.5rem;
-  color: #fff;
+  color: var(--glass-ink);
   cursor: pointer;
 `;
 
@@ -44,7 +44,7 @@ const IconChat = () => (
     xmlns="http://www.w3.org/2000/svg"
     width="16"
     height="16"
-    fill="white"
+    fill="var(--glass-ink)"
     className="bi bi-chat-text"
     viewBox="0 0 16 16"
   >

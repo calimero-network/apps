@@ -21,6 +21,27 @@ const sizeMap = {
   "2xl": 80,
 } as const;
 
+// Initials sit on a colour of their own, picked from the name so a person
+// keeps the same one everywhere. All of these carry white text in both themes.
+const INITIALS_COLORS = [
+  "#e0637a",
+  "#3e63f5",
+  "#8b5cf6",
+  "#0f9b8e",
+  "#d97706",
+  "#db2777",
+  "#2563eb",
+  "#16a34a",
+] as const;
+
+function initialsColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  }
+  return INITIALS_COLORS[Math.abs(hash) % INITIALS_COLORS.length];
+}
+
 // Define static image style outside component
 const imageStyle = {
   width: "100%",
@@ -46,7 +67,8 @@ export const Avatar: React.FC<AvatarProps> = ({
       width: avatarSize,
       height: avatarSize,
       borderRadius: shape === "circle" ? "50%" : "12px",
-      backgroundColor: "#404040",
+      backgroundColor:
+        !src && name && !fallback ? initialsColor(name) : "var(--glass-sunken)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -54,14 +76,14 @@ export const Avatar: React.FC<AvatarProps> = ({
       flexShrink: 0,
       ...style,
     }),
-    [avatarSize, shape, style],
+    [avatarSize, shape, style, src, name, fallback],
   );
 
   const fallbackStyle = useMemo(
     () => ({
-      fontSize: avatarSize * 0.4,
-      fontWeight: 600,
-      color: "#C8C8C8",
+      fontSize: avatarSize * 0.36,
+      fontWeight: 700,
+      color: "#ffffff",
       textTransform: "uppercase" as const,
     }),
     [avatarSize],
@@ -92,7 +114,7 @@ export const Avatar: React.FC<AvatarProps> = ({
         height={avatarSize * 0.5}
         viewBox="0 0 24 24"
         fill="none"
-        style={{ color: "#C8C8C8" }}
+        style={{ color: "var(--glass-ink-2)" }}
       >
         <path
           d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"

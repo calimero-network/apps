@@ -5,7 +5,7 @@ const HeaderContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #777583;
+  color: var(--glass-muted);
   font-size: 12px;
   padding: 0;
   margin: 0;
