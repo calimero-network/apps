@@ -1,8 +1,11 @@
-import React, { FC, MouseEvent } from 'react';
+import React, { CSSProperties, FC, MouseEvent } from 'react';
+import cn from 'classnames';
 
 import styles from './event.module.scss';
 import { usePopup } from '../../../../../../hooks/usePopup';
 import { LockIcon } from "../../../../../common/icons/Icons";
+
+const COMPACT_BELOW = 44;
 
 interface IEventProps {
   height: number;
@@ -29,15 +32,15 @@ const Event: FC<IEventProps> = ({
 }) => {
   const { openPopup } = usePopup();
 
+  // `--ev` carries the owner's colour into the stylesheet, which tints the
+  // chip with it rather than filling it (see event.module.scss).
   const eventStyle = {
     height: height > 0 ? height : 'auto',
     top,
-    background: color,
     width,
     left,
-    // FEATURE: private events get a dashed outline marker
-    border: isPrivate ? '1.5px dashed rgba(255,255,255,0.85)' : undefined
-  };
+    '--ev': color,
+  } as CSSProperties;
 
   const handleClick = (e: MouseEvent<HTMLElement>) => {
     e.stopPropagation();
@@ -48,7 +51,12 @@ const Event: FC<IEventProps> = ({
   return (
     <div
       style={eventStyle}
-      className={styles.event}
+      // FEATURE: private events get a dashed outline marker
+      className={cn(styles.event, {
+        [styles.event_private]: isPrivate,
+        // Too short for two lines (under ~45 minutes): title and time share one.
+        [styles.event_compact]: height > 0 && height < COMPACT_BELOW,
+      })}
       onClick={handleClick}
       data-testid="event-chip"
       data-private={isPrivate ? "true" : "false"}
