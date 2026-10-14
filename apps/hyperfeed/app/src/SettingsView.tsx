@@ -5,10 +5,11 @@ import { messageOf, type Feed, type PushState } from "./useFeed";
 import { Badge, NewFeedButton, type NewFeed } from "./FeedView";
 import { DEFAULT_APPS, appLook } from "./apps";
 import { GUARD_LABELS, TYPE_LABELS } from "./format";
-import type { Folder, LensView, ReachLine, RuleProposalView } from "./generated/HyperfeedClient";
+import type { Folder, LensView, ReachLine, RuleProposalView, RuleView } from "./generated/HyperfeedClient";
 import type { Preview, PreviewRow } from "./preview";
 import { currentEndpoint, deviceName, inputOf, pushSupported, subscribe, unsubscribe } from "./push";
 import { AGENT_LIVE_MS } from "./theme";
+import { DEFAULT_LANGUAGE, LANGUAGES, languageOf, languageRule } from "./language";
 
 const AGENT_OPTIONS: { id: AgentMode; label: string }[] = [
   { id: "act", label: "Act" },
@@ -24,10 +25,11 @@ const NOTIFICATION_OPTIONS: { id: NotificationMode; label: string }[] = [
 ];
 
 /** The parts of Settings, each its own page under `/settings/<id>`. */
-export type SettingsSection = "controls" | "agents" | "lenses" | "alerts";
+export type SettingsSection = "controls" | "rules" | "agents" | "lenses" | "alerts";
 
 const SECTIONS: { id: SettingsSection; label: string; hint: string }[] = [
   { id: "controls", label: "Controls", hint: "What your agent may do, and what always asks you" },
+  { id: "rules", label: "Rules", hint: "The language your agent answers in, and the lines it keeps to on every turn" },
   { id: "agents", label: "Agents", hint: "Who works for this feed, and what each can reach" },
   { id: "lenses", label: "Lenses", hint: "What your feed reads from each app" },
   { id: "alerts", label: "Alerts", hint: "Push to your phone" },
@@ -40,7 +42,8 @@ export function settingsSection(id: string | undefined): SettingsSection {
 
 /**
  * Settings, one section at a time: Controls (per-app permissions, pause,
- * guards, standing rules), Agents (who reports in, what each can reach, how to
+ * guards), Rules (the language your agent answers in, your standing rules and
+ * the ones it suggests), Agents (who reports in, what each can reach, how to
  * connect one), Lenses (what the feed reads from each app) and Alerts (phone
  * push). A section a feed cannot have, such as Alerts on a feed made before
  * push, is not listed.
@@ -72,7 +75,7 @@ export function SettingsView({
           const count =
             s.id === "lenses"
               ? feed.lenses.filter((l) => l.status === "proposed").length
-              : s.id === "controls"
+              : s.id === "rules"
                 ? (settings?.rule_proposals?.length ?? 0)
                 : 0;
           return (
@@ -106,6 +109,8 @@ export function SettingsView({
           <div className="empty">Loading your settings…</div>
         ) : current === "controls" ? (
           <ControlsSection feed={feed} />
+        ) : current === "rules" ? (
+          <RulesSection feed={feed} />
         ) : current === "agents" ? (
           <AgentsSection feed={feed} contextId={contextId} />
         ) : current === "lenses" ? (
@@ -140,7 +145,7 @@ function usePending() {
   return { pending, write };
 }
 
-/** Per-app permissions and notifications, pause, the guards, and your standing rules. */
+/** Per-app permissions and notifications, pause, and the guards. */
 function ControlsSection({ feed }: { feed: Feed }) {
   const { settings, page } = feed;
   const { pending, write } = usePending();
@@ -254,8 +259,6 @@ function ControlsSection({ feed }: { feed: Feed }) {
             );
           })}
         </section>
-
-        <StandingRules feed={feed} />
       </div>
     </div>
   );
@@ -459,11 +462,6 @@ function PhoneAlerts({ feed }: { feed: Feed }) {
   );
 }
 
-/**
- * Your standing rules: short lines your agent keeps to on every turn. Only you
- * add or remove them. One your agent suggests after you corrected it waits
- * here with one-tap Approve, which adds it as yours.
- */
 /** One line of what an agent reported it can reach: its profile, and where it reaches besides your apps. */
 function reachLabel(l: ReachLine): string {
   const who = `${l.profile}${l.model ? ` (${l.model})` : ""}${l.attested ? ", attested" : ""}`;
@@ -602,11 +600,103 @@ function AgentAccess({ feed, agent }: { feed: Feed; agent: string }) {
   );
 }
 
-function StandingRules({ feed }: { feed: Feed }) {
-  const id = useId();
-  const [text, setText] = useState("");
+/** Rules a feed holds at once, as the contract counts them (`MAX_RULES`). */
+const MAX_RULES = 30;
+/** One rule's length, as the contract allows it (`MAX_RULE`). */
+const MAX_RULE = 280;
+
+/** Rules to start from, offered while you have none of your own. */
+const EXAMPLE_RULES = [
+  "Never push to main: open a PR instead",
+  "Ask me before messaging anyone new",
+  "Keep answers short",
+];
+
+/**
+ * Settings → Rules: the language your agent answers in, then your standing
+ * rules, short lines it keeps to on every turn. Only you add or remove them;
+ * one your agent suggests after you corrected it waits here with one-tap
+ * Approve, which adds it as yours. The language is a standing rule in a fixed
+ * wording (see language.ts), shown as a picker rather than in the list.
+ */
+function RulesSection({ feed }: { feed: Feed }) {
   const rules = feed.settings?.rules ?? [];
   const suggested = feed.settings?.rule_proposals ?? [];
+  const spoken = rules.filter((r) => languageOf(r.text) !== null);
+  const others = rules.filter((r) => languageOf(r.text) === null);
+  return (
+    <div className="rules-page">
+      <LanguageRule feed={feed} spoken={spoken} />
+      {suggested.length > 0 && (
+        <section className="panel" aria-labelledby="h-suggested">
+          <div className="panel-head">
+            <h2 id="h-suggested">Suggested by your agent</h2>
+            <span className="pill pill-wait">{suggested.length} waiting</span>
+          </div>
+          <p className="muted">Your agent suggests these after you corrected it. Nothing changes until you approve one.</p>
+          <ul className="rule-suggestions" aria-label="Rules your agent suggests">
+            {suggested.map((p) => (
+              <RuleSuggestion key={p.id} proposal={p} feed={feed} />
+            ))}
+          </ul>
+        </section>
+      )}
+      <StandingRules feed={feed} rules={others} total={rules.length} />
+    </div>
+  );
+}
+
+/** The language your agent answers in: English until you pick another. */
+function LanguageRule({ feed, spoken }: { feed: Feed; spoken: RuleView[] }) {
+  const id = useId();
+  const [picking, setPicking] = useState<string | null>(null);
+  // Two language rules (one approved from a suggestion on top of yours): the newest wins.
+  const newest = spoken[spoken.length - 1];
+  const set = newest ? languageOf(newest.text) : null;
+  const shown = picking ?? set ?? DEFAULT_LANGUAGE;
+  const options = LANGUAGES.some((l) => l.name === shown) ? LANGUAGES : [...LANGUAGES, { name: shown, native: shown }];
+  const pick = async (language: string) => {
+    if (language === set && spoken.length === 1) return;
+    setPicking(language);
+    try {
+      // Removed first, so a feed at its limit of rules can still change language.
+      for (const r of spoken) await feed.removeRule(r.id);
+      await feed.addRule(languageRule(language));
+    } finally {
+      setPicking(null);
+    }
+  };
+  return (
+    <section className="panel rules-language" aria-labelledby="h-language">
+      <div className="panel-head">
+        <h2 id="h-language">Language</h2>
+        {!set && <span className="pill">Default</span>}
+      </div>
+      <p className="muted">Your agent answers in this language, unless you write to it in another.</p>
+      <div className="language-pick">
+        <label htmlFor={`${id}-language`}>Answers in</label>
+        <select
+          id={`${id}-language`}
+          value={shown}
+          disabled={feed.busy || picking !== null}
+          onChange={(e) => void pick(e.target.value)}
+        >
+          {options.map((l) => (
+            <option key={l.name} value={l.name}>
+              {l.native === l.name ? l.name : `${l.name} · ${l.native}`}
+            </option>
+          ))}
+        </select>
+      </div>
+    </section>
+  );
+}
+
+/** Your standing rules besides the language: each on its own line, and a field to add one. */
+function StandingRules({ feed, rules, total }: { feed: Feed; rules: RuleView[]; total: number }) {
+  const id = useId();
+  const [text, setText] = useState("");
+  const full = total >= MAX_RULES;
   const add = async () => {
     const t = text.trim();
     if (!t) return;
@@ -615,28 +705,46 @@ function StandingRules({ feed }: { feed: Feed }) {
   };
   return (
     <section className="panel" aria-labelledby="h-rules">
-      <h2 id="h-rules">Standing rules</h2>
-      <p className="muted">Short lines your agent keeps to on every turn. Only you can change them.</p>
-      {suggested.length > 0 && (
-        <ul className="rule-suggestions" aria-label="Rules your agent suggests">
-          {suggested.map((p) => (
-            <RuleSuggestion key={p.id} proposal={p} feed={feed} />
-          ))}
-        </ul>
-      )}
+      <div className="panel-head">
+        <h2 id="h-rules">Standing rules</h2>
+        {total > MAX_RULES - 5 && (
+          <span className="muted small-text" title="The language counts as one">
+            {total} of {MAX_RULES} used
+          </span>
+        )}
+      </div>
+      <p className="muted">Short lines your agent keeps to on every turn, whatever it is doing. Only you can change them.</p>
       {rules.length === 0 ? (
-        <p className="muted">No rules yet. Add one your agent should always keep to, like "Never push to main".</p>
+        <div className="rules-empty">
+          <p className="muted">No rules yet. Add one your agent should always keep to, or start from one of these:</p>
+          <div className="rule-examples">
+            {EXAMPLE_RULES.map((e) => (
+              <button key={e} type="button" className="chip" onClick={() => setText(e)}>
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
       ) : (
-        <ul className="rules" aria-label="Your standing rules">
-          {rules.map((r) => (
-            <li key={r.id} className="rule">
-              <span>{r.text}</span>
-              <button type="button" className="ghost small" disabled={feed.busy} aria-label={`Remove "${r.text}"`} onClick={() => void feed.removeRule(r.id)}>
+        <ol className="rule-list" aria-label="Your standing rules">
+          {rules.map((r, i) => (
+            <li key={r.id} className="rule-item">
+              <span className="rule-n" aria-hidden="true">
+                {i + 1}
+              </span>
+              <span className="rule-text">{r.text}</span>
+              <button
+                type="button"
+                className="ghost small"
+                disabled={feed.busy}
+                aria-label={`Remove "${r.text}"`}
+                onClick={() => void feed.removeRule(r.id)}
+              >
                 Remove
               </button>
             </li>
           ))}
-        </ul>
+        </ol>
       )}
       <form
         className="rule-add"
@@ -651,14 +759,20 @@ function StandingRules({ feed }: { feed: Feed }) {
         <input
           id={`${id}-rule`}
           value={text}
-          maxLength={280}
-          placeholder="Add a rule…"
+          maxLength={MAX_RULE}
+          placeholder={full ? "You have the most rules a feed holds: remove one first" : "Add a rule, like \"Never push to main\""}
+          disabled={full}
           onChange={(e) => setText(e.target.value)}
         />
-        <button type="submit" className="primary small" disabled={feed.busy || !text.trim()}>
+        <button type="submit" className="primary small" disabled={feed.busy || full || !text.trim()}>
           Add
         </button>
       </form>
+      {text.length > MAX_RULE - 40 && (
+        <p className="muted small-text">
+          {text.length} of {MAX_RULE} characters
+        </p>
+      )}
     </section>
   );
 }
