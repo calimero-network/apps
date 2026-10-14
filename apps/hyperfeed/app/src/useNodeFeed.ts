@@ -5,6 +5,7 @@ import { HyperfeedClient, type LensView } from "./generated/HyperfeedClient";
 import { nodeBackend, type FeedBackend } from "./backend";
 import type { BlobStore } from "./attachments";
 import { appKeyForPackage, REGISTRY } from "./apps";
+import { HANDED_OFF, HANDOFF_POLL_MS, HANDOFF_WAIT_MS, handToDesktop, refusedByNode, type HandedOff } from "./desktopHandoff";
 import { BUILT_IN, decodePayload, toNotifications, type RawEvent, type SourceContext, type StateMutation } from "./collector";
 import { parseLens, type LensHost, type LensSpec } from "./lens/lens";
 import { nodeLensHosts, type NodeAdmin } from "./nodeHost";
@@ -20,8 +21,12 @@ export interface NodeFeed {
    * null until the node says, or when it could not.
    */
   installed: string[] | null;
-  /** Install an app from the marketplace by its package, at its newest version; null without the admin API. */
-  install: ((pkg: string) => Promise<void>) | null;
+  /**
+   * Install an app from the marketplace by its package, at its newest version;
+   * null without the admin API. Settles as `"desktop"` when the node refused
+   * this session and Calimero Desktop was asked to install it instead.
+   */
+  install: ((pkg: string) => Promise<HandedOff | void>) | null;
   /** Why watching failed, when it did. The feed itself still works. */
   watchError: string | null;
   /** The last events each app version emitted, newest last: what a lens preview runs on. */
@@ -186,12 +191,39 @@ export function useNodeFeed(contextId: string): NodeFeed {
     [packages, applicationId],
   );
 
+  // Packages the desktop was asked to install: the node is asked again what it
+  // has until they show up, or for as long as anyone would wait on a dialog.
+  const [awaiting, setAwaiting] = useState<{ pkgs: string[]; since: number }>({ pkgs: [], since: 0 });
+  useEffect(() => {
+    if (!awaiting.pkgs.length) return;
+    const arrived = new Set(Object.values(packages ?? {}));
+    const still = awaiting.pkgs.filter((p) => !arrived.has(p));
+    if (!still.length || Date.now() - awaiting.since > HANDOFF_WAIT_MS) {
+      setAwaiting({ pkgs: [], since: 0 });
+      return;
+    }
+    if (still.length !== awaiting.pkgs.length) {
+      setAwaiting((a) => ({ ...a, pkgs: still }));
+      return;
+    }
+    const timer = setTimeout(() => setListed((n) => n + 1), HANDOFF_POLL_MS);
+    return () => clearTimeout(timer);
+  }, [awaiting, packages, listed]);
+
   const install = useCallback(
-    async (pkg: string) => {
+    async (pkg: string): Promise<HandedOff | void> => {
       if (!admin) throw new Error("This session can't install apps.");
       const [version] = await admin.getRegistryVersions(REGISTRY, pkg);
       if (!version) throw new Error(`Nothing is published for ${pkg}.`);
-      await admin.installApplication({ package: pkg, version });
+      try {
+        await admin.installApplication({ package: pkg, version });
+      } catch (e) {
+        // An app's session may not install; the desktop's may, once you agree.
+        if (!refusedByNode(e)) throw e;
+        await handToDesktop(pkg, "install");
+        setAwaiting((a) => ({ pkgs: [...a.pkgs.filter((p) => p !== pkg), pkg], since: Date.now() }));
+        return HANDED_OFF;
+      }
       setListed((n) => n + 1);
     },
     [admin],

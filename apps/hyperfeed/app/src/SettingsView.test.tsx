@@ -18,7 +18,7 @@ function Harness({
   backend: DemoBackend;
   section?: SettingsSection;
   installed?: string[] | null;
-  install?: ((pkg: string) => Promise<void>) | null;
+  install?: ((pkg: string) => Promise<"desktop" | void>) | null;
 }) {
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
@@ -94,6 +94,17 @@ describe("Settings → Controls: what your agent may do, app by app", () => {
       fireEvent.click(within(calendar).getByRole("button", { name: "Install Calendar" }));
     });
     expect(install).toHaveBeenCalledWith("com.calimero.mero-calendar");
+  });
+
+  it("says to confirm in Calimero Desktop when the install was handed to it", async () => {
+    const install = vi.fn(async () => "desktop" as const);
+    render(<Harness backend={new DemoBackend(false, 0)} installed={[]} install={install} />);
+    const calendar = await rowOf("Calendar");
+    await act(async () => {
+      fireEvent.click(within(calendar).getByRole("button", { name: "Install Calendar" }));
+    });
+    expect(within(calendar).getByRole("status")).toHaveTextContent("Confirm in Calimero Desktop to finish.");
+    expect(within(calendar).queryByRole("alert")).toBeNull();
   });
 
   it("says why an install failed, beside its button", async () => {

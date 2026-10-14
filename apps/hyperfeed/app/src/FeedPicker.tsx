@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useApplicationContexts, useMero } from "@calimero-network/mero-react";
 import { openFeed, useNewFeed } from "./newFeed";
 import { HyperfeedClient } from "./generated/HyperfeedClient";
+import { PACKAGE_NAME } from "./config";
+import { DESKTOP_NOTE, HANDOFF_POLL_MS, HANDOFF_WAIT_MS, handToDesktop, refusedByNode } from "./desktopHandoff";
 import {
   confirmText,
   deleteFeed,
@@ -149,20 +151,35 @@ function NameForm({
 /**
  * Delete a feed you are not in, with its namespace. Mero-bot and the
  * collector stop on their own: they follow the contexts the node lists.
+ *
+ * This session's token may not delete a context (the node answers 403), so
+ * then Calimero Desktop is asked to, and the feeds are read again until it is
+ * gone: `handedOff` names the feed waiting on you in the desktop.
  */
-function useDeleteFeed(onDeleted: () => void) {
+function useDeleteFeed(onDeleted: () => void, refetch: () => unknown, present: (id: string) => boolean) {
   const { admin } = useMero();
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  const [handedOff, setHandedOff] = useState<{ id: string; since: number } | null>(null);
   const remove = useCallback(
     async (id: string) => {
       if (!admin) return;
       setBusy(id);
       setFailed(null);
+      setHandedOff(null);
       try {
         await deleteFeed(admin as unknown as FeedAdmin, id);
         onDeleted();
       } catch (e) {
+        if (refusedByNode(e)) {
+          try {
+            await handToDesktop(PACKAGE_NAME, "delete-context", `context=${encodeURIComponent(id)}`);
+            setHandedOff({ id, since: Date.now() });
+            return;
+          } catch (handoff) {
+            e = handoff;
+          }
+        }
         setFailed(e instanceof Error ? e.message : String(e));
       } finally {
         setBusy(null);
@@ -170,7 +187,27 @@ function useDeleteFeed(onDeleted: () => void) {
     },
     [admin, onDeleted],
   );
-  return { remove, busy, failed, ready: Boolean(admin) };
+
+  const waiting = handedOff ? present(handedOff.id) : false;
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!handedOff) return;
+    if (!waiting) {
+      setHandedOff(null);
+      onDeleted();
+      return;
+    }
+    if (Date.now() - handedOff.since > HANDOFF_WAIT_MS) {
+      setHandedOff(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void refetch();
+      setTick((n) => n + 1);
+    }, HANDOFF_POLL_MS);
+    return () => clearTimeout(timer);
+  }, [handedOff, waiting, tick, refetch, onDeleted]);
+  return { remove, busy, failed, handedOff: handedOff?.id ?? null, ready: Boolean(admin) };
 }
 
 /**
@@ -240,7 +277,8 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
     setConfirming(null);
     void refetch();
   }, [refetch]);
-  const del = useDeleteFeed(onDeleted);
+  const isListed = useCallback((id: string) => contexts.some((c) => c.contextId === id), [contexts]);
+  const del = useDeleteFeed(onDeleted, refetch, isListed);
 
   return (
     <div className="switcher" ref={root}>
@@ -334,6 +372,11 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
             ),
           )}
           {del.failed && <pre className="err">{del.failed}</pre>}
+          {del.handedOff && (
+            <p className="muted small-text" role="status">
+              {DESKTOP_NOTE}
+            </p>
+          )}
           <hr />
           {naming ? (
             <div className="switcher-rename" role="group" aria-label="Name your new feed">
