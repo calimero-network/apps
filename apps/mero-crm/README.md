@@ -58,6 +58,15 @@ The rules live in `app/src/utils/crm.ts` as pure functions with unit tests.
 | `logic/workflows/smoke.yml` | Two-node merobox scenario calling every contract method, including the automation firing and the creator/author gates. |
 | `app/` | React (Vite) frontend. The workspace shell (auth, desktop SSO, invitations, members, roles) is shared with mero-issue-tracker. |
 
+**Light / dark and Log out.** Light is the default; the sun/moon button in the
+top bar (`app/src/components/ThemeToggle.tsx`) and **Settings → Your account**
+switch to dark. The choice is kept in `localStorage` under `mero-crm:theme`
+(`app/src/theme.ts`), which the landing page's toggle also writes, and an inline
+script in `app/index.html` applies it before the first paint. **Log out** sits
+in the sidebar's identity block and in Settings (and in the corner of the
+no-workspace screen): `app/src/auth/signOut.ts` forgets the open workspace,
+then calls mero-react's `logout()`. The theme choice survives a log out.
+
 ## Data model
 
 - `stages: UnorderedMap<String, Stage>` — name, probability and position as
@@ -101,7 +110,7 @@ cargo test -p mero-crm                         # contract unit + convergence tes
 cargo mero build -p mero-crm                   # wasm + res/abi.json
 pnpm -F mero-crm codegen                       # ABI → app/src/generated/CrmClient.ts
 pnpm -F mero-crm dev                           # http://localhost:5186
-pnpm -F mero-crm test                          # vitest
+pnpm -F mero-crm test                          # vitest (incl. theme.test.ts, auth/signOut.test.ts)
 ```
 
 End to end, against real nodes:
@@ -109,7 +118,7 @@ End to end, against real nodes:
 ```bash
 cargo mero bundle --manifest-path apps/mero-crm/logic/Cargo.toml --dev \
   --app-version 0.0.0 --output apps/mero-crm/logic/dist/com.calimero.mero-crm.mpk
-MEROD_BINARY=/path/to/merod pnpm -F mero-crm test:e2e     # Playwright
+MEROD_BINARY=/path/to/merod pnpm -F mero-crm test:e2e     # Playwright, incl. theme.spec.ts and logout.spec.ts
 cd apps/mero-crm/logic && merobox bootstrap run workflows/smoke.yml
 ```
 

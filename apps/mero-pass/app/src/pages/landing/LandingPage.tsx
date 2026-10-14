@@ -2,16 +2,13 @@
  * Mero Pass's front door — the page a browser gets when nobody is signed in.
  *
  * HAND-OWNED. Mero Pass left the fleet-wide generated landing
- * (`scripts/landing/`) so its page could be built in the calimero.network
- * language the Calimero landing, Calimero Cloud, the App Registry and the
- * desktop app share: charcoal, Power Grotesk, square hairline grids, one lime,
- * numbered chapters, a lime Cloud band. The structure follows the Calimero
- * home page and the Cloud marketing site — hero with a live product shot,
- * chapters, the band, a comparison, an FAQ, a closing call — so the four read
- * as one family.
+ * (`scripts/landing/`) so its page could follow the Calimero home page and the
+ * Cloud marketing site — hero with a live product shot, numbered chapters, a
+ * Cloud band, a comparison, an FAQ, a closing call. It is styled in the same
+ * light glass as the app (see landing.css).
  *
- * Dark only, like those pages: the marketing surfaces are charcoal whatever the
- * app's own theme choice is (`.mp-ld` carries its own tokens).
+ * It follows the app's own light/dark choice (`.mp-ld` carries its own tokens,
+ * holding glass values, with a smoked-glass variant under data-theme="dark").
  *
  * `/`, `/landing`, `/docs` and `/preview` all render it (see `App.tsx`);
  * `/docs` and `/preview` open at the chapter that answers them.

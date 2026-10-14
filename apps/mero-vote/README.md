@@ -113,8 +113,16 @@ app/
   src/crypto/protocol.ts   the same protocol in TypeScript (@noble/curves ristretto255)
   src/crypto/verify.ts     independent transcript re-audit
   src/crypto/*.test.ts     byte-for-byte agreement with vectors.json; tamper cases
+  src/theme.ts             light/dark, kept under mero-vote:theme (index.html applies it pre-paint)
+  src/signOut.ts           Log out: clear the open context, then mero-react's logout()
   e2e/mero-vote.spec.ts    the whole flow against a real merod
+  e2e/theme.spec.ts        light default; the top-bar switch, kept across a reload
+  e2e/logout.spec.ts       Log out from the top bar and the session menu
 ```
+
+Light is the default; the sun/moon button in the top bar switches to dark. **Log out** is always
+in the top bar, and again in the session menu. It keeps the theme choice and a trustee's transport
+key (`utils/trusteeKeys.ts`), which a poll's count may still need.
 
 **Two implementations, pinned together.** The browser proves and the contract verifies, so they
 must agree byte for byte. `vectors.json` is generated from fixed seeds by the Rust test. The

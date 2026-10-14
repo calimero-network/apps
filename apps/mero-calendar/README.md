@@ -17,6 +17,12 @@ your own nodes, shared only with the people you invite.
   live only on your node and are **never** replicated to anyone else.
 - **Display names**, light/dark themes, and a refreshed, accessible color palette
   for events.
+- **Light by default.** The sun/moon toggle in every signed-in top bar (and on
+  the landing page) switches to dark; the choice is kept in `localStorage`
+  under `mc-theme` (`app/src/providers/ThemeProvider`), and an inline script in
+  `app/index.html` applies it before the first paint. **Log out** ends each
+  top bar (`app/src/components/common/logout-button/LogoutButton.tsx`): it
+  calls mero-react's `logout()` and returns to the landing page.
 
 ## Architecture
 
@@ -85,8 +91,8 @@ registry for the highest published `appVersion` and increments it.
 
 ```bash
 make logic-test-rust   # Rust unit tests (cargo test)
-make unit              # frontend unit tests (vitest)
-make e2e               # Playwright mocked e2e (no node needed)
+make unit              # frontend unit tests (vitest), incl. ThemeProvider and LogoutButton
+make e2e               # Playwright mocked e2e (no node needed), incl. theme.spec.ts
 make logic-test        # merobox single-node contract workflow (needs Docker)
 make workflows         # merobox two-node sync workflow (needs Docker)
 make integration       # Playwright integration tests against a running node

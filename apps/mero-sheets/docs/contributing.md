@@ -52,7 +52,9 @@ on each. Specs seed their own state through the UI with the helpers in
 `app/e2e/helpers.ts`: `openNewWorkbook` creates a workbook on a node,
 `enterCell` types into a cell, and `withTwoMembers` has a second member join
 from another node with an invitation link, so the collaboration specs run
-across real nodes. Start from fresh nodes: a node that has kept dozens of
+across real nodes. `theme.spec.ts`, `log-out.spec.ts` and `glass-layout.spec.ts`
+cover the light/dark switch, Log out, and dialogs that must still cover the
+whole viewport inside the glass frame. Start from fresh nodes: a node that has kept dozens of
 workbooks from earlier runs syncs them all and slows every spec down.
 
 ## CI
