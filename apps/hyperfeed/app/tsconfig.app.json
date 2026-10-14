@@ -17,6 +17,6 @@
     "types": ["vite/client"],
     "noUncheckedIndexedAccess": false
   },
-  "include": ["src", "src/lens/fixtures/*.json"],
+  "include": ["src", "src/lens/fixtures/*.json", "src/actions/fixtures/*.json"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"]
 }
