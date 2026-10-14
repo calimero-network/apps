@@ -25,7 +25,11 @@ export type ScenarioId =
   | 'signatures-empty'
   | 'signatures-delete'
   | 'connect'
-  | 'not-found';
+  | 'not-found'
+  | 'viewer'
+  | 'viewer-sign'
+  | 'viewer-pad'
+  | 'viewer-consent';
 
 export interface Scenario {
   id: ScenarioId;
@@ -36,7 +40,16 @@ export interface Scenario {
   /** Whose eyes: an admin sees the role controls, a signer does not. */
   me: 'admin' | 'member';
   /** A modal or minted state to force open. */
-  open?: 'upload' | 'delete-signature' | 'invite' | 'invite-workspace';
+  open?:
+    | 'upload'
+    | 'delete-signature'
+    | 'invite'
+    | 'invite-workspace'
+    | 'viewer'
+    | 'viewer-sign'
+    | 'viewer-pad';
+  /** Whether `hasConsented` says yes; no means the consent dialog opens. */
+  consented?: boolean;
   /** How many workspaces the picker has. */
   workspaces?: 'some' | 'none';
   signatures: 'some' | 'none';
@@ -114,6 +127,37 @@ export const SCENARIOS: Scenario[] = [
   },
   { ...base, id: 'connect', path: '/agreements', authed: false },
   { ...base, id: 'not-found', path: '/nope/nowhere', authed: true },
+  // The document viewer and the signing flow. The REAL viewer renders a real
+  // PDF here (see `samplePdf`), so these photograph the shipping viewer chrome.
+  {
+    ...base,
+    id: 'viewer',
+    path: '/agreements/ctx-1',
+    tab: 'documents',
+    open: 'viewer',
+  },
+  {
+    ...base,
+    id: 'viewer-sign',
+    path: '/agreements/ctx-1',
+    tab: 'documents',
+    open: 'viewer-sign',
+  },
+  {
+    ...base,
+    id: 'viewer-pad',
+    path: '/agreements/ctx-1',
+    tab: 'documents',
+    open: 'viewer-pad',
+  },
+  {
+    ...base,
+    id: 'viewer-consent',
+    path: '/agreements/ctx-1',
+    tab: 'documents',
+    open: 'viewer-sign',
+    consented: false,
+  },
 ];
 
 export function scenarioById(id: string): Scenario {
@@ -167,6 +211,14 @@ export const AGREEMENTS = [
   },
 ];
 
+/**
+ * Hex blob ids, because the viewer refuses anything else before it asks the
+ * node. The mock `blobClient` answers these three with the sample PDF. The
+ * hash is left empty: a recorded hash would be checked against the sample
+ * bytes and photograph an integrity warning instead of the viewer.
+ */
+export const DOC_BLOB_IDS = ['d1'.repeat(32), 'd2'.repeat(32), 'd3'.repeat(32)];
+
 export const DOCUMENTS = [
   {
     id: 'doc-1',
@@ -175,8 +227,8 @@ export const DOCUMENTS = [
     uploadedAt: '12 Mar',
     status: 'FullySigned',
     uploadedBy: ALICE,
-    hash: 'deadbeef',
-    pdfBlobId: 'blob-1',
+    hash: '',
+    pdfBlobId: DOC_BLOB_IDS[0],
   },
   {
     id: 'doc-2',
@@ -185,8 +237,8 @@ export const DOCUMENTS = [
     uploadedAt: '12 Mar',
     status: 'PartiallySigned',
     uploadedBy: ALICE,
-    hash: 'deadbeef',
-    pdfBlobId: 'blob-2',
+    hash: '',
+    pdfBlobId: DOC_BLOB_IDS[1],
   },
   {
     id: 'doc-3',
@@ -195,8 +247,8 @@ export const DOCUMENTS = [
     uploadedAt: '14 Mar',
     status: 'Pending',
     uploadedBy: BOB,
-    hash: 'deadbeef',
-    pdfBlobId: 'blob-3',
+    hash: '',
+    pdfBlobId: DOC_BLOB_IDS[2],
   },
 ];
 

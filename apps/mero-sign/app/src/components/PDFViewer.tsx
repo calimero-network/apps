@@ -853,6 +853,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                 <Button
                   variant="secondary"
                   onClick={handleSignDocument}
+                  data-testid="sign-document"
                   style={{
                     padding: `${spacing[2].value} ${spacing[3].value}`,
                     display: 'flex',
@@ -1150,6 +1151,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                       className="relative w-full"
                     >
                       <canvas
+                        data-testid="pdf-page"
                         className={`w-full h-auto border border-gray-300 rounded-lg shadow-sm ${
                           selectedSignature || signingMode
                             ? 'cursor-crosshair'
@@ -1228,6 +1230,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           {showSignatureOptions && (
             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-[9999] pdf-viewer-modal-overlay">
               <motion.div
+                data-testid="signature-picker"
                 initial={{ opacity: 0, y: 100 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 100 }}
@@ -1269,6 +1272,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                   {/* Create New Button */}
                   <Button
                     onClick={handleCreateNewSignature}
+                    data-testid="draw-signature"
                     className="w-full flex items-center gap-3 p-4 border border-border rounded-lg hover:bg-muted transition-colors"
                     variant="secondary"
                   >

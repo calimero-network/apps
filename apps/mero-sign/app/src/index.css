@@ -1,5 +1,9 @@
 @import 'tailwindcss';
 @import '@calimero-network/mero-ui/styles.css';
+/* Scan this folder for utility classes explicitly. Automatic detection starts
+   from the Vite root, which is the app for the app's build but e2e/shots for
+   the screenshot harness, where `sm:block` and friends silently went missing. */
+@source '.';
 
 /* ══════════════════════════════════════════════════════════════════════════
    Mero Sign — base styles

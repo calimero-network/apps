@@ -195,6 +195,7 @@ const ConsentModal: React.FC<ConsentModalProps> = ({
 
       {/* Main Consent Modal */}
       <Box
+        data-testid="consent-dialog"
         style={{
           padding: spacing[6].value,
           borderRadius: radius.lg.value,

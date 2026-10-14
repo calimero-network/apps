@@ -155,6 +155,7 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
               <Box className="relative">
                 <canvas
                   ref={canvasRef}
+                  data-testid="signature-pad"
                   className="w-full cursor-crosshair"
                   style={{
                     height: '192px',

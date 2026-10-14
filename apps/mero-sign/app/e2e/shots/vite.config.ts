@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -10,15 +11,18 @@ import { fileURLToPath } from 'node:url';
  * var is set" is one misconfigured deploy away from shipping the mock.
  *
  * Only the modules that reach a node are aliased. The pages, the CSS modules,
- * `lib/participants`, the header, the cards and every empty state are production
- * code, so a screenshot documents the real UI.
+ * `lib/participants`, the header, the cards, every empty state and the PDF
+ * viewer are production code, so a screenshot documents the real UI.
  */
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
   root: here('.'),
   base: './',
-  plugins: [react()],
+  // Tailwind as in the app's own config: index.css starts with
+  // `@import 'tailwindcss'`, and without the plugin no utility class exists,
+  // so the shots showed controls the app hides (`hidden`, `sm:hidden`).
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: [
       // The old SDK is gone; `lib/node` is what reaches a node now.
@@ -61,9 +65,10 @@ export default defineConfig({
         find: /.*\/dataSource\/nodeApiDataSource$/,
         replacement: here('./services.mock.ts'),
       },
+      // The signature library ensures its private context on a node first.
       {
-        find: /.*\/components\/PDFViewer$/,
-        replacement: here('./pdfViewer.mock.ts'),
+        find: /.*\/api\/defaultContextService$/,
+        replacement: here('./services.mock.ts'),
       },
       {
         find: /.*\/lib\/invitationIntents$/,

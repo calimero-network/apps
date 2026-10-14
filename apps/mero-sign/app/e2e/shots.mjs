@@ -12,7 +12,13 @@
  * loaded from a file:// document is blocked by the module loader's CORS rules —
  * a blank page and a console error naming neither cause nor fix.
  *
- * Usage:  node e2e/shots.mjs [--out DIR]
+ * Usage:  node e2e/shots.mjs [--out DIR] [--viewport 1440x900] [--theme light|dark]
+ *                            [--scale 2] [--only id,id] [--no-build]
+ *
+ * `--theme dark` saves the dark choice under the app's theme key before the
+ * page loads, exactly as a returning visitor who picked dark would have it.
+ * Every run also fails a scenario whose page is wider than the viewport: a
+ * horizontal scrollbar on a phone is a broken layout, not a cosmetic one.
  */
 import { chromium } from '@playwright/test';
 import { createServer } from 'node:http';
@@ -39,6 +45,13 @@ function argOf(flag) {
   return i > -1 ? process.argv[i + 1] : undefined;
 }
 const OUT = resolve(argOf('--out') ?? resolve(APP, '../data/shots'));
+const [VW, VH] = (argOf('--viewport') ?? '1440x900').split('x').map(Number);
+const THEME = argOf('--theme') ?? 'light';
+const SCALE = Number(argOf('--scale') ?? 2);
+const ONLY = argOf('--only')?.split(',');
+const BUILD_FIRST = !process.argv.includes('--no-build');
+/** src/theme.ts owns this key; kept in step by hand like the scenario list. */
+const THEME_KEY = 'mero-sign:theme';
 
 // Kept in step with e2e/shots/fixtures.ts by hand: that file is TypeScript and
 // this driver is plain node, so importing it would need a loader hook for a
@@ -87,11 +100,27 @@ const SCENARIOS = [
     'An address the app does not have',
     '[data-testid="not-found"]',
   ],
+  ['viewer', 'A document open in the viewer', '[data-testid="pdf-page"]'],
+  [
+    'viewer-sign',
+    'Choosing a signature',
+    '[data-testid="signature-picker"]',
+  ],
+  ['viewer-pad', 'Drawing a signature', '[data-testid="signature-pad"]'],
+  [
+    'viewer-consent',
+    'Consent before the first signature',
+    '[data-testid="consent-dialog"]',
+  ],
 ];
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  // pdf.js's worker is an .mjs module; served as text/plain it is refused and
+  // every document fails to open.
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.woff2': 'font/woff2',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
@@ -130,30 +159,47 @@ function serve(root) {
 }
 
 async function main() {
-  console.log('• building the harness');
-  execFileSync(
-    'pnpm',
-    ['exec', 'vite', 'build', '--config', 'e2e/shots/vite.config.ts'],
-    {
-      cwd: APP,
-      stdio: 'inherit',
-    },
-  );
+  if (BUILD_FIRST) {
+    console.log('• building the harness');
+    execFileSync(
+      'pnpm',
+      ['exec', 'vite', 'build', '--config', 'e2e/shots/vite.config.ts'],
+      {
+        cwd: APP,
+        stdio: 'inherit',
+      },
+    );
+  }
   if (!existsSync(join(BUILD, 'index.html'))) {
     throw new Error(`harness build missing at ${BUILD}`);
   }
 
   mkdirSync(OUT, { recursive: true });
   const { server, port } = await serve(BUILD);
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM_PATH || undefined,
+  });
   const failures = [];
+  const scenarios = SCENARIOS.filter(([id]) => !ONLY || ONLY.includes(id));
 
   try {
-    for (const [id, title, waitFor] of SCENARIOS) {
+    for (const [id, title, waitFor] of scenarios) {
       const page = await browser.newPage({
-        viewport: { width: 1440, height: 900 },
-        deviceScaleFactor: 2, // retina, so the type in the screenshots is legible
+        viewport: { width: VW, height: VH },
+        deviceScaleFactor: SCALE, // 2 by default: retina, so the type is legible
+        isMobile: VW < 600,
+        hasTouch: VW < 600,
       });
+      await page.addInitScript(
+        ([key, theme]) => {
+          try {
+            localStorage.setItem(key, theme);
+          } catch {
+            /* the scenario then shows the default, light */
+          }
+        },
+        [THEME_KEY, THEME],
+      );
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e)));
       await page.goto(`http://127.0.0.1:${port}/index.html?s=${id}`, {
@@ -205,6 +251,13 @@ async function main() {
         fullPage: id === 'landing',
       });
 
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      if (overflow > 0) {
+        errors.push(`the page is ${overflow}px wider than the viewport`);
+      }
+
       if (errors.length) {
         failures.push(`${id}: ${errors[0]}`);
         console.log(`  ✗ ${id.padEnd(18)} ${errors[0]}`);
@@ -223,7 +276,7 @@ async function main() {
     for (const f of failures) console.error(`  - ${f}`);
     process.exit(1);
   }
-  console.log(`\n${SCENARIOS.length} screenshots in ${OUT}`);
+  console.log(`\n${scenarios.length} screenshots in ${OUT}`);
 }
 
 main().catch((e) => {
