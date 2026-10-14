@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
 import { shareableInvitation } from '../lib/inviteLink';
 import { useDialogOpen } from '../hooks/useDialogOpen';
+import { CloseIcon } from './icons';
 import styles from './InviteModal.module.css';
 
 /**
@@ -65,17 +66,14 @@ export default function InviteModal({
     }
   }, [share, onClose]);
 
-  const copyQuietly = useCallback(
-    async (value: string, label: string) => {
-      try {
-        await navigator.clipboard.writeText(value);
-        setNote(`${label} copied.`);
-      } catch {
-        setNote('Could not reach the clipboard — select it and copy.');
-      }
-    },
-    [],
-  );
+  const copyQuietly = useCallback(async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setNote(`${label} copied.`);
+    } catch {
+      setNote('Could not reach the clipboard — select it and copy.');
+    }
+  }, []);
 
   // After the hooks, never before: an early return above them would change the
   // hook order between renders.
@@ -103,7 +101,7 @@ export default function InviteModal({
             aria-label="Close"
             data-testid="invite-modal-close"
           >
-            ✕
+            <CloseIcon size={18} />
           </button>
         </header>
 
