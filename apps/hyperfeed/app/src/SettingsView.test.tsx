@@ -328,15 +328,21 @@ describe("Settings → Agents: who works in each app", () => {
     const code = within(panel).getByRole("combobox", { name: "Agent for Code" }) as HTMLSelectElement;
     const chat = within(panel).getByRole("combobox", { name: "Agent for Chat" }) as HTMLSelectElement;
     expect(code.value).toBe("");
-    expect(within(code).getByRole("option", { name: `Default: Private agent (${TEE})` })).toBeInTheDocument();
-    expect(within(code).getByRole("option", { name: `${TEE} (private)` })).toBeInTheDocument();
+    expect(within(panel).getByLabelText("The default agent")).toHaveTextContent(`DefaultPrivate${TEE}`);
+    // Code has no default, and never goes to the private agent: it has no computer of yours.
+    expect(within(code).getByRole("option", { name: "Off" })).toBeInTheDocument();
+    expect(within(code).queryByRole("option", { name: `${TEE} · private` })).toBeNull();
     expect(within(code).getByRole("option", { name: LAPTOP })).toBeInTheDocument();
+    expect(within(panel).getByText(/Off: no agent runs shell, files or git/)).toBeInTheDocument();
+    expect(within(chat).getByRole("option", { name: "Default" })).toBeInTheDocument();
+    expect(within(chat).getByRole("option", { name: `${TEE} · private` })).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.change(code, { target: { value: LAPTOP } });
     });
     expect((await backend.settings()).assignments).toMatchObject([{ app: "mero-bot", agent: LAPTOP }]);
     expect(code.value).toBe(LAPTOP);
+    expect(within(panel).getByText("Shell, files and git on a computer")).toBeInTheDocument();
     // Chat stays with the private agent.
     expect(chat.value).toBe("");
 
@@ -351,8 +357,7 @@ describe("Settings → Agents: who works in each app", () => {
     const backend = new DemoBackend(true, 0);
     backend.agentReach(LAPTOP, [line(false)]);
     render(<Harness backend={backend} section="agents" />);
-    const chat = within(await section()).getByRole("combobox", { name: "Agent for Chat" });
-    expect(within(chat).getByRole("option", { name: /Default: Any agent/ })).toBeInTheDocument();
+    expect(within(await section()).getByLabelText("The default agent")).toHaveTextContent("Any agent, until a private one reports in");
   });
 
   it("is not there on a feed that predates assignments", async () => {

@@ -28,6 +28,8 @@ const KNOWN: Record<string, Omit<AppLook, "key">> = {
   design: { name: "Design", letters: "De", color: "#a3245b" },
   stream: { name: "Stream", letters: "St", color: "#155e75" },
   chess: { name: "Chess", letters: "Cs", color: "#3f3f46" },
+  // Not an app: the tools on a computer mero-bot runs on (shell, files, git), filed under its name.
+  "mero-bot": { name: "Mero Bot", letters: "</>", color: "#475467" },
 };
 
 /** The apps the controls list even before anything has happened in them. */

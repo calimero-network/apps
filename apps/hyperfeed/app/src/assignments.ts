@@ -5,6 +5,8 @@ import type { SettingsView } from "./generated/HyperfeedClient";
  * mero-bot reads it (`src/hyperfeed/assignments.ts` there; change both or
  * neither). An app you did not assign is your private agents': those whose
  * every reported model is attested. With none reporting in, any agent takes it.
+ * Code has no default: nothing runs on a computer until you give Code to an
+ * agent that has one (your local mero-bot).
  */
 
 /** Code: the tools on a computer (shell, files, git), filed as the app "mero-bot". */
@@ -23,10 +25,4 @@ export function privateAgents(settings: Assigning): string[] {
 /** The agent you assigned `app` to, or "" for the default. */
 export function assignedAgent(settings: Assigning, app: string): string {
   return (settings.assignments ?? []).find((a) => a.app === app)?.agent ?? "";
-}
-
-/** How the default agent is named: your private agents, or anyone while none reports in. */
-export function defaultLabel(settings: Assigning): string {
-  const privates = privateAgents(settings);
-  return privates.length > 0 ? `Private agent (${privates.join(", ")})` : "Any agent (no private agent has reported in)";
 }
