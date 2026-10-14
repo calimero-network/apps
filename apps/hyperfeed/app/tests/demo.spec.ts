@@ -181,6 +181,12 @@ test("Settings opens one section at a time, and an old Controls link lands on it
   await expect(page.getByRole("region", { name: "What your agent may do, app by app" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Connect your agent" })).toHaveCount(0);
 
+  await sections.getByRole("link", { name: /Rules/ }).click();
+  await expect(page).toHaveURL(/\/demo\/settings\/rules$/);
+  await expect(page.getByRole("region", { name: "Language" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Standing rules" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "What your agent may do, app by app" })).toHaveCount(0);
+
   await sections.getByRole("link", { name: /Agents/ }).click();
   await expect(page).toHaveURL(/\/demo\/settings\/agents$/);
   await expect(page.getByRole("region", { name: "Your agents", exact: true })).toBeVisible();

@@ -24,10 +24,11 @@ describe("Settings: one section at a time", () => {
   it("lists its sections, marks the open one, and shows only that one", async () => {
     render(<Harness backend={new DemoBackend(true, 0)} />);
     const links = within(await nav()).getAllByRole("link");
-    expect(links.map((l) => l.textContent?.replace(/\d+$/, ""))).toEqual(["Controls", "Agents", "Lenses"]);
+    expect(links.map((l) => l.textContent?.replace(/\d+$/, ""))).toEqual(["Controls", "Rules", "Agents", "Lenses"]);
     expect(within(await nav()).getByRole("link", { current: "page" })).toHaveTextContent("Controls");
-    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/settings/controls", "/settings/agents", "/settings/lenses"]);
-    expect(await screen.findByRole("region", { name: "Standing rules" })).toBeInTheDocument();
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/settings/controls", "/settings/rules", "/settings/agents", "/settings/lenses"]);
+    expect(await screen.findByRole("region", { name: "Always ask me before" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Standing rules" })).toBeNull();
     expect(screen.queryByRole("region", { name: "What your feed reads from each app" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Connect your agent" })).toBeNull();
   });
@@ -42,6 +43,7 @@ describe("Settings: one section at a time", () => {
     expect(settingsSection(undefined)).toBe("controls");
     expect(settingsSection("nope")).toBe("controls");
     expect(settingsSection("agents")).toBe("agents");
+    expect(settingsSection("rules")).toBe("rules");
   });
 
   it("lists who reports in under Agents, live or when last seen", async () => {
@@ -95,12 +97,12 @@ describe("Settings → Lenses: what your feed reads from each app", () => {
   });
 });
 
-describe("Settings → Controls: standing rules", () => {
+describe("Settings → Rules: standing rules", () => {
   const section = () => screen.findByRole("region", { name: "Standing rules" });
 
   it("starts with none, then adds and removes your rules", async () => {
     const backend = new DemoBackend(true, 0);
-    render(<Harness backend={backend} />);
+    render(<Harness backend={backend} section="rules" />);
     const rules = await section();
     expect(within(rules).getByText(/No rules yet/)).toBeInTheDocument();
     fireEvent.change(within(rules).getByLabelText("New rule"), { target: { value: "Never push to main" } });
@@ -121,16 +123,17 @@ describe("Settings → Controls: standing rules", () => {
   it("approves a rule your agent suggested with one tap, as your own", async () => {
     const backend = new DemoBackend(true, 0);
     backend.proposeRule("Open a PR instead of pushing to main", "You told me not to push to main.");
-    render(<Harness backend={backend} />);
+    render(<Harness backend={backend} section="rules" />);
     const rules = await section();
-    const suggestion = within(rules).getByRole("listitem", { name: "Suggested rule: Open a PR instead of pushing to main" });
+    const suggested = screen.getByRole("region", { name: "Suggested by your agent" });
+    const suggestion = within(suggested).getByRole("listitem", { name: "Suggested rule: Open a PR instead of pushing to main" });
     expect(suggestion).toHaveTextContent("You told me not to push to main.");
     await act(async () => {
       fireEvent.click(within(suggestion).getByRole("button", { name: "Approve" }));
     });
     const list = await within(rules).findByRole("list", { name: "Your standing rules" });
     expect(within(list).getByText("Open a PR instead of pushing to main")).toBeInTheDocument();
-    expect(within(rules).queryByRole("list", { name: "Rules your agent suggests" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Suggested by your agent" })).not.toBeInTheDocument();
     const settings = await backend.settings();
     expect(settings.rules.map((r) => r.text)).toEqual(["Open a PR instead of pushing to main"]);
     expect(settings.rule_proposals).toEqual([]);
@@ -139,13 +142,59 @@ describe("Settings → Controls: standing rules", () => {
   it("dismisses a suggested rule without adding it", async () => {
     const backend = new DemoBackend(true, 0);
     backend.proposeRule("Use emoji in every answer");
-    render(<Harness backend={backend} />);
-    const rules = await section();
+    render(<Harness backend={backend} section="rules" />);
+    await section();
     await act(async () => {
-      fireEvent.click(within(rules).getByRole("button", { name: "Dismiss" }));
+      fireEvent.click(within(screen.getByRole("region", { name: "Suggested by your agent" })).getByRole("button", { name: "Dismiss" }));
     });
-    expect(within(rules).queryByRole("list", { name: "Rules your agent suggests" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Suggested by your agent" })).not.toBeInTheDocument();
     expect((await backend.settings()).rules).toEqual([]);
+  });
+});
+
+describe("Settings → Rules: the language your agent answers in", () => {
+  const language = () => screen.findByRole("region", { name: "Language" });
+
+  it("answers in English by default, with no rule", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} section="rules" />);
+    const panel = await language();
+    expect(within(panel).getByLabelText("Answers in")).toHaveValue("English");
+    expect(within(panel).getByText("Default")).toBeInTheDocument();
+    expect((await backend.settings()).rules).toEqual([]);
+  });
+
+  it("picks a language as one rule, and swaps it for the next one picked", async () => {
+    const backend = new DemoBackend(true, 0);
+    await backend.addRule("Never push to main");
+    render(<Harness backend={backend} section="rules" />);
+    const panel = await language();
+    await act(async () => {
+      fireEvent.change(within(panel).getByLabelText("Answers in"), { target: { value: "German" } });
+    });
+    expect(within(panel).getByLabelText("Answers in")).toHaveValue("German");
+    expect(within(panel).queryByText("Default")).toBeNull();
+    expect((await backend.settings()).rules.map((r) => r.text)).toEqual([
+      "Never push to main",
+      "Always respond in German unless the user writes in another language.",
+    ]);
+    await act(async () => {
+      fireEvent.change(within(panel).getByLabelText("Answers in"), { target: { value: "English" } });
+    });
+    expect((await backend.settings()).rules.map((r) => r.text)).toEqual([
+      "Never push to main",
+      "Always respond in English unless the user writes in another language.",
+    ]);
+  });
+
+  it("shows a language rule you already had as the language, not in the list", async () => {
+    const backend = new DemoBackend(true, 0);
+    await backend.addRule("Always respond in English unless the user writes in another language.");
+    await backend.addRule("Never push to main");
+    render(<Harness backend={backend} section="rules" />);
+    expect(within(await language()).getByLabelText("Answers in")).toHaveValue("English");
+    const list = await within(await screen.findByRole("region", { name: "Standing rules" })).findByRole("list", { name: "Your standing rules" });
+    expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["1Never push to mainRemove"]);
   });
 });
 
@@ -172,7 +221,7 @@ describe("Settings → Alerts: phone alerts", () => {
 
   it("is not there on a feed that predates push: Alerts opens Controls", async () => {
     render(<Harness backend={new DemoBackend(true, 0)} section="alerts" />);
-    await screen.findByRole("region", { name: "Standing rules" });
+    await screen.findByRole("region", { name: "Always ask me before" });
     expect(screen.queryByRole("region", { name: "Phone alerts" })).toBeNull();
     expect(within(screen.getByRole("navigation", { name: "Settings" })).queryByRole("link", { name: /Alerts/ })).toBeNull();
   });
