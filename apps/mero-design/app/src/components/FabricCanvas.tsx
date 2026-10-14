@@ -26,6 +26,9 @@ import {
 import { v4 as uuid } from "uuid";
 import { rpcCall } from "../api/rpc";
 import { addElements, deleteElements, updateElements, type ElementPatch } from "../api/elementBatch";
+import { redoOnBoard, undoOnBoard } from "../api/history";
+import { toggleLayerFlag } from "../api/layerFlags";
+import { isInteractive, visibleOnly } from "../utils/layerFlags";
 import { applyTopLeftOrigin } from "../utils/fabricDefaults";
 import { isPaintable } from "../utils/color";
 import { createMutationReporter } from "../utils/mutationErrors";
@@ -188,6 +191,17 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     // Set when a store change arrived during a multi-selection and was only
     // restacked; bumping the tick re-runs the reconcile once it is dropped.
     const reconcilePendingRef = useRef(false);
+    /**
+     * Set while the canvas drops or narrows its active selection only because a
+     * selected layer was locked or hidden. The layer stays selected in the store
+     * (so the layers panel and ⇧⌘L / ⇧⌘H still act on it); Fabric's selection
+     * events must not write the narrower canvas selection back.
+     */
+    const keepSelectionRef = useRef(false);
+    const withSelectionKept = (fn: () => void) => {
+      keepSelectionRef.current = true;
+      try { fn(); } finally { keepSelectionRef.current = false; }
+    };
     const [reconcileTick, setReconcileTick] = useState(0);
     const { showToast } = useToast();
     // See utils/mutationErrors: these used to be `.catch(() => {})`, so a failed
@@ -212,8 +226,6 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       removeElement,
       cacheImage,
       snapshot,
-      undo,
-      redo,
       copyElements,
       getPasted,
       editingTextId,
@@ -235,8 +247,6 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         removeElement: s.removeElement,
         cacheImage: s.cacheImage,
         snapshot: s.snapshot,
-        undo: s.undo,
-        redo: s.redo,
         copyElements: s.copyElements,
         getPasted: s.getPasted,
         editingTextId: s.editingTextId,
@@ -495,16 +505,24 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
       const prevSelectedId = useCanvasStore.getState().selectedElementId;
 
-      const sorted = [...elements].sort((a, b) => a.layerIndex - b.layerIndex);
+      // A hidden element is not painted at all, so its object is removed below
+      // like a deleted one's.
+      const sorted = visibleOnly(elements).sort((a, b) => a.layerIndex - b.layerIndex);
       const wanted = new Map(sorted.map((el) => [el.id, el]));
 
       // Objects without an element id are transient (the drag preview, a brush
       // path mid-stroke) and are not ours to remove.
       const existing = new Map<string, CanvasObject>();
+      const onBoard = new Set(elements.map((el) => el.id));
       for (const o of fc.getObjects() as CanvasObject[]) {
         const id = o.data?.id;
         if (!id) continue;
-        if (!wanted.has(id)) { fc.remove(o); continue; }
+        if (!wanted.has(id)) {
+          // Hidden, not deleted: it stays selected if it was.
+          if (onBoard.has(id)) withSelectionKept(() => fc.remove(o));
+          else fc.remove(o);
+          continue;
+        }
         existing.set(id, o);
       }
 
@@ -545,8 +563,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
                 strokeWidth: isPaintable(el.stroke) ? el.strokeWidth / Math.max(sx, sy, 0.0001) : 0,
                 paintFirst: "stroke",
                 data: el,
-                selectable: !readOnlyRef.current,
-                evented: !readOnlyRef.current,
+                selectable: isInteractive(el, readOnlyRef.current),
+                evented: isInteractive(el, readOnlyRef.current),
               });
               // Superseded while decoding, or the canvas went away under us.
               if (fabricRef.current !== fc) return;
@@ -581,7 +599,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
               top: el.height / 2,
               originX: "center", originY: "center",
             });
-            const group = new Group([bg, label], { left: el.x, top: el.y, selectable: !readOnlyRef.current, evented: !readOnlyRef.current });
+            const group = new Group([bg, label], {
+              left: el.x, top: el.y,
+              selectable: isInteractive(el, readOnlyRef.current),
+              evented: isInteractive(el, readOnlyRef.current),
+            });
             const placeholder = group as CanvasObject;
             placeholder.data = el;
             placeholder.srcKey = undefined;
@@ -592,9 +614,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         }
         const obj = buildFabricObject(el);
         if (obj) {
-          // Viewers may see shapes but never grab/move/resize them.
-          obj.selectable = !readOnlyRef.current;
-          obj.evented = !readOnlyRef.current;
+          // Viewers may see shapes but never grab/move/resize them; nobody
+          // grabs a locked one.
+          obj.selectable = isInteractive(el, readOnlyRef.current);
+          obj.evented = isInteractive(el, readOnlyRef.current);
           fc.add(obj);
           if (prevSelectedId && el.id === prevSelectedId) fc.setActiveObject(obj);
         }
@@ -616,9 +639,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         fc.discardActiveObject();
         fc.selection = false;
       }
-      fc.getObjects().forEach((o) => {
-        o.selectable = !readOnly;
-        o.evented = !readOnly;
+      (fc.getObjects() as CanvasObject[]).forEach((o) => {
+        // Transient objects (a drag preview, a stroke mid-draw) carry no element.
+        const interactive = o.data ? isInteractive(o.data, readOnly) : !readOnly;
+        o.selectable = interactive;
+        o.evented = interactive;
       });
       fc.renderAll();
     // `elements`/`imageCache` are still deps: an object built while this effect
@@ -645,14 +670,33 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       }
 
       const wanted = new Set(selectedElementIds);
-      const objects = all.filter((o) => o.data?.id && wanted.has(o.data.id));
-      if (objects.length === 0) return;
+      // A locked layer picked in the layers panel stays selected there (to be
+      // unlocked or inspected) but is never made the canvas's active object,
+      // which would hand it move and resize handles. Read from the store, not
+      // `o.data`: an object keeps the element it was built from, and a lock or
+      // hide that just landed has not rebuilt it yet (a live multi-selection
+      // holds the reconcile off until it is dropped — which this does).
+      const blocked = new Set(elements.filter((el) => el.locked || el.hidden).map((el) => el.id));
+      const objects = all.filter((o) => o.data?.id && wanted.has(o.data.id) && !blocked.has(o.data.id));
+      // Narrowing the canvas selection for a locked or hidden layer must not
+      // narrow the store's.
+      const keep = selectedElementIds.some((id) => blocked.has(id));
+      const apply = (fn: () => void) => (keep ? withSelectionKept(fn) : fn());
+      if (objects.length === 0) {
+        if (fc.getActiveObject()) {
+          apply(() => fc.discardActiveObject());
+          fc.requestRenderAll();
+        }
+        return;
+      }
 
       const active = fc.getActiveObject();
       if (objects.length === 1) {
         if (active !== objects[0]) {
-          fc.discardActiveObject();
-          fc.setActiveObject(objects[0]);
+          apply(() => {
+            fc.discardActiveObject();
+            fc.setActiveObject(objects[0]);
+          });
           fc.requestRenderAll();
         }
         return;
@@ -666,9 +710,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           && current.every((o) => o.data?.id && wanted.has(o.data.id));
         if (same) return;
       }
-      fc.discardActiveObject();
-      const selection = new ActiveSelection(objects, { canvas: fc });
-      fc.setActiveObject(selection);
+      apply(() => {
+        fc.discardActiveObject();
+        const selection = new ActiveSelection(objects, { canvas: fc });
+        fc.setActiveObject(selection);
+      });
       fc.requestRenderAll();
     }, [selectedElementIds, selectedElementId, elements, imageCache]);
 
@@ -705,6 +751,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       /** Snap radius in scene units: a constant 14 screen px at any zoom. */
       const snapRadius = () => SNAP_PX / (fc.getZoom() || 1);
       const liveElements = () => useCanvasStore.getState().elements;
+      /** What a connector may dock to: anything painted. */
+      const dockable = () => visibleOnly(liveElements());
 
       /**
        * The four edge midpoints of the shape under the pointer, drawn as dots,
@@ -811,7 +859,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         startX = p.x; startY = p.y; drawing = true;
         startAnchor = null;
         if (connectorTool) {
-          startAnchor = nearestAnchor(liveElements(), p, snapRadius());
+          startAnchor = nearestAnchor(dockable(), p, snapRadius());
           if (startAnchor) { startX = startAnchor.x; startY = startAnchor.y; }
         }
         startClientX = e.clientX; startClientY = e.clientY;
@@ -835,8 +883,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         let p = fc.getScenePoint(e);
         if (connectorTool && !readOnlyRef.current) {
           const exclude = new Set(startAnchor ? [startAnchor.id] : []);
-          const snap = nearestAnchor(liveElements(), p, snapRadius(), exclude);
-          const hover = shapeUnder(liveElements().filter((el) => !exclude.has(el.id)), p, snapRadius());
+          const snap = nearestAnchor(dockable(), p, snapRadius(), exclude);
+          const hover = shapeUnder(dockable().filter((el) => !exclude.has(el.id)), p, snapRadius());
           showAnchors(hover ?? (snap ? liveElements().find((el) => el.id === snap.id) ?? null : null), snap);
           if (drawing && snap) p = new Point(snap.x, snap.y);
         }
@@ -945,7 +993,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         const raw = fc.getScenePoint(e);
         // A connector's far end docks too — never to the shape it started on.
         const endAnchor = connectorTool
-          ? nearestAnchor(liveElements(), raw, snapRadius(), new Set(startAnchor ? [startAnchor.id] : []))
+          ? nearestAnchor(dockable(), raw, snapRadius(), new Set(startAnchor ? [startAnchor.id] : []))
           : null;
         const p = endAnchor ? new Point(endAnchor.x, endAnchor.y) : raw;
         const segment = activeTool === "line" || activeTool === "arrow";
@@ -1209,8 +1257,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           const next = buildFabricObject({ ...c, ...box, data: { ...c.data, points } });
           const old = (fc.getObjects() as CanvasObject[]).find((o) => o.data?.id === c.id);
           if (!next) continue;
-          next.selectable = !readOnlyRef.current;
-          next.evented = !readOnlyRef.current;
+          next.selectable = isInteractive(c, readOnlyRef.current);
+          next.evented = isInteractive(c, readOnlyRef.current);
           if (old) fc.remove(old);
           fc.add(next);
         }
@@ -1242,6 +1290,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       };
 
       const onSelectionCreated = () => {
+        if (keepSelectionRef.current) return;
         // The WHOLE active set, not `opt.selected`: on "selection:updated" that
         // holds only the object just added, so ⌘-clicking a second shape used to
         // shrink the store's selection to that one shape — and the store→canvas
@@ -1299,14 +1348,24 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
         const mod = e.metaKey || e.ctrlKey;
 
-        if (mod && e.key === "z" && !e.shiftKey) {
+        // Lower-cased: with Shift held, Ctrl+Shift+Z reports "Z" on Windows and Linux.
+        const key = e.key.toLowerCase();
+        if (mod && key === "z" && !e.shiftKey) {
           e.preventDefault();
-          if (!readOnlyRef.current) undo();
+          if (!readOnlyRef.current) void undoOnBoard(contextId, reportFailure.current);
           return;
         }
-        if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        if (mod && (key === "y" || (key === "z" && e.shiftKey))) {
           e.preventDefault();
-          if (!readOnlyRef.current) redo();
+          if (!readOnlyRef.current) void redoOnBoard(contextId, reportFailure.current);
+          return;
+        }
+        // Shift+⌘/Ctrl+L locks, Shift+⌘/Ctrl+H hides — the selection, as Figma does.
+        if (mod && e.shiftKey && (key === "l" || key === "h") && !isTyping(fc)) {
+          e.preventDefault();
+          const ids = useCanvasStore.getState().selectedElementIds;
+          if (readOnlyRef.current || ids.length === 0) return;
+          void toggleLayerFlag(contextId, ids, key === "l" ? "locked" : "hidden", reportFailure.current);
           return;
         }
         if (mod && e.key === "c") {
@@ -1340,8 +1399,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
           // One store update for the whole paste, not one per element (each of
           // which rebuilt the element list and re-ran the canvas reconcile).
-          useCanvasStore.getState().upsertElements(pasted);
+          // The snapshot goes first: it opens the undo step the paste lands in.
           snapshot();
+          useCanvasStore.getState().upsertElements(pasted);
           // Select the copies, not the originals: a paste you cannot
           // immediately drag is a paste you have to go and find.
           selectElements(pasted.map((el) => el.id));
@@ -1374,11 +1434,15 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         // carries no `.data` of its own, so the old guard returned here and a
         // multi-selection could not be deleted at all.
         const ids = useCanvasStore.getState().selectedElementIds;
-        const targets = ids.length > 0
+        const selected = ids.length > 0
           ? ids
           : active?.data?.id
             ? [active.data.id]
             : [];
+        // A locked layer is not deleted from the canvas; the layers panel's
+        // own delete still removes it.
+        const lockedIds = new Set(useCanvasStore.getState().elements.filter((el) => el.locked).map((el) => el.id));
+        const targets = selected.filter((id) => !lockedIds.has(id));
         // Nothing selected: Escape does nothing at all. It must not fall through
         // to anything else on the page.
         if (targets.length === 0) return;
@@ -1415,7 +1479,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       fc.on("selection:created", onSelectionCreated as (e: unknown) => void);
       fc.on("selection:updated", onSelectionCreated as (e: unknown) => void);
       const onSelectionCleared = () => {
-        selectElement(null);
+        if (!keepSelectionRef.current) selectElement(null);
         flushPendingReconcile();
       };
       fc.on("selection:cleared", onSelectionCleared);
@@ -1449,7 +1513,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         window.removeEventListener("keyup", onKeyUp);
         if (previewObjRef.current) { fc.remove(previewObjRef.current); previewObjRef.current = null; }
       };
-    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, selectWithPointer, upsertElement, removeElement, snapshot, undo, redo, copyElements, getPasted, startTextEdit]);
+    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, selectWithPointer, upsertElement, removeElement, snapshot, copyElements, getPasted, startTextEdit]);
 
     useEffect(() => {
       (canvasElRef.current as (HTMLCanvasElement & { _cacheImage?: typeof cacheImage }) | null)!._cacheImage = cacheImage;

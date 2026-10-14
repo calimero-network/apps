@@ -1,7 +1,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(5, 8, 11, 0.5);
+  background: rgba(14, 18, 34, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;

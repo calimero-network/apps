@@ -120,8 +120,13 @@ class MessageStore<
     for (const msg of messages) {
       // If already exists, treat as in-place update (e.g., reactions/edits)
       if (this.messageMap.has(msg.id)) {
-        // Merge all provided fields except id into the existing message
-        const { id: _ignoreId, ...rest } = msg as Partial<T> & { id: string };
+        // Merge all provided fields except id into the existing message. The
+        // nonce stays the row's own: it is part of computeKey, and a refresh
+        // brings a fresh one, which remounted the row (an open editor with it).
+        const { id: _ignoreId, nonce: _ignoreNonce, ...rest } = msg as Partial<T> & {
+          id: string;
+          nonce?: string;
+        };
         this._updateWithoutVersion(msg.id, rest as Partial<T>);
         updatedCount++;
         continue;

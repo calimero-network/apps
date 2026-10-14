@@ -3,11 +3,14 @@
     display: flex;
     width: 100%;
     height: fit-content;
+    // Breathing room under 23:00, so the last hour is not cut by the card edge.
+    padding-bottom: 12px;
   }
 
+  // The day labels and the all-day row: pinned above the scrolling hours.
   &__week__header__container {
-    padding-left: calc(48px + 8px);
-    box-shadow:  0px 4px 9px -7px rgb(0 0 0 / 20%);
+    flex: none;
+    padding: 6px 0 0 calc(52px + 8px);
     border-bottom: 1px solid var(--mc-grid-line);
   }
 }

@@ -24,6 +24,9 @@ export interface GroupAdminState {
 export function useGroupAdmin() {
   const [group, setGroup] = useState<GroupInfo | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
+  // TEE nodes admitted to the group. Not people, so never in `members`; their
+  // presence is what "TEE enabled" means for the namespace.
+  const [teeMembers, setTeeMembers] = useState<GroupMember[]>([]);
   const [subgroupCount, setSubgroupCount] = useState<number | null>(null);
   const [upgradeStatus, setUpgradeStatus] =
     useState<GroupUpgradeStatus | null>(null);
@@ -45,7 +48,10 @@ export function useGroupAdmin() {
       ]);
 
       if (groupResp.data) setGroup(groupResp.data);
-      if (membersResp.data) setMembers(membersResp.data.members);
+      if (membersResp.data) {
+        setMembers(membersResp.data.members);
+        setTeeMembers(membersResp.data.teeMembers);
+      }
       if (subgroupsResp.data) setSubgroupCount(subgroupsResp.data.length);
       if (upgradeResp.data !== undefined) setUpgradeStatus(upgradeResp.data);
 
@@ -365,6 +371,7 @@ export function useGroupAdmin() {
   return {
     group,
     members,
+    teeMembers,
     subgroupCount,
     upgradeStatus,
     loading,

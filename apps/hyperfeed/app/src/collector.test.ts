@@ -91,3 +91,10 @@ describe("helpers", () => {
     expect(appKeyForPackage(undefined, "ABCDEF123456")).toBe("app-abcdef12");
   });
 });
+
+describe("BUILT_IN", () => {
+  it("ships a lens for each core app, under the key its package gets", () => {
+    const packages = ["chat", "calendar", "sheets", "issue-tracker", "crm", "sign", "pass"].map((a) => `com.calimero.mero-${a}`);
+    expect(Object.keys(BUILT_IN).sort()).toEqual(packages.map((p) => appKeyForPackage(p, "id")).sort());
+  });
+});

@@ -149,7 +149,11 @@ test("you create your feed and answer a notification in place", async ({ page })
   const question = open[0]!;
   expect(question.chain, "the question joined Maya's chain").toBe(await chainOf(mero, contextId, recorded.id));
   await mero.rpc.execute({ contextId, method: "agent_ack", argsJson: { id: question.id, status: "thinking", note: "" } });
-  await expect(talk.getByText("Your agent is on it")).toBeVisible();
+  // On the open row: your agent's turn under your question, with Stop, without leaving the feed,
+  // and said once: the row's line drops its "on it" pill while the turn shows.
+  await expect(talk.getByRole("button", { name: /^Working…/ })).toBeVisible();
+  await expect(talk.getByRole("button", { name: "Stop" })).toBeVisible();
+  await expect(talk.locator(".pill", { hasText: "Your agent is on it" })).toHaveCount(0);
   await mero.rpc.execute({
     contextId,
     method: "agent_say",

@@ -6,6 +6,7 @@ import { toDataUrl } from "./image";
 import { boundsOf, elementsToSvg, svgToPngDataUrl } from "./svgExport";
 import { saveDataUrl, saveText } from "./saveFile";
 import type { LabelPatch } from "./groups";
+import { visibleOnly } from "./layerFlags";
 
 /**
  * The side-effecting half of grouping: pushing label changes to the contract,
@@ -64,7 +65,8 @@ export interface ExportOptions {
 }
 
 /** Writes these elements out as one SVG file. */
-export async function exportElementsAsSvg(elements: Element[], options: ExportOptions): Promise<boolean> {
+export async function exportElementsAsSvg(all: Element[], options: ExportOptions): Promise<boolean> {
+  const elements = visibleOnly(all);
   if (elements.length === 0) return false;
   const imageData = await imageDataFor(elements, options.imageCache ?? {});
   const svg = elementsToSvg(elements, {
@@ -76,7 +78,8 @@ export async function exportElementsAsSvg(elements: Element[], options: ExportOp
 }
 
 /** Writes these elements out as one PNG, rasterised at 2×. */
-export async function exportElementsAsPng(elements: Element[], options: ExportOptions): Promise<boolean> {
+export async function exportElementsAsPng(all: Element[], options: ExportOptions): Promise<boolean> {
+  const elements = visibleOnly(all);
   if (elements.length === 0) return false;
   const imageData = await imageDataFor(elements, options.imageCache ?? {});
   const box = boundsOf(elements, options.padding ?? 0);
@@ -119,7 +122,8 @@ export async function flattenElements(
   if (elements.length === 0) throw new Error("Nothing to flatten");
   const imageData = await imageDataFor(elements, deps.imageCache);
   const svg = elementsToSvg(elements, { imageData });
-  const box = boundsOf(elements);
+  // The image is sized to what it paints; hidden members are not in it.
+  const box = boundsOf(visibleOnly(elements));
 
   const bytes = new TextEncoder().encode(svg);
   const { blobId } = await uploadBlob(

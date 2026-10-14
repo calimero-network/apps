@@ -1,18 +1,25 @@
+// The create / edit / view dialog: a solid float (what is under it never shows
+// through its text), centred in the scrim by `margin: auto` — see `.overlay` in
+// common.scss. Not `position: fixed` + `transform` any more: a fixed dialog
+// taller than a phone's screen had its title cut off above the viewport.
 .modal {
-  position: fixed;
-  background: var(--mc-surface);
+  position: relative;
+  margin: auto;
+  background: var(--glass-surface-solid);
   color: var(--mc-text);
-  padding: 20px 15px 20px 25px;
-  border: 1px solid var(--mc-border);
-  border-radius: 8px;
-  max-width: 600px;
+  padding: 22px 24px 22px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 24px;
+  max-width: 560px;
   width: 100%;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 100;
   cursor: auto;
-  box-shadow: var(--shadow);
+  box-shadow: var(--glass-shadow-float);
+  animation: mc-fade-in 0.15s ease-out;
+
+  @media screen and (max-width: 720px) {
+    padding: 18px 16px;
+    border-radius: 20px;
+  }
 
   &__content {
     display: flex;
@@ -20,17 +27,31 @@
     width: 100%;
 
     &__close {
-      margin-left: auto;
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 2;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       outline: none;
       border: none;
       cursor: pointer;
-      border-radius: 50%;
-      width: 24px;
-      height: 24px;
+      border-radius: 999px;
+      width: 36px;
+      height: 36px;
       background: transparent;
-      color: var(--mc-text);
+      color: var(--glass-ink-2);
       font-size: 18px;
-      font-weight: 500;
+
+      &:hover {
+        background: var(--glass-sunken);
+        color: var(--glass-ink);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--accent);
+      }
     }
   }
 
@@ -38,7 +59,9 @@
     display: flex;
     flex-direction: column;
 
+    // Start date, times, end date: one row of fields that wraps on a phone.
     &__date {
+      margin-top: 16px;
       display: flex;
       flex-wrap: wrap;
       align-items: center;
@@ -48,32 +71,55 @@
     &__time {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
+      color: var(--mc-text-dim);
       cursor: pointer;
 
       &__input {
-        background: var(--mc-surface);
+        height: 40px;
+        background: var(--glass-sunken);
         color: var(--mc-text);
-        border: 1px solid var(--mc-border);
-        border-radius: 4px;
-        padding: 4px 6px;
+        border: 1px solid var(--glass-line);
+        border-radius: 12px;
+        padding: 0 10px;
+        font: 550 14px/1 var(--font);
+        font-variant-numeric: tabular-nums;
+        color-scheme: inherit;
+        transition: border-color 0.15s, box-shadow 0.15s;
+
+        &:focus {
+          outline: none;
+          border-color: var(--accent);
+          box-shadow: 0 0 0 3px var(--accent-soft);
+        }
       }
     }
 
     &__textarea {
-      border: 1px solid var(--mc-border);
+      min-height: 84px;
+      border: 1px solid var(--glass-line);
       outline: none;
-      padding: 8px;
-      background-color: var(--mc-surface);
+      padding: 10px 12px;
+      background-color: var(--glass-sunken);
       color: var(--mc-text);
-      border-radius: 4px;
-      overflow: hidden;
+      font: 14px/1.45 var(--font);
+      border-radius: 14px;
+      overflow: auto;
       width: 100%;
       resize: vertical;
+      transition: border-color 0.15s, box-shadow 0.15s;
 
-      &:focus,
+      &::placeholder {
+        color: var(--mc-text-dim);
+      }
+
       &:hover {
+        border-color: var(--glass-line-strong);
+      }
+
+      &:focus {
         border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
       }
 
       &__container {
@@ -87,13 +133,41 @@
         margin-left: 8px;
         cursor: pointer;
         color: var(--mc-text);
+        font-size: 14px;
+        font-weight: 550;
       }
 
+      // "All day" and "Private" as two soft toggle chips.
       &__container {
         display: flex;
         flex-wrap: wrap;
-        gap: 18px;
+        gap: 8px;
         align-items: center;
+
+        label {
+          display: inline-flex;
+          align-items: center;
+          height: 38px;
+          padding: 0 14px 0 12px;
+          border-radius: 999px;
+          background: var(--glass-sunken);
+          cursor: pointer;
+        }
+
+        input[type="checkbox"] {
+          width: 16px;
+          height: 16px;
+          margin: 0;
+          accent-color: var(--accent-fill);
+          cursor: pointer;
+        }
+
+        small {
+          flex-basis: 100%;
+          margin: 0 0 0 4px;
+          color: var(--mc-text-dim);
+          font-size: 12.5px;
+        }
       }
     }
 
@@ -104,26 +178,23 @@
     }
 
     &__group {
-      margin-top: 20px;
+      margin-top: 18px;
 
       &__title {
         padding-left: 4px;
         color: var(--mc-text-dim);
-        font-size: 13px;
-        margin-bottom: 6px;
+        font-size: 11.5px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
       }
-    }
-
-    &__title {
-      color: var(--mc-text);
-      font-size: 22px;
-      border-bottom: 1px solid var(--mc-border);
     }
 
     &__error {
       color: var(--danger);
-      font-size: 12px;
-      margin-top: 6px;
+      font-size: 12.5px;
+      margin-top: 8px;
 
       &::first-letter {
         text-transform: uppercase;
@@ -131,30 +202,54 @@
     }
 
     &__time__separator {
-      padding-top: 4px;
-      padding-right: 11px;
+      color: var(--mc-text-dim);
+      padding: 0 2px;
     }
 
     &__btn {
-      margin: 8px;
-      margin-left: auto;
+      height: 44px;
+      margin: 22px 0 0 auto;
       border: none;
       color: var(--accent-text);
       background-color: var(--accent-fill);
-      padding: 9px 18px;
-      border-radius: 8px;
+      padding: 0 26px;
+      border-radius: 999px;
       cursor: pointer;
-      font-weight: 500;
+      font: 650 14.5px/1 var(--font);
+      box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
+      transition: background 0.15s;
 
       &:hover {
         background-color: var(--accent-fill-dim);
       }
 
+      &:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+      }
+
       &:disabled {
-        opacity: 0.55;
+        opacity: 0.5;
         cursor: not-allowed;
+        box-shadow: none;
       }
     }
+  }
+}
+
+// The title field: big, borderless, the thing the dialog is about. Two classes
+// deep so it outranks TextField's own `.text__field` sizing whatever order the
+// two stylesheets load in.
+.modal__form .modal__form__title {
+  color: var(--mc-text);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  padding: 6px 48px 10px 4px;
+  border-bottom: 1px solid var(--glass-line);
+
+  &::placeholder {
+    color: var(--mc-text-dim);
   }
 }
 
@@ -168,53 +263,76 @@
   gap: 6px;
   align-items: center;
   padding: 6px;
-  border: 1px solid var(--mc-border);
-  border-radius: 6px;
-  background: var(--mc-surface);
-  min-height: 40px;
+  border: 1px solid var(--glass-line);
+  border-radius: 14px;
+  background: var(--glass-sunken);
+  min-height: 44px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+
+  &:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
 }
 .peers__chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 12px;
+  height: 28px;
+  background: var(--glass-surface-solid);
+  box-shadow: 0 0 0 1px var(--glass-line-strong);
+  color: var(--mc-text);
+  font-size: 12.5px;
+  font-weight: 650;
+  padding: 0 8px 0 11px;
+  border-radius: 999px;
 }
 .peers__chipRemove {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
-  background: none;
-  color: inherit;
+  border-radius: 50%;
+  background: var(--glass-sunken);
+  color: var(--glass-ink-2);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1;
   padding: 0;
+
+  &:hover {
+    color: var(--glass-ink);
+  }
 }
 .peers__input {
   flex: 1;
   min-width: 120px;
+  height: 30px;
   border: none;
   outline: none;
   background: transparent;
   color: var(--mc-text);
-  font-size: 13px;
-  padding: 4px;
+  font: 14px var(--font);
+  padding: 0 6px;
+
+  &::placeholder {
+    color: var(--mc-text-dim);
+  }
 }
 .peers__dropdown {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(100% + 4px);
-  background: var(--mc-surface);
-  border: 1px solid var(--mc-border);
-  border-radius: 6px;
-  box-shadow: var(--shadow);
+  top: calc(100% + 6px);
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow-float);
   list-style: none;
   margin: 0;
-  padding: 4px;
+  padding: 6px;
   // 50, matching the colour picker and the shared Select, so which panel wins
   // does not depend on which component happens to be mounted.
   z-index: 50;
@@ -227,26 +345,26 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 10px;
-  border-radius: 5px;
+  padding: 9px 10px;
+  border-radius: 10px;
   cursor: pointer;
 
   &:hover {
-    background: var(--mc-hover);
+    background: var(--glass-sunken);
   }
 }
 .peers__optionName {
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--mc-text);
-  font-weight: 600;
+  font-weight: 650;
 }
 .peers__optionPk {
   font-size: 11px;
   color: var(--mc-text-dim);
-  font-family: monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .peers__empty {
-  padding: 10px;
-  font-size: 12px;
+  padding: 10px 4px 0;
+  font-size: 12.5px;
   color: var(--mc-text-dim);
 }

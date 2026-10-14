@@ -205,3 +205,19 @@ describe("bare text alignment", () => {
     expect(anchorX(elementToSvgNode(text({ text_align: "left" }, 600)))).toBe(100);
   });
 });
+
+describe("hidden layers", () => {
+  it("are left out of the SVG and of its default bounds", () => {
+    const svg = elementsToSvg([
+      el({ id: "shown", x: 0, y: 0, fill: "#111111" }),
+      el({ id: "gone", x: 500, y: 500, fill: "#222222", hidden: true }),
+    ]);
+    expect(svg).toContain("#111111");
+    expect(svg).not.toContain("#222222");
+    expect(svg).toContain('viewBox="0 0 100 50"');
+  });
+
+  it("a locked layer is still exported", () => {
+    expect(elementsToSvg([el({ id: "a", fill: "#333333", locked: true })])).toContain("#333333");
+  });
+});

@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
-import { resolvable, timeLabel } from "./format";
-import { AskAgent, Badge, Choices, LATER_MS, Resolver, Status } from "./FeedView";
+import { laneOf, resolvable, timeLabel } from "./format";
+import { AskAgent, Badge, Choices, LATER_MS, Resolver, RowBody, Status, turnShows } from "./FeedView";
 import { agentDigest, digestLine, groupSentence, headlineOf, isNoise, teamGroups, type Headline, type TeamGroup } from "./team";
 
 const appName = (key: string) => appLook(key).name;
@@ -15,9 +15,43 @@ const appName = (key: string) => appLook(key).name;
  * what your team did around you, one card per subject however many updates
  * it had. Your agent's work is one digest card, not a row per step: you open
  * it when you want the detail. Reads your agent made never show.
+ *
+ * What you ask your agent, a card you discuss, and a row the bell points at
+ * open here, under the ask box, as a row opens in Lanes: its answer, your
+ * agent's turn, the flow and a box to say more. Chat is a click away.
  */
-export function TeamView({ feed, query, onChat }: { feed: Feed; query: string; onChat?: (chain: string) => void }) {
+export function TeamView({
+  feed,
+  query,
+  onChat,
+  focus = "",
+  onFocused,
+}: {
+  feed: Feed;
+  query: string;
+  /** Open a conversation in Chat; without it, nothing offers a way there. */
+  onChat?: (chain: string) => void;
+  /** A chain to open here once the feed has it, as the bell asks; "" for none. */
+  focus?: string;
+  onFocused?: () => void;
+}) {
   const { page } = feed;
+  const [open, setOpen] = useState<string | null>(null);
+  const current = open ? ((page?.items ?? []).find((i) => i.chain === open) ?? null) : null;
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (current) panel.current?.scrollIntoView?.({ block: "nearest" });
+  }, [current?.chain]);
+  // Once per focus: then it closes as you like.
+  const focused = useRef("");
+  useEffect(() => {
+    if (!focus) focused.current = "";
+    if (!focus || !page || focused.current === focus) return;
+    focused.current = focus;
+    setOpen(focus);
+    onFocused?.();
+  }, [focus, page, onFocused]);
+  const close = useCallback(() => setOpen(null), []);
   const items = useMemo(() => {
     const all = (page?.items ?? []).filter((i) => !isNoise(i));
     const q = query.trim().toLowerCase();
@@ -31,7 +65,37 @@ export function TeamView({ feed, query, onChat }: { feed: Feed; query: string; o
 
   return (
     <main className="team">
-      <AskAgent feed={feed} chain="" label="Ask your agent" onPosted={(m) => onChat?.(m.chain)} />
+      <AskAgent feed={feed} chain="" label="Ask your agent" onPosted={(m) => setOpen(m.chain)} />
+
+      {current && (
+        <section ref={panel} className="team-open" aria-label="Open conversation">
+          <header className="team-head">
+            <Sentence h={headlineOf(current, appName)} />
+            <span className="grow" />
+            {/* While your agent works, its turn below says so. */}
+            {!turnShows(current) && <Status item={current} />}
+            <button type="button" className="link small" onClick={close}>
+              Close
+            </button>
+          </header>
+          {/* What needs you is settled on its card below: here, the rest of it. */}
+          <RowBody
+            item={current}
+            lane={laneOf(current)}
+            card={current.needs_you}
+            feed={feed}
+            onChat={onChat}
+            onArchive={(i) => {
+              close();
+              void feed.archive([i.chain]);
+            }}
+            onLater={(i) => {
+              close();
+              void feed.later(i.chain, Date.now() + LATER_MS, "Back in 3 hours");
+            }}
+          />
+        </section>
+      )}
 
       {feed.error && (
         <div className="error" role="alert">
@@ -55,7 +119,7 @@ export function TeamView({ feed, query, onChat }: { feed: Feed; query: string; o
             ) : (
               <ul className="team-cards">
                 {needsYou.map((item) => (
-                  <NeedsCard key={item.chain} item={item} feed={feed} onChat={onChat} />
+                  <NeedsCard key={item.chain} item={item} feed={feed} onDiscuss={setOpen} />
                 ))}
               </ul>
             )}
@@ -77,7 +141,7 @@ export function TeamView({ feed, query, onChat }: { feed: Feed; query: string; o
               )}
             </section>
 
-            <AgentCard items={digest.items} line={digestLine(digest)} onChat={onChat} />
+            <AgentCard items={digest.items} line={digestLine(digest)} onOpen={setOpen} />
           </div>
         </>
       )}
@@ -103,7 +167,7 @@ function Sentence({ h }: { h: Headline }) {
 }
 
 /** One thing that needs you, with everything it takes to settle it right on the card. */
-function NeedsCard({ item, feed, onChat }: { item: FeedItem; feed: Feed; onChat?: (chain: string) => void }) {
+function NeedsCard({ item, feed, onDiscuss }: { item: FeedItem; feed: Feed; onDiscuss: (chain: string) => void }) {
   const h = headlineOf(item, appName);
   return (
     <li className="team-card">
@@ -121,11 +185,9 @@ function NeedsCard({ item, feed, onChat }: { item: FeedItem; feed: Feed; onChat?
       <div className="actions">
         <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
         <span className="grow" />
-        {onChat && (
-          <button type="button" className="ghost small" onClick={() => onChat(item.chain)}>
-            Discuss
-          </button>
-        )}
+        <button type="button" className="ghost small" onClick={() => onDiscuss(item.chain)}>
+          Discuss
+        </button>
         <button
           type="button"
           className="ghost small"
@@ -182,7 +244,7 @@ function GroupPost({ group }: { group: TeamGroup }) {
 }
 
 /** Your agent's day as one card; open it for the list. */
-function AgentCard({ items, line, onChat }: { items: FeedItem[]; line: string; onChat?: (chain: string) => void }) {
+function AgentCard({ items, line, onOpen }: { items: FeedItem[]; line: string; onOpen: (chain: string) => void }) {
   const [open, setOpen] = useState(false);
   return (
     <section className="team-agent" aria-label="Your agent today">
@@ -202,13 +264,9 @@ function AgentCard({ items, line, onChat }: { items: FeedItem[]; line: string; o
             const h = headlineOf(i, appName);
             return (
               <li key={i.chain}>
-                {i.kind === "message" && onChat ? (
-                  <button type="button" className="link" onClick={() => onChat(i.chain)}>
-                    {h.object || i.title}
-                  </button>
-                ) : (
-                  <span>{h.object || i.title}</span>
-                )}
+                <button type="button" className="link" onClick={() => onOpen(i.chain)}>
+                  {h.object || i.title}
+                </button>
                 <Status item={i} />
               </li>
             );

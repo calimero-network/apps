@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { APP_ROUTE } from '../../config';
-import { Chip, DueChip, Empty, HealthDot, Money, Page, Row, StatusBadge, Table, Tabs } from '../../components/ui';
+import { Chip, DueChip, Empty, HealthDot, Money, Page, PageHead, StatusBadge, Table, TableCard, Tabs } from '../../components/ui';
 import { dealHealth, dealMatches, formatMoney } from '../../utils/crm';
 import { formatDate } from '../../utils/display';
 import { useAppCtx } from './appContext';
@@ -44,7 +44,7 @@ export default function DealsPage(): React.ReactElement {
   const total = rows.reduce((a, r) => a + r.deal.value, 0);
 
   const th = (key: SortKey, label: string, cls = '') => (
-    <th className={cls}>
+    <th className={cls} aria-sort={sort === key ? (key === 'value' || key === 'created' ? 'descending' : 'ascending') : undefined}>
       <button
         onClick={() => setSort(key)}
         style={{ all: 'unset', cursor: 'pointer', color: sort === key ? t.color.text : undefined }}
@@ -56,36 +56,37 @@ export default function DealsPage(): React.ReactElement {
 
   return (
     <Page>
-      <Row $wrap $gap={12}>
+      <PageHead>
         <Tabs role="group" aria-label="Deal status">
           {(['open', 'won', 'lost', 'all'] as StatusTab[]).map((k) => (
             <button key={k} aria-pressed={tab === k} onClick={() => setTab(k)} data-testid={`deals-tab-${k}`}>
-              {k[0].toUpperCase() + k.slice(1)} <span style={{ opacity: 0.6 }}>{counts[k]}</span>
+              {k[0].toUpperCase() + k.slice(1)} <span style={{ opacity: 0.55, marginLeft: 2 }}>{counts[k]}</span>
             </button>
           ))}
         </Tabs>
-        <span style={{ marginLeft: 'auto', fontSize: 12.5, color: t.color.text2 }}>
-          {rows.length} deals · <strong style={{ color: t.color.text }}>{formatMoney(total, currency)}</strong>
+        <span className="stat end">
+          {rows.length} deals · <strong>{formatMoney(total, currency)}</strong>
         </span>
-      </Row>
+      </PageHead>
       {rows.length === 0 ? (
         <Empty>
           <strong>No {tab === 'all' ? '' : tab} deals{searchQuery.trim() ? ` matching “${searchQuery.trim()}”` : ''}</strong>
           {tab === 'open' && 'Add one with + Deal, or press N.'}
         </Empty>
       ) : (
+        <TableCard>
         <Table data-testid="deals-table">
           <thead>
             <tr>
               <th style={{ width: 18 }} aria-label="Health" />
               <th>Deal</th>
               {th('value', 'Value', 'num')}
-              <th>Stage</th>
-              <th>Owner</th>
+              <th className="hide-sm">Stage</th>
+              <th className="hide-sm">Owner</th>
               <th>Next step</th>
-              {th('close', 'Expected close')}
-              {th('health', 'Health')}
-              {th('created', 'Added')}
+              {th('close', 'Expected close', 'hide-sm')}
+              {th('health', 'Health', 'num hide-sm')}
+              {th('created', 'Added', 'hide-sm')}
             </tr>
           </thead>
           <tbody>
@@ -97,25 +98,26 @@ export default function DealsPage(): React.ReactElement {
                   <div className="muted">{[deal.organization, deal.contact_name].filter(Boolean).join(' · ') || '—'}</div>
                 </td>
                 <td className="num"><Money value={deal.value} currency={currency} /></td>
-                <td>
+                <td className="hide-sm">
                   {deal.status === 'open' ? (stageName.get(deal.stage_id) ?? '—') : <StatusBadge status={deal.status} />}
                 </td>
-                <td>{deal.owner ?? <span className="muted">Unassigned</span>}</td>
+                <td className="hide-sm">{deal.owner ?? <span className="muted">Unassigned</span>}</td>
                 <td>
                   {deal.status !== 'open' ? <span className="muted">{deal.lost_reason || '—'}</span>
                     : deal.next_activity ? <DueChip kind={deal.next_activity.kind} dueAt={deal.next_activity.due_at} subject={deal.next_activity.subject} now={now} />
                       : <Chip $color={t.color.high}>None</Chip>}
                 </td>
-                <td className={deal.expected_close && deal.expected_close < now && deal.status === 'open' ? '' : 'muted'}
+                <td className={deal.expected_close && deal.expected_close < now && deal.status === 'open' ? 'hide-sm' : 'muted hide-sm'}
                   style={deal.expected_close && deal.expected_close < now && deal.status === 'open' ? { color: t.color.urgent } : undefined}>
                   {deal.expected_close ? formatDate(deal.expected_close) : '—'}
                 </td>
-                <td className="num">{deal.status === 'open' ? health.score : '—'}</td>
-                <td className="muted">{formatDate(deal.created_at)}</td>
+                <td className="num hide-sm">{deal.status === 'open' ? health.score : '—'}</td>
+                <td className="muted hide-sm">{formatDate(deal.created_at)}</td>
               </tr>
             ))}
           </tbody>
         </Table>
+        </TableCard>
       )}
     </Page>
   );

@@ -2,9 +2,13 @@
   box-sizing: border-box;
 }
 
+/* Same as the body rule in styles/theme.css (this file loads after it, so it
+   must not undo the glass ground and fields with a flat background). */
 body {
-  font-family: Roboto, Arial, Helvetica, sans-serif;
-  background: var(--bg-0);
+  font-family: var(--font);
+  background-color: var(--bg-0);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: var(--text);
 }
 

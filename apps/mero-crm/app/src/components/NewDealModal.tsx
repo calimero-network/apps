@@ -200,21 +200,32 @@ export default function NewDealModal({
 }
 
 const Modal = styled.div`
-  width: 100%; max-width: 560px; background: ${t.color.panel};
-  border: 1px solid ${t.color.borderStrong}; border-radius: ${t.radiusModal};
-  box-shadow: 0 20px 60px rgba(0,0,0,0.55); color: ${t.color.text}; font-family: ${t.font.sans};
+  width: 100%; max-width: 580px; background: ${t.color.panel};
+  border: 1px solid ${t.color.edge}; border-radius: ${t.radiusModal};
+  box-shadow: ${t.shadowFloat}; color: ${t.color.text}; font-family: ${t.font.sans};
+  display: flex; flex-direction: column; max-height: calc(100dvh - 40px); overflow: hidden;
   header {
-    display: flex; align-items: center; padding: 14px 18px; border-bottom: 1px solid ${t.color.border};
-    h3 { font-size: 14px; font-weight: 600; margin: 0; }
-    .close { margin-left: auto; background: none; border: none; color: ${t.color.text3}; font-size: 20px; cursor: pointer; }
+    display: flex; align-items: center; padding: 20px 20px 4px 24px;
+    h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.03em; margin: 0; }
+    .close {
+      margin-left: auto; width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center;
+      background: none; border: none; color: ${t.color.text3}; font-size: 20px; cursor: pointer;
+      &:hover { background: ${t.color.hover}; color: ${t.color.text}; }
+    }
   }
-  .body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
-  .title { font-size: 15px; padding: 10px 12px; }
+  .body { padding: 16px 24px 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+  .title { font-size: 15px; padding: 10px 14px; min-height: 44px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
   .err { color: ${t.color.urgent}; font-size: 12.5px; margin: 0; }
   footer {
-    display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid ${t.color.border};
-    .hint { margin-right: auto; font-size: 11px; color: ${t.color.text3}; }
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 14px 20px 18px 24px;
+    border-top: 1px solid ${t.color.border};
+    .hint { margin-right: auto; font-size: 11.5px; color: ${t.color.text3}; }
+  }
+  @media (max-width: 560px) {
+    header { padding: 18px 16px 2px 18px; }
+    .body { padding: 14px 18px 16px; }
+    footer { padding: 12px 16px 16px 18px; }
   }
 `;

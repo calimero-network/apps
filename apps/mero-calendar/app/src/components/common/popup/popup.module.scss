@@ -1,40 +1,45 @@
+// The event's action menu, opened at the click point. A solid float, above
+// the top bar (30), the phone's Add event (40) and the dropdowns (50); it is
+// rendered from PopupProvider at the root, outside every frosted surface.
+.popup {
+  z-index: 1200;
+  position: absolute;
+  min-width: 168px;
+  padding: 6px;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow-float);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  animation: mc-fade-in 0.12s ease-out;
+}
+
 .btn__action {
   cursor: pointer;
   border: none;
   outline: none;
-  background: inherit;
-  height: 42px;
-  padding-left: 16px;
-  padding-right: 16px;
+  background: transparent;
+  color: var(--mc-text);
+  height: 40px;
+  padding: 0 14px 0 12px;
   width: 100%;
   display: flex;
   align-items: center;
-  line-height: 42px;
+  gap: 12px;
+  border-radius: 11px;
+  font: 600 14px/1 var(--font);
+  text-align: left;
 
-  &:hover {
-    background-color: var(--mc-hover);
-  }
-
-  &:active {
-    background-color: var(--mc-hover);
-  }
-  
-  &__text {
-    margin-left: 15px;
+  &:hover,
+  &:active,
+  &:focus-visible {
+    background-color: var(--glass-sunken);
   }
 }
 
-.popup {
-  z-index: 10;
-  position: absolute;
-  background: var(--mc-surface);
-  overflow: hidden;
-  border: 1px solid var(--mc-border);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
 /* The icon slot. The old markup used a GLOBAL class name ("delete-event-btn__icon")
    that no stylesheet in this app ever declared, so the icon had no box of its own
    and sat on the text baseline. */
@@ -42,8 +47,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   flex: none;
-  color: var(--mc-text-dim);
+  color: var(--glass-ink-2);
 }

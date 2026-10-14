@@ -11,6 +11,8 @@ import styles from "./Toolbar.module.css";
 import type { Member, CursorState } from "../types";
 import { validateSnapshot, type ProjectSnapshot } from "../utils/projectFile";
 import { useToast } from "../contexts/ToastContext";
+import { redoOnBoard, undoOnBoard } from "../api/history";
+import { createMutationReporter } from "../utils/mutationErrors";
 import ConfirmDialog from "./ConfirmDialog";
 import { STARTERS, type StarterId } from "../starter/starters";
 
@@ -194,7 +196,7 @@ interface Props {
 }
 
 export default function Toolbar({
-  contextId: _contextId,
+  contextId,
   onBack, onLogout,
   onExportPng, onExportSvg,
   onPreview,
@@ -212,18 +214,18 @@ export default function Toolbar({
   boardHasContent = false,
 }: Props) {
   countRender("Toolbar");
-  // Selector: the toolbar shows a tool, a background and two stack depths, and
-  // has no reason to re-render when an element moves or the selection changes.
-  const { activeTool, setTool, background, setBackground, undo, redo, undoStack, redoStack } = useCanvasStore(
+  // Selector: the toolbar shows a tool, a background and whether there is
+  // anything to undo or redo, and has no reason to re-render when an element
+  // moves or the selection changes. Booleans, not the stacks: every local edit
+  // replaces the undo stack.
+  const { activeTool, setTool, background, setBackground, canUndo, canRedo } = useCanvasStore(
     useShallow((s) => ({
       activeTool: s.activeTool,
       setTool: s.setTool,
       background: s.background,
       setBackground: s.setBackground,
-      undo: s.undo,
-      redo: s.redo,
-      undoStack: s.undoStack,
-      redoStack: s.redoStack,
+      canUndo: s.undoStack.length > 0,
+      canRedo: s.redoStack.length > 0,
     })),
   );
   // Loading the starter clears the board, so an occupied board asks once. Kept as
@@ -237,6 +239,7 @@ export default function Toolbar({
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [pendingImport, setPendingImport] = useState<{ name: string; snapshot: ProjectSnapshot } | null>(null);
   const { showToast } = useToast();
+  const reportFailure = createMutationReporter((m) => showToast(m, "error"));
 
   // Close options on outside click
   useEffect(() => {
@@ -399,15 +402,15 @@ export default function Toolbar({
             <p className={styles.optionsGroupLabel}>History</p>
             <button
               className={styles.optionsItem}
-              onClick={() => { undo(); setOptionsOpen(false); }}
+              onClick={() => { void undoOnBoard(contextId, reportFailure); setOptionsOpen(false); }}
               data-testid="undo-btn"
-              disabled={readOnly || undoStack.length === 0}
+              disabled={readOnly || !canUndo}
             >Undo (Ctrl+Z)</button>
             <button
               className={styles.optionsItem}
-              onClick={() => { redo(); setOptionsOpen(false); }}
+              onClick={() => { void redoOnBoard(contextId, reportFailure); setOptionsOpen(false); }}
               data-testid="redo-btn"
-              disabled={readOnly || redoStack.length === 0}
+              disabled={readOnly || !canRedo}
             >Redo (Ctrl+Y)</button>
           </div>
         )}

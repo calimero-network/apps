@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "events": {
+    "CalendarEventCreated": {
+      "type": "invite",
+      "read": [{ "as": "evs", "call": "get_events", "args": {} }],
+      "let": {
+        "at": "=evs[0].id == event ? 0 : evs[1].id == event ? 1 : evs[2].id == event ? 2 : evs[3].id == event ? 3 : evs[4].id == event ? 4 : evs[5].id == event ? 5 : evs[6].id == event ? 6 : evs[7].id == event ? 7 : evs[8].id == event ? 8 : evs[9].id == event ? 9 : evs[10].id == event ? 10 : evs[11].id == event ? 11 : evs[12].id == event ? 12 : evs[13].id == event ? 13 : evs[14].id == event ? 14 : evs[15].id == event ? 15 : evs[16].id == event ? 16 : evs[17].id == event ? 17 : evs[18].id == event ? 18 : evs[19].id == event ? 19 : evs[20].id == event ? 20 : evs[21].id == event ? 21 : evs[22].id == event ? 22 : evs[23].id == event ? 23 : evs[24].id == event ? 24 : evs[25].id == event ? 25 : evs[26].id == event ? 26 : evs[27].id == event ? 27 : evs[28].id == event ? 28 : evs[29].id == event ? 29 : evs[30].id == event ? 30 : evs[31].id == event ? 31 : 9999",
+        "e": "=evs[at]"
+      },
+      "show_if": "=e.id == event && !e.private && !mine(e.owner) && has(e.peers, me)",
+      "fields": {
+        "from": "=e.owner",
+        "what": "=e.title",
+        "when": "=e.start",
+        "where": "Calendar"
+      },
+      "title": "='Invited you to ' + e.title",
+      "needs_you": false
+    },
+    "CalendarEventEdited": "ignore",
+    "CalendarEventDeleted": "ignore",
+    "MemberJoined": "ignore",
+    "MemberUsernameUpdated": "ignore"
+  }
+}

@@ -32,7 +32,7 @@ const Navigation: FC<INavigationProps> = ({
             onClick={() => openModalCreate({ selectedDate: dayDate.date, type: 'long-event' })}
           >
             <span
-              className={cn(styles.day__label___name, {
+              className={cn(styles.day__label__name, {
                 [styles.day__label__name_today]: isTodayDay
               })}
             >
