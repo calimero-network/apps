@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The bundle lists `https://mero-chat-pwa.vercel.app` in `frontend-aliases`. A
+  node's sign-in page (auth-frontend v1.3.9, core 0.11.0-rc.86) trusts a login
+  callback from an alias too, so a node or Calimero Desktop launcher still
+  opening chat at its old address signs in instead of failing with "Login
+  callback destination is not allowed". Clients still open only
+  `links.frontend`.
 - The bundle's `links.frontend` is `https://chat.hyperfeed.me`, where chat is now
   served. A node's sign-in page trusts the login callback only at that origin, so
   a hosted login from chat.hyperfeed.me failed with "Login callback destination is
