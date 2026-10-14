@@ -1,9 +1,15 @@
 <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hyperfeed logo">
-  <rect width="64" height="64" rx="14" fill="#2f4be0"/>
-  <g fill="#ffffff">
-    <rect x="12" y="15" width="40" height="7" rx="3.5"/>
-    <rect x="12" y="28.5" width="28" height="7" rx="3.5"/>
-    <rect x="12" y="42" width="16" height="7" rx="3.5"/>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3e63f5"/>
+      <stop offset=".55" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#ec4899"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#ffffff"/>
+  <g transform="translate(0 13.8) skewX(-14) translate(0 -13.8)" fill="url(#g)">
+    <rect x="19.5" y="13.8" width="32.2" height="8.4" rx="4.2"/>
+    <rect x="19.5" y="27.8" width="23.8" height="8.4" rx="4.2" opacity=".75"/>
+    <rect x="19.5" y="41.8" width="14" height="8.4" rx="4.2" opacity=".5"/>
   </g>
-  <circle cx="44" cy="45.5" r="6.5" fill="#fdba74"/>
 </svg>

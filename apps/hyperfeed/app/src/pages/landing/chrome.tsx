@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useTheme } from "../../theme";
 import LoginPopup from "./loginPopup";
+import { BrandLockup } from "../../brand";
 
 export const GITHUB = "https://github.com/calimero-network/apps/tree/main/apps/hyperfeed";
 export const DOWNLOAD = "https://calimero.network/download";
@@ -38,38 +39,44 @@ export function LandingShell({ page, connect, children }: { page: "home" | "docs
   return (
     <div className="hl">
       <header className="hl-header">
-        <nav className="hl-wrap hl-nav" aria-label="Main">
-          <Link to="/" className="hl-brand">
-            <img src="/favicon.svg" alt="" width={26} height={26} />
-            hyperfeed
-          </Link>
-          <div className="hl-links">
-            <a className="hl-link" href={page === "home" ? "#lanes" : "/#lanes"}>
-              Product
-            </a>
-            <Link className="hl-link" to="/docs" aria-current={page === "docs" ? "page" : undefined}>
-              Docs
+        <div className="hl-wrap">
+          <nav className="hl-nav hl-glass" aria-label="Main">
+            <Link to="/" className="hl-brand" aria-label="Hyperfeed, powered by Calimero">
+              <BrandLockup size={26} />
             </Link>
-            <a className="hl-link" href={GITHUB} target="_blank" rel="noreferrer">
-              GitHub
-            </a>
-          </div>
-          <div className="hl-nav-end">
-            <ThemeButton />
-            <Link className="hl-btn hl-btn-ghost hl-btn-sm" to="/demo">
-              Try the demo
-            </Link>
-            <button type="button" className="hl-btn hl-btn-primary hl-btn-sm" onClick={connect}>
-              Open your feed
-            </button>
-          </div>
-        </nav>
+            <div className="hl-links">
+              <a className="hl-link" href={page === "home" ? "#why" : "/#why"}>
+                Why
+              </a>
+              <a className="hl-link" href={page === "home" ? "#features" : "/#features"}>
+                Features
+              </a>
+              <a className="hl-link" href={page === "home" ? "#private" : "/#private"}>
+                Privacy
+              </a>
+              <Link className="hl-link" to="/docs" aria-current={page === "docs" ? "page" : undefined}>
+                Docs
+              </Link>
+            </div>
+            <div className="hl-nav-end">
+              <ThemeButton />
+              <Link className="hl-btn hl-btn-ghost hl-btn-sm" to="/demo">
+                Try the demo
+              </Link>
+              <button type="button" className="hl-btn hl-btn-primary hl-btn-sm" onClick={connect}>
+                Open your feed
+              </button>
+            </div>
+          </nav>
+        </div>
       </header>
       <main>{children}</main>
       <footer className="hl-footer">
         <div className="hl-wrap hl-footer-row">
-          <span className="hl-footer-name">hyperfeed</span>
-          <span className="hl-muted">Open source, MIT · Built on Calimero</span>
+          <span className="hl-footer-name">
+            <BrandLockup size={22} />
+          </span>
+          <span className="hl-muted">Open source, MIT</span>
           <span className="hl-footer-links">
             <Link to="/docs">Docs</Link>
             <Link to="/demo">Demo</Link>
