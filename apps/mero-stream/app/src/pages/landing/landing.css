@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap');
+
 /* ══════════════════════════════════════════════════════════════════════════
    Shared app landing page — styles
 
@@ -40,36 +42,38 @@
    review and a share card, so it renders the same for everyone until asked
    otherwise. The toggle still works, and the choice still persists. */
 .cal-lp-root {
-  /* Calimero brand, taken from calimero.network: the green is #a5ff11, the
-     near-black #131215, the off-white #fcfcfc. Same green in BOTH themes — it
-     is the one constant across every app. */
-  --cal-lp-bg-0: #fcfcfc;
-  --cal-lp-bg-1: #ffffff;
+  /* The fleet's glass palette, shared with Hyperfeed: a cool off-white
+     ground, translucent white surfaces and one near-black ink. */
+  --cal-lp-bg-0: #f6f7fb;
+  --cal-lp-bg-1: rgba(255, 255, 255, 0.62);
   --cal-lp-bg-2: #ffffff;
-  --cal-lp-bg-3: #f2f2f3;
-  --cal-lp-border: #e4e4e6;
-  --cal-lp-border-strong: #c8c8c8;
-  --cal-lp-text: #131215;
-  --cal-lp-text-dim: #404040;
-  --cal-lp-text-faint: #8e8e8e;
+  --cal-lp-bg-3: rgba(14, 18, 34, 0.05);
+  --cal-lp-border: rgba(14, 18, 34, 0.08);
+  --cal-lp-border-strong: rgba(14, 18, 34, 0.16);
+  --cal-lp-text: #0e1222;
+  --cal-lp-text-dim: #3c4256;
+  --cal-lp-text-faint: #6f7589;
 
-  --cal-lp-accent: #a5ff11;
-  --cal-lp-accent-soft: rgba(165, 255, 17, 0.18);
-  /* Text ON the green. Near-black in both themes, because #a5ff11 is a fill
-     colour: white on it is unreadable. */
-  --cal-lp-accent-text: #131215;
-  /* Accent TEXT on the page background. #a5ff11 on white is ~1.5:1, so light
-     mode deepens the same hue to stay legible; dark mode uses the brand green
-     itself, which is what the marketing site does on #131215. */
-  --cal-lp-accent-ink: #5f9400;
-  --cal-lp-accent-hover: #b6ff3d;
+  /* Glass: one ink for every primary control, the brand gradient for marks,
+     and the app's own tint only in the light behind the page. */
+  --cal-lp-accent: #0e1222;
+  --cal-lp-accent-soft: rgba(62, 99, 245, 0.12);
+  /* Text ON the ink fill: white in light, the ground colour in dark. */
+  --cal-lp-accent-text: #ffffff;
+  /* Accent TEXT on the page: a blue that holds 4.5:1 on the glass. */
+  --cal-lp-accent-ink: #3451d1;
+  --cal-lp-accent-hover: #262c40;
+  --cal-lp-grad: linear-gradient(95deg, #3e63f5 0%, #8b5cf6 50%, #ec4899 100%);
+  --cal-lp-tint: #3e63f5;
+  --cal-lp-edge: rgba(255, 255, 255, 0.9);
+  --cal-lp-blur: blur(24px) saturate(180%);
 
-  --cal-lp-radius: 10px;
-  --cal-lp-radius-sm: 7px;
-  --cal-lp-radius-lg: 16px;
-  --cal-lp-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-  --cal-lp-shadow: 0 10px 34px rgba(19, 18, 21, 0.10);
-  --cal-lp-shadow-sm: 0 2px 10px rgba(19, 18, 21, 0.07);
+  --cal-lp-radius: 14px;
+  --cal-lp-radius-sm: 10px;
+  --cal-lp-radius-lg: 22px;
+  --cal-lp-font: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  --cal-lp-shadow: 0 1px 1px rgba(14, 18, 34, 0.03), 0 18px 40px -26px rgba(40, 50, 110, 0.4), 0 0 0 1px rgba(14, 18, 34, 0.06);
+  --cal-lp-shadow-sm: 0 1px 2px rgba(14, 18, 34, 0.05), 0 0 0 1px rgba(14, 18, 34, 0.06);
 
   /* Fixed chrome dimensions, so a host app's global CSS cannot make one app's
      header or hero a different height from another's. */
@@ -82,27 +86,36 @@
 
 /* Dark, and ONLY by explicit choice — see the note above the tokens. */
 .cal-lp-root[data-cal-lp-theme='dark'] {
-  --cal-lp-bg-0: #131215;
-  --cal-lp-bg-1: #1a191d;
-  --cal-lp-bg-2: #141216;
-  --cal-lp-bg-3: #232227;
-  --cal-lp-border: #2b2a30;
-  --cal-lp-border-strong: #3b3b3b;
-  --cal-lp-text: #fcfcfc;
-  --cal-lp-text-dim: #c8c8c8;
-  --cal-lp-text-faint: #8e8e8e;
-  --cal-lp-accent: #a5ff11;
-  --cal-lp-accent-soft: rgba(165, 255, 17, 0.14);
-  --cal-lp-accent-text: #131215;
-  --cal-lp-accent-ink: #a5ff11;
-  --cal-lp-accent-hover: #b6ff3d;
-  --cal-lp-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  --cal-lp-shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.4);
+  --cal-lp-bg-0: #0b0e18;
+  --cal-lp-bg-1: rgba(28, 33, 52, 0.62);
+  --cal-lp-bg-2: #161b2b;
+  --cal-lp-bg-3: rgba(255, 255, 255, 0.06);
+  --cal-lp-border: rgba(255, 255, 255, 0.08);
+  --cal-lp-border-strong: rgba(255, 255, 255, 0.16);
+  --cal-lp-text: #eceef5;
+  --cal-lp-text-dim: #c7ccd9;
+  --cal-lp-text-faint: #9097ab;
+  --cal-lp-accent: #eceef5;
+  --cal-lp-accent-soft: rgba(154, 175, 255, 0.14);
+  --cal-lp-accent-text: #0b0e18;
+  --cal-lp-accent-ink: #9aafff;
+  --cal-lp-accent-hover: #ffffff;
+  --cal-lp-edge: rgba(255, 255, 255, 0.08);
+  --cal-lp-shadow: 0 18px 40px -26px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --cal-lp-shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-/* An explicit background: a transparent root borrows whatever the host painted. */
+/* An explicit background: a transparent root borrows whatever the host painted.
+   The colour fields are images over that colour, so `background-color` stays
+   the plain ground (the generated spec asserts it). */
 .cal-lp-root {
-  background: var(--cal-lp-bg-0);
+  background-color: var(--cal-lp-bg-0);
+  background-image:
+    radial-gradient(900px 700px at -5% -10%, color-mix(in srgb, var(--cal-lp-tint) 26%, transparent) 0, transparent 62%),
+    radial-gradient(800px 640px at 105% 0%, rgba(236, 72, 153, 0.14) 0, transparent 60%),
+    radial-gradient(900px 760px at 85% 105%, color-mix(in srgb, var(--cal-lp-tint) 20%, transparent) 0, transparent 60%),
+    radial-gradient(760px 640px at -5% 100%, rgba(139, 92, 246, 0.12) 0, transparent 60%);
+  background-attachment: fixed;
   color: var(--cal-lp-text);
   font-family: var(--cal-lp-font);
   min-height: 100vh;
@@ -1769,4 +1782,100 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.001s !important;
   }
+}
+
+
+/* ── Glass ─────────────────────────────────────────────────────────────────
+   The fleet's shared look, the same as Hyperfeed's: frosted surfaces over the
+   app-tinted light, a floating header, pill buttons in one ink. Last in the
+   file on purpose: it restyles the shapes above without moving any layout, so
+   every class and every spec assertion keeps meaning what it meant. */
+/* The floating header's top margin must stay inside the page: let it escape
+   and the host app's own background shows as a strip above it (mero-chat's is
+   black). */
+.cal-lp-root {
+  display: flow-root;
+}
+.cal-lp-header {
+  top: 12px;
+  margin: 12px clamp(8px, 2vw, 22px) 0;
+  border: 1px solid var(--cal-lp-edge);
+  border-radius: 20px;
+  background: var(--cal-lp-bg-1);
+  -webkit-backdrop-filter: var(--cal-lp-blur);
+  backdrop-filter: var(--cal-lp-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--cal-lp-shadow);
+}
+.cal-lp-brand {
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+.cal-lp-brandicon {
+  border-radius: 7px;
+}
+.cal-lp-navlink {
+  border-radius: 999px;
+}
+.cal-lp-iconbtn {
+  border-radius: 999px;
+}
+.cal-lp-btn {
+  border-radius: 999px;
+}
+.cal-lp-btn--primary {
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
+}
+.cal-lp-btn--ghost {
+  border-color: var(--cal-lp-edge);
+  -webkit-backdrop-filter: var(--cal-lp-blur);
+  backdrop-filter: var(--cal-lp-blur);
+  box-shadow: var(--cal-lp-shadow-sm);
+}
+.cal-lp-section {
+  border-top: 0;
+}
+.cal-lp-section--alt {
+  background: transparent;
+}
+.cal-lp-kicker {
+  background: var(--cal-lp-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.cal-lp-root h1,
+.cal-lp-h2 {
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+.cal-lp-stage,
+.cal-lp-feature,
+.cal-lp-step,
+.cal-lp-chapter[data-cal-lp-active],
+.cal-lp-persona,
+.cal-lp-role,
+.cal-lp-plan,
+.cal-lp-cmp,
+.cal-lp-band,
+.cal-lp-faq,
+.cal-lp-code {
+  border: 1px solid var(--cal-lp-edge);
+  border-radius: var(--cal-lp-radius-lg);
+  background: var(--cal-lp-bg-1);
+  -webkit-backdrop-filter: var(--cal-lp-blur);
+  backdrop-filter: var(--cal-lp-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--cal-lp-shadow);
+}
+.cal-lp-faq {
+  padding: 4px 20px;
+}
+.cal-lp-faqrow:last-child {
+  border-bottom: 0;
+}
+.cal-lp-badge {
+  border-radius: 999px;
+}
+.cal-lp-footer {
+  border-top: 0;
 }

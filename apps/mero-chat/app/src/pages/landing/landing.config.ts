@@ -22,6 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/icons/icon-192x192.png",
   iconSrc: "/icons/icon-512x512.png",
   availability: "web+desktop",
+  tint: "#ffc93c",
   trust: ["Channels, threads and DMs", "No central server", "Messages on your nodes"],
   explainer: [
     "Team chat in the shape you already know — a workspace with public and private channels, threads, reactions and direct messages. The difference is where it lives: every channel is a Calimero context on your own nodes and the nodes of the people you invite, not on a vendor’s servers.",

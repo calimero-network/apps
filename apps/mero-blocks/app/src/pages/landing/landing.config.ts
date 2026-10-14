@@ -21,6 +21,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
+  tint: "#f59e0b",
   playableOffline: true,
   trust: ["No game server", "Deterministic world", "Plays offline"],
   explainer: [

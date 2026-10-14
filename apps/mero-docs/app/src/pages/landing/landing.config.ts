@@ -22,6 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/icons/icon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
+  tint: "#a3e635",
   trust: ["Folders have their own members", "Rich-text editing", "Private by default"],
   explainer: [
     "A document workspace: folders, rich-text documents, and the tags you need to find them again six months later. Each folder keeps its own documents, separate from the rest of the workspace.",
