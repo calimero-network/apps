@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useAudience } from "../components/AudienceShell";
-import { CategoryChip } from "../components/bits";
-import { CheckIcon, PlusIcon } from "../components/icons";
+import { Avatar, CategoryChip } from "../components/bits";
+import LogoutButton from "../components/LogoutButton";
+import { CheckIcon, MoonIcon, PlusIcon, SunIcon } from "../components/icons";
 import type { CategoryView } from "../generated/UpdatesClient";
-import { CATEGORY_COLORS, useLive, useUpdatesClient } from "../lib/updates";
+import { CATEGORY_COLORS, personLabel, useLive, useUpdatesClient } from "../lib/updates";
+import { useTheme } from "../theme";
 
 /** One click to a sensible taxonomy; every one of them editable after. */
 const STARTER_CATEGORIES = [
@@ -134,7 +136,56 @@ export default function SettingsPage() {
           </button>
         )}
       </section>
+
+      <AccountCard />
     </>
+  );
+}
+
+/**
+ * Your account: who this node signs you in as, the light/dark choice, and Log
+ * out. The sidebar's foot has Log out too; this is where someone looking for
+ * "account settings" ends up.
+ */
+function AccountCard() {
+  const { me } = useAudience();
+  const { theme, setTheme } = useTheme();
+  return (
+    <section className="card form accountCard" data-testid="account-card">
+      <div className="cardHead">
+        <h2 className="cardTitle">Your account</h2>
+        <p className="muted small">The appearance choice stays with this browser when you log out.</p>
+      </div>
+      <div className="accountRow">
+        {me && <Avatar name={me.name} account={me.account} team={me.is_team} />}
+        <div className="accountWho">
+          <strong>{me ? personLabel(me.name, me.account) : "…"}</strong>
+          <span className="muted small">{me?.firm || (me?.is_admin ? "Company admin" : "Company team")}</span>
+        </div>
+      </div>
+      <span className="fieldLabel" id="appearance-label">
+        Appearance
+      </span>
+      <div className="tabs segmented" role="radiogroup" aria-labelledby="appearance-label">
+        {(["light", "dark"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="radio"
+            className="tab"
+            aria-checked={theme === t}
+            onClick={() => setTheme(t)}
+            data-testid={`appearance-${t}`}
+          >
+            {t === "light" ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+            {t === "light" ? "Light" : "Dark"}
+          </button>
+        ))}
+      </div>
+      <div className="row accountActions">
+        <LogoutButton testId="settings-logout" />
+      </div>
+    </section>
   );
 }
 

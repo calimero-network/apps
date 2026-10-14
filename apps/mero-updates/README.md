@@ -15,7 +15,7 @@ help on an ask with one click, and ask the team questions of their own.
 | Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 35 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/e2e.yml`](logic/workflows/e2e.yml), 90 steps that call every contract method on real nodes |
 | Frontend | [`app/`](app): Vite, React and mero-react |
-| Browser suites | `tests/` has the shell and landing page (no node). `e2e/` runs the founder's whole flow against a real merod |
+| Browser suites | `tests/` has the shell, landing page and theme default (no node). `e2e/` runs the founder's whole flow, the light/dark switch and every Log out against a real merod |
 
 ---
 
