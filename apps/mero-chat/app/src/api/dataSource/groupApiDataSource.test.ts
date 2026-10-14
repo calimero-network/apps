@@ -15,6 +15,7 @@ const {
   mockListApplications,
   mockReparentGroup,
   mockUpgradeGroup,
+  mockListGroupMembers,
 } = vi.hoisted(() => ({
   // What `MeroJsBridge` records about the session; flipped per test.
   session: { isDelegated: false, applicationId: null as string | null },
@@ -30,6 +31,7 @@ const {
   mockListApplications: vi.fn(),
   mockReparentGroup: vi.fn(),
   mockUpgradeGroup: vi.fn(),
+  mockListGroupMembers: vi.fn(),
 }));
 
 // mero-js's `HTTPError`, as mero-react re-exports it: `status` plus the
@@ -78,6 +80,7 @@ vi.mock("../meroJsClient", () => ({
       listApplications: mockListApplications,
       reparentGroup: mockReparentGroup,
       upgradeGroup: mockUpgradeGroup,
+      listGroupMembers: mockListGroupMembers,
     },
   }),
 }));
@@ -108,6 +111,29 @@ describe("closed admin request bodies", () => {
     await new GroupApiDataSource().triggerUpgrade("g-1", { targetApplicationId: "app-2" });
 
     expect(mockUpgradeGroup).toHaveBeenCalledWith("g-1", { targetApplicationId: "app-2" });
+  });
+});
+
+describe("listMembers", () => {
+  // A TEE fleet node is admitted to the namespace and its subgroups as a
+  // member row. It used to show up in the channel's Members tab as a nameless
+  // `cb62…4c3c` user; it is infrastructure, so it is split out instead.
+  it("keeps TEE nodes out of `members` and reports them as `teeMembers`", async () => {
+    const replica = "c".repeat(64);
+    const relay = "d".repeat(64);
+    mockListGroupMembers.mockResolvedValue({
+      members: [
+        { identity: "a".repeat(64), role: "Admin", name: "Ronit" },
+        { identity: "b".repeat(64), role: "Member", name: "Xabi" },
+        { identity: replica, role: "ReadOnlyTee" },
+        { identity: relay, role: "RelayTee" },
+      ],
+    });
+
+    const response = await new GroupApiDataSource().listMembers("tee-group");
+
+    expect(response.data?.members.map((m) => m.alias)).toEqual(["Ronit", "Xabi"]);
+    expect(response.data?.teeMembers.map((m) => m.identity)).toEqual([replica, relay]);
   });
 });
 
