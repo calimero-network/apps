@@ -1,60 +1,78 @@
 :root {
-  --ground: #fafafa;
-  --surface: #ffffff;
-  --sunken: #f4f4f5;
-  --ink: #11181c;
-  --ink-2: #3f3f46;
-  --muted: #71717a;
-  --line: #e4e4e7;
-  --line-strong: #d4d4d8;
+  /* Light glass: soft colour fields behind frosted, translucent surfaces. */
+  --ground: #f6f7fb;
+  --surface: rgba(255, 255, 255, 0.66);
+  --surface-solid: #ffffff;
+  --sunken: rgba(14, 18, 34, 0.045);
+  --ink: #0e1222;
+  --ink-2: #3c4256;
+  --muted: #6f7589;
+  --line: rgba(14, 18, 34, 0.08);
+  --line-strong: rgba(14, 18, 34, 0.14);
+  --edge: rgba(255, 255, 255, 0.9);
   /* Text and links in the accent; --accent-solid is a fill white text sits on. */
-  --accent: #005bc4;
-  --accent-solid: #006fee;
-  --accent-ink: #004493;
-  --wait-bg: #fdedd3;
-  --wait-line: #f7c77a;
-  --wait-ink: #7a4a06;
+  --accent: #3451d1;
+  --accent-solid: #3e63f5;
+  --accent-ink: #263fae;
+  --brand-grad: linear-gradient(95deg, #3e63f5 0%, #8b5cf6 50%, #ec4899 100%);
+  --wait-bg: #fef0b8;
+  --wait-line: #f3d77a;
+  --wait-ink: #6b4e00;
   --wait-solid: #c4841d;
-  --bad-bg: #fee7ef;
+  --bad-bg: #ffe4ea;
   --bad-ink: #a2194b;
-  --good-bg: #e8faf0;
-  --good-ink: #0e6b37;
-  --busy-bg: #e6f1fe;
-  --busy-ink: #005bc4;
-  --plain-bg: #f4f4f5;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 0 0 1px var(--line);
-  --radius: 12px;
-  --display: "Space Grotesk", system-ui, sans-serif;
-  --body: "Geist", "IBM Plex Sans", system-ui, sans-serif;
+  --good-bg: #d6f7e6;
+  --good-ink: #0b6b43;
+  --busy-bg: #e3e9ff;
+  --busy-ink: #3451d1;
+  --plain-bg: rgba(14, 18, 34, 0.05);
+  --shadow: 0 1px 1px rgba(14, 18, 34, 0.03), 0 14px 36px -24px rgba(40, 50, 110, 0.4), 0 0 0 1px var(--line);
+  --glass-blur: blur(24px) saturate(180%);
+  --fields:
+    radial-gradient(900px 700px at -5% -10%, #d3defe 0, transparent 62%),
+    radial-gradient(800px 640px at 105% 0%, #f6d3ef 0, transparent 60%),
+    radial-gradient(900px 760px at 85% 105%, #ddd4ff 0, transparent 60%),
+    radial-gradient(760px 640px at -5% 100%, #d2f2e4 0, transparent 60%);
+  --radius: 16px;
+  --display: "Figtree", system-ui, -apple-system, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   color-scheme: light;
 }
 
 /* Dark: the app's own switch, or the system's when nothing was picked. */
 :root[data-theme="dark"] {
-  --ground: #000000;
-  --surface: #18181b;
-  --sunken: #27272a;
-  --ink: #ecedee;
-  --ink-2: #d4d4d8;
-  --muted: #a1a1aa;
-  --line: #27272a;
-  --line-strong: #3f3f46;
-  --accent: #8fc1ff;
-  --accent-solid: #006fee;
-  --accent-ink: #b8d8ff;
-  --wait-bg: #3a2a0a;
-  --wait-line: #6b4a12;
-  --wait-ink: #f7c76a;
+  /* Dark glass: the same fields, dimmed, behind smoked surfaces. */
+  --ground: #0b0e18;
+  --surface: rgba(28, 33, 52, 0.62);
+  --surface-solid: #161b2b;
+  --sunken: rgba(255, 255, 255, 0.06);
+  --ink: #eceef5;
+  --ink-2: #c7ccd9;
+  --muted: #9097ab;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --edge: rgba(255, 255, 255, 0.08);
+  --accent: #9aafff;
+  --accent-solid: #4a6cff;
+  --accent-ink: #c3cfff;
+  --wait-bg: #3a300f;
+  --wait-line: #6b5a1c;
+  --wait-ink: #f5dc8a;
   --wait-solid: #f5a524;
   --bad-bg: #3d0f1e;
   --bad-ink: #f78bb0;
-  --good-bg: #0b2e1b;
-  --good-ink: #6be3a0;
-  --busy-bg: #0b2a52;
-  --busy-ink: #8fc1ff;
-  --plain-bg: #27272a;
-  --shadow: 0 0 0 1px var(--line);
+  --good-bg: #0e3324;
+  --good-ink: #7fe0b0;
+  --busy-bg: #1c2650;
+  --busy-ink: #9aafff;
+  --plain-bg: rgba(255, 255, 255, 0.06);
+  --shadow: 0 18px 40px -26px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--line);
+  --fields:
+    radial-gradient(900px 700px at -5% -10%, rgba(62, 99, 245, 0.22) 0, transparent 62%),
+    radial-gradient(800px 640px at 105% 0%, rgba(236, 72, 153, 0.14) 0, transparent 60%),
+    radial-gradient(900px 760px at 85% 105%, rgba(139, 92, 246, 0.18) 0, transparent 60%),
+    radial-gradient(760px 640px at -5% 100%, rgba(52, 211, 153, 0.1) 0, transparent 60%);
   color-scheme: dark;
 }
 
@@ -64,7 +82,9 @@
 
 body {
   margin: 0;
-  background: var(--ground);
+  background: var(--fields), var(--ground);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
   color: var(--ink);
   font-family: var(--body);
   font-size: 15px;
@@ -3834,4 +3854,292 @@ body {
   color: var(--danger, #c0392b);
   font-size: 12px;
   margin: 0;
+}
+
+/* ── glass: the frosted surfaces every page shares ───────────────────────── */
+/* Last in the file on purpose: it restyles the shells above without touching
+   their layout. Large surfaces blur what is behind them; menus and panels that
+   float over content stay solid enough to read. */
+
+.topbar {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  margin: 12px 16px 0;
+  padding: 8px 12px 8px 16px;
+  border: 1px solid var(--edge);
+  border-radius: 20px;
+  background: var(--surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--shadow);
+}
+
+.brand {
+  font-family: var(--display);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.topbar .brand span {
+  font-size: 19px;
+}
+
+.topnav {
+  border-radius: 12px;
+  padding: 3px;
+}
+
+.topnav a {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.topnav a.on {
+  background: var(--surface-solid);
+  font-weight: 600;
+}
+
+.topbar .search input,
+.search input {
+  border-radius: 12px;
+  border-color: transparent;
+  background: var(--sunken);
+}
+
+.panel,
+.lane,
+.task,
+.card,
+.chat-main,
+.center-card,
+.detail,
+.team-card,
+.team-post,
+.stat,
+.empty {
+  border-color: var(--edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--shadow);
+}
+
+.panel,
+.center-card,
+.chat-main {
+  border-radius: 22px;
+}
+
+.lane,
+.task,
+.card,
+.team-card {
+  border-radius: var(--radius);
+}
+
+.task {
+  border-left-width: 1px;
+  border-left-color: var(--edge);
+  position: relative;
+}
+
+.task::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+}
+
+.task.tone-busy::before {
+  background: var(--busy-ink);
+}
+
+.task.tone-wait::before {
+  background: var(--wait-solid);
+}
+
+.task.tone-bad::before {
+  background: var(--bad-ink);
+}
+
+.task.tone-good::before {
+  background: var(--good-ink);
+}
+
+/* Floating over content: solid, so what is under them never shows through the text. */
+.needs-panel,
+.switcher-menu,
+.app-panel,
+.chat-action,
+.ask {
+  background: var(--surface-solid);
+  border-color: var(--edge);
+}
+
+.needs-panel,
+.switcher-menu {
+  border-radius: 18px;
+  box-shadow: 0 30px 60px -30px rgba(20, 26, 60, 0.45), 0 0 0 1px var(--line);
+}
+
+button,
+.button {
+  border-radius: 12px;
+  border-color: var(--line-strong);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+button:not(:disabled):active,
+.button:active {
+  transform: translateY(1px);
+}
+
+.primary {
+  box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--accent-solid) 80%, transparent);
+}
+
+.primary:not(:disabled):hover {
+  filter: brightness(1.06);
+}
+
+.segmented,
+.view-switch {
+  border-radius: 12px;
+}
+
+.segmented button.on,
+.view-switch button.on {
+  background: var(--surface-solid);
+}
+
+input,
+textarea,
+select {
+  border-radius: 12px;
+}
+
+.chat-composer textarea,
+.reply-row textarea,
+.name-form input,
+.rule-add input {
+  background: var(--surface-solid);
+}
+
+.pill {
+  border-radius: 999px;
+}
+
+/* What waits on you: glass like the rest, marked by a warm edge and glow instead of a heavy outline. */
+.row.need,
+.row.need + .row.need,
+.card.needs,
+.team-card,
+.needs-panel-row,
+.rule-suggestion {
+  border-color: var(--edge);
+}
+
+.row.need,
+.card.needs {
+  position: relative;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 16px 36px -26px color-mix(in srgb, var(--wait-solid) 70%, transparent),
+    0 0 0 1px var(--line);
+}
+
+.row.need::before,
+.card.needs::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  width: 3px;
+  height: 28px;
+  border-radius: 0 3px 3px 0;
+  background: var(--wait-solid);
+}
+
+/* App badges: the app's own icon when it has one. */
+.badge.badge-icon {
+  background: none !important;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.badge.badge-icon img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* The mark: three feed lines in the brand gradient. */
+.brand-mark {
+  flex: none;
+}
+
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-lockup .powered {
+  display: grid;
+  gap: 3px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line-strong);
+  color: var(--muted);
+  font-family: var(--body);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.brand-lockup .powered small {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.brand-lockup .powered span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* The floating header takes about 16px more than the flat bar did: pages sized to the window give it back. */
+.chat {
+  height: calc(100vh - 140px);
+}
+
+.app-panel {
+  top: 88px;
+  height: calc(100vh - 112px);
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    margin: 8px 8px 0;
+    top: 8px;
+  }
+
+  .topbar .brand-lockup .powered {
+    display: none;
+  }
 }

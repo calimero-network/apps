@@ -405,6 +405,13 @@ function AppPanel({ url, title, onClose }: { url: string; title: string; onClose
 
 export function Badge({ app, size = "md" }: { app: string; size?: "sm" | "md" }) {
   const look = appLook(app);
+  if (look.icon) {
+    return (
+      <span className={`badge badge-${size} badge-icon`} aria-hidden="true">
+        <img src={look.icon} alt="" loading="lazy" />
+      </span>
+    );
+  }
   return (
     <span className={`badge badge-${size}`} style={{ background: look.color }} aria-hidden="true">
       {look.letters}
