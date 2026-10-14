@@ -228,6 +228,7 @@ describe("chat with your agent", () => {
       ask: { kind: "", prompt: "", options: [], draft: "" },
       grant: "",
       subject: "",
+      send_call: "",
     });
     render(<Harness backend={backend} start={q.chain} />);
     const card = await within(await screen.findByRole("log")).findByRole("group", { name: "Waiting for you: Send a message in Chat" });
