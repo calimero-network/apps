@@ -153,6 +153,41 @@ with tempfile.TemporaryDirectory() as t:
     check("main still diffs against its previous deploy",
           run(repo, FORUM, VERCEL_GIT_COMMIT_REF="main", VERCEL_GIT_PREVIOUS_SHA=base), vib.BUILD)
 
+print("── main read from the repository URL when origin cannot serve it")
+
+# Vercel's checkout has no `origin` it can fetch main from, so a PR's first
+# push fell back to building every app. The repository is public: main is read
+# from its URL instead. Here a local clone stands in for that URL.
+with tempfile.TemporaryDirectory() as t:
+    upstream = workspace(pathlib.Path(t) / "upstream")
+    (upstream / "scripts").mkdir()
+    for f in ("vercel-ignore-build.py", "ci-scope.py", "lockfile-fanout.py"):
+        (upstream / "scripts" / f).write_text((HERE.parent / f).read_text())
+
+    def u(*a: str, cwd: pathlib.Path = upstream) -> str:
+        return subprocess.run(["git", "-C", str(cwd), *a], check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    u("init", "-q", "-b", "main")
+    u("-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+    u("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+
+    # Vercel's view: a one-commit-deep checkout of the PR head, no origin.
+    clone = pathlib.Path(t) / "clone"
+    subprocess.run(["git", "clone", "-q", "--no-local", str(upstream), str(clone)], check=True)
+    u("remote", "remove", "origin", cwd=clone)
+    u("checkout", "-q", "-b", "pr", cwd=clone)
+    (clone / "apps/mero-chat/app/pr.html").write_text("<p>pr</p>")
+    u("-c", "user.name=t", "-c", "user.email=t@t", "add", "-A", cwd=clone)
+    u("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "pr: chat", cwd=clone)
+    u("update-ref", "-d", "refs/remotes/origin/main", cwd=clone)
+
+    first_push = dict(VERCEL_GIT_COMMIT_REF="pr", VERCEL_IGNORE_REPO_URL=str(upstream))
+    check("a PR's first push skips an app it does not change, with no origin",
+          run(clone, FORUM, **first_push), vib.SKIP)
+    check("and still builds the app it changes",
+          run(clone, CHAT, **first_push), vib.BUILD)
+
 if FAILURES:
     print(f"\n{len(FAILURES)} failed: {', '.join(FAILURES)}")
     sys.exit(1)
