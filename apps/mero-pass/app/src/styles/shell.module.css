@@ -1,10 +1,9 @@
-/* ── The app shell, in Calimero Cloud's console language ─────────────────────
+/* ── The app shell, in the fleet's light glass ───────────────────────────────
  *
- * Taken from `mdma/cloud` (the logged-in console) and the App Registry rather
- * than re-derived: a 64px glass bar on a hairline, one centred column, a lime
- * eyebrow over a 950-weight uppercase title, square cards on 1px lines that
- * strengthen on hover, uppercase tracked buttons and labels, and a lime fill
- * reserved for the one primary action.
+ * A floating, frosted header; one centred column; an accent eyebrow over a
+ * heavy title; frosted cards with a bright edge; pill buttons, with the near-
+ * black ink fill reserved for the one primary action; solid menus and dialogs
+ * over content.
  *
  * Shared by every app screen because they ARE the same screen at different
  * depths — teams, then the vaults in one, then the secrets in one. One module
@@ -17,7 +16,8 @@
 .root {
   position: relative;
   min-height: 100vh;
-  background: var(--page);
+  /* Transparent: the body carries the glass ground and its tinted fields. */
+  background: transparent;
   isolation: isolate;
 }
 
@@ -50,26 +50,29 @@
   height: 80vh;
   transform: translateX(-50%);
   pointer-events: none;
-  background: radial-gradient(
-    closest-side,
-    var(--accent-soft),
-    transparent 100%
-  );
+  background: none;
 }
 
 /* ── Header ───────────────────────────────────────────────────────────────── */
 
+/* The floating glass header every app in the fleet shares. */
 .header {
   display: flex;
   align-items: center;
   gap: 1.25rem;
-  padding: 0 32px;
-  height: 64px;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--page) 92%, transparent);
-  backdrop-filter: blur(12px);
+  margin: 12px 16px 0;
+  padding: 0 12px 0 20px;
+  height: 60px;
+  border: 1px solid var(--edge);
+  border-radius: 20px;
+  background: var(--surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    var(--glass-shadow);
   position: sticky;
-  top: 0;
+  top: 12px;
   z-index: 50;
 }
 
@@ -88,10 +91,9 @@
   background: none;
   border: none;
   padding: 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
@@ -125,8 +127,10 @@
   font-size: 11px;
   letter-spacing: 0;
   color: var(--ink-dim);
-  padding: 0.3rem 0.5rem;
-  border: 1px solid var(--border);
+  padding: 0.35rem 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sunken);
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -135,22 +139,22 @@
 }
 
 .logoutBtn {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid transparent;
+  padding: 0.5rem 0.875rem;
+  border: 0;
+  border-radius: 999px;
   background: none;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--ink-dim);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-2);
   white-space: nowrap;
   transition:
     color 0.2s ease,
-    border-color 0.2s ease;
+    background-color 0.2s ease;
 }
 .logoutBtn:hover {
   color: var(--ink);
-  border-color: var(--border-strong);
+  background: var(--sunken);
 }
 
 /* ── Column ───────────────────────────────────────────────────────────────── */
@@ -176,7 +180,7 @@
   gap: 0.75rem;
   margin-bottom: 0.875rem;
   font-size: 12px;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1.5;
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
@@ -192,19 +196,18 @@
 
 .title {
   font-size: clamp(2rem, 1.4rem + 1.6vw, 2.875rem);
-  font-weight: 950;
+  font-weight: 800;
   line-height: 1.04;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
+  letter-spacing: -0.035em;
   overflow-wrap: anywhere;
   margin-bottom: 0.75rem;
 }
 
 .subtitle {
   font-size: 1rem;
-  font-weight: 300;
+  font-weight: 400;
   line-height: 1.6;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   color: var(--ink-2);
   max-width: 64ch;
   margin-bottom: 2rem;
@@ -217,7 +220,7 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
@@ -262,13 +265,13 @@
 
 .input {
   flex: 1;
-  padding: 0.75rem 0.875rem;
+  padding: 0.75rem 1rem;
   border: 1px solid var(--border-strong);
-  border-radius: 0;
+  border-radius: 12px;
   font-size: 14px;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   outline: none;
-  background: var(--sunken);
+  background: var(--surface-2);
   color: var(--ink);
   min-width: 0;
   transition:
@@ -280,7 +283,7 @@
 }
 .input:focus {
   border-color: var(--accent-text);
-  box-shadow: inset 0 0 0 1px var(--accent-text);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .input::placeholder {
   color: var(--ink-dim);
@@ -289,8 +292,9 @@ select.input {
   cursor: pointer;
 }
 
-/* ONE button system: a lime primary, a neutral outline, a destructive. The
-   lime fill is the one primary action on a screen, never a wall of them. */
+/* ONE button system, all pills: an ink primary, a neutral solid, a
+   destructive. The ink fill is the one primary action on a screen, never a
+   wall of them. */
 .btn,
 .btnGhost,
 .btnDanger {
@@ -298,12 +302,11 @@ select.input {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border-radius: 0;
+  border-radius: 999px;
   border: 1px solid transparent;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: var(--tracking-button);
-  text-transform: uppercase;
   white-space: nowrap;
   transition:
     background-color 0.3s ease-out,
@@ -313,36 +316,39 @@ select.input {
 }
 
 .btn {
-  padding: 0.75rem 1.25rem 0.75rem calc(1.25rem + var(--tracking-button));
-  font-size: 12px;
+  min-height: 40px;
+  padding: 0.75rem 1.125rem 0.75rem calc(1.125rem + var(--tracking-button));
+  font-size: 14.5px;
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
+  box-shadow: var(--shadow-button);
 }
 .btn:hover:not(:disabled) {
-  box-shadow: var(--shadow-button);
+  filter: brightness(1.15);
 }
 .btn:active:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
 }
 .btn:disabled {
-  background: var(--surface-2);
-  border-color: var(--border);
+  background: var(--sunken);
+  border-color: transparent;
+  box-shadow: none;
   color: var(--ink-dim);
   cursor: not-allowed;
 }
 
 .btnGhost {
-  padding: 0.625rem 0.875rem 0.625rem calc(0.875rem + var(--tracking-button));
-  font-size: 11px;
-  background: transparent;
+  min-height: 36px;
+  padding: 0.625rem 1rem 0.625rem calc(1rem + var(--tracking-button));
+  font-size: 13.5px;
+  background: var(--surface-2);
   border-color: var(--border-strong);
-  color: var(--ink-2);
+  color: var(--ink);
 }
 .btnGhost:hover:not(:disabled) {
-  color: var(--accent-text);
-  border-color: var(--accent-text);
+  border-color: var(--ink-dim);
 }
 .btnGhost:disabled {
   opacity: 0.45;
@@ -350,9 +356,10 @@ select.input {
 }
 
 .btnDanger {
-  padding: 0.625rem 0.875rem 0.625rem calc(0.875rem + var(--tracking-button));
-  font-size: 11px;
-  background: transparent;
+  min-height: 36px;
+  padding: 0.625rem 1rem 0.625rem calc(1rem + var(--tracking-button));
+  font-size: 13.5px;
+  background: var(--surface-2);
   border-color: var(--danger-edge);
   color: var(--danger);
 }
@@ -371,9 +378,11 @@ select.input {
 .empty {
   padding: 2rem 1.5rem;
   border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
   color: var(--ink-2);
   font-size: 14px;
-  font-weight: 300;
+  font-weight: 400;
   line-height: 1.6;
   text-align: center;
 }
@@ -387,7 +396,8 @@ select.input {
   margin-bottom: 1rem;
   border: 1px solid var(--border);
   border-left-width: 3px;
-  background: var(--surface);
+  border-radius: 12px;
+  background: var(--surface-2);
 }
 
 .error {
@@ -440,47 +450,54 @@ select.input {
   width: 100%;
   min-height: 112px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 0;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   color: var(--ink);
   text-align: left;
-  transition: border-color 0.3s ease;
+  transition:
+    border-color 0.3s ease,
+    transform 0.2s ease;
 }
 .card:hover {
-  border-color: var(--border-strong);
+  transform: translateY(-1px);
 }
 
 .cardName {
   font-size: 1.125rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.15;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
+  letter-spacing: -0.01em;
   word-break: break-word;
   padding-right: 1.5rem;
 }
 
 .cardSub {
   margin-top: auto;
-  font-size: 11px;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font-size: 12.5px;
+  letter-spacing: 0;
   color: var(--ink-dim);
 }
 
-/* A card the viewer is a member of: the console's "glow" card — an accent
-   outline and a lime notch at the top-left corner. */
+/* A card the viewer is a member of: a teal glow along the edge and a short
+   tint bar at the top-left. */
 .cardJoined {
-  border-color: var(--accent-edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 16px 36px -26px color-mix(in srgb, var(--glass-tint) 80%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--glass-tint) 35%, transparent);
 }
 .cardJoined::before {
   content: '';
   position: absolute;
-  top: -1px;
-  left: -1px;
-  width: 48px;
-  height: 4px;
-  background: var(--accent);
+  top: 14px;
+  left: 0;
+  width: 3px;
+  height: 28px;
+  border-radius: 0 3px 3px 0;
+  background: var(--glass-tint);
 }
 
 .menuBtn {
@@ -494,7 +511,7 @@ select.input {
   justify-content: center;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: 0;
+  border-radius: 999px;
   font-size: 14px;
   color: var(--ink-dim);
   opacity: 0;
@@ -508,20 +525,22 @@ select.input {
 }
 .menuBtn:hover,
 .menuBtn:focus-visible {
-  color: var(--accent-text);
-  border-color: var(--accent-text);
+  color: var(--ink);
+  border-color: var(--ink-dim);
   opacity: 1;
 }
 
+/* Floating over content: solid, never frosted, so nothing behind it shows
+   through its text. */
 .dropdown {
   position: absolute;
   top: 42px;
   right: 0;
   min-width: 180px;
-  padding: 0.25rem;
-  background: var(--page);
-  border: 1px solid var(--border-strong);
-  border-radius: 0;
+  padding: 0.375rem;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--edge);
+  border-radius: 18px;
   box-shadow: var(--shadow-float);
   z-index: 100;
 }
@@ -531,10 +550,10 @@ select.input {
   width: 100%;
   text-align: left;
   padding: 0.625rem 0.75rem;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
   background: none;
   border: none;
   color: var(--ink-2);
@@ -543,7 +562,7 @@ select.input {
     color 0.1s;
 }
 .dropdownItem:hover {
-  background: var(--accent-soft);
+  background: var(--sunken);
   color: var(--ink);
 }
 
@@ -559,7 +578,7 @@ select.input {
 
 .tabs {
   display: flex;
-  gap: 0;
+  gap: 0.25rem;
   border-bottom: 1px solid var(--border);
   margin-bottom: 2rem;
   overflow-x: auto;
@@ -568,10 +587,9 @@ select.input {
 
 .tab {
   padding: 0.875rem 1rem 0.75rem;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--ink-dim);
   background: none;
   border: none;
@@ -598,8 +616,11 @@ select.input {
   gap: 1rem;
   padding: 1rem 1.25rem;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 0;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   transition: border-color 0.3s ease;
 }
 .row:hover {
@@ -626,8 +647,8 @@ select.input {
 }
 
 .rowSub {
-  font-size: 12px;
-  font-weight: 300;
+  font-size: 12.5px;
+  font-weight: 400;
   color: var(--ink-dim);
 }
 
@@ -651,18 +672,17 @@ select.input {
 }
 
 .sectionLabel {
-  font-size: 1.125rem;
-  font-weight: 950;
+  font-size: 1.25rem;
+  font-weight: 800;
   line-height: 1.15;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
+  letter-spacing: -0.02em;
   color: var(--ink);
   margin-bottom: 0.5rem;
 }
 
 .sectionHint {
   font-size: 14px;
-  font-weight: 300;
+  font-weight: 400;
   line-height: 1.6;
   color: var(--ink-2);
   margin-bottom: 1rem;
@@ -675,13 +695,12 @@ select.input {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.3rem 0.5rem 0.25rem calc(0.5rem + 0.14em);
-  border-radius: 0;
-  font-size: 10px;
+  padding: 0.3rem 0.625rem;
+  border-radius: 999px;
+  font-size: 11.5px;
   font-weight: 700;
   line-height: 1;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   white-space: nowrap;
   border: 1px solid var(--border-strong);
   color: var(--ink-2);
@@ -708,9 +727,10 @@ select.input {
   display: block;
   padding: 1rem 1.125rem;
   margin: 0.75rem 0 1rem;
-  background: var(--sunken);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-left: 2px solid var(--accent-text);
+  border-left: 3px solid var(--accent-text);
+  border-radius: 12px;
   font-family: var(--mono);
   font-size: 14px;
   line-height: 1.7;
@@ -728,7 +748,9 @@ select.input {
 
 @media (max-width: 720px) {
   .header {
-    padding: 0 16px;
+    margin: 8px 8px 0;
+    top: 8px;
+    padding: 0 8px 0 14px;
     gap: 0.75rem;
   }
   .back {
@@ -804,12 +826,18 @@ select.input {
 .attention {
   margin: 0 0 2rem;
   padding: 1.25rem 1.25rem 0.5rem;
-  border: 1px solid var(--accent-edge);
-  border-left: 3px solid var(--accent-text);
-  background: var(--accent-soft);
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--glass-wait-ink);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--glass-wait-bg) 55%, var(--surface));
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow);
 }
 .attention .row {
-  background: var(--surface);
+  background: var(--surface-2);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 .attention .row:last-child {
   margin-bottom: 0.75rem;

@@ -2,8 +2,8 @@
  *
  * Mounted at the app level (see the component doc), so it floats above whatever
  * route the link happened to land on rather than living in one page's layout.
- * Styled as the console's toast: square, a strong line, a lime rule down the
- * left.
+ * Floats over content, so it is solid glass (no blur): a rounded card with an
+ * accent rule down the left.
  */
 .wrap {
   position: fixed;
@@ -14,7 +14,7 @@
   z-index: 60;
   display: flex;
   justify-content: center;
-  padding: 76px 12px 12px;
+  padding: 84px 12px 12px;
   pointer-events: none;
 }
 
@@ -26,10 +26,10 @@
   flex-wrap: wrap;
   max-width: 760px;
   padding: 1rem 1.25rem;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--edge);
   border-left: 3px solid var(--accent-text);
-  border-radius: 0;
-  background: var(--surface-2);
+  border-radius: 18px;
+  background: var(--glass-surface-solid);
   box-shadow: var(--shadow-float);
   font-size: 14px;
   animation: mp-slide-in 0.3s ease-out;
@@ -49,20 +49,19 @@
 
 .sub {
   font-size: 13px;
-  font-weight: 300;
+  font-weight: 400;
   color: var(--ink-2);
 }
 
 .accept,
 .ghost {
-  border-radius: 0;
+  border-radius: 999px;
   padding: 0.75rem 1.1rem 0.75rem calc(1.1rem + var(--tracking-button));
   font-family: inherit;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: var(--tracking-button);
-  text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -76,8 +75,11 @@
   border: 1px solid var(--accent);
   color: var(--accent-ink);
 }
-.accept:hover:not(:disabled) {
+.accept {
   box-shadow: var(--shadow-button);
+}
+.accept:hover:not(:disabled) {
+  filter: brightness(1.15);
 }
 .accept:disabled {
   opacity: 0.5;
@@ -85,7 +87,7 @@
 }
 
 .ghost {
-  background: transparent;
+  background: var(--glass-surface-solid);
   border: 1px solid var(--border-strong);
   color: var(--ink-2);
 }

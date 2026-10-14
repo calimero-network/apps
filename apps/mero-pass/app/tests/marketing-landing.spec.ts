@@ -2,7 +2,7 @@
  * Landing page contract for Mero Pass.
  *
  * Hand-owned, like the page (src/pages/landing): Mero Pass left the fleet's
- * generated landing to be built in the calimero.network language. Needs no
+ * generated landing, and is restyled in the fleet's light glass. Needs no
  * node and no auth — the landing is the unauthenticated front door, so a plain
  * vite server is the whole harness.
  */
@@ -45,15 +45,22 @@ test.describe('Mero Pass landing page', () => {
     }
   });
 
-  test('is charcoal even when the app is set to light', async ({ page }) => {
-    // The marketing surfaces are dark only, like calimero.network and the
-    // Cloud site; the app's light choice must not leak onto the front door.
-    await page.evaluate(() => localStorage.setItem('mero-pass:theme', 'light'));
-    await page.reload();
+  test('opens on light glass, and follows the app into dark', async ({
+    page,
+  }) => {
+    // The fleet's glass look is light first, and the front door follows the
+    // app's own light/dark choice rather than pinning one.
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect(page.getByTestId('landing')).toHaveCSS(
       'background-color',
-      'rgb(19, 18, 21)',
+      'rgb(246, 247, 251)',
+    );
+    await page.evaluate(() => localStorage.setItem('mero-pass:theme', 'dark'));
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.getByTestId('landing')).toHaveCSS(
+      'background-color',
+      'rgb(11, 14, 24)',
     );
   });
 

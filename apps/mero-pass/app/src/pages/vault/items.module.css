@@ -1,14 +1,17 @@
 /* The vault as a password manager lays it out: categories on the left, the
-   items in the middle, the one you picked on the right. Same square hairline
-   language as the rest of the app; the lime appears only on what is active. */
+   items in the middle, the one you picked on the right. Glass for the frame
+   (bar, categories, list), a solid pane for the item whose values you read. */
 
 .main {
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
-  height: calc(100dvh - 64px);
+  gap: 12px;
+  /* The floating header: 12px above it, 60px tall. */
+  height: calc(100vh - 72px);
+  height: calc(100dvh - 72px);
+  padding: 12px 16px 16px;
   animation: mp-slide-in 0.3s ease-out;
 }
 
@@ -18,9 +21,13 @@
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border);
+  padding: 1rem 1.25rem 1rem 1.5rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-lg);
   background: var(--surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow);
 }
 
 .barTitle {
@@ -30,11 +37,10 @@
 
 .barName {
   margin: 0;
-  font-size: 1.375rem;
-  font-weight: 950;
+  font-size: 1.5rem;
+  font-weight: 800;
   line-height: 1.1;
-  text-transform: uppercase;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.03em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -42,8 +48,8 @@
 
 .barSub {
   margin: 0.25rem 0 0;
-  font-size: 12px;
-  font-weight: 300;
+  font-size: 12.5px;
+  font-weight: 400;
   color: var(--ink-dim);
 }
 
@@ -60,20 +66,21 @@
   align-items: center;
   gap: 1rem;
   padding: 0.75rem 1.5rem;
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
   font-size: 13px;
   line-height: 1.5;
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--glass-busy-bg) 70%, transparent);
   color: var(--ink-2);
 }
 .strip strong {
   color: var(--ink);
 }
 .stripWarn {
-  background: var(--warning-soft);
+  background: color-mix(in srgb, var(--glass-wait-bg) 75%, transparent);
 }
 .stripError {
-  background: var(--danger-soft);
+  background: color-mix(in srgb, var(--glass-bad-bg) 75%, transparent);
   color: var(--danger);
 }
 .strip a {
@@ -96,31 +103,37 @@
   min-height: 0;
   display: grid;
   grid-template-columns: 232px minmax(260px, 360px) 1fr;
+  gap: 12px;
 }
 
 .panes > * {
   min-height: 0;
   overflow-y: auto;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
 }
 
 /* Tools (health, trash, people…) take the list and detail columns together. */
 .wide {
   grid-column: 2 / -1;
   padding: 1.75rem 2rem 4rem;
+  background: var(--surface-2);
 }
 
 /* ── Sidebar ────────────────────────────────────────────────────────────── */
 
 .side {
-  border-right: 1px solid var(--border);
-  padding: 1rem 0 2rem;
+  padding: 1rem 0.625rem 2rem;
   background: var(--surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
 .sideLabel {
-  margin: 1.25rem 1.25rem 0.5rem;
-  font-size: 10px;
-  font-weight: 400;
+  margin: 1.25rem 0.75rem 0.5rem;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--ink-dim);
@@ -134,9 +147,10 @@
   align-items: center;
   gap: 0.75rem;
   width: 100%;
-  padding: 0.5rem 1.25rem;
+  padding: 0.5rem 0.75rem;
   border: 0;
   border-left: 2px solid transparent;
+  border-radius: 12px;
   background: transparent;
   color: var(--ink-2);
   font: inherit;
@@ -153,9 +167,11 @@
   outline-offset: -1px;
 }
 .sideActive {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
+  border-left-color: transparent;
+  background: var(--surface-2);
+  box-shadow: 0 0 0 1px var(--border);
   color: var(--ink);
+  font-weight: 600;
 }
 .sideActive .sideIcon {
   color: var(--accent-text);
@@ -183,8 +199,9 @@
 /* ── Item list ──────────────────────────────────────────────────────────── */
 
 .list {
-  border-right: 1px solid var(--border);
-  background: var(--page);
+  background: var(--surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   display: flex;
   flex-direction: column;
 }
@@ -196,9 +213,11 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--page);
+  margin: 0.625rem 0.625rem 0.25rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
   color: var(--ink-dim);
 }
 .search input {
@@ -217,6 +236,7 @@
 .kbd {
   padding: 0 0.375rem;
   border: 1px solid var(--border-strong);
+  border-radius: 6px;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--ink-dim);
@@ -224,7 +244,8 @@
 
 .listHead {
   padding: 0.75rem 1rem 0.375rem;
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--ink-dim);
@@ -235,11 +256,12 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  width: 100%;
-  padding: 0.625rem 1rem;
+  width: calc(100% - 1rem);
+  margin: 0 0.5rem 2px;
+  padding: 0.625rem 0.75rem;
   border: 0;
-  border-bottom: 1px solid var(--border);
   border-left: 2px solid transparent;
+  border-radius: 12px;
   background: transparent;
   color: var(--ink);
   font: inherit;
@@ -254,8 +276,9 @@
   outline-offset: -1px;
 }
 .rowActive {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
+  border-left-color: transparent;
+  background: var(--surface-2);
+  box-shadow: 0 0 0 1px var(--border);
 }
 .rowText {
   flex: 1;
@@ -273,8 +296,8 @@
 }
 .rowSub {
   margin-top: 0.125rem;
-  font-size: 12px;
-  font-weight: 300;
+  font-size: 12.5px;
+  font-weight: 400;
   color: var(--ink-dim);
 }
 
@@ -297,7 +320,8 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
+  border-radius: 10px;
   background: var(--surface-2);
   color: var(--ink);
   font-weight: 700;
@@ -309,6 +333,7 @@
 .tileLarge {
   width: 56px;
   height: 56px;
+  border-radius: 16px;
   font-size: 22px;
 }
 
@@ -316,15 +341,16 @@
   padding: 2.5rem 1.5rem;
   text-align: center;
   font-size: 13px;
-  font-weight: 300;
+  font-weight: 400;
   line-height: 1.6;
   color: var(--ink-dim);
 }
 
 /* ── Detail ─────────────────────────────────────────────────────────────── */
 
+/* Solid: this is where secret values are read, so nothing shows through. */
 .detailPane {
-  background: var(--page);
+  background: var(--surface-2);
 }
 
 .detail {
@@ -342,7 +368,7 @@
   text-align: center;
   color: var(--ink-dim);
   font-size: 14px;
-  font-weight: 300;
+  font-weight: 400;
 }
 
 .back {
@@ -362,8 +388,9 @@
 }
 .detailName {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 1.625rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   line-height: 1.2;
   word-break: break-word;
 }
@@ -382,7 +409,9 @@
 
 .fields {
   border: 1px solid var(--border);
-  background: var(--surface);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow: hidden;
 }
 
 .field {
@@ -404,7 +433,8 @@
 .fieldLabel {
   display: block;
   margin-bottom: 0.25rem;
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--ink-dim);
@@ -440,13 +470,14 @@
   width: 32px;
   height: 32px;
   border: 1px solid transparent;
+  border-radius: 999px;
   background: transparent;
   color: var(--ink-dim);
   cursor: pointer;
 }
 .icon:hover {
-  border-color: var(--border-strong);
-  color: var(--accent-text);
+  background: var(--sunken);
+  color: var(--ink);
 }
 .icon:focus-visible {
   outline: 1px solid var(--accent-text);
@@ -462,7 +493,9 @@
 }
 .meterBar {
   flex: 0 0 120px;
-  height: 3px;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
   background: var(--border);
 }
 .meterFill {
@@ -480,7 +513,7 @@
 .meta {
   margin-top: 1.5rem;
   font-size: 12px;
-  font-weight: 300;
+  font-weight: 400;
   line-height: 1.7;
   color: var(--ink-dim);
 }
@@ -488,6 +521,7 @@
 .sectionTitle {
   margin: 2rem 0 0.75rem;
   font-size: 11px;
+  font-weight: 700;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--ink-dim);
@@ -518,8 +552,9 @@
   z-index: 50;
   transform: translateX(-50%);
   padding: 0.75rem 1.25rem;
-  border: 1px solid var(--accent-edge);
-  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
   color: var(--ink);
   font-size: 13px;
   box-shadow: var(--shadow-float);
@@ -538,10 +573,8 @@
     grid-column: 1 / -1;
     display: flex;
     gap: 0.25rem;
-    padding: 0.5rem 1rem;
+    padding: 0.375rem 0.5rem;
     overflow-x: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
   }
   .panes {
     grid-template-rows: auto 1fr;
@@ -554,10 +587,7 @@
     flex-shrink: 0;
     padding: 0.375rem 0.75rem;
     border-left: 0;
-    border-bottom: 2px solid transparent;
-  }
-  .sideActive {
-    border-bottom-color: var(--accent);
+    border-radius: 999px;
   }
   .wide {
     grid-column: 1 / -1;
@@ -566,6 +596,12 @@
 }
 
 @media (max-width: 720px) {
+  .main {
+    height: calc(100vh - 68px);
+    height: calc(100dvh - 68px);
+    padding: 8px 8px 8px;
+    gap: 8px;
+  }
   .bar {
     flex-wrap: wrap;
     padding: 0.875rem 1rem;
@@ -581,6 +617,9 @@
   }
   .list {
     border-right: 0;
+  }
+  .panes {
+    gap: 8px;
   }
   /* One pane at a time: the list, or the item picked from it. */
   .panes[data-picked='true'] .list {

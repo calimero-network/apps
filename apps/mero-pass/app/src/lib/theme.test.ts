@@ -15,25 +15,25 @@ describe('theme', () => {
     delete document.documentElement.dataset.theme;
   });
 
-  it('defaults to dark without reading the OS preference', () => {
-    expect(DEFAULT_THEME).toBe('dark');
-    expect(getStoredTheme()).toBe('dark');
+  it('defaults to light without reading the OS preference', () => {
+    expect(DEFAULT_THEME).toBe('light');
+    expect(getStoredTheme()).toBe('light');
   });
 
   it('applying a theme does not save it', () => {
-    applyTheme('light');
-    expect(currentTheme()).toBe('light');
+    applyTheme('dark');
+    expect(currentTheme()).toBe('dark');
     expect(localStorage.getItem(THEME_KEY)).toBeNull();
   });
 
   it('choosing a theme saves and applies it', () => {
-    chooseTheme('light');
-    expect(currentTheme()).toBe('light');
-    expect(getStoredTheme()).toBe('light');
+    chooseTheme('dark');
+    expect(currentTheme()).toBe('dark');
+    expect(getStoredTheme()).toBe('dark');
   });
 
   it('ignores a stored value it does not know', () => {
     localStorage.setItem(THEME_KEY, 'sepia');
-    expect(getStoredTheme()).toBe('dark');
+    expect(getStoredTheme()).toBe('light');
   });
 });

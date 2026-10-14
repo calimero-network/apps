@@ -1,3 +1,5 @@
+// The fleet's shared light-glass look, first, so the app's own tokens map onto it.
+import '@calimero-apps/glass/glass.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

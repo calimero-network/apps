@@ -1,5 +1,7 @@
 // Screenshot harness entry. Renders the REAL pages against fixture modules, so
 // the images document the shipped UI rather than a re-implementation of it.
+// The shared glass look first, as in src/index.tsx.
+import '@calimero-apps/glass/glass.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -9,7 +11,7 @@ import TeamsPage from '../../src/pages/teams/TeamsPage';
 import TeamPage from '../../src/pages/team/TeamPage';
 import VaultPage from '../../src/pages/vault/VaultPage';
 import SecurityPage from '../../src/pages/security/SecurityPage';
-import { applyTheme } from '../../src/lib/theme';
+import { DEFAULT_THEME, applyTheme } from '../../src/lib/theme';
 import { scenarioById } from './fixtures';
 import '../../src/index.css';
 
@@ -17,7 +19,15 @@ const sc = scenarioById(
   new URLSearchParams(location.search).get('s') ?? 'teams',
 );
 
-applyTheme(sc.variant === 'light' ? 'light' : 'dark');
+// The app's default (light), unless the scenario or `?theme=` asks otherwise.
+const themeParam = new URLSearchParams(location.search).get('theme');
+applyTheme(
+  themeParam === 'dark' || themeParam === 'light'
+    ? themeParam
+    : sc.variant === 'light'
+      ? 'light'
+      : DEFAULT_THEME,
+);
 
 const initial =
   sc.page === 'team'
