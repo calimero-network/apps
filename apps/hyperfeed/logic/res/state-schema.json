@@ -284,6 +284,33 @@
         }
       ]
     },
+    "AgentAccount": {
+      "kind": "record",
+      "doc": "An agent's own account you added to the feed, by account.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The name it reports in with, and the only one it may speak as."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When you added it, or removed it; the later write wins."
+        },
+        {
+          "name": "removed",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Removed rows stay, so a removal is not undone by an older add merging in."
+        }
+      ]
+    },
     "AgentRule": {
       "kind": "record",
       "doc": "A standing rule for one agent only (\"Reply in one paragraph\" for your\nphone's agent): it goes into that agent's turns after your general rules,\nwhich every agent keeps. Only you add or remove one; removing keeps the\nrow with `removed`, like [`Rule`].",
@@ -631,7 +658,7 @@
               "kind": "string"
             }
           },
-          "doc": "The account that created the feed; the only one that writes to it."
+          "doc": "The account that created the feed. Only it decides; agents it adds\n(see `agent_accounts`) write the agent's side."
         },
         {
           "name": "actions",
@@ -1130,6 +1157,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Your rules for one agent only, by id. See [`AgentRule`]."
+        },
+        {
+          "name": "agent_accounts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AgentAccount"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Agents with accounts of their own that you added, by account. See [`members`]."
+        },
+        {
+          "name": "sends",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SendCall"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "The call that sends each draft for you to send, by the action's id."
         }
       ]
     },
@@ -1842,6 +1897,19 @@
           "type": {
             "kind": "u64"
           }
+        }
+      ]
+    },
+    "SendCall": {
+      "kind": "record",
+      "doc": "The call that sends a draft in its app, kept beside the action it belongs to.",
+      "fields": [
+        {
+          "name": "call",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`{\"method\": ..., \"args\": {...}}`, as a lens's `reply_call` is."
         }
       ]
     },

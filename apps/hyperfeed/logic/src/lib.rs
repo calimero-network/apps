@@ -1,7 +1,8 @@
 //! Hyperfeed — one feed for everything your agent did and every notification
 //! your apps sent you.
 //!
-//! A Hyperfeed context is **personal**: you create it, and only you write to it.
+//! A Hyperfeed context is **personal**: you create it, and only you write to it,
+//! with the cloud agents you add (see [`members`]).
 //! Two kinds of row land in it.
 //!
 //! **Actions** are recorded by your agent. When an agent acts for you in
@@ -76,9 +77,9 @@
 //!
 //! A peer's node folds deltas without executing this contract, so the owner
 //! check in [`Hyperfeed::require_owner`] binds honest nodes only. A Hyperfeed
-//! context is meant to have one member — you, on all your devices — so there is
-//! no other writer to defend against. Merge-time enforcement (a writer set of
-//! one) is the next step if a feed is ever shared.
+//! context's members are you, on all your devices, and the cloud agents you
+//! added, which are attested code. Merge-time enforcement (a writer set) is the
+//! next step if a feed is ever shared with anyone else.
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
@@ -118,6 +119,9 @@ pub use push::{
     PushDevice, PushDeviceInput, PushDeviceView, PushKey, PushKeyView, MAX_PUSH_DEVICES,
     MAX_PUSH_ENDPOINT, MAX_PUSH_KEY,
 };
+
+mod members;
+pub use members::{AgentAccount, AgentAccountView, SendCall, MAX_AGENT_ACCOUNTS};
 
 #[cfg(test)]
 mod tests;
@@ -1218,6 +1222,12 @@ pub struct ActionInput {
     /// chain of its own, joins this action's chain. Older agents omit it.
     #[serde(default)]
     pub subject: String,
+    /// For a draft you send yourself: the call that sends it in its app,
+    /// `{"method": ..., "args": {...}}`, where `"=answer"` in an arg is your
+    /// edit of the draft. Your client makes it as you when you approve; the
+    /// agent never does. Only on a proposal. See `members.rs`.
+    #[serde(default)]
+    pub send_call: String,
 }
 
 /// What your client saw for one notification.
@@ -1469,6 +1479,10 @@ pub struct SettingsView {
     /// Absent on a feed made before actions.
     #[serde(default)]
     pub action_modes: Vec<ActionModeView>,
+    /// Agents with accounts of their own you added, by name. Absent on a feed
+    /// made before them.
+    #[serde(default)]
+    pub agent_accounts: Vec<AgentAccountView>,
 }
 
 /// One of your standing rules, as settings shows it.
@@ -1526,7 +1540,8 @@ pub struct AgentView {
 
 #[app::state(emits = for<'a> Event<'a>)]
 pub struct Hyperfeed {
-    /// The account that created the feed; the only one that writes to it.
+    /// The account that created the feed. Only it decides; agents it adds
+    /// (see `agent_accounts`) write the agent's side.
     owner: LwwRegister<String>,
     actions: UnorderedMap<String, Action>,
     notifications: UnorderedMap<String, Notification>,
@@ -1598,6 +1613,10 @@ pub struct Hyperfeed {
     assignments: UnorderedMap<String, Assignment>,
     /// Your rules for one agent only, by id. See [`AgentRule`].
     agent_rules: UnorderedMap<String, AgentRule>,
+    /// Agents with accounts of their own that you added, by account. See [`members`].
+    agent_accounts: UnorderedMap<String, AgentAccount>,
+    /// The call that sends each draft for you to send, by the action's id.
+    sends: UnorderedMap<String, SendCall>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1726,6 +1745,8 @@ impl Hyperfeed {
             push_keys: UnorderedMap::new(),
             assignments: UnorderedMap::new(),
             agent_rules: UnorderedMap::new(),
+            agent_accounts: UnorderedMap::new(),
+            sends: UnorderedMap::new(),
         }
     }
 
@@ -2047,6 +2068,9 @@ impl Hyperfeed {
     /// An action as a row, with what it touched.
     fn action_row(&self, a: &Action) -> app::Result<FeedItem> {
         let mut item = Self::action_item(a);
+        if let Some(call) = self.send_call_of(&a.id)? {
+            item.reply_call = call;
+        }
         if let Some(s) = self.action_subjects.get(&a.id)? {
             item.subject = s.subject.clone();
         }
@@ -2615,7 +2639,7 @@ impl Hyperfeed {
     /// needed you is recorded with a breach, never dropped, unless the app's
     /// mode alone asked for you and its `grant` is a session you allowed.
     pub fn record_action(&mut self, input: ActionInput) -> app::Result<FeedItem> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_app(&input.app)?;
         Self::check_category(&input.category)?;
         Self::check_one_of("outcome", &input.outcome, OUTCOMES)?;
@@ -2641,10 +2665,25 @@ impl Hyperfeed {
             ));
         }
         Self::check_len("subject", &input.subject, MAX_KEY, false)?;
+        let sends = !input.send_call.is_empty();
+        if sends {
+            Self::check_send_call(&input.send_call)?;
+            if input.outcome != "proposed" {
+                return Err(AppError::msg(
+                    "a send_call belongs on a proposal: it is a draft you send yourself",
+                ));
+            }
+        }
 
         let now = now_ms();
-        let call = self.resolve_call(&input.app, &input.method, &input.category, input.writes)?;
+        let mut call =
+            self.resolve_call(&input.app, &input.method, &input.category, input.writes)?;
+        // A draft you send is the agent reading and proposing; the write is
+        // yours. So an app your agent may only read still takes one.
+        let writes = call.writes;
+        call.writes = writes && !sends;
         let verdict = self.verdict_for(&input.app, &call)?;
+        call.writes = writes;
         // An unknown or stale grant is not an error: the outcome still happened,
         // and is recorded with its breach.
         let granted = self.granted(&input.grant, &input.app, &call, now)?;
@@ -2676,7 +2715,8 @@ impl Hyperfeed {
             // What the app's actions say it is, when they name it.
             category: call.category,
             writes: call.writes,
-            undoable: input.undoable,
+            // The agent undoes what it did; it did not send this.
+            undoable: input.undoable && !sends,
             title: input.title,
             body: input.body,
             why: input.why,
@@ -2694,6 +2734,15 @@ impl Hyperfeed {
             }],
         };
         let mut item = Self::action_item(&action);
+        if sends {
+            self.sends.insert(
+                action.id.clone(),
+                SendCall {
+                    call: input.send_call.clone(),
+                },
+            )?;
+            item.reply_call = input.send_call;
+        }
         if !input.subject.is_empty() {
             let seen = Subject {
                 subject: input.subject,
@@ -2723,7 +2772,7 @@ impl Hyperfeed {
     /// a message of yours. A notification about it then joins `chain`, as
     /// for an action that names it.
     pub fn touch_subject(&mut self, chain: String, subject: String) -> app::Result<()> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         Self::check_len("subject", &subject, MAX_KEY, true)?;
         if !self.chain_exists(&chain)? {
@@ -2743,14 +2792,21 @@ impl Hyperfeed {
     }
 
     /// The agent reports what happened after you approved, asked for a retry,
-    /// or asked for an undo.
+    /// or asked for an undo. For a draft you send (one with a `reply_call`),
+    /// your client reports instead, once it sent it or the app refused.
     pub fn complete_action(
         &mut self,
         id: String,
         outcome: String,
         note: String,
     ) -> app::Result<FeedItem> {
-        self.require_owner()?;
+        // A draft you send is reported by your client, which sent it; any
+        // other action by the agent that carried it out.
+        if self.sends.get(&id)?.is_some() {
+            self.require_owner()?;
+        } else {
+            self.require_agent()?;
+        }
         Self::check_one_of("outcome", &outcome, &["done", "failed"])?;
         Self::check_len("note", &note, MAX_WHY, false)?;
         let action = self.get_action(&id)?;
@@ -2777,7 +2833,7 @@ impl Hyperfeed {
         outcome: String,
         note: String,
     ) -> app::Result<FeedItem> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_one_of("outcome", &outcome, &["delivered", "failed"])?;
         Self::check_len("note", &note, MAX_WHY, false)?;
         let n = self.get_notification(&id)?;
@@ -2798,7 +2854,7 @@ impl Hyperfeed {
     /// The agent takes up one of your messages (`thinking`), or gives up on it
     /// (`failed`, with why). Taking it up is how you know an agent is there.
     pub fn agent_ack(&mut self, id: String, status: String, note: String) -> app::Result<FeedItem> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_one_of("status", &status, &[STATUS_THINKING, STATUS_FAILED])?;
         Self::check_len("note", &note, MAX_WHY, false)?;
         let m = self.get_message(&id)?;
@@ -2862,7 +2918,7 @@ impl Hyperfeed {
         ask: Option<Ask>,
         headline: Option<String>,
     ) -> app::Result<FeedItem> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         let headline = Self::check_message(&text, headline, true)?;
         Self::check_len("reply_to", &reply_to, MAX_KEY, false)?;
@@ -2996,7 +3052,7 @@ impl Hyperfeed {
         spec: String,
         summary: String,
     ) -> app::Result<LensView> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_app(&app_key)?;
         Self::check_len("application_id", &application_id, MAX_KEY, true)?;
         Self::check_len("spec", &spec, MAX_LENS, true)?;
@@ -3242,7 +3298,7 @@ impl Hyperfeed {
     /// been in — and is stored as `<key>#1`, `<key>#2`, … Two devices reporting
     /// that occurrence derive the same id, so their rows still merge.
     pub fn record_notification(&mut self, input: NotificationInput) -> app::Result<FeedItem> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_len("key", &input.key, MAX_KEY, true)?;
         Self::check_app(&input.app)?;
         Self::check_len("source_context", &input.source_context, MAX_KEY, false)?;
@@ -3533,7 +3589,7 @@ impl Hyperfeed {
     /// up (`thinking`): "Running the tests", "Editing ChatView.tsx". Each call
     /// replaces the last, so you see its latest step and nothing piles up.
     pub fn agent_progress(&mut self, id: String, doing: String) -> app::Result<FeedItem> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_len("doing", &doing, MAX_TITLE, true)?;
         let m = self.get_message(&id)?;
         if m.from != FROM_YOU {
@@ -3571,7 +3627,7 @@ impl Hyperfeed {
         steps: Vec<TurnStep>,
         draft: String,
     ) -> app::Result<FeedItem> {
-        self.require_owner()?;
+        self.require_agent()?;
         if steps.len() > MAX_HISTORY {
             return Err(AppError::msg(format!(
                 "{} steps, limit is {MAX_HISTORY}",
@@ -3703,7 +3759,7 @@ impl Hyperfeed {
         ttl_ms: u64,
         agent: Option<String>,
     ) -> app::Result<LeaseView> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_lease(&chain, &session, ttl_ms)?;
         let agent = agent.unwrap_or_default();
         Self::check_len("agent", &agent, MAX_SHORT, false)?;
@@ -3740,7 +3796,7 @@ impl Hyperfeed {
         session: String,
         ttl_ms: u64,
     ) -> app::Result<LeaseView> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_lease(&chain, &session, ttl_ms)?;
         let now = now_ms();
         let mut lease = self
@@ -3764,7 +3820,7 @@ impl Hyperfeed {
     /// The session lets `chain` go at the end of its turn. Returns whether it
     /// held it: letting go of a chain it does not hold changes nothing.
     pub fn release_chain(&mut self, chain: String, session: String) -> app::Result<bool> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         Self::check_len("session", &session, MAX_KEY, true)?;
         let Some(mut lease) = self.leases.get(&chain)?.map(|l| l.clone()) else {
@@ -3800,7 +3856,7 @@ impl Hyperfeed {
         chain: String,
         input: CheckpointInput,
     ) -> app::Result<CheckpointView> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         if !self.chain_exists(&chain)? {
             return Err(AppError::msg(format!("no chain {chain}")));
@@ -3996,7 +4052,7 @@ impl Hyperfeed {
         why: String,
         chain: String,
     ) -> app::Result<RuleProposalView> {
-        self.require_owner()?;
+        self.require_agent()?;
         let text = Self::check_rule(&text)?;
         Self::check_len("why", &why, MAX_WHY, false)?;
         Self::check_len("chain", &chain, MAX_KEY, false)?;
@@ -4233,7 +4289,7 @@ impl Hyperfeed {
     /// An agent saying it is running. The feed shows it as live while it
     /// keeps reporting; mero-bot calls this every half minute.
     pub fn agent_seen(&mut self, name: String) -> app::Result<()> {
-        self.require_owner()?;
+        self.require_agent_as(&name)?;
         Self::check_len("name", &name, MAX_KEY, false)?;
         self.presence.insert(name, Presence { seen_at: now_ms() })?;
         Ok(())
@@ -4271,6 +4327,21 @@ impl Hyperfeed {
         Ok(())
     }
 
+    /// Add an agent with an account of its own (a cloud agent, say) under
+    /// `name`, the name it reports in with. From then on it works your feed as
+    /// your agent does, speaking only as `name`; what decides for you stays
+    /// yours. Adding it again renames it. It must also be a member of this
+    /// feed's context: invite it there as you would anyone.
+    pub fn add_agent_account(&mut self, account: String, name: String) -> app::Result<()> {
+        self.agent_account_add(account, name)
+    }
+
+    /// Stop an agent account working your feed. Remove it from the context
+    /// too, so it no longer reads it.
+    pub fn remove_agent_account(&mut self, account: String) -> app::Result<()> {
+        self.agent_account_remove(account)
+    }
+
     /// Assign `app_key` to `agent` (its name, as it reports in): from then on
     /// only that agent takes the app's work and calls it. An empty `agent`
     /// gives the app back to your default agent. Your agent's runtime refuses
@@ -4292,7 +4363,7 @@ impl Hyperfeed {
     /// An agent saying what it can reach: one line per agent profile it runs.
     /// Shown to you in Controls beside what you set with `set_access`.
     pub fn agent_reach(&mut self, name: String, lines: Vec<ReachLine>) -> app::Result<()> {
-        self.require_owner()?;
+        self.require_agent_as(&name)?;
         Self::check_len("name", &name, MAX_KEY, true)?;
         if lines.len() > MAX_REACH {
             return Err(AppError::msg(format!(
@@ -4664,6 +4735,7 @@ impl Hyperfeed {
             assignments,
             agent_rules: self.active_agent_rules()?,
             action_modes: self.action_mode_list()?,
+            agent_accounts: self.agent_account_list()?,
         })
     }
 }

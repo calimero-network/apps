@@ -107,6 +107,9 @@ export interface Feed {
   setAccess?: (agent: string, folders: Folder[], shell: boolean, web: boolean) => Promise<void>;
   /** Which agent works in an app; absent on a feed made before assignments. */
   setAssignment?: (app: string, agent: string) => Promise<void>;
+  /** Agents with accounts of their own (cloud agents); absent on a feed made before them. */
+  addAgentAccount?: (account: string, name: string) => Promise<void>;
+  removeAgentAccount?: (account: string) => Promise<void>;
   setPaused: (paused: boolean) => Promise<void>;
   /** Your standing rules: add one, remove one, or approve or dismiss one your agent suggested. */
   addRule: (text: string) => Promise<void>;
@@ -247,6 +250,15 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     (app: string, agent: string) => run((b) => (b.setAssignment ? b.setAssignment(app, agent) : Promise.resolve())),
     [run],
   );
+  const addAgentAccount = useCallback(
+    (account: string, name: string) =>
+      run((b) => (b.addAgentAccount ? b.addAgentAccount(account, name) : Promise.resolve())),
+    [run],
+  );
+  const removeAgentAccount = useCallback(
+    (account: string) => run((b) => (b.removeAgentAccount ? b.removeAgentAccount(account) : Promise.resolve())),
+    [run],
+  );
   const addAgentRule = useCallback(
     (agent: string, text: string) => run((b) => (b.addAgentRule ? b.addAgentRule(agent, text) : Promise.resolve())),
     [run],
@@ -293,7 +305,17 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     setAppKey,
     refresh,
     dismissError: useCallback(() => setError(null), []),
-    resolve: useCallback((id, decision, answer) => run((b) => b.resolveAction(id, decision, answer)), [run]),
+    resolve: useCallback(
+      (id, decision, answer) =>
+        run(async (b) => {
+          const item = await b.resolveAction(id, decision, answer);
+          // A draft for you to send: approving it sends it, from here, as you.
+          if (item.reply_call && (item.status === "approved" || item.status === "retrying")) {
+            await send(b, item, answer ?? "");
+          }
+        }),
+      [run],
+    ),
     answer: useCallback(
       (id, answer) =>
         run(async (b) => {
@@ -350,6 +372,8 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     setGuard: useCallback((category, enabled) => run((b) => b.setGuard(category, enabled)), [run]),
     setAccess: backend?.setAccess ? setAccess : undefined,
     setAssignment: backend?.setAssignment ? setAssignment : undefined,
+    addAgentAccount: backend?.addAgentAccount ? addAgentAccount : undefined,
+    removeAgentAccount: backend?.removeAgentAccount ? removeAgentAccount : undefined,
     setPaused: useCallback((paused) => run((b) => b.setPaused(paused)), [run]),
     addRule: useCallback((text) => run((b) => b.addRule(text)), [run]),
     removeRule: useCallback((id) => run((b) => b.removeRule(id)), [run]),
@@ -418,6 +442,23 @@ export async function deliver(b: FeedBackend, item: FeedItem, answer: string): P
     throw e;
   }
   await b.completeAnswer(item.id, "delivered", item.source_label ? `Sent in ${item.source_label}` : "Sent");
+}
+
+/**
+ * A draft your agent wrote for you to send, sent as you with the call it
+ * drafted, then reported. The agent never sends these. A refusal goes back to
+ * you as failed, with the app's own words, and can be approved again.
+ */
+export async function send(b: FeedBackend, item: FeedItem, answer: string): Promise<void> {
+  try {
+    // The answer is your edit of the draft; with none, the draft as written.
+    const call = fillReplyCall(item.reply_call, answer || item.ask.draft);
+    await b.callApp(item.source_context, call.method, call.args);
+  } catch (e) {
+    await b.completeAction(item.id, "failed", messageOf(e).slice(0, 900));
+    throw e;
+  }
+  await b.completeAction(item.id, "done", item.source_label ? `Sent in ${item.source_label}` : "Sent");
 }
 
 /** The item a list row refers to, or the first one when nothing is picked. */

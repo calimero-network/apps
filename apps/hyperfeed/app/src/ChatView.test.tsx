@@ -184,6 +184,7 @@ describe("chat with your agent", () => {
       ask: { kind: "choose", prompt: "Run it?", options: ["Allow once", "Allow for this session"], draft: "" },
       grant: "",
       subject: "",
+      send_call: "",
     });
     render(<Harness backend={backend} />);
     // The chat stays listed, and says it waits on you.
@@ -227,6 +228,7 @@ describe("chat with your agent", () => {
       ask: { kind: "", prompt: "", options: [], draft: "" },
       grant: "",
       subject: "",
+      send_call: "",
     });
     render(<Harness backend={backend} start={q.chain} />);
     const card = await within(await screen.findByRole("log")).findByRole("group", { name: "Waiting for you: Send a message in Chat" });
