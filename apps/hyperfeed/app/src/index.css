@@ -1864,6 +1864,37 @@ thead th {
   padding: 6px 8px;
 }
 
+.chat-action-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chat-action-where {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* What a proposal sends, or the message that reached you: readable before you decide, scrolls when long. */
+.chat-action-body {
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--sunken);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.chat-action-why {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .chat-event {
   align-self: center;
   font-size: 12px;
