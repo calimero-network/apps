@@ -24,8 +24,8 @@ const Overlay = styled.div`
 `;
 
 const Modal = styled.div`
-  background: #111113;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--glass-surface-solid);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
   border-radius: 14px;
   width: 90%;
   max-width: 460px;
@@ -39,20 +39,20 @@ const ModalHeader = styled.div`
   align-items: center;
   gap: 0.875rem;
   padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
 `;
 
 const IconBox = styled.div`
   width: 34px;
   height: 34px;
-  border-radius: 8px;
-  background: rgba(165, 255, 17, 0.1);
-  border: 1px solid rgba(165, 255, 17, 0.2);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--glass-accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-accent) 20%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #a5ff11;
+  color: var(--glass-accent);
 `;
 
 const HeaderText = styled.div`
@@ -61,7 +61,7 @@ const HeaderText = styled.div`
 `;
 
 const ModalTitle = styled.h2`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.3;
@@ -69,7 +69,7 @@ const ModalTitle = styled.h2`
 `;
 
 const ModalSub = styled.p`
-  color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--glass-ink) 35%, transparent);
   font-size: 0.72rem;
   margin: 0;
   line-height: 1.4;
@@ -78,16 +78,16 @@ const ModalSub = styled.p`
 const CloseBtn = styled.button`
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   cursor: pointer;
   padding: 4px;
-  border-radius: 6px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: color 0.15s, background 0.15s;
   flex-shrink: 0;
-  &:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+  &:hover { color: var(--glass-ink); background: color-mix(in srgb, var(--glass-ink) 8%, transparent); }
 `;
 
 const Body = styled.div`
@@ -102,10 +102,10 @@ const LoadingRow = styled.div`
   align-items: center;
   gap: 0.75rem;
   padding: 0.875rem 1rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.5);
+  background: color-mix(in srgb, var(--glass-ink) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
+  border-radius: 12px;
+  color: color-mix(in srgb, var(--glass-ink) 50%, transparent);
   font-size: 0.82rem;
 `;
 
@@ -113,8 +113,8 @@ const Spinner = styled.div`
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 2px solid rgba(165, 255, 17, 0.25);
-  border-top-color: #a5ff11;
+  border: 2px solid color-mix(in srgb, var(--glass-accent) 25%, transparent);
+  border-top-color: var(--glass-accent);
   animation: ${spin} 0.7s linear infinite;
   flex-shrink: 0;
 `;
@@ -126,8 +126,8 @@ const ErrorBanner = styled.div`
   padding: 0.75rem 1rem;
   background: rgba(255, 59, 59, 0.07);
   border: 1px solid rgba(255, 59, 59, 0.18);
-  border-radius: 8px;
-  color: #ff6b6b;
+  border-radius: 12px;
+  color: var(--glass-bad-ink);
   font-size: 0.82rem;
   line-height: 1.4;
 `;
@@ -135,35 +135,35 @@ const ErrorBanner = styled.div`
 const CopyBtn = styled.button<{ $copied: boolean }>`
   width: 100%;
   padding: 0.6rem 1rem;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
   border: 1px solid ${({ $copied }) =>
-    $copied ? "rgba(165,255,17,0.35)" : "rgba(255,255,255,0.1)"};
+    $copied ? "color-mix(in srgb, var(--glass-accent) 35%, transparent)" : "color-mix(in srgb, var(--glass-ink) 10%, transparent)"};
   background: ${({ $copied }) =>
-    $copied ? "rgba(165,255,17,0.1)" : "rgba(255,255,255,0.05)"};
-  color: ${({ $copied }) => ($copied ? "#a5ff11" : "rgba(255,255,255,0.7)")};
+    $copied ? "color-mix(in srgb, var(--glass-accent) 10%, transparent)" : "color-mix(in srgb, var(--glass-ink) 5%, transparent)"};
+  color: ${({ $copied }) => ($copied ? "var(--glass-accent)" : "color-mix(in srgb, var(--glass-ink) 70%, transparent)")};
 
   &:hover {
     background: ${({ $copied }) =>
-      $copied ? "rgba(165,255,17,0.12)" : "rgba(255,255,255,0.08)"};
-    color: ${({ $copied }) => ($copied ? "#a5ff11" : "#fff")};
+      $copied ? "color-mix(in srgb, var(--glass-accent) 12%, transparent)" : "color-mix(in srgb, var(--glass-ink) 8%, transparent)"};
+    color: ${({ $copied }) => ($copied ? "var(--glass-accent)" : "var(--glass-ink)")};
     border-color: ${({ $copied }) =>
-      $copied ? "rgba(165,255,17,0.4)" : "rgba(255,255,255,0.18)"};
+      $copied ? "color-mix(in srgb, var(--glass-accent) 40%, transparent)" : "color-mix(in srgb, var(--glass-ink) 18%, transparent)"};
   }
 `;
 
 const DoneBtn = styled.button`
   width: 100%;
   padding: 0.65rem 1rem;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
-  background: #a5ff11;
-  color: #0a0a0a;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
   border: none;
   transition: opacity 0.15s;
   &:hover { opacity: 0.88; }

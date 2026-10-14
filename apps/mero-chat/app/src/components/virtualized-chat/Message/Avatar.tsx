@@ -46,7 +46,7 @@ export const Avatar: React.FC<AvatarProps> = ({
       width: avatarSize,
       height: avatarSize,
       borderRadius: shape === "circle" ? "50%" : "12px",
-      backgroundColor: "#404040",
+      backgroundColor: "var(--glass-sunken)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -61,7 +61,7 @@ export const Avatar: React.FC<AvatarProps> = ({
     () => ({
       fontSize: avatarSize * 0.4,
       fontWeight: 600,
-      color: "#C8C8C8",
+      color: "var(--glass-ink-2)",
       textTransform: "uppercase" as const,
     }),
     [avatarSize],
@@ -92,7 +92,7 @@ export const Avatar: React.FC<AvatarProps> = ({
         height={avatarSize * 0.5}
         viewBox="0 0 24 24"
         fill="none"
-        style={{ color: "#C8C8C8" }}
+        style={{ color: "var(--glass-ink-2)" }}
       >
         <path
           d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"

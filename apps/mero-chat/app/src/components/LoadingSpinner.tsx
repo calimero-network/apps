@@ -8,7 +8,7 @@ export const LoadingSpinner = () => (
       justifyContent: "center",
       alignItems: "center",
       height: "100vh",
-      color: "#fff",
+      color: "var(--glass-ink)",
       fontSize: "1.2rem",
     }}
   >

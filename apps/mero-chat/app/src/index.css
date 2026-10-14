@@ -2,49 +2,96 @@
 @import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.css');
 
 :root {
-  --color-neutral-200: #C8C8C8;
-  --color-neutral-300: #A0A0A0;
-  --color-neutral-400: #8E8E8E;
-  --color-neutral-600: #404040;
-  --color-neutral-700: #282828;
-  --color-neutral-800: #222222;
-  --color-neutral-900: #131215;
-  --color-brand-100: #ECFC91;
-  --color-brand-600: #A5FF11;
-  --color-brand-700: #73B30C;
-  --color-brand-800: #8AA200;
-  --color-brand-900: #2D381B;
-  --color-transparent-brand: rgba(72, 72, 72, 0.05);
-  --color-transparent-black-50: rgba(0, 0, 0, 0.5);
+  /* Light glass (@calimero-apps/glass): this app's tint lights the fields
+     behind every frosted surface. */
+  --glass-tint: #ffc93c;
+
+  --color-neutral-200: var(--glass-ink-2);
+  --color-neutral-300: var(--glass-ink-2);
+  --color-neutral-400: var(--glass-muted);
+  --color-neutral-600: var(--glass-line-strong);
+  --color-neutral-700: var(--glass-line);
+  --color-neutral-800: var(--glass-sunken);
+  --color-neutral-900: var(--glass-surface-solid);
+  --color-brand-100: color-mix(in srgb, var(--glass-tint) 70%, #ffffff);
+  --color-brand-600: var(--glass-tint);
+  --color-brand-700: var(--glass-accent);
+  --color-brand-800: color-mix(in srgb, var(--glass-tint) 85%, #000000);
+  --color-brand-900: color-mix(in srgb, var(--glass-tint) 40%, transparent);
+  --color-transparent-brand: var(--glass-sunken);
+  --color-transparent-black-50: rgba(14, 18, 34, 0.32);
   --color-transparent-green-20: rgba(112, 237, 206, 0.2);
   --color-transparent-green-10: rgba(109, 234, 173, 0.1);
-  --color-background-primary: #0F1419;
-  --color-background-secondary: #131215;
-  --color-background-tertiary: #0A0E13;
-  --color-background-brand: linear-gradient(135deg, #0F1419 0%, #131215 50%, #0A0E13 100%);
+  --color-background-primary: var(--glass-surface-solid);
+  --color-background-secondary: var(--glass-sunken);
+  --color-background-tertiary: var(--glass-line);
+  --color-background-brand: var(--glass-ground);
   --color-semantic-success: #16a34a;
   --color-semantic-warning: #f59e0b;
   --color-semantic-error: #ef4444;
   --color-semantic-info: #3b82f6;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
+  --radius-sm: var(--glass-radius-sm);
+  --radius-md: 14px;
+  --radius-lg: var(--glass-radius-lg);
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
   --space-6: 1.5rem;
-  --font-body: Power Grotesk, Inter, system-ui, sans-serif;
-  --font-heading: Power Grotesk, Inter, system-ui, sans-serif;
-  --font-secondary: Inter, system-ui, sans-serif;
+  --font-body: var(--glass-font);
+  --font-heading: var(--glass-font);
+  --font-secondary: var(--glass-font);
+  color-scheme: light;
+}
+
+/* mero-ui's stylesheet is imported after this one and redeclares the same
+   tokens on :root with its dark values; the extra type selector wins. */
+html:root {
+  --color-neutral-200: var(--glass-ink-2);
+  --color-neutral-300: var(--glass-ink-2);
+  --color-neutral-400: var(--glass-muted);
+  --color-neutral-600: var(--glass-line-strong);
+  --color-neutral-700: var(--glass-line);
+  --color-neutral-800: var(--glass-sunken);
+  --color-neutral-900: var(--glass-surface-solid);
+  --color-brand-100: color-mix(in srgb, var(--glass-tint) 70%, #ffffff);
+  --color-brand-600: var(--glass-tint);
+  --color-brand-700: var(--glass-accent);
+  --color-brand-800: color-mix(in srgb, var(--glass-tint) 85%, #000000);
+  --color-brand-900: color-mix(in srgb, var(--glass-tint) 40%, transparent);
+  --color-transparent-brand: var(--glass-sunken);
+  --color-transparent-black-50: rgba(14, 18, 34, 0.32);
+  --color-background-primary: var(--glass-surface-solid);
+  --color-background-secondary: var(--glass-sunken);
+  --color-background-tertiary: var(--glass-line);
+  --color-background-brand: var(--glass-ground);
+  --radius-sm: var(--glass-radius-sm);
+  --radius-md: 14px;
+  --radius-lg: var(--glass-radius-lg);
+  --font-body: var(--glass-font);
+  --font-heading: var(--glass-font);
+  --font-secondary: var(--glass-font);
+}
+
+/* Dark, if a marker is ever set: glass.css switches its tokens, and these
+   follow. */
+:root[data-theme='dark'],
+:root.dark,
+:root[data-glass-theme='dark'] {
+  color-scheme: dark;
 }
 
 html, body {
-  background-color: #0e0e10 !important;
+  background-color: var(--glass-ground) !important;
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Override Bootstrap's default body background */
 body {
-  background-color: #0e0e10 !important;
+  background-color: var(--glass-ground) !important;
   padding: 0;
   margin: 0;
 }
@@ -56,7 +103,7 @@ body {
   position: relative;
   background-color: #111111;
   color: #FFF;
-  font-family: Helvetica Neue;
+  font-family: var(--glass-font);
   font-size: 16px;
   font-style: normal;
   font-weight: 400;
@@ -906,7 +953,7 @@ body {
 }
 .ql-toolbar.ql-snow {
   box-sizing: border-box;
-  background-color: #111111;
+  background-color: var(--glass-surface-solid);
   font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
   padding: 8px;
   border-top-left-radius: 4px;
@@ -1038,28 +1085,28 @@ body {
    These live in mero-react/src/components/styles.css but the published npm
    package doesn't bundle CSS yet. Remove once mero-react ships styles.css.    */
 :root {
-  --mero-bg: #111113;
-  --mero-bg-secondary: #18181a;
-  --mero-text: #ffffff;
-  --mero-text-secondary: rgba(255,255,255,0.45);
-  --mero-accent: rgba(165,255,17,0.3);
-  --mero-accent-hover: rgba(165,255,17,0.12);
-  --mero-success: #a5ff11;
-  --mero-success-hover: #8fd90e;
-  --mero-error: #ff6b6b;
-  --mero-border: rgba(255,255,255,0.08);
-  --mero-input-bg: rgba(255,255,255,0.04);
-  --mero-input-text: #ffffff;
-  --mero-disabled: rgba(255,255,255,0.22);
-  --mero-shadow: rgba(0,0,0,0.55);
+  --mero-bg: var(--glass-surface-solid);
+  --mero-bg-secondary: var(--glass-sunken);
+  --mero-text: var(--glass-ink);
+  --mero-text-secondary: var(--glass-muted);
+  --mero-accent: var(--glass-line-strong);
+  --mero-accent-hover: var(--glass-sunken);
+  --mero-success: var(--glass-ink);
+  --mero-success-hover: var(--glass-ink-2);
+  --mero-error: var(--glass-bad-ink);
+  --mero-border: var(--glass-line);
+  --mero-input-bg: var(--glass-surface-solid);
+  --mero-input-text: var(--glass-ink);
+  --mero-disabled: var(--glass-line-strong);
+  --mero-shadow: rgba(20, 26, 60, 0.18);
 }
 .mero-connect-button {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 24px;
-  background-color: rgba(165,255,17,0.06);
-  border: 1px solid rgba(165,255,17,0.28);
-  border-radius: 9px; cursor: pointer;
-  font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.85);
+  background-color: var(--glass-ink);
+  border: 1px solid var(--glass-ink);
+  border-radius: 999px; cursor: pointer;
+  font-size: 14px; font-weight: 600; color: var(--glass-on-ink);
   transition: all 0.2s ease; width: auto; min-width: 148px;
   justify-content: center; box-sizing: border-box;
   font-family: inherit; letter-spacing: 0.01em;
@@ -1068,7 +1115,7 @@ body {
   background-color: var(--mero-accent-hover); border-color: var(--mero-accent-hover);
 }
 .mero-connect-button.mero-connected {
-  background-color: var(--mero-success); color: var(--mero-bg); border-color: var(--mero-success);
+  background-color: var(--mero-success); color: var(--glass-on-ink); border-color: var(--mero-success);
 }
 .mero-connect-button.mero-connected:hover { background-color: var(--mero-success-hover); border-color: var(--mero-success-hover); }
 .mero-connect-button.mero-reconnecting { background-color: var(--mero-accent); color: var(--mero-text); border-color: var(--mero-accent); cursor: not-allowed; }
@@ -1076,9 +1123,9 @@ body {
 .mero-dropdown { position: absolute; top: 100%; left: 0; background-color: var(--mero-bg); border: 1px solid var(--mero-border); border-radius: 8px; margin-top: 4px; padding: 0; z-index: 1001; width: 100%; min-width: 180px; overflow: hidden; box-shadow: 0 8px 16px var(--mero-shadow); }
 .mero-dropdown-info { padding: 10px 20px; color: var(--mero-text-secondary); font-size: 14px; border-bottom: 1px solid var(--mero-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
 .mero-dropdown-item { display: block; width: 100%; padding: 10px 20px; background: none; border: none; color: var(--mero-text); text-align: left; cursor: pointer; font-size: 16px; text-decoration: none; font-family: inherit; }
-.mero-dropdown-item:hover { background-color: var(--mero-success); color: var(--mero-bg); }
-.mero-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-.mero-modal-content { position: relative; background: var(--mero-bg); padding: 40px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px var(--mero-shadow); width: 90%; max-width: 500px; display: flex; flex-direction: column; align-items: center; color: var(--mero-text); }
+.mero-dropdown-item:hover { background-color: var(--mero-accent-hover); color: var(--mero-text); }
+.mero-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(14, 18, 34, 0.32); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+.mero-modal-content { position: relative; background: var(--mero-bg); padding: 40px; border-radius: var(--glass-radius-lg); text-align: center; box-shadow: 0 4px 15px var(--mero-shadow); width: 90%; max-width: 500px; display: flex; flex-direction: column; align-items: center; color: var(--mero-text); }
 .mero-modal-close { position: absolute; top: 15px; right: 15px; background: none; border: none; font-size: 24px; color: var(--mero-text-secondary); cursor: pointer; line-height: 1; }
 .mero-modal-close:hover { color: var(--mero-text); }
 .mero-modal-header { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px; }
@@ -1090,13 +1137,58 @@ body {
 .mero-radio-group label { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--mero-text); }
 .mero-input-container { min-height: 60px; display: flex; flex-direction: column; justify-content: center; gap: 15px; margin-bottom: 20px; width: 100%; }
 .mero-input { padding: 12px; width: 100%; border: 1px solid var(--mero-border); border-radius: 8px; box-sizing: border-box; background-color: var(--mero-input-bg); color: var(--mero-input-text); font-size: 16px; transition: border-color 0.3s, box-shadow 0.3s; }
-.mero-input:focus { border-color: var(--mero-success); box-shadow: 0 0 0 2px rgba(168,230,64,0.2); outline: none; }
+.mero-input:focus { border-color: var(--mero-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-tint) 35%, transparent); outline: none; }
 .mero-local-info { color: var(--mero-text-secondary); margin: 12px 0; }
 .mero-button-group { display: flex; gap: 10px; justify-content: center; }
 .mero-button { padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; transition: all 0.3s ease; font-family: inherit; }
-.mero-button-primary { background-color: var(--mero-success); color: var(--mero-bg); border: 1px solid var(--mero-success); }
+.mero-button-primary { background-color: var(--mero-success); color: var(--glass-on-ink); border: 1px solid var(--mero-success); }
 .mero-button-primary:hover { background-color: var(--mero-success-hover); border-color: var(--mero-success-hover); }
 .mero-button-primary:disabled { background-color: var(--mero-disabled); border-color: var(--mero-disabled); cursor: not-allowed; }
 .mero-spinner { width: 40px; height: 40px; border: 3px solid var(--mero-border); border-top-color: var(--mero-success); border-radius: 50%; animation: meroSpin 1s linear infinite; margin-top: 20px; }
 .mero-logo { width: 24px; height: 24px; color: currentColor; }
 @keyframes meroSpin { to { transform: rotate(360deg); } }
+
+/* ── glass: mero-ui's RichTextEditor ──────────────────────────────────────
+   The composer paints itself dark with inline styles and an embedded
+   stylesheet; these restate its colours on the glass tokens. */
+.full-width-editor > div:first-child {
+  border-color: transparent transparent var(--glass-line) transparent !important;
+}
+
+.full-width-editor > div:first-child button {
+  color: var(--glass-ink-2) !important;
+}
+
+.full-width-editor > div:first-child button:hover {
+  background-color: var(--glass-sunken) !important;
+}
+
+.full-width-editor > div:first-child > div {
+  background-color: var(--glass-line-strong) !important;
+}
+
+.full-width-editor > div:has(.rich-text-editor-content) {
+  background-color: var(--glass-surface-solid) !important;
+  border-color: var(--glass-line-strong) !important;
+  color: var(--glass-ink) !important;
+  border-radius: var(--glass-radius) !important;
+  box-shadow: none !important;
+}
+
+.full-width-editor > div:has(.rich-text-editor-content:focus) {
+  border-color: var(--glass-ink-2) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-tint) 35%, transparent) !important;
+}
+
+:root .full-width-editor .rich-text-editor-content,
+:root .full-width-editor .rich-text-editor-content * {
+  color: var(--glass-ink) !important;
+}
+
+:root .full-width-editor .rich-text-editor-content a.rich-text-link {
+  color: var(--glass-accent) !important;
+}
+
+:root .full-width-editor .rich-text-editor-content p.is-editor-empty:first-child::before {
+  color: var(--glass-muted) !important;
+}

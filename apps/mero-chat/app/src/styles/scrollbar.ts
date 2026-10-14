@@ -4,23 +4,23 @@ import { css } from "styled-components";
  * Shared scrollbar styles for consistent look across the app
  */
 export const scrollbarStyles = css`
-  scrollbar-color: black black;
+  scrollbar-color: var(--glass-line-strong) var(--glass-line-strong);
 
   ::-webkit-scrollbar {
     width: 6px;
   }
 
   ::-webkit-scrollbar-thumb {
-    background-color: black;
+    background-color: var(--glass-line-strong);
     border-radius: 6px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background-color: black;
+    background-color: var(--glass-line-strong);
   }
 
   * {
-    scrollbar-color: black black;
+    scrollbar-color: var(--glass-line-strong) var(--glass-line-strong);
   }
 
   html::-webkit-scrollbar {
@@ -28,12 +28,12 @@ export const scrollbarStyles = css`
   }
 
   html::-webkit-scrollbar-thumb {
-    background-color: black;
+    background-color: var(--glass-line-strong);
     border-radius: 6px;
   }
 
   html::-webkit-scrollbar-thumb:hover {
-    background-color: black;
+    background-color: var(--glass-line-strong);
   }
 `;
 

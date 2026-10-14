@@ -9,7 +9,7 @@ const AdminIconWrapper = styled.div`
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 0.375rem;
   width: 36px;
   height: 36px;
@@ -18,7 +18,7 @@ const AdminIconWrapper = styled.div`
   &:hover {
     background-color: rgba(124, 58, 237, 0.12);
     svg {
-      fill: #a78bfa;
+      fill: #7c3aed;
     }
   }
 `;
@@ -38,7 +38,7 @@ export default function AdminIcon() {
         width="18"
         height="18"
         viewBox="0 0 24 24"
-        fill="#777583"
+        fill="var(--glass-muted)"
       >
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       </svg>

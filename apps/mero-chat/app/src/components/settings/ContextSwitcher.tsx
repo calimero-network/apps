@@ -24,7 +24,7 @@ const Section = styled.div`
 
 const Label = styled.label`
   display: block;
-  color: #b8b8d1;
+  color: var(--glass-ink-2);
   font-size: 0.875rem;
   font-weight: 500;
   margin-bottom: 0.5rem;
@@ -33,23 +33,23 @@ const Label = styled.label`
 const Select = styled.select`
   width: 100%;
   padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  color: #fff;
+  background: color-mix(in srgb, var(--glass-ink) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
+  border-radius: 12px;
+  color: var(--glass-ink);
   font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
+    border-color: color-mix(in srgb, var(--glass-ink) 20%, transparent);
   }
 
   &:focus {
     outline: none;
     border-color: #7c3aed;
-    background: rgba(255, 255, 255, 0.08);
+    background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
   }
 
   &:disabled {
@@ -58,8 +58,8 @@ const Select = styled.select`
   }
 
   option {
-    background: #1a1a1f;
-    color: #fff;
+    background: var(--glass-surface-solid);
+    color: var(--glass-ink);
   }
 `;
 
@@ -67,7 +67,7 @@ const CurrentContextInfo = styled.div`
   padding: 1rem;
   background: rgba(124, 58, 237, 0.1);
   border: 1px solid rgba(124, 58, 237, 0.3);
-  border-radius: 8px;
+  border-radius: 12px;
   margin-bottom: 1rem;
 `;
 
@@ -83,12 +83,12 @@ const InfoRow = styled.div`
 `;
 
 const InfoLabel = styled.span`
-  color: #b8b8d1;
+  color: var(--glass-ink-2);
   font-size: 0.8rem;
 `;
 
 const InfoValue = styled.span`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 0.8rem;
   font-family: monospace;
   word-break: break-all;
@@ -100,9 +100,9 @@ const Button = styled.button`
   width: 100%;
   padding: 0.75rem;
   background: #7c3aed;
-  color: #fff;
+  color: var(--glass-ink);
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
@@ -127,8 +127,8 @@ const ErrorMessage = styled.div`
   padding: 0.75rem;
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 8px;
-  color: #ef4444;
+  border-radius: 12px;
+  color: var(--glass-bad-ink);
   font-size: 0.875rem;
   margin-bottom: 1rem;
 `;
@@ -137,7 +137,7 @@ const LoadingMessage = styled.div`
   padding: 0.75rem;
   background: rgba(59, 130, 246, 0.1);
   border: 1px solid rgba(59, 130, 246, 0.3);
-  border-radius: 8px;
+  border-radius: 12px;
   color: #3b82f6;
   font-size: 0.875rem;
   text-align: center;
@@ -147,14 +147,14 @@ const SuccessMessage = styled.div`
   padding: 0.75rem;
   background: rgba(34, 197, 94, 0.1);
   border: 1px solid rgba(34, 197, 94, 0.3);
-  border-radius: 8px;
+  border-radius: 12px;
   color: #22c55e;
   font-size: 0.875rem;
   margin-bottom: 1rem;
 `;
 
 const Note = styled.p`
-  color: #777583;
+  color: var(--glass-muted);
   font-size: 0.75rem;
   margin-top: 0.5rem;
   margin-bottom: 0;

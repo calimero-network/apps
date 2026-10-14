@@ -69,10 +69,15 @@ interface ChatContainerProps {
 const ChatContainerWrapper = styled.div`
   position: relative;
   display: flex;
-  background-color: #0e0e10;
+  background-color: var(--glass-surface-solid);
   @media (min-width: 1025px) {
     padding-left: 4px;
-    height: calc(100vh - 81px);
+    margin: 12px 16px 12px 12px;
+    height: calc(100vh - 109px);
+    border: 1px solid var(--glass-edge);
+    border-radius: var(--glass-radius-lg);
+    box-shadow: var(--glass-shadow);
+    overflow: hidden;
   }
   @media (max-width: 1024px) {
     display: flex;
@@ -84,7 +89,7 @@ const ChatContainerWrapper = styled.div`
 const ThreadWrapper = styled.div`
   height: 100%;
   flex: 1;
-  border-left: 2px solid #282933;
+  border-left: 2px solid var(--glass-line);
   padding-left: 20px;
   @media (max-width: 1024px) {
     height: 100dvh;
@@ -97,7 +102,7 @@ const ThreadWrapper = styled.div`
     top: 0;
     bottom: 0;
     z-index: 30;
-    background-color: #0e0e10;
+    background-color: var(--glass-surface-solid);
   }
 `;
 

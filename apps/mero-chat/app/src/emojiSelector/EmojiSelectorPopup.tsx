@@ -16,7 +16,7 @@ const EmojiPopupContainer = styled.div`
 `;
 
 const CloseButton = styled.div`
-  color: #fff;
+  color: var(--glass-ink);
   :hover {
     color: #5765f2;
   }

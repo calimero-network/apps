@@ -13,12 +13,12 @@ const UserListItem = styled.div`
   justify-content: space-between;
   align-items: center;
   padding: 0.45rem 0.625rem;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: default;
   transition: background 0.12s ease;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: color-mix(in srgb, var(--glass-ink) 4%, transparent);
   }
 `;
 
@@ -30,7 +30,7 @@ const UserList = styled.div`
   }
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+  &::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--glass-ink) 10%, transparent); border-radius: 2px; }
 `;
 
 const UserInfo = styled.div`
@@ -43,7 +43,7 @@ const UserInfo = styled.div`
 const Text = styled.div<{ $isSelected?: boolean }>`
   font-size: 0.82rem;
   font-weight: 500;
-  color: ${({ $isSelected }) => ($isSelected ? "#a5ff11" : "rgba(255,255,255,0.85)")};
+  color: ${({ $isSelected }) => ($isSelected ? "var(--glass-accent)" : "color-mix(in srgb, var(--glass-ink) 85%, transparent)")};
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -51,7 +51,7 @@ const Text = styled.div<{ $isSelected?: boolean }>`
 
 // const RoleText = styled.div`
 //   color: #777583;
-//   font-family: Helvetica Neue;
+//   font-family: var(--glass-font);
 //   font-size: 12px;
 //   font-style: normal;
 //   font-weight: 700;
@@ -88,14 +88,14 @@ const Text = styled.div<{ $isSelected?: boolean }>`
 //   flex-direction: column;
 //   padding-top: 4px;
 //   padding-bottom: 4px;
-//   border-radius: 4px;
+//   border-radius: 8px;
 //   background-color: #25252a;
 //   pointer-events: auto;
 // `;
 
 // const Option = styled.div`
 //   color: #fff;
-//   font-family: Helvetica Neue;
+//   font-family: var(--glass-font);
 //   font-size: 16px;
 //   font-style: normal;
 //   padding-left: 1rem;
@@ -115,10 +115,10 @@ const Text = styled.div<{ $isSelected?: boolean }>`
 const RemoveButton = styled.button`
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.2);
+  color: color-mix(in srgb, var(--glass-ink) 20%, transparent);
   cursor: pointer;
   padding: 3px;
-  border-radius: 4px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -132,7 +132,7 @@ const RemoveButton = styled.button`
 
   &:hover {
     background: rgba(255, 80, 80, 0.1);
-    color: rgba(255, 100, 100, 0.8);
+    color: var(--glass-bad-ink);
   }
 `;
 
@@ -142,28 +142,28 @@ const AddMemberButton = styled.div`
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   margin-bottom: 0.5rem;
-  color: rgba(255, 255, 255, 0.55);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
+  color: color-mix(in srgb, var(--glass-ink) 55%, transparent);
+  background: color-mix(in srgb, var(--glass-ink) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
+  border-radius: 12px;
   font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 
   &:hover {
-    background: rgba(165, 255, 17, 0.06);
-    border-color: rgba(165, 255, 17, 0.2);
-    color: #a5ff11;
+    background: color-mix(in srgb, var(--glass-accent) 6%, transparent);
+    border-color: color-mix(in srgb, var(--glass-accent) 20%, transparent);
+    color: var(--glass-accent);
   }
 `;
 
 const SuggestionsDropdown = styled.div`
   max-height: 180px;
   overflow-y: auto;
-  border-radius: 8px;
-  background: #18181b;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: var(--glass-surface-solid);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
   position: absolute;
   top: calc(100% + 4px);
   width: 100%;
@@ -171,16 +171,16 @@ const SuggestionsDropdown = styled.div`
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+  &::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--glass-ink) 10%, transparent); border-radius: 2px; }
 `;
 
 const SuggestionItem = styled.div`
   padding: 0.55rem 0.875rem;
   cursor: pointer;
   font-size: 0.82rem;
-  color: #fff;
+  color: var(--glass-ink);
   transition: background 0.1s ease;
-  &:hover { background: rgba(255, 255, 255, 0.06); }
+  &:hover { background: color-mix(in srgb, var(--glass-ink) 6%, transparent); }
 `;
 
 const InviteField = styled.div`
@@ -191,7 +191,7 @@ const InviteField = styled.div`
 const InviteLabel = styled.div`
   font-size: 0.68rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--glass-ink) 35%, transparent);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin-bottom: 0.4rem;
@@ -203,7 +203,7 @@ const ModalContent = styled.div`
 `;
 
 const ModalTitle = styled.h3`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 14px;
   font-weight: 600;
   margin: 0 0 1.25rem;
@@ -367,16 +367,16 @@ const RoleBadge = styled.span<{ $role: Role }>`
   letter-spacing: 0.07em;
   text-transform: uppercase;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 8px;
   margin-right: 0.25rem;
   ${({ $role }) => {
     switch ($role) {
       case "Admin":
-        return `color:#a5ff11; background:rgba(165,255,17,0.12);`;
+        return `color:var(--glass-accent); background:color-mix(in srgb, var(--glass-accent) 12%, transparent);`;
       case "Mod":
-        return `color:#5cd8ff; background:rgba(92,216,255,0.12);`;
+        return `color:var(--glass-accent); background:rgba(92,216,255,0.12);`;
       case "Banned":
-        return `color:#ff6b6b; background:rgba(255,107,107,0.14);`;
+        return `color:var(--glass-bad-ink); background:rgba(255,107,107,0.14);`;
       default:
         return `display:none;`;
     }
@@ -394,8 +394,8 @@ const RowActions = styled.div`
 
 const ActionBtn = styled.button<{ $variant?: "danger" | "default" }>`
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.55);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
+  color: color-mix(in srgb, var(--glass-ink) 55%, transparent);
   font-size: 0.66rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -406,11 +406,11 @@ const ActionBtn = styled.button<{ $variant?: "danger" | "default" }>`
   transition: all 0.15s ease;
 
   &:hover:enabled {
-    color: ${({ $variant }) => ($variant === "danger" ? "#ff6b6b" : "#a5ff11")};
+    color: ${({ $variant }) => ($variant === "danger" ? "var(--glass-bad-ink)" : "var(--glass-accent)")};
     border-color: ${({ $variant }) =>
-      $variant === "danger" ? "rgba(255,107,107,0.4)" : "rgba(165,255,17,0.4)"};
+      $variant === "danger" ? "rgba(255,107,107,0.4)" : "color-mix(in srgb, var(--glass-accent) 40%, transparent)"};
     background: ${({ $variant }) =>
-      $variant === "danger" ? "rgba(255,107,107,0.08)" : "rgba(165,255,17,0.06)"};
+      $variant === "danger" ? "rgba(255,107,107,0.08)" : "color-mix(in srgb, var(--glass-accent) 6%, transparent)"};
   }
 
   &:disabled { opacity: 0.35; cursor: not-allowed; }

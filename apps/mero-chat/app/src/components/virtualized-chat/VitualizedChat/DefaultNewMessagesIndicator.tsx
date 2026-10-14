@@ -13,7 +13,7 @@ const indicatorStyle: CSSProperties = {
   height: "40px",
   width: "40px",
   backgroundColor: "#5765F2",
-  color: "white",
+  color: "var(--glass-ink)",
   display: "flex",
   justifyContent: "center",
   alignItems: "center",

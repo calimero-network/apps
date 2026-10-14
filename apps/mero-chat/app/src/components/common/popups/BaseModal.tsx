@@ -34,7 +34,7 @@ const Overlay = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(14, 18, 34, 0.32);
   backdrop-filter: blur(10px);
 `;
 
@@ -44,8 +44,8 @@ const OverlayChild = styled(Overlay)`
 
 const sharedContainer = css`
   position: relative;
-  background: #111113;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--glass-surface-solid);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
   padding: 1.75rem;
   border-radius: 16px;
   width: 480px;

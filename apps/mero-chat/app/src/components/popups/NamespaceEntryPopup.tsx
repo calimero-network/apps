@@ -65,7 +65,7 @@ type Step =
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(14, 18, 34, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -83,8 +83,8 @@ const fadeIn = keyframes`
 `;
 
 const Box = styled.div`
-  background: #111113;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--glass-surface-solid);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
   border-radius: 16px;
   padding: 2rem;
   width: 90%;
@@ -98,7 +98,7 @@ const Header = styled.div`
 `;
 
 const Title = styled.h2`
-  color: #ffffff;
+  color: var(--glass-ink);
   font-size: 1.25rem;
   font-weight: 700;
   margin: 0 0 0.35rem;
@@ -106,7 +106,7 @@ const Title = styled.h2`
 `;
 
 const Sub = styled.p`
-  color: rgba(255, 255, 255, 0.38);
+  color: color-mix(in srgb, var(--glass-ink) 38%, transparent);
   font-size: 0.82rem;
   margin: 0;
   line-height: 1.55;
@@ -122,7 +122,7 @@ const Field = styled.div`
 const Label = styled.label`
   font-size: 0.72rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.45);
+  color: color-mix(in srgb, var(--glass-ink) 45%, transparent);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 `;
@@ -131,40 +131,40 @@ const Select = styled.select`
   appearance: none;
   -webkit-appearance: none;
   padding: 0.7rem 2.5rem 0.7rem 0.9rem;
-  background-color: rgba(165, 255, 17, 0.04);
+  background-color: color-mix(in srgb, var(--glass-accent) 4%, transparent);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a5ff11' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   background-size: 16px;
-  border: 1px solid rgba(165, 255, 17, 0.22);
+  border: 1px solid color-mix(in srgb, var(--glass-accent) 22%, transparent);
   border-radius: 10px;
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 0.85rem;
   cursor: pointer;
   width: 100%;
   transition: border-color 0.15s, box-shadow 0.15s;
 
   &:hover {
-    border-color: rgba(165, 255, 17, 0.45);
-    background-color: rgba(165, 255, 17, 0.07);
+    border-color: color-mix(in srgb, var(--glass-accent) 45%, transparent);
+    background-color: color-mix(in srgb, var(--glass-accent) 7%, transparent);
   }
 
   &:focus {
     outline: none;
-    border-color: rgba(165, 255, 17, 0.6);
-    box-shadow: 0 0 0 3px rgba(165, 255, 17, 0.12);
+    border-color: color-mix(in srgb, var(--glass-accent) 60%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-accent) 12%, transparent);
   }
 
   option {
-    background: #18181c;
-    color: #e8e8f0;
+    background: var(--glass-surface-solid);
+    color: var(--glass-ink);
   }
 `;
 
 const CreateLink = styled.button`
   background: none;
   border: none;
-  color: #a5ff11;
+  color: var(--glass-accent);
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
@@ -179,10 +179,10 @@ const CreateLink = styled.button`
 `;
 
 const Err = styled.div`
-  color: #ff6b6b;
+  color: var(--glass-bad-ink);
   background: rgba(255, 107, 107, 0.08);
   border: 1px solid rgba(255, 107, 107, 0.18);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 0.65rem 0.85rem;
   font-size: 0.8rem;
   margin-bottom: 1rem;
@@ -196,23 +196,23 @@ const Textarea = styled.textarea`
   width: 100%;
   min-height: 96px;
   padding: 0.7rem 0.9rem;
-  background-color: rgba(165, 255, 17, 0.04);
-  border: 1px solid rgba(165, 255, 17, 0.22);
+  background-color: color-mix(in srgb, var(--glass-accent) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-accent) 22%, transparent);
   border-radius: 10px;
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 0.75rem;
   font-family: monospace;
   resize: vertical;
   box-sizing: border-box;
   line-height: 1.5;
   transition: border-color 0.15s, box-shadow 0.15s;
-  &::placeholder { color: rgba(255, 255, 255, 0.22); }
-  &:hover { border-color: rgba(165, 255, 17, 0.45); background-color: rgba(165, 255, 17, 0.07); }
-  &:focus { outline: none; border-color: rgba(165, 255, 17, 0.6); box-shadow: 0 0 0 3px rgba(165, 255, 17, 0.12); }
+  &::placeholder { color: color-mix(in srgb, var(--glass-ink) 22%, transparent); }
+  &:hover { border-color: color-mix(in srgb, var(--glass-accent) 45%, transparent); background-color: color-mix(in srgb, var(--glass-accent) 7%, transparent); }
+  &:focus { outline: none; border-color: color-mix(in srgb, var(--glass-accent) 60%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-accent) 12%, transparent); }
 `;
 
 const Info = styled.div`
-  color: rgba(255, 255, 255, 0.45);
+  color: color-mix(in srgb, var(--glass-ink) 45%, transparent);
   font-size: 0.8rem;
   text-align: center;
   margin-bottom: 1rem;
@@ -221,8 +221,8 @@ const Info = styled.div`
 const Spinner = styled.div`
   width: 28px;
   height: 28px;
-  border: 2px solid rgba(165, 255, 17, 0.15);
-  border-top-color: #a5ff11;
+  border: 2px solid color-mix(in srgb, var(--glass-accent) 15%, transparent);
+  border-top-color: var(--glass-accent);
   border-radius: 50%;
   animation: ${spin} 0.7s linear infinite;
   margin: 0 auto 1rem;
@@ -231,15 +231,15 @@ const Spinner = styled.div`
 const BtnSpinner = styled.div`
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(165, 255, 17, 0.3);
-  border-top-color: #a5ff11;
+  border: 2px solid color-mix(in srgb, var(--glass-accent) 30%, transparent);
+  border-top-color: var(--glass-accent);
   border-radius: 50%;
   animation: ${spin} 0.7s linear infinite;
   flex-shrink: 0;
 `;
 
 const FieldError = styled.p`
-  color: #ff6b6b;
+  color: var(--glass-bad-ink);
   font-size: 0.72rem;
   margin: 0.3rem 0 0;
 `;
@@ -252,7 +252,7 @@ const Row = styled.div`
 
 const Divider = styled.div`
   height: 1px;
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--glass-ink) 5%, transparent);
   margin: 1rem 0;
 `;
 
@@ -261,7 +261,7 @@ const OrDivider = styled.div`
   align-items: center;
   gap: 0.75rem;
   margin: 0.75rem 0;
-  color: rgba(255, 255, 255, 0.25);
+  color: color-mix(in srgb, var(--glass-ink) 25%, transparent);
   font-size: 0.75rem;
 
   &::before,
@@ -269,14 +269,14 @@ const OrDivider = styled.div`
     content: "";
     flex: 1;
     height: 1px;
-    background: rgba(255, 255, 255, 0.08);
+    background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
   }
 `;
 
 const LogoutBtn = styled.button`
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.25);
+  color: color-mix(in srgb, var(--glass-ink) 25%, transparent);
   font-size: 0.75rem;
   cursor: pointer;
   padding: 0;
@@ -285,7 +285,7 @@ const LogoutBtn = styled.button`
   text-align: center;
   transition: color 0.15s;
 
-  &:hover { color: rgba(255, 255, 255, 0.5); }
+  &:hover { color: color-mix(in srgb, var(--glass-ink) 50%, transparent); }
 `;
 
 
@@ -918,7 +918,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             <Button
               type="button"
               variant="secondary"
-              style={{ width: "100%", marginTop: "0.5rem" }}
+              style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", width: "100%", marginTop: "0.5rem" }}
               onClick={() => { setError(""); setStep("select"); }}
             >
               ← Back
@@ -982,7 +982,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             <Button
               type="button"
               variant="secondary"
-              style={{ width: "100%", marginTop: "0.5rem" }}
+              style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", width: "100%", marginTop: "0.5rem" }}
               onClick={() => { setError(""); setJoinInviteInput(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
             >
               ← Back to workspace selection
@@ -1040,7 +1040,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             <Button
               type="button"
               variant="secondary"
-              style={{ width: "100%", marginTop: "0.5rem" }}
+              style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", width: "100%", marginTop: "0.5rem" }}
               onClick={() => { setError(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
               disabled={step === "creating"}
             >
@@ -1078,7 +1078,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             <Button
               type="button"
               variant="secondary"
-              style={{ width: "100%", marginTop: "0.5rem" }}
+              style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", width: "100%", marginTop: "0.5rem" }}
               onClick={() => { setError(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
               disabled={step === "installing"}
             >
@@ -1098,7 +1098,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
               <Button
                 type="button"
                 variant="secondary"
-                style={{ flex: 1 }}
+                style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", flex: 1 }}
                 onClick={() => { setError(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
               >
                 ← Back
