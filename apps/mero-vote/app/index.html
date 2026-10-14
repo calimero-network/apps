@@ -13,6 +13,20 @@
     <meta property="og:image" content="/icon-512.png" />
     <meta name="twitter:title" content="Mero Vote — Calimero" />
     <meta name="twitter:image" content="/icon-512.png" />
+
+    <!-- Theme before first paint: light unless the person picked dark
+         (src/theme.ts owns the key and does the same at runtime). -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem('mero-vote:theme') === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            var m = document.querySelector('meta[name="theme-color"]');
+            if (m) m.setAttribute('content', '#0b0e18');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
