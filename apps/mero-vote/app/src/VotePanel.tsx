@@ -207,7 +207,13 @@ export function VotePanel({ contextId, side }: { contextId: string; side?: React
       </div>
 
       <aside className="ctx-side">
-        <div className="card you-card">
+        {/*
+          `needs-name` lifts this card above the polls in the one-column layout
+          (index.css): a first-time visitor's first job is picking a name, and
+          until they do they cannot be added as a voter or trustee. Two columns
+          already show it beside the polls, so nothing moves there.
+        */}
+        <div className={`card you-card ${me && !myName ? "needs-name" : ""}`}>
           <div className="card-head">
             <span className={`avatar lg ${myName ? "me" : ""}`}>{myName ? initial(myName) : <UserIcon size={18} />}</span>
             <div className="grow">

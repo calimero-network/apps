@@ -17,6 +17,30 @@ const TIMEOUT = 30_000;
 test.describe("phone layout", () => {
   test.use({ viewport: PHONE });
 
+  test("a visitor with no name sees where to set it before the polls", async ({ page }) => {
+    await login(page, { contextId: await freshContext() });
+    await waitForPanel(page);
+    const watch = watchForErrors(page);
+
+    const nameInput = page.getByLabel("Your name");
+    await expect(nameInput).toBeVisible({ timeout: TIMEOUT });
+    // At the top, with no scrolling: above the Polls panel and inside the first screen.
+    const input = (await nameInput.boundingBox())!;
+    const polls = (await card(page, "Polls").boundingBox())!;
+    expect(input.y, "the name field sits above the Polls panel").toBeLessThan(polls.y);
+    expect(input.y + input.height, "the name field is inside the first viewport").toBeLessThanOrEqual(PHONE.height);
+
+    // Once named, the card goes back below the polls, where it is on desktop.
+    await nameInput.fill("Ada");
+    await btn(page, "Join roster").click();
+    await expect(card(page, "You")).toContainText("Ada", { timeout: TIMEOUT });
+    const you = (await card(page, "You").boundingBox())!;
+    const pollsAfter = (await card(page, "Polls").boundingBox())!;
+    expect(you.y).toBeGreaterThan(pollsAfter.y);
+
+    watch.assertClean();
+  });
+
   test("a poll's trustees fit the screen, every status visible without sideways scrolling", async ({ page }) => {
     await login(page, { contextId: await freshContext() });
     await waitForPanel(page);

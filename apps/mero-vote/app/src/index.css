@@ -224,8 +224,11 @@ a { color: var(--info); }
 .ctx-main, .ctx-side { display: grid; gap: 20px; min-width: 0; align-content: start; }
 .ctx-side { position: sticky; top: 100px; }
 @media (max-width: 1000px) {
-  .ctx-layout { grid-template-columns: minmax(0, 1fr); }
-  .ctx-side { position: static; }
+  .ctx-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  /* One column: the side cards join the layout's own grid, so one of them
+     can be ordered ahead of the polls. */
+  .ctx-side { display: contents; }
+  .you-card.needs-name { order: -1; }
 }
 
 /* ── cards ─────────────────────────────────────────────────────────────────
