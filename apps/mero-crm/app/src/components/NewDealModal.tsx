@@ -202,7 +202,7 @@ export default function NewDealModal({
 const Modal = styled.div`
   width: 100%; max-width: 560px; background: ${t.color.panel};
   border: 1px solid ${t.color.borderStrong}; border-radius: ${t.radiusModal};
-  box-shadow: 0 20px 60px rgba(0,0,0,0.55); color: ${t.color.text}; font-family: ${t.font.sans};
+  box-shadow: ${t.shadowFloat}; color: ${t.color.text}; font-family: ${t.font.sans};
   header {
     display: flex; align-items: center; padding: 14px 18px; border-bottom: 1px solid ${t.color.border};
     h3 { font-size: 14px; font-weight: 600; margin: 0; }

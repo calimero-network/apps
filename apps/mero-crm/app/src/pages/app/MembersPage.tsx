@@ -310,13 +310,13 @@ const Head = styled.div`
   h2 { font-size: 15px; font-weight: 600; margin: 0; }
   .actions { margin-left: auto; display: flex; gap: 8px; }
   button {
-    border-radius: ${t.radius}; font-size: 12.5px; font-weight: 500; padding: 6px 11px;
+    border-radius: ${t.radiusPill}; font-size: 12.5px; font-weight: 500; padding: 6px 11px;
     border: 1px solid ${t.color.border}; cursor: pointer;
   }
   .secondary { background: ${t.color.raised}; color: ${t.color.text}; &:hover:not(:disabled) { background: ${t.color.raised2}; } &:disabled { opacity: 0.5; cursor: default; } }
   .primary {
     background: ${t.color.accent}; color: ${t.color.onAccent}; border-color: transparent; font-weight: 600;
-    &:hover:not(:disabled) { background: #b6ff5e; }
+    &:hover:not(:disabled) { background: ${t.color.accentHover}; }
     &:disabled { opacity: 0.45; cursor: not-allowed; }
   }
 `;
@@ -329,7 +329,7 @@ const Notice = styled.div`
   .fix {
     margin-left: auto; flex: none; align-self: center; cursor: pointer;
     background: ${t.color.accent}; color: ${t.color.onAccent}; border: 1px solid transparent;
-    border-radius: ${t.radius}; font-size: 12.5px; font-weight: 600; padding: 7px 13px;
+    border-radius: ${t.radiusPill}; font-size: 12.5px; font-weight: 600; padding: 7px 13px;
     &:disabled { opacity: 0.6; cursor: default; }
   }
 `;
@@ -339,7 +339,7 @@ const ErrorBanner = styled.div`
   background: ${t.color.panel};
 `;
 const Table = styled.div`
-  width: 100%; border: 1px solid ${t.color.border}; border-radius: 8px;
+  width: 100%; border: 1px solid ${t.color.border}; border-radius: ${t.radiusLg};
   overflow: hidden; background: ${t.color.panel};
 `;
 const Row = styled.div`
@@ -354,7 +354,7 @@ const Row = styled.div`
   .alias.faded { color: ${t.color.text3}; font-family: ${t.font.mono}; font-size: 12px; font-weight: 400; }
   .key { font-family: ${t.font.mono}; font-size: 12px; color: ${t.color.text2}; }
   .you-badge {
-    font-size: 10.5px; color: ${t.color.accent}; border: 1px solid ${t.color.accentBorder};
+    font-size: 10.5px; color: ${t.color.accentText}; border: 1px solid ${t.color.accentBorder};
     background: ${t.color.accentDim}; border-radius: 4px; padding: 1px 6px; font-weight: 600;
   }
   .caps { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
@@ -368,7 +368,7 @@ const Row = styled.div`
     font-size: 11px; padding: 2px 7px; border-radius: 4px; cursor: pointer;
     border: 1px dashed ${t.color.border}; background: transparent; color: ${t.color.text3};
     &:hover:not(:disabled) { color: ${t.color.text}; border-color: ${t.color.borderStrong}; }
-    &.on { border-style: solid; border-color: ${t.color.accentBorder}; color: ${t.color.accent}; }
+    &.on { border-style: solid; border-color: ${t.color.accentBorder}; color: ${t.color.accentText}; }
     &:disabled { opacity: 0.5; cursor: default; }
   }
 `;

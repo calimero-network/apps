@@ -109,12 +109,12 @@ export default function AliasGate({ namespaceId, identity, hasName, membersLoade
 const Backdrop = styled.div`
   position: fixed; inset: 0; z-index: 110;
   display: flex; align-items: center; justify-content: center; padding: 20px;
-  background: rgba(6,7,9,0.72); backdrop-filter: blur(2px);
+  background: ${t.color.scrim}; backdrop-filter: blur(2px);
 `;
 const Card = styled.div`
   position: relative; width: 100%; max-width: 420px;
   background: ${t.color.panel}; border: 1px solid ${t.color.borderStrong}; border-radius: ${t.radiusModal};
-  padding: 28px 26px 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+  padding: 28px 26px 24px; box-shadow: ${t.shadowFloat};
   font-family: ${t.font.sans}; color: ${t.color.text};
   h3 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 8px; }
   .sub { font-size: 13px; line-height: 1.55; color: ${t.color.text2}; margin: 0; }

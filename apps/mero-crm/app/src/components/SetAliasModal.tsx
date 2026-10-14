@@ -81,13 +81,13 @@ const spin = keyframes`to{transform:rotate(360deg);}`;
 const Overlay = styled.div`
   position: fixed; inset: 0; z-index: 100;
   display: flex; align-items: center; justify-content: center; padding: 20px;
-  background: rgba(6,7,9,0.6);
+  background: ${t.color.scrim};
   animation: ${fadeIn} 0.15s ease both;
 `;
 const Dialog = styled.div`
   position: relative; width: 100%; max-width: 400px;
   background: ${t.color.panel}; border: 1px solid ${t.color.borderStrong}; border-radius: ${t.radiusModal};
-  padding: 28px 26px 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+  padding: 28px 26px 24px; box-shadow: ${t.shadowFloat};
   font-family: ${t.font.sans}; color: ${t.color.text};
   animation: ${pop} 0.18s ease both;
   h3 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 8px; }
@@ -97,7 +97,7 @@ const Close = styled.button`
   position: absolute; top: 14px; right: 14px; width: 30px; height: 30px;
   display: grid; place-items: center; font-size: 20px; line-height: 1;
   color: ${t.color.text3}; background: transparent; border: none; border-radius: 6px; cursor: pointer;
-  &:hover { background: rgba(255,255,255,0.05); color: ${t.color.text}; }
+  &:hover { background: ${t.color.hover}; color: ${t.color.text}; }
 `;
 const Field = styled.div`
   margin: 22px 0 4px;
@@ -114,7 +114,7 @@ const Field = styled.div`
 `;
 const Actions = styled.div`display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px;`;
 const btn = `
-  padding: 10px 18px; font-size: 13px; font-weight: 600; border-radius: ${t.radius}; cursor: pointer;
+  padding: 10px 18px; font-size: 13px; font-weight: 600; border-radius: ${t.radiusPill}; cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
   &:disabled { opacity: 0.6; cursor: default; }
 `;
@@ -127,10 +127,10 @@ const PrimaryBtn = styled.button`
   ${btn}
   min-width: 120px; display: inline-flex; align-items: center; justify-content: center;
   color: ${t.color.onAccent}; background: ${t.color.accent}; border: 1px solid transparent;
-  &:hover:not(:disabled) { background: #b6ff5e; }
+  &:hover:not(:disabled) { background: ${t.color.accentHover}; }
 `;
 const ErrorLine = styled.p`margin: 12px 0 0; font-size: 12.5px; color: ${t.color.urgent};`;
 const Spin = styled.span`
-  width: 15px; height: 15px; border: 2px solid rgba(12,16,5,0.3); border-top-color: ${t.color.onAccent};
+  width: 15px; height: 15px; border: 2px solid color-mix(in srgb, ${t.color.onAccent} 30%, transparent); border-top-color: ${t.color.onAccent};
   border-radius: 50%; animation: ${spin} 0.6s linear infinite;
 `;
