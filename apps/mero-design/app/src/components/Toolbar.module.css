@@ -2,11 +2,11 @@
   height: 48px;
   display: flex;
   align-items: center;
-  /* Frosted glass over the shell's tinted fields. Height and padding are what
-     the canvas below is sized against, so only the paint changed. */
+  /* Glass over the shell's tinted fields. Height and padding are what the
+     canvas below is sized against, so only the paint changed. No
+     backdrop-filter: it would make the bar the containing block for the
+     position: fixed import confirm it renders, shrinking that to the bar. */
   background: var(--glass-surface);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--glass-line);
   box-shadow: inset 0 1px 0 var(--glass-edge);
   font-family: var(--glass-font);
