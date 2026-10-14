@@ -130,6 +130,9 @@ approves them, then can set each one to act, ask first, or off, apart from the a
 - Cover every method but `init`. One you leave out asks the user every time.
 - `propose_actions` with `app_key`, `application_id`, the actions (`[{ id, label, description, category, writes, methods }]`)
   and one sentence for the user. It waits for their approval; the set in force stays meanwhile. Propose again for a new app version.
+- The node itself is the app key `node`: your node tools (installing apps, spaces, invitations) are its methods,
+  named as the tool is (`install_application`, `leave_namespace`), and pass them as `method` to `check_action`.
+  Its actions ship with Hyperfeed and mero-bot; propose them under `application_id` `node-v1`, and a changed list under the next one.
 
 ### One session per chain
 

@@ -1,0 +1,93 @@
+[
+  {
+    "id": "read",
+    "label": "See what's on this node",
+    "description": "Its status, installed apps, spaces, contexts, members and files, and what the app registry offers.",
+    "category": "",
+    "writes": false,
+    "methods": [
+      "node_status", "list_nodes", "list_applications", "describe_app", "select_app", "list_namespaces",
+      "list_contexts", "lookup_alias", "list_group_members", "list_blobs", "search_registry", "list_registry_versions"
+    ]
+  },
+  {
+    "id": "install",
+    "label": "Install and update apps",
+    "description": "Install a published app, or a newer version of one, from the app registry.",
+    "category": "",
+    "writes": true,
+    "methods": ["install_application"]
+  },
+  {
+    "id": "uninstall",
+    "label": "Uninstall apps",
+    "description": "Remove an app from this node.",
+    "category": "delete",
+    "writes": true,
+    "methods": ["uninstall_application"]
+  },
+  {
+    "id": "create",
+    "label": "Create spaces and groups",
+    "description": "Start a space for an app, a group inside one, or a context to work in, and give a context a name.",
+    "category": "",
+    "writes": true,
+    "methods": ["create_namespace", "create_group", "create_context", "create_alias"]
+  },
+  {
+    "id": "join",
+    "label": "Join spaces you're invited to",
+    "description": "Accept an invitation to a space, or join an open group or a context in a space you're in.",
+    "category": "",
+    "writes": true,
+    "methods": ["join_namespace", "join_open_group", "join_context"]
+  },
+  {
+    "id": "invite",
+    "label": "Invite people",
+    "description": "Make an invitation to a space, or add people to a group.",
+    "category": "invite",
+    "writes": true,
+    "methods": ["invite_to_namespace", "add_group_members"]
+  },
+  {
+    "id": "open",
+    "label": "Open or close groups",
+    "description": "Let everyone in a space join a group, or only the people added to it.",
+    "category": "invite",
+    "writes": true,
+    "methods": ["set_group_visibility"]
+  },
+  {
+    "id": "rename",
+    "label": "Rename groups",
+    "description": "Change a group's name and details.",
+    "category": "",
+    "writes": true,
+    "methods": ["set_group_metadata"]
+  },
+  {
+    "id": "upload",
+    "label": "Upload files",
+    "description": "Store a file on this node, for an app to use.",
+    "category": "",
+    "writes": true,
+    "methods": ["upload_blob"]
+  },
+  {
+    "id": "leave",
+    "label": "Leave spaces",
+    "description": "Leave a space and every group in it. Coming back takes a new invitation.",
+    "category": "delete",
+    "writes": true,
+    "methods": ["leave_namespace"]
+  },
+  {
+    "id": "delete",
+    "label": "Delete spaces, contexts and files",
+    "description": "Delete a space, a context and its data, or a stored file.",
+    "category": "delete",
+    "writes": true,
+    "methods": ["delete_namespace", "delete_context", "delete_blob"]
+  }
+]
