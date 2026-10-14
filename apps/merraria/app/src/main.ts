@@ -1,5 +1,9 @@
 // merraria entry point: session bootstrap, connect screen, game loop.
 
+// The fleet's glass first, then the app's own tokens on top of it.
+import "@calimero-apps/glass/glass.css";
+import "./style.css";
+
 import { LightGrid } from "./engine/lighting";
 import { digTick, DigState, Inventory, place, withinReach } from "./engine/mining";
 import { PlayerState, stepPlayer, TICK, tileIntersectsPlayer } from "./engine/physics";
@@ -483,18 +487,19 @@ function showFatal(app: HTMLElement, message: string): void {
   el.dataset.testid = "fatal-error";
   el.style.cssText =
     "position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;" +
-    "justify-content:center;gap:16px;background:#0b0e14;color:#fff;" +
-    "font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:24px;";
+    "justify-content:center;gap:16px;background-color:var(--glass-ground);" +
+    "background-image:var(--glass-fields);color:var(--glass-ink);" +
+    "font-family:var(--glass-font);text-align:center;padding:24px;";
   const msg = document.createElement("p");
   msg.dataset.testid = "fatal-message";
-  msg.style.cssText = "margin:0;max-width:480px;font-size:15px;line-height:1.6;color:#cfd9e4;";
+  msg.style.cssText = "margin:0;max-width:480px;font-size:15px;line-height:1.6;color:var(--glass-ink-2);";
   msg.textContent = message;
   const btn = document.createElement("button");
   btn.dataset.testid = "back-to-title-btn";
   btn.textContent = "Back to title";
   btn.style.cssText =
-    "padding:12px 28px;border-radius:9px;border:none;font-size:15px;" +
-    "font-weight:600;cursor:pointer;color:#fff;background:#4f8cff;";
+    "padding:12px 28px;border-radius:999px;border:none;font-size:15px;" +
+    "font-weight:600;cursor:pointer;font-family:inherit;color:var(--glass-on-ink);background:var(--glass-ink);";
   btn.addEventListener("click", () => window.location.reload());
   el.append(msg, btn);
   app.appendChild(el);

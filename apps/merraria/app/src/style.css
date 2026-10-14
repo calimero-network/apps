@@ -1,0 +1,18 @@
+/* merraria — the app's own global tokens, loaded right after
+   @calimero-apps/glass (see main.ts) so they win over its defaults.
+
+   Everything else this app styles is injected as a CSS string by the DOM UI
+   modules (src/ui/landing.ts, overlays.ts, hud.ts), and those read the
+   --glass-* tokens directly. The chrome is smoked glass: index.html marks
+   <html data-glass-theme="dark">, because the launcher, menus and HUD all sit
+   on the game world (the live world animation or the game view) with white
+   type on it. */
+:root {
+  --glass-tint: #84cc16;
+}
+
+html,
+body {
+  background-color: var(--glass-ground);
+  font-family: var(--glass-font);
+}

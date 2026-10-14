@@ -3,26 +3,29 @@
 // screen (zoom = the 2D FOV, controls reference) with a Done button back.
 
 const css = `
+/* Smoked glass (dark --glass-* tokens, see index.html). The overlay dims the
+   game; the panel floating on it is a dialog, so it is SOLID, never frosted. */
 .mto-overlay { position: fixed; inset: 0; z-index: 15; display: flex; align-items: center;
-  justify-content: center; background: rgba(5,8,12,0.62); color: #fff;
-  font-family: system-ui, -apple-system, sans-serif; }
-.mto-panel { background: #131a26; border: 1px solid rgba(255,255,255,0.14); border-radius: 14px;
+  justify-content: center; background: rgba(5,7,14,0.6); color: var(--glass-ink);
+  font-family: var(--glass-font); -webkit-font-smoothing: antialiased; }
+.mto-panel { background: var(--glass-surface-solid); border: 1px solid var(--glass-line-strong);
+  border-radius: var(--glass-radius-lg); box-shadow: var(--glass-shadow-float);
   padding: 22px 26px; min-width: 320px; max-width: 92vw; max-height: 88vh; overflow-y: auto; }
-.mto-panel h3 { margin: 0 0 14px; font-size: 16px; text-align: center; }
+.mto-panel h3 { margin: 0 0 14px; font-size: 16px; font-weight: 700; text-align: center; }
 .mto-keys { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; font-size: 13px;
-  color: #b8c6d6; margin: 16px 0 18px; align-items: center; }
-.mto-keys kbd { background: rgba(255,255,255,0.12); border-radius: 4px; padding: 2px 8px;
-  font-size: 11px; font-family: monospace; justify-self: start; white-space: nowrap; }
+  color: var(--glass-ink-2); margin: 16px 0 18px; align-items: center; }
+.mto-keys kbd { background: var(--glass-sunken); border: 1px solid var(--glass-line); border-radius: 6px; padding: 2px 8px;
+  font-size: 11px; font-family: monospace; justify-self: start; white-space: nowrap; color: var(--glass-ink); }
 .mto-row { display: flex; align-items: center; gap: 12px; margin: 14px 0; font-size: 13px;
-  color: #b8c6d6; }
-.mto-row input[type=range] { flex: 1; }
-.mto-btn { width: 100%; margin-top: 10px; padding: 11px; border-radius: 9px; border: none;
-  font-size: 14px; font-weight: 600; cursor: pointer; }
-.mto-btn.primary { background: #4f8cff; color: #fff; }
-.mto-btn.ghost { background: rgba(255,255,255,0.1); color: #fff; }
-.mto-btn.danger { background: rgba(214,86,86,0.22); color: #ffb3b3; }
-.mto-btn:hover { filter: brightness(1.15); }
-.mto-note { font-size: 11px; color: #8fa3ba; margin-top: 10px; }
+  color: var(--glass-ink-2); }
+.mto-row input[type=range] { flex: 1; accent-color: var(--glass-tint); }
+.mto-btn { width: 100%; margin-top: 10px; padding: 11px; border-radius: 999px; border: none;
+  font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.mto-btn.primary { background: var(--glass-ink); color: var(--glass-on-ink); }
+.mto-btn.ghost { background: var(--glass-sunken); color: var(--glass-ink); box-shadow: inset 0 0 0 1px var(--glass-line-strong); }
+.mto-btn.danger { background: var(--glass-bad-bg); color: var(--glass-bad-ink); }
+.mto-btn:hover { filter: brightness(1.12); }
+.mto-note { font-size: 11px; color: var(--glass-muted); margin-top: 10px; }
 `;
 
 let styleInjected = false;

@@ -5,25 +5,34 @@ import { HOTBAR, tileDef } from "../engine/tiles";
 import { Inventory } from "../engine/mining";
 
 const css = `
-#mt-hud { position: fixed; inset: 0; pointer-events: none; color: #fff; z-index: 10;
-  font-family: system-ui, -apple-system, sans-serif; }
+/* DOM HUD over the world: small smoked-glass panels (dark --glass-* tokens, see
+   index.html). Sizes and positions are unchanged — only fills, edges, radii and
+   type moved. The hint sits on the world itself and stays as it was. */
+#mt-hud { position: fixed; inset: 0; pointer-events: none; color: var(--glass-ink); z-index: 10;
+  font-family: var(--glass-font); }
 #mt-hotbar { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
   display: flex; gap: 5px; }
-.mt-slot { width: 46px; height: 50px; border: 2px solid rgba(255,255,255,0.35);
-  border-radius: 6px; background: rgba(0,0,0,0.35); display: flex; align-items: center;
+.mt-slot { width: 46px; height: 50px; border: 2px solid rgba(255,255,255,0.22);
+  border-radius: 12px; background: var(--glass-surface); display: flex; align-items: center;
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
   justify-content: center; flex-direction: column; font-size: 9px; position: relative; }
-.mt-slot.sel { border-color: #fff; background: rgba(255,255,255,0.18); }
-.mt-swatch { width: 22px; height: 22px; border-radius: 3px; margin-bottom: 2px; }
+.mt-slot.sel { border-color: var(--glass-tint); background: rgba(255,255,255,0.18); }
+.mt-swatch { width: 22px; height: 22px; border-radius: 5px; margin-bottom: 2px; }
 .mt-count { position: absolute; top: 2px; right: 4px; font-size: 10px; font-weight: 700; }
 #mt-debug { position: absolute; top: 10px; left: 10px; font: 11px/1.5 monospace;
-  background: rgba(0,0,0,0.45); padding: 6px 10px; border-radius: 6px; white-space: pre; }
-#mt-players { position: absolute; top: 10px; right: 10px; font: 12px/1.6 system-ui;
-  background: rgba(0,0,0,0.45); padding: 6px 12px; border-radius: 6px; min-width: 120px; }
-#mt-minimap { position: absolute; bottom: 14px; right: 14px; border: 2px solid rgba(255,255,255,0.3);
-  border-radius: 4px; image-rendering: pixelated; opacity: 0.9; }
+  background: var(--glass-surface); padding: 6px 10px; border-radius: 12px; white-space: pre;
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong); }
+#mt-players { position: absolute; top: 10px; right: 10px; font: 12px/1.6 var(--glass-font);
+  background: var(--glass-surface); padding: 6px 12px; border-radius: 12px; min-width: 120px;
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong); }
+#mt-minimap { position: absolute; bottom: 14px; right: 14px; border: 2px solid rgba(255,255,255,0.22);
+  border-radius: 10px; image-rendering: pixelated; opacity: 0.9; box-shadow: var(--glass-shadow); }
 #mt-toasts { position: absolute; bottom: 84px; left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column; gap: 4px; align-items: center; }
-.mt-toast { background: rgba(0,0,0,0.65); padding: 5px 14px; border-radius: 14px;
+.mt-toast { background: var(--glass-surface-solid); padding: 5px 14px; border-radius: 999px;
+  box-shadow: var(--glass-shadow-float);
   font-size: 13px; animation: mtfade 4s forwards; }
 @keyframes mtfade { 0%,80% { opacity: 1; } 100% { opacity: 0; } }
 #mt-hint { position: absolute; bottom: 74px; left: 50%; transform: translateX(-50%);
@@ -98,7 +107,7 @@ export class Hud {
       ...others.map((p) => {
         const doing =
           p.action && p.action !== "idle"
-            ? ` <span style="color:#9fb0c3;font-size:11px">· ${escapeHtml(p.action)}</span>`
+            ? ` <span style="color:var(--glass-muted);font-size:11px">· ${escapeHtml(p.action)}</span>`
             : "";
         return `${escapeHtml(p.name)}${doing}`;
       }),

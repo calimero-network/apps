@@ -58,8 +58,14 @@ export interface LandingOptions {
 }
 
 const css = `
+/* Chrome in the fleet's glass, SMOKED: <html data-glass-theme="dark"> (index.html)
+   switches the --glass-* tokens to their dark values. The launcher floats over
+   the live world animation, and the title, tagline, controls and footer sit on
+   it directly in white, so the frame stays dark. The world animation, the logo
+   and the world thumbnails are content and keep their own colours. */
 #mt-landing { position: fixed; inset: 0; overflow-y: auto; z-index: 20;
-  background: #0b0e14; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
+  background: var(--glass-ground); color: var(--glass-ink); font-family: var(--glass-font);
+  -webkit-font-smoothing: antialiased; }
 .mtl-bg { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 .mtl-scrim { position: fixed; inset: 0; pointer-events: none;
   background: linear-gradient(180deg, rgba(6,8,14,0.55) 0%, rgba(6,8,14,0.15) 35%,
@@ -79,34 +85,40 @@ const css = `
   letter-spacing: 4px; text-transform: uppercase; line-height: 1; text-align: center;
   color: #fff; text-shadow: 0 4px 0 rgba(0,0,0,0.45), 0 0 28px rgba(0,0,0,0.5); }
 .mtl-title em { font-style: normal; color: #58c56b; }
-.mtl-tag { margin: 0; font-size: 13px; color: #cfe3d6; letter-spacing: 1px;
+.mtl-tag { margin: 0; font-size: 13px; color: var(--glass-ink-2); letter-spacing: 1px;
   text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
 .mtl-tag em { font-style: normal; color: #58c56b; }
 .mtl-center { flex: 1; display: flex; flex-direction: column; justify-content: center;
   padding: 14px 0; }
-.mtl-card { background: rgba(11,14,20,0.82); backdrop-filter: blur(6px);
-  border: 1px solid rgba(255,255,255,0.14); border-radius: 16px; padding: 18px 24px 20px;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.45); }
-.mtl-card h3 { margin: 0 0 16px; font-size: 16px; }
+.mtl-card { background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-line-strong); border-radius: var(--glass-radius-lg); padding: 18px 24px 20px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), var(--glass-shadow); }
+.mtl-card h3 { margin: 0 0 16px; font-size: 16px; font-weight: 700; }
 .mtl-card label, .mtl-modal label { display: block; text-align: left; font-size: 12px;
-  color: #9fb0c3; margin: 12px 0 4px; }
+  color: var(--glass-muted); margin: 12px 0 4px; }
 .mtl-card input, .mtl-modal input { width: 100%; box-sizing: border-box; padding: 10px 11px;
-  border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.32);
-  color: #fff; font-size: 14px; }
-.mtl-btn { width: 100%; margin-top: 14px; padding: 12px; border-radius: 9px; border: none;
-  font-size: 15px; font-weight: 600; cursor: pointer; }
-.mtl-btn.primary { background: #4f8cff; color: #fff; }
-.mtl-btn.green { background: #3f9950; color: #fff; }
-.mtl-btn.ghost { background: rgba(255,255,255,0.1); color: #fff; }
-.mtl-link { display: inline-block; margin-top: 12px; background: none; border: none; color: #8fa3ba;
-  font-size: 12px; cursor: pointer; text-decoration: underline; }
-.mtl-divider { display: flex; align-items: center; gap: 10px; color: #6d7f92; font-size: 11px;
+  border-radius: var(--glass-radius-sm); border: 1px solid var(--glass-line-strong); background: var(--glass-sunken);
+  color: var(--glass-ink); font-size: 14px; font-family: inherit; }
+.mtl-card input:focus, .mtl-modal input:focus { outline: none; border-color: var(--glass-accent-solid);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-accent-solid) 30%, transparent); }
+.mtl-btn { width: 100%; margin-top: 14px; padding: 12px; border-radius: 999px; border: none;
+  font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit;
+  box-shadow: 0 10px 24px -12px rgba(0,0,0,0.7); }
+.mtl-btn:hover { filter: brightness(1.08); }
+.mtl-btn.primary { background: var(--glass-accent-solid); color: #fff; }
+.mtl-btn.green { background: var(--glass-ink); color: var(--glass-on-ink); }
+.mtl-btn.ghost { background: var(--glass-sunken); color: var(--glass-ink);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong); }
+.mtl-link { display: inline-block; margin-top: 12px; background: none; border: none; color: var(--glass-muted);
+  font-size: 12px; cursor: pointer; text-decoration: underline; font-family: inherit; }
+.mtl-divider { display: flex; align-items: center; gap: 10px; color: var(--glass-muted); font-size: 11px;
   margin-top: 18px; text-transform: uppercase; letter-spacing: 1px; }
-.mtl-divider::before, .mtl-divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.12); }
+.mtl-divider::before, .mtl-divider::after { content: ""; flex: 1; height: 1px; background: var(--glass-line-strong); }
 .mtl-worlds { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 260px;
   overflow-y: auto; }
-.mtl-world-card { position: relative; height: 78px; border-radius: 10px; overflow: hidden; flex: none;
-  border: 1px solid rgba(255,255,255,0.16); background: #0d1117; }
+.mtl-world-card { position: relative; height: 78px; border-radius: var(--glass-radius); overflow: hidden; flex: none;
+  border: 1px solid var(--glass-line-strong); background: var(--glass-surface-solid); }
 .mtl-world-card > canvas { position: absolute; inset: 0; width: 100%; height: 100%;
   filter: blur(2.5px); transform: scale(1.12); image-rendering: pixelated; }
 .mtl-card-scrim { position: absolute; inset: 0;
@@ -114,31 +126,32 @@ const css = `
 .mtl-card-body { position: relative; z-index: 1; height: 100%; box-sizing: border-box;
   display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
 .mtl-card-info { min-width: 0; text-align: left; }
-.mtl-card-title { font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+.mtl-card-title { font-size: 13px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mtl-card-info code { display: block; font-size: 10px; color: #b9c6d4; margin-top: 3px;
+.mtl-card-info code { display: block; font-size: 10px; color: var(--glass-ink-2); margin-top: 3px;
   max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mtl-card-tag { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: #8fe0a0;
+.mtl-card-tag { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--glass-good-ink);
   margin-top: 3px; }
 .mtl-card-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; flex: none; }
-.mtl-card-actions .mtl-join { padding: 8px 16px; border-radius: 6px; border: none;
-  background: #3f9950; color: #fff; font-weight: 600; cursor: pointer; }
-.mtl-card-actions .mtl-join.enter { background: #4f8cff; }
-.mtl-card-actions .mtl-join:disabled { background: #4a4f57; cursor: default; opacity: 0.7; }
-.mtl-kebab { width: 30px; padding: 8px 0; border-radius: 6px; border: none;
-  background: rgba(0,0,0,0.55); color: #fff; font-weight: 700; cursor: pointer; line-height: 1; }
+.mtl-card-actions .mtl-join { padding: 8px 16px; border-radius: 999px; border: none;
+  background: var(--glass-ink); color: var(--glass-on-ink); font-weight: 600; cursor: pointer; font-family: inherit; }
+.mtl-card-actions .mtl-join.enter { background: var(--glass-accent-solid); color: #fff; }
+.mtl-card-actions .mtl-join:disabled { background: var(--glass-surface-solid); color: var(--glass-muted); cursor: default; opacity: 0.7; }
+.mtl-kebab { width: 30px; padding: 8px 0; border-radius: 999px; border: none;
+  background: var(--glass-surface-solid); color: var(--glass-ink); font-weight: 700; cursor: pointer; line-height: 1;
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong); }
 .mtl-card-menu { position: absolute; right: 46px; top: 6px; z-index: 3; min-width: 150px;
-  background: #131a26; border: 1px solid rgba(255,255,255,0.18); border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.6); display: flex; flex-direction: column; overflow: hidden; }
+  background: var(--glass-surface-solid); border: 1px solid var(--glass-line-strong); border-radius: 14px;
+  box-shadow: var(--glass-shadow-float); display: flex; flex-direction: column; overflow: hidden; }
 .mtl-card-menu[hidden] { display: none; }
-.mtl-card-menu button { background: none; border: none; color: #dfe7ee; padding: 9px 12px;
-  text-align: left; font-size: 12px; cursor: pointer; }
-.mtl-card-menu button:hover { background: rgba(255,255,255,0.08); }
+.mtl-card-menu button { background: none; border: none; color: var(--glass-ink-2); padding: 9px 12px;
+  text-align: left; font-size: 12px; cursor: pointer; font-family: inherit; }
+.mtl-card-menu button:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 .mtl-row2 { display: flex; gap: 8px; }
 .mtl-row2 .mtl-btn { flex: 1; }
-.mtl-world button { padding: 6px 14px; border-radius: 6px; border: none; background: #4f8cff;
-  color: #fff; font-weight: 600; cursor: pointer; }
-.mtl-note { font-size: 12px; color: #8fa3ba; margin-top: 10px; line-height: 1.5; }
+.mtl-world button { padding: 6px 14px; border-radius: 999px; border: none; background: var(--glass-accent-solid);
+  color: #fff; font-weight: 600; cursor: pointer; font-family: inherit; }
+.mtl-note { font-size: 12px; color: var(--glass-muted); margin-top: 10px; line-height: 1.5; }
 /* The way back out to the marketing page.
    ⚠️ Its own row BELOW the card, centred, so it lands directly under the
    "Merraria runs on your Calimero node — connect one to play …" note: the line
@@ -148,11 +161,11 @@ const css = `
    nothing to say it is pressable. */
 .mtl-backrow { text-align: center; margin-top: 14px; }
 .mtl-back { display: inline-flex; align-items: center; gap: 7px;
-  padding: 7px 13px 7px 11px; border-radius: 8px; cursor: pointer; font-family: inherit;
-  font-size: 12px; font-weight: 600; color: #dfe7ee;
-  background: rgba(11,14,20,0.82); border: 1px solid rgba(255,255,255,0.22);
-  backdrop-filter: blur(6px); box-shadow: 0 4px 16px rgba(0,0,0,0.45); }
-.mtl-back:hover { color: #fff; background: rgba(30,38,50,0.9); border-color: rgba(255,255,255,0.4); }
+  padding: 7px 13px 7px 11px; border-radius: 999px; cursor: pointer; font-family: inherit;
+  font-size: 12px; font-weight: 600; color: var(--glass-ink);
+  background: var(--glass-surface); border: 1px solid var(--glass-line-strong);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow); }
+.mtl-back:hover { color: var(--glass-ink); background: var(--glass-surface-solid); border-color: rgba(255,255,255,0.28); }
 .mtl-back span { font-size: 14px; line-height: 1; }
 /* What the keys do, on the screen you read BEFORE the world loads — in game
    the same list is behind Esc/O, which is no help to a first-time player who
@@ -160,50 +173,50 @@ const css = `
 /* The negative side margins let the row use the wrap's own 24px gutter: the
    six bindings need a hair more than the 520px column, and without it "O menu"
    drops to a second line on its own. */
-.mtl-controls { margin: 14px -14px 0; color: #cfd9e4; font-size: 12px;
+.mtl-controls { margin: 14px -14px 0; color: var(--glass-ink-2); font-size: 12px;
   display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 12px;
   text-shadow: 0 1px 4px rgba(0,0,0,0.85); }
 /* each binding is ONE unit — a plain inline run wrapped between a key and the
    verb it belongs to, which read as a different control entirely */
 .mtl-controls span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.mtl-controls kbd { background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.25);
-  border-radius: 4px; padding: 2px 6px; font-family: ui-monospace, monospace; font-size: 11px; }
-.mtl-error { color: #ff8686; font-size: 12px; margin-top: 10px; min-height: 14px; }
-.mtl-footer { color: #b7c4d2; font-size: 12px; text-align: center;
+.mtl-controls kbd { background: rgba(11,14,24,0.6); border: 1px solid var(--glass-line-strong);
+  border-radius: 6px; padding: 2px 6px; font-family: ui-monospace, monospace; font-size: 11px; }
+.mtl-error { color: var(--glass-bad-ink); font-size: 12px; margin-top: 10px; min-height: 14px; }
+.mtl-footer { color: var(--glass-ink-2); font-size: 12px; text-align: center;
   text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
 .mtl-nodes { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
-.mtl-node-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
-  background: rgba(0,0,0,0.3); border: 1px solid rgba(88,197,107,0.35); }
-.mtl-node-row code { font-size: 12px; color: #cdd9e5; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.mtl-node-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--glass-radius-sm);
+  background: var(--glass-sunken); border: 1px solid color-mix(in srgb, var(--glass-good-ink) 40%, transparent); }
+.mtl-node-row code { font-size: 12px; color: var(--glass-ink-2); flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .mtl-node-row .mtl-dot { width: 8px; height: 8px; border-radius: 50%; background: #58c56b;
   box-shadow: 0 0 6px #58c56b; flex: none; }
-.mtl-node-row button { padding: 6px 14px; border-radius: 6px; border: none; background: #3f9950;
-  color: #fff; font-weight: 600; cursor: pointer; }
-.mtl-modal-shade { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.6);
+.mtl-node-row button { padding: 6px 14px; border-radius: 999px; border: none; background: var(--glass-ink);
+  color: var(--glass-on-ink); font-weight: 600; cursor: pointer; font-family: inherit; }
+.mtl-modal-shade { position: fixed; inset: 0; z-index: 30; background: rgba(5,7,14,0.6);
   display: flex; align-items: center; justify-content: center; padding: 16px; }
-.mtl-modal { width: min(420px, 94vw); box-sizing: border-box; background: rgba(10,13,18,0.97);
-  border: 1px solid rgba(255,255,255,0.18); border-radius: 16px; padding: 18px 24px 20px;
-  box-shadow: 0 16px 60px rgba(0,0,0,0.7); color: #fff; }
+.mtl-modal { width: min(420px, 94vw); box-sizing: border-box; background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong); border-radius: var(--glass-radius-lg); padding: 18px 24px 20px;
+  box-shadow: var(--glass-shadow-float); color: var(--glass-ink); }
 .mtl-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-.mtl-modal-head h3 { margin: 0; font-size: 16px; }
-.mtl-modal-close { background: none; border: none; color: #9fb0c3; font-size: 18px;
-  cursor: pointer; padding: 2px 6px; line-height: 1; }
-.mtl-modal-close:hover { color: #fff; }
-.mtl-tabs { display: flex; gap: 4px; margin-top: 8px; border-bottom: 1px solid rgba(255,255,255,0.14); }
+.mtl-modal-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.mtl-modal-close { background: none; border: none; color: var(--glass-muted); font-size: 18px;
+  cursor: pointer; padding: 2px 6px; line-height: 1; border-radius: 999px; }
+.mtl-modal-close:hover { color: var(--glass-ink); background: var(--glass-sunken); }
+.mtl-tabs { display: flex; gap: 4px; margin-top: 8px; border-bottom: 1px solid var(--glass-line-strong); }
 .mtl-tab { flex: 1; padding: 9px 0; background: none; border: none; border-bottom: 2px solid transparent;
-  color: #9fb0c3; font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: -1px; }
-.mtl-tab[aria-selected="true"] { color: #fff; border-bottom-color: #4f8cff; }
+  color: var(--glass-muted); font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: -1px; font-family: inherit; }
+.mtl-tab[aria-selected="true"] { color: var(--glass-ink); border-bottom-color: var(--glass-ink); }
 .mtl-tabpanel[hidden] { display: none; }
-.mtl-account { font-size: 12px; color: #8fe0a0; margin: -8px 0 4px; }
-.mtl-account code { color: #cdd9e5; }
-.mtl-warn { color: #ffd37a; font-size: 12px; margin-top: 10px; line-height: 1.5; }
-.mtl-scan { font-size: 12px; color: #8fa3ba; animation: mtlpulse 1.2s ease-in-out infinite; }
+.mtl-account { font-size: 12px; color: var(--glass-good-ink); margin: -8px 0 4px; }
+.mtl-account code { color: var(--glass-ink-2); }
+.mtl-warn { color: var(--glass-wait-ink); font-size: 12px; margin-top: 10px; line-height: 1.5; }
+.mtl-scan { font-size: 12px; color: var(--glass-muted); animation: mtlpulse 1.2s ease-in-out infinite; }
 @keyframes mtlpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 .mtl-social { display: flex; gap: 20px; justify-content: center; align-items: center;
   flex-wrap: wrap; margin-top: 8px; }
-.mtl-social a { color: #8fa3ba; text-decoration: none; display: inline-flex; align-items: center;
+.mtl-social a { color: var(--glass-ink-2); text-decoration: none; display: inline-flex; align-items: center;
   gap: 6px; font-size: 12px; }
-.mtl-social a:hover { color: #fff; }
+.mtl-social a:hover { color: var(--glass-ink); }
 .mtl-social svg { width: 15px; height: 15px; fill: currentColor; }
 
 /* Chromeless: the unified landing page (src/pages/landing) has already shown the
@@ -766,7 +779,7 @@ export class Landing {
         You'll authenticate on your node and come straight back; opening from the
         Calimero desktop skips this page entirely. No node yet?
         <a href="https://docs.calimero.network/getting-started/" target="_blank"
-        rel="noopener noreferrer" style="color:#8fa3ba">Run one</a>, or sign in with
+        rel="noopener noreferrer" style="color:var(--glass-ink-2)">Run one</a>, or sign in with
         your Calimero account (the Cloud tab) and play through its relay.</div>
     `;
     // the anonymous card can never start the game (_done unused): the only
