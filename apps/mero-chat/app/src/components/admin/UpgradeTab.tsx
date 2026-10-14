@@ -9,13 +9,13 @@ const Section = styled.div`
 const SectionTitle = styled.div`
   font-size: 0.78rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
+  color: color-mix(in srgb, var(--glass-ink) 70%, transparent);
   margin-bottom: 0.5rem;
 `;
 
 const Description = styled.div`
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--glass-ink) 35%, transparent);
   margin-bottom: 0.625rem;
   line-height: 1.4;
 `;
@@ -23,33 +23,33 @@ const Description = styled.div`
 const InputLabel = styled.label`
   display: block;
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.45);
+  color: color-mix(in srgb, var(--glass-ink) 45%, transparent);
   margin-bottom: 0.25rem;
 `;
 
 const TextInput = styled.input`
   width: 100%;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
   border-radius: 5px;
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 0.78rem;
   padding: 0.4rem 0.5rem;
   outline: none;
   margin-bottom: 0.5rem;
   &:focus {
-    border-color: rgba(165, 255, 17, 0.4);
+    border-color: color-mix(in srgb, var(--glass-accent) 40%, transparent);
   }
 `;
 
 const TriggerButton = styled.button`
-  background: rgba(124, 58, 237, 0.12);
+  background: var(--chat-violet-soft);
   border: 1px solid rgba(124, 58, 237, 0.3);
-  color: #a78bfa;
+  color: var(--chat-violet);
   font-size: 0.78rem;
   font-weight: 500;
   padding: 0.4rem 1rem;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.15s ease;
   &:hover {
@@ -62,9 +62,9 @@ const TriggerButton = styled.button`
 `;
 
 const RefreshButton = styled.button`
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.6);
+  background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
+  color: color-mix(in srgb, var(--glass-ink) 60%, transparent);
   font-size: 0.7rem;
   padding: 0.25rem 0.5rem;
   border-radius: 5px;
@@ -72,15 +72,15 @@ const RefreshButton = styled.button`
   transition: all 0.15s ease;
   margin-left: 0.5rem;
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    background: color-mix(in srgb, var(--glass-ink) 10%, transparent);
+    color: var(--glass-ink);
   }
 `;
 
 const StatusCard = styled.div`
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
+  background: color-mix(in srgb, var(--glass-ink) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 6%, transparent);
+  border-radius: 10px;
   padding: 0.75rem;
 `;
 
@@ -96,12 +96,12 @@ const StatusRow = styled.div`
 
 const StatusLabel = styled.span`
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: color-mix(in srgb, var(--glass-ink) 40%, transparent);
 `;
 
 const StatusValue = styled.span`
   font-size: 0.75rem;
-  color: #fff;
+  color: var(--glass-ink);
 `;
 
 const spin = keyframes`
@@ -114,7 +114,7 @@ const StatusBadge = styled.span<{ $status: string }>`
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 0.125rem 0.5rem;
-  border-radius: 4px;
+  border-radius: 8px;
   background: ${({ $status }) => {
     switch ($status.toLowerCase()) {
       case "completed":
@@ -125,7 +125,7 @@ const StatusBadge = styled.span<{ $status: string }>`
       case "failed":
         return "rgba(239, 68, 68, 0.12)";
       default:
-        return "rgba(255, 255, 255, 0.06)";
+        return "color-mix(in srgb, var(--glass-ink) 6%, transparent)";
     }
   }};
   color: ${({ $status }) => {
@@ -136,9 +136,9 @@ const StatusBadge = styled.span<{ $status: string }>`
       case "inprogress":
         return "#facc15";
       case "failed":
-        return "#f87171";
+        return "var(--glass-bad-ink)";
       default:
-        return "rgba(255, 255, 255, 0.5)";
+        return "color-mix(in srgb, var(--glass-ink) 50%, transparent)";
     }
   }};
 `;
@@ -146,7 +146,7 @@ const StatusBadge = styled.span<{ $status: string }>`
 const ProgressBar = styled.div`
   width: 100%;
   height: 4px;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
   border-radius: 2px;
   margin-top: 0.5rem;
   overflow: hidden;
@@ -155,7 +155,7 @@ const ProgressBar = styled.div`
 const ProgressFill = styled.div<{ $percent: number }>`
   height: 100%;
   width: ${({ $percent }) => $percent}%;
-  background: #a5ff11;
+  background: var(--glass-ink);
   border-radius: 2px;
   transition: width 0.3s ease;
 `;
@@ -163,7 +163,7 @@ const ProgressFill = styled.div<{ $percent: number }>`
 const EmptyState = styled.div`
   text-align: center;
   padding: 1.5rem;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   font-size: 0.82rem;
 `;
 
@@ -171,8 +171,8 @@ const Spinner = styled.span`
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.15);
-  border-top-color: #a78bfa;
+  border: 2px solid color-mix(in srgb, var(--glass-ink) 15%, transparent);
+  border-top-color: var(--chat-violet);
   border-radius: 50%;
   animation: ${spin} 0.6s linear infinite;
   margin-right: 0.375rem;

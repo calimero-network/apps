@@ -59,6 +59,7 @@ export default defineConfig({
         "**/marketing-landing.spec.ts",
         "**/workspace.spec.ts",
         "**/auth.spec.ts",
+        "**/theme.spec.ts",
       ],
     },
     // Integration tests — full-stack against real merod nodes.

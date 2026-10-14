@@ -8,12 +8,12 @@ const ImageWrapper = styled.div<{ $size: number }>`
   position: relative;
   display: inline-flex;
   margin: 4px 8px 4px 0;
-  border-radius: 6px;
+  border-radius: 10px;
   overflow: hidden;
   width: ${({ $size }) => $size}px;
   height: ${({ $size }) => $size}px;
-  background-color: #1d1d21;
-  border: 1px solid #25252a;
+  background-color: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line);
   cursor: pointer;
 `;
 
@@ -30,9 +30,9 @@ const Placeholder = styled.div`
   justify-content: center;
   width: 120px;
   height: 120px;
-  border-radius: 6px;
-  background-color: #25252a;
-  color: #7a7a85;
+  border-radius: 10px;
+  background-color: var(--glass-sunken);
+  color: var(--glass-muted);
   font-size: 12px;
 `;
 
@@ -49,8 +49,8 @@ const HoverContainer = styled.div`
   position: absolute;
   top: 4px;
   right: 4px;
-  background-color: rgba(0, 0, 0, 0.7);
-  border-radius: 4px;
+  background-color: var(--chat-scrim);
+  border-radius: 8px;
   padding: 4px;
 `;
 
@@ -58,8 +58,8 @@ const HoverContainerRemove = styled.div`
   position: absolute;
   top: 1px;
   right: 1px;
-  background-color: rgba(0, 0, 0, 0.7);
-  border-radius: 4px;
+  background-color: var(--chat-scrim);
+  border-radius: 8px;
   padding: 1px;
 `;
 
@@ -73,13 +73,13 @@ const IconButton = styled.button`
 `;
 
 const DownloadButton = styled(IconButton)`
-  color: #73b30c;
+  color: var(--glass-accent);
   font-size: 16px;
   padding: 0 3px;
 `;
 
 const RemoveButton = styled(IconButton)`
-  color: #ff6b6b;
+  color: var(--glass-bad-ink);
   font-size: 16px;
   padding: 0 3px;
 `;

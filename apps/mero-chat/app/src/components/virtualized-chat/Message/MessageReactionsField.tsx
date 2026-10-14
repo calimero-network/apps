@@ -53,15 +53,15 @@ const ReactionEmojiWrapper = styled.div<ReactionEmojiWrapperProps>`
   gap: 4px;
   ${(props: ReactionEmojiWrapperProps) =>
     props.$isOwnReaction
-      ? "background-color: #372D19;"
-      : "background-color: #1e1f28;"}
+      ? "background-color: var(--glass-wait-bg);"
+      : "background-color: var(--glass-surface-solid);"}
   &:hover {
     ${(props: ReactionEmojiWrapperProps) =>
       props.$isOwnReaction
-        ? "background-color: #4D3F24;"
-        : "background-color: #2A2B37;"}
+        ? "background-color: var(--glass-wait-bg);"
+        : "background-color: var(--glass-sunken);"}
   }
-  border-radius: 4px;
+  border-radius: 8px;
 `;
 
 const ReactionEmojiComponentButtonContainer = styled.div`
@@ -69,7 +69,7 @@ const ReactionEmojiComponentButtonContainer = styled.div`
 `;
 
 const ReactionAccountsContainer = styled.div`
-  color: #fff;
+  color: var(--glass-ink);
   display: flex;
   align-items: center;
   min-height: 40px;
@@ -77,9 +77,9 @@ const ReactionAccountsContainer = styled.div`
   column-gap: 8px;
   font-size: 1.5rem;
   line-height: 1.75rem;
-  background-color: #1d1d21;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: var(--glass-surface-solid);
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 20%, transparent);
   padding: 8px;
 `;
 
@@ -101,7 +101,7 @@ const ReactedByReaction = styled.div`
 `;
 
 const ReactedByContainer = styled.div`
-  font-family: Helvetica Neue;
+  font-family: var(--glass-font);
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
@@ -113,15 +113,15 @@ const ReactedByContainer = styled.div`
 const ReactionCountWrapper = styled.div`
   font-size: 12px;
   line-height: 100%;
-  color: #fff;
+  color: var(--glass-ink);
   -webkit-font-smoothing: antialiased applied;
 `;
 
 const OthersButton = styled.span`
-  color: #4e95ff;
+  color: var(--glass-accent);
   text-decoration: underline;
   &:hover {
-    color: #73aaff;
+    color: var(--glass-accent);
   }
 `;
 

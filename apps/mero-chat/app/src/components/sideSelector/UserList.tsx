@@ -9,7 +9,7 @@ const ScrollableUserList = styled.div`
   overflow-y: auto;
   padding: 0 0.375rem;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.08) transparent;
+  scrollbar-color: var(--glass-line-strong) transparent;
 
   &::-webkit-scrollbar {
     width: 3px;
@@ -18,7 +18,7 @@ const ScrollableUserList = styled.div`
     background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background-color: rgba(255,255,255,0.1);
+    background-color: color-mix(in srgb, var(--glass-ink) 10%, transparent);
     border-radius: 2px;
   }
 `;

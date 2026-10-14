@@ -24,19 +24,19 @@ const InputGroup = styled.div`
 const Label = styled.label`
   font-size: 0.7rem;
   font-weight: 500;
-  color: #b8b8d1;
+  color: var(--glass-ink-2);
   margin-bottom: 0.25rem;
 `;
 
 const IdentityDisplay = styled.div`
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
+  border-radius: 10px;
   padding: 0.5rem;
   margin-top: 0.5rem;
 `;
 
 const IdentityTitle = styled.h4`
-  color: #ffffff;
+  color: var(--glass-ink);
   font-size: 0.8rem;
   font-weight: 600;
   margin-bottom: 0.4rem;
@@ -46,22 +46,22 @@ const IdentityValue = styled.div`
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
+  border-radius: 8px;
   padding: 0.5rem;
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 0.7rem;
-  color: #e0e0e0;
+  color: var(--glass-ink);
   word-break: break-all;
   margin-bottom: 0.5rem;
   position: relative;
 `;
 
 const CopyButton = styled.button`
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--glass-ink) 10%, transparent);
   width: 60px;
-  color: #b8b8d1;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--glass-ink-2);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 20%, transparent);
   border-radius: 3px;
   padding: 0.3rem 0.5rem;
   font-size: 0.6rem;
@@ -70,8 +70,8 @@ const CopyButton = styled.button`
   margin-right: 0.25rem;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.2);
-    color: #ffffff;
+    background: color-mix(in srgb, var(--glass-ink) 20%, transparent);
+    color: var(--glass-ink);
   }
 `;
 
@@ -79,7 +79,7 @@ const Message = styled.div<{ type?: "success" | "error" }>`
   font-size: 0.8rem;
   text-align: center;
   color: ${({ type }) =>
-    type === "success" ? "#27ae60" : type === "error" ? "#e74c3c" : "#b8b8d1"};
+    type === "success" ? "#27ae60" : type === "error" ? "#e74c3c" : "var(--glass-ink-2)"};
 `;
 
 export default function CreateIdentityTab() {
@@ -152,7 +152,7 @@ export default function CreateIdentityTab() {
               <Button
                 onClick={() => handleCopyToClipboard(identity.publicKey)}
                 variant="secondary"
-                style={{
+                style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)",
                   width: "80px",
                   minWidth: "80px",
                   whiteSpace: "nowrap",
