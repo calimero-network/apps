@@ -417,6 +417,18 @@ steps:
     statements:
       - 'json_subset({{n1_round}}, {"output": {"round": 1, "round_results": ["p1"], "status": "fighting", "p2": {"hp": 100, "rounds_won": 0}, "p1": {"rounds_won": 1}}})'
 
+  # Before the late blow, not after: node-2 refuses it only once it holds
+  # node-1's knock-out, so without this the step raced gossip.
+  - name: Wait for the knock-out to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kombat-node-1
+      - kombat-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
   - name: A late blow for the decided round is refused
     type: call
     node: kombat-node-2
@@ -434,16 +446,6 @@ steps:
     expected_failure: true
     outputs:
       late_error: error
-
-  - name: Wait for the knock-out to reach node-2
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes:
-      - kombat-node-1
-      - kombat-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
 
   - name: Assert the late blow really was refused
     type: assert
