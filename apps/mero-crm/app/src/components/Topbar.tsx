@@ -5,6 +5,7 @@ import { tokens as t } from '../theme';
 import { APP_ROUTE } from '../config';
 import { IconSearch } from './icons';
 import { SelectMenu } from './Dropdown';
+import ThemeToggle from './ThemeToggle';
 
 const TITLES: Record<string, string> = {
   '': 'Pipeline',
@@ -17,7 +18,8 @@ const TITLES: Record<string, string> = {
 };
 
 /** Sticky top bar: view title, the active pipeline's name, the owner filter
- *  (Everyone / Mine / a teammate), client-side search, and New deal. */
+ *  (Everyone / Mine / a teammate), client-side search, the light/dark switch,
+ *  and New deal. */
 export default function Topbar({
   onNewDeal,
   pipelineName,
@@ -97,6 +99,7 @@ export default function Topbar({
           />
           {!searchQuery && <span className="kbd">/</span>}
         </Search>
+        <ThemeToggle />
         <NewBtn type="button" data-testid="open-new-deal-btn" onClick={onNewDeal} title="New deal (N)">
           + Deal
         </NewBtn>

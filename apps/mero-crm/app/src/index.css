@@ -7,27 +7,12 @@
 /* ── App theme tokens: the fleet's light glass (@calimero-apps/glass). ──────
    index.tsx imports glass.css first; everything here maps this app's own names
    onto its `--glass-*` values, so components keep their names and only the
-   values move. Light is the default; `<html data-theme="dark">` (theme.ts)
-   switches glass.css to smoked glass and the dark block below follows it.
+   values move. Light is the default; `<html data-theme="dark">` (set by the
+   person's choice, see theme.ts) switches glass.css to smoked glass and the
+   dark block below follows it.
    The landing page does NOT use these. */
 :root {
   --glass-tint: #2dd4bf;
-
-  /* `C` palette (theme.ts). */
-  --c-green: var(--glass-ink);
-  --c-green-hover: #262b3d;
-  --c-green-deep: var(--glass-accent);
-  --c-green-ink: var(--glass-accent);
-  --c-on-accent: var(--glass-on-ink);
-  --c-ink: var(--glass-ink);
-  --c-paper: var(--glass-ground);
-  --c-paper2: var(--glass-surface-solid);
-  --c-line: var(--glass-line);
-  --c-muted: var(--glass-ink-2);
-  --c-muted-soft: var(--glass-muted);
-  --c-off: var(--glass-line-strong);
-  --c-disabled: var(--glass-sunken);
-  --c-danger: var(--glass-bad-ink);
 
   /* CRM view tokens (`tokens` in theme.ts). */
   --crm-bg: var(--glass-ground);
@@ -65,7 +50,6 @@
 }
 
 :root[data-theme='dark'] {
-  --c-green-hover: #ffffff;
   --crm-accent-hover: #ffffff;
   --crm-accent-dim: rgba(154, 175, 255, 0.14);
   --crm-accent-border: rgba(154, 175, 255, 0.36);
@@ -84,7 +68,7 @@ body {
   background-color: var(--glass-ground);
   background-image: var(--glass-fields);
   background-attachment: fixed;
-  color: var(--c-ink);
+  color: var(--glass-ink);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }
