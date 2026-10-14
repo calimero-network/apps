@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNod
 import type { FeedItem, LinkView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
-import { canOpen, chainLink, subjectFromLink } from "./links";
+import { canOpen, chainLink, subjectFromLink, type NameLink } from "./links";
 import { agentLive, notPickedUp } from "./theme";
 import {
   choicesFor,
@@ -601,7 +601,7 @@ export function LinkChips({
   /** Offer "+ Link"; without, a chain with no links shows nothing. */
   canAdd?: boolean;
 }) {
-  const { loadLinks, loadChain, removeLink, page } = feed;
+  const { loadLinks, loadChain, removeLink, nameLink, page } = feed;
   const addLink = canAdd ? feed.addLink : undefined;
   const [links, setLinks] = useState<LinkView[]>([]);
   const [rows, setRows] = useState<FeedItem[]>([]);
@@ -609,6 +609,21 @@ export function LinkChips({
   const [adding, setAdding] = useState(false);
   const [paste, setPaste] = useState("");
   const [bad, setBad] = useState(false);
+  const [names, setNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!nameLink) return;
+    let live = true;
+    // Unlabelled links are named from the thing itself (the namer reads each once); a label you or the agent gave wins.
+    for (const l of links) {
+      if (l.label) continue;
+      void nameLink(l).then((name) => {
+        if (live && name) setNames((n) => ({ ...n, [l.subject]: name }));
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [links, nameLink]);
   useEffect(() => {
     if (!loadLinks) return;
     let live = true;
@@ -652,7 +667,7 @@ export function LinkChips({
               </span>
             );
           }
-          const label = linkLabel(l, rows);
+          const label = linkLabel(l, rows, names[l.subject]);
           return (
             <span key={l.subject} className={`link-chip${open === l.subject ? " open" : ""}`}>
               <button
@@ -712,7 +727,7 @@ export function LinkChips({
           ))}
       </div>
       {shown && (
-        <ul className="link-group" aria-label={`In ${linkLabel(shown, rows)}`}>
+        <ul className="link-group" aria-label={`In ${linkLabel(shown, rows, names[shown.subject])}`}>
           {about.length === 0 && <li className="link-empty">Nothing from teammates there yet.</li>}
           {about.map((n) => {
             const s = sentenceOf(n, appName);
@@ -737,11 +752,13 @@ export function LinkChips({
 }
 
 /**
- * What a link's chip says: its label; else where a teammate's notification
+ * What a link's chip says: its label; else what the thing itself is called
+ * (`named`, from {@link NameLink}); else where a teammate's notification
  * about it says it is (an issue's title, "#launch"); else the app and the thing's id.
  */
-export function linkLabel(link: LinkView, rows: FeedItem[]): string {
+export function linkLabel(link: LinkView, rows: FeedItem[], named = ""): string {
   if (link.label) return link.label;
+  if (named) return named;
   for (const r of rows) {
     if (r.subject !== link.subject) continue;
     const where = fieldsOf(r).where;

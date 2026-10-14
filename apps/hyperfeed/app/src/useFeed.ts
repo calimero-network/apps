@@ -15,6 +15,7 @@ import type {
   SettingsView,
   WatchView,
 } from "./generated/HyperfeedClient";
+import type { NameLink } from "./links";
 import { fillReplyCall } from "./lens/lens";
 import type { ActionMode, AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
 import type { BlobStore } from "./attachments";
@@ -86,6 +87,8 @@ export interface Feed {
   loadPrs?: (chain: string) => Promise<PrView[]>;
   /** A task's links, oldest first. A read, like `loadChain`. */
   loadLinks?: (chain: string) => Promise<LinkView[]>;
+  /** A link's name from the thing itself ("#launch", "DM with Ronit"), `""` when it cannot say; absent off a node. */
+  nameLink?: NameLink;
   /** Link a thing to a task by hand; absent when the feed predates links. */
   addLink?: (chain: string, subject: string, label: string) => Promise<void>;
   /** Take a link off a task. */
