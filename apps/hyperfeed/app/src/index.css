@@ -1072,6 +1072,72 @@ input:focus-visible {
   border-top: 0;
 }
 
+/* Who works in each app: the default once, then one row per app. */
+.assign-default {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  background: var(--plain-bg);
+  border-radius: 10px;
+}
+
+.assign-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.assign-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.assign-list li:first-child {
+  border-top: 0;
+}
+
+.assign-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.assign-name small {
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.assign-select {
+  flex: none;
+  width: min(240px, 50%);
+  min-height: 34px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+}
+
+.assign-select.assigned {
+  color: var(--ink);
+  font-weight: 600;
+  border-color: var(--accent);
+}
+
+.assign-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 @media (max-width: 760px) {
   .settings {
     grid-template-columns: minmax(0, 1fr);

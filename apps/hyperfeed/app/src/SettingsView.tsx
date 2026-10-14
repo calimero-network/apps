@@ -10,7 +10,7 @@ import type { Preview, PreviewRow } from "./preview";
 import { currentEndpoint, deviceName, inputOf, pushSupported, subscribe, unsubscribe } from "./push";
 import { AGENT_LIVE_MS } from "./theme";
 import { DEFAULT_LANGUAGE, LANGUAGES, languageOf, languageRule } from "./language";
-import { assignedAgent, CODE_APP, defaultLabel, privateAgents } from "./assignments";
+import { assignedAgent, CODE_APP, privateAgents } from "./assignments";
 
 const AGENT_OPTIONS: { id: AgentMode; label: string }[] = [
   { id: "act", label: "Act" },
@@ -490,7 +490,7 @@ function AgentAssignments({ feed }: { feed: Feed }) {
     for (const a of settings.assignments ?? []) keys.add(a.app);
     return [...keys];
   }, [settings, page]);
-  const privates = new Set(privateAgents(settings));
+  const privates = privateAgents(settings);
   // Every agent that reported in or reported what it reaches, and any you assigned that hasn't yet.
   const agents = [
     ...new Set([...settings.agents.map((a) => a.name), ...(settings.reach ?? []).map((r) => r.agent), ...(settings.assignments ?? []).map((a) => a.agent)]),
@@ -501,52 +501,51 @@ function AgentAssignments({ feed }: { feed: Feed }) {
     <section className="panel wide" aria-labelledby="h-assign">
       <h2 id="h-assign">Who works in each app</h2>
       <p className="muted">
-        Only the agent you pick takes an app's work and may call it. An app on the default goes to your private agent. When
-        an agent meets work that needs code, it asks you before handing it to the agent you gave Code.
+        Only the agent you pick takes an app's work and may call it. When an agent meets work that needs code, it asks you
+        before handing it to the agent you gave Code.
       </p>
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">App</th>
-              <th scope="col">Agent</th>
-            </tr>
-          </thead>
-          <tbody>
-            {apps.map((app) => {
-              const look = appLook(app);
-              const name = app === CODE_APP ? "Code" : look.name;
-              const value = String(pending[`assign:${app}`] ?? assignedAgent(settings, app));
-              return (
-                <tr key={app}>
-                  <th scope="row">
-                    <span className="app-cell">
-                      <Badge app={app} size="sm" />
-                      {name}
-                      {app === CODE_APP && <span className="muted"> · shell, files and git on a computer</span>}
-                    </span>
-                  </th>
-                  <td>
-                    <select
-                      aria-label={`Agent for ${name}`}
-                      value={value}
-                      disabled={feed.busy}
-                      onChange={(e) => void write(`assign:${app}`, e.target.value, () => feed.setAssignment!(app, e.target.value))}
-                    >
-                      <option value="">{`Default: ${defaultLabel(settings)}`}</option>
-                      {agents.map((a) => (
-                        <option key={a} value={a}>
-                          {privates.has(a) ? `${a} (private)` : a}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <p className="assign-default" aria-label="The default agent">
+        <span className="muted">Default</span>
+        {privates.length > 0 ? (
+          <>
+            <span className="pill">Private</span>
+            <span className="mono">{privates.join(", ")}</span>
+          </>
+        ) : (
+          <span>Any agent, until a private one reports in</span>
+        )}
+      </p>
+      <ul className="assign-list">
+        {apps.map((app) => {
+          const name = app === CODE_APP ? "Code" : appLook(app).name;
+          const value = String(pending[`assign:${app}`] ?? assignedAgent(settings, app));
+          return (
+            <li key={app}>
+              <span className="app-cell">
+                <Badge app={app} size="sm" />
+                <span className="assign-name">
+                  {name}
+                  {app === CODE_APP && <small className="muted">Shell, files and git on a computer</small>}
+                </span>
+              </span>
+              <select
+                className={`assign-select ${value ? "assigned" : ""}`}
+                aria-label={`Agent for ${name}`}
+                value={value}
+                disabled={feed.busy}
+                onChange={(e) => void write(`assign:${app}`, e.target.value, () => feed.setAssignment!(app, e.target.value))}
+              >
+                <option value="">Default</option>
+                {agents.map((a) => (
+                  <option key={a} value={a}>
+                    {privates.includes(a) ? `${a} · private` : a}
+                  </option>
+                ))}
+              </select>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

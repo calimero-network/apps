@@ -24,9 +24,3 @@ export function privateAgents(settings: Assigning): string[] {
 export function assignedAgent(settings: Assigning, app: string): string {
   return (settings.assignments ?? []).find((a) => a.app === app)?.agent ?? "";
 }
-
-/** How the default agent is named: your private agents, or anyone while none reports in. */
-export function defaultLabel(settings: Assigning): string {
-  const privates = privateAgents(settings);
-  return privates.length > 0 ? `Private agent (${privates.join(", ")})` : "Any agent (no private agent has reported in)";
-}

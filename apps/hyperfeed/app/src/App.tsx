@@ -173,7 +173,21 @@ const DEMO_PREVIEW = demoPreview();
 
 let demo: DemoBackend | null = null;
 function demoSingleton(): DemoBackend {
-  demo ??= new DemoBackend();
+  if (!demo) {
+    demo = new DemoBackend();
+    // Two agents for Settings → Agents: a private one in a TEE, and a laptop on Claude with your repos.
+    const line = (attested: boolean, folders: { path: string; write: boolean }[]) => ({
+      serves: "default",
+      profile: attested ? "near" : "claude",
+      model: attested ? "z-ai/glm-5.3-flash" : "",
+      attested,
+      folders,
+      shell: !attested,
+      web: !attested,
+    });
+    demo.agentReach("mero-bot@agent-td", [line(true, [])]);
+    demo.agentReach("mero-bot@laptop", [line(false, [{ path: "~/workspace", write: true }])]);
+  }
   return demo;
 }
 
