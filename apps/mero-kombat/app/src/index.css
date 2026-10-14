@@ -1,11 +1,13 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    Mero Kombat — the app behind the landing page.
 
-   Two worlds on one page, on purpose. The chrome is the Calimero light family:
-   near-black ink, lime #a5ff11 as a FILL, hairline cards. The arena itself is
-   an arcade cabinet — a dark bezel around a pixel-scaled canvas — because that
-   is what a fighting game looks like, and the contrast makes the screen the
-   brightest, loudest thing on the page.
+   Two worlds on one page, on purpose. The chrome is the fleet's light glass
+   (@calimero-apps/glass, imported first in main.tsx): a cool ground under
+   rose-tinted colour fields, frosted cards, near-black ink pills. The arena
+   itself is an arcade cabinet — a dark bezel around a pixel-scaled canvas —
+   because that is what a fighting game looks like, and the contrast makes the
+   screen the brightest, loudest thing on the page. The cabinet and the canvas
+   are content: glass never touches them.
    ───────────────────────────────────────────────────────────────────────────── */
 @font-face {
   font-family: "Power Grotesk";
@@ -22,34 +24,41 @@
 
 :root {
   color-scheme: light;
-  --bg: #f6f6f3;
-  --surface: #ffffff;
-  --surface-2: #f3f3f0;
-  --surface-3: #e9e9e5;
-  --border: #e5e5e0;
-  --border-strong: #d4d4ce;
-  --text: #131215;
-  --text-dim: #4a4a4f;
-  --text-faint: #6b6b70;
-  --accent: #a5ff11;
-  --accent-hover: #b4ff3a;
-  --accent-soft: #f0ffd6;
-  --accent-ink: #4a7300;
-  --accent-text: #131215;
-  --danger: #c62828;
-  --danger-soft: #fdecec;
-  --online: #2f7a00;
-  --warn: #9a5b00;
+  /* The app's tint: the light behind its glass. */
+  --glass-tint: #f43f5e;
+
+  /* The app's own tokens, mapped onto glass. Names unchanged on purpose. */
+  --bg: var(--glass-ground);
+  --surface: var(--glass-surface);
+  --surface-solid: var(--glass-surface-solid);
+  --surface-2: var(--glass-sunken);
+  --surface-3: rgba(14, 18, 34, 0.08);
+  --border: var(--glass-line);
+  --border-strong: var(--glass-line-strong);
+  --text: var(--glass-ink);
+  --text-dim: var(--glass-ink-2);
+  --text-faint: var(--glass-muted);
+  /* Primary controls are ink pills; --accent stays the primary FILL. */
+  --accent: var(--glass-ink);
+  --accent-hover: #262b3d;
+  --accent-soft: color-mix(in srgb, var(--glass-tint) 9%, var(--glass-surface-solid));
+  --accent-ink: var(--glass-accent);
+  --accent-text: var(--glass-on-ink);
+  --danger: var(--glass-bad-ink);
+  --danger-soft: var(--glass-bad-bg);
+  --online: var(--glass-good-ink);
+  --warn: var(--glass-wait-ink);
+  --live: #22c55e;
 
   --cabinet: #0d0c10;
   --cabinet-edge: #2a2730;
 
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow: 0 1px 2px rgba(19, 18, 21, 0.04), 0 2px 8px rgba(19, 18, 21, 0.05);
-  --ring: 0 0 0 3px rgba(165, 255, 17, 0.45);
-  --font-display: "Power Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --radius: var(--glass-radius);
+  --radius-sm: var(--glass-radius-sm);
+  --shadow: var(--glass-shadow);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--glass-accent-solid) 30%, transparent);
+  --font-display: var(--glass-font);
+  --font: var(--glass-font);
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 }
 
@@ -58,13 +67,26 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
+
+/* mero-react's ConnectButton reads --mero-* from :root (lime). Inside the
+   shell it is a primary control, so it takes the ink pill. Its login modal is
+   portaled to <body>, outside .shell, and keeps the library's own look. */
+.shell {
+  --mero-accent: var(--accent);
+  --mero-accent-hover: var(--accent-hover);
+  --mero-on-primary: var(--accent-text);
+  --mero-radius: 999px;
+}
+.shell .mero-connect-button { font-family: var(--font); box-shadow: 0 10px 24px -14px rgba(14, 18, 34, 0.6); }
 
 .mono { font-family: var(--mono); }
 :where(.shell) code { font-family: var(--mono); font-size: 0.9em; }
@@ -74,17 +96,23 @@ body {
 /* ── shell ──────────────────────────────────────────────────────────────── */
 .topbar {
   position: sticky;
-  top: 0;
+  top: 12px;
   z-index: 10;
-  background: rgba(246, 246, 243, 0.86);
-  backdrop-filter: saturate(140%) blur(14px);
-  border-bottom: 1px solid var(--border);
+  max-width: 1320px;
+  margin: 12px auto 0;
+  border-radius: 20px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
 }
+@media (max-width: 1352px) { .topbar { margin: 12px 16px 0; } }
 .topbar-inner {
   max-width: 1320px;
   margin: 0 auto;
   height: 60px;
-  padding: 0 20px;
+  padding: 0 12px 0 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -97,15 +125,16 @@ body {
   background: none;
   border: 0;
   padding: 4px 6px 4px 0;
+  box-shadow: none;
   color: var(--text);
   font-family: var(--font-display);
   font-size: 1.1rem;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: -0.01em;
   cursor: pointer;
 }
 :where(.shell) .brand:hover:not(:disabled) { background: none; color: var(--text); }
-.brand img { border-radius: 8px; display: block; }
+.brand img { border-radius: 9px; display: block; }
 .session { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .node-pill {
   display: inline-flex;
@@ -116,7 +145,7 @@ body {
   padding: 5px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--surface);
+  background: var(--surface-solid);
   color: var(--text-dim);
   font-size: 0.78rem;
 }
@@ -127,6 +156,7 @@ body {
 /* ── type ───────────────────────────────────────────────────────────────── */
 :where(.shell) h1 {
   font-family: var(--font-display);
+  font-weight: 800;
   font-size: clamp(1.7rem, 3vw, 2.4rem);
   line-height: 1.08;
   margin: 0 0 12px;
@@ -139,7 +169,7 @@ body {
   font-family: var(--font-display);
   font-size: 1rem;
   margin: 0;
-  font-weight: 700;
+  font-weight: 750;
 }
 .lede { color: var(--text-dim); font-size: 1.02rem; margin: 0 0 22px; max-width: 54ch; }
 .eyebrow {
@@ -158,11 +188,13 @@ body {
 /* ── cards ──────────────────────────────────────────────────────────────── */
 .card {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
   padding: 18px;
   margin-bottom: 14px;
-  box-shadow: var(--shadow);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--shadow);
 }
 .card-head {
   display: flex;
@@ -188,7 +220,7 @@ body {
 
 /* ── controls ───────────────────────────────────────────────────────────── */
 :where(.shell) input {
-  background: var(--surface);
+  background: var(--surface-solid);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -200,7 +232,7 @@ body {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 :where(.shell) input::placeholder { color: var(--text-faint); }
-:where(.shell) input:focus { outline: none; border-color: #7cc400; box-shadow: var(--ring); }
+:where(.shell) input:focus { outline: none; border-color: var(--glass-accent-solid); box-shadow: var(--ring); }
 :where(.shell) input:disabled { background: var(--surface-2); color: var(--text-dim); }
 
 :where(.shell) button,
@@ -212,11 +244,12 @@ body {
   background: var(--accent);
   color: var(--accent-text);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: 9px 16px;
+  border-radius: 999px;
+  padding: 9px 18px;
   font: inherit;
   font-size: 0.88rem;
   font-weight: 650;
+  box-shadow: 0 10px 24px -14px rgba(14, 18, 34, 0.6);
   text-decoration: none;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.08s;
@@ -225,14 +258,15 @@ body {
 :where(.shell) button:active:not(:disabled) { transform: translateY(1px); }
 :where(.shell) button.ghost,
 .button-link.ghost {
-  background: var(--surface);
+  background: var(--surface-solid);
   color: var(--text);
   border-color: var(--border-strong);
+  box-shadow: none;
 }
 :where(.shell) button.ghost:hover:not(:disabled),
 .button-link.ghost:hover { background: var(--surface-2); }
-:where(.shell) button.small { padding: 6px 12px; font-size: 0.8rem; border-radius: 7px; }
-:where(.shell) button.large { padding: 12px 22px; font-size: 0.95rem; border-radius: 10px; }
+:where(.shell) button.small { padding: 6px 14px; font-size: 0.8rem; border-radius: 999px; }
+:where(.shell) button.large { padding: 12px 24px; font-size: 0.95rem; border-radius: 999px; }
 :where(.shell) button.icon-btn { padding: 6px 8px; }
 :where(.shell) button:disabled { opacity: 0.45; cursor: default; }
 :where(.shell) button:focus-visible, :where(.shell) input:focus-visible { outline: none; box-shadow: var(--ring); }
@@ -249,7 +283,7 @@ body {
   font-size: 0.8rem;
   font-family: var(--mono);
 }
-:where(.shell) pre.err { border-color: #f1c4c4; background: var(--danger-soft); color: var(--danger); }
+:where(.shell) pre.err { border-color: color-mix(in srgb, var(--danger) 25%, transparent); background: var(--danger-soft); color: var(--danger); }
 
 :where(.shell) table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
 :where(.shell) th, :where(.shell) td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
@@ -280,7 +314,7 @@ body {
   height: 30px;
   border-radius: 50%;
   border: 3px solid var(--surface-3);
-  border-top-color: #7cc400;
+  border-top-color: var(--glass-tint);
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -290,7 +324,7 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  border-color: #f1c4c4;
+  border-color: color-mix(in srgb, var(--danger) 25%, transparent);
 }
 .card.alert pre { flex: 1; margin: 0; }
 
@@ -301,12 +335,14 @@ body {
   text-align: center;
   padding: 40px 32px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--shadow);
 }
 .connect-card .lede { margin-left: auto; margin-right: auto; }
-.connect-mark { width: 64px; height: 64px; border-radius: 16px; margin-bottom: 18px; }
+.connect-mark { width: 64px; height: 64px; border-radius: 18px; margin-bottom: 18px; }
 .connect-points {
   display: flex;
   flex-wrap: wrap;
@@ -324,8 +360,8 @@ body {
   width: 7px;
   height: 7px;
   margin-right: 7px;
-  border-radius: 2px;
-  background: var(--accent);
+  border-radius: 50%;
+  background: var(--glass-tint);
   vertical-align: 1px;
 }
 
@@ -347,7 +383,7 @@ body {
   align-items: center;
   gap: 12px;
   padding: 18px;
-  border-radius: 16px;
+  border-radius: var(--glass-radius-lg);
   background: var(--cabinet);
   box-shadow: 0 0 0 1px var(--cabinet-edge), 0 24px 48px -20px rgba(19, 18, 21, 0.45);
 }
@@ -374,7 +410,9 @@ body {
   justify-content: flex-start;
   gap: 14px;
   padding: 8px 14px 8px 8px;
-  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: none;
+  background: var(--surface-solid);
   border: 1px solid var(--border);
   color: var(--text);
   text-align: left;
@@ -382,8 +420,8 @@ body {
 }
 :where(.shell) .table-item:hover:not(:disabled) { background: var(--surface-2); border-color: var(--border-strong); }
 .table-item:hover .open { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-.table-icon { flex: none; display: grid; place-items: center; border-radius: 9px; overflow: hidden; }
-.table-icon .portrait { border-radius: 9px; }
+.table-icon { flex: none; display: grid; place-items: center; border-radius: 11px; overflow: hidden; }
+.table-icon .portrait { border-radius: 11px; }
 .table-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .table-title { font-weight: 650; }
 .table-id {
@@ -432,8 +470,8 @@ body {
 .confirm {
   margin-top: 16px;
   padding: 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid #d6f5a8;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--glass-tint) 28%, transparent);
   background: var(--accent-soft);
 }
 .confirm-title { margin: 0 0 8px; font-size: 0.9rem; }
@@ -481,7 +519,7 @@ body {
   padding: 5px 11px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--surface-solid);
   color: var(--text-dim);
   font-size: 0.78rem;
   font-weight: 600;
@@ -492,14 +530,14 @@ body {
   border-radius: 50%;
   background: var(--border-strong);
 }
-.status-pill.fighting .dot, .live-pill.on .dot { background: #5bd400; box-shadow: 0 0 0 3px rgba(165, 255, 17, 0.35); }
+.status-pill.fighting .dot, .live-pill.on .dot { background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 28%, transparent); }
 .status-pill.finished .dot { background: #ffb02a; }
 
 /* The cabinet: a dark bezel, a thin lit edge, and the screen. */
 .cabinet {
   position: relative;
   padding: 10px;
-  border-radius: 16px;
+  border-radius: var(--glass-radius-lg);
   background: linear-gradient(180deg, #1a1820, var(--cabinet));
   box-shadow:
     0 0 0 1px var(--cabinet-edge),
@@ -524,7 +562,7 @@ body {
   color: #a7a3b0;
   font-size: 0.9rem;
 }
-.cabinet-loading .spinner { border-color: #2a2730; border-top-color: var(--accent); }
+.cabinet-loading .spinner { border-color: #2a2730; border-top-color: var(--glass-tint); }
 
 /* ── controls pad ───────────────────────────────────────────────────────── */
 .pad {
@@ -534,9 +572,12 @@ body {
   align-items: center;
   margin-top: 14px;
   padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
   background: var(--surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--shadow);
 }
 .pad-dpad { display: grid; justify-items: center; gap: 6px; }
 .pad-row { display: flex; gap: 6px; }
@@ -547,8 +588,8 @@ body {
   min-width: 46px;
   height: 46px;
   padding: 4px 10px;
-  border-radius: 9px;
-  background: var(--surface);
+  border-radius: 12px;
+  background: var(--surface-solid);
   color: var(--text);
   border: 1px solid var(--border-strong);
   box-shadow: 0 2px 0 var(--border-strong);
@@ -557,7 +598,8 @@ body {
   -webkit-user-select: none;
 }
 :where(.shell) .pad-key:hover:not(:disabled) { background: var(--surface-2); }
-:where(.shell) .pad-key:active:not(:disabled) { transform: translateY(2px); box-shadow: none; background: var(--accent); }
+:where(.shell) .pad-key:active:not(:disabled) { transform: translateY(2px); box-shadow: none; background: var(--accent); color: var(--accent-text); }
+:where(.shell) .pad-key:active:not(:disabled) .pad-cap { color: inherit; }
 .pad-actions .pad-key { min-width: 76px; }
 .pad-cap {
   font-family: var(--mono);
@@ -583,17 +625,17 @@ body {
   gap: 12px;
   padding: 8px 10px 8px 8px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
+  border-radius: var(--radius);
+  background: var(--surface-solid);
 }
-.corner.mine { border-color: #b8e86a; background: var(--accent-soft); }
+.corner.mine { border-color: color-mix(in srgb, var(--glass-tint) 38%, transparent); background: var(--accent-soft); }
 .corner.empty { border-style: dashed; background: var(--surface-2); }
 .corner-empty {
   display: grid;
   place-items: center;
   width: 44px;
   height: 44px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface-3);
   color: var(--text-faint);
   font-family: var(--font-display);
@@ -608,7 +650,7 @@ body {
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--text);
-  color: #fff;
+  color: var(--glass-on-ink);
   font-size: 0.78rem;
   font-weight: 700;
   text-align: center;
@@ -623,7 +665,7 @@ body {
 }
 .you { color: var(--text-faint); font-weight: 500; }
 .presence { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); }
-.presence.online { background: #5bd400; }
+.presence.online { background: var(--live); }
 
 .select { margin-top: 14px; }
 .select-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
@@ -631,13 +673,14 @@ body {
   flex-direction: column;
   gap: 6px;
   padding: 6px 4px 8px;
-  background: var(--surface);
+  background: var(--surface-solid);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 14px;
+  box-shadow: none;
 }
 :where(.shell) .select-tile:hover:not(:disabled) { background: var(--surface-2); border-color: var(--border-strong); }
-:where(.shell) .select-tile.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--accent); background: var(--surface); }
+:where(.shell) .select-tile.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--glass-tint); background: var(--surface-solid); }
 .select-tile .portrait { width: 100% !important; height: auto !important; aspect-ratio: 1; }
 .select-name { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; }
 .select-blurb { margin: 10px 0 0; color: var(--text-dim); font-size: 0.82rem; }
@@ -661,13 +704,13 @@ body {
 .stat.big .stat-value { font-size: 1.7rem; }
 .stat-value small { font-size: 0.75rem; color: var(--text-faint); margin-left: 2px; font-weight: 600; }
 .stat-label { color: var(--text-faint); font-size: 0.74rem; font-weight: 600; }
-.stat.big:first-child { background: var(--text); color: #fff; }
-.stat.big:first-child .stat-label { color: #b8b8bd; }
-.stat.big:first-child .stat-value { color: var(--accent); }
+.stat.big:first-child { background: var(--text); color: var(--glass-on-ink); }
+.stat.big:first-child .stat-label { color: #b4b9c9; }
+.stat.big:first-child .stat-value { color: var(--glass-tint); }
 
 .spark { display: block; width: 100%; height: 44px; margin-top: 12px; }
 .spark-area { fill: var(--accent-soft); }
-.spark-line { fill: none; stroke: #6fbf00; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.spark-line { fill: none; stroke: var(--glass-tint); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .spark-axis { display: flex; justify-content: space-between; color: var(--text-faint); font-size: 0.7rem; margin-top: 2px; }
 
 .tx-feed { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 4px; }
