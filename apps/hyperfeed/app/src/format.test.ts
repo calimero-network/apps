@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { choicesFor, firstSentence, heldLine, headlineOfMessage, localCommand, plainMethod, rowTitle, saysMore, stepsOf } from "./format";
+import { choicesFor, firstSentence, heldLine, headlineOfMessage, localCommand, htmlText, plainMethod, rowTitle, saysMore, stepsOf, writeText } from "./format";
 
 const row = (patch: Partial<FeedItem>): FeedItem =>
   ({
@@ -132,5 +132,36 @@ describe("heldLine", () => {
     expect(heldLine({ held_by: "mero-bot@studio", held_since: now - 5_000 }, now)).toBe("mero-bot on studio · just now");
     expect(heldLine({ held_by: "", held_since: 0 }, now)).toBe("");
     expect(heldLine(undefined, now)).toBe("");
+  });
+});
+
+describe("writeText", () => {
+  const write = (body: string) => row({ app: "chat", method: "send_message", status: "pending", body });
+
+  it("shows a one-argument write as its text, its HTML as the text it shows", () => {
+    expect(writeText(write("message: <p>Done so far (~50 PRs, Oct 9&ndash;13):</p><ul><li>One</li><li>Two</li></ul>"))).toBe(
+      "Done so far (~50 PRs, Oct 9–13):\n• One\n• Two",
+    );
+    expect(writeText(write("message: Plain words, no tags"))).toBe("Plain words, no tags");
+    expect(writeText(write("text: line one<br>line two"))).toBe("line one\nline two");
+  });
+
+  it("shows several arguments one per line", () => {
+    expect(writeText(write('message: <p>Hi</p> · thread: 4 · mentions: ["xabi"]'))).toBe('message: Hi\nthread: 4\nmentions: ["xabi"]');
+  });
+
+  it("never runs a script in a value: it reads as nothing but its text", () => {
+    expect(writeText(write("message: <img src=x onerror=alert(1)><script>alert(2)</script><p>ok</p>"))).toBe("alert(2)ok");
+  });
+
+  it("leaves a local command, a hand-off, a body in another shape and a notification as they are", () => {
+    expect(writeText(row({ app: "mero-bot", source_label: "This computer", body: "$ npm test" }))).toBe("$ npm test");
+    expect(writeText(row({ app: "mero-bot", method: "hand_off", body: '{"note":"<b>x</b>"}' }))).toBe('{"note":"<b>x</b>"}');
+    expect(writeText(write("Shipped <b>it</b>"))).toBe("Shipped <b>it</b>");
+    expect(writeText(row({ kind: "notification", app: "chat", body: "message: <p>hi</p>" }))).toBe("message: <p>hi</p>");
+  });
+
+  it("leaves text without tags alone, a < in prose included", () => {
+    expect(htmlText("2 < 3 and 4 > 1")).toBe("2 < 3 and 4 > 1");
   });
 });

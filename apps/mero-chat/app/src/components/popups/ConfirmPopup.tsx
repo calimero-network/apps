@@ -14,11 +14,11 @@ const Header = styled.div`
   align-items: center;
   margin-bottom: 0.75rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
 `;
 
 const Title = styled.div`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -27,26 +27,26 @@ const Title = styled.div`
 const CloseButton = styled.button`
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   width: 26px;
   height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 10px;
   transition: all 0.15s ease;
   flex-shrink: 0;
   padding: 0;
 
   &:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--glass-ink);
+    background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
   }
 `;
 
 const Message = styled.div`
-  color: rgba(255, 255, 255, 0.6);
+  color: color-mix(in srgb, var(--glass-ink) 60%, transparent);
   font-size: 0.82rem;
   line-height: 1.5;
   margin-bottom: 1.25rem;
@@ -60,7 +60,7 @@ const Actions = styled.div`
 
 const ActionButton = styled.button<{ $danger?: boolean }>`
   padding: 0.45rem 1rem;
-  border-radius: 7px;
+  border-radius: 10px;
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
@@ -71,14 +71,14 @@ const ActionButton = styled.button<{ $danger?: boolean }>`
       ? `
     background: rgba(239, 68, 68, 0.12);
     border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #f87171;
+    color: var(--glass-bad-ink);
     &:hover { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5); }
   `
       : `
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.7);
-    &:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+    background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
+    color: color-mix(in srgb, var(--glass-ink) 70%, transparent);
+    &:hover { background: color-mix(in srgb, var(--glass-ink) 10%, transparent); color: var(--glass-ink); }
   `}
 
   &:disabled {

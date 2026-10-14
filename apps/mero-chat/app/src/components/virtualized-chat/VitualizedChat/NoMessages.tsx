@@ -28,11 +28,16 @@ const ChatIcon = styled.div`
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #a5ff11 0%, #73b30c 100%);
+  background: linear-gradient(
+    135deg,
+    var(--glass-ink) 0%,
+    var(--glass-ink) 100%
+  );
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 32px rgba(165, 255, 17, 0.3);
+  box-shadow: 0 8px 32px
+    color-mix(in srgb, var(--glass-accent) 30%, transparent);
 
   @media (max-width: 768px) {
     width: 32px;
@@ -42,7 +47,7 @@ const ChatIcon = styled.div`
   svg {
     width: 30px;
     height: 30px;
-    color: white;
+    color: var(--glass-ink);
 
     @media (max-width: 768px) {
       width: 20px;
@@ -52,8 +57,8 @@ const ChatIcon = styled.div`
 `;
 
 const Title = styled.h3`
-  color: #fff;
-  font-family: Helvetica Neue;
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
   font-size: 20px;
   font-weight: 500;
   margin: 0;
@@ -65,8 +70,8 @@ const Title = styled.h3`
 `;
 
 const Subtitle = styled.p`
-  color: #777583;
-  font-family: Helvetica Neue;
+  color: var(--glass-muted);
+  font-family: var(--glass-font);
   font-size: 12px;
   font-weight: 400;
   margin: 0;

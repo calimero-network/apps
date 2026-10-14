@@ -30,11 +30,11 @@ const Container = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  background-color: #1d1d21;
-  border-radius: 8px;
+  background-color: var(--glass-surface-solid);
+  border-radius: 12px;
   padding: 1rem;
   pointer-events: auto;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--chat-pop-shadow);
 
   @media (max-width: 1024px) {
     width: 90vw;
@@ -49,11 +49,11 @@ const Header = styled.div`
   align-items: center;
   margin-bottom: 0.5rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
 `;
 
 const Title = styled.h2`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 16px;
   font-weight: 600;
   margin: 0;
@@ -62,16 +62,16 @@ const Title = styled.h2`
 const CloseButton = styled.button`
   background: transparent;
   border: none;
-  color: #777583;
+  color: var(--glass-muted);
   font-size: 16px;
   cursor: pointer;
   padding: 0.25rem;
-  border-radius: 4px;
+  border-radius: 8px;
   transition: all 0.2s ease;
 
   &:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--glass-ink);
+    background: color-mix(in srgb, var(--glass-ink) 10%, transparent);
   }
 `;
 
@@ -111,11 +111,11 @@ const ReactionsSidebar = styled.div`
     height: 6px;
   }
   &::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
+    background-color: color-mix(in srgb, var(--glass-ink) 20%, transparent);
+    border-radius: 10px;
   }
   &::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.3);
+    background-color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   }
 `;
 
@@ -128,11 +128,11 @@ const ReactionEmojiWrapper = styled.div<{ $selected: boolean }>`
   align-items: center;
   gap: 3px;
   ${({ $selected }) =>
-    $selected ? "background-color: #2E2F3D;" : "background-color: transparent;"}
+    $selected ? "background-color: var(--glass-sunken);" : "background-color: transparent;"}
   &:hover {
-    background-color: #2a2b37;
+    background-color: var(--glass-sunken);
   }
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
   white-space: nowrap;
   min-width: fit-content;
@@ -146,7 +146,7 @@ const ReactionEmojiWrapper = styled.div<{ $selected: boolean }>`
 const ReactionCountWrapper = styled.div`
   font-size: 12px;
   line-height: 100%;
-  color: #fff;
+  color: var(--glass-ink);
   font-weight: 500;
 `;
 
@@ -173,11 +173,11 @@ const UsersList = styled.div`
     width: 6px;
   }
   &::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
+    background-color: color-mix(in srgb, var(--glass-ink) 20%, transparent);
+    border-radius: 10px;
   }
   &::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.3);
+    background-color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   }
 `;
 
@@ -186,11 +186,11 @@ const UserInfoContainer = styled.div`
   align-items: center;
   gap: 0.5rem;
   padding: 0.25rem;
-  border-radius: 4px;
+  border-radius: 8px;
   transition: background-color 0.2s ease;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: color-mix(in srgb, var(--glass-ink) 5%, transparent);
   }
 `;
 
@@ -201,7 +201,7 @@ const NameContainer = styled.div`
   font-size: 14px;
   font-weight: 400;
   line-height: 1.4;
-  color: #fff;
+  color: var(--glass-ink);
 `;
 
 const EmptyState = styled.div`
@@ -209,18 +209,18 @@ const EmptyState = styled.div`
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: #777583;
+  color: var(--glass-muted);
   font-size: 14px;
   text-align: center;
 `;
 
 const ShowMoreButton = styled.button`
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #777583;
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 20%, transparent);
+  color: var(--glass-muted);
   font-size: 12px;
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
   margin-top: 0.5rem;
@@ -237,8 +237,8 @@ const ShowMoreButton = styled.button`
   }
 
   &:hover {
-    color: #fff;
-    border-color: rgba(255, 255, 255, 0.4);
+    color: var(--glass-ink);
+    border-color: color-mix(in srgb, var(--glass-ink) 40%, transparent);
   }
 `;
 
