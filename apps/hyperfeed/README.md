@@ -180,6 +180,76 @@ So the agent learns what is happening from the node's live event stream, and it 
 proposals you settle here, or where your rules let it act. See mero-bot's README for the flags
 (`--autopilot off`, `--no-hyperfeed`).
 
+### Running mero-bot on NEAR, on Claude, or both
+
+Which model answers is set by the agents in `~/.mero/agents.json` (or `./mero.json` in the folder
+you start it from). Each one reports what it can reach, and Settings → Agents shows it under
+`mero-bot@<host>`, beside the Access you set.
+
+**On Claude** (the default, no config needed). Every turn runs on Claude through your Claude Code
+login, with files, a shell and the web, limited by the Access you set for it:
+
+```sh
+calimero-agent                      # or: calimero-agent -m claude-sonnet-5-5
+```
+
+**On NEAR only** (private). Every turn runs on a model in NEAR AI Cloud's TEEs, which mero-bot
+attests before sending anything. A NEAR profile has your Calimero apps only: no files, shell or web.
+Name no Claude agent as `delegate` or `fallback`, so nothing leaves the TEE:
+
+```json
+{
+  "agents": {
+    "near": { "runtime": "openai", "attest": "near", "model": "<id from NEAR's model list>" }
+  },
+  "default": "near"
+}
+```
+
+```sh
+export NEAR_AI_API_KEY=…
+calimero-agent                              # with the terminal UI
+calimero-agent --headless --attested-only   # no terminal; refuses to start if any turn could reach an unattested model
+```
+
+It finds the node on this machine, or the one in `CALIMERO_NODE_URL`.
+
+Its reach line reads `Default · near (<model>), attested: Calimero apps only`, and an agent whose
+every line is attested is your **private** agent: it takes every app you did not assign.
+
+**Both, in one mero-bot.** Route talking to you and triage to NEAR, and everything else (carrying
+out what you approved, watches, learning lenses, what you type at the terminal) to Claude. NEAR
+hands work that needs code to Claude with `delegate`, as a proposal you approve, and Claude takes a
+turn when NEAR is down or fails attestation (`fallback`):
+
+```json
+{
+  "agents": {
+    "near":  { "runtime": "openai", "attest": "near", "model": "<id from NEAR's model list>",
+               "delegate": "coder", "fallback": "coder" },
+    "coder": { "runtime": "claude" }
+  },
+  "routes": { "converse": "near", "triage": "near" }
+}
+```
+
+```sh
+NEAR_AI_API_KEY=… calimero-agent
+```
+
+Settings → Agents then shows one reach line per profile a turn can reach: Claude for the default,
+NEAR for `converse` and `triage` (attested, Calimero apps only), and Claude again as NEAR's hand-off.
+The Claude lines carry your folders, shell and web. Since not every line is attested, this agent is
+not private. Don't add `--attested-only` here: it
+refuses this config.
+
+**Both, as two agents.** Run a private NEAR mero-bot (as above, for example in
+[mero-tee](https://github.com/calimero-network/mero-tee)'s agent image) and a Claude mero-bot on your
+laptop. They report in under their own names, so they must run on different hosts: two on one
+machine share `mero-bot@<host>`. In Settings → Agents, the NEAR one takes every app you did not
+assign; give **Code** (and any app you want Claude on) to the laptop. Until you do, no feed turn runs
+a tool on your computer. Set each one's Access separately.
+
 The bundle also ships [`logic/GUIDE.md`](logic/GUIDE.md), which mero-mcp shows to any agent the
 first time it meets this app. An agent without mero-bot's bridge still learns the loop from it.
 
