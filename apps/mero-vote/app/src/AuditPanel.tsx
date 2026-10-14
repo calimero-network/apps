@@ -58,6 +58,7 @@ export function AuditPanel({
   const denom = report.counted_ballots > 0 ? report.counted_ballots : Math.max(total, 1);
   const top = counts ? Math.max(...counts) : 0;
   const pct = (c: number) => Math.round((100 * c) / denom);
+  const winners = counts && top > 0 ? options.filter((_, i) => counts[i] === top) : [];
 
   async function reverify() {
     if (!client) return;
@@ -101,7 +102,7 @@ export function AuditPanel({
 
   return (
     <>
-      <div className="card">
+      <div className="card result-card">
         <div className="card-head">
           <IconTile accent={!!counts}>
             <BarChartIcon size={18} />
@@ -122,6 +123,23 @@ export function AuditPanel({
             </span>
           )}
         </div>
+        {counts && top > 0 && (
+          <p className="result-lead">
+            <span className="result-lead-num tnum">{pct(top)}%</span>
+            <span>
+              {winners.length === 1 ? (
+                <>
+                  <strong className="text">{winners[0]}</strong> has the most votes
+                </>
+              ) : (
+                <>
+                  A tie between <strong className="text">{winners.join(", ")}</strong>
+                </>
+              )}
+              , {top} of {report.counted_ballots} ballot{report.counted_ballots === 1 ? "" : "s"}.
+            </span>
+          </p>
+        )}
         {counts ? (
           <div className="bars">
             {options.map((o, i) => {
@@ -155,7 +173,7 @@ export function AuditPanel({
         )}
       </div>
 
-      <div className="card">
+      <div className="card audit-card">
         <div className="card-head">
           <IconTile>
             <ShieldCheckIcon size={18} />
@@ -278,7 +296,7 @@ function CheckList({ checks }: { checks: { name: string; ok: boolean; detail: st
       {checks.map((c) => (
         <li key={c.name} className={c.ok ? "ok" : "bad"}>
           <span className="mark" role="img" aria-label={c.ok ? "passed" : "failed"}>
-            {c.ok ? <CheckIcon size={16} /> : <XIcon size={16} />}
+            {c.ok ? <CheckIcon size={13} strokeWidth={2.5} /> : <XIcon size={13} strokeWidth={2.5} />}
           </span>
           <span className="name">{c.name}</span>
           <span className="detail">{c.detail}</span>

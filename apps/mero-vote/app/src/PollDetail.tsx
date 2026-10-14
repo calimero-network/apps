@@ -85,7 +85,7 @@ export function PollDetail({
   if (!view) {
     return (
       <div className="card">
-        <button className="plain sm" onClick={onBack}>
+        <button className="ghost sm" onClick={onBack}>
           <ArrowLeftIcon size={14} />
           All polls
         </button>
@@ -133,9 +133,9 @@ export function PollDetail({
 
   return (
     <>
-      <div className="card">
+      <div className="card poll-hero">
         <div className="poll-top">
-          <button className="plain sm" onClick={onBack} style={{ marginLeft: -8 }}>
+          <button className="ghost sm" onClick={onBack}>
             <ArrowLeftIcon size={14} />
             All polls
           </button>
@@ -205,7 +205,7 @@ export function PollDetail({
 
       {/* ── ballot ───────────────────────────────────────────────────────── */}
       {phase === "Voting" && (
-        <div className="card">
+        <div className="card ballot-card">
           <div className="card-head">
             <IconTile accent>
               <LockIcon size={18} />
@@ -230,7 +230,7 @@ export function PollDetail({
                         setSelection(single ? def.options.map((_, j) => j === i) : selection.map((s, j) => (j === i ? !s : s)))
                       }
                     />
-                    {o}
+                    <span className="option-text">{o}</span>
                   </label>
                 ))}
               </div>
@@ -279,7 +279,7 @@ export function PollDetail({
 
       {/* ── turnout ──────────────────────────────────────────────────────── */}
       {phase !== "KeyCeremony" && (
-        <div className="card">
+        <div className="card turnout-card">
           <div className="card-head">
             <div className="grow">
               <h2>{phase === "Closed" ? `Counted ballots (${counted.length})` : `Turnout (${view.turnout.length})`}</h2>
