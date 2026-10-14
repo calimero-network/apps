@@ -35,6 +35,7 @@ import { Properties } from "./Properties";
 import { SharePanel } from "./SharePanel";
 import { OperatorPanel, SelectModeSwitch } from "./MeshPanels";
 import { UvEditor } from "./UvEditor";
+import { GameExportDialog } from "./GameExport";
 
 /**
  * The modeller: menu bar across the top, tools down the left, the 3D view in
@@ -56,6 +57,7 @@ export function Studio({ contextId }: { contextId: string }) {
   const [menu, setMenu] = useState<string | null>(null);
   const [share, setShare] = useState(false);
   const [arrayOpen, setArrayOpen] = useState(false);
+  const [gameExportOpen, setGameExportOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const { logout } = useMero();
 
@@ -168,6 +170,7 @@ export function Studio({ contextId }: { contextId: string }) {
             { label: "Mero Models scene (.json)", onSelect: () => void onExport("json") },
           ],
         },
+        { label: "Game export…", onSelect: () => setGameExportOpen(true) },
         { label: "Render image", shortcut: "F12", onSelect: () => void onRender() },
         "separator",
         { label: "Share…", onSelect: () => setShare(true) },
@@ -542,6 +545,7 @@ export function Studio({ contextId }: { contextId: string }) {
             </div>
           )}
           {arrayOpen && <ArrayDialog onClose={() => setArrayOpen(false)} />}
+          {gameExportOpen && <GameExportDialog onClose={() => setGameExportOpen(false)} />}
           <OperatorPanel />
           <UvEditor />
         </main>

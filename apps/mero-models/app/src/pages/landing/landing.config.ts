@@ -22,9 +22,9 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
-  trust: ["No server holds your models", "Editing enforced by the contract", "OBJ · STL · glTF in and out"],
+  trust: ["No server holds your models", "Editing enforced by the contract", "FBX · glTF · OBJ · STL out, with LODs and collision"],
   explainer: [
-    "A Blender-style modeller in the browser: add primitives, move, rotate and scale them with a gizmo, model in quads with loop cuts, bevels, insets, extrusions and a modifier stack, unwrap UVs, bake and paint PBR textures with smart materials, give things materials and lights, and export the result as glTF, OBJ or STL. A scene is a Calimero context, and it replicates between its members’ own nodes.",
+    "A Blender-style modeller in the browser: add primitives, move, rotate and scale them with a gizmo, model in quads with loop cuts, bevels, insets, extrusions and a modifier stack, unwrap UVs, bake and paint PBR textures with smart materials, export game-ready FBX or glTF with LODs and collision, give things materials and lights, and export the result as glTF, OBJ or STL. A scene is a Calimero context, and it replicates between its members’ own nodes.",
     "Everyone in the scene sees every change as it lands, and sees each other: what the others have selected and where they are looking from streams over ephemeral presence, which never touches storage. Who may change the model is decided by the scene’s admin and enforced by the contract on every node.",
   ],
   features: [

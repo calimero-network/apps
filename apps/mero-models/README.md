@@ -28,6 +28,11 @@ apps/mero-models/
     │   ├── texgen.ts          smart materials: layered masks → base colour, ORM and normal textures
     │   ├── texturing.ts       bake → generate → upload as texture assets → plug into the material
     │   ├── png.ts             a deterministic PNG encoder for generated textures
+    │   ├── lod.ts             LODs: quadric edge collapse that slides along seams but never tears them
+    │   ├── collision.ts       convex-hull and box colliders
+    │   ├── validate.ts        budget and import checks: triangles, texture memory, UVs, scale, edges
+    │   ├── fbx.ts             a binary FBX 7.4 writer (read back by three.js's FBX loader in tests)
+    │   ├── gameexport.ts      game export: per-engine naming, LOD chain, colliders, FBX zip or GLB
     │   ├── examples.ts        example assets, each built step by step with those tools
     │   ├── meshcodec.ts       the mesh blob format: compressed, deterministic, validated on read
     │   ├── blobs.ts           upload/download with the context id, IndexedDB-cached by blob id
@@ -73,6 +78,7 @@ invite link; tick **Can edit** beside someone to let them build.
 | **Examples** | Add → Examples: a sci-fi crate, a fuel drum, a sword, a modular corridor kit, a rock and tree — or all of them on one floor. Each is an ordinary editable cage, built by the same tools (`examples.ts` reads as the recipe) |
 | **View** | `F` frame selected · `Home` frame all · `1`/`3`/`7` front/right/top (`Shift` for the opposite) · `5` ortho · `Z` cycles wireframe/solid/material |
 | **Files** | import OBJ, STL, glTF/GLB, or a scene `.json`; export GLB, OBJ, STL or scene `.json`; `F12` renders a PNG |
+| **Game export** | File → Game export… takes the selection (or the scene) to an engine: LOD 0 plus up to three levels of detail, a convex-hull or box collider, named the way Unreal (`SM_`, `_LOD1`, `UCX_…_00`), Unity (`_LOD0…`, `_Collider`) or Godot (`-colonly`) picks them up, as FBX zipped with its textures and a report, or as one GLB. Before it goes it checks the asset against a budget (hero, prop, background, mobile): triangles, BC7 texture memory, oversized or non-power-of-two textures, missing, overlapping or mirrored UVs, unapplied scale, non-manifold edges, n-gons |
 
 ## How it stores a scene
 
@@ -139,6 +145,12 @@ Edit-mode selection is by vertex: an edge is selected when both ends are, and
 switching to face mode selects every face whose corners are all selected (as
 in Blender). Bevel makes one segment; the knife cuts along a plane, not a
 drawn line.
+
+LODs never tear a UV seam or a hard edge, so a low-poly hard-surface prop
+stops simplifying early and the chain ends there rather than repeating a
+level. FBX carries meshes, transforms, one material each and its base-colour
+and normal textures; there are no LOD groups, skeletons or animation, and
+FBX here is checked against three.js's FBX reader, not the Autodesk SDK.
 
 Texturing runs in the page and takes a few seconds an object at 1024²
 (occlusion is traced at a quarter of that and filtered up); a mesh whose UVs

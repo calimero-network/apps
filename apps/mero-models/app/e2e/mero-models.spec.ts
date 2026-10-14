@@ -10,18 +10,29 @@
  * One node: the two-node story (an edit replicating, a viewer refused on every
  * node) is logic/workflows/edit-a-scene.yml.
  */
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { unzipSync } from "fflate";
+import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { login, outlinerRow, waitForStudio, watchForErrors } from "./helpers";
 
-/** A second, independent page on the same scene — what the node really holds. */
+const opened: BrowserContext[] = [];
+
+/** A second, independent page on the same scene — what the node really holds. Closed after the test. */
 async function freshView(browser: Browser): Promise<Page> {
-  const page = await (await browser.newContext()).newPage();
+  const context = await browser.newContext();
+  opened.push(context);
+  const page = await context.newPage();
   await login(page);
   await waitForStudio(page);
   return page;
 }
 
 test.describe("Mero Models", () => {
+  // Every extra page renders the scene with software WebGL; left open, they starve the later tests.
+  test.afterEach(async () => {
+    for (const context of opened.splice(0)) await context.close();
+  });
+
   test("builds a scene through the UI and the node keeps it", async ({ page, browser }) => {
     const errors = watchForErrors(page);
     await login(page);
@@ -183,6 +194,47 @@ test.describe("Mero Models", () => {
     const other = await freshView(browser);
     await outlinerRow(other, name).click();
     await expect(other.getByLabel("Base colour texture").locator("option:checked")).toContainText(`${name} · base colour`, { timeout: 30_000 });
+
+    errors.assertClean();
+  });
+
+  test("exports a game-ready asset: LODs and collision, as GLB and as an FBX zip", async ({ page }) => {
+    const errors = watchForErrors(page);
+    await login(page);
+    await waitForStudio(page);
+
+    await page.getByTestId("add-sphere").click();
+    const name = "Export ball";
+    await page.getByLabel("Object name").fill(name);
+    await page.getByLabel("Object name").press("Enter");
+    await expect(outlinerRow(page, name)).toHaveCount(1);
+
+    await page.getByRole("menuitem", { name: "File" }).click();
+    await page.getByRole("menuitem", { name: "Game export…" }).click();
+    const dialog = page.getByTestId("game-export");
+    // LOD 0 and two halvings, and a hull.
+    await expect(dialog.getByTestId("ge-plan")).toContainText("Export ball");
+    await expect(dialog.getByTestId("ge-plan")).toContainText("point hull");
+    await expect(dialog.getByTestId("ge-checks")).toContainText("triangles at LOD 0");
+
+    await dialog.getByTestId("ge-format").selectOption("glb");
+    const [glb] = await Promise.all([page.waitForEvent("download"), dialog.getByTestId("ge-export").click()]);
+    expect(glb.suggestedFilename()).toMatch(/\.glb$/);
+    const glbBytes = readFileSync((await glb.path())!);
+    expect(glbBytes.subarray(0, 4).toString()).toBe("glTF");
+    // The node names travel in the JSON chunk.
+    expect(glbBytes.toString("latin1")).toContain("UCX_SM_Export_ball_00");
+    expect(glbBytes.toString("latin1")).toContain("SM_Export_ball_LOD2");
+
+    await page.getByRole("menuitem", { name: "File" }).click();
+    await page.getByRole("menuitem", { name: "Game export…" }).click();
+    await expect(page.getByTestId("ge-plan")).toContainText("Export ball");
+    const [zip] = await Promise.all([page.waitForEvent("download"), page.getByTestId("ge-export").click()]);
+    expect(zip.suggestedFilename()).toMatch(/\.zip$/);
+    const files = unzipSync(new Uint8Array(readFileSync((await zip.path())!)));
+    const fbx = Object.keys(files).find((f) => f.endsWith(".fbx"))!;
+    expect(Buffer.from(files[fbx]!).subarray(0, 18).toString()).toBe("Kaydara FBX Binary");
+    expect(Object.keys(files).some((f) => f.endsWith("_report.txt"))).toBe(true);
 
     errors.assertClean();
   });
