@@ -608,10 +608,14 @@ steps:
     outputs:
       n2_history: result
 
+  # The whole entry, not a few of its fields: merobox's `json_subset` matches
+  # an array element by equality, so a partial element never matches. Every
+  # input here is fixed, so so is the entry, and `actions` (22) also confirms
+  # the refused late blow was never stored.
   - name: Assert the record holds the finished match
     type: json_assert
     statements:
-      - 'json_subset({{n2_history}}, {"output": [{"index": 0, "winner": "p1"}]})'
+      - 'json_equal({{n2_history}}, {"output": [{"index": 0, "started_at": 1700000000000, "winner": "p1", "flawless": true, "rounds": ["p1", "p1"], "actions": 22}]})'
 
   # ─── the rematch ───────────────────────────────────────────────────────
 
