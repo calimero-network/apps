@@ -1,7 +1,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(14, 18, 34, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -9,26 +9,27 @@
 }
 
 .modal {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 12px;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  font-family: var(--glass-font);
   padding: 32px 28px;
   width: 360px;
   max-width: 90vw;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--glass-shadow-float);
 }
 
 .title {
   margin: 0 0 8px;
   font-size: 18px;
   font-weight: 600;
-  color: #f0f0f0;
+  color: var(--glass-ink);
 }
 
 .desc {
   margin: 0 0 20px;
   font-size: 13px;
-  color: #888;
+  color: var(--glass-muted);
   line-height: 1.5;
 }
 
@@ -40,17 +41,19 @@
 
 .input {
   padding: 10px 12px;
-  background: #111;
-  border: 1px solid #444;
-  border-radius: 6px;
-  color: #f0f0f0;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 999px;
+  color: var(--glass-ink);
+  font-family: inherit;
   font-size: 14px;
   outline: none;
   transition: border-color 0.15s;
 }
 
 .input:focus {
-  border-color: #4F8EF7;
+  border-color: var(--glass-ink);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-tint) 45%, transparent);
 }
 
 .error {
@@ -61,10 +64,12 @@
 
 .btn {
   padding: 10px;
-  background: #4F8EF7;
+  background: var(--glass-ink);
   border: none;
-  border-radius: 6px;
-  color: #fff;
+  border-radius: 999px;
+  color: var(--glass-on-ink);
+  font-family: inherit;
+  font-weight: 600;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;

@@ -5,16 +5,23 @@
 }
 
 :root {
-  --color-bg: #ffffff;
-  --color-surface: #f5f5f5;
-  --color-border: #e0e0e0;
-  --color-text: #111111;
-  --color-text-secondary: #666666;
+  /* The fleet's light glass (@calimero-apps/glass), tinted with this app's colour.
+     The app's own tokens keep their names and take glass values; the board itself
+     (the Fabric canvas, its white and its dot grid) is content and is not touched. */
+  --glass-tint: #bef264;
+
+  --color-bg: var(--glass-surface-solid);
+  --color-surface: var(--glass-sunken);
+  --color-border: var(--glass-line-strong);
+  --color-text: var(--glass-ink);
+  --color-text-secondary: var(--glass-ink-2);
+  /* The editor's own blue: the on-canvas text editor's outline and the
+     presentation player read it, and both are part of the board, not the chrome. */
   --color-accent: #0d99ff;
   --color-accent-hover: #0a7fd4;
   --color-danger: #e03e3e;
-  --radius: 6px;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --radius: 999px;
+  --font: var(--glass-font);
 }
 
 html, body, #root {
@@ -22,7 +29,14 @@ html, body, #root {
   font-family: var(--font);
   font-size: 13px;
   color: var(--color-text);
-  background: var(--color-bg);
+}
+
+/* The app shell: the glass ground and its tinted fields, behind every frosted panel. */
+body {
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
 }
 
 @keyframes md-toast-in {
