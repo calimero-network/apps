@@ -9,7 +9,7 @@
  * "+" button adds a new sheet; the lock button adds a private one, which
  * lives only on this node (nobody else sees it) and shows a lock on its tab.
  */
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { C } from '../theme';
 import { type Sheet } from '../hooks/useSpreadsheet';
@@ -42,6 +42,30 @@ export default function SheetTabs({
   const [editDraft, setEditDraft] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const [errorLeft, setErrorLeft] = useState(8);
+
+  // The rename error floats above the strip, over the tab being renamed. It
+  // lives in the strip itself, not in the tab: the tabs sit in a sideways
+  // scroller, and a scroller clips both axes, so a message anchored in a tab
+  // was cut off by the strip it rose out of.
+  const placeError = useCallback(() => {
+    const bar = barRef.current;
+    const input = inputRef.current;
+    const error = errorRef.current;
+    if (!bar || !input || !error) return;
+    const barBox = bar.getBoundingClientRect();
+    const wanted = input.getBoundingClientRect().left - barBox.left;
+    const max = Math.max(8, barBox.width - error.offsetWidth - 8);
+    setErrorLeft(Math.round(Math.min(Math.max(8, wanted), max)));
+  }, []);
+  useLayoutEffect(() => {
+    if (!renameError) return;
+    placeError();
+    window.addEventListener('resize', placeError);
+    return () => window.removeEventListener('resize', placeError);
+  }, [renameError, placeError]);
 
   const startRename = (sheet: Sheet) => {
     setEditingId(sheet.id);
@@ -79,8 +103,8 @@ export default function SheetTabs({
   };
 
   return (
-    <TabBar role="tablist" aria-label="Spreadsheet sheets">
-      <TabScroll>
+    <TabBar ref={barRef} role="tablist" aria-label="Spreadsheet sheets">
+      <TabScroll onScroll={renameError ? placeError : undefined}>
         {sheets.map((sheet) => {
           const isActive = sheet.id === activeSheetId;
           const isEditing = editingId === sheet.id;
@@ -106,8 +130,7 @@ export default function SheetTabs({
               onDoubleClick={() => { if (!linkedFrom) startRename(sheet); }}
             >
               {isEditing ? (
-                <>
-                  <RenameInput
+                <RenameInput
                     ref={inputRef}
                     value={editDraft}
                     $invalid={!!renameError}
@@ -123,8 +146,6 @@ export default function SheetTabs({
                     aria-invalid={!!renameError}
                     autoFocus
                   />
-                  {renameError && <RenameError role="alert">{renameError}</RenameError>}
-                </>
               ) : (
                 <TabName>
                   {isPrivate && <span aria-label="Private">🔒 </span>}
@@ -149,6 +170,9 @@ export default function SheetTabs({
           );
         })}
       </TabScroll>
+      {renameError && editingId && (
+        <RenameError ref={errorRef} role="alert" style={{ left: errorLeft }}>{renameError}</RenameError>
+      )}
 
       <AddBtn
         data-testid="action-create_sheet"
@@ -175,6 +199,7 @@ export default function SheetTabs({
 /* The tab strip along the sheet card's foot: each sheet a pill, the active
    one lifted onto the card's surface. */
 const TabBar = styled.div`
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -192,7 +217,6 @@ const TabScroll = styled.div`
   gap: 4px;
   height: 100%;
   min-width: 0;
-  /* Room above the pills for a rename error to show inside the strip. */
   overflow-x: auto;
   flex: 1;
   scrollbar-width: none;
@@ -244,20 +268,22 @@ const RenameInput = styled.input<{ $invalid: boolean }>`
     ${(p) => (p.$invalid ? 'rgba(220, 38, 38, 0.2)' : 'color-mix(in srgb, var(--glass-accent-solid) 20%, transparent)')};
 `;
 
-/* Floating message shown above the rename input when the engine rejects the
-   new name (duplicate / forbidden characters). */
+/* Floating message shown above the strip, over the rename input, when the
+   engine rejects the new name (duplicate / forbidden characters). Above the
+   grid's sticky headers, inside the sheet card. */
 const RenameError = styled.div`
   position: absolute;
-  bottom: calc(100% + 4px);
-  left: 6px;
+  bottom: calc(100% + 6px);
   z-index: 30;
-  max-width: 220px;
-  padding: 5px 8px;
-  font-size: 11.5px;
+  max-width: min(280px, calc(100% - 16px));
+  padding: 6px 10px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1.3;
   color: #fff;
-  background: ${C.danger};
+  /* A deep red in both themes: dark mode's lighter danger red is too pale
+     under white text. */
+  background: #b91c1c;
   border-radius: 10px;
   box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.4);
   white-space: normal;
