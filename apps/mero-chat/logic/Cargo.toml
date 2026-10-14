@@ -50,10 +50,11 @@ name        = "Mero Chat"
 description = "Private team chat on your own nodes: channels, threads and direct messages with no central server."
 author      = "Calimero"
 icon        = "../app/public/icons/icon-512x512.png"
-# The existing deployment. It is also the login callback's registered origin, so
-# the Vercel project is relinked to Root Directory `apps/mero-chat/app` rather
-# than replaced.
-frontend    = "https://mero-chat-pwa.vercel.app"
+# Chat's own domain on Hyperfeed's, served by the Vercel project with Root
+# Directory `apps/mero-chat/app`. It doubles as the login callback's registered
+# origin, compared by exact origin: a hosted login from any other origin dies on
+# "Login callback destination is not allowed".
+frontend    = "https://chat.hyperfeed.me"
 slug        = "com.calimero.chat"
 category    = "social"
 tags        = ["chat", "messaging", "social"]

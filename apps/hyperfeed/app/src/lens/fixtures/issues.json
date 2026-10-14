@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "events": {
+    "CommentAdded": {
+      "type": "message",
+      "read": [{ "as": "detail", "call": "get_issue", "args": { "issue_id": "=event.issue_id" } }],
+      "let": { "issue": "=detail.issue", "comment": "=detail.comments['-1']" },
+      "show_if": "=comment.id == event.id && !mine(comment.author) && (mine(issue.created_by) || mine(issue.assignee))",
+      "fields": {
+        "from": "=comment.author",
+        "text": "=comment.body",
+        "where": "='Issue: ' + issue.title",
+        "is_dm": false
+      },
+      "title": "=mine(issue.assignee) ? 'Commented on ' + issue.title + ' (assigned to you)' : 'Commented on your issue ' + issue.title",
+      "ask": { "kind": "reply", "prompt": "Comment on the issue" },
+      "reply": {
+        "method": "add_comment",
+        "args": { "issue_id": "=event.issue_id", "body": "=answer" }
+      }
+    },
+    "IssueAssigneeChanged": {
+      "type": "assignment",
+      "read": [{ "as": "detail", "call": "get_issue", "args": { "issue_id": "=event.id" } }],
+      "let": { "issue": "=detail.issue" },
+      "show_if": "=mine(issue.assignee) && !mine(issue.created_by)",
+      "fields": {
+        "what": "=issue.title",
+        "detail": "=issue.priority + ' priority · ' + issue.status + (issue.summary ? '\\n' + issue.summary : '')",
+        "where": "Issues"
+      },
+      "title": "='Assigned to you: ' + issue.title",
+      "needs_you": true
+    },
+    "IssueCreated": "ignore",
+    "IssueEdited": "ignore",
+    "IssueDeleted": "ignore",
+    "IssueStatusChanged": "ignore",
+    "IssuePriorityChanged": "ignore",
+    "IssueLabelsChanged": "ignore",
+    "CommentEdited": "ignore",
+    "CommentDeleted": "ignore",
+    "RepoUrlChanged": "ignore"
+  }
+}

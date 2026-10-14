@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "events": {
+    "CommentAdded": {
+      "type": "message",
+      "read": [
+        { "as": "who", "call": "whoami", "args": {} },
+        { "as": "comments", "call": "get_comments", "args": {} },
+        { "as": "project", "call": "get_project", "args": {} }
+      ],
+      "let": {
+        "c1": "=comments['-1']",
+        "c2": "=comments['-2']",
+        "c3": "=comments['-3']",
+        "item": "=c1.id == event.id ? c1 : c2.id == event.id ? c2 : c3.id == event.id ? c3 : null"
+      },
+      "show_if": "=item && item.id == event.id && !item.resolved && (has(event.mentions, me) || has(event.mentions, who)) && !mine(event.author) && event.author != who",
+      "fields": {
+        "from": "=event.author",
+        "text": "=item.text",
+        "where": "=project.name ? project.name : 'Sheets'",
+        "is_dm": false
+      },
+      "title": "=item.parent ? 'Mentioned you in a comment reply' : 'Mentioned you in a comment'",
+      "reply": {
+        "method": "add_comment",
+        "args": {
+          "sheet_id": "=item.sheet_id",
+          "row_id": "=item.row_id",
+          "col_id": "=item.col_id",
+          "text": "=answer",
+          "parent": "=item.parent ? item.parent : item.id"
+        }
+      }
+    },
+    "AlertTriggered": {
+      "type": "status",
+      "read": [
+        { "as": "who", "call": "whoami", "args": {} },
+        { "as": "activity", "call": "get_activity", "args": { "since": 0, "limit": 1 } },
+        { "as": "project", "call": "get_project", "args": {} }
+      ],
+      "let": { "last": "=activity[0]" },
+      "show_if": "=(has(event.recipients, me) || has(event.recipients, who)) && !(last && (mine(last.author) || last.author == who))",
+      "fields": {
+        "what": "='Alert in ' + (project.name ? project.name : 'a workbook')",
+        "state": "=event.message",
+        "where": "=project.name ? project.name : 'Sheets'"
+      },
+      "title": "='Sheet alert: ' + event.message"
+    },
+    "RolesChanged": {
+      "type": "status",
+      "read": [
+        { "as": "who", "call": "whoami", "args": {} },
+        { "as": "activity", "call": "get_activity", "args": { "since": 0, "limit": 1 } },
+        { "as": "project", "call": "get_project", "args": {} }
+      ],
+      "let": { "last": "=activity[0]" },
+      "show_if": "=(mine(event.member_id) || lower(event.member_id) == lower(who)) && last.kind == 'role' && !mine(last.author) && last.author != who",
+      "fields": {
+        "what": "Your workbook role changed",
+        "state": "='An owner ' + last.summary",
+        "where": "=project.name ? project.name : 'Sheets'"
+      }
+    },
+    "AttachmentsChanged": "ignore",
+    "AxesChanged": "ignore",
+    "CellCleared": "ignore",
+    "CellUpdated": "ignore",
+    "CellsChanged": "ignore",
+    "ChartsChanged": "ignore",
+    "CommentChanged": "ignore",
+    "LinkedChanged": "ignore",
+    "MemberJoined": "ignore",
+    "MemberRenamed": "ignore",
+    "NamedRangesChanged": "ignore",
+    "NoteChanged": "ignore",
+    "ProjectInitialized": "ignore",
+    "ProtectionsChanged": "ignore",
+    "PublicationsChanged": "ignore",
+    "RulesChanged": "ignore",
+    "SheetCreated": "ignore",
+    "SheetDeleted": "ignore",
+    "SheetRenamed": "ignore",
+    "SheetViewChanged": "ignore",
+    "StylesChanged": "ignore"
+  }
+}

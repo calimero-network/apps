@@ -124,6 +124,35 @@ with tempfile.TemporaryDirectory() as t:
     check("builds when the previous commit cannot be fetched",
           run(repo, FORUM, VERCEL_GIT_PREVIOUS_SHA="0" * 40), vib.BUILD)
 
+    # A PR branch that changes chat, then merges main after main changed forum.
+    # Diffed against its previous deploy, forum moved; diffed against main, the
+    # branch only changes chat, so forum's preview is skipped.
+    def commit(path: str, body: str, msg: str) -> str:
+        (repo / path).write_text(body)
+        g("-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", msg)
+        return g("rev-parse", "HEAD")
+
+    g("checkout", "-q", "-b", "pr", base)
+    pr_deploy = commit("apps/mero-chat/app/pr.html", "<p>pr</p>", "pr: chat")
+    g("checkout", "-q", "main")
+    commit("apps/mero-forum/app/index.html", "<p>main</p>", "main: forum")
+    g("update-ref", "refs/remotes/origin/main", "main")
+    g("checkout", "-q", "pr")
+    g("-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit", "main")
+    pr = dict(VERCEL_GIT_COMMIT_REF="pr", VERCEL_GIT_PREVIOUS_SHA=pr_deploy)
+
+    check("a PR skips an app only merging main moved",
+          run(repo, FORUM, **pr), vib.SKIP)
+    check("a PR builds the app it changes",
+          run(repo, CHAT, **pr), vib.BUILD)
+    check("a PR's first push skips apps it does not change",
+          run(repo, FORUM, VERCEL_GIT_COMMIT_REF="pr"), vib.SKIP)
+    check("a PR's first push builds the app it changes",
+          run(repo, CHAT, VERCEL_GIT_COMMIT_REF="pr"), vib.BUILD)
+    check("main still diffs against its previous deploy",
+          run(repo, FORUM, VERCEL_GIT_COMMIT_REF="main", VERCEL_GIT_PREVIOUS_SHA=base), vib.BUILD)
+
 if FAILURES:
     print(f"\n{len(FAILURES)} failed: {', '.join(FAILURES)}")
     sys.exit(1)

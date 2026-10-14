@@ -2,7 +2,8 @@
   width: var(--tool-w);
   flex-shrink: 0;
   height: 100%;
-  background: var(--bg-2);
+  /* Glass surface, no blur: it is docked, so nothing passes under it, and a backdrop-filter would trap the fixed menus and popovers inside it. The width (--tool-w) is what the canvas is sized against. */
+  background: var(--glass-surface);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -39,9 +40,10 @@
   color: var(--text);
 }
 .toolActive {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--glass-ink);
+  border-color: var(--glass-ink);
+  color: var(--glass-on-ink);
+  box-shadow: 0 6px 14px -8px rgba(14, 18, 34, 0.6);
 }
 
 .tool svg {
@@ -56,7 +58,7 @@
   transform: translateY(-50%);
   background: var(--bg-1);
   color: var(--text);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-sm);
   padding: 4px 8px;

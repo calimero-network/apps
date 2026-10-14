@@ -17,7 +17,7 @@
   border: 0;
   border-left: 1px solid var(--border);
   border-radius: var(--radius-xl) 0 0 var(--radius-xl);
-  background: var(--surface);
+  background: var(--glass-surface-solid);
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
@@ -50,7 +50,6 @@
 
 .dialog::backdrop {
   background: var(--overlay);
-  backdrop-filter: blur(2px);
 }
 
 .head {
@@ -138,9 +137,9 @@
   min-width: 0;
   height: 38px;
   padding: 0 12px;
-  background: var(--surface);
+  background: var(--glass-surface-solid);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: 12px;
   color: var(--text);
   font-size: 14px;
   font-family: inherit;
@@ -163,7 +162,7 @@
   padding: 0 16px;
   background: var(--accent);
   border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 8px;
+  border-radius: 999px;
   color: var(--accent-text);
   font-size: 14px;
   font-weight: 500;

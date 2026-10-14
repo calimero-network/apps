@@ -102,6 +102,15 @@ every member sees the same screens and the same order, and the web design
 starter (whose five screens were already labelled this way) presents out of the
 box.
 
+## Undo and redo
+
+Undo (Ctrl/⌘+Z) and redo (Ctrl/⌘+Shift+Z or Ctrl+Y) take back **your own**
+steps, and write the result to the node, so every member sees it. A step records
+only the elements you changed (as they were before, and as you left them), and
+undoing it writes back only the fields you changed: a teammate's shape, or their
+recolour of a shape you then moved, survives your undo. A shape a teammate has
+deleted since stays deleted. See `app/src/store/history.ts`.
+
 ## Starter projects
 
 **Options → Starter projects** loads one into the board (an admin action; an

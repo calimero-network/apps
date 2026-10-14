@@ -4,7 +4,9 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg-0);
+  /* The pit around the document is part of the canvas: it keeps its own dark,
+     matching the checkerboard, rulers and gizmos drawn on it, in every theme. */
+  background: #0A0E13;
 }
 
 .canvas {
@@ -22,8 +24,8 @@
   padding: 4px 8px;
   background: var(--bg-1);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   font-size: 12px;
   color: var(--text);
   z-index: 60;
@@ -37,7 +39,7 @@
   background: var(--bg-3);
   color: var(--text);
 }
-.cropBar button:first-of-type { background: var(--accent); color: #0b0e12; font-weight: 600; }
+.cropBar button:first-of-type { background: var(--glass-ink); color: var(--glass-on-ink); font-weight: 600; }
 .cropBar button:hover { filter: brightness(1.1); }
 
 .hint {
@@ -46,8 +48,10 @@
   bottom: 14px;
   transform: translateX(-50%);
   padding: 5px 12px;
-  background: rgba(15, 20, 25, 0.9);
-  border: 1px solid var(--border-strong);
+  /* Floats over the dark pit: solid, so it reads in either theme. */
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-sm);
   border-radius: 999px;
   font-size: 12px;
   color: var(--text-dim);
@@ -60,13 +64,14 @@
   margin: 0;
   padding: 2px;
   background: rgba(0, 0, 0, 0.06);
-  border: 1px dashed var(--accent);
+  /* On-canvas gizmo: keeps the canvas's own lime, not the chrome accent. */
+  border: 1px dashed #A5FF11;
   outline: none;
   resize: none;
   overflow: hidden;
   white-space: pre;
   z-index: 70;
-  caret-color: var(--accent);
+  caret-color: #A5FF11;
 }
 
 /* Ruler guides */
@@ -106,9 +111,9 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-1);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 .ctxMenu button {
   text-align: left;

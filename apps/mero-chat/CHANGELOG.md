@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The bundle's `links.frontend` is `https://chat.hyperfeed.me`, where chat is now
+  served. A node's sign-in page trusts the login callback only at that origin, so
+  a hosted login from chat.hyperfeed.me failed with "Login callback destination is
+  not allowed" while the bundle still named mero-chat-pwa.vercel.app.
 - `set_member_role` announces `RoleUpdated` only when the role changes. The app
   re-asserts an admin's own Admin role each time a channel opens, and each one
   used to reach Hyperfeed as "You are now Admin".
