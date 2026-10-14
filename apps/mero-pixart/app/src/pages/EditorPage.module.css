@@ -49,10 +49,8 @@
   width: var(--panel-w);
   flex-shrink: 0;
   border-left: 1px solid var(--border);
-  /* Frosted glass; the width (--panel-w) is what the canvas is sized against. */
+  /* Glass surface, no blur: it is docked, so nothing passes under it, and a backdrop-filter would trap the fixed menus and popovers inside it. The width (--panel-w) is what the canvas is sized against. */
   background: var(--glass-surface);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
   box-shadow: inset 1px 0 0 var(--glass-edge);
   min-height: 0;
   /* the whole dock scrolls when its panels don't fit (collapsed panels shrink

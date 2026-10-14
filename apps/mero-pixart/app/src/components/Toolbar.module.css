@@ -2,10 +2,8 @@
   width: var(--tool-w);
   flex-shrink: 0;
   height: 100%;
-  /* Frosted glass; the width (--tool-w) is what the canvas is sized against. */
+  /* Glass surface, no blur: it is docked, so nothing passes under it, and a backdrop-filter would trap the fixed menus and popovers inside it. The width (--tool-w) is what the canvas is sized against. */
   background: var(--glass-surface);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;

@@ -4,10 +4,8 @@
   gap: 12px;
   height: 24px;
   padding: 0 12px;
-  /* Frosted glass; the height is what the canvas is sized against. */
+  /* Glass surface, no blur: it is docked, so nothing passes under it, and a backdrop-filter would trap the fixed menus and popovers inside it. The height is what the canvas is sized against. */
   background: var(--glass-surface);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
   border-top: 1px solid var(--border);
   font-size: 11px;
   color: var(--text-dim);
