@@ -229,7 +229,7 @@ test("a typed row is answered straight into its app, and a refusal comes back to
   await expect(card.getByLabel("Reply to Maya")).toBeVisible();
 });
 
-test("you approve a lens your agent proposed, in Controls", async ({ page }) => {
+test("you approve a lens your agent proposed, in Settings → Lenses", async ({ page }) => {
   await openFeed(page);
   const mero = node();
   const contextId = (await mero.admin.getContexts()).contexts[0]!.id;
@@ -239,7 +239,10 @@ test("you approve a lens your agent proposed, in Controls", async ({ page }) => 
     method: "propose_lens",
     argsJson: { app_key: "kv-store", application_id: "kv-app-1", spec: JSON.stringify(spec), summary: "Keys set in kv-store" },
   });
-  await page.getByRole("link", { name: "Controls" }).click();
+  await page.getByRole("link", { name: "Settings" }).click();
+  // Waiting for you: Lenses counts it.
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /Lenses/ }).click();
+  await expect(page).toHaveURL(/\/settings\/lenses$/);
   const lens = page.locator("li.lens", { hasText: "Keys set in kv-store" });
   await expect(lens.getByText("Waiting for you")).toBeVisible();
   await expect(lens).toContainText("Inserted → Status · 1 other event ignored");

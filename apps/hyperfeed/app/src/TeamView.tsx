@@ -67,7 +67,7 @@ export function TeamView({ feed, query, onChat }: { feed: Feed; query: string; o
                 <h2>Around you</h2>
               </header>
               {groups.length === 0 ? (
-                <p className="lane-empty">Nothing from your team yet. Approve a lens in Controls and their mentions, assignments and polls show here.</p>
+                <p className="lane-empty">Nothing from your team yet. Approve a lens in Settings → Lenses and their mentions, assignments and polls show here.</p>
               ) : (
                 <ul className="team-posts">
                   {groups.map((g) => (

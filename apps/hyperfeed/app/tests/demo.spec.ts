@@ -169,3 +169,31 @@ test("in the demo, the feed is three lanes, light or dark, and done things archi
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+
+test("Settings opens one section at a time, and an old Controls link lands on it", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+
+  await page.goto("/demo/controls");
+  await expect(page).toHaveURL(/\/demo\/settings\/controls$/);
+  const sections = page.getByRole("navigation", { name: "Settings" });
+  await expect(sections.getByRole("link", { name: /Controls/ })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("region", { name: "What your agent may do, app by app" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Connect your agent" })).toHaveCount(0);
+
+  await sections.getByRole("link", { name: /Agents/ }).click();
+  await expect(page).toHaveURL(/\/demo\/settings\/agents$/);
+  await expect(page.getByRole("region", { name: "Your agents", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Connect your agent" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "What your agent may do, app by app" })).toHaveCount(0);
+
+  await sections.getByRole("link", { name: /Lenses/ }).click();
+  await expect(page.getByRole("region", { name: "What your feed reads from each app" })).toBeVisible();
+  // The top bar names the page Settings, wherever in it you are.
+  await expect(page.getByRole("navigation", { name: "Pages" }).getByRole("link", { name: "Settings" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+
+  expect(errors, "an unhandled error escaped to the page").toEqual([]);
+});

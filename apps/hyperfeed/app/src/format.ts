@@ -70,7 +70,7 @@ const RULE_METHODS = new Set(["set_policy", "set_guard", "set_paused"]);
 /**
  * An action your agent can never carry out, approved or not: one of your own
  * decisions in Hyperfeed (a change to your rules, above all). Retrying it can
- * only fail again; you make it yourself, in Controls.
+ * only fail again; you make it yourself, in Settings → Controls.
  */
 export function onlyYouCan(item: FeedItem): boolean {
   const method = bareMethod(item);
@@ -115,7 +115,7 @@ export function retryCannotHelp(item: FeedItem): boolean {
 /** Why a failed row offers no Retry, as one line; "" when it does. */
 export function noRetryLine(item: FeedItem, appName: (key: string) => string): string {
   if (!retryCannotHelp(item)) return "";
-  if (onlyYouCan(item)) return "Only you can do this, in Controls. Retrying can't help, so archive it when you're done.";
+  if (onlyYouCan(item)) return "Only you can do this, in Settings → Controls. Retrying can't help, so archive it when you're done.";
   return `${appName(item.app)} has no ${item.method}. Retrying can't help, so archive it.`;
 }
 

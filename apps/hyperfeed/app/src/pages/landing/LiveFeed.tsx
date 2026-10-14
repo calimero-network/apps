@@ -75,7 +75,7 @@ export function LiveFeed() {
         <span className="hl-seg">
           <span className="on">Feed</span>
           <span>Chat</span>
-          <span>Controls</span>
+          <span>Settings</span>
         </span>
         <span className="hl-pill hl-pill-good hl-live">
           <span className="hl-pulse" />

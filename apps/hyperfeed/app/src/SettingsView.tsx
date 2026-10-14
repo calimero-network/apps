@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import type { AgentMode, NotificationMode } from "./backend";
 import { messageOf, type Feed, type PushState } from "./useFeed";
 import { Badge, NewFeedButton, type NewFeed } from "./FeedView";
@@ -7,6 +8,7 @@ import { GUARD_LABELS, TYPE_LABELS } from "./format";
 import type { Folder, LensView, ReachLine, RuleProposalView } from "./generated/HyperfeedClient";
 import type { Preview, PreviewRow } from "./preview";
 import { currentEndpoint, deviceName, inputOf, pushSupported, subscribe, unsubscribe } from "./push";
+import { AGENT_LIVE_MS } from "./theme";
 
 const AGENT_OPTIONS: { id: AgentMode; label: string }[] = [
   { id: "act", label: "Act" },
@@ -21,21 +23,107 @@ const NOTIFICATION_OPTIONS: { id: NotificationMode; label: string }[] = [
   { id: "mute", label: "Mute" },
 ];
 
-export function ControlsView({
+/** The parts of Settings, each its own page under `/settings/<id>`. */
+export type SettingsSection = "controls" | "agents" | "lenses" | "alerts";
+
+const SECTIONS: { id: SettingsSection; label: string; hint: string }[] = [
+  { id: "controls", label: "Controls", hint: "What your agent may do, and what always asks you" },
+  { id: "agents", label: "Agents", hint: "Who works for this feed, and what each can reach" },
+  { id: "lenses", label: "Lenses", hint: "What your feed reads from each app" },
+  { id: "alerts", label: "Alerts", hint: "Push to your phone" },
+];
+
+/** `/settings/<id>` names a section; anything else is Controls. */
+export function settingsSection(id: string | undefined): SettingsSection {
+  return SECTIONS.some((s) => s.id === id) ? (id as SettingsSection) : "controls";
+}
+
+/**
+ * Settings, one section at a time: Controls (per-app permissions, pause,
+ * guards, standing rules), Agents (who reports in, what each can reach, how to
+ * connect one), Lenses (what the feed reads from each app) and Alerts (phone
+ * push). A section a feed cannot have, such as Alerts on a feed made before
+ * push, is not listed.
+ */
+export function SettingsView({
   feed,
   contextId,
   preview,
   newFeed,
+  section,
+  base = "",
 }: {
   feed: Feed;
   contextId: string | null;
   preview?: Preview;
   newFeed?: NewFeed;
+  section: SettingsSection;
+  /** Where the app is mounted: "" on your node, "/demo" in the demo. */
+  base?: string;
 }) {
-  const { settings, page } = feed;
-  // What a control was just set to, shown until the contract's answer is read
-  // back. Without it a checkbox snaps back to its old state for the length of
-  // the round trip, which reads as the click not having worked.
+  const { settings } = feed;
+  const sections = SECTIONS.filter((s) => s.id !== "alerts" || Boolean(feed.loadPush));
+  const current = sections.some((s) => s.id === section) ? section : "controls";
+
+  return (
+    <div className="settings">
+      <nav className="settings-nav" aria-label="Settings">
+        {sections.map((s) => {
+          const count =
+            s.id === "lenses"
+              ? feed.lenses.filter((l) => l.status === "proposed").length
+              : s.id === "controls"
+                ? (settings?.rule_proposals?.length ?? 0)
+                : 0;
+          return (
+            <Link
+              key={s.id}
+              to={`${base}/settings/${s.id}`}
+              className={s.id === current ? "on" : ""}
+              aria-current={s.id === current ? "page" : undefined}
+              title={s.hint}
+            >
+              <span>{s.label}</span>
+              {count > 0 && (
+                <span className="count" aria-label={`${count} waiting for you`}>
+                  {count}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+      <div className="settings-body">
+        {feed.error && (
+          <div className="error" role="alert">
+            <span>{feed.error}</span>
+            <button type="button" className="ghost small" onClick={feed.dismissError}>
+              Dismiss
+            </button>
+          </div>
+        )}
+        {!settings ? (
+          <div className="empty">Loading your settings…</div>
+        ) : current === "controls" ? (
+          <ControlsSection feed={feed} />
+        ) : current === "agents" ? (
+          <AgentsSection feed={feed} contextId={contextId} />
+        ) : current === "lenses" ? (
+          <LensesSection feed={feed} preview={preview} newFeed={newFeed} />
+        ) : (
+          <PhoneAlerts feed={feed} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What a control was just set to, shown until the contract's answer is read
+ * back. Without it a checkbox snaps back to its old state for the length of
+ * the round trip, which reads as the click not having worked.
+ */
+function usePending() {
   const [pending, setPending] = useState<Record<string, string | boolean>>({});
   const write = async (key: string, value: string | boolean, call: () => Promise<void>) => {
     setPending((p) => ({ ...p, [key]: value }));
@@ -49,6 +137,13 @@ export function ControlsView({
       });
     }
   };
+  return { pending, write };
+}
+
+/** Per-app permissions and notifications, pause, the guards, and your standing rules. */
+function ControlsSection({ feed }: { feed: Feed }) {
+  const { settings, page } = feed;
+  const { pending, write } = usePending();
 
   // Every app with a policy, every app in the feed, and the usual ones.
   const apps = useMemo(() => {
@@ -58,7 +153,7 @@ export function ControlsView({
     return [...keys];
   }, [settings, page]);
 
-  if (!settings) return <div className="empty">Loading your rules…</div>;
+  if (!settings) return null;
 
   const policyOf = (app: string) => {
     const stored = settings.policies.find((p) => p.app === app) ?? { app, agent: "ask", notifications: "feed" };
@@ -70,14 +165,6 @@ export function ControlsView({
 
   return (
     <div className="controls">
-      {feed.error && (
-        <div className="error" role="alert">
-          <span>{feed.error}</span>
-          <button type="button" className="ghost small" onClick={feed.dismissError}>
-            Dismiss
-          </button>
-        </div>
-      )}
       <section className="panel wide" aria-labelledby="h-apps">
         <h2 id="h-apps">What your agent may do, app by app</h2>
         <p className="muted">
@@ -149,8 +236,6 @@ export function ControlsView({
           </button>
         </section>
 
-        <StandingRules feed={feed} />
-
         <section className="panel" aria-labelledby="h-guards">
           <h2 id="h-guards">Always ask me before</h2>
           <p className="muted">These override "Act" in every app.</p>
@@ -170,31 +255,70 @@ export function ControlsView({
           })}
         </section>
 
-        {feed.loadPush && <PhoneAlerts feed={feed} />}
-
-        {/* A feed made before access has no `access` in its settings, and no setter. */}
-        {feed.setAccess && Array.isArray(settings.access) && <AgentReach feed={feed} />}
-
-        <section className="panel" aria-labelledby="h-agent">
-          <h2 id="h-agent">Connect your agent</h2>
-          <p className="muted">
-            Run <strong>mero-bot</strong> on the machine with this node: it finds this feed by itself, checks every
-            call it makes against these rules, logs what it does here, and carries out what you approve or answer.
-            Any other agent uses the same API: <code>check_action</code> before acting, <code>record_action</code>{" "}
-            to log or propose, <code>complete_action</code> after your decision.
-          </p>
-          <dl className="facts">
-            <div className="fact">
-              <dt>Feed context</dt>
-              <dd className="mono">{contextId ?? "demo — not on a node"}</dd>
-            </div>
-            <div className="fact">
-              <dt>Owner</dt>
-              <dd className="mono">{settings.owner}</dd>
-            </div>
-          </dl>
-        </section>
+        <StandingRules feed={feed} />
       </div>
+    </div>
+  );
+}
+
+/** Who reports in to this feed, what each can reach on its computer, and how to connect one. */
+function AgentsSection({ feed, contextId }: { feed: Feed; contextId: string | null }) {
+  const settings = feed.settings;
+  if (!settings) return null;
+  const now = Date.now();
+  return (
+    <div className="controls">
+      <section className="panel wide" aria-labelledby="h-agents">
+        <h2 id="h-agents">Your agents</h2>
+        {settings.agents.length === 0 ? (
+          <p className="muted">No agent has reported in yet. Connect one below.</p>
+        ) : (
+          <ul className="agent-list">
+            {settings.agents.map((a) => {
+              const live = now - a.seen_at < AGENT_LIVE_MS;
+              return (
+                <li key={a.name}>
+                  <span className="mono">{a.name}</span>
+                  <span className={`pill ${live ? "pill-good" : "pill-bad"}`}>
+                    {live ? "Live" : `Last seen ${new Date(a.seen_at).toLocaleString()}`}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {/* A feed made before access has no `access` in its settings, and no setter. */}
+      {feed.setAccess && Array.isArray(settings.access) && <AgentReach feed={feed} />}
+
+      <section className="panel" aria-labelledby="h-agent">
+        <h2 id="h-agent">Connect your agent</h2>
+        <p className="muted">
+          Run <strong>mero-bot</strong> on the machine with this node: it finds this feed by itself, checks every
+          call it makes against your controls, logs what it does here, and carries out what you approve or answer.
+          Any other agent uses the same API: <code>check_action</code> before acting, <code>record_action</code>{" "}
+          to log or propose, <code>complete_action</code> after your decision.
+        </p>
+        <dl className="facts">
+          <div className="fact">
+            <dt>Feed context</dt>
+            <dd className="mono">{contextId ?? "demo — not on a node"}</dd>
+          </div>
+          <div className="fact">
+            <dt>Owner</dt>
+            <dd className="mono">{settings.owner}</dd>
+          </div>
+        </dl>
+      </section>
+    </div>
+  );
+}
+
+/** What your feed reads from each app: the lenses your agent proposed, and yours to approve. */
+function LensesSection({ feed, preview, newFeed }: { feed: Feed; preview?: Preview; newFeed?: NewFeed }) {
+  return (
+    <div className="controls">
       <section className="panel full" aria-labelledby="h-lenses">
         <h2 id="h-lenses">What your feed reads from each app</h2>
         <p className="muted">
@@ -217,7 +341,6 @@ export function ControlsView({
           </ul>
         )}
       </section>
-
     </div>
   );
 }
@@ -373,7 +496,7 @@ function AgentReach({ feed }: { feed: Feed }) {
         the agent's runtime checks every call against them.
       </p>
       {names.length === 0 ? (
-        <p className="muted">No agent has reported in yet. Start mero-bot and it shows up here.</p>
+        <p className="muted">No agent has said what it can reach yet. mero-bot does when it starts.</p>
       ) : (
         names.map((name) => <AgentAccess key={name} feed={feed} agent={name} />)
       )}

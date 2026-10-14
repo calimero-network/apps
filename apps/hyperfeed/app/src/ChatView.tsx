@@ -3,7 +3,7 @@ import type { Attachment, FeedItem, LinkView, PrView, WatchView } from "./genera
 import type { Feed } from "./useFeed";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
 import { NewFeedButton, type NewFeed } from "./FeedView";
-import { RuleSuggestion } from "./ControlsView";
+import { RuleSuggestion } from "./SettingsView";
 import { heldLine, laneOf, REPLACED, statusOf, timeLabel } from "./format";
 import { Markdown } from "./markdown";
 import { RefCards, type MergeContext } from "./RefCards";

@@ -16,7 +16,7 @@ each app, and talk to it about any of it.
 | Package | `com.calimero.hyperfeed` |
 | Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 50 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/feed.yml`](logic/workflows/feed.yml): every contract method on real nodes, the feed converging on a second node, and that node refused every write |
-| Frontend | [`app/`](app): Vite, React and mero-react. `/` (feed), `/chat` and `/controls` run against your node; `/demo` runs the same pages in memory |
+| Frontend | [`app/`](app): Vite, React and mero-react. `/` (feed), `/chat` and `/settings` run against your node; `/demo` runs the same pages in memory. Settings has a section per path: `/settings/controls`, `/settings/agents`, `/settings/lenses`, `/settings/alerts` (`/controls` lands on the first) |
 
 ## Why it needs a contract of its own
 
@@ -42,7 +42,7 @@ same warrant path it uses everywhere else.
 | **Archived** | you | per chain: put away, with the chain's latest activity then and an optional return time ("later"). It is out of the feed until something new happens in it or that time passes |
 | **Presence** | your agent | per agent name: when it last reported in. The app shows "Agent live" for 90 seconds after a report |
 | **Access** | you | per agent name: what it may reach on its computer besides your Calimero apps: folders (each read only, or read and write), a shell, the web. Last-writer-wins. The agent's runtime enforces it before every tool call and refuses `set_access` to the agent |
-| **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (mode, model, attested or not, folders, shell, web). Controls shows it beside your Access |
+| **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (mode, model, attested or not, folders, shell, web). Settings → Agents shows it beside your Access |
 | **Link** | your agent, or you | per task: a subject it works on (`<app>:<context>[:<id>]`) with a label, shown as a chip on the task's post. Your agent's writes add them; you add one from its address or take one off, and a link you took off stays off. The chip counts and groups what teammates did there, and opens it in its app beside the feed |
 | **Subject** | your agent | what an action touched in another app, as `<app>:<context>[:<id>]` (the id from its `issue_id`, `doc_id` or `thread_id` arg), kept beside the action by id, and the chain that last touched each subject. A typed notification whose reply call goes to the same subject, recorded with no chain of its own, joins that chain unless you put it away: one thread per task, teammates' comments included |
 
@@ -99,7 +99,7 @@ one. The lens is checked before you see it:
 - every path it reads (`page.messages[0].text`) is a field of the type the ABI says it reads;
 - a reply is a mutating call that puts your answer in it.
 
-It is then tried on the app's recent events. Only a lens that passes is proposed. In **Controls**,
+It is then tried on the app's recent events. Only a lens that passes is proposed. In **Settings → Lenses**,
 under *What your feed reads from each app*, you see what each lens records, preview it on recent
 events, and approve or turn it down. A new app version is learned again.
 
@@ -197,7 +197,7 @@ curl -s -X POST "$NODE/jsonrpc" -H "authorization: Bearer $TOKEN" -H 'content-ty
 
 The result is under `result.output`. A refusal is a JSON-RPC error of type `FunctionCallError`
 whose message is the contract's sentence (`not allowed: your agent is off in crm`). The feed's
-context id is under **Controls → Connect your agent**. Every write must come from the feed's owner
+context id is under **Settings → Agents → Connect your agent**. Every write must come from the feed's owner
 account (your node's own identity, or your account through a warrant); anything else is refused.
 
 **The agent's methods**
@@ -445,7 +445,7 @@ says the feed is too old.
 - Approvals from mero-bot's terminal and from the feed race; the first answer wins. A held tool call
   waits as long as mero-bot runs: there is no timeout yet.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
-  Phone alerts (Controls → Phone alerts) keep your devices' push subscriptions and the runtime's VAPID
+  Phone alerts (Settings → Alerts) keep your devices' push subscriptions and the runtime's VAPID
   public key in the feed; mero-bot's sender, which pushes what newly needs you, is a separate change.
 - Lenses for apps other than Chat are learned on your node; none ships for them. A lens is tried on
   recent events only when there are some, so a quiet app's lens is checked against its ABI alone.
