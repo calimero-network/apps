@@ -153,12 +153,23 @@ describe("Settings → Actions: what your agent can do in each app", () => {
   });
 
   it("sets one action apart from its app, and back", async () => {
-    const backend = new DemoBackend(true, 0);
+    // A save that lands before the page hears it finished, as on a busy node:
+    // the buttons stay disabled until it has.
+    class SlowSave extends DemoBackend {
+      override async setActionMode(...args: Parameters<DemoBackend["setActionMode"]>) {
+        await super.setActionMode(...args);
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+    const backend = new SlowSave(true, 0);
     render(<Harness backend={backend} section="actions" />);
     const send = await screen.findByRole("group", { name: "Send messages in Chat" });
     fireEvent.click(within(send).getByRole("button", { name: "Off" }));
     await waitFor(() => expect(backend.verdict("chat", "", true, "send_message").decision).toBe("refuse"));
-    fireEvent.click(within(send).getByRole("button", { name: "Follow app" }));
+    // Clicked as you would: once the first save is done and the buttons take clicks again.
+    const follow = within(send).getByRole("button", { name: "Follow app" });
+    await waitFor(() => expect(follow).toBeEnabled());
+    fireEvent.click(follow);
     await waitFor(() => expect(backend.verdict("chat", "", true, "send_message").decision).not.toBe("refuse"));
   });
 
