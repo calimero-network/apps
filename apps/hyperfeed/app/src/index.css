@@ -689,6 +689,22 @@ input:focus-visible {
   cursor: default;
 }
 
+.install-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.error-text {
+  font-size: 13px;
+  color: var(--bad-ink);
+}
+
+.not-installed .app-cell {
+  color: var(--muted);
+}
+
 .small-text {
   font-size: 13px;
 }

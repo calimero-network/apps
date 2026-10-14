@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { AgentMode, NotificationMode } from "./backend";
 import { messageOf, type Feed, type PushState } from "./useFeed";
 import { Badge, NewFeedButton, type NewFeed } from "./FeedView";
-import { DEFAULT_APPS, appLook } from "./apps";
+import { appKeyForPackage, appLook, CORE_PACKAGES, DEFAULT_APPS } from "./apps";
 import { GUARD_LABELS, TYPE_LABELS } from "./format";
 import type { Folder, LensView, ReachLine, RuleProposalView, RuleView } from "./generated/HyperfeedClient";
 import type { Preview, PreviewRow } from "./preview";
@@ -56,9 +56,15 @@ export function SettingsView({
   newFeed,
   section,
   base = "",
+  installed = null,
+  install = null,
 }: {
   feed: Feed;
   contextId: string | null;
+  /** The apps installed on your node, by key; null in the demo, or until the node says. */
+  installed?: string[] | null;
+  /** Install a core app on your node by its package; null where it can't. */
+  install?: ((pkg: string) => Promise<void>) | null;
   preview?: Preview;
   newFeed?: NewFeed;
   section: SettingsSection;
@@ -109,7 +115,7 @@ export function SettingsView({
         {!settings ? (
           <div className="empty">Loading your settings…</div>
         ) : current === "controls" ? (
-          <ControlsSection feed={feed} />
+          <ControlsSection feed={feed} installed={installed} install={install} />
         ) : current === "rules" ? (
           <RulesSection feed={feed} />
         ) : current === "agents" ? (
@@ -147,17 +153,41 @@ function usePending() {
 }
 
 /** Per-app permissions and notifications, pause, and the guards. */
-function ControlsSection({ feed }: { feed: Feed }) {
+function ControlsSection({
+  feed,
+  installed,
+  install,
+}: {
+  feed: Feed;
+  installed: string[] | null;
+  install: ((pkg: string) => Promise<void>) | null;
+}) {
   const { settings, page } = feed;
   const { pending, write } = usePending();
 
-  // Every app with a policy, every app in the feed, and the usual ones.
+  // On your node: the core apps, set app by app where installed and offered
+  // for install where not, and mero-bot (the tools on your computer) once an
+  // agent reports in or it has a policy or rows. Until the node says (and in
+  // the demo): every app with a policy, every app in the feed, and the usual ones.
+  const missing = useMemo(
+    () => (installed ? CORE_PACKAGES.filter((pkg) => !installed.includes(appKeyForPackage(pkg, ""))) : []),
+    [installed],
+  );
   const apps = useMemo(() => {
+    if (installed) {
+      const keys = new Set(CORE_PACKAGES.map((pkg) => appKeyForPackage(pkg, "")).filter((k) => installed.includes(k)));
+      const code =
+        (settings?.agents?.length ?? 0) > 0 ||
+        (settings?.policies ?? []).some((p) => p.app === CODE_APP) ||
+        (page?.apps ?? []).some((a) => a.app === CODE_APP);
+      if (code) keys.add(CODE_APP);
+      return [...keys];
+    }
     const keys = new Set(DEFAULT_APPS);
     for (const p of settings?.policies ?? []) keys.add(p.app);
     for (const a of page?.apps ?? []) keys.add(a.app);
     return [...keys];
-  }, [settings, page]);
+  }, [installed, settings, page]);
 
   if (!settings) return null;
 
@@ -223,6 +253,9 @@ function ControlsSection({ feed }: { feed: Feed }) {
                   </tr>
                 );
               })}
+              {missing.map((pkg) => (
+                <InstallRow key={pkg} pkg={pkg} install={install} />
+              ))}
             </tbody>
           </table>
         </div>
@@ -897,6 +930,55 @@ export function RuleSuggestion({ proposal, feed }: { proposal: RuleProposalView;
         </button>
       </div>
     </li>
+  );
+}
+
+/** A core app not on your node: Install, in place of what the agent may do there. */
+function InstallRow({ pkg, install }: { pkg: string; install: ((pkg: string) => Promise<void>) | null }) {
+  const app = appKeyForPackage(pkg, "");
+  const look = appLook(app);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  return (
+    <tr className="not-installed">
+      <th scope="row">
+        <span className="app-cell">
+          <Badge app={app} size="sm" />
+          {look.name}
+        </span>
+      </th>
+      <td colSpan={2}>
+        <span className="install-cell">
+          <button
+            type="button"
+            className="ghost small"
+            disabled={!install || busy}
+            aria-label={`Install ${look.name}`}
+            onClick={async () => {
+              if (!install) return;
+              setBusy(true);
+              setFailed(null);
+              try {
+                await install(pkg);
+              } catch (e) {
+                setFailed(messageOf(e));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "Installing…" : "Install"}
+          </button>
+          {failed ? (
+            <span className="error-text" role="alert">
+              {failed}
+            </span>
+          ) : (
+            <span className="muted small-text">Not on your node</span>
+          )}
+        </span>
+      </td>
+    </tr>
   );
 }
 

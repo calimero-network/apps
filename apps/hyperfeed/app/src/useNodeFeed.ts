@@ -4,7 +4,7 @@ import type { SubscriptionEventData } from "@calimero-network/mero-react";
 import { HyperfeedClient, type LensView } from "./generated/HyperfeedClient";
 import { nodeBackend, type FeedBackend } from "./backend";
 import type { BlobStore } from "./attachments";
-import { appKeyForPackage } from "./apps";
+import { appKeyForPackage, REGISTRY } from "./apps";
 import { BUILT_IN, decodePayload, toNotifications, type RawEvent, type SourceContext, type StateMutation } from "./collector";
 import { parseLens, type LensHost, type LensSpec } from "./lens/lens";
 import { nodeLensHosts, type NodeAdmin } from "./nodeHost";
@@ -15,6 +15,13 @@ export interface NodeFeed {
   nudge: number;
   /** The other contexts being watched for notifications. */
   watching: SourceContext[];
+  /**
+   * The apps installed on the node, by app key, Hyperfeed itself left out;
+   * null until the node says, or when it could not.
+   */
+  installed: string[] | null;
+  /** Install an app from the marketplace by its package, at its newest version; null without the admin API. */
+  install: ((pkg: string) => Promise<void>) | null;
   /** Why watching failed, when it did. The feed itself still works. */
   watchError: string | null;
   /** The last events each app version emitted, newest last: what a lens preview runs on. */
@@ -54,9 +61,11 @@ export function useNodeFeed(contextId: string): NodeFeed {
   // Every context on the node. With no application id, `useContexts` asks the
   // node for all of them, which is exactly what a collector wants.
   const { contexts, error: contextsError } = useContexts(null);
-  const [packages, setPackages] = useState<Record<string, string | undefined>>({});
+  const [packages, setPackages] = useState<Record<string, string | undefined> | null>(null);
   const [packagesError, setPackagesError] = useState<string | null>(null);
 
+  // Bumped by an install: the node is asked again what it has.
+  const [listed, setListed] = useState(0);
   useEffect(() => {
     if (!admin) return;
     let live = true;
@@ -74,7 +83,7 @@ export function useNodeFeed(contextId: string): NodeFeed {
     return () => {
       live = false;
     };
-  }, [admin]);
+  }, [admin, listed]);
 
   const watching = useMemo<SourceContext[]>(
     () =>
@@ -83,7 +92,7 @@ export function useNodeFeed(contextId: string): NodeFeed {
         // feeds would record its own bookkeeping as news.
         .filter((c) => c.contextId !== contextId && c.applicationId !== applicationId)
         .map((c) => {
-          const appKey = appKeyForPackage(packages[c.applicationId], c.applicationId);
+          const appKey = appKeyForPackage(packages?.[c.applicationId], c.applicationId);
           return {
             contextId: c.contextId,
             appKey,
@@ -172,12 +181,45 @@ export function useNodeFeed(contextId: string): NodeFeed {
     ),
   );
 
+  const installed = useMemo(
+    () => (packages ? installedApps(packages, applicationId) : null),
+    [packages, applicationId],
+  );
+
+  const install = useCallback(
+    async (pkg: string) => {
+      if (!admin) throw new Error("This session can't install apps.");
+      const [version] = await admin.getRegistryVersions(REGISTRY, pkg);
+      if (!version) throw new Error(`Nothing is published for ${pkg}.`);
+      await admin.installApplication({ package: pkg, version });
+      setListed((n) => n + 1);
+    },
+    [admin],
+  );
+
   return {
     backend,
     nudge,
     watching,
+    installed,
+    install: admin ? install : null,
     watchError: contextsError?.message ?? packagesError,
     recent: useCallback((appKey: string, appId: string) => recentEvents.current.get(`${appKey}@${appId}`) ?? [], []),
     hostFor: useCallback((ctx: string) => (hosts ? hosts(ctx) : null), [hosts]),
   };
+}
+
+/**
+ * The app keys of what is installed on the node, each once: not this
+ * Hyperfeed, nor another version of it (a feed of feeds would record its own
+ * bookkeeping as news).
+ */
+export function installedApps(packages: Record<string, string | undefined>, self: string | null): string[] {
+  const keys = new Set<string>();
+  for (const [id, pkg] of Object.entries(packages)) {
+    if (id === self) continue;
+    const key = appKeyForPackage(pkg, id);
+    if (key !== "hyperfeed") keys.add(key);
+  }
+  return [...keys];
 }

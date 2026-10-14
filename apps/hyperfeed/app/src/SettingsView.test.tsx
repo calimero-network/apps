@@ -1,19 +1,31 @@
-import { describe, expect, it } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { SettingsView, settingsSection, type SettingsSection } from "./SettingsView";
 import { DemoBackend } from "./demo";
 import { demoPreview } from "./preview";
 import { useFeed } from "./useFeed";
+import { appLook, DEFAULT_APPS } from "./apps";
+import { CODE_APP } from "./assignments";
 
-function Harness({ backend, section = "controls" }: { backend: DemoBackend; section?: SettingsSection }) {
+function Harness({
+  backend,
+  section = "controls",
+  installed = null,
+  install = null,
+}: {
+  backend: DemoBackend;
+  section?: SettingsSection;
+  installed?: string[] | null;
+  install?: ((pkg: string) => Promise<void>) | null;
+}) {
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
   const feed = useFeed(backend, nudge);
   return (
     <MemoryRouter>
-      <SettingsView feed={feed} contextId={null} preview={demoPreview()} section={section} />
+      <SettingsView feed={feed} contextId={null} preview={demoPreview()} section={section} installed={installed} install={install} />
     </MemoryRouter>
   );
 }
@@ -58,6 +70,53 @@ describe("Settings: one section at a time", () => {
     render(<Harness backend={new DemoBackend(true, 0)} section="agents" />);
     const agents = await screen.findByRole("region", { name: "Your agents" });
     expect(within(agents).getByText(/No agent has reported in yet/)).toBeInTheDocument();
+  });
+});
+
+describe("Settings → Controls: what your agent may do, app by app", () => {
+  const table = async () => within(await screen.findByRole("region", { name: "What your agent may do, app by app" })).getByRole("table");
+  const rowOf = async (name: string) => (await within(await table()).findByRole("rowheader", { name: new RegExp(`${name}$`) })).closest("tr")!;
+  // A row's app name, without its badge's letters or icon.
+  const names = async () =>
+    within(await table())
+      .getAllByRole("rowheader")
+      .map((h) => h.textContent!.slice(h.querySelector(".badge")?.textContent?.length ?? 0));
+
+  it("sets what the agent may do in the core apps installed on your node, and offers Install for the rest", async () => {
+    const install = vi.fn(async () => undefined);
+    // The seeded feed has rows and policies in more apps; of the core ones only Chat and Docs are installed.
+    render(<Harness backend={new DemoBackend(true, 0)} installed={["chat", "drive-docs", "vote"]} install={install} />);
+    expect(await names()).toEqual(["Chat", "Drive Docs", "Calendar", "Sheets", "Issue Tracker", "CRM", "Sign", "Pass"]);
+    expect(within(await rowOf("Chat")).getByRole("group", { name: "Agent permission in Chat" })).toBeInTheDocument();
+    const calendar = await rowOf("Calendar");
+    expect(within(calendar).queryByRole("group", { name: /Agent permission/ })).toBeNull();
+    await act(async () => {
+      fireEvent.click(within(calendar).getByRole("button", { name: "Install Calendar" }));
+    });
+    expect(install).toHaveBeenCalledWith("com.calimero.mero-calendar");
+  });
+
+  it("says why an install failed, beside its button", async () => {
+    const install = vi.fn(async () => {
+      throw new Error("Nothing is published for com.calimero.mero-pass.");
+    });
+    render(<Harness backend={new DemoBackend(false, 0)} installed={[]} install={install} />);
+    const pass = await rowOf("Pass");
+    await act(async () => {
+      fireEvent.click(within(pass).getByRole("button", { name: "Install Pass" }));
+    });
+    expect(within(pass).getByRole("alert")).toHaveTextContent("Nothing is published for com.calimero.mero-pass.");
+  });
+
+  it("keeps mero-bot, the tools on your computer, once an agent reports in", async () => {
+    // A demo with a pretend agent: it reports in.
+    render(<Harness backend={new DemoBackend(false, 1)} installed={["chat"]} />);
+    await waitFor(async () => expect((await names()).slice(0, 2)).toEqual(["Chat", appLook(CODE_APP).name]));
+  });
+
+  it("lists the usual apps until the node says what is installed", async () => {
+    render(<Harness backend={new DemoBackend(false, 0)} />);
+    expect(await names()).toEqual(DEFAULT_APPS.map((a) => appLook(a).name));
   });
 });
 

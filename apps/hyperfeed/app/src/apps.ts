@@ -32,8 +32,26 @@ const KNOWN: Record<string, Omit<AppLook, "key">> = {
   "mero-bot": { name: "Mero Bot", letters: "</>", color: "#475467" },
 };
 
-/** The apps the controls list even before anything has happened in them. */
-export const DEFAULT_APPS = ["chat", "calendar", "sheets", "issues", "docs", "crm", "sign", "pass", "updates", "vote"];
+/** The apps the controls list even before anything has happened in them (the demo's keys). */
+export const DEFAULT_APPS = ["chat", "calendar", "sheets", "issues", "docs", "crm", "sign", "pass"];
+
+/** Where apps are published: what Install on a core app installs from. */
+export const REGISTRY = "https://apps.calimero.network";
+
+/**
+ * The apps Controls offers on your node, by marketplace package: one you have
+ * installed is set app by app; one you have not shows Install.
+ */
+export const CORE_PACKAGES = [
+  "com.calimero.chat",
+  "com.calimero.mero-calendar",
+  "com.calimero.mero-sheets",
+  "com.calimero.mero-issue-tracker",
+  "com.calimero.mero-drive-docs",
+  "com.calimero.mero-crm",
+  "com.calimero.mero-sign",
+  "com.calimero.mero-pass",
+];
 
 /** Dark enough for white text (4.5:1) and told apart by lightness as well as hue. */
 const PALETTE = ["#2f4be0", "#067647", "#6e2c91", "#b54708", "#0e6a82", "#9e2a5c", "#344054", "#4b4fb8"];
