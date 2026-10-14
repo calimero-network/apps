@@ -45,6 +45,7 @@ async function approvalInChat(backend: DemoBackend) {
     ask: { kind: "choose", prompt: "Run it?", options: ["Allow once", "Allow for this session"], draft: "" },
     grant: "",
     subject: "",
+    send_call: "",
   });
   return q.chain;
 }

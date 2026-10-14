@@ -20,6 +20,7 @@ use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::Mergeable;
 
+use crate::members::Caller;
 use crate::{
     headline, lww, now_ms, reply_subject, Event, FeedItem, Hyperfeed, FROM_YOU, MAX_KEY, MAX_TITLE,
     STATUS_WAITING,
@@ -182,7 +183,7 @@ impl Hyperfeed {
     }
 
     pub(crate) fn link_add(&mut self, chain: String, input: LinkInput) -> app::Result<LinkView> {
-        self.require_owner()?;
+        let caller = self.require_agent()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         if !self.chain_exists(&chain)? {
             return Err(AppError::msg(format!("no chain {chain}")));
@@ -190,6 +191,11 @@ impl Hyperfeed {
         let subject = input.subject.trim().to_owned();
         split_subject(&subject)?;
         Self::check_one_of("by", &input.by, LINK_BY)?;
+        if caller != Caller::Owner && input.by == "you" {
+            return Err(AppError::msg(
+                "an agent adds links as \"agent\"; only you add them as \"you\"",
+            ));
+        }
         let label = input.label.trim().replace(['\n', '\r'], " ");
         Self::check_len("label", &label, MAX_TITLE, false)?;
         if input.by != "you" && self.link_removed(&chain, &subject)? {
@@ -222,7 +228,7 @@ impl Hyperfeed {
         text: String,
         title: Option<String>,
     ) -> app::Result<FeedItem> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_len("from", &from, MAX_KEY, true)?;
         if !self.chain_exists(&from)? {
             return Err(AppError::msg(format!("no chain {from}")));

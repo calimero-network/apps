@@ -46,6 +46,8 @@ export interface FeedBackend {
   answerNotification(id: string, answer: string): Promise<FeedItem>;
   /** Report how an answer went, when the feed carried it out itself (a typed row's reply call). */
   completeAnswer(id: string, outcome: "delivered" | "failed", note: string): Promise<FeedItem>;
+  /** Report how a draft you approved went: the feed sends those itself (an action's reply call). */
+  completeAction(id: string, outcome: "done" | "failed", note: string): Promise<FeedItem>;
   /** Call a method of another app on your node: how a typed row is answered directly. */
   callApp(contextId: string, method: string, args: Record<string, unknown>): Promise<unknown>;
   /** What your agent learned for each app version, and what you decided. */
@@ -113,6 +115,13 @@ export interface FeedBackend {
    * back to the default. Only a feed whose settings carry `assignments` has it.
    */
   setAssignment?(app: string, agent: string): Promise<void>;
+  /**
+   * Add an agent with an account of its own (a cloud agent) under the name it
+   * reports in with, or take one off. Only a feed whose settings carry
+   * `agent_accounts` has them.
+   */
+  addAgentAccount?(account: string, name: string): Promise<void>;
+  removeAgentAccount?(account: string): Promise<void>;
   /** Add one of your standing rules: a short line your agent keeps to on every turn. */
   addRule(text: string): Promise<RuleView>;
   removeRule(id: string): Promise<void>;
@@ -149,6 +158,7 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
     resolveAction: (id, decision, answer = "") => client.resolveAction({ id, decision, answer }),
     answerNotification: (id, answer) => client.answerNotification({ id, answer }),
     completeAnswer: (id, outcome, note) => client.completeAnswer({ id, outcome, note }),
+    completeAction: (id, outcome, note) => client.completeAction({ id, outcome, note }),
     callApp: (contextId, method, args) => rpc.execute({ contextId, method, argsJson: args }),
     lenses: () => client.lenses(),
     decideLens: (appKey, applicationId, decision) =>
@@ -214,6 +224,8 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
     setPaused: (paused) => client.setPaused({ paused }),
     setAccess: (agent, folders, shell, web) => client.setAccess({ agent, folders, shell, web }),
     setAssignment: (app, agent) => client.setAssignment({ app_key: app, agent }),
+    addAgentAccount: (account, name) => client.addAgentAccount({ account, name }),
+    removeAgentAccount: (account) => client.removeAgentAccount({ account }),
     addRule: (text) => client.addRule({ text }),
     removeRule: (id) => client.removeRule({ id }),
     addAgentRule: (agent, text) => client.addAgentRule({ agent, text }),

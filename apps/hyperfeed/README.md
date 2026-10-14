@@ -449,13 +449,24 @@ words, and an agent should never call them for itself. The agent's side of lense
 ## Trust model, honestly
 
 - **Owner-only writes bind honest nodes only.** `require_owner` runs inside the contract, and a
-  peer's node folds deltas without executing it. A feed is meant to have one member, you on your
-  devices, so there is no other writer to defend against. Merge-time enforcement (a writer set of
-  one) is the step to take before a feed is ever shared.
-- **The contract cannot tell your agent from you.** Both act as your account. Approvals therefore
-  record *your decision*; the hard boundary is the agent itself, which must not sign a warrant for
-  something waiting on you. Telling them apart needs either a separate agent account or core
-  exposing the delegating device to the contract.
+  peer's node folds deltas without executing it. A feed's members are you, on your devices, and the
+  cloud agents you add; a cloud agent is attested code, which is why it is trusted with the agent's
+  side. Merge-time enforcement (a writer set) is the step to take before a feed is shared with
+  anyone else.
+- **An agent on your own computer cannot be told from you.** It acts as your account, so approvals
+  record *your decision* and the hard boundary is the agent itself, which must not sign a warrant
+  for something waiting on you.
+- **A cloud agent can.** It has an account of its own, which you add with
+  `add_agent_account(account, name)` (and take off with `remove_agent_account(account)`); it must
+  also be invited to the feed's context. It may make only the agent's side of the feed (record
+  actions and notifications, take up and answer your messages, report progress, suggest rules and
+  lenses, claim chains, keep watches and PRs, report what it reaches), and only as the name you
+  added it under. Approving, answering, `say`, rules, modes, guards, access, assignments, push
+  devices and agent accounts stay yours, enforced by the contract.
+- **Drafts you send.** An action proposed with a `send_call` (`{"method", "args"}`, `"=answer"`
+  for your edit of its draft) is sent by your client, as you, when you approve it, and reported by
+  your client with `complete_action`; the agent can neither send nor report one. Since the write
+  is yours, an app where your agent may only read still takes drafts.
 - **Notifications are best-effort.** Core events carry no author and no "concerns you" bit, so the
   "needs you" flag is a guess for every kind outside the known list.
 

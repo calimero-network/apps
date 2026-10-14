@@ -184,6 +184,7 @@ describe("chat with your agent", () => {
       ask: { kind: "choose", prompt: "Run it?", options: ["Allow once", "Allow for this session"], draft: "" },
       grant: "",
       subject: "",
+      send_call: "",
     });
     render(<Harness backend={backend} />);
     // The chat stays listed, and says it waits on you.

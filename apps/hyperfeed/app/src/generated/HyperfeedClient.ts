@@ -127,6 +127,40 @@ export interface ActionInput {
    * chain of its own, joins this action's chain. Older agents omit it.
    */
   subject: string;
+  /**
+   * For a draft you send yourself: the call that sends it in its app,
+   * `{"method": ..., "args": {...}}`, where `"=answer"` in an arg is your
+   * edit of the draft. Your client makes it as you when you approve; the
+   * agent never does. Only on a proposal. See `members.rs`.
+   */
+  send_call: string;
+}
+
+/**
+ * An agent's own account you added to the feed, by account.
+ */
+export interface AgentAccount {
+  /**
+   * The name it reports in with, and the only one it may speak as.
+   */
+  name: string;
+  /**
+   * When you added it, or removed it; the later write wins.
+   */
+  at: number;
+  /**
+   * Removed rows stay, so a removal is not undone by an older add merging in.
+   */
+  removed: boolean;
+}
+
+/**
+ * An agent account, as settings shows it.
+ */
+export interface AgentAccountView {
+  account: string;
+  name: string;
+  added_at: number;
 }
 
 /**
@@ -613,7 +647,8 @@ export interface Headline {
 
 export interface Hyperfeed {
   /**
-   * The account that created the feed; the only one that writes to it.
+   * The account that created the feed. Only it decides; agents it adds
+   * (see `agent_accounts`) write the agent's side.
    */
   owner: string;
   actions: Record<string, Action>;
@@ -736,6 +771,14 @@ export interface Hyperfeed {
    * Your rules for one agent only, by id. See [`AgentRule`].
    */
   agent_rules: Record<string, AgentRule>;
+  /**
+   * Agents with accounts of their own that you added, by account. See [`members`].
+   */
+  agent_accounts: Record<string, AgentAccount>;
+  /**
+   * The call that sends each draft for you to send, by the action's id.
+   */
+  sends: Record<string, SendCall>;
 }
 
 /**
@@ -1277,6 +1320,16 @@ export interface RuleView {
   created_at: number;
 }
 
+/**
+ * The call that sends a draft in its app, kept beside the action it belongs to.
+ */
+export interface SendCall {
+  /**
+   * `{"method": ..., "args": {...}}`, as a lens's `reply_call` is.
+   */
+  call: string;
+}
+
 export interface SettingsView {
   owner: string;
   paused: boolean;
@@ -1319,6 +1372,11 @@ export interface SettingsView {
    * keeps `rules` and then its own. Absent on a feed made before them.
    */
   agent_rules: AgentRuleView[];
+  /**
+   * Agents with accounts of their own you added, by name. Absent on a feed
+   * made before them.
+   */
+  agent_accounts: AgentAccountView[];
 }
 
 /**
@@ -1654,6 +1712,22 @@ export class HyperfeedClient {
   }
 
   /**
+   * add_agent_account
+   *
+   * Add an agent with an account of its own (a cloud agent, say) under
+   * `name`, the name it reports in with. From then on it works your feed as
+   * your agent does, speaking only as `name`; what decides for you stays
+   * yours. Adding it again renames it. It must also be a member of this
+   * feed's context: invite it there as you would anyone.
+   *
+   * @intent mutating
+   */
+  public async addAgentAccount(params: { account: string; name: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add_agent_account', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * add_agent_rule
    *
    * Add a rule for one agent only: it keeps it after your general rules,
@@ -1978,7 +2052,8 @@ export class HyperfeedClient {
    * complete_action
    *
    * The agent reports what happened after you approved, asked for a retry,
-   * or asked for an undo.
+   * or asked for an undo. For a draft you send (one with a `reply_call`),
+   * your client reports instead, once it sent it or the app refused.
    *
    * @intent mutating
    */
@@ -2292,6 +2367,19 @@ export class HyperfeedClient {
   public async releaseChain(params: { chain: string; session: string }): Promise<boolean> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'release_chain', argsJson: params });
     return response as boolean;
+  }
+
+  /**
+   * remove_agent_account
+   *
+   * Stop an agent account working your feed. Remove it from the context
+   * too, so it no longer reads it.
+   *
+   * @intent mutating
+   */
+  public async removeAgentAccount(params: { account: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'remove_agent_account', argsJson: params });
+    return response as void;
   }
 
   /**

@@ -332,6 +332,9 @@ function AgentsSection({ feed, contextId }: { feed: Feed; contextId: string | nu
         )}
       </section>
 
+      {/* A feed made before agent accounts has no `agent_accounts` in its settings, and no setter. */}
+      {feed.addAgentAccount && Array.isArray(settings.agent_accounts) && <AgentAccounts feed={feed} />}
+
       {/* A feed made before assignments has no `assignments` in its settings, and no setter. */}
       {feed.setAssignment && Array.isArray(settings.assignments) && <AgentAssignments feed={feed} />}
 
@@ -501,6 +504,84 @@ function PhoneAlerts({ feed }: { feed: Feed }) {
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+/**
+ * Agents with accounts of their own: a cloud agent is a member of the contexts
+ * you invite it to, writing there under its own name. To work this feed it must
+ * be added here, under the name it reports in with, and invited to the feed's
+ * context. It then does the agent's side of the feed and nothing that decides
+ * for you; the drafts it writes for you to send, you send.
+ */
+export function AgentAccounts({ feed }: { feed: Feed }) {
+  const id = useId();
+  const accounts = feed.settings!.agent_accounts ?? [];
+  const [account, setAccount] = useState("");
+  const [name, setName] = useState("");
+  const busy = feed.busy;
+  const add = async () => {
+    await feed.addAgentAccount!(account.trim(), name.trim());
+    setAccount("");
+    setName("");
+  };
+  return (
+    <section className="panel wide" aria-labelledby="h-agent-accounts">
+      <h2 id="h-agent-accounts">Cloud agents</h2>
+      <p className="muted">
+        A cloud agent has an account of its own: what it does in your apps carries its name, not yours. Add it here with
+        the account id its page shows, then invite it to this feed and to the contexts it should work in. It drafts
+        messages for you to send, and does the rest itself where you let it.
+      </p>
+      {accounts.length === 0 ? (
+        <p className="muted">No cloud agent yet.</p>
+      ) : (
+        <ul className="agent-list">
+          {accounts.map((a) => (
+            <li key={a.account}>
+              <span className="mono">{a.name}</span>
+              <span className="mono muted" title={a.account}>
+                {a.account.length > 16 ? `${a.account.slice(0, 8)}…${a.account.slice(-6)}` : a.account}
+              </span>
+              <button
+                type="button"
+                className="small"
+                disabled={busy}
+                aria-label={`Remove ${a.name}`}
+                onClick={() => void feed.removeAgentAccount!(a.account)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="rule-add"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void add();
+        }}
+      >
+        <label htmlFor={`${id}-account`} className="sr-only">
+          Agent account id
+        </label>
+        <input
+          id={`${id}-account`}
+          className="mono"
+          value={account}
+          placeholder="Account id"
+          onChange={(e) => setAccount(e.target.value)}
+        />
+        <label htmlFor={`${id}-name`} className="sr-only">
+          Name it reports in with
+        </label>
+        <input id={`${id}-name`} value={name} placeholder="Name, like cloud" onChange={(e) => setName(e.target.value)} />
+        <button type="submit" className="primary small" disabled={busy || !account.trim() || !name.trim()}>
+          Add
+        </button>
+      </form>
     </section>
   );
 }

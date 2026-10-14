@@ -21,7 +21,7 @@ import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
 import { mergeWatchInput, moveWatch, newWatch } from "./watches";
 import { replySubject, splitSubject } from "./subject";
-import type { AccessView, AgentRuleView, AssignmentView, Folder, LinkView, PrInput, PrView, ReachLine, ReachView, WatchInput, WatchView } from "./generated/HyperfeedClient";
+import type { AccessView, AgentAccountView, AgentRuleView, AssignmentView, Folder, LinkView, PrInput, PrView, ReachLine, ReachView, WatchInput, WatchView } from "./generated/HyperfeedClient";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 
@@ -94,6 +94,7 @@ export class DemoBackend implements FeedBackend {
   private rules: RuleView[] = [];
   /** Your rules for one agent only, oldest first. */
   private agentRules: AgentRuleView[] = [];
+  private agentAccounts: AgentAccountView[] = [];
   /** What each agent may reach, and what each reported it can, by agent name. */
   private access = new Map<string, AccessView>();
   private reach = new Map<string, ReachView>();
@@ -320,6 +321,7 @@ export class DemoBackend implements FeedBackend {
       reach: [...this.reach.values()].map((r) => ({ ...r, lines: r.lines.map((l) => ({ ...l })) })).sort((a, b) => a.agent.localeCompare(b.agent)),
       assignments: [...this.assignments.values()].filter((a) => a.agent).map((a) => ({ ...a })).sort((a, b) => a.app.localeCompare(b.app)),
       agent_rules: this.agentRules.map((r) => ({ ...r })).sort((a, b) => a.agent.localeCompare(b.agent) || a.created_at - b.created_at),
+      agent_accounts: this.agentAccounts.map((a) => ({ ...a })).sort((a, b) => a.name.localeCompare(b.name)),
     };
   }
 
@@ -364,6 +366,23 @@ export class DemoBackend implements FeedBackend {
     this.agentRules.push(rule);
     this.changed();
     return { ...rule };
+  }
+
+  async addAgentAccount(account: string, name: string): Promise<void> {
+    const acc = account.trim();
+    const n = name.trim();
+    if (!acc) throw new Error("account must not be empty");
+    if (!n) throw new Error("name must not be empty");
+    const other = this.agentAccounts.find((a) => a.name === n && a.account !== acc);
+    if (other) throw new Error(`"${n}" is already the name of agent account ${other.account}; remove it first`);
+    this.agentAccounts = [...this.agentAccounts.filter((a) => a.account !== acc), { account: acc, name: n, added_at: this.tick() }];
+    this.changed();
+  }
+
+  async removeAgentAccount(account: string): Promise<void> {
+    if (!this.agentAccounts.some((a) => a.account === account)) throw new Error(`no agent account ${account}`);
+    this.agentAccounts = this.agentAccounts.filter((a) => a.account !== account);
+    this.changed();
   }
 
   async removeAgentRule(id: string): Promise<void> {
@@ -454,7 +473,8 @@ export class DemoBackend implements FeedBackend {
     this.breaches.delete(id);
     const updated = this.step({ ...item, reviewed_at: reviewedAt }, next, note);
     this.changed();
-    if (this.agentDelayMs > 0 && next !== "declined") setTimeout(() => this.agentCompletes(id), this.agentDelayMs);
+    // A draft with a reply call is sent by the feed itself, never by the agent.
+    if (this.agentDelayMs > 0 && next !== "declined" && !item.reply_call) setTimeout(() => this.agentCompletes(id), this.agentDelayMs);
     return updated;
   }
 
@@ -490,6 +510,18 @@ export class DemoBackend implements FeedBackend {
     const item = this.get(id, "notification");
     if (item.status !== "answered") throw new Error(`notification ${id} is ${item.status}; nothing is waiting on the agent`);
     const done = this.step(item, outcome, note);
+    this.changed();
+    return done;
+  }
+
+  async completeAction(id: string, outcome: "done" | "failed", note: string): Promise<FeedItem> {
+    const item = this.get(id, "action");
+    const next =
+      item.status === "approved" || item.status === "retrying"
+        ? outcome
+        : null;
+    if (!next) throw new Error(`action ${id} is ${item.status}; nothing is waiting on the agent`);
+    const done = this.step(item, next, note);
     this.changed();
     return done;
   }
@@ -1055,6 +1087,20 @@ export class DemoBackend implements FeedBackend {
     return item;
   }
 
+  /** As the contract's `check_send_call`: a JSON object naming a method and its args. */
+  private static checkSendCall(call: string) {
+    let value: { method?: unknown; args?: unknown };
+    try {
+      value = JSON.parse(call) as typeof value;
+    } catch (e) {
+      throw new Error(`send_call is not JSON: ${String(e)}`);
+    }
+    if (typeof value?.method !== "string" || !value.method.trim()) throw new Error("send_call names no method");
+    if (!value.args || typeof value.args !== "object" || Array.isArray(value.args)) {
+      throw new Error("send_call's args must be an object");
+    }
+  }
+
   async recordAction(input: ActionInput, at = this.now()): Promise<FeedItem> {
     if (input.ask.kind && input.outcome !== "proposed") {
       throw new Error("an ask belongs on a proposal; a done or failed action has nothing to answer");
@@ -1062,7 +1108,13 @@ export class DemoBackend implements FeedBackend {
     if (input.grant && input.outcome === "proposed") {
       throw new Error("a grant belongs on a done or failed action; a proposal waits for you");
     }
-    const verdict = this.verdict(input.app, input.category, input.writes);
+    const sends = !!input.send_call;
+    if (sends) {
+      DemoBackend.checkSendCall(input.send_call);
+      if (input.outcome !== "proposed") throw new Error("a send_call belongs on a proposal: it is a draft you send yourself");
+    }
+    // A draft you send is the agent reading and proposing; the write is yours.
+    const verdict = this.verdict(input.app, input.category, input.writes && !sends);
     let status: string;
     let breach = "";
     if (input.outcome === "proposed") {
@@ -1088,9 +1140,10 @@ export class DemoBackend implements FeedBackend {
       why: input.why,
       intent_hash: input.intent_hash,
       executor: input.executor,
-      undoable: input.undoable,
+      undoable: input.undoable && !sends,
       history: [{ status, note: input.note, at: t }],
       subject: input.subject ?? "",
+      reply_call: input.send_call ?? "",
     });
     // A thing you took off this task stays off it.
     if (item.subject && !this.linkRows.get(`${item.chain}|${item.subject}`)?.removed) {
@@ -1328,6 +1381,7 @@ function action(input: Partial<ActionInput>): ActionInput {
     ask: NO_ASK,
     grant: "",
     subject: "",
+    send_call: "",
     ...input,
   };
 }

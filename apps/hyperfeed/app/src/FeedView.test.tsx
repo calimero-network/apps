@@ -295,7 +295,7 @@ describe("FeedView", () => {
     await backend.recordAction({
       app: "sheets", source_context: "ctx", source_label: "", method: "update", category: "", writes: true, undoable: false,
       title: "Pulled the numbers into a sheet", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-      chain: mention.chain, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "",
+      chain: mention.chain, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "", send_call: "",
     });
     render(<Harness backend={backend} />);
     const row = await rowFor(/can you share the numbers/i);
@@ -320,7 +320,7 @@ describe("FeedView", () => {
     await backend.recordAction({
       app: "sheets", source_context: "", source_label: "", method: "update", category: "", writes: true, undoable: false,
       title: "Pulled the numbers into a sheet", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-      chain: mention.id, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "",
+      chain: mention.id, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "", send_call: "",
     });
     render(<Harness backend={backend} />);
     // Your reply is still being delivered: the chain is in progress, not done.
@@ -443,7 +443,7 @@ describe("FeedView", () => {
     await backend.recordAction({
       app: "issue-tracker", source_context: "repo", source_label: "", method: "set_status", category: "", writes: true, undoable: false,
       title: "Moved the sync bug to In progress", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-      chain: task.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"),
+      chain: task.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"), send_call: "",
     });
     const comment = await backend.recordNotification({
       key: "repo:a>b:0", app: "issue-tracker", source_context: "repo", source_label: "", from: "Xabi", title: "Commented on your issue Sync bug",
@@ -725,7 +725,7 @@ describe("FeedView", () => {
       await backend.recordAction({
         app: "issue-tracker", source_context: "repo", source_label: "", method: "set_status", category: "", writes: true, undoable: false,
         title: "Moved the sync bug to In progress", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-        chain: asked.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"),
+        chain: asked.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"), send_call: "",
       });
       await backend.recordNotification({
         key: "repo:a>b:0", app: "issue-tracker", source_context: "repo", source_label: "", from: "Xabi Ortiz", title: "Commented on your issue Sync bug",

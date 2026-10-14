@@ -235,7 +235,12 @@ impl Hyperfeed {
     }
 
     pub(crate) fn watch_add(&mut self, input: WatchInput) -> app::Result<WatchView> {
-        self.require_owner()?;
+        // `""` is you, so only you set one with no agent.
+        if input.agent.is_empty() {
+            self.require_owner()?;
+        } else {
+            self.require_agent_as(&input.agent)?;
+        }
         let chain = input.chain.trim().to_owned();
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         if !self.chain_exists(&chain)? {
@@ -327,7 +332,7 @@ impl Hyperfeed {
     }
 
     pub(crate) fn watch_cancel(&mut self, id: &str, note: &str) -> app::Result<WatchView> {
-        self.require_owner()?;
+        self.require_agent()?;
         let note = one_line("note", note, MAX_WHY)?;
         let mut w = self.get_watch(id)?;
         if w.status == WATCH_CANCELLED {
@@ -346,7 +351,7 @@ impl Hyperfeed {
     }
 
     pub(crate) fn watch_fire(&mut self, id: &str, session: &str) -> app::Result<WatchView> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_len("session", session, MAX_KEY, true)?;
         let mut w = self.get_watch(id)?;
         if w.status != WATCH_WATCHING {
@@ -369,7 +374,7 @@ impl Hyperfeed {
         outcome: &str,
         note: &str,
     ) -> app::Result<WatchView> {
-        self.require_owner()?;
+        self.require_agent()?;
         Self::check_one_of("outcome", outcome, &[WATCH_DONE, WATCH_FAILED])?;
         let note = Self::trimmed(note, MAX_WHY)?;
         let mut w = self.get_watch(id)?;
@@ -386,7 +391,7 @@ impl Hyperfeed {
     }
 
     pub(crate) fn watch_seen_impl(&mut self, id: &str, seen: &str) -> app::Result<WatchView> {
-        self.require_owner()?;
+        self.require_agent()?;
         let seen = one_line("seen", seen, MAX_TITLE)?;
         let mut w = self.get_watch(id)?;
         if w.status != WATCH_WATCHING {
