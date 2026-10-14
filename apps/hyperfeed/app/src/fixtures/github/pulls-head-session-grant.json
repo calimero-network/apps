@@ -1,0 +1,23 @@
+[
+  {
+    "number": 431,
+    "html_url": "https://github.com/calimero-network/apps/pull/431",
+    "state": "closed",
+    "draft": false,
+    "title": "fix(hyperfeed): commands you allowed for the session no longer show up as needing you",
+    "merged": null,
+    "merged_at": "2026-10-11T04:07:20Z",
+    "mergeable_state": null,
+    "head": {
+      "ref": "fix/hyperfeed-session-grant",
+      "sha": "9e4e560a414045599a8ae0897d103c2873c6a4ec"
+    },
+    "base": {
+      "ref": "main",
+      "repo": {
+        "full_name": "calimero-network/apps",
+        "default_branch": "main"
+      }
+    }
+  }
+]

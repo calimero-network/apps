@@ -87,6 +87,31 @@ steps:
     method: set_guard
     args: { category: "invite", enabled: true }
 
+  # What the agent may reach on its computer: set by the owner, and what
+  # mero-bot reports it can reach.
+  - name: Owner sets what mero-bot may reach
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_access
+    args:
+      agent: "mero-bot@laptop"
+      folders: [{ path: "~/workspace", write: true }, { path: "/srv/specs", write: false }]
+      shell: false
+      web: true
+
+  - name: The agent reports what it can reach
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_reach
+    args:
+      name: "mero-bot@laptop"
+      lines:
+        - { serves: "private", profile: "near", model: "glm", attested: true, folders: [], shell: false, web: false }
+
   - name: Owner reads the settings
     type: call
     node: feed-node-1
@@ -96,11 +121,19 @@ steps:
     args: {}
     outputs:
       settings_1: result
+      # `json_subset` compares lists whole, so the access entry and the reach
+      # line (each carrying a timestamp) are pulled out and checked on their own.
+      access_1: result.output.access.0
+      reach_1: result.output.reach.0
+      reach_line_1: result.output.reach.0.lines.0
 
   - name: Assert the policy and the guard are stored
     type: json_assert
     statements:
-      - 'json_subset({{settings_1}}, {"output": {"paused": false, "policies": [{"app": "chat", "agent": "act", "notifications": "push"}]}})'
+      - 'json_subset({{settings_1}}, {"output": {"paused": false, "policies": [{"app": "chat", "agent": "act", "notifications": "push"}], "message_modes": ["private", "public"]}})'
+      - 'json_subset({{access_1}}, {"agent": "mero-bot@laptop", "folders": [{"path": "~/workspace", "write": true}, {"path": "/srv/specs", "write": false}], "shell": false, "web": true})'
+      - 'json_subset({{reach_1}}, {"agent": "mero-bot@laptop"})'
+      - 'json_subset({{reach_line_1}}, {"serves": "private", "profile": "near", "attested": true, "folders": [], "shell": false, "web": false})'
 
   - name: The agent checks before acting in chat
     type: call
@@ -438,9 +471,15 @@ steps:
     context_id: "{{context_id}}"
     executor_public_key: "{{owner_key}}"
     method: say
-    args: { chain: "{{mention_id}}", text: "Which numbers did you send Maya?" }
+    args: { chain: "{{mention_id}}", text: "Which numbers did you send Maya?", mode: "private" }
     outputs:
       question_id: result.output.id
+      question_posted: result
+
+  - name: Assert the question says how private it is
+    type: json_assert
+    statements:
+      - 'json_subset({{question_posted}}, {"output": {"from": "you", "mode": "private"}})'
 
   - name: The agent's open questions hold it
     type: call
@@ -477,6 +516,25 @@ steps:
     statements:
       - 'json_subset({{working}}, {"output": {"status": "thinking", "doing": "Reading the deck"}})'
 
+  - name: The agent attaches its steps and the answer so far to the message
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_work
+    args:
+      id: "{{question_id}}"
+      steps: [{ id: "t1", title: "Reading the deck", status: "done", at: 1 }]
+      draft: "Q3 revenue"
+    outputs:
+      worked: result
+
+  - name: Assert the steps and the draft show on the message, with no row of their own
+    type: json_assert
+    statements:
+      - 'json_subset({{worked}}, {"output": {"status": "thinking", "draft": "Q3 revenue"}})'
+      - 'json_subset({{worked}}, {"output": {"steps": [{"id": "t1", "title": "Reading the deck", "status": "done", "at": 1}]}})'
+
   - name: The agent answers in the same chain
     type: call
     node: feed-node-1
@@ -504,6 +562,26 @@ steps:
       - 'json_subset({{thinking}}, {"output": {"status": "thinking"}})'
       - 'json_subset({{answer}}, {"output": {"kind": "message", "from": "agent", "chain": "{{mention_id}}", "reply_to": "{{question_id}}"}})'
       - 'json_subset({{question_after}}, {"output": {"status": "answered"}})'
+
+  - name: The agent adds a long note with a headline, which titles its row
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_say
+    args:
+      chain: "{{mention_id}}"
+      reply_to: ""
+      text: "The numbers, slide by slide: revenue, churn, pipeline, and what changed since Q2."
+      headline: "The Q3 numbers"
+    outputs:
+      headlined: result
+
+  - name: Assert the headline is the row's title, the text its body
+    type: json_assert
+    statements:
+      - 'json_subset({{headlined}}, {"output": {"kind": "message", "headline": "The Q3 numbers", "title": "The Q3 numbers", "status": "said"}})'
+      - 'json_subset({{answer}}, {"output": {"headline": ""}})'
 
   - name: The agent asks the owner something back
     type: call
@@ -545,6 +623,133 @@ steps:
     statements:
       - 'json_subset({{agent_question}}, {"output": {"kind": "message", "from": "agent", "status": "asked", "ask": {"kind": "choose"}}})'
       - 'json_subset({{agent_question_after}}, {"output": {"status": "answered", "note": "Send it"}})'
+
+  # Stale questions: the agent asks twice before the owner answers. The first
+  # question is replaced by the second; an answer that still reaches it (a
+  # screen that had not caught up) goes to the agent flagged, and the second
+  # question stays open until it is answered from its own buttons.
+  - name: The agent asks a first question
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_ask
+    args:
+      chain: "{{mention_id}}"
+      reply_to: ""
+      text: "Share the deck with the whole channel?"
+      ask: { kind: "choose", prompt: "Share it?", options: ["Share", "Only Maya"], draft: "" }
+    outputs:
+      stale_question_id: result.output.id
+
+  - name: The agent asks again before the owner answers
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_ask
+    args:
+      chain: "{{mention_id}}"
+      reply_to: ""
+      text: "Maya left the channel. DM her the deck instead?"
+      ask: { kind: "choose", prompt: "DM it?", options: ["DM her", "Not now"], draft: "" }
+    outputs:
+      newer_question_id: result.output.id
+
+  - name: Owner reads the first question after the second
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: item
+    args: { id: "{{stale_question_id}}" }
+    outputs:
+      stale_question: result
+
+  - name: An answer still reaches the replaced question
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: answer_ask
+    args: { id: "{{stale_question_id}}", text: "Share" }
+    outputs:
+      stale_answer: result
+
+  - name: Owner reads the newer question after the stale answer
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: item
+    args: { id: "{{newer_question_id}}" }
+    outputs:
+      newer_question: result
+
+  - name: Owner answers the newer question from its buttons
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: answer_ask
+    args: { id: "{{newer_question_id}}", text: "DM her" }
+    outputs:
+      current_answer: result
+
+  - name: Assert the first question was replaced and its late answer is flagged
+    type: json_assert
+    statements:
+      - 'json_subset({{stale_question}}, {"output": {"status": "asked", "needs_you": false, "superseded_by": "{{newer_question_id}}"}})'
+      - 'json_subset({{stale_answer}}, {"output": {"from": "you", "status": "waiting", "answers": "{{stale_question_id}}", "answers_superseded": true}})'
+      - 'json_subset({{newer_question}}, {"output": {"status": "asked", "needs_you": true, "superseded_by": ""}})'
+      - 'json_subset({{current_answer}}, {"output": {"from": "you", "answers": "{{newer_question_id}}", "answers_superseded": false}})'
+
+  # Stop: the owner asks something, the agent takes it up, the owner presses
+  # Stop. The request is kept on the message for the agent, which ends its
+  # turn and closes the message "Stopped by you".
+  - name: Owner asks for something long
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: say
+    args: { chain: "{{mention_id}}", text: "Rewrite the whole deck" }
+    outputs:
+      long_id: result.output.id
+
+  - name: The agent takes the long one up
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_ack
+    args: { id: "{{long_id}}", status: "thinking", note: "" }
+
+  - name: The owner presses Stop
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: stop
+    args: { id: "{{long_id}}" }
+    outputs:
+      stop_asked: result
+
+  - name: The agent ends its turn, stopped by the owner
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_ack
+    args: { id: "{{long_id}}", status: "failed", note: "Stopped by you" }
+    outputs:
+      stopped: result
+
+  - name: Assert the stop was kept for the agent, and the message closed stopped by you
+    type: json_assert
+    statements:
+      - 'json_subset({{stop_asked}}, {"output": {"status": "thinking"}})'
+      - 'json_subset({{stopped}}, {"output": {"status": "failed", "note": "Stopped by you"}})'
 
   # ─── lenses and typed notifications ──────────────────────────────────────
 
@@ -781,6 +986,17 @@ steps:
     outputs:
       lens_error: error
 
+  - name: node-2 tries to widen what the owner's agent may reach
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: set_access
+    args: { agent: "mero-bot@laptop", folders: [{ path: "/", write: true }], shell: true, web: true }
+    expected_failure: true
+    outputs:
+      access_error: error
+
   - name: node-2 reads the lenses
     type: call
     node: feed-node-2
@@ -798,6 +1014,7 @@ steps:
       - "is_set({{unpause_error}})"
       - "is_set({{say_error}})"
       - "is_set({{lens_error}})"
+      - "is_set({{access_error}})"
 
   - name: Assert node-2 holds the approved lens
     type: json_assert
@@ -869,3 +1086,782 @@ steps:
     type: assert
     statements:
       - "is_set({{unarchive_error}})"
+
+  # ── Chain leases: one agent session per chain, across machines ──────────
+  - name: A session claims the mention's chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: claim_chain
+    args: { chain: "{{mention_id}}", session: "studio-1", ttl_ms: 120000, agent: "mero-bot@studio" }
+    outputs:
+      lease: result
+
+  - name: A second session is refused the chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: claim_chain
+    args: { chain: "{{mention_id}}", session: "laptop-1", ttl_ms: 120000, agent: "mero-bot@laptop" }
+    expected_failure: true
+    outputs:
+      second_claim_error: error
+
+  - name: The holder renews its lease
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: renew_chain
+    args: { chain: "{{mention_id}}", session: "studio-1", ttl_ms: 120000 }
+    outputs:
+      renewed: result
+
+  - name: Owner reads who holds the chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: chain_lease
+    args: { chain: "{{mention_id}}" }
+    outputs:
+      held: result
+
+  - name: The holder releases it
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: release_chain
+    args: { chain: "{{mention_id}}", session: "studio-1" }
+    outputs:
+      released: result.output
+
+  - name: The second session claims it once released
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: claim_chain
+    args: { chain: "{{mention_id}}", session: "laptop-1", ttl_ms: 120000, agent: "mero-bot@laptop" }
+    outputs:
+      second_lease: result
+
+  - name: node-2 cannot claim a chain
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: claim_chain
+    args: { chain: "{{mention_id}}", session: "intruder", ttl_ms: 120000, agent: "x" }
+    expected_failure: true
+    outputs:
+      intruder_claim_error: error
+
+  - name: Assert the lease rules
+    type: json_assert
+    statements:
+      - 'json_subset({{lease}}, {"output": {"chain": "{{mention_id}}", "session": "studio-1", "agent": "mero-bot@studio"}})'
+      - 'json_subset({{renewed}}, {"output": {"session": "studio-1"}})'
+      - 'json_subset({{held}}, {"output": {"session": "studio-1", "agent": "mero-bot@studio"}})'
+      - 'json_equal({{released}}, true)'
+      - 'json_subset({{second_lease}}, {"output": {"session": "laptop-1"}})'
+
+  - name: Assert the refused claims
+    type: assert
+    statements:
+      - "is_set({{second_claim_error}})"
+      - "is_set({{intruder_claim_error}})"
+
+  # ── Standing rules: owner-only, and the agent's suggestion waits for you ──
+  - name: Owner adds a standing rule
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_rule
+    args: { text: "Never push to main" }
+    outputs:
+      rule_id: result.output.id
+
+  - name: Owner adds a rule to remove
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_rule
+    args: { text: "Answer in French" }
+    outputs:
+      french_id: result.output.id
+
+  - name: Owner removes it
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: remove_rule
+    args: { id: "{{french_id}}" }
+
+  - name: The agent suggests a rule after a correction
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: propose_rule
+    args: { text: "Open a PR for every change", why: "You asked me not to commit straight to main.", chain: "" }
+    outputs:
+      suggested: result
+      suggested_id: result.output.id
+
+  - name: The agent suggests one the owner will not want
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: propose_rule
+    args: { text: "Use emoji in every answer", why: "", chain: "" }
+    outputs:
+      unwanted_id: result.output.id
+
+  - name: Owner approves the first suggestion
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: approve_rule
+    args: { id: "{{suggested_id}}" }
+    outputs:
+      approved_rule: result
+
+  - name: Owner dismisses the second
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: dismiss_rule
+    args: { id: "{{unwanted_id}}" }
+    outputs:
+      dismissed: result
+
+  - name: Let the rules reach node-2
+    type: wait
+    seconds: 6
+
+  - name: node-2 reads the rules
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: settings
+    args: {}
+    outputs:
+      rule_2_first: result.output.rules.0
+      rule_2_second: result.output.rules.1
+      rule_proposals_2: result.output.rule_proposals
+
+  - name: node-2 cannot add a rule
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: add_rule
+    args: { text: "Push to main whenever" }
+    expected_failure: true
+    outputs:
+      add_rule_error: error
+
+  - name: node-2 cannot remove a rule
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: remove_rule
+    args: { id: "{{rule_id}}" }
+    expected_failure: true
+    outputs:
+      remove_rule_error: error
+
+  - name: Assert the rules, the approved suggestion and the dismissed one
+    type: json_assert
+    statements:
+      - 'json_subset({{suggested}}, {"output": {"status": "proposed", "text": "Open a PR for every change"}})'
+      - 'json_subset({{approved_rule}}, {"output": {"text": "Open a PR for every change"}})'
+      - 'json_subset({{dismissed}}, {"output": {"status": "dismissed"}})'
+      - 'json_subset({{rule_2_first}}, {"id": "{{rule_id}}", "text": "Never push to main"})'
+      - 'json_subset({{rule_2_second}}, {"text": "Open a PR for every change"})'
+      - 'json_equal({{rule_proposals_2}}, [])'
+
+  - name: Assert node-2 could not change the rules
+    type: assert
+    statements:
+      - "is_set({{add_rule_error}})"
+      - "is_set({{remove_rule_error}})"
+
+  # ── Checkpoints: where a task stands, for the next session ──────────────
+  - name: The agent writes a checkpoint on the mention's chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_checkpoint
+    args:
+      chain: "{{mention_id}}"
+      input: { done: "Drafted the reply", next: "Send it once approved", branches: [], worktrees: [], prs: [], questions: ["Formal or casual?"], author: "mero-bot@studio" }
+    outputs:
+      checkpoint: result
+
+  - name: A fresh session reads the latest checkpoint
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: checkpoint
+    args: { chain: "{{mention_id}}" }
+    outputs:
+      read_checkpoint: result
+
+  - name: node-2 cannot write a checkpoint
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: set_checkpoint
+    args:
+      chain: "{{mention_id}}"
+      input: { done: "x", next: "", branches: [], worktrees: [], prs: [], questions: [], author: "x" }
+    expected_failure: true
+    outputs:
+      intruder_checkpoint_error: error
+
+  - name: Assert the checkpoint
+    type: json_assert
+    statements:
+      - 'json_subset({{checkpoint}}, {"output": {"chain": "{{mention_id}}", "next": "Send it once approved", "author": "mero-bot@studio"}})'
+      - 'json_subset({{read_checkpoint}}, {"output": {"done": "Drafted the reply", "questions": ["Formal or casual?"]}})'
+
+  - name: Assert the refused checkpoint
+    type: assert
+    statements:
+      - "is_set({{intruder_checkpoint_error}})"
+
+  # ── Watches: "when X, do Y", fired once by the agent's runtime ──────────
+  - name: The agent sets a merge-when-green watch on the mention's chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_watch
+    args:
+      input: { chain: "{{mention_id}}", condition: "pr_green", repo: "calimero-network/apps", pr: 434, branch: "", action: "merge", text: "", agent: "mero-bot@studio" }
+    outputs:
+      watch_id: result.output.id
+      watch: result
+
+  - name: The runtime notes where the checks stand
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: watch_seen
+    args: { id: "{{watch_id}}", seen: "3 of 5 checks passed, 2 running" }
+    outputs:
+      watch_seen: result
+
+  - name: The runtime fires it once its checks are green
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: fire_watch
+    args: { id: "{{watch_id}}", session: "studio-1" }
+    outputs:
+      fired: result
+
+  - name: Another session is refused the same watch
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: fire_watch
+    args: { id: "{{watch_id}}", session: "laptop-1" }
+    expected_failure: true
+    outputs:
+      second_fire_error: error
+
+  - name: The runtime reports the merge
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: finish_watch
+    args: { id: "{{watch_id}}", outcome: "done", note: "Merged #434 into main" }
+    outputs:
+      finished: result
+
+  - name: Owner reads the chain's watches
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: watches
+    args: { chain: "{{mention_id}}" }
+    outputs:
+      listed_watch: result.output.0
+
+  - name: The agent sets a notify-on-merge watch
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_watch
+    args:
+      input: { chain: "{{mention_id}}", condition: "pr_merged", repo: "calimero-network/apps", pr: 435, branch: "", action: "notify", text: "#435 merged", agent: "mero-bot@studio" }
+    outputs:
+      notify_watch_id: result.output.id
+
+  - name: Owner cancels the notify watch
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: cancel_watch
+    args: { id: "{{notify_watch_id}}", note: "No longer needed" }
+    outputs:
+      cancelled: result
+
+  - name: A watch that already fired cannot be cancelled
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: cancel_watch
+    args: { id: "{{watch_id}}" }
+    expected_failure: true
+    outputs:
+      cancel_fired_error: error
+
+  - name: node-2 cannot set a watch
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: add_watch
+    args:
+      input: { chain: "{{mention_id}}", condition: "pr_merged", repo: "calimero-network/apps", pr: 434, branch: "", action: "notify", text: "x", agent: "x" }
+    expected_failure: true
+    outputs:
+      intruder_watch_error: error
+
+  - name: Assert the watch fired once
+    type: json_assert
+    statements:
+      - 'json_subset({{watch}}, {"output": {"chain": "{{mention_id}}", "condition": "pr_green", "action": "merge", "status": "watching"}})'
+      - 'json_subset({{watch_seen}}, {"output": {"seen": "3 of 5 checks passed, 2 running"}})'
+      - 'json_subset({{fired}}, {"output": {"status": "firing", "fired_by": "studio-1"}})'
+      - 'json_subset({{finished}}, {"output": {"status": "done", "note": "Merged #434 into main"}})'
+      - 'json_subset({{listed_watch}}, {"id": "{{watch_id}}", "status": "done"})'
+      - 'json_subset({{cancelled}}, {"output": {"id": "{{notify_watch_id}}", "status": "cancelled"}})'
+
+  - name: Assert the refused watch calls
+    type: assert
+    statements:
+      - "is_set({{second_fire_error}})"
+      - "is_set({{cancel_fired_error}})"
+      - "is_set({{intruder_watch_error}})"
+
+  # ── PRs: what the runtime saw on GitHub, for the PR card's merge button ─
+  - name: The runtime records a PR the mention's chain links to, checks red
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_pr
+    args:
+      input: { chain: "{{mention_id}}", repo: "calimero-network/apps", pr: 429, title: "Safe merge button", state: "open", draft: false, base: "master", default_branch: "master", conflicts: false, head_sha: "abc123", checks: "red", checks_total: 5, checks_passed: 4, checks_pending: 0, failing: ["E2E (hyperfeed / feed)"], stacked_on: 0, stacked_merged: false }
+    outputs:
+      recorded_pr: result
+
+  - name: The runtime records a PR stacked on it
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_pr
+    args:
+      input: { chain: "{{mention_id}}", repo: "calimero-network/apps", pr: 430, title: "Stacked follow-up", state: "open", draft: false, base: "mero-bot/chain-429", default_branch: "master", conflicts: false, head_sha: "def456", checks: "green", checks_total: 5, checks_passed: 5, checks_pending: 0, failing: [], stacked_on: 429, stacked_merged: false }
+    outputs:
+      stacked_pr: result
+
+  - name: The PR card reads the chain's PRs
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: prs
+    args: { chain: "{{mention_id}}" }
+    outputs:
+      listed_pr: result.output.0
+      listed_pr_2: result.output.1
+
+  - name: node-2 cannot record a PR
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: record_pr
+    args:
+      input: { chain: "", repo: "calimero-network/apps", pr: 431, title: "x", state: "open", draft: false, base: "master", default_branch: "master", conflicts: false, head_sha: "", checks: "green", checks_total: 0, checks_passed: 0, checks_pending: 0, failing: [], stacked_on: 0, stacked_merged: false }
+    expected_failure: true
+    outputs:
+      intruder_pr_error: error
+
+  - name: Assert the recorded PRs
+    type: json_assert
+    statements:
+      - 'json_subset({{recorded_pr}}, {"output": {"chain": "{{mention_id}}", "pr": 429, "checks": "red", "failing": ["E2E (hyperfeed / feed)"]}})'
+      - 'json_subset({{stacked_pr}}, {"output": {"pr": 430, "base": "mero-bot/chain-429", "stacked_on": 429, "stacked_merged": false}})'
+      - 'json_subset({{listed_pr}}, {"repo": "calimero-network/apps", "chain": "{{mention_id}}"})'
+      - 'json_subset({{listed_pr_2}}, {"repo": "calimero-network/apps", "chain": "{{mention_id}}"})'
+
+  - name: Assert the refused PR record
+    type: assert
+    statements:
+      - "is_set({{intruder_pr_error}})"
+
+  # ── One thread per task: a teammate's comment joins the task that touched the issue ──
+
+  - name: The agent starts a task
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_notification
+    args:
+      input:
+        key: "mero-bot:subject-task"
+        app: "mero-bot"
+        source_context: ""
+        source_label: ""
+        from: ""
+        title: "Fix the sync bug"
+        body: ""
+        event: "Prompt"
+        needs_you: false
+        chain: ""
+        ask: { kind: "", prompt: "", options: [], draft: "" }
+    outputs:
+      subject_task: result.output.id
+
+  - name: The task moves an issue, naming it as its subject
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_action
+    args:
+      input:
+        app: "issue-tracker"
+        source_context: "ctx-repo"
+        source_label: ""
+        method: "set_status"
+        category: ""
+        writes: true
+        undoable: false
+        title: "Moved the sync bug to In progress"
+        body: ""
+        why: ""
+        outcome: "done"
+        intent_hash: ""
+        executor: ""
+        note: ""
+        chain: "{{subject_task}}"
+        ask: { kind: "", prompt: "", options: [], draft: "" }
+        subject: "issue-tracker:ctx-repo:issue-7"
+    outputs:
+      subject_write: result.output
+
+  - name: The client records a teammate's comment on that issue
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_notification
+    args:
+      input:
+        key: "ctx-repo:s1>s2:0"
+        app: "issue-tracker"
+        source_context: "ctx-repo"
+        source_label: ""
+        from: "Xabi"
+        title: "Commented on your issue Sync bug"
+        body: ""
+        event: "CommentAdded"
+        needs_you: false
+        chain: ""
+        ask: { kind: "reply", prompt: "Reply in the thread", options: [], draft: "" }
+        item_type: "message"
+        fields: '{"text":"Repro attached"}'
+        reply_call: '{"method":"add_comment","args":{"issue_id":"issue-7","body":"=answer"}}'
+    outputs:
+      subject_comment: result.output
+
+  - name: A step of the task's turn touches a doc, with no row of its own
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: touch_subject
+    args:
+      chain: "{{subject_task}}"
+      subject: "drive-docs:ctx-docs:doc-1"
+
+  - name: The client records a teammate's comment on that doc
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_notification
+    args:
+      input:
+        key: "ctx-docs:d1>d2:0"
+        app: "drive-docs"
+        source_context: "ctx-docs"
+        source_label: ""
+        from: "Maya"
+        title: "Commented on your doc"
+        body: ""
+        event: "CommentAdded"
+        needs_you: false
+        chain: ""
+        ask: { kind: "reply", prompt: "Reply in the doc", options: [], draft: "" }
+        item_type: "message"
+        fields: '{"text":"Typo in section 2"}'
+        reply_call: '{"method":"add_comment","args":{"doc_id":"doc-1","body":"=answer"}}'
+    outputs:
+      touched_comment: result.output
+
+  - name: node-2 cannot touch a subject
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: touch_subject
+    args:
+      chain: "{{subject_task}}"
+      subject: "drive-docs:ctx-docs:doc-1"
+    expected_failure: true
+    outputs:
+      intruder_touch_error: error
+
+  - name: Assert the comment joined the task's chain
+    type: json_assert
+    statements:
+      - 'json_subset({{subject_write}}, {"chain": "{{subject_task}}", "subject": "issue-tracker:ctx-repo:issue-7"})'
+      - 'json_subset({{subject_comment}}, {"chain": "{{subject_task}}", "subject": "issue-tracker:ctx-repo:issue-7"})'
+      - 'json_subset({{touched_comment}}, {"chain": "{{subject_task}}", "subject": "drive-docs:ctx-docs:doc-1"})'
+
+  - name: Assert the refused touch
+    type: assert
+    statements:
+      - "is_set({{intruder_touch_error}})"
+
+  # ── A task's links: chips for the things it works on ──
+
+  - name: You link a board to the task by hand
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_link
+    args:
+      chain: "{{subject_task}}"
+      input: { subject: "design:ctx-board", label: "Feed redesign", by: "you" }
+    outputs:
+      board_link: result.output
+
+  - name: The task's links read back, the agent's and yours
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: links
+    args: { chain: "{{subject_task}}" }
+    outputs:
+      link_first: result.output.0
+      link_last: result.output.2
+
+  - name: You take the board off the task
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: remove_link
+    args: { chain: "{{subject_task}}", subject: "design:ctx-board" }
+
+  - name: node-2 cannot link anything
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: add_link
+    args:
+      chain: "{{subject_task}}"
+      input: { subject: "chat:ctx-launch", label: "", by: "you" }
+    expected_failure: true
+    outputs:
+      intruder_link_error: error
+
+  - name: Assert the links
+    type: json_assert
+    statements:
+      - 'json_subset({{board_link}}, {"subject": "design:ctx-board", "app": "design", "context": "ctx-board", "item": "", "label": "Feed redesign", "by": "you"})'
+      - 'json_subset({{link_first}}, {"subject": "issue-tracker:ctx-repo:issue-7", "by": "agent", "activity": 1})'
+      - 'json_subset({{link_last}}, {"subject": "design:ctx-board", "by": "you"})'
+
+  - name: Assert the refused link
+    type: assert
+    statements:
+      - "is_set({{intruder_link_error}})"
+
+  - name: You start a task from the chat, in a chain of its own
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: start_task
+    args:
+      from: "{{subject_task}}"
+      text: "Build safe merge: merge only green PRs on main."
+      headline: "Safe merge"
+    outputs:
+      started_task: result.output
+      started_chain: result.output.chain
+
+  - name: The task links back to the chat it came from
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: links
+    args: { chain: "{{started_chain}}" }
+    outputs:
+      started_back: result.output.0
+
+  - name: node-2 cannot start a task
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: start_task
+    args: { from: "{{subject_task}}", text: "Not yours", headline: null }
+    expected_failure: true
+    outputs:
+      intruder_task_error: error
+
+  - name: Assert the started task
+    type: json_assert
+    statements:
+      - 'json_subset({{started_task}}, {"kind": "message", "from": "you", "status": "waiting"})'
+      - 'json_subset({{started_back}}, {"app": "hyperfeed", "context": "from", "item": "{{subject_task}}", "by": "you"})'
+
+  - name: Assert the refused task
+    type: assert
+    statements:
+      - "is_set({{intruder_task_error}})"
+
+  # ── Push to your phone: the runtime's key, and the devices it wakes ──
+
+  - name: Your agent's runtime keeps its push key
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_push_key
+    args: { public_key: "BKey-runtime_1", by: "mero-bot" }
+
+  - name: Your phone subscribes with it
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_push_device
+    args:
+      input:
+        endpoint: "https://push.example.com/send/phone-1"
+        p256dh: "BPhonePublicKey"
+        auth: "phoneAuth"
+        name: "Phone"
+        quiet: false
+        key: "BKey-runtime_1"
+    outputs:
+      push_device: result.output
+
+  - name: The key and the devices read back
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: push_key
+    outputs:
+      push_key_view: result.output
+
+  - name: The devices to push to
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: push_devices
+    outputs:
+      push_first: result.output.0
+
+  - name: You take the phone off
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: remove_push_device
+    args: { endpoint: "https://push.example.com/send/phone-1" }
+
+  - name: node-2 cannot add a device
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: add_push_device
+    args:
+      input:
+        endpoint: "https://push.example.com/send/intruder"
+        p256dh: "BIntruder"
+        auth: "intruderAuth"
+        name: ""
+        quiet: false
+        key: "BKey-runtime_1"
+    expected_failure: true
+    outputs:
+      intruder_push_error: error
+
+  - name: node-2 cannot set the push key
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: set_push_key
+    args: { public_key: "BIntruderKey", by: "intruder" }
+    expected_failure: true
+    outputs:
+      intruder_push_key_error: error
+
+  - name: Assert push
+    type: json_assert
+    statements:
+      - 'json_subset({{push_device}}, {"endpoint": "https://push.example.com/send/phone-1", "name": "Phone", "quiet": false})'
+      - 'json_subset({{push_key_view}}, {"public_key": "BKey-runtime_1", "by": "mero-bot"})'
+      - 'json_subset({{push_first}}, {"endpoint": "https://push.example.com/send/phone-1", "p256dh": "BPhonePublicKey", "auth": "phoneAuth"})'
+
+  - name: Assert the refused push writes
+    type: assert
+    statements:
+      - "is_set({{intruder_push_error}})"
+      - "is_set({{intruder_push_key_error}})"

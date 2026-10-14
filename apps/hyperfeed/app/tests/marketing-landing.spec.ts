@@ -42,7 +42,7 @@ test.describe("Hyperfeed landing page", () => {
     await page.goto("/");
     await page.getByRole("link", { name: "Try the demo, no node needed" }).click();
     await expect(page).toHaveURL(/\/demo$/);
-    await expect(page.getByRole("region", { name: "To do" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible();
   });
 
   test("the theme switch reaches the whole app", async ({ page }) => {

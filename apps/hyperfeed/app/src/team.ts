@@ -1,5 +1,5 @@
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { fieldsOf, laneOf } from "./format";
+import { fieldsOf, headlineOfMessage, laneOf, rowTitle } from "./format";
 
 /**
  * The team view: the feed told the way a workplace feed tells it. People
@@ -51,12 +51,14 @@ export function headlineOf(item: FeedItem, appName: (key: string) => string): He
     return { who, initials: initialsOf(who), verb: asVerb(item.title), object, person: Boolean(text(f.from) || item.from) };
   }
   if (item.kind === "message") {
-    if (item.from === "you") return { who: "You", initials: "You", verb: "asked your agent", object: line(item.body || item.title), person: false };
-    return { who: "Your agent", initials: "AI", verb: "answered", object: line(item.body), person: false };
+    if (item.from === "you") return { who: "You", initials: "You", verb: "asked your agent", object: headlineOfMessage(item), person: false };
+    // A question still open asks; anything else it said answered you.
+    const verb = item.status === "asked" ? "asks you" : "answered";
+    return { who: "Your agent", initials: "AI", verb, object: headlineOfMessage(item), person: false };
   }
   // An action's title is already its sentence ("Prepared the NDA for your
   // signature"); where it stands is the status pill beside it.
-  return { who: "Your agent", initials: "AI", verb: "", object: line(item.title), person: false };
+  return { who: "Your agent", initials: "AI", verb: "", object: line(rowTitle(item, appName)), person: false };
 }
 
 /**
@@ -164,10 +166,14 @@ export function isAgent(item: FeedItem): boolean {
   return item.kind === "action" || item.kind === "message";
 }
 
-function startOfDay(t: number): number {
-  const d = new Date(t);
+/** However early in the day, "today" reaches back at least this far: just after midnight is not a blank slate. */
+const DAY_AT_LEAST_MS = 12 * 60 * 60 * 1000;
+
+/** The start of "today" for the digest: midnight, or 12 hours ago when that is earlier. */
+export function digestSince(now: number): number {
+  const d = new Date(now);
   d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  return Math.min(d.getTime(), now - DAY_AT_LEAST_MS);
 }
 
 /**
@@ -176,7 +182,7 @@ function startOfDay(t: number): number {
  * reads are not counted at all.
  */
 export function agentDigest(items: FeedItem[], now = Date.now()): AgentDigest {
-  const since = startOfDay(now);
+  const since = digestSince(now);
   const d: AgentDigest = { filed: 0, ran: 0, done: 0, working: 0, failed: 0, answered: 0, waiting: 0, items: [] };
   for (const item of items) {
     if (!isAgent(item) || isNoise(item)) continue;

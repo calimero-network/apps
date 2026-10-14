@@ -21,6 +21,30 @@ dashboard has to know is the Root Directory. `scripts/check-vercel-output.sh`
 (run by CI) asserts each declared `outputDirectory` is the directory the build
 actually writes, and that the SPA rewrite is present.
 
+## Only the apps a push touches are built
+
+Every project is linked to this one repository, so Vercel's Git integration
+starts a build of **every** app on **every** push, to `main` and to each PR
+branch. Each `vercel.json` therefore sets
+
+```json
+"ignoreCommand": "python3 ../../../scripts/vercel-ignore-build.py"
+```
+
+which diffs the push against the project's last successful deploy
+(`VERCEL_GIT_PREVIOUS_SHA`) and skips the build unless the app's `app/`
+directory, a workspace package it imports, its resolution in `pnpm-lock.yaml`
+or the catalog, the root `package.json` or `tsconfig.base.json` changed. It uses
+the same rules as CI's frontend scope (`scripts/ci-scope.py`,
+`scripts/lockfile-fanout.py`). A skipped deploy shows as *Canceled* in the
+dashboard, and the previous deploy keeps serving. Anything the script cannot
+prove (no previous deploy, an unfetchable commit, an error) builds.
+
+Replayed over `main` from 24 Sep to 11 Oct 2026 (190 commits), this cuts
+4,560 project builds to 807. `check-vercel-output.sh` fails an app whose
+`vercel.json` lacks the `ignoreCommand`. The dashboard's own *Ignored Build Step*
+setting must stay at its default (*Automatic*) so `vercel.json` wins.
+
 Two dashboard settings are not expressible in the repo and must be checked by hand:
 
 - **Include files outside the Root Directory** must be ON. This is a pnpm
@@ -86,6 +110,7 @@ keep them that way, and republish the bundle if a domain changes.
 | `mero-crm` | `mero-crm` (to create) | `apps/mero-crm/app` | `dist` | https://mero-crm.vercel.app |
 | `mero-issue-tracker` | `mero-issue-tracker-app` | `apps/mero-issue-tracker/app` | `dist` | https://mero-issue-tracker-app.vercel.app |
 | `mero-sign` | `mero-sign` | `apps/mero-sign/app` | `dist` | https://mero-sign.vercel.app |
+| `mero-standup` | `mero-standup` | `apps/mero-standup/app` | `dist` | https://mero-standup.vercel.app ⚠️ not created yet |
 | `mero-stream` | `mero-stream-neon` | `apps/mero-stream/app` | `dist` | https://mero-stream-neon.vercel.app |
 | `mero-design` | `mero-design` | `apps/mero-design/app` | `dist` | https://mero-design.vercel.app/ |
 | `mero-pass` | `mero-pass` | `apps/mero-pass/app` | `dist` | https://mero-pass.vercel.app |
@@ -169,6 +194,7 @@ exceptions, noted below:
 | `mero-crm` | `com.calimero.mero-crm` |
 | `mero-issue-tracker` | `com.calimero.mero-issue-tracker` |
 | `mero-sign` | `com.calimero.mero-sign` |
+| `mero-standup` | `com.calimero.mero-standup` |
 | `mero-stream` | `com.calimero.mero-stream` |
 | `mero-design` | `com.calimero.mero-design` |
 | `mero-pass` | `com.calimero.mero-pass` |

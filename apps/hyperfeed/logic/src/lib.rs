@@ -29,6 +29,11 @@
 //!   **breach**, and stays in "Needs you" until you keep or undo it. Refusing it
 //!   would hide the one thing you most need to see.
 //!
+//! Answering a proposal "Allow for this session" lets the agent go on without
+//! asking in that app: what it does next carries the proposal's id as its
+//! `grant`, and for 12 hours the app's Ask mode is satisfied by it. A pause, a
+//! guard, Read only and Off are not.
+//!
 //! Approving a proposal does not perform it. The agent watches this context for
 //! [`Event::ActionChanged`] and reports the result with
 //! [`Hyperfeed::complete_action`]; the warrant it signs then is the authority,
@@ -41,7 +46,8 @@
 //! the agent answers it by pulling numbers into a sheet and preparing an NDA
 //! (actions recorded with that notification's id as their `chain`); you approve
 //! the NDA; the agent reports it signed. [`Hyperfeed::feed`] returns one row
-//! per chain, led by whatever in it needs you, and [`Hyperfeed::chain`] returns
+//! per chain, led by whatever in it needs you (else whatever is still underway),
+//! and [`Hyperfeed::chain`] returns
 //! the whole flow. Every row keeps its full **history** of steps, so the flow
 //! shows each decision and outcome, not just where it ended.
 //!
@@ -82,6 +88,32 @@ use calimero_sdk::{app, env, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{LwwRegister, Mergeable, UnorderedMap};
 
+mod checkpoint;
+pub use checkpoint::{
+    Checkpoint, CheckpointInput, CheckpointView, MAX_CHECKPOINT_AUTHOR, MAX_CHECKPOINT_ENTRIES,
+    MAX_CHECKPOINT_ENTRY, MAX_CHECKPOINT_TEXT,
+};
+
+mod watches;
+pub use watches::{
+    Watch, WatchInput, WatchView, MAX_ACTIVE_WATCHES, WATCH_ACTIONS, WATCH_CANCELLED,
+    WATCH_CONDITIONS, WATCH_DONE, WATCH_FAILED, WATCH_FIRING, WATCH_WATCHING,
+};
+
+mod prs;
+pub use prs::{PrInput, PrSeen, PrView, CHECK_STATES, MAX_FAILING, MAX_PRS, PR_STATES};
+
+mod links;
+pub use links::{
+    split_subject, Link, LinkInput, LinkView, FROM_SUBJECT, LINK_BY, MAX_LINKS, TASK_SUBJECT,
+};
+
+mod push;
+pub use push::{
+    PushDevice, PushDeviceInput, PushDeviceView, PushKey, PushKeyView, MAX_PUSH_DEVICES,
+    MAX_PUSH_ENDPOINT, MAX_PUSH_KEY,
+};
+
 #[cfg(test)]
 mod tests;
 
@@ -105,11 +137,28 @@ const MAX_FIELDS: usize = 4_000;
 /// version, read on every event.
 const MAX_LENS: usize = 32_000;
 /// One message to or from your agent: a question, an instruction, an answer.
+/// A message with a headline may run to [`MAX_LONG_MESSAGE`].
 const MAX_MESSAGE: usize = 2_000;
+/// A message's headline: one line the feed row shows, in characters.
+const MAX_HEADLINE: usize = 80;
+/// A message's text when it has a headline: a long answer, a report, a list.
+/// The row shows the headline; the text is behind "more" and in the chat.
+const MAX_LONG_MESSAGE: usize = 32_000;
 /// Images on one message of yours. The bytes are node blobs; the feed keeps
 /// only what points at them.
 const MAX_ATTACHMENTS: usize = 4;
 const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
+/// The shortest and longest lease a session may take on a chain at once. It
+/// renews while it works, so a session that dies lets go within one lease.
+pub const MIN_LEASE_MS: u64 = 1_000;
+pub const MAX_LEASE_MS: u64 = 10 * 60 * 1_000;
+
+/// One standing rule: a short line your agent keeps to on every turn.
+const MAX_RULE: usize = 280;
+/// Standing rules in force at once: each one goes into every turn's prompt.
+const MAX_RULES: usize = 30;
+/// Rules your agent suggested that wait for you at once.
+const MAX_RULE_PROPOSALS: usize = 20;
 const DEFAULT_PAGE: u32 = 50;
 const MAX_PAGE: u32 = 200;
 
@@ -127,6 +176,14 @@ pub const DEDUPE_WINDOW_MS: u64 = 10_000;
 /// gets anywhere near it.
 const MAX_OCCURRENCES: u32 = 64;
 
+/// The answer that allows a proposal for the rest of a session, not just once.
+/// An agent passes the proposal's id as the `grant` of what it runs afterwards.
+pub const SESSION_GRANT: &str = "Allow for this session";
+
+/// How long "Allow for this session" counts, from when you allowed it. An agent
+/// that keeps running past it asks you again.
+pub const GRANT_WINDOW_MS: u64 = 12 * 60 * 60 * 1_000;
+
 // ── Vocabularies ─────────────────────────────────────────────────────────────
 
 /// What the agent may do in one app. `act` = without asking, `ask` = propose
@@ -135,6 +192,17 @@ pub const AGENT_MODES: &[&str] = &["act", "ask", "read", "off"];
 /// The mode for an app nobody has set a policy for. Asking is the only safe
 /// default: an agent that discovers a new app should not get to act in it.
 pub const DEFAULT_AGENT_MODE: &str = "ask";
+/// How private a message of yours is, which says which of your agents takes
+/// it: `private`, for an agent whose model runs where no operator can read it
+/// (an attested TEE), or `public`, for any agent you configured (one with your
+/// repositories and tools, say). Your agent's runtime maps each to an agent.
+/// Not [`AGENT_MODES`], which say how freely the agent may act in an app.
+pub const MESSAGE_MODES: &[&str] = &["private", "public"];
+/// Folders one agent may be given, and the length of one folder's path.
+const MAX_FOLDERS: usize = 20;
+const MAX_PATH: usize = 1_024;
+/// Lines in one agent's report of what it can reach: one per agent profile it runs.
+const MAX_REACH: usize = 16;
 
 /// Where an app's notifications go: the feed and a push, the feed only, or
 /// nowhere (still recorded, so un-muting brings them back).
@@ -180,6 +248,11 @@ pub const STATUS_SAID: &str = "said";
 /// something in its chain, which marks it `answered`.
 pub const STATUS_ASKED: &str = "asked";
 
+/// The statuses of a step in your agent's turn on a message. See [`TurnStep`].
+pub const STEP_STATUSES: [&str; 4] = ["running", "waiting", "done", "failed"];
+/// The note on a message whose turn you stopped.
+pub const STOPPED_BY_YOU: &str = "Stopped by you";
+
 /// Who wrote a message.
 pub const FROM_YOU: &str = "you";
 pub const FROM_AGENT: &str = "agent";
@@ -210,6 +283,11 @@ pub const IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg", "image/webp", "ima
 pub const LENS_PROPOSED: &str = "proposed";
 pub const LENS_APPROVED: &str = "approved";
 pub const LENS_REJECTED: &str = "rejected";
+
+/// A rule your agent suggested waits for you, then is added or dismissed.
+pub const RULE_PROPOSED: &str = "proposed";
+pub const RULE_APPROVED: &str = "approved";
+pub const RULE_DISMISSED: &str = "dismissed";
 
 pub const KIND_ACTION: &str = "action";
 pub const KIND_NOTIFICATION: &str = "notification";
@@ -443,6 +521,48 @@ impl Mergeable for Asked {
     }
 }
 
+/// A message's headline: one line for the feed row, its text behind "more".
+/// Kept beside the message, keyed by its id, so messages written before
+/// headlines keep their layout.
+#[app::mergeable(id = "hyperfeed::Headline")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Headline {
+    pub text: String,
+}
+
+impl Mergeable for Headline {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Written once with its message, never changed.
+        if other.text > self.text {
+            self.text = other.text.clone();
+        }
+        Ok(())
+    }
+}
+
+/// How private a message of yours is: one of [`MESSAGE_MODES`].
+/// Kept beside the message, keyed by its id, so messages written before
+/// modes keep their layout.
+#[app::mergeable(id = "hyperfeed::MessageMode")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct MessageMode {
+    pub mode: String,
+}
+
+impl Mergeable for MessageMode {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Written once with its message, never changed.
+        if other.mode > self.mode {
+            self.mode = other.mode.clone();
+        }
+        Ok(())
+    }
+}
+
 /// An image on a message: a blob on your node, announced to the feed's
 /// context, and what the client needs to show it before fetching it.
 #[derive(
@@ -619,6 +739,72 @@ impl Mergeable for Archived {
     }
 }
 
+/// What a row is about in another app, as a key: `<app>:<context>`, plus
+/// `:<id>` for one thing in it (an issue, a doc, a thread). Kept two ways: by
+/// the action's id (what it touched), and by the key (the chain that touched
+/// it last), so a notification about the same thing joins that chain. See
+/// [`subject_key`].
+#[app::mergeable(id = "hyperfeed::Subject")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Subject {
+    pub subject: String,
+    pub chain: String,
+    pub at: u64,
+}
+
+impl Mergeable for Subject {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.at;
+        lww(self, at, other, other.at);
+        Ok(())
+    }
+}
+
+/// The args that name the one thing a call is about, first match wins. A call
+/// with none of them is about its whole context (a chat, a board). mero-bot
+/// keys the agent's writes with the same list: change both or neither.
+pub const SUBJECT_ARGS: &[&str] = &["issue_id", "doc_id", "thread_id"];
+
+/// The subject key for `id` in `app`'s `context`; `""` with no context, or
+/// when the key would not fit.
+pub fn subject_key(app: &str, context: &str, id: &str) -> String {
+    if app.is_empty() || context.is_empty() {
+        return String::new();
+    }
+    let key = if id.is_empty() {
+        format!("{app}:{context}")
+    } else {
+        format!("{app}:{context}:{id}")
+    };
+    if key.len() > MAX_KEY {
+        String::new()
+    } else {
+        key
+    }
+}
+
+/// What a notification is about: the thing its reply goes to. One you cannot
+/// answer from the feed has none, and starts a chain of its own.
+fn reply_subject(app: &str, context: &str, reply_call: &str) -> String {
+    let Ok(calimero_sdk::serde_json::Value::Object(call)) =
+        calimero_sdk::serde_json::from_str::<calimero_sdk::serde_json::Value>(reply_call)
+    else {
+        return String::new();
+    };
+    let args = call.get("args").and_then(|a| a.as_object());
+    let id = SUBJECT_ARGS
+        .iter()
+        .find_map(|k| {
+            args.and_then(|a| a.get(*k))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or("");
+    subject_key(app, context, id)
+}
+
 /// When an agent last said it was running, by its name.
 #[app::mergeable(id = "hyperfeed::Presence")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -633,6 +819,98 @@ impl Mergeable for Presence {
         self.seen_at = self.seen_at.max(other.seen_at);
         Ok(())
     }
+}
+
+/// A folder an agent may use on its computer: an absolute path, or one under
+/// `~`, and whether it may write there too.
+#[derive(
+    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Folder {
+    pub path: String,
+    pub write: bool,
+}
+
+/// What you let one agent reach on its computer, beyond your Calimero apps:
+/// these folders, a shell, the web. Yours to set (`set_access`); the agent's
+/// runtime enforces it before any tool runs, and an agent with none set keeps
+/// its runtime's default.
+#[app::mergeable(id = "hyperfeed::Access")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Access {
+    pub folders: Vec<Folder>,
+    pub shell: bool,
+    pub web: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for Access {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
+        Ok(())
+    }
+}
+
+/// One agent profile an agent runs, as it reports it: which mode or route
+/// it serves, its model, whether its model is attested, and what it can reach
+/// besides your Calimero apps.
+#[derive(
+    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ReachLine {
+    /// What it runs: a message mode (`private`, `public`) or `default`.
+    pub serves: String,
+    pub profile: String,
+    pub model: String,
+    pub attested: bool,
+    pub folders: Vec<Folder>,
+    pub shell: bool,
+    pub web: bool,
+}
+
+/// What one agent reported it can reach, latest report wins.
+#[app::mergeable(id = "hyperfeed::Reach")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Reach {
+    pub lines: Vec<ReachLine>,
+    pub at: u64,
+}
+
+impl Mergeable for Reach {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.at;
+        lww(self, at, other, other.at);
+        Ok(())
+    }
+}
+
+/// What you let one agent reach, as settings shows it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AccessView {
+    pub agent: String,
+    pub folders: Vec<Folder>,
+    pub shell: bool,
+    pub web: bool,
+    pub updated_at: u64,
+}
+
+/// What one agent reported it can reach, as settings shows it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ReachView {
+    pub agent: String,
+    pub lines: Vec<ReachLine>,
+    pub at: u64,
 }
 
 /// What your agent is doing right now for one of your messages: its latest
@@ -651,6 +929,189 @@ impl Mergeable for Progress {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         let at = self.at;
         lww(self, at, other, other.at);
+        Ok(())
+    }
+}
+
+/// One step of your agent's turn on a message of yours: a tool it ran, a file
+/// it edited, a write it made. Shown in the message's work block, never as a
+/// row of its own.
+#[derive(
+    AbiType, Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct TurnStep {
+    /// The agent's own id for the step, unique within the turn.
+    pub id: String,
+    /// What it is doing, in words: "Editing ChatView.tsx", "Running the tests".
+    pub title: String,
+    /// `running`, `waiting` (on your approval), `done` or `failed`.
+    pub status: String,
+    /// When the step started.
+    pub at: u64,
+}
+
+/// Your agent's turn on one of your messages, as it goes: its steps, and the
+/// answer it has written so far. Kept beside the message by id and replaced
+/// whole by each report, so a long turn adds no rows.
+#[app::mergeable(id = "hyperfeed::Work")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Work {
+    pub steps: Vec<TurnStep>,
+    /// The answer so far, while the agent writes it; `""` before it starts.
+    pub draft: String,
+    pub at: u64,
+}
+
+impl Mergeable for Work {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.at;
+        lww(self, at, other, other.at);
+        Ok(())
+    }
+}
+
+/// You asked your agent to stop working on one of your messages.
+#[app::mergeable(id = "hyperfeed::StopRequest")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct StopRequest {
+    pub at: u64,
+}
+
+impl Mergeable for StopRequest {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // The first request stands: a second one changes nothing.
+        self.at = match (self.at, other.at) {
+            (0, b) => b,
+            (a, 0) => a,
+            (a, b) => a.min(b),
+        };
+        Ok(())
+    }
+}
+
+/// A question that a newer one in its chain replaced: your agent asked
+/// again, or an app sent a new question, before you answered this one. Kept
+/// beside the row by its id. Its buttons go; an answer that still reaches it
+/// goes to your agent marked as answering an old question.
+#[app::mergeable(id = "hyperfeed::Superseded")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Superseded {
+    /// The newer question's id.
+    pub by: String,
+    pub at: u64,
+}
+
+impl Mergeable for Superseded {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // The first replacement stands, on every device.
+        if (other.at, &other.by) < (self.at, &self.by) {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+/// One of your standing rules: a short line your agent keeps to on every
+/// turn ("Never push to main", "Answer in English"). Only you add or remove
+/// one; removing keeps the row with `removed`, so the latest decision wins on
+/// every device.
+#[app::mergeable(id = "hyperfeed::Rule")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Rule {
+    pub text: String,
+    pub created_at: u64,
+    pub removed: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for Rule {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
+        Ok(())
+    }
+}
+
+/// The question of your agent's that one of your messages answers, when you
+/// answered it from its buttons. Kept beside your message by its id.
+#[app::mergeable(id = "hyperfeed::Answers")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Answers {
+    pub ask: String,
+}
+
+impl Mergeable for Answers {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Written once with its message, never changed.
+        if other.ask > self.ask {
+            self.ask = other.ask.clone();
+        }
+        Ok(())
+    }
+}
+
+/// Which agent session is working on a chain, until when. A session claims a
+/// chain before it starts a turn there, renews the lease while it works, and
+/// releases it at the end; another session is refused the chain until then,
+/// or until the lease runs out (the session died). Kept by chain id.
+#[app::mergeable(id = "hyperfeed::Lease")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Lease {
+    /// The session's own id: unique per running agent process.
+    pub session: String,
+    /// Who it is, in words: "mero-bot@studio".
+    pub agent: String,
+    /// When this session took the chain; kept while it renews.
+    pub claimed_at: u64,
+    /// When the lease runs out; 0 once released.
+    pub expires_at: u64,
+    pub updated_at: u64,
+}
+
+impl Mergeable for Lease {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
+        Ok(())
+    }
+}
+
+/// A rule your agent suggested after you corrected it. It changes nothing
+/// until you approve it, which adds it as your own rule.
+#[app::mergeable(id = "hyperfeed::RuleProposal")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct RuleProposal {
+    pub text: String,
+    /// Why your agent suggests it: the correction that led to it.
+    pub why: String,
+    /// The chain where you corrected it, or `""`.
+    pub chain: String,
+    /// [`RULE_PROPOSED`], [`RULE_APPROVED`] or [`RULE_DISMISSED`].
+    pub status: String,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl Mergeable for RuleProposal {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
         Ok(())
     }
 }
@@ -686,6 +1147,17 @@ pub struct ActionInput {
     /// `choose` lets you approve with one of the options; a `reply` lets you
     /// edit the agent's draft before it goes.
     pub ask: Ask,
+    /// For an outcome: the id of a proposal in the same app you approved with
+    /// "Allow for this session" (see [`SESSION_GRANT`]) in the last 12 hours.
+    /// Under the app's Ask mode, it is recorded without a breach. Older agents
+    /// omit it.
+    #[serde(default)]
+    pub grant: String,
+    /// What it touched in the app, as [`subject_key`] makes it (`""` for
+    /// nothing in particular). A notification about the same thing, with no
+    /// chain of its own, joins this action's chain. Older agents omit it.
+    #[serde(default)]
+    pub subject: String,
 }
 
 /// What your client saw for one notification.
@@ -790,6 +1262,56 @@ pub struct FeedItem {
     /// Images on a message of yours; empty for every other row.
     #[serde(default)]
     pub attachments: Vec<Attachment>,
+    // ── your agent's turn on a message of yours ──
+    /// What your agent did for it, step by step; empty for every other row.
+    #[serde(default)]
+    pub steps: Vec<TurnStep>,
+    /// The answer your agent has written so far, while the message is `thinking`; `""` otherwise.
+    #[serde(default)]
+    pub draft: String,
+    /// When you asked your agent to stop working on it; 0 if you did not.
+    #[serde(default)]
+    pub stop_at: u64,
+    // ── messages with a headline ──
+    /// The headline the message was written with, which is also its `title`;
+    /// `""` when it has none, and for every other row. Without one, `title`
+    /// is the message's first line and a client may derive a shorter one.
+    #[serde(default)]
+    pub headline: String,
+    // ── which agent a message of yours is for ──
+    /// On a message of yours sent with a mode: `private` or `public` (see
+    /// [`MESSAGE_MODES`]). `""` when it was sent without one, and for every
+    /// other row; your agent's runtime then decides, usually by the chain's
+    /// last message that had one.
+    #[serde(default)]
+    pub mode: String,
+    // ── questions a newer one replaced ──
+    /// On a question (your agent's, or a notification's) that a newer one in
+    /// its chain replaced before you answered it: the newer one's id. Its
+    /// buttons are gone. `""` otherwise.
+    #[serde(default)]
+    pub superseded_by: String,
+    /// On a message of yours sent from a question's buttons: that question's
+    /// id. `""` otherwise.
+    #[serde(default)]
+    pub answers: String,
+    /// Whether the question it answers had been replaced by a newer one: your
+    /// agent confirms against where things stand now before acting on it.
+    #[serde(default)]
+    pub answers_superseded: bool,
+    // ── who is on the chain ──
+    /// On a message: the agent whose session holds its chain right now
+    /// ("mero-bot@studio"), or `""` when nobody does.
+    #[serde(default)]
+    pub held_by: String,
+    /// Since when that session has held the chain; 0 when nobody does.
+    #[serde(default)]
+    pub held_since: u64,
+    // ── what it is about ──
+    /// On an action, what it touched; on a notification, what its reply goes
+    /// to; see [`subject_key`]. `""` for nothing in particular.
+    #[serde(default)]
+    pub subject: String,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -857,6 +1379,56 @@ pub struct SettingsView {
     pub guards: Vec<GuardView>,
     /// Every agent that has reported in, most recent first.
     pub agents: Vec<AgentView>,
+    /// Your standing rules, oldest first: your agent keeps to each on every turn.
+    #[serde(default)]
+    pub rules: Vec<RuleView>,
+    /// Rules your agent suggested that wait for you, newest first.
+    #[serde(default)]
+    pub rule_proposals: Vec<RuleProposalView>,
+    /// The modes a message of yours may be sent with ([`MESSAGE_MODES`]).
+    /// Empty on a feed made before modes, which refuses a `mode` argument.
+    #[serde(default)]
+    pub message_modes: Vec<String>,
+    /// What you let each agent reach on its computer, by agent name. An agent
+    /// with no entry keeps its runtime's default.
+    #[serde(default)]
+    pub access: Vec<AccessView>,
+    /// What each agent last reported it can reach, by agent name.
+    #[serde(default)]
+    pub reach: Vec<ReachView>,
+}
+
+/// One of your standing rules, as settings shows it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct RuleView {
+    pub id: String,
+    pub text: String,
+    pub created_at: u64,
+}
+
+/// A rule your agent suggested, as settings shows it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct RuleProposalView {
+    pub id: String,
+    pub text: String,
+    pub why: String,
+    pub chain: String,
+    pub status: String,
+    pub created_at: u64,
+}
+
+/// A session's lease on a chain, as [`Hyperfeed::claim_chain`] returns it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct LeaseView {
+    pub chain: String,
+    pub session: String,
+    pub agent: String,
+    pub claimed_at: u64,
+    /// 0 once released.
+    pub expires_at: u64,
 }
 
 /// An agent and when it last said it was running (ms).
@@ -893,6 +1465,47 @@ pub struct Hyperfeed {
     progress: UnorderedMap<String, Progress>,
     /// Images on your messages, by the message's id.
     attachments: UnorderedMap<String, Attachments>,
+    /// Your agent's turn on each of your messages it worked on, by message id.
+    work: UnorderedMap<String, Work>,
+    /// Your requests to stop a turn, by message id.
+    stops: UnorderedMap<String, StopRequest>,
+    /// Headlines of messages written with one, by the message's id.
+    headlines: UnorderedMap<String, Headline>,
+    /// Which agent each of your messages sent with a mode is for, by the message's id.
+    modes: UnorderedMap<String, MessageMode>,
+    /// What you let each agent reach on its computer, by agent name.
+    access: UnorderedMap<String, Access>,
+    /// What each agent last reported it can reach, by agent name.
+    reach: UnorderedMap<String, Reach>,
+    /// Questions a newer one in their chain replaced, by the question's id.
+    superseded: UnorderedMap<String, Superseded>,
+    /// The question each of your messages sent from its buttons answers, by
+    /// your message's id.
+    answers: UnorderedMap<String, Answers>,
+    /// Which agent session works on each chain, by chain id.
+    leases: UnorderedMap<String, Lease>,
+    /// "When X, do Y", polled by your agent's runtime, by id. See [`watches`].
+    watches: UnorderedMap<String, Watch>,
+
+    /// Your standing rules, by id.
+    rules: UnorderedMap<String, Rule>,
+    /// Rules your agent suggested, by id.
+    rule_proposals: UnorderedMap<String, RuleProposal>,
+    /// Where each task stands, as your agent last wrote it, by chain id.
+    checkpoints: UnorderedMap<String, Checkpoint>,
+    /// The PRs your tasks link to, as your agent's runtime last saw them on
+    /// GitHub, by `owner/name#number`. See [`prs`].
+    prs: UnorderedMap<String, PrSeen>,
+    /// What each action touched, by the action's id.
+    action_subjects: UnorderedMap<String, Subject>,
+    /// The chain that last touched each subject, by its key.
+    subject_chains: UnorderedMap<String, Subject>,
+    /// Each task's links, by `<chain>|<subject>`. See [`links`].
+    links: UnorderedMap<String, Link>,
+    /// Devices to push to, by endpoint. See [`push`].
+    push_devices: UnorderedMap<String, PushDevice>,
+    /// The runtime's VAPID public key, under `vapid`.
+    push_keys: UnorderedMap<String, PushKey>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -936,6 +1549,36 @@ pub enum Event<'a> {
     ArchiveChanged {
         count: u32,
     },
+    /// You asked your agent to stop working on message `id`: it ends the turn
+    /// and marks the message failed, "Stopped by you".
+    StopRequested {
+        id: &'a str,
+    },
+    /// A watch was set, fired, finished or cancelled: re-read `watches`.
+    WatchChanged {
+        id: &'a str,
+        chain: &'a str,
+        status: &'a str,
+    },
+    /// An agent session took a chain, or let it go: re-read who is on it.
+    ChainLeaseChanged {
+        chain: &'a str,
+    },
+    /// Your agent wrote where a task stands: re-read its `checkpoint`.
+    CheckpointChanged {
+        chain: &'a str,
+    },
+    /// Your agent's runtime saw a PR change on GitHub (`owner/name#number`):
+    /// re-read `prs`.
+    PrChanged {
+        key: &'a str,
+    },
+    /// A task's links changed: re-read `links`.
+    LinksChanged {
+        chain: &'a str,
+    },
+    /// A device to push to, or the push key, changed: re-read `push_devices`.
+    PushChanged,
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -961,6 +1604,26 @@ impl Hyperfeed {
             asks: UnorderedMap::new(),
             progress: UnorderedMap::new(),
             attachments: UnorderedMap::new(),
+            work: UnorderedMap::new(),
+            stops: UnorderedMap::new(),
+            headlines: UnorderedMap::new(),
+            modes: UnorderedMap::new(),
+            access: UnorderedMap::new(),
+            reach: UnorderedMap::new(),
+            superseded: UnorderedMap::new(),
+            answers: UnorderedMap::new(),
+            leases: UnorderedMap::new(),
+            watches: UnorderedMap::new(),
+
+            rules: UnorderedMap::new(),
+            rule_proposals: UnorderedMap::new(),
+            checkpoints: UnorderedMap::new(),
+            prs: UnorderedMap::new(),
+            action_subjects: UnorderedMap::new(),
+            subject_chains: UnorderedMap::new(),
+            links: UnorderedMap::new(),
+            push_devices: UnorderedMap::new(),
+            push_keys: UnorderedMap::new(),
         }
     }
 
@@ -1132,6 +1795,29 @@ impl Hyperfeed {
         Ok(answer("act", format!("your agent may act in {app}")))
     }
 
+    /// Whether `grant` lets an outcome in `app` stand without asking: the
+    /// app's mode is Ask, nothing else (a pause, a guard) needs you, and
+    /// `grant` is a proposal in that app you allowed for the session within
+    /// [`GRANT_WINDOW_MS`].
+    fn granted(&self, grant: &str, app: &str, category: &str, now: u64) -> app::Result<bool> {
+        if grant.is_empty()
+            || self.policy_for(app)?.agent != "ask"
+            || self.is_paused()?
+            || self.guard_on(category)?
+        {
+            return Ok(false);
+        }
+        let Some(proposal) = self.actions.get(grant)? else {
+            return Ok(false);
+        };
+        Ok(proposal.app == app
+            && proposal.history.iter().any(|s| {
+                s.status == STATUS_APPROVED
+                    && s.note == SESSION_GRANT
+                    && now.saturating_sub(s.at) <= GRANT_WINDOW_MS
+            }))
+    }
+
     fn action_needs_you(a: &Action) -> bool {
         matches!(
             current(&a.history).status.as_str(),
@@ -1192,13 +1878,56 @@ impl Hyperfeed {
             doing: String::new(),
             doing_at: 0,
             attachments: Vec::new(),
+            steps: Vec::new(),
+            draft: String::new(),
+            stop_at: 0,
+            headline: String::new(),
+            mode: String::new(),
+            superseded_by: String::new(),
+            answers: String::new(),
+            answers_superseded: false,
+            held_by: String::new(),
+            held_since: 0,
+            subject: String::new(),
         }
+    }
+
+    /// An action as a row, with what it touched.
+    fn action_row(&self, a: &Action) -> app::Result<FeedItem> {
+        let mut item = Self::action_item(a);
+        if let Some(s) = self.action_subjects.get(&a.id)? {
+            item.subject = s.subject.clone();
+        }
+        Ok(item)
+    }
+
+    /// The chain that last touched `subject`, if it is still in your feed: a
+    /// chain you put away is not brought back by a notification about it.
+    fn chain_for_subject(&self, subject: &str) -> app::Result<Option<String>> {
+        if subject.is_empty() {
+            return Ok(None);
+        }
+        let Some(seen) = self.subject_chains.get(subject)?.map(|s| s.chain.clone()) else {
+            return Ok(None);
+        };
+        if self.archived.get(&seen)?.is_some_and(|a| a.archived) {
+            return Ok(None);
+        }
+        Ok(Some(seen))
     }
 
     /// A notification as a row, with what a lens made of it.
     fn notification_row(&self, n: &Notification) -> app::Result<FeedItem> {
         let typed = self.typed.get(&n.id)?.map(|t| t.clone());
-        Ok(Self::notification_item(n, typed.as_ref()))
+        let mut item = Self::notification_item(n, typed.as_ref());
+        if let Some(s) = self.superseded.get(&n.id)? {
+            item.superseded_by = s.by.clone();
+            // A replaced question no longer waits on you.
+            if item.status == STATUS_RECEIVED {
+                item.needs_you = false;
+            }
+        }
+        Ok(item)
     }
 
     fn notification_item(n: &Notification, typed: Option<&Typed>) -> FeedItem {
@@ -1240,6 +1969,19 @@ impl Hyperfeed {
             doing: String::new(),
             doing_at: 0,
             attachments: Vec::new(),
+            steps: Vec::new(),
+            draft: String::new(),
+            stop_at: 0,
+            headline: String::new(),
+            mode: String::new(),
+            superseded_by: String::new(),
+            answers: String::new(),
+            answers_superseded: false,
+            held_by: String::new(),
+            held_since: 0,
+            subject: typed
+                .map(|t| reply_subject(&n.app, &n.source_context, &t.reply_call))
+                .unwrap_or_default(),
         }
     }
 
@@ -1252,15 +1994,47 @@ impl Hyperfeed {
             item.ask = a.ask.clone();
         }
         item.needs_you = m.from == FROM_AGENT && item.status == STATUS_ASKED;
+        if let Some(s) = self.superseded.get(&m.id)? {
+            item.superseded_by = s.by.clone();
+            item.needs_you = false;
+        }
+        if let Some(a) = self.answers.get(&m.id)? {
+            item.answers = a.ask.clone();
+            item.answers_superseded = self.superseded.get(&a.ask)?.is_some();
+        }
         if item.status == STATUS_THINKING {
             if let Some(p) = self.progress.get(&m.id)? {
                 item.doing = p.doing.clone();
                 item.doing_at = p.at;
             }
         }
+        // The steps stay with the message once the turn is over; the draft
+        // only while it is written, after which the answer is its own row.
+        if let Some(w) = self.work.get(&m.id)? {
+            item.steps = w.steps.clone();
+            if item.status == STATUS_THINKING {
+                item.draft = w.draft.clone();
+            }
+        }
+        if let Some(s) = self.stops.get(&m.id)? {
+            item.stop_at = s.at;
+        }
+        if let Some(l) = self.leases.get(&m.chain)? {
+            if l.expires_at > now_ms() {
+                item.held_by = l.agent.clone();
+                item.held_since = l.claimed_at;
+            }
+        }
+        if let Some(h) = self.headlines.get(&m.id)? {
+            item.headline = h.text.clone();
+            item.title = h.text.clone();
+        }
+        if let Some(md) = self.modes.get(&m.id)? {
+            item.mode = md.mode.clone();
+        }
         if let Some(a) = self.attachments.get(&m.id)? {
             item.attachments = a.items.clone();
-            if item.body.is_empty() {
+            if item.body.is_empty() && item.headline.is_empty() {
                 let n = item.attachments.len();
                 item.title = if n == 1 {
                     "Sent an image".to_owned()
@@ -1311,6 +2085,17 @@ impl Hyperfeed {
             doing: String::new(),
             doing_at: 0,
             attachments: Vec::new(),
+            steps: Vec::new(),
+            draft: String::new(),
+            stop_at: 0,
+            headline: String::new(),
+            mode: String::new(),
+            superseded_by: String::new(),
+            answers: String::new(),
+            answers_superseded: false,
+            held_by: String::new(),
+            held_since: 0,
+            subject: String::new(),
         }
     }
 
@@ -1341,6 +2126,52 @@ impl Hyperfeed {
             }
         }
         Ok(())
+    }
+
+    /// The mode a message of yours was sent with, if any: one of
+    /// [`MESSAGE_MODES`]. Empty is none, so a client may always send the field.
+    fn check_message_mode(mode: Option<String>) -> app::Result<Option<String>> {
+        let Some(mode) = mode.filter(|m| !m.is_empty()) else {
+            return Ok(None);
+        };
+        if !MESSAGE_MODES.contains(&mode.as_str()) {
+            return Err(AppError::msg(format!(
+                "mode must be one of {}, not {mode}",
+                MESSAGE_MODES.join(", ")
+            )));
+        }
+        Ok(Some(mode))
+    }
+
+    /// A message's text and headline within their limits, and the headline
+    /// to keep: `None` for none. A headline is one line of at most
+    /// [`MAX_HEADLINE`] characters, and lets the text run to
+    /// [`MAX_LONG_MESSAGE`] bytes; without one the text keeps to
+    /// [`MAX_MESSAGE`]. An empty headline is no headline, so a caller can
+    /// always pass the field.
+    fn check_message(
+        text: &str,
+        headline: Option<String>,
+        required: bool,
+    ) -> app::Result<Option<String>> {
+        let headline = headline
+            .map(|h| h.trim().to_owned())
+            .filter(|h| !h.is_empty());
+        let Some(h) = headline else {
+            Self::check_len("text", text, MAX_MESSAGE, required)?;
+            return Ok(None);
+        };
+        let chars = h.chars().count();
+        if chars > MAX_HEADLINE {
+            return Err(AppError::msg(format!(
+                "headline is {chars} characters, limit is {MAX_HEADLINE}"
+            )));
+        }
+        if h.contains(['\n', '\r']) {
+            return Err(AppError::msg("headline must be one line"));
+        }
+        Self::check_len("text", text, MAX_LONG_MESSAGE, required)?;
+        Ok(Some(h))
     }
 
     fn check_ask(ask: &Ask) -> app::Result<()> {
@@ -1455,7 +2286,7 @@ impl Hyperfeed {
             note,
             at,
         });
-        let item = Self::action_item(&action);
+        let item = self.action_row(&action)?;
         self.actions.insert(action.id.clone(), action)?;
         app::emit!(Event::ActionChanged {
             id: &item.id,
@@ -1499,6 +2330,26 @@ impl Hyperfeed {
             .ok_or_else(|| AppError::msg(format!("no message {id}")))
     }
 
+    /// When the newest row in `chain` was made; 0 for none.
+    fn chain_last_at(&self, chain: &str) -> app::Result<u64> {
+        let actions = self
+            .actions
+            .entries()?
+            .filter(|(_, a)| a.chain == chain)
+            .map(|(_, a)| a.created_at);
+        let notes = self
+            .notifications
+            .entries()?
+            .filter(|(_, n)| n.chain == chain)
+            .map(|(_, n)| n.created_at);
+        let messages = self
+            .messages
+            .entries()?
+            .filter(|(_, m)| m.chain == chain)
+            .map(|(_, m)| m.created_at);
+        Ok(actions.chain(notes).chain(messages).max().unwrap_or(0))
+    }
+
     /// Whether any row lives in `chain`: a message goes into a chain that
     /// exists, or starts its own.
     fn chain_exists(&self, chain: &str) -> app::Result<bool> {
@@ -1539,8 +2390,15 @@ impl Hyperfeed {
         status: &str,
         ask: Option<Ask>,
         attachments: Vec<Attachment>,
+        headline: Option<String>,
+        mode: Option<String>,
     ) -> app::Result<FeedItem> {
-        let now = now_ms();
+        // Strictly after what it follows in its chain: a message posted in the
+        // same millisecond as the row it answers still reads after it.
+        let mut now = now_ms();
+        if !chain.is_empty() {
+            now = now.max(self.chain_last_at(&chain)? + 1);
+        }
         let id = Self::fresh_id();
         let m = Message {
             chain: Self::chain_of(&chain, &id)?,
@@ -1561,6 +2419,12 @@ impl Hyperfeed {
         if !attachments.is_empty() {
             self.attachments
                 .insert(m.id.clone(), Attachments { items: attachments })?;
+        }
+        if let Some(text) = headline {
+            self.headlines.insert(m.id.clone(), Headline { text })?;
+        }
+        if let Some(mode) = mode {
+            self.modes.insert(m.id.clone(), MessageMode { mode })?;
         }
         let item = self.message_row(&m)?;
         self.messages.insert(m.id.clone(), m)?;
@@ -1589,7 +2453,8 @@ impl Hyperfeed {
     /// Record an action: a proposal for you to approve, or an outcome.
     ///
     /// A proposal the rules refuse is an error. An outcome the rules say
-    /// needed you is recorded with a breach, never dropped.
+    /// needed you is recorded with a breach, never dropped, unless the app's
+    /// mode alone asked for you and its `grant` is a session you allowed.
     pub fn record_action(&mut self, input: ActionInput) -> app::Result<FeedItem> {
         self.require_owner()?;
         Self::check_app(&input.app)?;
@@ -1610,14 +2475,26 @@ impl Hyperfeed {
                 "an ask belongs on a proposal; a done or failed action has nothing to answer",
             ));
         }
+        Self::check_len("grant", &input.grant, MAX_KEY, false)?;
+        if !input.grant.is_empty() && input.outcome == "proposed" {
+            return Err(AppError::msg(
+                "a grant belongs on a done or failed action; a proposal waits for you",
+            ));
+        }
+        Self::check_len("subject", &input.subject, MAX_KEY, false)?;
 
+        let now = now_ms();
         let verdict = self.verdict(&input.app, &input.category, input.writes)?;
+        // An unknown or stale grant is not an error: the outcome still happened,
+        // and is recorded with its breach.
+        let granted = self.granted(&input.grant, &input.app, &input.category, now)?;
         let (status, breach) = match (input.outcome.as_str(), verdict.decision.as_str()) {
             ("proposed", "refuse") => {
                 return Err(AppError::msg(format!("not allowed: {}", verdict.reason)))
             }
             ("proposed", _) => (STATUS_PENDING, String::new()),
             (outcome, "act") => (outcome_status(outcome), String::new()),
+            (outcome, "ask") if granted => (outcome_status(outcome), String::new()),
             (outcome, "ask") => (
                 outcome_status(outcome),
                 format!("acted without asking: {}", verdict.reason),
@@ -1628,7 +2505,6 @@ impl Hyperfeed {
             ),
         };
 
-        let now = now_ms();
         let id = Self::fresh_id();
         let action = Action {
             chain: Self::chain_of(&input.chain, &id)?,
@@ -1656,13 +2532,53 @@ impl Hyperfeed {
                 at: now,
             }],
         };
-        let item = Self::action_item(&action);
+        let mut item = Self::action_item(&action);
+        if !input.subject.is_empty() {
+            let seen = Subject {
+                subject: input.subject,
+                chain: action.chain.clone(),
+                at: now,
+            };
+            self.action_subjects
+                .insert(action.id.clone(), seen.clone())?;
+            // A thing you took off this task stays off it.
+            if !self.link_removed(&seen.chain, &seen.subject)? {
+                self.subject_chains
+                    .insert(seen.subject.clone(), seen.clone())?;
+                self.link_subject(&seen.chain, &seen.subject, "", "agent", false)?;
+            }
+            item.subject = seen.subject;
+        }
         self.actions.insert(action.id.clone(), action)?;
         app::emit!(Event::ActionRecorded {
             id: &item.id,
             status: &item.status,
         });
         Ok(item)
+    }
+
+    /// Your agent touched `subject` (see [`subject_key`]) for the task in
+    /// `chain` with a write that has no row of its own: a step of its turn on
+    /// a message of yours. A notification about it then joins `chain`, as
+    /// for an action that names it.
+    pub fn touch_subject(&mut self, chain: String, subject: String) -> app::Result<()> {
+        self.require_owner()?;
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        Self::check_len("subject", &subject, MAX_KEY, true)?;
+        if !self.chain_exists(&chain)? {
+            return Err(AppError::msg(format!("no chain {chain}")));
+        }
+        if self.link_removed(&chain, &subject)? {
+            return Ok(());
+        }
+        self.link_subject(&chain, &subject, "", "agent", false)?;
+        let seen = Subject {
+            subject,
+            chain,
+            at: now_ms(),
+        };
+        self.subject_chains.insert(seen.subject.clone(), seen)?;
+        Ok(())
     }
 
     /// The agent reports what happened after you approved, asked for a retry,
@@ -1742,13 +2658,19 @@ impl Hyperfeed {
     /// The agent says something in a chain: an answer to one of your
     /// messages (`reply_to`, which marks it answered), or, with `reply_to`
     /// empty, a note of its own in a chain that exists.
+    ///
+    /// A long answer takes a `headline`: one line of at most 80 characters,
+    /// which the feed row shows, with `text` (up to 32 KB) behind "more" and
+    /// in full in the chat. Without one, `text` keeps to 2000 bytes. Older
+    /// agents omit it.
     pub fn agent_say(
         &mut self,
         chain: String,
         reply_to: String,
         text: String,
+        headline: Option<String>,
     ) -> app::Result<FeedItem> {
-        self.agent_post(chain, reply_to, text, None)
+        self.agent_post(chain, reply_to, text, None, headline)
     }
 
     /// [`Self::agent_say`] that leaves something to you: a question to
@@ -1756,16 +2678,19 @@ impl Hyperfeed {
     /// do, until you say something in its chain; your words are its answer.
     /// Use it whenever the work is not finished without you, so a chain is
     /// only done when it is.
+    ///
+    /// Takes a `headline` as [`Self::agent_say`] does.
     pub fn agent_ask(
         &mut self,
         chain: String,
         reply_to: String,
         text: String,
         ask: Ask,
+        headline: Option<String>,
     ) -> app::Result<FeedItem> {
         Self::check_ask(&ask)?;
         Self::check_one_of("ask.kind", &ask.kind, &["reply", "choose"])?;
-        self.agent_post(chain, reply_to, text, Some(ask))
+        self.agent_post(chain, reply_to, text, Some(ask), headline)
     }
 
     fn agent_post(
@@ -1774,10 +2699,11 @@ impl Hyperfeed {
         reply_to: String,
         text: String,
         ask: Option<Ask>,
+        headline: Option<String>,
     ) -> app::Result<FeedItem> {
         self.require_owner()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
-        Self::check_len("text", &text, MAX_MESSAGE, true)?;
+        let headline = Self::check_message(&text, headline, true)?;
         Self::check_len("reply_to", &reply_to, MAX_KEY, false)?;
         if reply_to.is_empty() {
             if !self.chain_exists(&chain)? {
@@ -1801,27 +2727,78 @@ impl Hyperfeed {
                 self.push_message_step(asked, STATUS_ANSWERED, String::new())?;
             }
         }
-        let status = if ask.is_some() {
-            STATUS_ASKED
-        } else {
-            STATUS_SAID
-        };
-        self.post_message(chain, FROM_AGENT, text, reply_to, status, ask, Vec::new())
+        let asks = ask.is_some();
+        let status = if asks { STATUS_ASKED } else { STATUS_SAID };
+        let item = self.post_message(
+            chain,
+            FROM_AGENT,
+            text,
+            reply_to,
+            status,
+            ask,
+            Vec::new(),
+            headline,
+            None,
+        )?;
+        if asks {
+            self.supersede_asks(&item.chain, &item.id)?;
+        }
+        Ok(item)
+    }
+
+    /// A new question in `chain` (`by`) replaces the ones there you have not
+    /// answered yet: your agent's open questions, and notifications still
+    /// waiting for your answer. Their buttons go, and they stop needing you.
+    fn supersede_asks(&mut self, chain: &str, by: &str) -> app::Result<()> {
+        let mut open: Vec<String> = Vec::new();
+        for (id, m) in self.messages.entries()? {
+            if id != by
+                && m.chain == chain
+                && m.from == FROM_AGENT
+                && current(&m.history).status == STATUS_ASKED
+            {
+                open.push(id);
+            }
+        }
+        for (id, n) in self.notifications.entries()? {
+            if id != by
+                && n.chain == chain
+                && !n.ask.kind.is_empty()
+                && current(&n.history).status == STATUS_RECEIVED
+            {
+                open.push(id);
+            }
+        }
+        let at = now_ms();
+        for id in open {
+            if self.superseded.get(&id)?.is_some() {
+                continue;
+            }
+            self.superseded.insert(
+                id,
+                Superseded {
+                    by: by.to_owned(),
+                    at,
+                },
+            )?;
+        }
+        Ok(())
     }
 
     /// You said something in a chain: whatever your agent asked you there is
-    /// answered by it.
+    /// answered by it. A question a newer one replaced is not: your words
+    /// answer the question in front of you.
     fn answer_asks(&mut self, chain: &str, text: &str) -> app::Result<()> {
-        let open: Vec<Message> = self
-            .messages
-            .entries()?
-            .filter(|(_, m)| {
-                m.chain == chain
-                    && m.from == FROM_AGENT
-                    && current(&m.history).status == STATUS_ASKED
-            })
-            .map(|(_, m)| m.clone())
-            .collect();
+        let mut open: Vec<Message> = Vec::new();
+        for (id, m) in self.messages.entries()? {
+            if m.chain == chain
+                && m.from == FROM_AGENT
+                && current(&m.history).status == STATUS_ASKED
+                && self.superseded.get(&id)?.is_none()
+            {
+                open.push(m.clone());
+            }
+        }
         let note: String = text.chars().take(MAX_WHY / 4).collect();
         for m in open {
             self.push_message_step(m, STATUS_ANSWERED, note.clone())?;
@@ -1907,8 +2884,21 @@ impl Hyperfeed {
     /// Talk to your agent: about a chain (`chain` = its id), or about
     /// anything (`chain` empty, which starts a new chain). Your agent picks it
     /// up, answers in the chain, and may propose or act there under your rules.
-    pub fn say(&mut self, chain: String, text: String) -> app::Result<FeedItem> {
-        self.say_with(chain, text, Vec::new())
+    ///
+    /// A long message takes a `headline`, as [`Self::agent_say`] does. Older
+    /// clients omit it.
+    ///
+    /// `mode` says how private it is, and so which of your agents takes it:
+    /// `private` or `public` (see [`MESSAGE_MODES`]). Omitted or empty, it
+    /// has none, and your agent's runtime decides. Older clients omit it.
+    pub fn say(
+        &mut self,
+        chain: String,
+        text: String,
+        headline: Option<String>,
+        mode: Option<String>,
+    ) -> app::Result<FeedItem> {
+        self.say_with(chain, text, Vec::new(), headline, mode)
     }
 
     /// [`Self::say`] with images: up to four, each a blob you uploaded to your
@@ -1918,11 +2908,14 @@ impl Hyperfeed {
         chain: String,
         text: String,
         attachments: Vec<Attachment>,
+        headline: Option<String>,
+        mode: Option<String>,
     ) -> app::Result<FeedItem> {
         self.require_owner()?;
         Self::check_len("chain", &chain, MAX_KEY, false)?;
-        Self::check_len("text", &text, MAX_MESSAGE, attachments.is_empty())?;
+        let headline = Self::check_message(&text, headline, attachments.is_empty())?;
         Self::check_attachments(&attachments)?;
+        let mode = Self::check_message_mode(mode)?;
         if !chain.is_empty() && !self.chain_exists(&chain)? {
             return Err(AppError::msg(format!("no chain {chain}")));
         }
@@ -1937,7 +2930,55 @@ impl Hyperfeed {
             STATUS_WAITING,
             None,
             attachments,
+            headline,
+            mode,
         )
+    }
+
+    /// Answer one question your agent asked, from its buttons: `text` is the
+    /// option you picked, or your reply. It is your next message in the
+    /// question's chain, and goes to your agent like any other.
+    ///
+    /// A question a newer one replaced can still be answered (a screen that
+    /// had not caught up yet, another device): it is marked answered, the
+    /// newer question stays open, and your message carries
+    /// `answers_superseded`, so your agent confirms against where things
+    /// stand now before acting on it.
+    pub fn answer_ask(&mut self, id: String, text: String) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        Self::check_len("text", &text, MAX_MESSAGE, true)?;
+        let m = self.get_message(&id)?;
+        if m.from != FROM_AGENT || self.asks.get(&id)?.is_none() {
+            return Err(AppError::msg(format!("message {id} asks you nothing")));
+        }
+        let status = current(&m.history).status.clone();
+        if status != STATUS_ASKED {
+            return Err(AppError::msg(format!("message {id} is already {status}")));
+        }
+        let chain = m.chain.clone();
+        if self.superseded.get(&id)?.is_some() {
+            let note: String = text.chars().take(MAX_WHY / 4).collect();
+            self.push_message_step(m, STATUS_ANSWERED, note)?;
+        } else {
+            self.answer_asks(&chain, &text)?;
+        }
+        let item = self.post_message(
+            chain,
+            FROM_YOU,
+            text,
+            String::new(),
+            STATUS_WAITING,
+            None,
+            Vec::new(),
+            None,
+            None,
+        )?;
+        self.answers
+            .insert(item.id.clone(), Answers { ask: id.clone() })?;
+        let mut item = item;
+        item.answers = id.clone();
+        item.answers_superseded = self.superseded.get(&id)?.is_some();
+        Ok(item)
     }
 
     /// Approve or decline a proposal, retry or drop a failure, ask for an
@@ -1966,7 +3007,7 @@ impl Hyperfeed {
             }
             action.reviewed = true;
             action.reviewed_at = Self::next_at(&action.history);
-            let item = Self::action_item(&action);
+            let item = self.action_row(&action)?;
             self.actions.insert(action.id.clone(), action)?;
             app::emit!(Event::ActionChanged {
                 id: &item.id,
@@ -2057,8 +3098,18 @@ impl Hyperfeed {
             Occurrence::Seen(existing) => return self.notification_row(&existing),
             Occurrence::New(id) => id,
         };
+        // About something a task of yours touched: it joins that task's chain.
+        let joins = if input.chain.is_empty() && !input.item_type.is_empty() {
+            self.chain_for_subject(&reply_subject(
+                &input.app,
+                &input.source_context,
+                &input.reply_call,
+            ))?
+        } else {
+            None
+        };
         let n = Notification {
-            chain: Self::chain_of(&input.chain, &id)?,
+            chain: Self::chain_of(joins.as_deref().unwrap_or(&input.chain), &id)?,
             id,
             app: input.app,
             source_context: input.source_context,
@@ -2088,7 +3139,11 @@ impl Hyperfeed {
         if let Some(t) = typed {
             self.typed.insert(n.id.clone(), t)?;
         }
+        let asks = !n.ask.kind.is_empty();
         self.notifications.insert(n.id.clone(), n)?;
+        if asks {
+            self.supersede_asks(&item.chain, &item.id)?;
+        }
         app::emit!(Event::NotificationRecorded { id: &item.id });
         Ok(item)
     }
@@ -2302,12 +3357,688 @@ impl Hyperfeed {
         self.message_row(&m)
     }
 
+    /// Your agent reports its turn on one of your messages: every step so far
+    /// (each with its own `id`, a `title` in words, a `status` of `running`,
+    /// `waiting`, `done` or `failed`, and when it started) and the answer it
+    /// has written so far as `draft`. Each call replaces the last, so the
+    /// turn never adds rows: send it whenever a step starts or ends, and
+    /// every few seconds while the answer is being written. The steps stay
+    /// on the message after the turn; the draft shows only while it is
+    /// `thinking`.
+    pub fn agent_work(
+        &mut self,
+        id: String,
+        steps: Vec<TurnStep>,
+        draft: String,
+    ) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        if steps.len() > MAX_HISTORY {
+            return Err(AppError::msg(format!(
+                "{} steps, limit is {MAX_HISTORY}",
+                steps.len()
+            )));
+        }
+        for s in &steps {
+            Self::check_len("step id", &s.id, MAX_KEY, true)?;
+            Self::check_len("step title", &s.title, MAX_TITLE, true)?;
+            Self::check_one_of("step status", &s.status, &STEP_STATUSES)?;
+        }
+        // A long answer, written with a headline, streams as a long draft.
+        Self::check_len("draft", &draft, MAX_LONG_MESSAGE, false)?;
+        let m = self.get_message(&id)?;
+        if m.from != FROM_YOU {
+            return Err(AppError::msg(format!("message {id} is the agent's own")));
+        }
+        let status = current(&m.history).status.clone();
+        if status == STATUS_WAITING {
+            return Err(AppError::msg(format!(
+                "message {id} is waiting; take it up with agent_ack first"
+            )));
+        }
+        let at = match self.work.get(&id)? {
+            Some(w) => now_ms().max(w.at + 1),
+            None => now_ms(),
+        };
+        self.work.insert(id.clone(), Work { steps, draft, at })?;
+        app::emit!(Event::MessageChanged {
+            id: &id,
+            status: &status,
+        });
+        self.message_row(&m)
+    }
+
+    /// You ask your agent to stop working on one of your messages. One it has
+    /// not taken up yet is closed at once, "Stopped by you"; one it is working
+    /// on (`thinking`) keeps the request, and your agent ends its turn and
+    /// marks the message failed, "Stopped by you". Asking twice changes
+    /// nothing.
+    pub fn stop(&mut self, id: String) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        let m = self.get_message(&id)?;
+        if m.from != FROM_YOU {
+            return Err(AppError::msg(format!(
+                "message {id} is the agent's own; stop one of yours"
+            )));
+        }
+        let status = current(&m.history).status.clone();
+        match status.as_str() {
+            STATUS_WAITING => {
+                self.stops
+                    .insert(id.clone(), StopRequest { at: now_ms() })?;
+                self.push_message_step(m, STATUS_FAILED, STOPPED_BY_YOU.to_owned())
+            }
+            STATUS_THINKING => {
+                if self.stops.get(&id)?.is_none() {
+                    self.stops
+                        .insert(id.clone(), StopRequest { at: now_ms() })?;
+                    app::emit!(Event::StopRequested { id: &id });
+                    app::emit!(Event::MessageChanged {
+                        id: &id,
+                        status: STATUS_THINKING,
+                    });
+                }
+                self.message_row(&m)
+            }
+            _ => Err(AppError::msg(format!(
+                "message {id} is {status}; there is no turn to stop"
+            ))),
+        }
+    }
+
+    fn check_lease(chain: &str, session: &str, ttl_ms: u64) -> app::Result<()> {
+        Self::check_len("chain", chain, MAX_KEY, true)?;
+        Self::check_len("session", session, MAX_KEY, true)?;
+        if !(MIN_LEASE_MS..=MAX_LEASE_MS).contains(&ttl_ms) {
+            return Err(AppError::msg(format!(
+                "ttl_ms must be {MIN_LEASE_MS} to {MAX_LEASE_MS}, got {ttl_ms}"
+            )));
+        }
+        Ok(())
+    }
+
+    fn lease_view(chain: &str, l: &Lease) -> LeaseView {
+        LeaseView {
+            chain: chain.to_owned(),
+            session: l.session.clone(),
+            agent: l.agent.clone(),
+            claimed_at: l.claimed_at,
+            expires_at: l.expires_at,
+        }
+    }
+
+    /// Why `session` may not have `chain` now: another session holds a lease
+    /// on it that has not run out.
+    fn held_by_other(
+        chain: &str,
+        session: &str,
+        lease: Option<&Lease>,
+        now: u64,
+    ) -> app::Result<()> {
+        match lease {
+            Some(l) if l.session != session && l.expires_at > now => {
+                let who = if l.agent.is_empty() {
+                    "another session"
+                } else {
+                    &l.agent
+                };
+                Err(AppError::msg(format!(
+                    "chain {chain} is held by {who} for {} s more",
+                    (l.expires_at - now).div_ceil(1_000)
+                )))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// An agent session takes `chain` for `ttl_ms` before it starts a turn
+    /// there: one turn per chain at a time, across machines. Refused while
+    /// another session holds an unexpired lease; a lease that ran out (its
+    /// session died) can be taken. Claiming a chain the session already
+    /// holds renews it. `agent` names it for the chat ("mero-bot@studio");
+    /// older agents omit it.
+    pub fn claim_chain(
+        &mut self,
+        chain: String,
+        session: String,
+        ttl_ms: u64,
+        agent: Option<String>,
+    ) -> app::Result<LeaseView> {
+        self.require_owner()?;
+        Self::check_lease(&chain, &session, ttl_ms)?;
+        let agent = agent.unwrap_or_default();
+        Self::check_len("agent", &agent, MAX_SHORT, false)?;
+        let now = now_ms();
+        let prior = self.leases.get(&chain)?.map(|l| l.clone());
+        Self::held_by_other(&chain, &session, prior.as_ref(), now)?;
+        let still_mine = prior
+            .as_ref()
+            .filter(|l| l.session == session && l.expires_at > now)
+            .map(|l| l.claimed_at);
+        let updated_at = prior.as_ref().map_or(now, |l| now.max(l.updated_at + 1));
+        let lease = Lease {
+            claimed_at: still_mine.unwrap_or(now),
+            session,
+            agent,
+            expires_at: now + ttl_ms,
+            updated_at,
+        };
+        let view = Self::lease_view(&chain, &lease);
+        let fresh = still_mine.is_none();
+        self.leases.insert(chain.clone(), lease)?;
+        if fresh {
+            app::emit!(Event::ChainLeaseChanged { chain: &chain });
+        }
+        Ok(view)
+    }
+
+    /// The session holding `chain` keeps it for another `ttl_ms` while it
+    /// works. Refused once another session has it, or when this one never
+    /// did or released it: it should stop, not carry on beside the other.
+    pub fn renew_chain(
+        &mut self,
+        chain: String,
+        session: String,
+        ttl_ms: u64,
+    ) -> app::Result<LeaseView> {
+        self.require_owner()?;
+        Self::check_lease(&chain, &session, ttl_ms)?;
+        let now = now_ms();
+        let mut lease = self
+            .leases
+            .get(&chain)?
+            .map(|l| l.clone())
+            .ok_or_else(|| AppError::msg(format!("chain {chain} is not claimed")))?;
+        Self::held_by_other(&chain, &session, Some(&lease), now)?;
+        if lease.session != session || lease.expires_at == 0 {
+            return Err(AppError::msg(format!(
+                "this session does not hold chain {chain}; claim it again"
+            )));
+        }
+        lease.expires_at = now + ttl_ms;
+        lease.updated_at = now.max(lease.updated_at + 1);
+        let view = Self::lease_view(&chain, &lease);
+        self.leases.insert(chain, lease)?;
+        Ok(view)
+    }
+
+    /// The session lets `chain` go at the end of its turn. Returns whether it
+    /// held it: letting go of a chain it does not hold changes nothing.
+    pub fn release_chain(&mut self, chain: String, session: String) -> app::Result<bool> {
+        self.require_owner()?;
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        Self::check_len("session", &session, MAX_KEY, true)?;
+        let Some(mut lease) = self.leases.get(&chain)?.map(|l| l.clone()) else {
+            return Ok(false);
+        };
+        if lease.session != session || lease.expires_at == 0 {
+            return Ok(false);
+        }
+        lease.expires_at = 0;
+        lease.updated_at = now_ms().max(lease.updated_at + 1);
+        self.leases.insert(chain.clone(), lease)?;
+        app::emit!(Event::ChainLeaseChanged { chain: &chain });
+        Ok(true)
+    }
+
+    /// Who holds `chain` right now: a lease that has not run out, or none.
+    pub fn chain_lease(&self, chain: String) -> app::Result<Option<LeaseView>> {
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        let now = now_ms();
+        Ok(self
+            .leases
+            .get(&chain)?
+            .filter(|l| l.expires_at > now)
+            .map(|l| Self::lease_view(&chain, &l)))
+    }
+
+    /// Your agent writes where the task in `chain` stands: what is done, the
+    /// next step, its branches, worktrees and PRs, and what is still open. It
+    /// replaces the chain's last checkpoint, so a new session can pick the
+    /// task up from it. The limits are in `checkpoint.rs`.
+    pub fn set_checkpoint(
+        &mut self,
+        chain: String,
+        input: CheckpointInput,
+    ) -> app::Result<CheckpointView> {
+        self.require_owner()?;
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        if !self.chain_exists(&chain)? {
+            return Err(AppError::msg(format!("no chain {chain}")));
+        }
+        let prior_at = self.checkpoints.get(&chain)?.map_or(0, |c| c.updated_at);
+        let checkpoint = Checkpoint::from_input(input, now_ms().max(prior_at + 1))?;
+        let view = checkpoint.view(&chain);
+        self.checkpoints.insert(chain.clone(), checkpoint)?;
+        app::emit!(Event::CheckpointChanged { chain: &chain });
+        Ok(view)
+    }
+
+    /// The latest checkpoint on `chain`, or none: read it before acting there.
+    pub fn checkpoint(&self, chain: String) -> app::Result<Option<CheckpointView>> {
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        Ok(self.checkpoints.get(&chain)?.map(|c| c.view(&chain)))
+    }
+
+    /// A standing rule's text: one short line, trimmed.
+    fn check_rule(text: &str) -> app::Result<String> {
+        let text = text.trim();
+        Self::check_len("rule", text, MAX_RULE, true)?;
+        if text.contains(['\n', '\r']) {
+            return Err(AppError::msg("a rule is one line"));
+        }
+        Ok(text.to_owned())
+    }
+
+    /// Your rules in force, oldest first.
+    fn active_rules(&self) -> app::Result<Vec<RuleView>> {
+        let mut out: Vec<RuleView> = self
+            .rules
+            .entries()?
+            .filter(|(_, r)| !r.removed)
+            .map(|(id, r)| RuleView {
+                id,
+                text: r.text,
+                created_at: r.created_at,
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            a.created_at
+                .cmp(&b.created_at)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        Ok(out)
+    }
+
+    fn insert_rule(&mut self, text: String) -> app::Result<RuleView> {
+        let rules = self.active_rules()?;
+        if let Some(same) = rules.iter().find(|r| r.text.eq_ignore_ascii_case(&text)) {
+            return Ok(same.clone());
+        }
+        if rules.len() >= MAX_RULES {
+            return Err(AppError::msg(format!(
+                "you have {MAX_RULES} rules, the limit; remove one first"
+            )));
+        }
+        // Strictly after the newest rule: two added in one millisecond keep
+        // their order, instead of falling back to their random ids.
+        let now = now_ms().max(rules.iter().map(|r| r.created_at + 1).max().unwrap_or(0));
+        let id = Self::fresh_id();
+        self.rules.insert(
+            id.clone(),
+            Rule {
+                text: text.clone(),
+                created_at: now,
+                removed: false,
+                updated_at: now,
+            },
+        )?;
+        app::emit!(Event::SettingsChanged);
+        Ok(RuleView {
+            id,
+            text,
+            created_at: now,
+        })
+    }
+
+    /// Add a standing rule: one short line your agent keeps to on every turn.
+    /// Only you add rules; the same rule twice is kept once.
+    pub fn add_rule(&mut self, text: String) -> app::Result<RuleView> {
+        self.require_owner()?;
+        let text = Self::check_rule(&text)?;
+        self.insert_rule(text)
+    }
+
+    /// Remove one of your standing rules.
+    pub fn remove_rule(&mut self, id: String) -> app::Result<()> {
+        self.require_owner()?;
+        let mut rule = self
+            .rules
+            .get(&id)?
+            .map(|r| r.clone())
+            .filter(|r| !r.removed)
+            .ok_or_else(|| AppError::msg(format!("no rule {id}")))?;
+        rule.removed = true;
+        rule.updated_at = now_ms().max(rule.updated_at + 1);
+        self.rules.insert(id, rule)?;
+        app::emit!(Event::SettingsChanged);
+        Ok(())
+    }
+
+    /// Your agent suggests a standing rule after you corrected it: `text` is
+    /// the rule, `why` the correction, `chain` where it happened. It waits
+    /// for you in Controls and in the chat; nothing changes until you approve
+    /// it. A rule you already have, or one already waiting, is not suggested
+    /// twice.
+    pub fn propose_rule(
+        &mut self,
+        text: String,
+        why: String,
+        chain: String,
+    ) -> app::Result<RuleProposalView> {
+        self.require_owner()?;
+        let text = Self::check_rule(&text)?;
+        Self::check_len("why", &why, MAX_WHY, false)?;
+        Self::check_len("chain", &chain, MAX_KEY, false)?;
+        if !chain.is_empty() && !self.chain_exists(&chain)? {
+            return Err(AppError::msg(format!("no chain {chain}")));
+        }
+        if self
+            .active_rules()?
+            .iter()
+            .any(|r| r.text.eq_ignore_ascii_case(&text))
+        {
+            return Err(AppError::msg("that is already one of the user's rules"));
+        }
+        let waiting = self.waiting_rule_proposals()?;
+        if let Some(same) = waiting.iter().find(|p| p.text.eq_ignore_ascii_case(&text)) {
+            return Ok(same.clone());
+        }
+        if waiting.len() >= MAX_RULE_PROPOSALS {
+            return Err(AppError::msg(format!(
+                "{MAX_RULE_PROPOSALS} suggested rules already wait for the user"
+            )));
+        }
+        let now = now_ms();
+        let id = Self::fresh_id();
+        let proposal = RuleProposal {
+            text,
+            why,
+            chain,
+            status: RULE_PROPOSED.to_owned(),
+            created_at: now,
+            updated_at: now,
+        };
+        let view = Self::rule_proposal_view(id.clone(), &proposal);
+        self.rule_proposals.insert(id, proposal)?;
+        app::emit!(Event::SettingsChanged);
+        Ok(view)
+    }
+
+    /// Approve a rule your agent suggested: it becomes one of your rules,
+    /// added by you.
+    pub fn approve_rule(&mut self, id: String) -> app::Result<RuleView> {
+        self.require_owner()?;
+        let mut proposal = self.waiting_rule_proposal(&id)?;
+        let rule = self.insert_rule(proposal.text.clone())?;
+        proposal.status = RULE_APPROVED.to_owned();
+        proposal.updated_at = now_ms().max(proposal.updated_at + 1);
+        self.rule_proposals.insert(id, proposal)?;
+        app::emit!(Event::SettingsChanged);
+        Ok(rule)
+    }
+
+    /// Turn down a rule your agent suggested.
+    pub fn dismiss_rule(&mut self, id: String) -> app::Result<RuleProposalView> {
+        self.require_owner()?;
+        let mut proposal = self.waiting_rule_proposal(&id)?;
+        proposal.status = RULE_DISMISSED.to_owned();
+        proposal.updated_at = now_ms().max(proposal.updated_at + 1);
+        let view = Self::rule_proposal_view(id.clone(), &proposal);
+        self.rule_proposals.insert(id, proposal)?;
+        app::emit!(Event::SettingsChanged);
+        Ok(view)
+    }
+
+    fn waiting_rule_proposal(&self, id: &str) -> app::Result<RuleProposal> {
+        let proposal = self
+            .rule_proposals
+            .get(id)?
+            .map(|p| p.clone())
+            .ok_or_else(|| AppError::msg(format!("no suggested rule {id}")))?;
+        if proposal.status != RULE_PROPOSED {
+            return Err(AppError::msg(format!(
+                "suggested rule {id} is already {}",
+                proposal.status
+            )));
+        }
+        Ok(proposal)
+    }
+
+    /// Rules your agent suggested that wait for you, newest first.
+    fn waiting_rule_proposals(&self) -> app::Result<Vec<RuleProposalView>> {
+        let mut out: Vec<RuleProposalView> = self
+            .rule_proposals
+            .entries()?
+            .filter(|(_, p)| p.status == RULE_PROPOSED)
+            .map(|(id, p)| Self::rule_proposal_view(id, &p))
+            .collect();
+        out.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        Ok(out)
+    }
+
+    fn rule_proposal_view(id: String, p: &RuleProposal) -> RuleProposalView {
+        RuleProposalView {
+            id,
+            text: p.text.clone(),
+            why: p.why.clone(),
+            chain: p.chain.clone(),
+            status: p.status.clone(),
+            created_at: p.created_at,
+        }
+    }
+
+    // ── watches: "when X, do Y", kept here so it outlives a session ─────────
+
+    /// Set a watch: when its condition is met (a PR's checks green or red, a
+    /// PR merged, a branch's CI green or red), its action runs once (merge
+    /// the PR, start an agent turn with `text`, or tell you), reported in its
+    /// chain. Your agent's runtime polls it; the same watch twice is kept once.
+    pub fn add_watch(&mut self, input: WatchInput) -> app::Result<WatchView> {
+        self.watch_add(input)
+    }
+
+    /// Cancel a watch still watching, with an optional note why. A watch that
+    /// already fired cannot be called back.
+    pub fn cancel_watch(&mut self, id: String, note: Option<String>) -> app::Result<WatchView> {
+        self.watch_cancel(&id, note.as_deref().unwrap_or_default())
+    }
+
+    /// The runtime takes a watch whose condition it saw met, before it acts:
+    /// `watching → firing`, refused for any other status. Of every session
+    /// polling, exactly one gets it, once.
+    pub fn fire_watch(&mut self, id: String, session: String) -> app::Result<WatchView> {
+        self.watch_fire(&id, &session)
+    }
+
+    /// How the fired action went: `done` or `failed`, with a note.
+    pub fn finish_watch(
+        &mut self,
+        id: String,
+        outcome: String,
+        note: String,
+    ) -> app::Result<WatchView> {
+        self.watch_finish(&id, &outcome, &note)
+    }
+
+    /// What the runtime last saw of a watching watch's condition, as one line
+    /// ("3 of 5 checks passed, 2 running"). Only a change is written.
+    pub fn watch_seen(&mut self, id: String, seen: String) -> app::Result<WatchView> {
+        self.watch_seen_impl(&id, &seen)
+    }
+
+    /// The watches in `chain` (`""`: every chain), oldest first, whatever
+    /// their status.
+    pub fn watches(&self, chain: String) -> app::Result<Vec<WatchView>> {
+        self.watch_list(&chain)
+    }
+
+    // ── PRs: what the runtime sees on GitHub, for the PR card's merge button ─
+
+    /// Your agent's runtime records a PR a task links to as GitHub shows it
+    /// now: state, base and default branch, conflicts, head commit, checks
+    /// (the failing ones named) and the PR it is stacked on. Owner only; one
+    /// row per PR, the oldest of [`MAX_PRS`] dropped to make room.
+    pub fn record_pr(&mut self, input: PrInput) -> app::Result<PrView> {
+        self.pr_record(input)
+    }
+
+    /// The PRs the runtime recorded for `chain` (`""`: every chain), the most
+    /// recently seen first.
+    pub fn prs(&self, chain: String) -> app::Result<Vec<PrView>> {
+        self.pr_list(&chain)
+    }
+
+    /// Link a thing in another app to the task in `chain`: `subject` as
+    /// [`subject_key`] makes it, a `label` for its chip, `by` you or your
+    /// agent. What teammates do there joins the task from now on. Adding one
+    /// again relabels it; you adding one you took off brings it back.
+    pub fn add_link(&mut self, chain: String, input: LinkInput) -> app::Result<LinkView> {
+        self.link_add(chain, input)
+    }
+
+    /// Take a link off the task in `chain`. Nothing new about it joins the
+    /// task, and your agent touching it again does not bring it back.
+    pub fn remove_link(&mut self, chain: String, subject: String) -> app::Result<()> {
+        self.link_remove(chain, subject)
+    }
+
+    /// The links of the task in `chain`, oldest first, each with how much
+    /// teammates did there (its notifications in the task).
+    pub fn links(&self, chain: String) -> app::Result<Vec<LinkView>> {
+        self.link_list(&chain)
+    }
+
+    /// Spin a task off the chat in `from`: `text` is your message that opens
+    /// it, in a chain of its own, with its own post, workspace, checkpoint
+    /// and PRs. The chat keeps a link to the task (`hyperfeed:task:<chain>`)
+    /// and the task one back (`hyperfeed:from:<chain>`). Takes a `headline`
+    /// as [`Self::say`] does, which names the task's link. Returns the
+    /// task's first message; its chain is the task.
+    pub fn start_task(
+        &mut self,
+        from: String,
+        text: String,
+        headline: Option<String>,
+    ) -> app::Result<FeedItem> {
+        self.task_start(from, text, headline)
+    }
+
+    // ── Push: wake your phone when something needs you ───────────────────────
+
+    /// Your agent's runtime keeps its VAPID public key here, for phones to
+    /// subscribe with; `by` names the runtime that holds the private half.
+    /// Owner only. A different key drops every device: each subscribes again.
+    pub fn set_push_key(&mut self, public_key: String, by: String) -> app::Result<PushKeyView> {
+        self.push_key_set(public_key, by)
+    }
+
+    /// The key phones subscribe with; empty before a runtime set one.
+    pub fn push_key(&self) -> app::Result<PushKeyView> {
+        self.push_key_get()
+    }
+
+    /// A phone (or any browser) to push to: its push subscription, a name,
+    /// and `quiet` to say only "Something needs you". Owner only; adding one
+    /// again updates it. At most [`MAX_PUSH_DEVICES`]; the oldest makes room.
+    pub fn add_push_device(&mut self, input: PushDeviceInput) -> app::Result<PushDeviceView> {
+        self.push_device_add(input)
+    }
+
+    /// Stop pushing to a device: you took it off, or its push service said
+    /// it is gone.
+    pub fn remove_push_device(&mut self, endpoint: String) -> app::Result<()> {
+        self.push_device_remove(endpoint)
+    }
+
+    /// The devices to push to, newest first.
+    pub fn push_devices(&self) -> app::Result<Vec<PushDeviceView>> {
+        self.push_device_list()
+    }
+
     /// An agent saying it is running. The feed shows it as live while it
     /// keeps reporting; mero-bot calls this every half minute.
     pub fn agent_seen(&mut self, name: String) -> app::Result<()> {
         self.require_owner()?;
         Self::check_len("name", &name, MAX_KEY, false)?;
         self.presence.insert(name, Presence { seen_at: now_ms() })?;
+        Ok(())
+    }
+
+    /// What `agent` (its name, as it reports in) may reach on its computer
+    /// besides your Calimero apps: `folders` (each with or without writes),
+    /// a `shell`, and the `web`. It replaces what was set before. Your
+    /// agent's runtime refuses this method to the agent, so only you widen
+    /// or narrow it.
+    pub fn set_access(
+        &mut self,
+        agent: String,
+        folders: Vec<Folder>,
+        shell: bool,
+        web: bool,
+    ) -> app::Result<()> {
+        self.require_owner()?;
+        Self::check_len("agent", &agent, MAX_KEY, true)?;
+        Self::check_folders(&folders)?;
+        let updated_at = match self.access.get(&agent)? {
+            Some(a) => now_ms().max(a.updated_at + 1),
+            None => now_ms(),
+        };
+        self.access.insert(
+            agent,
+            Access {
+                folders,
+                shell,
+                web,
+                updated_at,
+            },
+        )?;
+        app::emit!(Event::SettingsChanged);
+        Ok(())
+    }
+
+    /// An agent saying what it can reach: one line per agent profile it runs.
+    /// Shown to you in Controls beside what you set with `set_access`.
+    pub fn agent_reach(&mut self, name: String, lines: Vec<ReachLine>) -> app::Result<()> {
+        self.require_owner()?;
+        Self::check_len("name", &name, MAX_KEY, true)?;
+        if lines.len() > MAX_REACH {
+            return Err(AppError::msg(format!(
+                "{} reach lines, limit is {MAX_REACH}",
+                lines.len()
+            )));
+        }
+        for l in &lines {
+            Self::check_len("serves", &l.serves, MAX_SHORT, true)?;
+            Self::check_len("profile", &l.profile, MAX_SHORT, true)?;
+            Self::check_len("model", &l.model, MAX_SHORT, false)?;
+            Self::check_folders(&l.folders)?;
+        }
+        let at = match self.reach.get(&name)? {
+            Some(r) => now_ms().max(r.at + 1),
+            None => now_ms(),
+        };
+        self.reach.insert(name, Reach { lines, at })?;
+        app::emit!(Event::SettingsChanged);
+        Ok(())
+    }
+
+    /// Folders within their limits: absolute or under `~`, one line each.
+    fn check_folders(folders: &[Folder]) -> app::Result<()> {
+        if folders.len() > MAX_FOLDERS {
+            return Err(AppError::msg(format!(
+                "{} folders, limit is {MAX_FOLDERS}",
+                folders.len()
+            )));
+        }
+        for f in folders {
+            Self::check_len("folder", &f.path, MAX_PATH, true)?;
+            if !(f.path.starts_with('/') || f.path == "~" || f.path.starts_with("~/")) {
+                return Err(AppError::msg(format!(
+                    "folder must be absolute or under ~, got {:?}",
+                    f.path
+                )));
+            }
+            if f.path.contains('\n') || f.path.split('/').any(|part| part == "..") {
+                return Err(AppError::msg(format!(
+                    "folder must be one path with no '..', got {:?}",
+                    f.path
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -2336,11 +4067,10 @@ impl Hyperfeed {
                 .map(|(k, _)| k)
                 .collect()
         };
-        let mut all: Vec<FeedItem> = self
-            .actions
-            .entries()?
-            .map(|(_, a)| Self::action_item(&a))
-            .collect();
+        let mut all: Vec<FeedItem> = Vec::new();
+        for (_, a) in self.actions.entries()? {
+            all.push(self.action_row(&a)?);
+        }
         for (_, n) in self.notifications.entries()? {
             if !muted.contains(&n.app) {
                 all.push(self.notification_row(&n)?);
@@ -2356,9 +4086,12 @@ impl Hyperfeed {
     /// The feed: one row per chain, newest activity first.
     ///
     /// A row is the chain's **lead**: the latest step that needs you if any
-    /// does, otherwise the latest row. Its `chain_len` says how many rows the
-    /// chain holds and `needs_you` whether any of them needs you; read them all
-    /// with [`Hyperfeed::chain`].
+    /// does, otherwise the latest still underway (an action approved, retrying
+    /// or being undone; your message waiting or being answered; your answer
+    /// being delivered), otherwise the latest row. So a chain is settled only
+    /// when everything in it is. Its `chain_len` says how many rows the chain
+    /// holds and `needs_you` whether any of them needs you; read them all with
+    /// [`Hyperfeed::chain`].
     ///
     /// `filter` keeps chains holding an action (`agent`), a notification
     /// (`notifications`), or something that needs you (`needs_you`); `app_key`
@@ -2417,6 +4150,7 @@ impl Hyperfeed {
                 .iter()
                 .filter(|i| i.needs_you)
                 .max_by(by_time)
+                .or_else(|| items.iter().filter(|i| underway(i)).max_by(by_time))
                 .or_else(|| items.iter().max_by(by_time))
                 .expect("a chain has at least one row");
             let mut lead = lead.clone();
@@ -2510,7 +4244,7 @@ impl Hyperfeed {
     /// One row, by id, whichever kind it is.
     pub fn item(&self, id: String) -> app::Result<Option<FeedItem>> {
         if let Some(a) = self.actions.get(&id)? {
-            return Ok(Some(Self::action_item(&a)));
+            return Ok(Some(self.action_row(&a)?));
         }
         if let Some(n) = self.notifications.get(&id)? {
             return Ok(Some(self.notification_row(&n)?));
@@ -2544,8 +4278,9 @@ impl Hyperfeed {
         Ok(out)
     }
 
-    /// Your rules: the pause switch, every app you set a policy for, and
-    /// every guard (defaults included).
+    /// Your rules: the pause switch, every app you set a policy for, every
+    /// guard (defaults included), your standing rules, and the rules your
+    /// agent suggested that wait for you.
     pub fn settings(&self) -> app::Result<SettingsView> {
         let mut policies: Vec<PolicyView> = self
             .policies
@@ -2573,12 +4308,39 @@ impl Hyperfeed {
             })
             .collect();
         agents.sort_by(|a, b| b.seen_at.cmp(&a.seen_at).then_with(|| a.name.cmp(&b.name)));
+        let mut access: Vec<AccessView> = self
+            .access
+            .entries()?
+            .map(|(agent, a)| AccessView {
+                agent,
+                folders: a.folders,
+                shell: a.shell,
+                web: a.web,
+                updated_at: a.updated_at,
+            })
+            .collect();
+        access.sort_by(|a, b| a.agent.cmp(&b.agent));
+        let mut reach: Vec<ReachView> = self
+            .reach
+            .entries()?
+            .map(|(agent, r)| ReachView {
+                agent,
+                lines: r.lines,
+                at: r.at,
+            })
+            .collect();
+        reach.sort_by(|a, b| a.agent.cmp(&b.agent));
         Ok(SettingsView {
             owner: self.owner.get().clone(),
             paused: self.is_paused()?,
             policies,
             guards,
             agents,
+            rules: self.active_rules()?,
+            rule_proposals: self.waiting_rule_proposals()?,
+            message_modes: MESSAGE_MODES.iter().map(|m| (*m).to_owned()).collect(),
+            access,
+            reach,
         })
     }
 }
@@ -2602,6 +4364,24 @@ fn headline(text: &str) -> String {
         end -= 1;
     }
     format!("{}…", &line[..end])
+}
+
+/// Whether a row is still being carried: an action you approved, asked to
+/// retry or to undo; a message of yours waiting for your agent or being
+/// answered; a notification you answered, being delivered.
+fn underway(item: &FeedItem) -> bool {
+    match item.kind.as_str() {
+        KIND_ACTION => matches!(
+            item.status.as_str(),
+            STATUS_APPROVED | STATUS_RETRYING | STATUS_UNDO_REQUESTED
+        ),
+        KIND_MESSAGE => {
+            item.from == FROM_YOU
+                && matches!(item.status.as_str(), STATUS_WAITING | STATUS_THINKING)
+        }
+        KIND_NOTIFICATION => item.status == STATUS_ANSWERED,
+        _ => false,
+    }
 }
 
 fn outcome_status(outcome: &str) -> &'static str {

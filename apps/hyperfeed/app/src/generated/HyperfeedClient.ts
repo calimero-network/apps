@@ -7,6 +7,30 @@ import type {
 // Generated types
 
 /**
+ * What you let one agent reach on its computer, beyond your Calimero apps:
+ * these folders, a shell, the web. Yours to set (`set_access`); the agent's
+ * runtime enforces it before any tool runs, and an agent with none set keeps
+ * its runtime's default.
+ */
+export interface Access {
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+  updated_at: number;
+}
+
+/**
+ * What you let one agent reach, as settings shows it.
+ */
+export interface AccessView {
+  agent: string;
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+  updated_at: number;
+}
+
+/**
  * One thing your agent did, or wants to do, on your behalf.
  *
  * Everything but `history` and `reviewed` is written once. `history` merges as
@@ -90,6 +114,19 @@ export interface ActionInput {
    * edit the agent's draft before it goes.
    */
   ask: Ask;
+  /**
+   * For an outcome: the id of a proposal in the same app you approved with
+   * "Allow for this session" (see [`SESSION_GRANT`]) in the last 12 hours.
+   * Under the app's Ask mode, it is recorded without a breach. Older agents
+   * omit it.
+   */
+  grant: string;
+  /**
+   * What it touched in the app, as [`subject_key`] makes it (`""` for
+   * nothing in particular). A notification about the same thing, with no
+   * chain of its own, joins this action's chain. Older agents omit it.
+   */
+  subject: string;
 }
 
 /**
@@ -106,6 +143,14 @@ export interface AgentState {
 export interface AgentView {
   name: string;
   seen_at: number;
+}
+
+/**
+ * The question of your agent's that one of your messages answers, when you
+ * answered it from its buttons. Kept beside your message by its id.
+ */
+export interface Answers {
+  ask: string;
 }
 
 export interface AppCount {
@@ -187,6 +232,74 @@ export interface Attachments {
   items: Attachment[];
 }
 
+/**
+ * The latest checkpoint on one chain, kept by chain id. A new one replaces
+ * it whole: last writer wins.
+ */
+export interface Checkpoint {
+  done: string;
+  next: string;
+  branches: string[];
+  worktrees: string[];
+  prs: string[];
+  questions: string[];
+  author: string;
+  updated_at: number;
+}
+
+/**
+ * What the agent writes: [`crate::Hyperfeed::set_checkpoint`]'s `input`.
+ * `done` and `next` are prose; the lists may be empty.
+ */
+export interface CheckpointInput {
+  /**
+   * What is done so far.
+   */
+  done: string;
+  /**
+   * The next step, as the session that picks it up should take it.
+   */
+  next: string;
+  /**
+   * Git branches the task works on.
+   */
+  branches: string[];
+  /**
+   * Worktrees (absolute paths) the task works in.
+   */
+  worktrees: string[];
+  /**
+   * Pull requests: links, or `repo#number`.
+   */
+  prs: string[];
+  /**
+   * What is still open: questions for the user, or doubts to settle.
+   */
+  questions: string[];
+  /**
+   * Who writes it: "mero-bot@studio".
+   */
+  author: string;
+}
+
+/**
+ * A chain's latest checkpoint, as [`crate::Hyperfeed::checkpoint`] returns it.
+ */
+export interface CheckpointView {
+  chain: string;
+  done: string;
+  next: string;
+  branches: string[];
+  worktrees: string[];
+  prs: string[];
+  questions: string[];
+  author: string;
+  /**
+   * When it was written (ms).
+   */
+  updated_at: number;
+}
+
 export interface Event_ActionChanged {
   id: string;
   status: string;
@@ -201,9 +314,21 @@ export interface Event_ArchiveChanged {
   count: number;
 }
 
+export interface Event_ChainLeaseChanged {
+  chain: string;
+}
+
+export interface Event_CheckpointChanged {
+  chain: string;
+}
+
 export interface Event_LensChanged {
   app: string;
   status: string;
+}
+
+export interface Event_LinksChanged {
+  chain: string;
 }
 
 export interface Event_MessageChanged {
@@ -228,6 +353,20 @@ export interface Event_NotificationRecorded {
 
 export interface Event_NotificationsSeen {
   count: number;
+}
+
+export interface Event_PrChanged {
+  key: string;
+}
+
+export interface Event_StopRequested {
+  id: string;
+}
+
+export interface Event_WatchChanged {
+  id: string;
+  chain: string;
+  status: string;
 }
 
 export interface FeedCounts {
@@ -319,6 +458,61 @@ export interface FeedItem {
    * Images on a message of yours; empty for every other row.
    */
   attachments: Attachment[];
+  /**
+   * What your agent did for it, step by step; empty for every other row.
+   */
+  steps: TurnStep[];
+  /**
+   * The answer your agent has written so far, while the message is `thinking`; `""` otherwise.
+   */
+  draft: string;
+  /**
+   * When you asked your agent to stop working on it; 0 if you did not.
+   */
+  stop_at: number;
+  /**
+   * The headline the message was written with, which is also its `title`;
+   * `""` when it has none, and for every other row. Without one, `title`
+   * is the message's first line and a client may derive a shorter one.
+   */
+  headline: string;
+  /**
+   * On a message of yours sent with a mode: `private` or `public` (see
+   * [`MESSAGE_MODES`]). `""` when it was sent without one, and for every
+   * other row; your agent's runtime then decides, usually by the chain's
+   * last message that had one.
+   */
+  mode: string;
+  /**
+   * On a question (your agent's, or a notification's) that a newer one in
+   * its chain replaced before you answered it: the newer one's id. Its
+   * buttons are gone. `""` otherwise.
+   */
+  superseded_by: string;
+  /**
+   * On a message of yours sent from a question's buttons: that question's
+   * id. `""` otherwise.
+   */
+  answers: string;
+  /**
+   * Whether the question it answers had been replaced by a newer one: your
+   * agent confirms against where things stand now before acting on it.
+   */
+  answers_superseded: boolean;
+  /**
+   * On a message: the agent whose session holds its chain right now
+   * ("mero-bot@studio"), or `""` when nobody does.
+   */
+  held_by: string;
+  /**
+   * Since when that session has held the chain; 0 when nobody does.
+   */
+  held_since: number;
+  /**
+   * On an action, what it touched; on a notification, what its reply goes
+   * to; see [`subject_key`]. `""` for nothing in particular.
+   */
+  subject: string;
 }
 
 export interface FeedPage {
@@ -336,6 +530,15 @@ export interface FeedPage {
 }
 
 /**
+ * A folder an agent may use on its computer: an absolute path, or one under
+ * `~`, and whether it may write there too.
+ */
+export interface Folder {
+  path: string;
+  write: boolean;
+}
+
+/**
  * One "always ask me before" switch.
  */
 export interface Guard {
@@ -347,6 +550,15 @@ export interface Guard {
 export interface GuardView {
   category: string;
   enabled: boolean;
+}
+
+/**
+ * A message's headline: one line for the feed row, its text behind "more".
+ * Kept beside the message, keyed by its id, so messages written before
+ * headlines keep their layout.
+ */
+export interface Headline {
+  text: string;
 }
 
 export interface Hyperfeed {
@@ -388,6 +600,124 @@ export interface Hyperfeed {
    * Images on your messages, by the message's id.
    */
   attachments: Record<string, Attachments>;
+  /**
+   * Your agent's turn on each of your messages it worked on, by message id.
+   */
+  work: Record<string, Work>;
+  /**
+   * Your requests to stop a turn, by message id.
+   */
+  stops: Record<string, StopRequest>;
+  /**
+   * Headlines of messages written with one, by the message's id.
+   */
+  headlines: Record<string, Headline>;
+  /**
+   * Which agent each of your messages sent with a mode is for, by the message's id.
+   */
+  modes: Record<string, MessageMode>;
+  /**
+   * What you let each agent reach on its computer, by agent name.
+   */
+  access: Record<string, Access>;
+  /**
+   * What each agent last reported it can reach, by agent name.
+   */
+  reach: Record<string, Reach>;
+  /**
+   * Questions a newer one in their chain replaced, by the question's id.
+   */
+  superseded: Record<string, Superseded>;
+  /**
+   * The question each of your messages sent from its buttons answers, by
+   * your message's id.
+   */
+  answers: Record<string, Answers>;
+  /**
+   * Which agent session works on each chain, by chain id.
+   */
+  leases: Record<string, Lease>;
+  /**
+   * "When X, do Y", polled by your agent's runtime, by id. See [`watches`].
+   */
+  watches: Record<string, Watch>;
+  /**
+   * Your standing rules, by id.
+   */
+  rules: Record<string, Rule>;
+  /**
+   * Rules your agent suggested, by id.
+   */
+  rule_proposals: Record<string, RuleProposal>;
+  /**
+   * Where each task stands, as your agent last wrote it, by chain id.
+   */
+  checkpoints: Record<string, Checkpoint>;
+  /**
+   * The PRs your tasks link to, as your agent's runtime last saw them on
+   * GitHub, by `owner/name#number`. See [`prs`].
+   */
+  prs: Record<string, PrSeen>;
+  /**
+   * What each action touched, by the action's id.
+   */
+  action_subjects: Record<string, Subject>;
+  /**
+   * The chain that last touched each subject, by its key.
+   */
+  subject_chains: Record<string, Subject>;
+  /**
+   * Each task's links, by `<chain>|<subject>`. See [`links`].
+   */
+  links: Record<string, Link>;
+  /**
+   * Devices to push to, by endpoint. See [`push`].
+   */
+  push_devices: Record<string, PushDevice>;
+  /**
+   * The runtime's VAPID public key, under `vapid`.
+   */
+  push_keys: Record<string, PushKey>;
+}
+
+/**
+ * Which agent session is working on a chain, until when. A session claims a
+ * chain before it starts a turn there, renews the lease while it works, and
+ * releases it at the end; another session is refused the chain until then,
+ * or until the lease runs out (the session died). Kept by chain id.
+ */
+export interface Lease {
+  /**
+   * The session's own id: unique per running agent process.
+   */
+  session: string;
+  /**
+   * Who it is, in words: "mero-bot@studio".
+   */
+  agent: string;
+  /**
+   * When this session took the chain; kept while it renews.
+   */
+  claimed_at: number;
+  /**
+   * When the lease runs out; 0 once released.
+   */
+  expires_at: number;
+  updated_at: number;
+}
+
+/**
+ * A session's lease on a chain, as [`Hyperfeed::claim_chain`] returns it.
+ */
+export interface LeaseView {
+  chain: string;
+  session: string;
+  agent: string;
+  claimed_at: number;
+  /**
+   * 0 once released.
+   */
+  expires_at: number;
 }
 
 /**
@@ -425,6 +755,66 @@ export interface LensView {
 }
 
 /**
+ * One link of a task, kept by `<chain>|<subject>`. Taking it off keeps the
+ * row with `removed: true`, so your agent touching the thing again does not
+ * bring it back; only you adding it does.
+ */
+export interface Link {
+  chain: string;
+  subject: string;
+  label: string;
+  by: string;
+  added_at: number;
+  removed: boolean;
+  updated_at: number;
+}
+
+/**
+ * What [`crate::Hyperfeed::add_link`] takes.
+ */
+export interface LinkInput {
+  /**
+   * `<app>:<context>[:<id>]`, as [`crate::subject_key`] makes it.
+   */
+  subject: string;
+  /**
+   * What the chip says ("Agent digest card"); `""` keeps the one it has,
+   * and a client names an unlabelled one from what it knows.
+   */
+  label: string;
+  /**
+   * `agent` or `you`.
+   */
+  by: string;
+}
+
+/**
+ * A link as [`crate::Hyperfeed::links`] returns it.
+ */
+export interface LinkView {
+  chain: string;
+  subject: string;
+  /**
+   * The subject's parts: the app's key, its context, and the one thing in
+   * it (`""` for the whole context: a chat, a board).
+   */
+  app: string;
+  context: string;
+  item: string;
+  label: string;
+  by: string;
+  added_at: number;
+  /**
+   * Notifications in the task about it: what teammates did there.
+   */
+  activity: number;
+  /**
+   * The latest of them (ms); 0 with none.
+   */
+  last_at: number;
+}
+
+/**
  * One message in a conversation with your agent, inside a chain.
  *
  * You talk to your agent about a row by posting into its chain; a question
@@ -446,6 +836,15 @@ export interface Message {
   reply_to: string;
   created_at: number;
   history: Step[];
+}
+
+/**
+ * How private a message of yours is: one of [`MESSAGE_MODES`].
+ * Kept beside the message, keyed by its id, so messages written before
+ * modes keep their layout.
+ */
+export interface MessageMode {
+  mode: string;
 }
 
 /**
@@ -532,6 +931,113 @@ export interface PolicyView {
 }
 
 /**
+ * What [`crate::Hyperfeed::record_pr`] takes: the PR as GitHub shows it now.
+ */
+export interface PrInput {
+  /**
+   * The chain (task) that links to it; `""` keeps the one already recorded.
+   */
+  chain: string;
+  /**
+   * `owner/name`.
+   */
+  repo: string;
+  pr: number;
+  title: string;
+  /**
+   * `open`, `merged` or `closed`.
+   */
+  state: string;
+  draft: boolean;
+  /**
+   * The branch it merges into.
+   */
+  base: string;
+  /**
+   * The repository's default branch.
+   */
+  default_branch: string;
+  /**
+   * GitHub found conflicts with the base.
+   */
+  conflicts: boolean;
+  /**
+   * The head commit the checks are on.
+   */
+  head_sha: string;
+  /**
+   * `green` (every check passed), `red` (one failed) or `pending`.
+   */
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  /**
+   * The failing checks' names, at most [`MAX_FAILING`].
+   */
+  failing: string[];
+  /**
+   * When `base` is another PR's branch, that PR's number; 0 otherwise.
+   */
+  stacked_on: number;
+  /**
+   * Whether the PR it is stacked on is merged (its branch is dead).
+   */
+  stacked_merged: boolean;
+}
+
+/**
+ * One PR as the runtime last saw it, kept by `owner/name#number`.
+ */
+export interface PrSeen {
+  chain: string;
+  repo: string;
+  pr: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  base: string;
+  default_branch: string;
+  conflicts: boolean;
+  head_sha: string;
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  failing: string[];
+  stacked_on: number;
+  stacked_merged: boolean;
+  seen_at: number;
+}
+
+/**
+ * A PR as [`crate::Hyperfeed::prs`] returns it.
+ */
+export interface PrView {
+  chain: string;
+  repo: string;
+  pr: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  base: string;
+  default_branch: string;
+  conflicts: boolean;
+  head_sha: string;
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  failing: string[];
+  stacked_on: number;
+  stacked_merged: boolean;
+  /**
+   * When the runtime looked (ms).
+   */
+  seen_at: number;
+}
+
+/**
  * When an agent last said it was running, by its name.
  */
 export interface Presence {
@@ -548,6 +1054,171 @@ export interface Progress {
   at: number;
 }
 
+/**
+ * One device, kept by its endpoint. Taking it off keeps the row with
+ * `removed: true`, so a device that synced late does not bring it back.
+ */
+export interface PushDevice {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  name: string;
+  /**
+   * Say only "Something needs you": no title, no text leaves your node.
+   */
+  quiet: boolean;
+  /**
+   * The VAPID public key it subscribed with.
+   */
+  key: string;
+  added_at: number;
+  removed: boolean;
+  updated_at: number;
+}
+
+/**
+ * What [`crate::Hyperfeed::add_push_device`] takes: the browser's
+ * `PushSubscription.toJSON()`, a name, and how much it may say.
+ */
+export interface PushDeviceInput {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  /**
+   * "Sandi's iPhone"; `""` is named "A device".
+   */
+  name: string;
+  quiet: boolean;
+  /**
+   * The key it subscribed with: refused unless it is the current one.
+   */
+  key: string;
+}
+
+/**
+ * A device as [`crate::Hyperfeed::push_devices`] returns it.
+ */
+export interface PushDeviceView {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  name: string;
+  quiet: boolean;
+  added_at: number;
+}
+
+/**
+ * The runtime's VAPID public key.
+ */
+export interface PushKey {
+  public_key: string;
+  /**
+   * The runtime that holds its private half, by name.
+   */
+  by: string;
+  updated_at: number;
+}
+
+/**
+ * The key as [`crate::Hyperfeed::push_key`] returns it; empty before a runtime set one.
+ */
+export interface PushKeyView {
+  public_key: string;
+  by: string;
+  updated_at: number;
+}
+
+/**
+ * What one agent reported it can reach, latest report wins.
+ */
+export interface Reach {
+  lines: ReachLine[];
+  at: number;
+}
+
+/**
+ * One agent profile an agent runs, as it reports it: which mode or route
+ * it serves, its model, whether its model is attested, and what it can reach
+ * besides your Calimero apps.
+ */
+export interface ReachLine {
+  /**
+   * What it runs: a message mode (`private`, `public`) or `default`.
+   */
+  serves: string;
+  profile: string;
+  model: string;
+  attested: boolean;
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+}
+
+/**
+ * What one agent reported it can reach, as settings shows it.
+ */
+export interface ReachView {
+  agent: string;
+  lines: ReachLine[];
+  at: number;
+}
+
+/**
+ * One of your standing rules: a short line your agent keeps to on every
+ * turn ("Never push to main", "Answer in English"). Only you add or remove
+ * one; removing keeps the row with `removed`, so the latest decision wins on
+ * every device.
+ */
+export interface Rule {
+  text: string;
+  created_at: number;
+  removed: boolean;
+  updated_at: number;
+}
+
+/**
+ * A rule your agent suggested after you corrected it. It changes nothing
+ * until you approve it, which adds it as your own rule.
+ */
+export interface RuleProposal {
+  text: string;
+  /**
+   * Why your agent suggests it: the correction that led to it.
+   */
+  why: string;
+  /**
+   * The chain where you corrected it, or `""`.
+   */
+  chain: string;
+  /**
+   * [`RULE_PROPOSED`], [`RULE_APPROVED`] or [`RULE_DISMISSED`].
+   */
+  status: string;
+  created_at: number;
+  updated_at: number;
+}
+
+/**
+ * A rule your agent suggested, as settings shows it.
+ */
+export interface RuleProposalView {
+  id: string;
+  text: string;
+  why: string;
+  chain: string;
+  status: string;
+  created_at: number;
+}
+
+/**
+ * One of your standing rules, as settings shows it.
+ */
+export interface RuleView {
+  id: string;
+  text: string;
+  created_at: number;
+}
+
 export interface SettingsView {
   owner: string;
   paused: boolean;
@@ -557,6 +1228,28 @@ export interface SettingsView {
    * Every agent that has reported in, most recent first.
    */
   agents: AgentView[];
+  /**
+   * Your standing rules, oldest first: your agent keeps to each on every turn.
+   */
+  rules: RuleView[];
+  /**
+   * Rules your agent suggested that wait for you, newest first.
+   */
+  rule_proposals: RuleProposalView[];
+  /**
+   * The modes a message of yours may be sent with ([`MESSAGE_MODES`]).
+   * Empty on a feed made before modes, which refuses a `mode` argument.
+   */
+  message_modes: string[];
+  /**
+   * What you let each agent reach on its computer, by agent name. An agent
+   * with no entry keeps its runtime's default.
+   */
+  access: AccessView[];
+  /**
+   * What each agent last reported it can reach, by agent name.
+   */
+  reach: ReachView[];
 }
 
 /**
@@ -569,6 +1262,64 @@ export interface Step {
    * (the reply you sent, the option you picked).
    */
   note: string;
+  at: number;
+}
+
+/**
+ * You asked your agent to stop working on one of your messages.
+ */
+export interface StopRequest {
+  at: number;
+}
+
+/**
+ * What a row is about in another app, as a key: `<app>:<context>`, plus
+ * `:<id>` for one thing in it (an issue, a doc, a thread). Kept two ways: by
+ * the action's id (what it touched), and by the key (the chain that touched
+ * it last), so a notification about the same thing joins that chain. See
+ * [`subject_key`].
+ */
+export interface Subject {
+  subject: string;
+  chain: string;
+  at: number;
+}
+
+/**
+ * A question that a newer one in its chain replaced: your agent asked
+ * again, or an app sent a new question, before you answered this one. Kept
+ * beside the row by its id. Its buttons go; an answer that still reaches it
+ * goes to your agent marked as answering an old question.
+ */
+export interface Superseded {
+  /**
+   * The newer question's id.
+   */
+  by: string;
+  at: number;
+}
+
+/**
+ * One step of your agent's turn on a message of yours: a tool it ran, a file
+ * it edited, a write it made. Shown in the message's work block, never as a
+ * row of its own.
+ */
+export interface TurnStep {
+  /**
+   * The agent's own id for the step, unique within the turn.
+   */
+  id: string;
+  /**
+   * What it is doing, in words: "Editing ChatView.tsx", "Running the tests".
+   */
+  title: string;
+  /**
+   * `running`, `waiting` (on your approval), `done` or `failed`.
+   */
+  status: string;
+  /**
+   * When the step started.
+   */
   at: number;
 }
 
@@ -605,6 +1356,129 @@ export interface Verdict {
   reason: string;
 }
 
+/**
+ * One watch, kept by id.
+ */
+export interface Watch {
+  chain: string;
+  condition: string;
+  repo: string;
+  pr: number;
+  branch: string;
+  action: string;
+  text: string;
+  /**
+   * Who set it: "mero-bot@studio", or "" for you.
+   */
+  agent: string;
+  /**
+   * [`WATCH_WATCHING`], [`WATCH_FIRING`], [`WATCH_DONE`], [`WATCH_FAILED`]
+   * or [`WATCH_CANCELLED`].
+   */
+  status: string;
+  /**
+   * How the action went, or why it was cancelled.
+   */
+  note: string;
+  /**
+   * What the runtime last saw, as one line: "3 of 5 checks passed, 2 running".
+   */
+  seen: string;
+  seen_at: number;
+  /**
+   * The session that fired it, and when.
+   */
+  fired_by: string;
+  fired_at: number;
+  created_at: number;
+  updated_at: number;
+}
+
+/**
+ * What [`crate::Hyperfeed::add_watch`] takes. Every field is required; use
+ * `""` or `0` where it does not apply.
+ */
+export interface WatchInput {
+  /**
+   * The chain it reports to: the task it belongs to.
+   */
+  chain: string;
+  /**
+   * One of [`WATCH_CONDITIONS`].
+   */
+  condition: string;
+  /**
+   * The GitHub repository, `owner/name`.
+   */
+  repo: string;
+  /**
+   * The pull request's number, for a `pr_*` condition; 0 otherwise.
+   */
+  pr: number;
+  /**
+   * The branch, for a `branch_*` condition; `""` is the repository's
+   * default branch. `""` for a `pr_*` condition.
+   */
+  branch: string;
+  /**
+   * One of [`WATCH_ACTIONS`]. `merge` goes with `pr_green` only.
+   */
+  action: string;
+  /**
+   * The prompt for a `turn`, or what a `notify` tells you; may be `""` for
+   * a `merge`.
+   */
+  text: string;
+  /**
+   * Who sets it: "mero-bot@studio"; `""` for you.
+   */
+  agent: string;
+}
+
+/**
+ * A watch, as the feed returns it.
+ */
+export interface WatchView {
+  id: string;
+  chain: string;
+  condition: string;
+  repo: string;
+  pr: number;
+  branch: string;
+  action: string;
+  text: string;
+  agent: string;
+  status: string;
+  note: string;
+  seen: string;
+  seen_at: number;
+  fired_by: string;
+  fired_at: number;
+  created_at: number;
+  updated_at: number;
+}
+
+/**
+ * Your agent's turn on one of your messages, as it goes: its steps, and the
+ * answer it has written so far. Kept beside the message by id and replaced
+ * whole by each report, so a long turn adds no rows.
+ */
+export interface Work {
+  steps: TurnStep[];
+  /**
+   * The answer so far, while the agent writes it; `""` before it starts.
+   */
+  draft: string;
+  at: number;
+}
+
+
+
+
+
+
+
+
 
 
 
@@ -627,10 +1501,31 @@ export type AbiEvent =
   }
   | {
     /**
+     * An agent session took a chain, or let it go: re-read who is on it.
+     */
+    name: "ChainLeaseChanged";
+    payload: Event_ChainLeaseChanged;
+  }
+  | {
+    /**
+     * Your agent wrote where a task stands: re-read its `checkpoint`.
+     */
+    name: "CheckpointChanged";
+    payload: Event_CheckpointChanged;
+  }
+  | {
+    /**
      * A lens was proposed, approved or turned down: re-read `lenses`.
      */
     name: "LensChanged";
     payload: Event_LensChanged;
+  }
+  | {
+    /**
+     * A task's links changed: re-read `links`.
+     */
+    name: "LinksChanged";
+    payload: Event_LinksChanged;
   }
   | { name: "MessageChanged"; payload: Event_MessageChanged }
   | {
@@ -643,7 +1538,36 @@ export type AbiEvent =
   | { name: "NotificationChanged"; payload: Event_NotificationChanged }
   | { name: "NotificationRecorded"; payload: Event_NotificationRecorded }
   | { name: "NotificationsSeen"; payload: Event_NotificationsSeen }
+  | {
+    /**
+     * Your agent's runtime saw a PR change on GitHub (`owner/name#number`):
+     * re-read `prs`.
+     */
+    name: "PrChanged";
+    payload: Event_PrChanged;
+  }
+  | {
+    /**
+     * A device to push to, or the push key, changed: re-read `push_devices`.
+     */
+    name: "PushChanged";
+  }
   | { name: "SettingsChanged" }
+  | {
+    /**
+     * You asked your agent to stop working on message `id`: it ends the turn
+     * and marks the message failed, "Stopped by you".
+     */
+    name: "StopRequested";
+    payload: Event_StopRequested;
+  }
+  | {
+    /**
+     * A watch was set, fired, finished or cancelled: re-read `watches`.
+     */
+    name: "WatchChanged";
+    payload: Event_WatchChanged;
+  }
 ;
 
 
@@ -658,6 +1582,63 @@ export class HyperfeedClient {
   constructor(client: ExecuteTransport | { readonly rpc: ExecuteTransport }, contextId: string) {
     this._transport = 'execute' in client ? client : client.rpc;
     this._contextId = contextId;
+  }
+
+  /**
+   * add_link
+   *
+   * Link a thing in another app to the task in `chain`: `subject` as
+   * [`subject_key`] makes it, a `label` for its chip, `by` you or your
+   * agent. What teammates do there joins the task from now on. Adding one
+   * again relabels it; you adding one you took off brings it back.
+   *
+   * @intent mutating
+   */
+  public async addLink(params: { chain: string; input: LinkInput }): Promise<LinkView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add_link', argsJson: params });
+    return response as LinkView;
+  }
+
+  /**
+   * add_push_device
+   *
+   * A phone (or any browser) to push to: its push subscription, a name,
+   * and `quiet` to say only "Something needs you". Owner only; adding one
+   * again updates it. At most [`MAX_PUSH_DEVICES`]; the oldest makes room.
+   *
+   * @intent mutating
+   */
+  public async addPushDevice(params: { input: PushDeviceInput }): Promise<PushDeviceView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add_push_device', argsJson: params });
+    return response as PushDeviceView;
+  }
+
+  /**
+   * add_rule
+   *
+   * Add a standing rule: one short line your agent keeps to on every turn.
+   * Only you add rules; the same rule twice is kept once.
+   *
+   * @intent mutating
+   */
+  public async addRule(params: { text: string }): Promise<RuleView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add_rule', argsJson: params });
+    return response as RuleView;
+  }
+
+  /**
+   * add_watch
+   *
+   * Set a watch: when its condition is met (a PR's checks green or red, a
+   * PR merged, a branch's CI green or red), its action runs once (merge
+   * the PR, start an agent turn with `text`, or tell you), reported in its
+   * chain. Your agent's runtime polls it; the same watch twice is kept once.
+   *
+   * @intent mutating
+   */
+  public async addWatch(params: { input: WatchInput }): Promise<WatchView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add_watch', argsJson: params });
+    return response as WatchView;
   }
 
   /**
@@ -682,9 +1663,11 @@ export class HyperfeedClient {
    * Use it whenever the work is not finished without you, so a chain is
    * only done when it is.
    *
+   * Takes a `headline` as [`Self::agent_say`] does.
+   *
    * @intent mutating
    */
-  public async agentAsk(params: { chain: string; reply_to: string; text: string; ask: Ask }): Promise<FeedItem> {
+  public async agentAsk(params: { chain: string; reply_to: string; text: string; ask: Ask; headline: string | null }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_ask', argsJson: params });
     return response as FeedItem;
   }
@@ -704,15 +1687,33 @@ export class HyperfeedClient {
   }
 
   /**
+   * agent_reach
+   *
+   * An agent saying what it can reach: one line per agent profile it runs.
+   * Shown to you in Controls beside what you set with `set_access`.
+   *
+   * @intent mutating
+   */
+  public async agentReach(params: { name: string; lines: ReachLine[] }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_reach', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * agent_say
    *
    * The agent says something in a chain: an answer to one of your
    * messages (`reply_to`, which marks it answered), or, with `reply_to`
    * empty, a note of its own in a chain that exists.
    *
+   * A long answer takes a `headline`: one line of at most 80 characters,
+   * which the feed row shows, with `text` (up to 32 KB) behind "more" and
+   * in full in the chat. Without one, `text` keeps to 2000 bytes. Older
+   * agents omit it.
+   *
    * @intent mutating
    */
-  public async agentSay(params: { chain: string; reply_to: string; text: string }): Promise<FeedItem> {
+  public async agentSay(params: { chain: string; reply_to: string; text: string; headline: string | null }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_say', argsJson: params });
     return response as FeedItem;
   }
@@ -731,6 +1732,45 @@ export class HyperfeedClient {
   }
 
   /**
+   * agent_work
+   *
+   * Your agent reports its turn on one of your messages: every step so far
+   * (each with its own `id`, a `title` in words, a `status` of `running`,
+   * `waiting`, `done` or `failed`, and when it started) and the answer it
+   * has written so far as `draft`. Each call replaces the last, so the
+   * turn never adds rows: send it whenever a step starts or ends, and
+   * every few seconds while the answer is being written. The steps stay
+   * on the message after the turn; the draft shows only while it is
+   * `thinking`.
+   *
+   * @intent mutating
+   */
+  public async agentWork(params: { id: string; steps: TurnStep[]; draft: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_work', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
+   * answer_ask
+   *
+   * Answer one question your agent asked, from its buttons: `text` is the
+   * option you picked, or your reply. It is your next message in the
+   * question's chain, and goes to your agent like any other.
+   *
+   * A question a newer one replaced can still be answered (a screen that
+   * had not caught up yet, another device): it is marked answered, the
+   * newer question stays open, and your message carries
+   * `answers_superseded`, so your agent confirms against where things
+   * stand now before acting on it.
+   *
+   * @intent mutating
+   */
+  public async answerAsk(params: { id: string; text: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'answer_ask', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
    * answer_notification
    *
    * Answer a notification from the feed: the reply to send, the option you
@@ -743,6 +1783,19 @@ export class HyperfeedClient {
   public async answerNotification(params: { id: string; answer: string }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'answer_notification', argsJson: params });
     return response as FeedItem;
+  }
+
+  /**
+   * approve_rule
+   *
+   * Approve a rule your agent suggested: it becomes one of your rules,
+   * added by you.
+   *
+   * @intent mutating
+   */
+  public async approveRule(params: { id: string }): Promise<RuleView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'approve_rule', argsJson: params });
+    return response as RuleView;
   }
 
   /**
@@ -761,6 +1814,19 @@ export class HyperfeedClient {
   }
 
   /**
+   * cancel_watch
+   *
+   * Cancel a watch still watching, with an optional note why. A watch that
+   * already fired cannot be called back.
+   *
+   * @intent mutating
+   */
+  public async cancelWatch(params: { id: string; note: string | null }): Promise<WatchView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'cancel_watch', argsJson: params });
+    return response as WatchView;
+  }
+
+  /**
    * chain
    *
    * Every row in a chain, oldest first: the whole flow, muted apps included.
@@ -773,6 +1839,18 @@ export class HyperfeedClient {
   }
 
   /**
+   * chain_lease
+   *
+   * Who holds `chain` right now: a lease that has not run out, or none.
+   *
+   * @intent read_only
+   */
+  public async chainLease(params: { chain: string }): Promise<LeaseView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'chain_lease', argsJson: params });
+    return response as LeaseView;
+  }
+
+  /**
    * check_action
    *
    * What your rules say about an action before the agent takes it.
@@ -782,6 +1860,35 @@ export class HyperfeedClient {
   public async checkAction(params: { app_key: string; category: string; writes: boolean }): Promise<Verdict> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'check_action', argsJson: params });
     return response as Verdict;
+  }
+
+  /**
+   * checkpoint
+   *
+   * The latest checkpoint on `chain`, or none: read it before acting there.
+   *
+   * @intent read_only
+   */
+  public async checkpoint(params: { chain: string }): Promise<CheckpointView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'checkpoint', argsJson: params });
+    return response as CheckpointView;
+  }
+
+  /**
+   * claim_chain
+   *
+   * An agent session takes `chain` for `ttl_ms` before it starts a turn
+   * there: one turn per chain at a time, across machines. Refused while
+   * another session holds an unexpired lease; a lease that ran out (its
+   * session died) can be taken. Claiming a chain the session already
+   * holds renews it. `agent` names it for the chat ("mero-bot@studio");
+   * older agents omit it.
+   *
+   * @intent mutating
+   */
+  public async claimChain(params: { chain: string; session: string; ttl_ms: number; agent: string | null }): Promise<LeaseView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'claim_chain', argsJson: params });
+    return response as LeaseView;
   }
 
   /**
@@ -825,14 +1932,29 @@ export class HyperfeedClient {
   }
 
   /**
+   * dismiss_rule
+   *
+   * Turn down a rule your agent suggested.
+   *
+   * @intent mutating
+   */
+  public async dismissRule(params: { id: string }): Promise<RuleProposalView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'dismiss_rule', argsJson: params });
+    return response as RuleProposalView;
+  }
+
+  /**
    * feed
    *
    * The feed: one row per chain, newest activity first.
    *
    * A row is the chain's **lead**: the latest step that needs you if any
-   * does, otherwise the latest row. Its `chain_len` says how many rows the
-   * chain holds and `needs_you` whether any of them needs you; read them all
-   * with [`Hyperfeed::chain`].
+   * does, otherwise the latest still underway (an action approved, retrying
+   * or being undone; your message waiting or being answered; your answer
+   * being delivered), otherwise the latest row. So a chain is settled only
+   * when everything in it is. Its `chain_len` says how many rows the chain
+   * holds and `needs_you` whether any of them needs you; read them all with
+   * [`Hyperfeed::chain`].
    *
    * `filter` keeps chains holding an action (`agent`), a notification
    * (`notifications`), or something that needs you (`needs_you`); `app_key`
@@ -844,6 +1966,32 @@ export class HyperfeedClient {
   public async feed(params: { filter: string; app_key: string; limit: number; before: number }): Promise<FeedPage> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'feed', argsJson: params });
     return response as FeedPage;
+  }
+
+  /**
+   * finish_watch
+   *
+   * How the fired action went: `done` or `failed`, with a note.
+   *
+   * @intent mutating
+   */
+  public async finishWatch(params: { id: string; outcome: string; note: string }): Promise<WatchView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'finish_watch', argsJson: params });
+    return response as WatchView;
+  }
+
+  /**
+   * fire_watch
+   *
+   * The runtime takes a watch whose condition it saw met, before it acts:
+   * `watching → firing`, refused for any other status. Of every session
+   * polling, exactly one gets it, once.
+   *
+   * @intent mutating
+   */
+  public async fireWatch(params: { id: string; session: string }): Promise<WatchView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'fire_watch', argsJson: params });
+    return response as WatchView;
   }
 
   /**
@@ -880,6 +2028,19 @@ export class HyperfeedClient {
   public async lenses(): Promise<LensView[]> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'lenses', argsJson: {} });
     return response as LensView[];
+  }
+
+  /**
+   * links
+   *
+   * The links of the task in `chain`, oldest first, each with how much
+   * teammates did there (its notifications in the task).
+   *
+   * @intent read_only
+   */
+  public async links(params: { chain: string }): Promise<LinkView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'links', argsJson: params });
+    return response as LinkView[];
   }
 
   /**
@@ -935,12 +2096,66 @@ export class HyperfeedClient {
   }
 
   /**
+   * propose_rule
+   *
+   * Your agent suggests a standing rule after you corrected it: `text` is
+   * the rule, `why` the correction, `chain` where it happened. It waits
+   * for you in Controls and in the chat; nothing changes until you approve
+   * it. A rule you already have, or one already waiting, is not suggested
+   * twice.
+   *
+   * @intent mutating
+   */
+  public async proposeRule(params: { text: string; why: string; chain: string }): Promise<RuleProposalView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'propose_rule', argsJson: params });
+    return response as RuleProposalView;
+  }
+
+  /**
+   * prs
+   *
+   * The PRs the runtime recorded for `chain` (`""`: every chain), the most
+   * recently seen first.
+   *
+   * @intent read_only
+   */
+  public async prs(params: { chain: string }): Promise<PrView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'prs', argsJson: params });
+    return response as PrView[];
+  }
+
+  /**
+   * push_devices
+   *
+   * The devices to push to, newest first.
+   *
+   * @intent read_only
+   */
+  public async pushDevices(): Promise<PushDeviceView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'push_devices', argsJson: {} });
+    return response as PushDeviceView[];
+  }
+
+  /**
+   * push_key
+   *
+   * The key phones subscribe with; empty before a runtime set one.
+   *
+   * @intent read_only
+   */
+  public async pushKey(): Promise<PushKeyView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'push_key', argsJson: {} });
+    return response as PushKeyView;
+  }
+
+  /**
    * record_action
    *
    * Record an action: a proposal for you to approve, or an outcome.
    *
    * A proposal the rules refuse is an error. An outcome the rules say
-   * needed you is recorded with a breach, never dropped.
+   * needed you is recorded with a breach, never dropped, unless the app's
+   * mode alone asked for you and its `grant` is a session you allowed.
    *
    * @intent mutating
    */
@@ -969,6 +2184,86 @@ export class HyperfeedClient {
   }
 
   /**
+   * record_pr
+   *
+   * Your agent's runtime records a PR a task links to as GitHub shows it
+   * now: state, base and default branch, conflicts, head commit, checks
+   * (the failing ones named) and the PR it is stacked on. Owner only; one
+   * row per PR, the oldest of [`MAX_PRS`] dropped to make room.
+   *
+   * @intent mutating
+   */
+  public async recordPr(params: { input: PrInput }): Promise<PrView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'record_pr', argsJson: params });
+    return response as PrView;
+  }
+
+  /**
+   * release_chain
+   *
+   * The session lets `chain` go at the end of its turn. Returns whether it
+   * held it: letting go of a chain it does not hold changes nothing.
+   *
+   * @intent mutating
+   */
+  public async releaseChain(params: { chain: string; session: string }): Promise<boolean> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'release_chain', argsJson: params });
+    return response as boolean;
+  }
+
+  /**
+   * remove_link
+   *
+   * Take a link off the task in `chain`. Nothing new about it joins the
+   * task, and your agent touching it again does not bring it back.
+   *
+   * @intent mutating
+   */
+  public async removeLink(params: { chain: string; subject: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'remove_link', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * remove_push_device
+   *
+   * Stop pushing to a device: you took it off, or its push service said
+   * it is gone.
+   *
+   * @intent mutating
+   */
+  public async removePushDevice(params: { endpoint: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'remove_push_device', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * remove_rule
+   *
+   * Remove one of your standing rules.
+   *
+   * @intent mutating
+   */
+  public async removeRule(params: { id: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'remove_rule', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * renew_chain
+   *
+   * The session holding `chain` keeps it for another `ttl_ms` while it
+   * works. Refused once another session has it, or when this one never
+   * did or released it: it should stop, not carry on beside the other.
+   *
+   * @intent mutating
+   */
+  public async renewChain(params: { chain: string; session: string; ttl_ms: number }): Promise<LeaseView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'renew_chain', argsJson: params });
+    return response as LeaseView;
+  }
+
+  /**
    * resolve_action
    *
    * Approve or decline a proposal, retry or drop a failure, ask for an
@@ -992,9 +2287,16 @@ export class HyperfeedClient {
    * anything (`chain` empty, which starts a new chain). Your agent picks it
    * up, answers in the chain, and may propose or act there under your rules.
    *
+   * A long message takes a `headline`, as [`Self::agent_say`] does. Older
+   * clients omit it.
+   *
+   * `mode` says how private it is, and so which of your agents takes it:
+   * `private` or `public` (see [`MESSAGE_MODES`]). Omitted or empty, it
+   * has none, and your agent's runtime decides. Older clients omit it.
+   *
    * @intent mutating
    */
-  public async say(params: { chain: string; text: string }): Promise<FeedItem> {
+  public async say(params: { chain: string; text: string; headline: string | null; mode: string | null }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'say', argsJson: params });
     return response as FeedItem;
   }
@@ -1007,9 +2309,40 @@ export class HyperfeedClient {
    *
    * @intent mutating
    */
-  public async sayWith(params: { chain: string; text: string; attachments: Attachment[] }): Promise<FeedItem> {
+  public async sayWith(params: { chain: string; text: string; attachments: Attachment[]; headline: string | null; mode: string | null }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'say_with', argsJson: params });
     return response as FeedItem;
+  }
+
+  /**
+   * set_access
+   *
+   * What `agent` (its name, as it reports in) may reach on its computer
+   * besides your Calimero apps: `folders` (each with or without writes),
+   * a `shell`, and the `web`. It replaces what was set before. Your
+   * agent's runtime refuses this method to the agent, so only you widen
+   * or narrow it.
+   *
+   * @intent mutating
+   */
+  public async setAccess(params: { agent: string; folders: Folder[]; shell: boolean; web: boolean }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_access', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_checkpoint
+   *
+   * Your agent writes where the task in `chain` stands: what is done, the
+   * next step, its branches, worktrees and PRs, and what is still open. It
+   * replaces the chain's last checkpoint, so a new session can pick the
+   * task up from it. The limits are in `checkpoint.rs`.
+   *
+   * @intent mutating
+   */
+  public async setCheckpoint(params: { chain: string; input: CheckpointInput }): Promise<CheckpointView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_checkpoint', argsJson: params });
+    return response as CheckpointView;
   }
 
   /**
@@ -1043,16 +2376,79 @@ export class HyperfeedClient {
   }
 
   /**
+   * set_push_key
+   *
+   * Your agent's runtime keeps its VAPID public key here, for phones to
+   * subscribe with; `by` names the runtime that holds the private half.
+   * Owner only. A different key drops every device: each subscribes again.
+   *
+   * @intent mutating
+   */
+  public async setPushKey(params: { public_key: string; by: string }): Promise<PushKeyView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_push_key', argsJson: params });
+    return response as PushKeyView;
+  }
+
+  /**
    * settings
    *
-   * Your rules: the pause switch, every app you set a policy for, and
-   * every guard (defaults included).
+   * Your rules: the pause switch, every app you set a policy for, every
+   * guard (defaults included), your standing rules, and the rules your
+   * agent suggested that wait for you.
    *
    * @intent read_only
    */
   public async settings(): Promise<SettingsView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'settings', argsJson: {} });
     return response as SettingsView;
+  }
+
+  /**
+   * start_task
+   *
+   * Spin a task off the chat in `from`: `text` is your message that opens
+   * it, in a chain of its own, with its own post, workspace, checkpoint
+   * and PRs. The chat keeps a link to the task (`hyperfeed:task:<chain>`)
+   * and the task one back (`hyperfeed:from:<chain>`). Takes a `headline`
+   * as [`Self::say`] does, which names the task's link. Returns the
+   * task's first message; its chain is the task.
+   *
+   * @intent mutating
+   */
+  public async startTask(params: { from: string; text: string; headline: string | null }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'start_task', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
+   * stop
+   *
+   * You ask your agent to stop working on one of your messages. One it has
+   * not taken up yet is closed at once, "Stopped by you"; one it is working
+   * on (`thinking`) keeps the request, and your agent ends its turn and
+   * marks the message failed, "Stopped by you". Asking twice changes
+   * nothing.
+   *
+   * @intent mutating
+   */
+  public async stop(params: { id: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'stop', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
+   * touch_subject
+   *
+   * Your agent touched `subject` (see [`subject_key`]) for the task in
+   * `chain` with a write that has no row of its own: a step of its turn on
+   * a message of yours. A notification about it then joins `chain`, as
+   * for an action that names it.
+   *
+   * @intent mutating
+   */
+  public async touchSubject(params: { chain: string; subject: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'touch_subject', argsJson: params });
+    return response as void;
   }
 
   /**
@@ -1065,6 +2461,32 @@ export class HyperfeedClient {
   public async unarchive(params: { chains: string[] }): Promise<number> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'unarchive', argsJson: params });
     return response as number;
+  }
+
+  /**
+   * watch_seen
+   *
+   * What the runtime last saw of a watching watch's condition, as one line
+   * ("3 of 5 checks passed, 2 running"). Only a change is written.
+   *
+   * @intent mutating
+   */
+  public async watchSeen(params: { id: string; seen: string }): Promise<WatchView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'watch_seen', argsJson: params });
+    return response as WatchView;
+  }
+
+  /**
+   * watches
+   *
+   * The watches in `chain` (`""`: every chain), oldest first, whatever
+   * their status.
+   *
+   * @intent read_only
+   */
+  public async watches(params: { chain: string }): Promise<WatchView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'watches', argsJson: params });
+    return response as WatchView[];
   }
 
 }

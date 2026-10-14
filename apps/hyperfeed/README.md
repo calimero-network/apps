@@ -16,7 +16,7 @@ each app, and talk to it about any of it.
 | Package | `com.calimero.hyperfeed` |
 | Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 50 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/feed.yml`](logic/workflows/feed.yml): every contract method on real nodes, the feed converging on a second node, and that node refused every write |
-| Frontend | [`app/`](app): Vite, React and mero-react. `/` (feed), `/chat` and `/controls` run against your node; `/demo` runs the same pages in memory |
+| Frontend | [`app/`](app): Vite, React and mero-react. `/` (feed), `/chat` and `/settings` run against your node; `/demo` runs the same pages in memory. Settings has a section per path: `/settings/controls`, `/settings/rules` (the language your agent answers in, English by default, and your standing rules), `/settings/agents`, `/settings/lenses`, `/settings/alerts` (`/controls` lands on the first) |
 
 ## Why it needs a contract of its own
 
@@ -33,7 +33,7 @@ same warrant path it uses everywhere else.
 | Row | Written by | Holds |
 | --- | --- | --- |
 | **Action** | your agent | app, source context, method, guard category, title, why, the warrant's intent hash, the executing relay, its chain and ask, every status step, and a *breach* note when the rules say it should have asked |
-| **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said`. Yours may carry up to four **images** (PNG, JPEG, WebP or GIF, 10 MB each): blobs on your node announced to the feed's context, of which the feed keeps only the id, name, type and size, beside the message by id |
+| **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said`. Yours may carry up to four **images** (PNG, JPEG, WebP or GIF, 10 MB each): blobs on your node announced to the feed's context, of which the feed keeps only the id, name, type and size, beside the message by id. Yours may also carry a **mode**, `private` or `public`, saying how private it is and so which of your agents takes it, kept beside the message by id |
 | **Notification** | your client, or your agent | app, source context, sender, title, event kind, and whether it needs you. Keyed by the state transition that produced it, so each of your devices records the same event once (see [the collector](#notifications-the-collector)). A notification a lens made also carries its **item type**, the type's **fields**, and the **reply call** that answers it in its app, kept beside it by id |
 | **Lens** | your agent proposes, you approve | for one app version: which of its events become feed items, of which type, and how your answer goes back. JSON, up to 32 kB; `proposed`, `approved` or `rejected` |
 | **Policy** | you | per app: the agent mode (`act` / `ask` / `read` / `off`) and notification routing (`push` / `feed` / `mute`) |
@@ -41,6 +41,10 @@ same warrant path it uses everywhere else.
 | **Pause** | you | while paused, every write the agent wants to make becomes a proposal |
 | **Archived** | you | per chain: put away, with the chain's latest activity then and an optional return time ("later"). It is out of the feed until something new happens in it or that time passes |
 | **Presence** | your agent | per agent name: when it last reported in. The app shows "Agent live" for 90 seconds after a report |
+| **Access** | you | per agent name: what it may reach on its computer besides your Calimero apps: folders (each read only, or read and write), a shell, the web. Last-writer-wins. The agent's runtime enforces it before every tool call and refuses `set_access` to the agent |
+| **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (mode, model, attested or not, folders, shell, web). Settings → Agents shows it beside your Access |
+| **Link** | your agent, or you | per task: a subject it works on (`<app>:<context>[:<id>]`) with a label, shown as a chip on the task's post. Your agent's writes add them; you add one from its address or take one off, and a link you took off stays off. The chip counts and groups what teammates did there, and opens it in its app beside the feed |
+| **Subject** | your agent | what an action touched in another app, as `<app>:<context>[:<id>]` (the id from its `issue_id`, `doc_id` or `thread_id` arg), kept beside the action by id, and the chain that last touched each subject. A typed notification whose reply call goes to the same subject, recorded with no chain of its own, joins that chain unless you put it away: one thread per task, teammates' comments included |
 
 Every record merges deterministically:
 
@@ -95,7 +99,7 @@ one. The lens is checked before you see it:
 - every path it reads (`page.messages[0].text`) is a field of the type the ABI says it reads;
 - a reply is a mutating call that puts your answer in it.
 
-It is then tried on the app's recent events. Only a lens that passes is proposed. In **Controls**,
+It is then tried on the app's recent events. Only a lens that passes is proposed. In **Settings → Lenses**,
 under *What your feed reads from each app*, you see what each lens records, preview it on recent
 events, and approve or turn it down. A new app version is learned again.
 
@@ -163,6 +167,13 @@ the feed context, then:
 - **Turns events into turns.** Something new that needs you starts a triage turn, where the agent
   prepares proposals (a drafted reply, options, an action) instead of acting on its own. What you
   approve or answer here starts a turn that carries it out and reports back.
+- **Fires your watches.** "Merge #434 when it's green" becomes a watch in the feed, and mero-bot's
+  runtime polls it through `gh` and fires it once, even after the session that set it ended (see
+  [Watches](#api-for-agents)).
+- **Keeps merges safe.** It records what it sees of the PRs your tasks link to (`record_pr`), so a
+  PR card can offer Merge only when every check passed and the base is the default branch. Your
+  Merge is a merge watch it fires at once when the checks are green; the agent merges only through
+  the same rules (its `merge` tool), and a raw `gh pr merge` in its shell is refused.
 
 So the agent learns what is happening from the node's live event stream, and it acts only through
 proposals you settle here, or where your rules let it act. See mero-bot's README for the flags
@@ -186,7 +197,7 @@ curl -s -X POST "$NODE/jsonrpc" -H "authorization: Bearer $TOKEN" -H 'content-ty
 
 The result is under `result.output`. A refusal is a JSON-RPC error of type `FunctionCallError`
 whose message is the contract's sentence (`not allowed: your agent is off in crm`). The feed's
-context id is under **Controls → Connect your agent**. Every write must come from the feed's owner
+context id is under **Settings → Agents → Connect your agent**. Every write must come from the feed's owner
 account (your node's own identity, or your account through a warrant); anything else is refused.
 
 **The agent's methods**
@@ -202,6 +213,66 @@ account (your node's own identity, or your account through a warrant); anything 
 | `chain` | `chain: string` | `FeedItem[]`, every row in the chain, oldest first |
 | `feed` | `filter: "all" \| "agent" \| "notifications" \| "needs_you", app_key: string, limit: u32, before: u64` | `FeedPage { items, counts, apps, next_before }`: one row per chain |
 | `settings` | none | `SettingsView { owner, paused, policies, guards }` |
+| `set_checkpoint` | `chain: string, input: CheckpointInput { done, next, branches, worktrees, prs, questions, author }` | `CheckpointView`, now the chain's latest; it replaces the last one |
+| `checkpoint` | `chain: string` | `CheckpointView { chain, done, next, branches, worktrees, prs, questions, author, updated_at }` or `null` |
+
+**Checkpoints: tasks a new session can pick up.** An agent session can end mid-task and take its
+plan with it. So at each milestone, and before a turn ends with work outstanding, the agent writes a
+short checkpoint on the task's chain with `set_checkpoint`: what is done, the next step, the
+branches, worktrees and PRs it works on, and what is still open. There is one per chain, and each
+write replaces the last (`CheckpointChanged { chain }`). A new session reads `checkpoint(chain)`
+before it acts there and resumes from it; mero-bot puts it in the turn's prompt. The app shows it
+behind "Where it stands" on the task. Limits: `done` and `next` up to 1000 bytes (at least one of
+them), each list up to 10 one-line entries of up to 300 bytes, `author` up to 120 bytes.
+
+**Watches: "when X, do Y" that outlives a session.** "Merge #434 when it's green" or "watch main
+and fix it if red" used to live in an agent session's background shell and die with it. A watch is
+kept in the feed instead: a condition, an action, and the chain it reports to.
+
+| Method | Args | Returns |
+| --- | --- | --- |
+| `add_watch` | `input: WatchInput { chain, condition, repo, pr, branch, action, text, agent }` | `WatchView`; the same watch twice is kept once |
+| `cancel_watch` | `id: string, note?: string` | `WatchView`, `cancelled`; refused once it fired |
+| `fire_watch` | `id: string, session: string` | `WatchView`, `firing`; refused unless it is `watching` |
+| `finish_watch` | `id: string, outcome: "done" \| "failed", note: string` | `WatchView`; only a `firing` watch |
+| `watch_seen` | `id: string, seen: string` | `WatchView`: where the condition stood when last looked at, one line |
+| `watches` | `chain: string` (`""`: every chain) | `WatchView[]`, oldest first |
+
+`condition` is `pr_green`, `pr_red`, `pr_merged` (with the PR's number in `pr`), `branch_green` or
+`branch_red` (CI on `branch`'s head; `""` is the default branch; `pr` 0). `action` is `merge` (with
+`pr_green` only), `turn` (start an agent turn in the chain with `text`) or `notify` (tell you `text`
+in the chain). At most 50 wait at once. The contract cannot read GitHub: the agent's runtime polls
+the conditions (mero-bot, through `gh`). When one is met it takes the watch with `fire_watch` before
+it acts, so of every session polling exactly one acts, once, and a restarted one never acts again;
+then it reports with `finish_watch`. A watch's status only moves forward (`watching → firing →
+done | failed`, or `watching → cancelled`), also when two devices' copies merge. A merge applies the
+safe-merge rules when it fires: open, not a draft, no conflicts, every check passed, and the base is
+the default branch, so a stacked PR is refused. The app shows the watches still waiting on their
+task, and every watch in its chat, with where each stands and Cancel. Each change emits
+`WatchChanged { id, chain, status }`.
+
+**PRs: what the runtime sees on GitHub, for the merge button.** The browser holds no GitHub token,
+so it reads only public repos, 60 requests an hour. The agent's runtime reads GitHub with your
+login and records each PR a task links to, one row per `owner/name#number`.
+
+| Method | Args | Returns |
+| --- | --- | --- |
+| `record_pr` | `input: PrInput { chain, repo, pr, title, state, draft, base, default_branch, conflicts, head_sha, checks, checks_total, checks_passed, checks_pending, failing, stacked_on, stacked_merged }` | `PrView` with `seen_at`; owner only |
+| `prs` | `chain: string` (`""`: every chain) | `PrView[]`, most recently seen first |
+
+`state` is `open`, `merged` or `closed`; `checks` is `green`, `red` (exactly when `failing` names a
+check, at most 10) or `pending`; `stacked_on` is the number of the PR whose branch `base` is (0 when
+`base` is the default branch). `chain` `""` keeps the chain already recorded. At most 200 are kept;
+one more drops the one seen longest ago. Each write emits `PrChanged { key }`.
+
+A PR card in a chat shows the newer of the browser's own read and this record, and its merge
+control goes by the safe-merge rules: **Merge** when every check passed and the base is the default
+branch, **Merge when green** while checks run, held with the failing check named on red (or for a
+draft or a conflict). Both set a merge watch (`pr_green` → `merge`) on the chat's chain, which the
+card then shows (waiting with Cancel, merging, merged, or not merged and why). A PR whose base is
+another PR's branch has no Merge: "Base merged: retarget to main" once that PR merged (asked of
+your agent), or a line saying it is stacked and can't merge into the default branch. The row is
+advisory: the runtime checks GitHub again when the watch fires.
 
 `ActionInput`, every field required (use `""` when there is nothing to say):
 
@@ -261,19 +332,28 @@ in the row's `note` while it is current.
    A message with images lists them in `attachments`; fetch each by `blob_id` from the node (with the
    feed's context id) and look at it before answering.
    Take it up with `agent_ack(id, "thinking", "")` (that is how the feed knows an agent is there),
-   then answer with `agent_say(chain, id, text)`, which marks it `answered`. When your answer leaves
+   then answer with `agent_say(chain, id, text, headline?)`, which marks it `answered`. A long answer
+   takes a `headline` (one line, at most 80 characters): the row shows it with the text behind "More",
+   and the text may run to 32 KB instead of 2000 bytes. Without one the app titles the row by the
+   answer's first sentence. When your answer leaves
    something to the user, use `agent_ask(chain, id, text, ask)` (a `choose` or `reply` ask): your
    message is `asked` and needs them until they say something in the chain, which answers it. If you cannot, give up
    with `agent_ack(id, "failed", why)`. A proposal or action the conversation leads to goes in the
    same `chain`. An agent that was away reads `open_questions()` when it starts.
    The app's Chat page (`/chat`) is these chains as chats: New chat is `say("", text)`, every
-   message after it is `say(chain, text)`, and your answers show as they land. A message nobody
+   message after it is `say(chain, text)`, and your answers show as they land. Beside Send, a
+   picker sends each message as **Private** (`mode: "private"`: only an agent whose model no
+   operator can read, such as one in an attested TEE) or **Public** (`mode: "public"`: whichever
+   agent you set up for it, such as one with your repositories); a chat
+   opens on the mode of your last message in it. `settings().message_modes` lists the modes a feed
+   takes; a feed made before modes lists none, refuses a `mode` argument, and shows no picker. A message nobody
    has taken up after 30 seconds asks whether your agent (mero-bot) is running.
 
 An outcome recorded where the rules said `ask` or `refuse` is still stored, with `breach` set, and
 stays in "Needs you" until you keep it or undo it. Events the contract emits: `ActionRecorded`,
 `ActionChanged`, `NotificationRecorded`, `NotificationChanged`, `NotificationsSeen`,
-`SettingsChanged`, `MessagePosted`, `MessageChanged`, `LensChanged`, `ArchiveChanged`.
+`SettingsChanged`, `MessagePosted`, `MessageChanged`, `LensChanged`, `ArchiveChanged`,
+`WatchChanged`, `PrChanged`.
 
 7. Report in while you run: `agent_seen(name)`, about every 30 seconds (mero-bot sends
    `mero-bot@<host>`). `settings().agents` lists who reported and when.
@@ -281,8 +361,8 @@ stays in "Needs you" until you keep it or undo it. Events the contract emits: `A
 **The owner's methods**, which the app calls: `resolve_action(id, decision, answer)` with
 `approve`, `decline`, `undo` or `keep` (`answer` is `""` except for approving a proposal with an
 ask); `answer_notification(id, answer)`; `set_policy(app_key, agent, notifications)`;
-`set_guard(category, enabled)`; `set_paused(paused)`; `record_notification(input)`;
-`say(chain, text)`; `decide_lens(app_key, application_id, decision)`; `mark_seen(ids)` and
+`set_guard(category, enabled)`; `set_paused(paused)`; `set_access(agent, folders, shell, web)`; `record_notification(input)`;
+`say(chain, text, headline, mode)`; `decide_lens(app_key, application_id, decision)`; `mark_seen(ids)` and
 `mark_all_seen()`; `archive(chains, until)` (`until` 0 = until something new happens, else ms
 for "later") and `unarchive(chains)`; `feed("archived", …)` lists what is put away. An agent kit can call them too, since it
 writes as you, but `resolve_action`, `answer_notification`, `decide_lens` and `say` are your decisions and your
@@ -303,6 +383,13 @@ words, and an agent should never call them for itself. The agent's side of lense
   "needs you" flag is a guess for every kind outside the known list.
 
 ## Running it
+
+Building the contract needs **cargo-mero 0.11.0-rc.83 or newer**: the core tag the workspace's
+`calimero-sdk` is pinned to in the root `Cargo.toml`, and the one CI installs
+(`.github/actions/install-cargo-mero`). An older cargo-mero writes an ABI the SDK no longer
+matches. Install that one with
+`cargo install --locked --git https://github.com/calimero-network/core.git --tag 0.11.0-rc.83 cargo-mero`,
+and check with `cargo mero --version`. When core is bumped, this moves with it.
 
 ```bash
 cargo test -p hyperfeed
@@ -348,7 +435,8 @@ feed** is there too. mero-bot follows you to a feed once you write in it.
 ## Upgrading
 
 Feeds made by an earlier version are not migrated: delete the old feed and create a new one. The
-state layout changed three times (conversations, then lenses, then images on messages), and the
+state layout changed many times (conversations, lenses, images on messages, and since then most
+releases, push devices included), and the
 prototype does not carry old rows over. An older feed still chats in text; attaching an image there
 says the feed is too old.
 
@@ -357,6 +445,8 @@ says the feed is too old.
 - Approvals from mero-bot's terminal and from the feed race; the first answer wins. A held tool call
   waits as long as mero-bot runs: there is no timeout yet.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
+  Phone alerts (Settings → Alerts) keep your devices' push subscriptions and the runtime's VAPID
+  public key in the feed; mero-bot's sender, which pushes what newly needs you, is a separate change.
 - Lenses for apps other than Chat are learned on your node; none ships for them. A lens is tried on
   recent events only when there are some, so a quiet app's lens is checked against its ABI alone.
 - An answer the feed sends itself has no retry if the tab closes between the two calls; the row

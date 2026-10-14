@@ -1,0 +1,71 @@
+{
+  "total_count": 11,
+  "check_runs": [
+    {
+      "name": "Browser E2E rich (mero-docs)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38113198949/job/114393121323"
+    },
+    {
+      "name": "E2E (${{ matrix.app }} / ${{ matrix.workflow }})",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38113198949/job/114393121191"
+    },
+    {
+      "name": "Journey (${{ matrix.app }} on ${{ matrix.leg }} ${{ matrix.merod }})",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38113198949/job/114393121179"
+    },
+    {
+      "name": "Browser E2E (hyperfeed)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38113198949/job/114393120433"
+    },
+    {
+      "name": "Vercel Preview Comments",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/calimero-network/apps/runs/114392965043"
+    },
+    {
+      "name": "Conformance",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38113198949/job/114392880203"
+    },
+    {
+      "name": "Rust (fmt, clippy, test)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38113198949/job/114392880202"
+    },
+    {
+      "name": "Frontend (typecheck, test, build)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38113198949/job/114392879526"
+    },
+    {
+      "name": "Build WASM (hyperfeed)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38113198949/job/114392879508"
+    },
+    {
+      "name": "App metadata",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38113198949/job/114392879488"
+    },
+    {
+      "name": "Detect changes",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38113198949/job/114392840750"
+    }
+  ]
+}

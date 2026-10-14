@@ -1,4 +1,4 @@
-import type { FeedItem } from "./generated/HyperfeedClient";
+import { HyperfeedClient, type FeedItem } from "./generated/HyperfeedClient";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Waiting for you",
@@ -70,33 +70,176 @@ const RULE_METHODS = new Set(["set_policy", "set_guard", "set_paused"]);
 /**
  * An action your agent can never carry out, approved or not: one of your own
  * decisions in Hyperfeed (a change to your rules, above all). Retrying it can
- * only fail again; you make it yourself, in Controls.
+ * only fail again; you make it yourself, in Settings → Controls.
  */
 export function onlyYouCan(item: FeedItem): boolean {
-  const method = item.method.trim().toLowerCase().replace(/^hyperfeed_/, "");
+  const method = bareMethod(item);
   return RULE_METHODS.has(method) || (item.app === "hyperfeed" && OWNER_METHODS.has(method));
+}
+
+function bareMethod(item: FeedItem): string {
+  return item.method.trim().toLowerCase().replace(/^hyperfeed_/, "");
+}
+
+/** Hyperfeed's own methods, as the contract names them: `set_policy`, `say` … */
+const HYPERFEED_METHODS = new Set(
+  Object.getOwnPropertyNames(HyperfeedClient.prototype)
+    .filter((n) => n !== "constructor")
+    .map((n) => n.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)),
+);
+
+/** How a node, or the tool in front of it, says an app has no such method. */
+const NO_SUCH_METHOD = /\bmethod\b[^\n]{0,120}\bnot found\b|\bunknown method\b|\bno such method\b|\bmethod not found\b|\bMethodNotFound\b/i;
+
+/**
+ * A failure that names a method the app does not have: one of Hyperfeed's
+ * that does not exist, or any app's the node said it could not find. Retrying
+ * calls the same method, so it fails the same way.
+ */
+export function unknownMethod(item: FeedItem): boolean {
+  if (item.kind !== "action") return false;
+  const method = bareMethod(item);
+  if (item.app === "hyperfeed" && method && !HYPERFEED_METHODS.has(method)) return true;
+  return NO_SUCH_METHOD.test(item.note);
+}
+
+/**
+ * A failed action no retry can fix: one only you can make, or a call to a
+ * method that does not exist. It offers Archive only: Retry would fail the
+ * same way every time, and there is nothing to decline.
+ */
+export function retryCannotHelp(item: FeedItem): boolean {
+  return item.kind === "action" && item.status === "failed" && (onlyYouCan(item) || unknownMethod(item));
+}
+
+/** Why a failed row offers no Retry, as one line; "" when it does. */
+export function noRetryLine(item: FeedItem, appName: (key: string) => string): string {
+  if (!retryCannotHelp(item)) return "";
+  if (onlyYouCan(item)) return "Only you can do this, in Settings → Controls. Retrying can't help, so archive it when you're done.";
+  return `${appName(item.app)} has no ${item.method}. Retrying can't help, so archive it.`;
+}
+
+/** Method verbs said otherwise: a `get_issue` reads an issue. */
+const VERBS: Record<string, string> = { get: "Read", view: "Read", lookup: "Look up" };
+/** Verbs that name one known thing: "Set the summary", not "Set a summary". */
+const THE = new Set(["set", "get", "read", "view", "edit", "update", "change", "clear", "describe", "lookup", "rename"]);
+
+/**
+ * A method as a person says it: `set_summary` is "Set the summary",
+ * `create_issue` "Create an issue", `list_issues` "List issues". The same
+ * words mero-bot titles your agent's rows with.
+ */
+export function plainMethod(method: string): string {
+  const [verb, ...rest] = method.trim().toLowerCase().split(/[_\s]+/).filter(Boolean);
+  if (!verb) return "";
+  const said = VERBS[verb] ?? `${verb.charAt(0).toUpperCase()}${verb.slice(1)}`;
+  if (rest.length === 0) return said;
+  const thing = rest.join(" ");
+  const plural = verb === "list" || /[^s]s$/.test(thing);
+  const article = plural ? "" : THE.has(verb) ? "the " : /^[aeiou]/.test(thing) ? "an " : "a ";
+  return `${said} ${article}${thing}`;
+}
+
+/** How long a headline the app derives may be: the contract's limit on one the agent writes. */
+export const HEADLINE_MAX = 80;
+/** A first sentence shorter than this says too little alone: the next one joins it. */
+const SHORT_SENTENCE = 24;
+
+/**
+ * A text's first sentence, as a headline of at most {@link HEADLINE_MAX}
+ * characters: its first line that says anything, without markdown's heading
+ * and list marks or emphasis, up to the first full stop, question or
+ * exclamation mark (with the next sentence when the first is a word or two,
+ * "Posted."), cut at a word with "…" when still too long.
+ */
+export function firstSentence(text: string, max = HEADLINE_MAX): string {
+  const line =
+    text
+      .split("\n")
+      .map((l) => l.replace(/^\s*(#{1,6}\s+|[-*+]\s+|>\s*|\d+[.)]\s+)/, "").replace(/[*_`]{1,3}/g, "").trim())
+      .find((l) => l) ?? "";
+  // Sentences of the line, in order; a short first one ("Posted.") takes the next while they fit.
+  const sentences = line.split(/(?<=[.!?])\s+/).filter(Boolean);
+  let sentence = sentences[0] ?? line;
+  for (const next of sentences.slice(1)) {
+    if ([...sentence].length >= SHORT_SENTENCE || [...`${sentence} ${next}`].length > max) break;
+    sentence = `${sentence} ${next}`;
+  }
+  if ([...sentence].length <= max) return sentence;
+  const cut = [...sentence].slice(0, max - 1).join("");
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/**
+ * A message's headline: the one your agent (or you) wrote with it, else its
+ * first sentence. Any other row's title, as it is.
+ */
+export function headlineOfMessage(item: FeedItem): string {
+  if (item.kind !== "message") return item.title;
+  if (item.headline) return item.headline;
+  return firstSentence(item.body) || item.title;
+}
+
+/**
+ * Whether a message says more than its headline: then the row shows the
+ * headline, and the body is behind "More".
+ */
+export function saysMore(item: FeedItem): boolean {
+  if (item.kind !== "message") return false;
+  const body = item.body.trim();
+  return Boolean(body) && body !== headlineOfMessage(item).replace(/…$/, "").trim();
+}
+
+/**
+ * A row's title. Your agent's older rows were titled with the bare method
+ * ("set summary in issue-tracker"): those are said in plain words, "Set the
+ * summary in Issue tracker". A message's title is its headline (see
+ * {@link headlineOfMessage}). Every other title is the row's own.
+ */
+export function rowTitle(item: FeedItem, appName: (key: string) => string): string {
+  if (item.kind === "message") return headlineOfMessage(item);
+  if (item.kind !== "action" || !item.method) return item.title;
+  const bare = item.method.replace(/_/g, " ");
+  if (item.title === `${bare} on the node`) return `${plainMethod(item.method)} on the node`;
+  if (item.title === `${bare} in ${item.app}`) return `${plainMethod(item.method)} in ${appName(item.app)}`;
+  return item.title;
+}
+
+/**
+ * The command behind a row for a tool your agent ran on your computer, or ""
+ * for any other row. The title already says what and where; the command is
+ * folded away behind Details.
+ */
+export function localCommand(item: FeedItem): string {
+  if (item.kind !== "action" || item.app !== "mero-bot" || item.source_label !== "This computer") return "";
+  return item.body.trim();
 }
 
 /**
  * Which plain buttons a row offers, straight from the contract's transitions.
  * A proposal with an ask is approved through its resolver instead (pick an
- * option, edit and send), so it offers no bare Approve.
+ * option, edit and send), so it offers no bare Approve. A failure no retry can
+ * fix offers neither Retry nor Decline: `archive` says Archive is its way out.
  */
-export function choicesFor(item: FeedItem): { approve?: string; decline: boolean; undo: boolean; keep: boolean } {
-  if (item.kind !== "action") return { decline: false, undo: false, keep: false };
+export function choicesFor(item: FeedItem): { approve?: string; decline: boolean; undo: boolean; keep: boolean; archive: boolean } {
+  if (item.kind !== "action") return { decline: false, undo: false, keep: false, archive: false };
   const pending = item.status === "pending";
+  const deadEnd = retryCannotHelp(item);
   return {
-    // No Retry where a retry can only fail the same way.
-    approve: pending && !item.ask.kind ? "Approve" : item.status === "failed" && !onlyYouCan(item) ? "Retry" : undefined,
-    decline: pending || item.status === "failed",
+    approve: pending && !item.ask.kind ? "Approve" : item.status === "failed" && !deadEnd ? "Retry" : undefined,
+    decline: pending || (item.status === "failed" && !deadEnd),
     undo: item.status === "done" && item.undoable,
     keep: item.breach !== "",
+    archive: deadEnd,
   };
 }
 
 /** Whether the row should show its in-place resolver right now. */
 export function resolvable(item: FeedItem): boolean {
   if (!item.ask.kind) return false;
+  // A newer question replaced it: its buttons are gone.
+  if (item.superseded_by && item.status !== "failed") return false;
   if (item.kind === "action") return item.status === "pending";
   // Your agent's question: open until you say something in its chain.
   if (item.kind === "message") return item.status === "asked";
@@ -133,7 +276,9 @@ export function stepsOf(item: FeedItem, appName: string): FlowStep[] {
     const note = step.note;
     if (item.kind === "message") {
       const mine = item.from === "you";
-      if (i === 0) add(i, mine ? "you" : "agent", mine ? "You" : "Your agent", item.body, "", step.at, mine ? "plain" : "good");
+      // A long message, written with a headline, is told by it: its row and the chat have the whole text.
+      if (i === 0 && item.headline) add(i, mine ? "you" : "agent", mine ? "You" : "Your agent", item.headline, quoteOf(item.body), step.at, mine ? "plain" : "good");
+      else if (i === 0) add(i, mine ? "you" : "agent", mine ? "You" : "Your agent", item.body, "", step.at, mine ? "plain" : "good");
       // Picking it up only matters while nothing else has happened; the
       // answer is a message of its own.
       else if (step.status === "thinking" && i === item.history.length - 1)
@@ -166,8 +311,10 @@ export function stepsOf(item: FeedItem, appName: string): FlowStep[] {
       return;
     }
     if (i === 0) {
-      const text = step.status === "pending" ? `Proposed: ${item.title}` : step.status === "failed" ? `Tried: ${item.title}` : item.title;
-      add(i, "agent", "Your agent", text, step.status === "failed" ? note : item.body, step.at, step.status === "failed" ? "bad" : step.status === "pending" ? "wait" : "good");
+      const title = rowTitle(item, () => appName);
+      const text = step.status === "pending" ? `Proposed: ${title}` : step.status === "failed" ? `Tried: ${title}` : title;
+      // A command is folded away, not told in the flow.
+      add(i, "agent", "Your agent", text, step.status === "failed" ? note : localCommand(item) ? "" : item.body, step.at, step.status === "failed" ? "bad" : step.status === "pending" ? "wait" : "good");
       return;
     }
     switch (step.status) {
@@ -327,4 +474,20 @@ export function laneOf(item: FeedItem): Lane {
   if (item.kind === "action") return ["approved", "retrying", "undo_requested"].includes(item.status) ? "progress" : "done";
   if (item.kind === "notification") return item.status === "answered" ? "progress" : "done";
   return "done";
+}
+
+/** What a question a newer one replaced says where its buttons were. */
+export const REPLACED = "Replaced by a newer question";
+
+/**
+ * Who is working on a chat's chain right now, from its message's lease:
+ * "mero-bot on studio · 2 min". "" when nobody holds it.
+ */
+export function heldLine(item: Pick<FeedItem, "held_by" | "held_since"> | undefined, now = Date.now()): string {
+  const who = item?.held_by?.trim();
+  if (!who) return "";
+  const at = who.lastIndexOf("@");
+  const name = at > 0 ? `${who.slice(0, at)} on ${who.slice(at + 1)}` : who;
+  const mins = Math.max(0, Math.floor((now - (item?.held_since ?? now)) / 60_000));
+  return `${name} · ${mins < 1 ? "just now" : mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} h`}`;
 }

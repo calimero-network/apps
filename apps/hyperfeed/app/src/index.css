@@ -480,6 +480,12 @@ input:focus-visible {
   outline-offset: 2px;
 }
 
+.more-text {
+  white-space: pre-wrap;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
 .quote {
   margin-top: 4px;
   padding: 10px 12px;
@@ -983,6 +989,110 @@ input:focus-visible {
   display: none;
 }
 
+/* ── settings ────────────────────────────────────────────────────────────── */
+
+/* A section list beside the section on wide screens; a row of tabs above it on
+   narrow ones. */
+.settings {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 16px;
+}
+
+.settings-nav a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.settings-nav a:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.settings-nav a.on {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 500;
+  box-shadow: var(--shadow);
+}
+
+.settings-nav .count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--wait-bg);
+  color: var(--wait-ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.agent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.agent-list li:first-child {
+  border-top: 0;
+}
+
+@media (max-width: 760px) {
+  .settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--sunken);
+  }
+
+  .settings-nav a {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+}
+
 /* ── controls ────────────────────────────────────────────────────────────── */
 
 .controls {
@@ -1169,7 +1279,8 @@ thead th {
   overflow-y: auto;
 }
 
-.chat-list ul {
+.chat-list ul,
+.chat-archived {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1237,7 +1348,7 @@ thead th {
   align-self: flex-start;
 }
 
-/* ← Chats (on a phone) and Delete chat, above the open chat. */
+/* ← Chats (on a phone) and Archive chat, above the open chat. */
 .chat-head {
   display: flex;
   align-items: center;
@@ -1260,16 +1371,17 @@ thead th {
   bottom: 140px;
 }
 
-.chat-delete {
+.chat-archive {
   margin-left: auto;
   color: var(--muted);
 }
 
-.chat-delete:hover {
-  color: var(--bad-ink);
+.chat-archive:hover {
+  color: var(--ink);
 }
 
-.chat-delete-confirm {
+/* Archiving keeps every message, so the question is not a warning. */
+.chat-archive-confirm {
   margin-left: auto;
   display: flex;
   flex-wrap: wrap;
@@ -1277,19 +1389,41 @@ thead th {
   justify-content: flex-end;
   gap: 8px;
   font-size: 14px;
-  color: var(--bad-ink);
-  background: var(--bad-bg);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow);
   border-radius: 10px;
   padding: 6px 6px 6px 12px;
 }
 
-.chat-delete-yes {
-  background: var(--bad-ink);
-  border-color: var(--bad-ink);
+.chat-archive-yes {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
   color: #fff;
 }
 
+/* An archived chat, dimmed, with Restore beside it. */
+.chat-archived-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-archived-item .chat-item {
+  flex: 1 1 auto;
+  min-width: 0;
+  opacity: 0.7;
+}
+
+.chat-restore {
+  flex: none;
+}
+
 .chat-thread {
+  /* The containing block of what is positioned inside it (each bubble's sr-only
+     label): without it those escape the scroller and stretch the page, so a long
+     chat let the whole page scroll out of the screen. */
+  position: relative;
   flex: 1 1 auto;
   overflow-y: auto;
   display: flex;
@@ -1326,6 +1460,65 @@ thead th {
   overflow-wrap: anywhere;
 }
 
+.bubble-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bubble-body ul,
+.bubble-body ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.bubble-body li {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bubble-body li + li {
+  margin-top: 2px;
+}
+
+.bubble-body :not(pre) > code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(127, 127, 127, 0.16);
+}
+
+.bubble.from-you .bubble-body a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.md-code {
+  position: relative;
+  border-radius: 8px;
+  background: var(--sunken);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.md-code pre {
+  margin: 0;
+  padding: 10px 12px;
+  padding-right: 64px;
+  overflow-x: auto;
+}
+
+.md-code pre code {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.md-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
 .bubble.from-you {
   align-self: flex-end;
   background: var(--accent-solid);
@@ -1337,6 +1530,108 @@ thead th {
   align-self: flex-start;
   background: var(--plain-bg);
   border-bottom-left-radius: 4px;
+}
+
+.ref-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.bubble.from-you .ref-link {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.ref-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.ref-card-title {
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.ref-card-title:hover {
+  text-decoration: underline;
+}
+
+.ref-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--muted);
+  align-items: center;
+}
+
+.ref-state {
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--good-bg);
+  color: var(--good-ink);
+}
+
+.ref-state.merged {
+  background: var(--busy-bg);
+  color: var(--busy-ink);
+}
+
+.ref-state.closed {
+  background: var(--plain-bg);
+  color: var(--muted);
+}
+
+.ref-checks {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.ref-checks.green {
+  color: var(--good-ink);
+}
+
+.ref-checks.red {
+  color: var(--bad-ink);
+}
+
+.ref-checks.pending {
+  color: var(--wait-ink);
+}
+
+.ref-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ref-why,
+.ref-stale {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* The runtime refused the last merge, or the PR is stacked: why, in full. */
+.ref-refused {
+  color: var(--bad-ink);
+  flex-basis: 100%;
+}
+
+.ref-stacked {
+  flex-basis: 100%;
 }
 
 .bubble-time {
@@ -1751,6 +2046,227 @@ body {
   font-size: 13px;
 }
 
+/* What you asked your agent to do: one post per task, on top. */
+.tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.task {
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  border-left: 3px solid var(--line);
+  overflow: hidden;
+}
+
+.task.tone-busy {
+  border-left-color: var(--busy-ink);
+}
+
+.task.tone-wait {
+  border-left-color: var(--wait-ink);
+}
+
+.task.tone-bad {
+  border-left-color: var(--bad-ink);
+}
+
+.task.tone-good {
+  border-left-color: var(--good-ink);
+}
+
+.task-line {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-line:hover {
+  background: var(--sunken);
+}
+
+.task-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-head .row-time {
+  margin-left: auto;
+}
+
+.task-faces {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.task-faces .badge-you {
+  width: auto;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.badge-person {
+  background: var(--plain-bg);
+  color: var(--ink);
+}
+
+.task-goal {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.task-live {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.task.tone-busy .task-live {
+  color: var(--busy-ink);
+}
+
+.task-apps {
+  display: flex;
+  gap: 4px;
+}
+
+/* What needs you: a strip of cards on top, each with its buttons on it. */
+.needs-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.needs-head {
+  padding: 0 2px;
+  border-bottom: 0;
+}
+
+.needs-head .lane-count {
+  background: var(--wait-bg);
+  color: var(--wait-ink);
+}
+
+.needs-clear {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--good-bg);
+  color: var(--good-ink);
+  font-size: 14px;
+}
+
+.needs-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  align-items: start;
+  gap: 10px;
+}
+
+.row.need {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  padding-bottom: 12px;
+  border: 1px solid var(--wait-line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.row.need + .row.need {
+  border-top-color: var(--wait-line);
+}
+
+/* Opened, a card takes the strip's whole width for its flow. */
+.row.need.open {
+  grid-column: 1 / -1;
+}
+
+.need-line {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.need-line > .badge {
+  flex: none;
+}
+
+.need-line .pill {
+  flex: none;
+  font-size: 11px;
+}
+
+.need-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.need-sentence {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.need-sentence strong {
+  color: var(--ink);
+}
+
+.need-object {
+  display: block;
+  color: var(--ink);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.need-where {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.need-settle {
+  padding: 0 14px 0 50px;
+}
+
+.need-settle .actions {
+  margin-top: 8px;
+}
+
+.row.need .row-body {
+  padding: 12px 14px 0 50px;
+}
+
 /* Your agent's day: one line, opening into its chains. */
 .lane-digest {
   margin: 0;
@@ -1870,6 +2386,25 @@ body {
 
 .row-body p {
   margin: 0;
+}
+
+.row-details summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.row-details pre {
+  margin: 6px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--ground);
+  border-radius: 8px;
+  padding: 10px;
 }
 
 .row-body .actions {
@@ -2071,6 +2606,153 @@ body {
   font-size: 11px;
 }
 
+/* A feed: its id and what it holds, and Delete beside any but the open one. */
+.switcher-feed {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.switcher-menu .switcher-feed > button[role="menuitemradio"] {
+  flex: 1;
+  height: 40px;
+}
+
+.switcher-id {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.switcher-facts {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.switcher-feed.empty .switcher-facts {
+  color: var(--wait-ink);
+}
+
+.switcher-menu .switcher-delete {
+  width: 30px;
+  justify-content: center;
+  padding: 0;
+  color: var(--muted);
+}
+
+.switcher-menu .switcher-delete:hover:not(:disabled) {
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+}
+
+.switcher-confirm {
+  padding: 8px;
+  border-radius: 7px;
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+  font-size: 13px;
+}
+
+.switcher-confirm p {
+  margin: 0 0 8px;
+}
+
+.switcher-confirm .row {
+  gap: 6px;
+}
+
+.switcher-menu .switcher-confirm .danger {
+  background: var(--bad-ink);
+  color: #fff;
+}
+
+.switcher-menu .switcher-confirm .ghost {
+  background: var(--surface);
+}
+
+.switcher-name {
+  color: var(--ink);
+}
+
+.switcher-name.unnamed {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.switcher-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.switcher-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  max-width: 220px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.switcher-menu .switcher-rename-button:hover:not(:disabled) {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+/* Naming a feed: a new one, or a rename in place of its row. */
+.switcher-rename {
+  padding: 8px;
+  border-radius: 7px;
+  background: var(--sunken);
+}
+
+.name-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.name-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.name-form input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.name-problem {
+  color: var(--bad-ink);
+  font-size: 11px;
+}
+
+.name-form .row {
+  gap: 6px;
+}
+
+.switcher-menu .name-form button {
+  justify-content: center;
+}
+
+.switcher-menu .name-form .primary,
+.switcher-menu .name-form .primary:hover:not(:disabled) {
+  background: var(--accent-solid);
+  color: #fff;
+}
+
+.switcher-menu .name-form .ghost {
+  background: var(--surface);
+}
+
 .switcher-menu hr {
   width: 100%;
   margin: 4px 0;
@@ -2099,6 +2781,14 @@ body {
   color: var(--muted);
 }
 
+/* A question a newer one replaced: no buttons, just why. */
+.bubble-asks.bubble-replaced,
+.note.replaced,
+.flow-detail.replaced {
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* ── team view ───────────────────────────────────────────────────────────── */
 
 .view-switch {
@@ -2125,6 +2815,18 @@ body {
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow);
+}
+
+/* A people-first row: who in bold, what they did plain, what it was about after. */
+.people-sentence {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.people-sentence strong,
+.people-what {
+  color: var(--ink);
+  font-weight: 500;
 }
 
 .team {
@@ -2326,4 +3028,580 @@ body {
     position: static;
     order: -1;
   }
+}
+
+/* ── a task's milestones ─────────────────────────────────────────────────── */
+
+/* "Filed → PR #12 → CI green → Merged": short stops joined by arrows. */
+.track {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.track-step {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.track-step + .track-step::before {
+  content: "→";
+  margin: 0 6px;
+  color: var(--muted);
+}
+
+.track-step span {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--plain-bg);
+  color: var(--ink-2);
+}
+
+.track-step.tone-good span {
+  background: var(--good-bg);
+  color: var(--good-ink);
+}
+
+.track-step.tone-bad span {
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+}
+
+.track-step.tone-wait span {
+  background: var(--wait-bg);
+  color: var(--wait-ink);
+}
+
+.track-step.tone-busy span {
+  background: var(--busy-bg);
+  color: var(--busy-ink);
+}
+
+.story {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* Who is working on a chat right now. */
+.chat-item-held,
+.chat-held {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ── standing rules ──────────────────────────────────────────────────────── */
+
+/* Settings → Rules: one readable column, the language first. */
+.rules-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 760px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rules-page .panel > p {
+  margin: 0;
+}
+
+.language-pick {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.language-pick label {
+  font-weight: 600;
+}
+
+.language-pick select {
+  min-height: 40px;
+  min-width: 240px;
+  max-width: 100%;
+  padding: 0 12px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+}
+
+.language-pick select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Devices in Phone alerts still use the plain list. */
+.rules,
+.rule-suggestions {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rule-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.rule-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.rule-item:first-child {
+  border-top: 0;
+}
+
+.rule-item:hover {
+  background: var(--sunken);
+}
+
+.rule-n {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--plain-bg);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rule-text {
+  font-size: 15px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.rules-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+
+.rules-empty p {
+  margin: 0;
+}
+
+.rule-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rule-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--wait-bg);
+  border: 1px solid var(--wait-line);
+  border-radius: var(--radius);
+}
+
+.rule-suggestion strong {
+  font-size: 15px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.rule-suggestion-head {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wait-ink);
+}
+
+.rule-add {
+  display: flex;
+  gap: 8px;
+}
+
+.rule-add input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 12px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+}
+
+.rule-add input:disabled {
+  background: var(--sunken);
+}
+
+.rule-add .small {
+  min-height: 40px;
+}
+
+@media (max-width: 640px) {
+  .rule-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .rule-n {
+    display: none;
+  }
+
+  .language-pick select {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}
+
+.chat-rules {
+  margin: 0 12px 8px;
+}
+
+/* Where a task stands, as your agent last wrote it: behind a disclosure on the task. */
+.checkpoint {
+  border-top: 1px solid var(--line);
+  padding: 8px 14px 10px;
+  font-size: 13px;
+}
+
+.checkpoint > summary {
+  cursor: pointer;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.checkpoint-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.checkpoint-section dt {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.checkpoint-section dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.checkpoint-by {
+  margin: 8px 0 0;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+/* Watches ("merge #434 when green") on a task and in its chat: where each stands, with Cancel. */
+.watches {
+  list-style: none;
+  margin: 0 12px 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task .watches {
+  margin: 0;
+  padding: 6px 14px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.watch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 13px;
+}
+
+.watch-what {
+  overflow-wrap: anywhere;
+}
+
+.watch-seen {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.watch-cancel {
+  margin-left: auto;
+}
+
+/* ── A task's links: chips for the things it works on ── */
+
+.links {
+  margin: 0 12px 8px;
+}
+
+.task .links {
+  margin: 0;
+  padding: 6px 14px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.link-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.link-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  max-width: 100%;
+}
+
+.link-chip.open {
+  border-color: var(--accent);
+}
+
+.link-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 4px 0 4px;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.link-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.link-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.link-icon {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.link-new {
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+}
+
+.link-add {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.link-add input {
+  min-width: 240px;
+  min-height: 28px;
+  font-size: 13px;
+}
+
+.link-bad {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.link-group {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 8px 0 0 10px;
+  border-left: 2px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.link-step {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.link-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.link-step-body p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.link-empty {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+/* A one-line pointer to a task started from this chat, or the chat a task came from. */
+.chat-pointer {
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chat-pointer:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.link-chain .link-main {
+  padding: 0 10px;
+}
+
+/* Which agent a message goes to: Private (chat) or Code, beside Send. */
+.mode-picker {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mode-option {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.mode-option.on {
+  background: var(--accent-solid);
+  color: #fff;
+}
+
+.mode-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* On a message of yours: which agent it went to. */
+.mode-chip {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+/* What your agents can reach: one block per agent. */
+.agent-access {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent-access h3 {
+  font-size: 13px;
+  margin: 0;
+}
+
+.reach-lines,
+.folders {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.folder {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.folder .mono {
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+
+.folder-add {
+  display: flex;
+  gap: 8px;
+}
+
+.folder-add input {
+  flex: 1;
+  min-width: 0;
+}
+
+.error-inline {
+  color: var(--danger, #c0392b);
+  font-size: 12px;
+  margin: 0;
 }

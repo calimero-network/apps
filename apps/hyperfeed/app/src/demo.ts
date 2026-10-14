@@ -3,17 +3,25 @@ import type {
   AppCount,
   Ask,
   Attachment,
+  CheckpointInput,
+  CheckpointView,
   FeedItem,
   FeedPage,
   LensView,
   NotificationInput,
   PolicyView,
+  RuleProposalView,
+  RuleView,
   SettingsView,
   Step,
+  TurnStep,
   Verdict,
 } from "./generated/HyperfeedClient";
 import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter, type NotificationMode } from "./backend";
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
+import { mergeWatchInput, moveWatch, newWatch } from "./watches";
+import { replySubject, splitSubject } from "./subject";
+import type { AccessView, Folder, LinkView, PrInput, PrView, ReachLine, ReachView, WatchInput, WatchView } from "./generated/HyperfeedClient";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 
@@ -39,9 +47,23 @@ const GUARDS: [string, boolean][] = [
 
 export const NO_ASK: Ask = { kind: "", prompt: "", options: [], draft: "" };
 
-/** The contract's limits on a message and on a title. */
+/** The contract's limits on a message, a long one with a headline, a headline and a title. */
 const MAX_MESSAGE = 2_000;
+const MAX_LONG_MESSAGE = 32_000;
+const MAX_HEADLINE = 80;
 const MAX_TITLE = 200;
+/** How private a message of yours is, as the contract's `MESSAGE_MODES`. */
+const MESSAGE_MODES = ["private", "public"];
+
+/** The contract's `check_message`: the headline to keep, or "" for none. A headline lets the text run long. */
+function checkMessage(text: string, headline = ""): string {
+  const h = headline.trim();
+  if (h && [...h].length > MAX_HEADLINE) throw new Error(`headline is ${[...h].length} characters, limit is ${MAX_HEADLINE}`);
+  if (/[\r\n]/.test(h)) throw new Error("headline must be one line");
+  const max = h ? MAX_LONG_MESSAGE : MAX_MESSAGE;
+  if (new TextEncoder().encode(text).length > max) throw new Error(`text is longer than ${max} bytes`);
+  return h;
+}
 
 /** A message's first line, cut to a title's length (the contract's `headline`). */
 export function headline(text: string): string {
@@ -52,6 +74,11 @@ export function headline(text: string): string {
 type Listener = () => void;
 
 const MINUTE = 60_000;
+/** Mirrors the contract's `SESSION_GRANT` and `GRANT_WINDOW_MS`. */
+const SESSION_GRANT = "Allow for this session";
+/** The note on a message whose turn you stopped, as the contract writes it. */
+export const STOPPED_BY_YOU = "Stopped by you";
+const GRANT_WINDOW_MS = 12 * 60 * MINUTE;
 
 export class DemoBackend implements FeedBackend {
   readonly kind = "demo" as const;
@@ -63,9 +90,17 @@ export class DemoBackend implements FeedBackend {
   private policies = new Map<string, PolicyView>();
   private guards = new Map<string, boolean>();
   private paused = false;
+  /** Your standing rules, oldest first, and the ones the pretend agent suggested. Nothing is seeded. */
+  private rules: RuleView[] = [];
+  /** What each agent may reach, and what each reported it can, by agent name. */
+  private access = new Map<string, AccessView>();
+  private reach = new Map<string, ReachView>();
+  private ruleProposals: RuleProposalView[] = [];
   /** Chains put away: the chain's latest activity then, and when "later" brings it back (0: never). */
   private archivedChains = new Map<string, { at: number; until: number }>();
   private lensRows = new Map<string, LensView>();
+  /** The chain that last touched each subject, by its key; see `subject.ts`. */
+  private subjectChains = new Map<string, string>();
   /** What the feed sent into other apps, newest last: the demo's stand-in for them. */
   readonly sent: { contextId: string; method: string; args: Record<string, unknown> }[] = [];
   private listeners = new Set<Listener>();
@@ -121,11 +156,21 @@ export class DemoBackend implements FeedBackend {
     return answer("act", `your agent may act in ${app}`);
   }
 
+  /** Mirrors `Hyperfeed::granted`: a session you allowed in this app, under its Ask mode alone. */
+  private granted(grant: string, app: string, category: string): boolean {
+    if (!grant || this.policy(app).agent !== "ask" || this.paused || this.guardOn(category)) return false;
+    const proposal = this.items.get(grant);
+    if (proposal?.kind !== "action" || proposal.app !== app) return false;
+    const now = this.now();
+    return proposal.history.some((s) => s.status === "approved" && s.note === SESSION_GRANT && now - s.at <= GRANT_WINDOW_MS);
+  }
+
   private needsYou(item: FeedItem): boolean {
     // In a conversation, only your agent's open question needs you.
-    if (item.kind === "message") return item.from === "agent" && item.status === "asked";
+    // A question a newer one replaced no longer waits on you.
+    if (item.kind === "message") return item.from === "agent" && item.status === "asked" && !item.superseded_by;
     if (item.kind === "notification") {
-      if (item.ask.kind) return item.status === "received" || item.status === "failed";
+      if (item.ask.kind) return (item.status === "received" && !item.superseded_by) || item.status === "failed";
       return (this.flagged.get(item.id) ?? false) && !item.seen;
     }
     return item.status === "pending" || item.status === "failed" || item.breach !== "";
@@ -148,6 +193,8 @@ export class DemoBackend implements FeedBackend {
     if (stored.kind === "message" && stored.status !== "thinking") {
       stored.doing = "";
       stored.doing_at = 0;
+      // The steps stay with the message; the answer replaces the draft.
+      stored.draft = "";
     }
     this.items.set(stored.id, stored);
     return copy(stored);
@@ -196,7 +243,8 @@ export class DemoBackend implements FeedBackend {
       const byTime = (a: FeedItem, b: FeedItem) => a.at - b.at || (a.id < b.id ? -1 : 1);
       const sorted = [...items].sort(byTime);
       const needing = sorted.filter((i) => i.needs_you);
-      const lead = copy(needing[needing.length - 1] ?? sorted[sorted.length - 1]!);
+      const running = sorted.filter(underway);
+      const lead = copy(needing[needing.length - 1] ?? running[running.length - 1] ?? sorted[sorted.length - 1]!);
       lead.chain_len = items.length;
       lead.chain_at = Math.max(...items.map((i) => i.chain_at));
       lead.needs_you = needing.length > 0;
@@ -258,7 +306,79 @@ export class DemoBackend implements FeedBackend {
       guards: GUARDS.map(([category]) => ({ category, enabled: this.guardOn(category) })),
       // The pretend agent is "there" whenever it answers.
       agents: this.agentDelayMs > 0 ? [{ name: "demo agent", seen_at: this.now() }] : [],
+      rules: this.rules.map((r) => ({ ...r })),
+      rule_proposals: this.ruleProposals
+        .filter((p) => p.status === "proposed")
+        .sort((a, b) => b.created_at - a.created_at)
+        .map((p) => ({ ...p })),
+      message_modes: [...MESSAGE_MODES],
+      access: [...this.access.values()].map((a) => ({ ...a, folders: a.folders.map((f) => ({ ...f })) })).sort((a, b) => a.agent.localeCompare(b.agent)),
+      reach: [...this.reach.values()].map((r) => ({ ...r, lines: r.lines.map((l) => ({ ...l })) })).sort((a, b) => a.agent.localeCompare(b.agent)),
     };
+  }
+
+  /** The contract's `check_rule`: one short line, trimmed. */
+  private static checkRule(text: string): string {
+    const t = text.trim();
+    if (!t) throw new Error("rule must not be empty");
+    if (/[\r\n]/.test(t)) throw new Error("a rule is one line");
+    if (new TextEncoder().encode(t).length > 280) throw new Error("rule is longer than 280 bytes");
+    return t;
+  }
+
+  private insertRule(text: string): RuleView {
+    const same = this.rules.find((r) => r.text.toLowerCase() === text.toLowerCase());
+    if (same) return { ...same };
+    if (this.rules.length >= 30) throw new Error("you have 30 rules, the limit; remove one first");
+    const rule = { id: `rule-${this.nextId++}`, text, created_at: this.tick() };
+    this.rules.push(rule);
+    this.changed();
+    return { ...rule };
+  }
+
+  async addRule(text: string): Promise<RuleView> {
+    return this.insertRule(DemoBackend.checkRule(text));
+  }
+
+  async removeRule(id: string): Promise<void> {
+    if (!this.rules.some((r) => r.id === id)) throw new Error(`no rule ${id}`);
+    this.rules = this.rules.filter((r) => r.id !== id);
+    this.changed();
+  }
+
+  /** The agent suggests a rule after a correction, as `propose_rule` takes it. */
+  proposeRule(text: string, why = "", chain = ""): RuleProposalView {
+    const t = DemoBackend.checkRule(text);
+    if (chain && !this.chainExists(chain)) throw new Error(`no chain ${chain}`);
+    if (this.rules.some((r) => r.text.toLowerCase() === t.toLowerCase())) throw new Error("that is already one of the user's rules");
+    const same = this.ruleProposals.find((p) => p.status === "proposed" && p.text.toLowerCase() === t.toLowerCase());
+    if (same) return { ...same };
+    const p = { id: `suggested-${this.nextId++}`, text: t, why, chain, status: "proposed", created_at: this.tick() };
+    this.ruleProposals.push(p);
+    this.changed();
+    return { ...p };
+  }
+
+  private waitingProposal(id: string): RuleProposalView {
+    const p = this.ruleProposals.find((x) => x.id === id);
+    if (!p) throw new Error(`no suggested rule ${id}`);
+    if (p.status !== "proposed") throw new Error(`suggested rule ${id} is already ${p.status}`);
+    return p;
+  }
+
+  async approveRule(id: string): Promise<RuleView> {
+    const p = this.waitingProposal(id);
+    const rule = this.insertRule(p.text);
+    p.status = "approved";
+    this.changed();
+    return rule;
+  }
+
+  async dismissRule(id: string): Promise<RuleProposalView> {
+    const p = this.waitingProposal(id);
+    p.status = "dismissed";
+    this.changed();
+    return { ...p };
   }
 
   async archive(chains: string[], until = 0): Promise<number> {
@@ -414,26 +534,266 @@ export class DemoBackend implements FeedBackend {
   };
   private blobs = new Map<string, Blob>();
 
-  async say(chain: string, text: string, attachments: Attachment[] = []): Promise<FeedItem> {
+  async say(chain: string, text: string, attachments: Attachment[] = [], mode = ""): Promise<FeedItem> {
+    if (mode && !MESSAGE_MODES.includes(mode)) throw new Error(`mode must be one of ${MESSAGE_MODES.join(", ")}, not ${mode}`);
     if (!text.trim() && attachments.length === 0) throw new Error("text must not be empty");
-    if (new TextEncoder().encode(text).length > MAX_MESSAGE) throw new Error(`text is longer than ${MAX_MESSAGE} bytes`);
+    checkMessage(text);
     if (attachments.length > MAX_ATTACHMENTS) throw new Error(`${attachments.length} attachments, limit is ${MAX_ATTACHMENTS}`);
     for (const a of attachments) {
       const refused = refuseImage({ name: a.name, type: a.mime, size: a.size }, 0);
       if (refused) throw new Error(refused);
     }
     if (chain && !this.chainExists(chain)) throw new Error(`no chain ${chain}`);
-    // Whatever your agent asked you in this chain, your words answer.
-    for (const m of [...this.items.values()]) {
-      if (chain && m.chain === chain && m.kind === "message" && m.from === "agent" && m.status === "asked") this.step(m, "answered", text.slice(0, 250));
-    }
-    const posted = this.post(chain, "you", text, "", "waiting", NO_ASK, attachments);
+    if (chain) this.answerAsks(chain, text);
+    const posted = this.post(chain, "you", text, "", "waiting", NO_ASK, attachments, "", mode);
     this.changed();
-    if (this.agentDelayMs > 0) {
-      setTimeout(() => this.agentAck(posted.id), this.agentDelayMs / 2);
-      setTimeout(() => this.agentAnswers(posted.id), this.agentDelayMs * 2);
-    }
+    this.agentTakesUp(posted.id);
     return posted;
+  }
+
+  /** Whatever your agent asked you in this chain, your words answer; not a question a newer one replaced. */
+  private answerAsks(chain: string, text: string) {
+    for (const m of [...this.items.values()]) {
+      if (m.chain === chain && m.kind === "message" && m.from === "agent" && m.status === "asked" && !m.superseded_by) {
+        this.step(m, "answered", text.slice(0, 250));
+      }
+    }
+  }
+
+  private agentTakesUp(id: string) {
+    if (this.agentDelayMs > 0) {
+      setTimeout(() => this.agentAck(id), this.agentDelayMs / 2);
+      setTimeout(() => this.agentAnswers(id), this.agentDelayMs * 2);
+    }
+  }
+
+  /**
+   * You answer one of your agent's questions from its buttons, as `answer_ask`
+   * takes it. A question a newer one replaced can still be answered: your
+   * message is then flagged, and the newer question stays open.
+   */
+  async answerAsk(id: string, _chain: string, text: string): Promise<FeedItem> {
+    if (!text.trim()) throw new Error("text must not be empty");
+    checkMessage(text);
+    const m = this.items.get(id);
+    if (!m || m.kind !== "message" || m.from !== "agent" || !m.ask.kind) throw new Error(`message ${id} asks you nothing`);
+    if (m.status !== "asked") throw new Error(`message ${id} is already ${m.status}`);
+    const stale = Boolean(m.superseded_by);
+    if (stale) this.step(m, "answered", text.slice(0, 250));
+    else this.answerAsks(m.chain, text);
+    const posted = this.put({ ...this.post(m.chain, "you", text, "", "waiting"), answers: id, answers_superseded: stale });
+    this.changed();
+    this.agentTakesUp(posted.id);
+    return posted;
+  }
+
+  /** A new question in `chain` replaces the ones there you have not answered yet (the contract's `supersede_asks`). */
+  private supersede(chain: string, by: string) {
+    for (const i of [...this.items.values()]) {
+      if (i.id === by || i.chain !== chain || i.superseded_by) continue;
+      const open =
+        (i.kind === "message" && i.from === "agent" && i.status === "asked") ||
+        (i.kind === "notification" && i.ask.kind !== "" && i.status === "received");
+      if (open) this.put({ ...i, superseded_by: by });
+    }
+  }
+
+  /** Agent sessions' leases on chains, as `claim_chain` keeps them. */
+  private leases = new Map<string, { session: string; agent: string; claimed_at: number; expires_at: number }>();
+
+  /** A session takes a chain before a turn there, as `claim_chain` takes it: refused while another holds it unexpired. */
+  claimChain(chain: string, session: string, ttlMs: number, agent = "") {
+    const now = this.now();
+    const prior = this.leases.get(chain);
+    if (prior && prior.session !== session && prior.expires_at > now) throw new Error(`chain ${chain} is held by ${prior.agent || "another session"}`);
+    const lease = { session, agent, claimed_at: prior?.session === session && prior.expires_at > now ? prior.claimed_at : now, expires_at: now + ttlMs };
+    this.leases.set(chain, lease);
+    this.markHeld(chain, agent, lease.claimed_at);
+    return { chain, ...lease };
+  }
+
+  /** The session lets the chain go, as `release_chain` does. */
+  releaseChain(chain: string, session: string): boolean {
+    const lease = this.leases.get(chain);
+    if (!lease || lease.session !== session || lease.expires_at === 0) return false;
+    lease.expires_at = 0;
+    this.markHeld(chain, "", 0);
+    return true;
+  }
+
+  /** Where each task stands, as `set_checkpoint` keeps it: one per chain, the latest replacing the last. */
+  private checkpoints = new Map<string, CheckpointView>();
+
+  /** The agent writes where a task stands, as `set_checkpoint` takes it (same limits). */
+  setCheckpoint(chain: string, input: CheckpointInput): CheckpointView {
+    if (!this.chainExists(chain)) throw new Error(`no chain ${chain}`);
+    const done = input.done.trim();
+    const next = input.next.trim();
+    if (!done && !next) throw new Error("a checkpoint says what is done or what is next");
+    if (done.length > 1_000 || next.length > 1_000) throw new Error("done and next are 1000 bytes at most");
+    const list = (field: string, values: string[]) => {
+      const kept = values.map((v) => v.trim()).filter(Boolean);
+      if (kept.length > 10 || kept.some((v) => v.length > 300 || /[\r\n]/.test(v))) throw new Error(`${field}: up to 10 one-line entries of 300 bytes`);
+      return kept;
+    };
+    const prior = this.checkpoints.get(chain);
+    const view: CheckpointView = {
+      chain,
+      done,
+      next,
+      branches: list("branches", input.branches),
+      worktrees: list("worktrees", input.worktrees),
+      prs: list("prs", input.prs),
+      questions: list("questions", input.questions),
+      author: input.author.trim().slice(0, 120),
+      updated_at: Math.max(this.now(), (prior?.updated_at ?? 0) + 1),
+    };
+    this.checkpoints.set(chain, view);
+    this.changed();
+    return { ...view };
+  }
+
+  async checkpoint(chain: string): Promise<CheckpointView | null> {
+    const c = this.checkpoints.get(chain);
+    return c ? { ...c, branches: [...c.branches], worktrees: [...c.worktrees], prs: [...c.prs], questions: [...c.questions] } : null;
+  }
+
+  private markHeld(chain: string, agent: string, since: number) {
+    for (const i of this.items.values()) {
+      if (i.chain === chain && i.kind === "message") {
+        i.held_by = agent;
+        i.held_since = since;
+      }
+    }
+    this.changed();
+  }
+
+  /** Watches ("when X, do Y"), as `add_watch` keeps them; see watches.ts for the rules. */
+  private watchRows = new Map<string, WatchView>();
+
+  /** The agent sets a watch, as `add_watch` takes it. */
+  addWatch(input: WatchInput): WatchView {
+    if (!this.chainExists(input.chain)) throw new Error(`no chain ${input.chain}`);
+    const w = newWatch(input, `watch-${this.nextId++}`, this.now());
+    this.watchRows.set(w.id, w);
+    this.changed();
+    return { ...w };
+  }
+
+  async watches(chain: string): Promise<WatchView[]> {
+    return [...this.watchRows.values()].filter((w) => !chain || w.chain === chain).map((w) => ({ ...w }));
+  }
+
+  async cancelWatch(id: string): Promise<WatchView> {
+    return this.moveWatch(id, "cancelled");
+  }
+
+  async mergeWhenGreen(chain: string, repo: string, pr: number): Promise<WatchView> {
+    return this.addWatch(mergeWatchInput(chain, repo, pr));
+  }
+
+  /** PRs as the runtime last saw them on GitHub, as `record_pr` keeps them: by `owner/name#number`. */
+  private prRows = new Map<string, PrView>();
+
+  /** The runtime records a PR, as `record_pr` takes it; `chain` "" keeps the one recorded. */
+  recordPr(input: PrInput): PrView {
+    if (input.chain && !this.chainExists(input.chain)) throw new Error(`no chain ${input.chain}`);
+    if (!/^[\w.-]+\/[\w.-]+$/.test(input.repo.trim()) || !input.pr) throw new Error("repo must be owner/name, and pr its number");
+    if ((input.checks === "red") !== input.failing.length > 0) throw new Error("checks is red exactly when failing names a check");
+    const key = `${input.repo.trim()}#${input.pr}`;
+    const prior = this.prRows.get(key);
+    const view: PrView = {
+      ...input,
+      repo: input.repo.trim(),
+      chain: input.chain || prior?.chain || "",
+      failing: [...input.failing],
+      stacked_merged: input.stacked_on !== 0 && input.stacked_merged,
+      seen_at: Math.max(this.now(), (prior?.seen_at ?? 0) + 1),
+    };
+    this.prRows.set(key, view);
+    this.changed();
+    return { ...view, failing: [...view.failing] };
+  }
+
+  async prs(chain: string): Promise<PrView[]> {
+    return [...this.prRows.values()]
+      .filter((p) => !chain || p.chain === chain)
+      .sort((a, b) => b.seen_at - a.seen_at)
+      .map((p) => ({ ...p, failing: [...p.failing] }));
+  }
+
+  // ── a task's links, as `logic/src/links.rs` keeps them ──
+
+  private linkRows = new Map<string, { chain: string; subject: string; label: string; by: string; added_at: number; removed: boolean }>();
+
+  /** Link `subject` to `chain`; one you took off comes back only when you add it. */
+  private link(chain: string, subject: string, label: string, by: "agent" | "you") {
+    const key = `${chain}|${subject}`;
+    const prior = this.linkRows.get(key);
+    if (prior?.removed && by !== "you") return;
+    if (!prior && [...this.linkRows.values()].filter((l) => l.chain === chain && !l.removed).length >= 30) {
+      if (by === "you") throw new Error("a task has at most 30 links; take one off first");
+      return;
+    }
+    const added = !prior || prior.removed;
+    this.linkRows.set(key, {
+      chain,
+      subject,
+      label: label || prior?.label || "",
+      by: added ? by : prior.by,
+      added_at: added ? this.tick() : prior.added_at,
+      removed: false,
+    });
+  }
+
+  async links(chain: string): Promise<LinkView[]> {
+    const about = [...this.items.values()].filter((i) => i.kind === "notification" && i.chain === chain && i.subject);
+    return [...this.linkRows.values()]
+      .filter((l) => l.chain === chain && !l.removed)
+      .sort((a, b) => a.added_at - b.added_at)
+      .map((l) => {
+        const [app, context, item] = splitSubject(l.subject);
+        const mine = about.filter((i) => i.subject === l.subject);
+        return {
+          chain,
+          subject: l.subject,
+          app,
+          context,
+          item,
+          label: l.label,
+          by: l.by,
+          added_at: l.added_at,
+          activity: mine.length,
+          last_at: Math.max(0, ...mine.map((i) => i.at)),
+        };
+      });
+  }
+
+  async addLink(chain: string, subject: string, label: string): Promise<LinkView> {
+    if (!this.chainExists(chain)) throw new Error(`no chain ${chain}`);
+    if (!splitSubject(subject)[1]) throw new Error("subject must be <app>:<context>[:<id>], with a context");
+    this.link(chain, subject, label.trim(), "you");
+    this.subjectChains.set(subject, chain);
+    this.changed();
+    return (await this.links(chain)).find((l) => l.subject === subject)!;
+  }
+
+  async removeLink(chain: string, subject: string): Promise<void> {
+    const row = this.linkRows.get(`${chain}|${subject}`);
+    if (!row) throw new Error(`${subject} is not linked to ${chain}`);
+    row.removed = true;
+    if (this.subjectChains.get(subject) === chain) this.subjectChains.delete(subject);
+    this.changed();
+  }
+
+  /** The runtime fires a watch, then says how it went, as `fire_watch` and `finish_watch` do. */
+  moveWatch(id: string, to: "cancelled" | "firing" | "done" | "failed", note = ""): WatchView {
+    const w = this.watchRows.get(id);
+    if (!w) throw new Error(`no watch ${id}`);
+    const moved = moveWatch(w, to, this.now(), note);
+    this.watchRows.set(id, moved);
+    this.changed();
+    return { ...moved };
   }
 
   /** The agent's side of a conversation, as `agent_ack` would take it. */
@@ -461,9 +821,40 @@ export class DemoBackend implements FeedBackend {
     return copy(stored);
   }
 
-  /** The agent's side of a conversation, as `agent_say` would take it. */
-  agentSay(chain: string, replyTo: string, text: string, ask?: Ask): FeedItem {
+  /** The agent's turn on a message so far, as `agent_work` would take it: every step, and the answer as written. */
+  agentWork(id: string, steps: TurnStep[], draft = ""): FeedItem {
+    const m = this.get(id, "message");
+    if (m.from !== "you") throw new Error(`message ${id} is the agent's own`);
+    if (m.status === "waiting") throw new Error(`message ${id} is waiting; take it up with agent_ack first`);
+    if (steps.length > 64) throw new Error(`${steps.length} steps, limit is 64`);
+    for (const s of steps) {
+      if (!s.id.trim() || !s.title.trim()) throw new Error("a step needs an id and a title");
+      if (!["running", "waiting", "done", "failed"].includes(s.status)) throw new Error(`step status ${s.status}`);
+    }
+    if (new TextEncoder().encode(draft).length > MAX_LONG_MESSAGE) throw new Error(`draft is longer than ${MAX_LONG_MESSAGE} bytes`);
+    const stored = this.items.get(id)!;
+    stored.steps = steps.map((s) => ({ ...s }));
+    stored.draft = m.status === "thinking" ? draft : "";
+    this.changed();
+    return copy(stored);
+  }
+
+  /** You ask your agent to stop, as `stop` takes it: a message not taken up yet closes at once. */
+  async stop(id: string): Promise<FeedItem> {
+    const m = this.get(id, "message");
+    if (m.from !== "you") throw new Error(`message ${id} is the agent's own; stop one of yours`);
+    if (m.status !== "waiting" && m.status !== "thinking") throw new Error(`message ${id} is ${m.status}; there is no turn to stop`);
+    const stored = this.items.get(id)!;
+    if (stored.stop_at === 0) stored.stop_at = this.now();
+    const item = m.status === "waiting" ? this.step(stored, "failed", STOPPED_BY_YOU) : copy(stored);
+    this.changed();
+    return item;
+  }
+
+  /** The agent's side of a conversation, as `agent_say` would take it; a long answer comes with a `headline`. */
+  agentSay(chain: string, replyTo: string, text: string, ask?: Ask, headline = ""): FeedItem {
     if (!text.trim()) throw new Error("text must not be empty");
+    const kept = checkMessage(text, headline);
     if (ask && ask.kind !== "reply" && ask.kind !== "choose") throw new Error("ask.kind must be one of reply, choose");
     if (ask?.kind === "choose" && ask.options.length < 2) throw new Error("a choose ask needs at least 2 options");
     if (!replyTo) {
@@ -474,14 +865,28 @@ export class DemoBackend implements FeedBackend {
       if (asked.chain !== chain) throw new Error(`message ${replyTo} is in chain ${asked.chain}, not ${chain}`);
       if (asked.status !== "answered") this.step(asked, "answered");
     }
-    const said = this.post(chain, "agent", text, replyTo, ask ? "asked" : "said", ask);
+    const said = this.post(chain, "agent", text, replyTo, ask ? "asked" : "said", ask, [], kept);
+    if (ask) this.supersede(said.chain, said.id);
     this.changed();
     return said;
   }
 
   /** The agent asks you something back, as `agent_ask` would take it. */
-  agentAsk(chain: string, replyTo: string, text: string, ask: Ask): FeedItem {
-    return this.agentSay(chain, replyTo, text, ask);
+  agentAsk(chain: string, replyTo: string, text: string, ask: Ask, headline = ""): FeedItem {
+    return this.agentSay(chain, replyTo, text, ask, headline);
+  }
+
+  /** A task spun off the chat in `from`, as `start_task` makes it: your message in a chain of its own, and a link each way. */
+  startTask(from: string, text: string, headlineText = ""): FeedItem {
+    if (!this.chainExists(from)) throw new Error(`no chain ${from}`);
+    if (!text.trim()) throw new Error("text must not be empty");
+    const kept = checkMessage(text, headlineText);
+    const first = [...this.items.values()].filter((i) => i.chain === from && i.kind === "message").sort((a, b) => a.at - b.at)[0];
+    const task = this.post("", "you", text, "", "waiting", NO_ASK, [], kept);
+    this.link(from, `hyperfeed:task:${task.chain}`, kept || headline(text), "you");
+    this.link(task.chain, `hyperfeed:from:${from}`, first?.title ?? "", "you");
+    this.changed();
+    return task;
   }
 
   private chainExists(chain: string): boolean {
@@ -496,13 +901,17 @@ export class DemoBackend implements FeedBackend {
     status: string,
     ask: Ask = NO_ASK,
     attachments: Attachment[] = [],
+    headlineText = "",
+    mode = "",
   ): FeedItem {
     const id = `demo-${this.nextId++}`;
     const t = this.tick();
     const images = attachments.length;
     return this.put({
       ...blank(id, "message", "", t, chain || id, ask),
-      title: text || images === 0 ? headline(text) : images === 1 ? "Sent an image" : `Sent ${images} images`,
+      title: headlineText || (text || images === 0 ? headline(text) : images === 1 ? "Sent an image" : `Sent ${images} images`),
+      headline: headlineText,
+      mode,
       body: text,
       from,
       reply_to: replyTo,
@@ -563,6 +972,23 @@ export class DemoBackend implements FeedBackend {
     this.changed();
   }
 
+  async setAccess(agent: string, folders: Folder[], shell: boolean, web: boolean): Promise<void> {
+    if (!agent.trim()) throw new Error("agent must not be empty");
+    if (folders.length > 20) throw new Error(`${folders.length} folders, limit is 20`);
+    for (const f of folders) {
+      if (!(f.path.startsWith("/") || f.path === "~" || f.path.startsWith("~/"))) throw new Error(`folder must be absolute or under ~, got "${f.path}"`);
+      if (f.path.split("/").includes("..")) throw new Error(`folder must be one path with no '..', got "${f.path}"`);
+    }
+    this.access.set(agent, { agent, folders: folders.map((f) => ({ ...f })), shell, web, updated_at: this.now() });
+    this.changed();
+  }
+
+  /** What an agent reports it can reach, as mero-bot's runtime does with `agent_reach`. */
+  agentReach(name: string, lines: ReachLine[]): void {
+    this.reach.set(name, { agent: name, lines: lines.map((l) => ({ ...l })), at: this.now() });
+    this.changed();
+  }
+
   async recordNotification(input: NotificationInput, at = this.now()): Promise<FeedItem> {
     const existing = this.items.get(input.key);
     if (existing) return copy(existing);
@@ -573,8 +999,13 @@ export class DemoBackend implements FeedBackend {
     }
     const t = this.tick(at);
     this.flagged.set(input.key, input.needs_you);
+    // About something a task of yours touched: it joins that task's chain, unless you put the task away.
+    const subject = input.item_type ? replySubject(input.app, input.source_context, input.reply_call) : "";
+    const task = subject ? this.subjectChains.get(subject) : undefined;
+    const joins = !input.chain && task && !this.archivedChains.has(task) ? task : "";
     const item = this.put({
-      ...blank(input.key, "notification", input.app, t, input.chain || input.key, input.ask),
+      ...blank(input.key, "notification", input.app, t, input.chain || joins || input.key, input.ask),
+      subject,
       source_context: input.source_context,
       source_label: input.source_label,
       title: input.title,
@@ -587,6 +1018,7 @@ export class DemoBackend implements FeedBackend {
       seen: false,
       history: [{ status: "received", note: "", at: t }],
     });
+    if (item.ask.kind) this.supersede(item.chain, item.id);
     this.changed();
     return item;
   }
@@ -594,6 +1026,9 @@ export class DemoBackend implements FeedBackend {
   async recordAction(input: ActionInput, at = this.now()): Promise<FeedItem> {
     if (input.ask.kind && input.outcome !== "proposed") {
       throw new Error("an ask belongs on a proposal; a done or failed action has nothing to answer");
+    }
+    if (input.grant && input.outcome === "proposed") {
+      throw new Error("a grant belongs on a done or failed action; a proposal waits for you");
     }
     const verdict = this.verdict(input.app, input.category, input.writes);
     let status: string;
@@ -603,7 +1038,8 @@ export class DemoBackend implements FeedBackend {
       status = "pending";
     } else {
       status = input.outcome === "failed" ? "failed" : "done";
-      if (verdict.decision === "ask") breach = `acted without asking: ${verdict.reason}`;
+      const granted = this.granted(input.grant, input.app, input.category);
+      if (verdict.decision === "ask" && !granted) breach = `acted without asking: ${verdict.reason}`;
       if (verdict.decision === "refuse") breach = `acted where it may not: ${verdict.reason}`;
     }
     const id = `demo-${this.nextId++}`;
@@ -622,7 +1058,13 @@ export class DemoBackend implements FeedBackend {
       executor: input.executor,
       undoable: input.undoable,
       history: [{ status, note: input.note, at: t }],
+      subject: input.subject ?? "",
     });
+    // A thing you took off this task stays off it.
+    if (item.subject && !this.linkRows.get(`${item.chain}|${item.subject}`)?.removed) {
+      this.subjectChains.set(item.subject, item.chain);
+      this.link(item.chain, item.subject, "", "agent");
+    }
     this.changed();
     return item;
   }
@@ -827,6 +1269,13 @@ export class DemoBackend implements FeedBackend {
   }
 }
 
+/** Mirrors the contract's `underway`: a row still being carried, which leads its chain over settled ones. */
+function underway(i: FeedItem): boolean {
+  if (i.kind === "action") return ["approved", "retrying", "undo_requested"].includes(i.status);
+  if (i.kind === "message") return i.from === "you" && (i.status === "waiting" || i.status === "thinking");
+  return i.kind === "notification" && i.status === "answered";
+}
+
 function action(input: Partial<ActionInput>): ActionInput {
   return {
     app: "chat",
@@ -845,6 +1294,8 @@ function action(input: Partial<ActionInput>): ActionInput {
     note: "",
     chain: "",
     ask: NO_ASK,
+    grant: "",
+    subject: "",
     ...input,
   };
 }
@@ -924,5 +1375,11 @@ function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chai
     doing: "",
     doing_at: 0,
     attachments: [],
+    steps: [],
+    draft: "",
+    stop_at: 0, headline: "", mode: "",
+    superseded_by: "",
+    answers: "",
+    answers_superseded: false, held_by: "", held_since: 0, subject: "",
   };
 }

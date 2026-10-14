@@ -1,0 +1,22 @@
+[package]
+# FROZEN v1 of mero-standup — see src/lib.rs. Not an app: no
+# [package.metadata.calimero], so no CI matrix builds or publishes it. It is a
+# dev-dependency of ../../ (for the in-process migration test) and the source
+# of the v1 bundle fixture the upgrade scenario installs.
+name        = "mero-standup-v1"
+description = "Frozen v1 of the mero-standup contract, for migration tests"
+version     = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+hex                     = { workspace = true }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { FeedView } from "./FeedView";
-import { ControlsView } from "./ControlsView";
+import { SettingsView, settingsSection } from "./SettingsView";
 import { ChatView } from "./ChatView";
 import { TeamView } from "./TeamView";
 import { FeedPicker, FeedSwitcher } from "./FeedPicker";
@@ -14,6 +14,7 @@ import { useNewFeed, useOpenFeed } from "./newFeed";
 import { appLink } from "./links";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { AGENT_LIVE_MS, useTheme } from "./theme";
+import { useAttention } from "./useAttention";
 import type { NewFeed } from "./FeedView";
 import LandingPage from "./pages/landing/LandingPage";
 import DocsPage from "./pages/landing/DocsPage";
@@ -21,10 +22,11 @@ import DocsPage from "./pages/landing/DocsPage";
 /**
  * Two ways in, one set of screens.
  *
- * `/`, `/chat` and `/controls` run against your node: connect, open your
+ * `/`, `/chat` and `/settings` run against your node: connect, open your
  * feed, and the collector starts watching your other contexts. `/demo`,
- * `/demo/chat` and `/demo/controls` run the same screens against `DemoBackend`, the contract's rules kept in
- * memory, so the app can be tried with no node at all.
+ * `/demo/chat` and `/demo/settings` run the same screens against `DemoBackend`, the contract's rules kept in
+ * memory, so the app can be tried with no node at all. Settings has a section
+ * per path segment (`/settings/agents`), and `/controls` lands on its first.
  */
 export function App() {
   return (
@@ -36,17 +38,20 @@ export function App() {
         <Route path="/docs" element={<DocsPage />} />
         <Route path="/preview" element={<Navigate to="/" replace />} />
         <Route path="/chat/:chain?" element={<NodeApp page="chat" />} />
-        <Route path="/controls" element={<NodeApp page="controls" />} />
+        <Route path="/settings/:section?" element={<NodeApp page="settings" />} />
+        {/* Controls became one section of Settings: old links still land. */}
+        <Route path="/controls" element={<Navigate to="/settings/controls" replace />} />
         <Route path="/demo" element={<DemoApp page="feed" />} />
         <Route path="/demo/chat/:chain?" element={<DemoApp page="chat" />} />
-        <Route path="/demo/controls" element={<DemoApp page="controls" />} />
+        <Route path="/demo/settings/:section?" element={<DemoApp page="settings" />} />
+        <Route path="/demo/controls" element={<Navigate to="/demo/settings/controls" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
 }
 
-type Page = "feed" | "chat" | "controls";
+type Page = "feed" | "chat" | "settings";
 
 function NodeApp({ page }: { page: Page }) {
   const { isAuthenticated, isLoading, applicationId, contextId: sessionFeed, nodeUrl, logout } = useMero();
@@ -138,7 +143,7 @@ function NodeFeedApp({
 }
 
 function DemoApp({ page }: { page: Page }) {
-  // One demo per tab: it survives moving between the feed and the controls.
+  // One demo per tab: it survives moving between the feed and settings.
   const backend = useMemo(() => demoSingleton(), []);
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
@@ -191,11 +196,21 @@ function Screen({
   openLink?: (item: FeedItem) => Promise<string | null>;
 }) {
   const navigate = useNavigate();
-  const { chain = "" } = useParams();
+  const { chain = "", section } = useParams();
   const openChat = (c: string) => navigate(c ? `${base}/chat/${encodeURIComponent(c)}` : `${base}/chat`);
   const [view, setView] = useFeedView();
   if (page === "chat") return <ChatView feed={feed} chain={chain} onOpen={openChat} newFeed={newFeed} />;
-  if (page !== "feed") return <ControlsView feed={feed} contextId={contextId} preview={preview} newFeed={newFeed} />;
+  if (page === "settings")
+    return (
+      <SettingsView
+        feed={feed}
+        contextId={contextId}
+        preview={preview}
+        newFeed={newFeed}
+        section={settingsSection(section)}
+        base={base}
+      />
+    );
   return (
     <>
       <div className="view-switch" role="group" aria-label="How the feed is laid out">
@@ -269,6 +284,7 @@ function Shell({
   const paused = feed?.settings?.paused ?? false;
   const [theme, toggleTheme] = useTheme();
   const agent = feed?.settings?.agents?.find((a) => Date.now() - a.seen_at < AGENT_LIVE_MS);
+  const attention = useAttention(feed?.page ?? null, base);
   return (
     <div className="shell">
       <header className="topbar">
@@ -283,7 +299,7 @@ function Shell({
               [
                 ["feed", "Feed", base || "/"],
                 ["chat", "Chat", `${base}/chat`],
-                ["controls", "Controls", `${base}/controls`],
+                ["settings", "Settings", `${base}/settings`],
               ] as const
             ).map(([p, label, to]) => (
               <Link key={p} className={p === page ? "on" : ""} to={to} aria-current={p === page ? "page" : undefined}>
@@ -321,6 +337,28 @@ function Shell({
             </button>
           )}
           {extra}
+          {feed && attention.supported && (
+            <button
+              type="button"
+              className={`icon-button ${attention.on ? "on" : ""}`}
+              aria-pressed={attention.on}
+              aria-label={attention.on ? "Turn alerts off" : "Alert me when something needs me"}
+              title={
+                attention.blocked
+                  ? "Alerts are blocked for this site: allow notifications in your browser's settings"
+                  : attention.on
+                    ? "Alerts on: a banner when your agent asks, an action waits for you, or an app flags you"
+                    : "Alert me when something needs me"
+              }
+              onClick={() => void attention.toggle()}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill={attention.on ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                {!attention.on && <path d="M3 3l18 18" />}
+              </svg>
+            </button>
+          )}
           <button type="button" className="icon-button" aria-label={theme === "dark" ? "Use light theme" : "Use dark theme"} onClick={toggleTheme}>
             {theme === "dark" ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">

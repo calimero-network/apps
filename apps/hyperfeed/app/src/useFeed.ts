@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Attachment, FeedItem, FeedPage, LensView, SettingsView } from "./generated/HyperfeedClient";
+import type {
+  Attachment,
+  CheckpointView,
+  FeedItem,
+  FeedPage,
+  Folder,
+  LensView,
+  LinkView,
+  PrView,
+  PushDeviceInput,
+  PushDeviceView,
+  PushKeyView,
+  SettingsView,
+  WatchView,
+} from "./generated/HyperfeedClient";
 import { fillReplyCall } from "./lens/lens";
 import type { AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
 import type { BlobStore } from "./attachments";
@@ -35,21 +49,56 @@ export interface Feed {
    * Talk to your agent about a chain ("" starts a new one). Resolves to your
    * message, so the caller can open its chain; null when the node refused it.
    */
-  say: (chain: string, text: string, attachments?: Attachment[]) => Promise<FeedItem | null>;
+  say: (chain: string, text: string, attachments?: Attachment[], mode?: string) => Promise<FeedItem | null>;
+  /** Answer one of your agent's questions from its buttons: your next message in its chain. */
+  answerAsk: (item: FeedItem, text: string) => Promise<void>;
   /** Where images on your messages are kept; null when this feed can't hold them. */
   images: BlobStore | null;
+  /** Ask your agent to stop working on one of your messages: it ends the turn, "Stopped by you". */
+  stop: (id: string) => Promise<void>;
   /**
    * Your chats with your agent, newest first: the chains whose latest row is a
    * message. Each comes as that latest message. A read, like `loadChain`.
    */
   chats: () => Promise<FeedItem[]>;
+  /** The chats you archived, newest first, as `chats` gives them. A read. */
+  archivedChats: () => Promise<FeedItem[]>;
   /** Every row in a chain, oldest first. A read: no busy state, no refresh. */
   loadChain: (chain: string) => Promise<FeedItem[]>;
+  /** Where the task in a chain stands, as your agent last wrote it, or null. A read, like `loadChain`. */
+  loadCheckpoint?: (chain: string) => Promise<CheckpointView | null>;
+  /** The watches in a chain ("when X, do Y"), oldest first. A read, like `loadChain`. */
+  loadWatches?: (chain: string) => Promise<WatchView[]>;
+  /** Cancel a watch that has not fired yet. */
+  cancelWatch?: (id: string) => Promise<void>;
+  /** A PR card's Merge: a merge watch on the chain, fired by your agent's runtime once every check passed. */
+  mergeWhenGreen?: (chain: string, repo: string, pr: number) => Promise<void>;
+  /** The PRs your agent's runtime saw on GitHub (`""`: every chain). A read, like `loadChain`. */
+  loadPrs?: (chain: string) => Promise<PrView[]>;
+  /** A task's links, oldest first. A read, like `loadChain`. */
+  loadLinks?: (chain: string) => Promise<LinkView[]>;
+  /** Link a thing to a task by hand; absent when the feed predates links. */
+  addLink?: (chain: string, subject: string, label: string) => Promise<void>;
+  /** Take a link off a task. */
+  removeLink?: (chain: string, subject: string) => Promise<void>;
+  /** Push to your phone: the runtime's key and the devices it wakes; null when the feed predates push. A read. */
+  loadPush?: () => Promise<PushState | null>;
+  /** Push to this device; absent when the feed predates push. */
+  addPushDevice?: (input: PushDeviceInput) => Promise<void>;
+  /** Stop pushing to a device. */
+  removePushDevice?: (endpoint: string) => Promise<void>;
   markSeen: (ids: string[]) => Promise<void>;
   markAllSeen: () => Promise<void>;
   setPolicy: (appKey: string, agent: AgentMode, notifications: NotificationMode) => Promise<void>;
   setGuard: (category: string, enabled: boolean) => Promise<void>;
+  /** Only on a feed that keeps what each agent may reach. */
+  setAccess?: (agent: string, folders: Folder[], shell: boolean, web: boolean) => Promise<void>;
   setPaused: (paused: boolean) => Promise<void>;
+  /** Your standing rules: add one, remove one, or approve or dismiss one your agent suggested. */
+  addRule: (text: string) => Promise<void>;
+  removeRule: (id: string) => Promise<void>;
+  approveRule: (id: string) => Promise<void>;
+  dismissRule: (id: string) => Promise<void>;
   /** Put chains away (they come back when something new happens in them); undoable. False when the node refused it. */
   archive: (chains: string[], label?: string) => Promise<boolean>;
   /** Put a chain away until `until` (ms); undoable. */
@@ -58,6 +107,12 @@ export interface Feed {
   /** The last thing you put away, with its undo, until the next one or a few seconds pass. */
   toast: { text: string; undo: () => void } | null;
   dismissToast: () => void;
+}
+
+/** Where push to your phone stands: the key to subscribe with, and the devices already subscribed. */
+export interface PushState {
+  key: PushKeyView;
+  devices: PushDeviceView[];
 }
 
 /** How long the undo for something you put away stays offered. */
@@ -154,6 +209,39 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     [backend, refresh],
   );
 
+  const mergeWhenGreen = useCallback(
+    (chain: string, repo: string, pr: number) => run((b) => (b.mergeWhenGreen ? b.mergeWhenGreen(chain, repo, pr) : Promise.resolve())),
+    [run],
+  );
+  const setAccess = useCallback(
+    (agent: string, folders: Folder[], shell: boolean, web: boolean) =>
+      run((b) => (b.setAccess ? b.setAccess(agent, folders, shell, web) : Promise.resolve())),
+    [run],
+  );
+  const addLink = useCallback(
+    (chain: string, subject: string, label: string) =>
+      run((b) => (b.addLink ? b.addLink(chain, subject, label).then(() => undefined) : Promise.resolve())),
+    [run],
+  );
+  const removeLink = useCallback(
+    (chain: string, subject: string) => run((b) => (b.removeLink ? b.removeLink(chain, subject) : Promise.resolve())),
+    [run],
+  );
+  const addPushDevice = useCallback(
+    (input: PushDeviceInput) => run((b) => (b.addPushDevice ? b.addPushDevice(input) : Promise.resolve())),
+    [run],
+  );
+  const removePushDevice = useCallback(
+    (endpoint: string) => run((b) => (b.removePushDevice ? b.removePushDevice(endpoint) : Promise.resolve())),
+    [run],
+  );
+  const loadPush = useCallback(async (): Promise<PushState | null> => {
+    if (!backend?.pushKey || !backend.pushDevices) return null;
+    const key = await backend.pushKey();
+    if (!key) return null;
+    return { key, devices: await backend.pushDevices() };
+  }, [backend]);
+
   return {
     page,
     settings,
@@ -181,26 +269,49 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       [run],
     ),
     say: useCallback(
-      async (chain, text, attachments) => {
+      async (chain, text, attachments, mode) => {
         let posted: FeedItem | null = null;
         await run(async (b) => {
-          posted = await b.say(chain, text, attachments);
+          posted = await b.say(chain, text, attachments, mode);
         });
         return posted;
       },
       [run],
     ),
+    answerAsk: useCallback((item, text) => run((b) => b.answerAsk(item.id, item.chain, text)), [run]),
     images: backend?.images ?? null,
+    stop: useCallback((id) => run((b) => b.stop(id)), [run]),
     chats: useCallback(
       async () => (backend ? (await backend.feed("agent", "")).items.filter((i) => i.kind === "message") : []),
       [backend],
     ),
+    archivedChats: useCallback(
+      async () => (backend ? (await backend.feed("archived", "")).items.filter((i) => i.kind === "message") : []),
+      [backend],
+    ),
     loadChain: useCallback(async (chain) => (backend ? backend.chain(chain) : []), [backend]),
+    loadCheckpoint: useCallback(async (chain: string) => (backend?.checkpoint ? backend.checkpoint(chain) : null), [backend]),
+    loadWatches: useCallback(async (chain: string) => (backend?.watches ? backend.watches(chain) : []), [backend]),
+    cancelWatch: useCallback((id: string) => run((b) => (b.cancelWatch ? b.cancelWatch(id) : Promise.resolve())), [run]),
+    // Only a feed that keeps watches has it; without, a card's Merge asks your agent in the chat.
+    mergeWhenGreen: backend?.mergeWhenGreen ? mergeWhenGreen : undefined,
+    loadPrs: useCallback(async (chain: string) => (backend?.prs ? backend.prs(chain) : []), [backend]),
+    loadLinks: useCallback(async (chain: string) => (backend?.links ? backend.links(chain) : []), [backend]),
+    addLink: backend?.addLink ? addLink : undefined,
+    removeLink: backend?.removeLink ? removeLink : undefined,
+    loadPush: backend?.pushKey ? loadPush : undefined,
+    addPushDevice: backend?.addPushDevice ? addPushDevice : undefined,
+    removePushDevice: backend?.removePushDevice ? removePushDevice : undefined,
     markSeen: useCallback((ids) => run((b) => b.markSeen(ids)), [run]),
     markAllSeen: useCallback(() => run((b) => b.markAllSeen()), [run]),
     setPolicy: useCallback((k, agent, notifications) => run((b) => b.setPolicy(k, agent, notifications)), [run]),
     setGuard: useCallback((category, enabled) => run((b) => b.setGuard(category, enabled)), [run]),
+    setAccess: backend?.setAccess ? setAccess : undefined,
     setPaused: useCallback((paused) => run((b) => b.setPaused(paused)), [run]),
+    addRule: useCallback((text) => run((b) => b.addRule(text)), [run]),
+    removeRule: useCallback((id) => run((b) => b.removeRule(id)), [run]),
+    approveRule: useCallback((id) => run((b) => b.approveRule(id)), [run]),
+    dismissRule: useCallback((id) => run((b) => b.dismissRule(id)), [run]),
     archive: useCallback(
       async (chains, label) => {
         let ok = false;

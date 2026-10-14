@@ -1,0 +1,260 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Decision": {
+      "kind": "record",
+      "doc": "One logged decision. Immutable once written.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A short name for the decision, the line people will scan."
+        },
+        {
+          "name": "decision",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What was decided."
+        },
+        {
+          "name": "rationale",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Why: the context and the alternatives, for whoever asks in six months."
+        },
+        {
+          "name": "supersedes",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "The decision this one replaces, if any. A claim, checked on read."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "DecisionNotes": {
+      "kind": "record",
+      "doc": "What v2 records about a decision beyond v1's `Decision`. Kept in its own\ncollection so every v1 decision keeps its exact bytes; a decision logged\nbefore v2 simply has none.",
+      "fields": [
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Lower-case, de-duplicated, sorted."
+        },
+        {
+          "name": "with",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Accounts the author names as part of the decision. A claim by the\nauthor, shown as such: it does not mean those people signed anything."
+        },
+        {
+          "name": "from_day",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "The standup day the decision came out of, if it was logged from one."
+        }
+      ]
+    },
+    "Help": {
+      "kind": "record",
+      "doc": "One member's offer to help with someone's blocker. The helper is the\nowner stamp; the blocked update is named by the entry's key.",
+      "fields": [
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Optional: how they can help. Empty means just \"I can help\"."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroStandup": {
+      "kind": "record",
+      "doc": "v2. The three v1 collections are carried by name; the rest start empty.",
+      "fields": [
+        {
+          "name": "updates",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Update"
+            },
+            "crdt_type": "authored_sorted_map"
+          },
+          "doc": "Day (`YYYY-MM-DD`) → update, one entry per account per day."
+        },
+        {
+          "name": "decisions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Decision"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Decision id → decision. Write-once: a record, not a document."
+        },
+        {
+          "name": "profiles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Profile"
+            }
+          },
+          "doc": "The display name each account chose, in that account's own slot."
+        },
+        {
+          "name": "team",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The team's display name. \"\" until someone names it."
+        },
+        {
+          "name": "helps",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Help"
+            },
+            "crdt_type": "authored_sorted_map"
+          },
+          "doc": "`\"<day>|<author account>\"` → one helper's offer on that update."
+        },
+        {
+          "name": "decision_notes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DecisionNotes"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Decision id → its v2 notes, written once by the decision's author."
+        }
+      ]
+    },
+    "Profile": {
+      "kind": "record",
+      "doc": "The display name one account chose for itself.\n\nIn the contract rather than only in the browser because everyone ELSE has\nto see it. A claim, not an identity: names are not unique, and nothing is\nauthorised by one.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Update": {
+      "kind": "record",
+      "doc": "One member's standup for one day.\n\nNo author and no day field: the author is the entry's owner stamp and the\nday is its key. A field could say anything; those two cannot be forged.",
+      "fields": [
+        {
+          "name": "done",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What got done since the last update."
+        },
+        {
+          "name": "next",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What is next."
+        },
+        {
+          "name": "blockers",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What is in the way. Empty means nothing is."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "cleared",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Withdrawn by its author. A flag rather than a removal, so the entry\nstays the author's and posting again for the same day is an update."
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "MeroStandup",
+  "state_version": 2,
+  "migrations": [
+    {
+      "method": "migrate_v1_to_v2",
+      "fromVersion": 1
+    }
+  ]
+}

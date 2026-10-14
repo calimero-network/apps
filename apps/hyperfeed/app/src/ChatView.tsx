@@ -1,10 +1,19 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import type { Attachment, FeedItem } from "./generated/HyperfeedClient";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import type { Attachment, FeedItem, LinkView, PrView, WatchView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
 import { NewFeedButton, type NewFeed } from "./FeedView";
-import { laneOf, progressLine, statusOf, timeLabel } from "./format";
+import { RuleSuggestion } from "./SettingsView";
+import { heldLine, laneOf, REPLACED, statusOf, timeLabel } from "./format";
+import { Markdown } from "./markdown";
+import { RefCards, type MergeContext } from "./RefCards";
+import { prKey } from "./github";
 import { agentLive, notPickedUp } from "./theme";
+import { WorkBlock } from "./WorkBlock";
+import { WatchList } from "./WatchList";
+import { isActive } from "./watches";
+import { chainLink } from "./links";
+import { chainMode, feedModes, ModeChip, ModePicker, type MessageMode } from "./modes";
 
 /**
  * Chats with your agent.
@@ -39,9 +48,12 @@ export function ChatView({
   const [composing, setComposing] = useState(false);
   // Finished chats are out of the way until you ask for them; the open one always shows.
   const [showDone, setShowDone] = useState(false);
-  // Delete asks once, in place; opening another chat drops the question.
+  // Archived chats are kept, out of the list until you ask for them, and can be restored.
+  const [archived, setArchived] = useState<FeedItem[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  // Archive asks once, in place; opening another chat drops the question.
   const [confirming, setConfirming] = useState(false);
-  const { chats: listChats, loadChain, page } = feed;
+  const { chats: listChats, archivedChats, loadChain, page } = feed;
   useEffect(() => setConfirming(false), [chain]);
 
   // `page` changes on every re-read, which follows every event on the feed:
@@ -49,10 +61,12 @@ export function ChatView({
   useEffect(() => {
     let live = true;
     void listChats().then((c) => live && setChats(c), () => live && setChats([]));
+    void archivedChats().then((c) => live && setArchived(c), () => live && setArchived([]));
     return () => {
       live = false;
     };
-  }, [listChats, page]);
+  }, [listChats, archivedChats, page]);
+  const isArchived = chain !== "" && archived.some((c) => c.chain === chain);
   useEffect(() => {
     let live = true;
     if (!chain) setThread([]);
@@ -62,9 +76,71 @@ export function ChatView({
     };
   }, [loadChain, chain, page]);
 
+  // The chain's watches and the PRs your agent's runtime saw on GitHub: what
+  // each PR card's merge control goes by. Read again with the feed.
+  const [watches, setWatches] = useState<WatchView[]>([]);
+  const [prs, setPrs] = useState<PrView[]>([]);
+  const { loadWatches, loadPrs, mergeWhenGreen, cancelWatch } = feed;
+  useEffect(() => {
+    let live = true;
+    if (!chain || !loadWatches) setWatches([]);
+    else void loadWatches(chain).then((w) => live && setWatches(w), () => live && setWatches([]));
+    if (!chain || !loadPrs) setPrs([]);
+    else void loadPrs("").then((p) => live && setPrs(p), () => live && setPrs([]));
+    return () => {
+      live = false;
+    };
+  }, [loadWatches, loadPrs, chain, page]);
+  // Tasks started from this chat, and the chat this one came from: pointers in the thread.
+  const [links, setLinks] = useState<LinkView[]>([]);
+  const { loadLinks } = feed;
+  useEffect(() => {
+    let live = true;
+    if (!chain || !loadLinks) setLinks([]);
+    else void loadLinks(chain).then((l) => live && setLinks(l), () => live && setLinks([]));
+    return () => {
+      live = false;
+    };
+  }, [loadLinks, chain, page]);
+  const pointers = useMemo(
+    () =>
+      links.flatMap((l) => {
+        const to = chainLink(l);
+        return to ? [{ ...to, at: l.added_at }] : [];
+      }),
+    [links],
+  );
+  // How many watches each chat still waits on, in every chain: a chat with
+  // one ("merge #57 after #459") isn't done, whatever its last answer said.
+  const [waiting, setWaiting] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    let live = true;
+    const count = (all: WatchView[]) => {
+      const by = new Map<string, number>();
+      for (const w of all.filter(isActive)) by.set(w.chain, (by.get(w.chain) ?? 0) + 1);
+      return by;
+    };
+    if (!loadWatches) setWaiting(new Map());
+    else void loadWatches("").then((w) => live && setWaiting(count(w)), () => live && setWaiting(new Map()));
+    return () => {
+      live = false;
+    };
+  }, [loadWatches, page]);
+  const merge =useMemo<MergeContext | undefined>(() => {
+    if (!chain) return undefined;
+    const seen = new Map<string, PrView>();
+    for (const p of prs) seen.set(prKey(p.repo, p.pr), p);
+    return {
+      watches,
+      seen,
+      onMerge: mergeWhenGreen ? (repo, pr) => void mergeWhenGreen(chain, repo, pr) : undefined,
+      onCancel: cancelWatch ? (id) => void cancelWatch(id) : undefined,
+    };
+  }, [chain, prs, watches, mergeWhenGreen, cancelWatch]);
+
   const send = useCallback(
-    async (text: string, attachments: Attachment[]) => {
-      const posted = await feed.say(chain, text, attachments);
+    async (text: string, attachments: Attachment[], mode?: MessageMode) => {
+      const posted = await feed.say(chain, text, attachments, mode);
       if (!posted) return false;
       if (!chain) onOpen(posted.chain);
       else setThread(await loadChain(chain));
@@ -73,15 +149,43 @@ export function ChatView({
     [feed, chain, onOpen, loadChain],
   );
 
-  // Deleting a chat archives its chain: it leaves your chats and your feed,
-  // comes back if anything new happens in it, and can be undone.
-  const remove = useCallback(async () => {
+  // Archiving a chat puts its chain away, every message kept: it leaves your
+  // chats and your feed, comes back if anything new happens in it, and
+  // Restore (or Undo) brings it back.
+  const archive = useCallback(async () => {
     setConfirming(false);
     // Refused (the error shows above the chat): stay on it.
-    if (!(await feed.archive([chain], "Chat deleted"))) return;
+    if (!(await feed.archive([chain], "Chat archived"))) return;
     setComposing(false);
     onOpen("");
   }, [feed, chain, onOpen]);
+  const restore = useCallback((c: string) => void feed.unarchive([c]), [feed]);
+
+  const item = (c: FeedItem) => (
+    <button
+      type="button"
+      className={`chat-item${c.chain === chain ? " on" : ""}`}
+      aria-current={c.chain === chain ? "page" : undefined}
+      onClick={() => {
+        setComposing(false);
+        onOpen(c.chain);
+      }}
+    >
+      <span className="chat-item-text">
+        {c.from === "agent" ? "" : "You: "}
+        {c.headline || c.body || c.title}
+      </span>
+      <span className="chat-item-meta">{timeLabel(c.chain_at)}</span>
+      {/* Which agent session is on this chat now, maybe on another machine. */}
+      {heldLine(c, clock()) && <span className="chat-item-held">{heldLine(c, clock())}</span>}
+      {/* What it still waits for, so a chat with watches doesn't look finished. */}
+      {waiting.has(c.chain) && (
+        <span className="chat-item-held">
+          {waiting.get(c.chain) === 1 ? "Watching 1 thing" : `Watching ${waiting.get(c.chain)} things`}
+        </span>
+      )}
+    </button>
+  );
 
   return (
     <div className={`chat${chain || composing ? " chat-open" : ""}`}>
@@ -99,30 +203,36 @@ export function ChatView({
         </button>
         {chats === null ? (
           <p className="chat-hint">Loading…</p>
-        ) : chats.length === 0 ? (
+        ) : chats.length === 0 && archived.length === 0 ? (
           <p className="chat-hint">No chats yet. Ask your agent anything and it answers here.</p>
         ) : (
-          <ChatList chats={chats} open={chain} showDone={showDone} onShowDone={setShowDone}>
-            {(c) => (
-              <li key={c.chain}>
-                <button
-                  type="button"
-                  className={`chat-item${c.chain === chain ? " on" : ""}`}
-                  aria-current={c.chain === chain ? "page" : undefined}
-                  onClick={() => {
-                    setComposing(false);
-                    onOpen(c.chain);
-                  }}
-                >
-                  <span className="chat-item-text">
-                    {c.from === "agent" ? "" : "You: "}
-                    {c.body || c.title}
-                  </span>
-                  <span className="chat-item-meta">{timeLabel(c.chain_at)}</span>
-                </button>
-              </li>
-            )}
+          <ChatList chats={chats} open={chain} waiting={waiting} showDone={showDone} onShowDone={setShowDone}>
+            {(c) => <li key={c.chain}>{item(c)}</li>}
           </ChatList>
+        )}
+        {archived.length > 0 && (
+          <>
+            <button
+              type="button"
+              className="link small chat-done-toggle"
+              aria-pressed={showArchived}
+              onClick={() => setShowArchived(!showArchived)}
+            >
+              {showArchived ? "Hide archived chats" : `Show archived chats (${archived.length})`}
+            </button>
+            {showArchived && (
+              <ul className="chat-archived" aria-label="Archived chats">
+                {archived.map((c) => (
+                  <li key={c.chain} className="chat-archived-item">
+                    {item(c)}
+                    <button type="button" className="link small chat-restore" disabled={feed.busy} onClick={() => restore(c.chain)}>
+                      Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </nav>
 
@@ -139,20 +249,32 @@ export function ChatView({
             >
               ← Chats
             </button>
+            {chain && heldLine(lastMessage(thread), clock()) && (
+              <span className="chat-held" aria-label="Working on this chat">
+                {heldLine(lastMessage(thread), clock())}
+              </span>
+            )}
             {chain &&
-              (confirming ? (
-                <div className="chat-delete-confirm" role="group" aria-label="Delete this chat?">
-                  <span>Delete this chat? It leaves your chats and your feed, and comes back if anything new happens in it.</span>
-                  <button type="button" className="small chat-delete-yes" disabled={feed.busy} onClick={() => void remove()}>
-                    Delete
+              (isArchived ? (
+                <button type="button" className="link small chat-archive" disabled={feed.busy} onClick={() => restore(chain)}>
+                  Restore chat
+                </button>
+              ) : confirming ? (
+                <div className="chat-archive-confirm" role="group" aria-label="Archive this chat?">
+                  <span>
+                    Archive this chat? Every message is kept. It leaves your chats and your feed, comes back if anything new happens in
+                    it, and you can restore it from Archived chats.
+                  </span>
+                  <button type="button" className="small chat-archive-yes" disabled={feed.busy} onClick={() => void archive()}>
+                    Archive
                   </button>
                   <button type="button" className="small" onClick={() => setConfirming(false)}>
                     Cancel
                   </button>
                 </div>
               ) : (
-                <button type="button" className="link small chat-delete" onClick={() => setConfirming(true)}>
-                  Delete chat
+                <button type="button" className="link small chat-archive" onClick={() => setConfirming(true)}>
+                  Archive chat
                 </button>
               ))}
           </div>
@@ -176,8 +298,33 @@ export function ChatView({
           busy={feed.busy}
           images={feed.images}
           onAnswer={(a) => void send(a, [])}
+          onPick={(m, o) => void feed.answerAsk(m, o)}
+          onStop={(id) => void feed.stop(id)}
+          merge={merge}
+          pointers={pointers}
+          onOpenChat={onOpen}
         />
-        <Composer key={chain} busy={feed.busy} fresh={!chain} images={feed.images} onSend={send} />
+        {/* What your agent is watching for in this chat ("merge #434 when green"), with Cancel. */}
+        {chain && <WatchList feed={feed} chain={chain} watches={watches} />}
+        {/* A rule your agent suggested after you corrected it here: one tap makes it yours. */}
+        {chain && (feed.settings?.rule_proposals ?? []).some((p) => p.chain === chain) && (
+          <ul className="rule-suggestions chat-rules" aria-label="Rules your agent suggests">
+            {(feed.settings?.rule_proposals ?? [])
+              .filter((p) => p.chain === chain)
+              .map((p) => (
+                <RuleSuggestion key={p.id} proposal={p} feed={feed} />
+              ))}
+          </ul>
+        )}
+        <Composer
+          key={chain}
+          busy={feed.busy}
+          fresh={!chain}
+          images={feed.images}
+          modes={feedModes(feed.settings)}
+          chatMode={chainMode(thread)}
+          onSend={send}
+        />
       </section>
 
       {feed.toast && (
@@ -195,23 +342,26 @@ export function ChatView({
 /**
  * The chats, the finished ones hidden unless you ask for them. A chat is
  * finished when nothing in it is left to you or your agent: your agent's
- * answer closed it, as the feed's Done lane counts it. The chat you have open
- * always shows, finished or not.
+ * answer closed it, as the feed's Done lane counts it, and no watch of its is
+ * still waiting to fire. The chat you have open always shows, finished or not.
  */
 function ChatList({
   chats,
   open,
+  waiting,
   showDone,
   onShowDone,
   children,
 }: {
   chats: FeedItem[];
   open: string;
+  /** Active watches per chain. */
+  waiting: Map<string, number>;
   showDone: boolean;
   onShowDone: (show: boolean) => void;
   children: (chat: FeedItem) => ReactNode;
 }) {
-  const done = chats.filter((c) => laneOf(c) === "done" && c.chain !== open);
+  const done = chats.filter((c) => laneOf(c) === "done" && !waiting.has(c.chain) && c.chain !== open);
   const shown = showDone ? chats : chats.filter((c) => !done.includes(c));
   return (
     <>
@@ -232,6 +382,11 @@ function Thread({
   busy,
   images,
   onAnswer,
+  onPick,
+  onStop,
+  merge,
+  pointers = [],
+  onOpenChat,
 }: {
   items: FeedItem[];
   clock: () => number;
@@ -240,6 +395,15 @@ function Thread({
   images: BlobStore | null;
   /** Answer your agent's open question: your next message in the chat. */
   onAnswer: (answer: string) => void;
+  /** Tap one of your agent's options: the answer to that question. */
+  onPick: (question: FeedItem, option: string) => void;
+  /** Ask your agent to stop working on one of your messages. */
+  onStop: (id: string) => void;
+  /** What the PR cards' merge control goes by, in this chat. */
+  merge?: MergeContext;
+  /** Tasks started from this chat, and the chat it came from, as one-line pointers. */
+  pointers?: Pointer[];
+  onOpenChat?: (chain: string) => void;
 }) {
   const end = useRef<HTMLDivElement>(null);
   const last = items[items.length - 1];
@@ -257,38 +421,69 @@ function Thread({
       </div>
     );
   }
+  // Where this chat came from goes first; each task started from it, after the row it followed.
+  const after = (i: number) => pointers.filter((p) => p.started && p.at >= (i < 0 ? 0 : items[i]!.at) && (i + 1 >= items.length || p.at < items[i + 1]!.at));
+  const pointer = (p: Pointer) => (
+    <button key={`${p.started}:${p.chain}`} type="button" className="chat-event chat-pointer" disabled={!onOpenChat} onClick={() => onOpenChat?.(p.chain)}>
+      {p.label} {p.started ? "→" : "←"}
+    </button>
+  );
   return (
     <div className="chat-thread" role="log" aria-live="polite">
-      {items.map((m) =>
-        m.kind === "message" ? (
-          <div key={m.id} className={`bubble ${m.from === "agent" ? "from-agent" : "from-you"}`}>
-            <span className="sr-only">{m.from === "agent" ? "Your agent:" : "You:"}</span>
-            {m.attachments?.length > 0 && <BubbleImages attachments={m.attachments} store={images} />}
-            {m.body && <p>{m.body}</p>}
-            {m.status === "asked" && m.ask.kind === "choose" && (
-              <div className="bubble-options" role="group" aria-label={m.ask.prompt || "Your answer"}>
-                {m.ask.options.map((o) => (
-                  <button key={o} type="button" className="option small" disabled={busy} onClick={() => onAnswer(o)}>
-                    {o}
-                  </button>
-                ))}
-              </div>
-            )}
-            {m.status === "asked" && m.ask.kind === "reply" && (
-              <span className="bubble-asks">{m.ask.prompt || "Your agent is waiting for your answer"} · reply below</span>
-            )}
-            <span className="bubble-time">{timeLabel(m.at)}</span>
-          </div>
+      {pointers.filter((p) => !p.started).map(pointer)}
+      {after(-1).map(pointer)}
+      {items.map((m, i) => (
+        <Fragment key={m.id}>
+          {m.kind === "message" ? (
+          <Fragment>
+            <div className={`bubble ${m.from === "agent" ? "from-agent" : "from-you"}`}>
+              <span className="sr-only">{m.from === "agent" ? "Your agent:" : "You:"}</span>
+              {m.attachments?.length > 0 && <BubbleImages attachments={m.attachments} store={images} />}
+              {/* The body as markdown, built as elements: no HTML from the message reaches the page. */}
+              {m.body && <Markdown className="bubble-body" text={m.body} />}
+              {/* A newer question replaced it: no buttons, so nothing answers the old one by mistake. */}
+              {m.status === "asked" && m.superseded_by && <span className="bubble-asks bubble-replaced">{REPLACED}</span>}
+              {m.status === "asked" && !m.superseded_by && m.ask.kind === "choose" && (
+                <div className="bubble-options" role="group" aria-label={m.ask.prompt || "Your answer"}>
+                  {m.ask.options.map((o) => (
+                    <button key={o} type="button" className="option small" disabled={busy} onClick={() => onPick(m, o)}>
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {m.status === "asked" && !m.superseded_by && m.ask.kind === "reply" && (
+                <span className="bubble-asks">{m.ask.prompt || "Your agent is waiting for your answer"} · reply below</span>
+              )}
+              {/* PRs and CI runs it links to, as cards; Merge sets a merge watch on this chat's task. */}
+              {m.body && <RefCards text={m.body} busy={busy} onSend={onAnswer} merge={merge} />}
+              <span className="bubble-time">
+                {m.from === "you" && <ModeChip mode={m.mode} />}
+                {timeLabel(m.at)}
+              </span>
+            </div>
+            <WorkBlock item={m} clock={clock} busy={busy} onStop={onStop} />
+          </Fragment>
         ) : (
-          <div key={m.id} className="chat-event">
+          <div className="chat-event">
             {m.title} · {statusOf(m).label}
           </div>
-        ),
-      )}
+          )}
+          {after(i).map(pointer)}
+        </Fragment>
+      ))}
       {last && <Waiting last={last} clock={clock} live={live} />}
       <div ref={end} />
     </div>
   );
+}
+
+/** A one-line pointer to another chat: a task started from this one, or the chat it came from. */
+interface Pointer {
+  chain: string;
+  started: boolean;
+  label: string;
+  at: number;
 }
 
 /** Where your latest message stands while your agent hasn't answered it. */
@@ -303,14 +498,9 @@ function Waiting({ last, clock, live }: { last: FeedItem; clock: () => number; l
   }, [waiting]);
 
   if (last.kind !== "message" || last.from !== "you") return null;
-  if (last.status === "thinking") {
-    const doing = progressLine(last, now);
-    return (
-      <p className="chat-status busy" role="status">
-        Your agent is on it…{doing && <span className="chat-doing"> {doing}</span>}
-      </p>
-    );
-  }
+  // Its work block, under the message, shows where it is.
+  if (last.status === "thinking") return null;
+  if (last.status === "failed" && last.stop_at > 0) return <p className="chat-status">Stopped by you.</p>;
   if (last.status === "failed") {
     return <p className="chat-status bad">Your agent couldn't answer{last.note ? `: ${last.note}` : "."}</p>;
   }
@@ -383,16 +573,25 @@ function Composer({
   busy,
   fresh,
   images,
+  modes,
+  chatMode,
   onSend,
 }: {
   busy: boolean;
   fresh: boolean;
   /** Where images go; without one, the composer takes text only. */
   images: BlobStore | null;
-  onSend: (text: string, attachments: Attachment[]) => Promise<boolean>;
+  /** The modes this feed takes; none on a feed made before modes, which shows no picker. */
+  modes: MessageMode[];
+  /** The chat's mode, from its last message of yours that had one: the picker starts there. */
+  chatMode: MessageMode;
+  onSend: (text: string, attachments: Attachment[], mode?: MessageMode) => Promise<boolean>;
 }) {
   const id = useId();
   const [text, setText] = useState("");
+  // What you picked here; until then, the chat's own mode (which loads with the chat).
+  const [pickedMode, setPickedMode] = useState<MessageMode | null>(null);
+  const mode = pickedMode ?? chatMode;
   const [picked, setPicked] = useState<Picked[]>([]);
   const [refused, setRefused] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -438,7 +637,7 @@ function Composer({
         setUploading(false);
       }
     }
-    if (await onSend(t, attachments)) {
+    if (await onSend(t, attachments, modes.length > 0 ? mode : undefined)) {
       setText("");
       picked.forEach((p) => URL.revokeObjectURL(p.preview));
       setPicked([]);
@@ -530,10 +729,16 @@ function Composer({
             }
           }}
         />
+        <ModePicker modes={modes} value={mode} onChange={setPickedMode} disabled={busy || uploading} />
         <button type="submit" className="button primary" disabled={!sendable}>
           {uploading ? "Uploading…" : "Send"}
         </button>
       </div>
     </form>
   );
+}
+
+/** The chat's latest message: it carries who is working on the chain. */
+function lastMessage(thread: FeedItem[]): FeedItem | undefined {
+  return [...thread].reverse().find((m) => m.kind === "message");
 }

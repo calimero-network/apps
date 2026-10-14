@@ -79,6 +79,7 @@ Start here. These exist to be read, not shipped.
 | [mero-issue-tracker](apps/mero-issue-tracker) | [↗](https://mero-issue-tracker-app.vercel.app) | Issue board for a small engineering team whose backlog lives on their own nodes. | `com.calimero.mero-issue-tracker` |
 | [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | Threads and comments replicated across your own nodes, with no server in the middle. | `com.calimero.mero-forum` |
 | [mero-updates](apps/mero-updates) | — | Investor updates, two-way: categories, KPI deltas, asks answered in one click, investor Q&A and read receipts, between the company's and its investors' nodes. | `com.calimero.mero-updates` |
+| [mero-standup](apps/mero-standup) | — | Async standups and a decision log for a small team: each member's own update per day (started from yesterday's), help on blockers, a weekly digest, and tagged write-once decisions superseded rather than edited. Small on purpose — the second app to read after kv-store, and the worked example of migrating a live app's state (v1 → v2). | `com.calimero.mero-standup` |
 
 ### Secrets, documents & governance
 
@@ -165,6 +166,7 @@ scripts/
   check-vercel-output.sh    vercel.json names the directory the build wrote
   check-registry-sync.py    published wasm vs what this tree builds (manual)
   lockfile-fanout.py        which apps a lockfile change can actually affect
+  vercel-ignore-build.py    Vercel skips an app's deploy when a push does not reach it
   tests/                    unit tests for the gates above
 
 docs/

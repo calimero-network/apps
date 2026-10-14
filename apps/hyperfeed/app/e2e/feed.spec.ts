@@ -32,21 +32,24 @@ async function login(page: Page) {
   await page.goto(`/#${params.toString()}`);
 }
 
-/** Sign in again and open the feed the first test created. */
+/**
+ * Sign in again and open a feed: the first test's, or, once the switcher test
+ * has made a second, the first one the picker lists.
+ */
 async function openFeed(page: Page) {
   await login(page);
-  await page.getByRole("button", { name: /^Open feed / }).click();
-  await expect(page.getByRole("region", { name: "To do" })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: /^Open feed / }).first().click();
+  await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible({ timeout: 60_000 });
 }
 
-/** A feed's id as the header shows it (src/format.ts `short`). */
-const short = (id: string) => (id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id);
+/** A feed's short id, the hint beside its name (src/feeds.ts `hint`). */
+const hint = (id: string) => id.slice(0, 8);
 
 /** A chain's row in the feed, opened in place as a click opens it. */
 async function openRow(page: Page, text: string) {
   const row = page.locator("li.row", { hasText: text });
   await expect(row).toBeVisible();
-  const line = row.locator(".row-line");
+  const line = row.locator(".row-line, .need-line");
   if ((await line.getAttribute("aria-expanded")) !== "true") await line.click();
   return row;
 }
@@ -70,15 +73,24 @@ test("you create your feed and answer a notification in place", async ({ page })
   await login(page);
 
   // ── your feed ──────────────────────────────────────────────────────────────
+  const name = page.getByLabel("Feed name");
+  await expect(name).toHaveValue("My feed");
+  await name.fill("Inbox");
   await page.getByRole("button", { name: "Create my feed" }).click();
-  await expect(page.getByRole("region", { name: "To do" })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("Nothing needs you.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("You're clear. Nothing is waiting on you.")).toBeVisible();
 
   // ── an app's notification arrives ──────────────────────────────────────────
   const mero = node();
   const contexts = (await mero.admin.getContexts()).contexts;
   expect(contexts, "the feed is the node's only context").toHaveLength(1);
   const contextId = contexts[0]!.id;
+  // The name is on the feed's context and its namespace, as admin tools show it.
+  const group = await mero.admin.getContextGroup(contextId);
+  expect(group).toBeTruthy();
+  expect((await mero.admin.getContextMetadata(group!, contextId))?.name).toBe("Inbox");
+  expect((await mero.admin.listNamespaces()).find((n) => n.namespaceId === group)?.name).toBe("Inbox");
+  await expect(page.getByTitle("Switch feed")).toHaveText(`Inbox · ${hint(contextId)}`);
   const recorded = await mero.rpc.execute<{ id: string }>({
     contextId,
     method: "record_notification",
@@ -101,8 +113,11 @@ test("you create your feed and answer a notification in place", async ({ page })
 
   // The feed's own event refreshes the page; no reload.
   const card = await openRow(page, "Mentioned you");
-  await expect(card.getByText("Can your agent pull the numbers?")).toBeVisible();
-  await expect(page.getByRole("region", { name: "To do" })).toContainText("Mentioned you");
+  // A card says it twice: once in its head (one line), once in full when opened.
+  await expect(card.locator(".need-object")).toHaveText("Can your agent pull the numbers?");
+  await expect(card.locator("p.quote")).toHaveText("Can your agent pull the numbers?");
+  // The card says who wants what as a sentence, from the title.
+  await expect(page.getByRole("region", { name: "Needs you" })).toContainText("Maya mentioned you");
 
   // ── you answer it where it is ──────────────────────────────────────────────
   await card.getByLabel("Reply in #launch").fill("Numbers are in the deck.");
@@ -145,6 +160,29 @@ test("you create your feed and answer a notification in place", async ({ page })
   await expect(answer.getByText("Your agent", { exact: true }).first()).toBeVisible();
   const asked = await mero.rpc.execute<{ status: string } | null>({ contextId, method: "item", argsJson: { id: question.id } });
   expect(asked?.status).toBe("answered");
+
+  // ── your agent sends your reply to Maya, and the chain settles ─────────────
+  // Until it does, your answer is still being carried and the chain stays in
+  // progress; the archive test below needs it settled, in Done.
+  await mero.rpc.execute({
+    contextId,
+    method: "complete_answer",
+    argsJson: { id: recorded.id, outcome: "delivered", note: "Sent in #launch" },
+  });
+  await expect
+    .poll(async () => {
+      const rows = await mero.rpc.execute<{ items: { chain: string; kind: string; status: string }[] }>({
+        contextId,
+        method: "feed",
+        argsJson: { filter: "all", app_key: "", limit: 50, before: 0 },
+      });
+      const lead = rows.items.find((r) => r.chain === question.chain);
+      return lead && `${lead.kind}:${lead.status}`;
+    })
+    .not.toBe("notification:answered");
+  expect((await mero.rpc.execute<{ status: string } | null>({ contextId, method: "item", argsJson: { id: recorded.id } }))?.status).toBe(
+    "delivered",
+  );
 
   expect(errors, "an unhandled error escaped to the page").toEqual([]);
 });
@@ -191,7 +229,7 @@ test("a typed row is answered straight into its app, and a refusal comes back to
   await expect(card.getByLabel("Reply to Maya")).toBeVisible();
 });
 
-test("you approve a lens your agent proposed, in Controls", async ({ page }) => {
+test("you approve a lens your agent proposed, in Settings → Lenses", async ({ page }) => {
   await openFeed(page);
   const mero = node();
   const contextId = (await mero.admin.getContexts()).contexts[0]!.id;
@@ -201,7 +239,10 @@ test("you approve a lens your agent proposed, in Controls", async ({ page }) => 
     method: "propose_lens",
     argsJson: { app_key: "kv-store", application_id: "kv-app-1", spec: JSON.stringify(spec), summary: "Keys set in kv-store" },
   });
-  await page.getByRole("link", { name: "Controls" }).click();
+  await page.getByRole("link", { name: "Settings" }).click();
+  // Waiting for you: Lenses counts it.
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /Lenses/ }).click();
+  await expect(page).toHaveURL(/\/settings\/lenses$/);
   const lens = page.locator("li.lens", { hasText: "Keys set in kv-store" });
   await expect(lens.getByText("Waiting for you")).toBeVisible();
   await expect(lens).toContainText("Inserted → Status · 1 other event ignored");
@@ -256,12 +297,18 @@ test("you see when your agent is there, and archive what is done", async ({ page
   const done = page.getByRole("region", { name: "Done" });
   await done.getByRole("button", { name: "Archive all done" }).click();
   await expect(done.getByText("Nothing finished yet.")).toBeVisible();
-  const page1 = await mero.rpc.execute<{ counts: { archived: number } }>({
-    contextId,
-    method: "feed",
-    argsJson: { filter: "all", app_key: "", limit: 50, before: 0 },
-  });
-  expect(page1.counts.archived).toBeGreaterThan(0);
+  // The lane can read empty before the archive lands (your agent's rows are
+  // in its digest), so wait for the node rather than read it once.
+  await expect
+    .poll(async () => {
+      const page1 = await mero.rpc.execute<{ counts: { archived: number } }>({
+        contextId,
+        method: "feed",
+        argsJson: { filter: "all", app_key: "", limit: 50, before: 0 },
+      });
+      return page1.counts.archived;
+    })
+    .toBeGreaterThan(0);
   await page.getByRole("button", { name: /^Archived · \d+/ }).click();
   await expect(page.getByRole("region", { name: "Archived" }).locator("li.row").first()).toBeVisible();
 });
@@ -271,28 +318,70 @@ test("you switch between your feeds without signing in again", async ({ page }) 
   await openFeed(page);
   const first = (await node().admin.getContexts()).contexts[0]!.id;
   const switcher = page.getByTitle("Switch feed");
-  await expect(switcher).toHaveText(short(first));
+  await expect(switcher).toHaveText(`Inbox · ${hint(first)}`);
   await expect(page.getByRole("button", { name: /^Archived · \d+/ })).toBeVisible();
 
-  // A second feed, made from the switcher, opens in place.
+  // A second feed, named as it is made from the switcher, opens in place.
   await switcher.click();
   await page.getByRole("menuitem", { name: "Create a new feed" }).click();
-  await expect(switcher).not.toHaveText(short(first), { timeout: 60_000 });
-  await expect(page.getByText("Nothing needs you.")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue("My feed");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(switcher).not.toHaveText(`Inbox · ${hint(first)}`, { timeout: 60_000 });
+  await expect(page.getByText("You're clear. Nothing is waiting on you.")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Archived · \d+/ })).toHaveCount(0);
   const second = (await node().admin.getContexts()).contexts.map((c) => c.id).find((id) => id !== first)!;
-  await expect(switcher).toHaveText(short(second));
+  await expect(switcher).toHaveText(`My feed · ${hint(second)}`);
+
+  // Renamed from the switcher: on its context too.
+  await switcher.click();
+  await page.getByRole("menuitem", { name: `Rename feed My feed · ${hint(second)}` }).click();
+  await page.getByRole("textbox", { name: "Name" }).fill("Side project");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(switcher).toHaveText(`Side project · ${hint(second)}`, { timeout: 30_000 });
+  const group = await node().admin.getContextGroup(second);
+  expect((await node().admin.getContextMetadata(group!, second))?.name).toBe("Side project");
+  await switcher.click();
 
   // Back to the first: the same session, its rows again.
   await switcher.click();
   const items = page.getByRole("menuitemradio");
   await expect(items).toHaveCount(2);
-  await items.filter({ hasText: short(first) }).click();
-  await expect(switcher).toHaveText(short(first));
+  await items.filter({ hasText: hint(first) }).click();
+  await expect(switcher).toHaveText(`Inbox · ${hint(first)}`);
   await expect(page.getByRole("button", { name: /^Archived · \d+/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
 
   // The feed you switched to is the one a reload opens.
   await page.reload();
-  await expect(page.getByTitle("Switch feed")).toHaveText(short(first), { timeout: 60_000 });
+  await expect(page.getByTitle("Switch feed")).toHaveText(`Inbox · ${hint(first)}`, { timeout: 60_000 });
+});
+
+test("you delete a feed you no longer use, with its namespace", async ({ page }) => {
+  await openFeed(page);
+  const before = (await node().admin.getContexts()).contexts.map((c) => c.id);
+  expect(before.length).toBeGreaterThanOrEqual(2);
+  // Names are read after the feed opens: wait for "Name · id" before reading it.
+  await expect(page.getByTitle("Switch feed")).toContainText(" · ");
+  const open = await page.getByTitle("Switch feed").textContent();
+  const other = before.find((id) => !open?.endsWith(hint(id)))!;
+  const group = await node().admin.getContextGroup(other);
+
+  const switcher = page.getByTitle("Switch feed");
+  await switcher.click();
+  // The open feed has no Delete; the other one does, and says what it holds.
+  await expect(page.getByRole("menuitem", { name: `Delete feed ${open}` })).toHaveCount(0);
+  await expect(page.getByRole("menuitemradio").filter({ hasText: hint(other) })).toContainText(/Empty|\d+ rows?/);
+  await page.getByRole("menuitem", { name: new RegExp(`^Delete feed .* · ${hint(other)}$`) }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toContainText("This can't be undone.");
+  await confirm.getByRole("button", { name: "Delete" }).click();
+
+  await expect(page.getByRole("menuitemradio")).toHaveCount(before.length - 1, { timeout: 30_000 });
+  // The node can still list it for a moment after the switcher drops it.
+  await expect.poll(async () => (await node().admin.getContexts()).contexts.map((c) => c.id)).not.toContain(other);
+  if (group) {
+    await expect.poll(async () => JSON.stringify(await node().admin.listNamespaces())).not.toContain(group);
+  }
+  // Still in the feed you had open.
+  await expect(switcher).toHaveText(open!);
 });

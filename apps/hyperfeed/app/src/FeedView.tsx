@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem, LinkView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
-import { canOpen } from "./links";
+import { canOpen, chainLink, subjectFromLink } from "./links";
 import { agentLive, notPickedUp } from "./theme";
 import {
   choicesFor,
   fieldsOf,
   flowOf,
   laneOf,
+  localCommand,
+  noRetryLine,
   progressLine,
+  REPLACED,
   resolvable,
+  saysMore,
   statusOf,
   timeLabel,
   TYPE_LABELS,
@@ -18,6 +22,13 @@ import {
   type Lane,
 } from "./format";
 import { agentDigest, digestLine, isAgent } from "./team";
+import { TASKS_SHOWN, taskCandidates, taskOf, type TaskPost } from "./tasks";
+import { answersYou, mayAnswer, placeOf, sentenceOf, useChainRoot, type Sentence } from "./people";
+import { milestonesOf, trackLine, type Milestone } from "./milestones";
+import { CheckpointDetails } from "./CheckpointDetails";
+import { feedModes, ModePicker, type MessageMode } from "./modes";
+import { WatchList } from "./WatchList";
+import type { CheckpointView } from "./checkpoint";
 
 const appName = (key: string) => appLook(key).name;
 
@@ -27,15 +38,15 @@ export const LATER_MS = 3 * 60 * 60 * 1000;
 /** How many done rows show before "Show all". */
 const DONE_SHOWN = 5;
 
+/** The lanes under what needs you: what is underway, what is done. */
 const LANES: { id: Lane; label: string; empty: string }[] = [
-  { id: "todo", label: "To do", empty: "Nothing needs you." },
   { id: "progress", label: "In progress", empty: "Nothing underway." },
   { id: "done", label: "Done", empty: "Nothing finished yet." },
 ];
 
 /** Making a feed with the Hyperfeed installed now: only on a node. */
 export interface NewFeed {
-  create: () => Promise<void>;
+  create: () => Promise<unknown>;
   busy: boolean;
   failed: string | null;
 }
@@ -52,12 +63,15 @@ export function NewFeedButton({ newFeed }: { newFeed: NewFeed }) {
 }
 
 /**
- * The feed as three lanes: what needs you, what is underway, what is done.
+ * The feed: what needs you on top as a strip of cards, then what is underway
+ * and what is done.
  *
- * One row per chain, except your agent's: what it did and said that does not
- * need you is one digest card after To do, which opens into its chains. The
- * row you are on opens in place with everything about it (the thread, the
- * answer, the actions); nothing is shown twice. Done rows are archived out of
+ * Each card in the strip carries its buttons (Approve, the options, a reply),
+ * so you settle it without opening it. One row per chain, except your
+ * agent's: what it did and said that does not need you is one digest card
+ * after the strip, which opens into its chains. The row or card you are on
+ * opens in place with everything about it (the thread, the answer, the
+ * actions); nothing is shown twice. Done rows are archived out of
  * the way, one at a time or all at once, and come back on their own when
  * something new happens in them.
  */
@@ -92,7 +106,7 @@ export function FeedView({
     );
   }, [page, query]);
 
-  // Your agent's chains that need you stay in To do; the rest go in its digest.
+  // Your agent's chains that need you stay in the strip; the rest go in its digest.
   const { lanes, agent } = useMemo(() => {
     const by: Record<Lane, FeedItem[]> = { todo: [], progress: [], done: [] };
     const agent: FeedItem[] = [];
@@ -104,6 +118,7 @@ export function FeedView({
     return { lanes: by, agent };
   }, [items]);
   const digest = useMemo(() => agentDigest(items), [items]);
+  const candidates = useMemo(() => taskCandidates(items), [items]);
   // "Archive all done" takes your agent's finished chains too.
   const doneChains = useMemo(() => [...lanes.done, ...agent.filter((i) => laneOf(i) === "done")], [lanes, agent]);
   // A chain of the agent's you open (a message you just sent, say) opens the digest with it.
@@ -238,10 +253,61 @@ export function FeedView({
         {page && !archivedView && (
           <>
             {query && items.length === 0 && <div className="empty">Nothing matches that search.</div>}
+            <TaskPosts
+              feed={feed}
+              candidates={candidates}
+              onOpen={(chain) => {
+                if (onChat) return onChat(chain);
+                setOpen(chain);
+              }}
+              onOpenApp={openLink ? (item) => void openApp(item) : undefined}
+            />
+            <section className="needs-strip" aria-label="Needs you">
+              <header className="lane-head needs-head">
+                <h2>Needs you</h2>
+                <span className="lane-count">{lanes.todo.length}</span>
+              </header>
+              {lanes.todo.length === 0 ? (
+                <p className="needs-clear">You're clear. Nothing is waiting on you.</p>
+              ) : (
+                <ul className="needs-cards">
+                  {lanes.todo.map((item) => (
+                    <Row
+                      key={item.chain}
+                      item={item}
+                      lane="todo"
+                      card
+                      expanded={open === item.chain}
+                      onToggle={() => setOpen(open === item.chain ? null : item.chain)}
+                      {...rowProps}
+                    />
+                  ))}
+                </ul>
+              )}
+            </section>
+            <AgentDigestCard
+              line={digestLine(digest)}
+              chains={agent}
+              expanded={digestOpen}
+              onToggle={() => {
+                if (digestOpen && agent.some((i) => i.chain === open)) setOpen(null);
+                setDigestShown(!digestOpen);
+              }}
+              renderRow={(item) => (
+                <Row
+                  key={item.chain}
+                  item={item}
+                  lane={laneOf(item)}
+                  expanded={open === item.chain}
+                  onToggle={() => setOpen(open === item.chain ? null : item.chain)}
+                  {...rowProps}
+                />
+              )}
+            />
             {LANES.map((lane) => {
               const rows = lanes[lane.id];
               const shown = lane.id === "done" && !allDone ? rows.slice(0, DONE_SHOWN) : rows;
-              const section = (
+              return (
                 <section key={lane.id} className={`lane lane-${lane.id}`} aria-label={lane.label}>
                   <header className="lane-head">
                     <h2>{lane.label}</h2>
@@ -280,30 +346,6 @@ export function FeedView({
                   )}
                 </section>
               );
-              if (lane.id !== "todo") return section;
-              return [
-                section,
-                <AgentDigestCard
-                  key="agent"
-                  line={digestLine(digest)}
-                  chains={agent}
-                  expanded={digestOpen}
-                  onToggle={() => {
-                    if (digestOpen && agent.some((i) => i.chain === open)) setOpen(null);
-                    setDigestShown(!digestOpen);
-                  }}
-                  renderRow={(item) => (
-                    <Row
-                      key={item.chain}
-                      item={item}
-                      lane={laneOf(item)}
-                      expanded={open === item.chain}
-                      onToggle={() => setOpen(open === item.chain ? null : item.chain)}
-                      {...rowProps}
-                    />
-                  )}
-                />,
-              ];
             })}
             <footer className="feed-foot">
               <button type="button" className="link small" onClick={() => feed.setFilter("archived")}>
@@ -373,7 +415,7 @@ export function Badge({ app, size = "md" }: { app: string; size?: "sm" | "md" })
 
 /**
  * Your agent's day as one card: what it did, what is underway, and how many of
- * its rows wait on you (those are in To do, not here). It opens into its
+ * its rows wait on you (those are in the strip on top, not here). It opens into its
  * chains, each a row like any other.
  */
 function AgentDigestCard({
@@ -414,14 +456,297 @@ function AgentDigestCard({
   );
 }
 
-/** A row's avatar: its app's, or your agent's for a conversation. */
-function RowBadge({ item }: { item: FeedItem }) {
-  if (item.kind !== "message") return <Badge app={item.app} />;
+/** How many of the newest candidates are read to find the tasks on top. */
+const TASKS_READ = 6;
+
+/**
+ * What you asked your agent to do, as posts on top of the feed: the goal, who
+ * is on it, where it stands, and the latest step, live. A post opens its chain.
+ * Only a chain you started is a task, so the newest few candidates are read.
+ */
+function TaskPosts({
+  feed,
+  candidates,
+  onOpen,
+  onOpenApp,
+}: {
+  feed: Feed;
+  candidates: FeedItem[];
+  onOpen: (chain: string) => void;
+  /** Opens a linked thing in its app beside the feed. */
+  onOpenApp?: (item: FeedItem) => void;
+}) {
+  const [tasks, setTasks] = useState<TaskPost[]>([]);
+  // Where each task stands, as your agent last wrote it: behind "Where it stands" on its post.
+  const [checkpoints, setCheckpoints] = useState<Map<string, CheckpointView>>(new Map());
+  const { loadChain, loadCheckpoint, page } = feed;
+  useEffect(() => {
+    let live = true;
+    const read = candidates.slice(0, TASKS_READ);
+    Promise.all(read.map((lead) => loadChain(lead.chain).then((rows) => taskOf(rows, lead, appName), () => null)))
+      .then(async (all) => {
+        const shown = all.filter((t): t is TaskPost => t !== null).slice(0, TASKS_SHOWN);
+        if (!live) return;
+        setTasks(shown);
+        if (!loadCheckpoint) return;
+        const found = await Promise.all(shown.map((t) => loadCheckpoint(t.chain).catch(() => null)));
+        if (live) setCheckpoints(new Map(found.filter((c): c is CheckpointView => !!c).map((c) => [c.chain, c])));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+    // `page` is the point: re-read the tasks whenever the feed changes.
+  }, [candidates, loadChain, loadCheckpoint, page]);
+
+  if (tasks.length === 0) return null;
   return (
-    <span className={`badge badge-md ${item.from === "you" ? "badge-you" : "badge-agent"}`} aria-hidden="true">
-      {item.from === "you" ? "You" : <Spark />}
-    </span>
+    <section className="tasks" aria-label="Your tasks">
+      {tasks.map((t) => (
+        <TaskCard
+          key={t.chain}
+          task={t}
+          onOpen={() => onOpen(t.chain)}
+          onOpenApp={onOpenApp}
+          onOpenChat={onOpen}
+          checkpoint={checkpoints.get(t.chain)}
+          feed={feed}
+        />
+      ))}
+    </section>
   );
+}
+
+function TaskCard({
+  task,
+  onOpen,
+  onOpenApp,
+  onOpenChat,
+  checkpoint,
+  feed,
+}: {
+  task: TaskPost;
+  onOpen: () => void;
+  onOpenApp?: (item: FeedItem) => void;
+  /** Opens the chat it was started from, or a task started from it. */
+  onOpenChat?: (chain: string) => void;
+  /** Where it stands, as your agent last wrote it. */
+  checkpoint?: CheckpointView;
+  /** For the task's watches still waiting, with Cancel. */
+  feed?: Feed;
+}) {
+  return (
+    <article className={`task tone-${task.status.tone}`} aria-label={task.goal}>
+      <button type="button" className="task-line" onClick={onOpen}>
+        <span className="task-head">
+          <span className="task-faces" aria-label={["You", "your agent", ...task.people.map((p) => p.name)].join(", ")}>
+            <span className="badge badge-sm badge-you" aria-hidden="true">
+              You
+            </span>
+            <span className="badge badge-sm badge-agent" aria-hidden="true">
+              <Spark />
+            </span>
+            {task.people.map((p) => (
+              <span key={p.name} className="badge badge-sm badge-person" title={p.name} aria-hidden="true">
+                {p.initials}
+              </span>
+            ))}
+          </span>
+          <span className={`pill pill-${task.status.tone}`}>{task.status.label}</span>
+          <span className="row-time">{timeLabel(task.at)}</span>
+        </span>
+        <span className="task-goal">{task.goal}</span>
+        {task.track.length > 0 && <Track track={task.track} />}
+        {task.live && <span className="task-live">{task.live}</span>}
+        {task.apps.length > 0 && (
+          <span className="task-apps" aria-label={`In ${task.apps.map(appName).join(", ")}`}>
+            {task.apps.map((a) => (
+              <Badge key={a} app={a} size="sm" />
+            ))}
+          </span>
+        )}
+      </button>
+      {feed && <LinkChips feed={feed} chain={task.chain} onOpenApp={onOpenApp} onOpenChat={onOpenChat} />}
+      {checkpoint && <CheckpointDetails checkpoint={checkpoint} />}
+      {feed && <WatchList feed={feed} chain={task.chain} activeOnly />}
+    </article>
+  );
+}
+
+/**
+ * A task's links: the things it works on in your other apps, as chips (the
+ * app's badge, what it is, how many times teammates did something there).
+ * A chip opens what teammates did there, grouped under it, with a reply box
+ * where the app takes one; ↗ opens the thing in its app beside the feed;
+ * × takes it off the task. "Link" adds one by hand from its address.
+ */
+export function LinkChips({
+  feed,
+  chain,
+  onOpenApp,
+  onOpenChat,
+  canAdd = true,
+}: {
+  feed: Feed;
+  chain: string;
+  onOpenApp?: (item: FeedItem) => void;
+  /** Opens another chat or task: one started from this one, or the one it came from. */
+  onOpenChat?: (chain: string) => void;
+  /** Offer "+ Link"; without, a chain with no links shows nothing. */
+  canAdd?: boolean;
+}) {
+  const { loadLinks, loadChain, removeLink, page } = feed;
+  const addLink = canAdd ? feed.addLink : undefined;
+  const [links, setLinks] = useState<LinkView[]>([]);
+  const [rows, setRows] = useState<FeedItem[]>([]);
+  const [open, setOpen] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [paste, setPaste] = useState("");
+  const [bad, setBad] = useState(false);
+  useEffect(() => {
+    if (!loadLinks) return;
+    let live = true;
+    Promise.all([loadLinks(chain), loadChain(chain)])
+      .then(([l, r]) => {
+        if (!live) return;
+        setLinks(l);
+        setRows(r);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+    // `page` is the point: re-read whenever the feed changes.
+  }, [chain, loadLinks, loadChain, page]);
+
+  if (!loadLinks || (links.length === 0 && !addLink)) return null;
+  const shown = links.find((l) => l.subject === open);
+  const about = shown ? rows.filter((r) => r.kind === "notification" && r.subject === shown.subject) : [];
+  const add = async () => {
+    const subject = subjectFromLink(paste);
+    if (!subject || !addLink) return setBad(true);
+    await addLink(chain, subject, "");
+    setPaste("");
+    setAdding(false);
+    setBad(false);
+  };
+  return (
+    <div className="links" role="group" aria-label="Linked">
+      <div className="link-chips">
+        {links.map((l) => {
+          const to = chainLink(l);
+          if (to) {
+            // A task started from this chat, or the chat this task came from: opens it here.
+            return (
+              <span key={l.subject} className="link-chip link-chain">
+                <button type="button" className="link-main" title={to.label} disabled={!onOpenChat} onClick={() => onOpenChat?.(to.chain)}>
+                  <span className="link-label">{to.label}</span>
+                  <span aria-hidden="true">{to.started ? "→" : "←"}</span>
+                </button>
+              </span>
+            );
+          }
+          const label = linkLabel(l, rows);
+          return (
+            <span key={l.subject} className={`link-chip${open === l.subject ? " open" : ""}`}>
+              <button
+                type="button"
+                className="link-main"
+                aria-expanded={open === l.subject}
+                title={`${appName(l.app)}: ${label}`}
+                onClick={() => setOpen(open === l.subject ? null : l.subject)}
+              >
+                <Badge app={l.app} size="sm" />
+                <span className="link-label">{label}</span>
+                {l.activity > 0 && (
+                  <span className="link-count" aria-label={`${l.activity} from teammates`}>
+                    {l.activity}
+                  </span>
+                )}
+              </button>
+              {onOpenApp && canOpen(linkItem(l, label)) && (
+                <button type="button" className="link-icon" aria-label={`Open ${label} in ${appName(l.app)}`} onClick={() => onOpenApp(linkItem(l, label))}>
+                  ↗
+                </button>
+              )}
+              {removeLink && (
+                <button type="button" className="link-icon" aria-label={`Take ${label} off the task`} onClick={() => void removeLink(chain, l.subject)}>
+                  ×
+                </button>
+              )}
+            </span>
+          );
+        })}
+        {addLink &&
+          (adding ? (
+            <span className="link-add">
+              <input
+                aria-label="Link to add: an app's address"
+                placeholder="Paste an issue, board or chat address"
+                value={paste}
+                autoFocus
+                onChange={(e) => {
+                  setPaste(e.target.value);
+                  setBad(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void add();
+                  if (e.key === "Escape") setAdding(false);
+                }}
+              />
+              <button type="button" className="chip" onClick={() => void add()} disabled={!paste.trim()}>
+                Add
+              </button>
+              {bad && <span className="link-bad">Not an address of one of your apps</span>}
+            </span>
+          ) : (
+            <button type="button" className="link-icon link-new" onClick={() => setAdding(true)}>
+              + Link
+            </button>
+          ))}
+      </div>
+      {shown && (
+        <ul className="link-group" aria-label={`In ${linkLabel(shown, rows)}`}>
+          {about.length === 0 && <li className="link-empty">Nothing from teammates there yet.</li>}
+          {about.map((n) => {
+            const s = sentenceOf(n, appName);
+            const text = fieldsOf(n).text;
+            return (
+              <li key={n.id} className="link-step">
+                <Face s={s} item={n} size="sm" />
+                <span className="link-step-body">
+                  <span>
+                    <strong>{s.who}</strong> <span className="row-time">{timeLabel(n.at)}</span>
+                  </span>
+                  <p>{typeof text === "string" && text ? text : n.title}</p>
+                  {resolvable(n) && <Resolver key={n.id} item={n} feed={feed} />}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What a link's chip says: its label; else where a teammate's notification
+ * about it says it is (an issue's title, "#launch"); else the app and the thing's id.
+ */
+export function linkLabel(link: LinkView, rows: FeedItem[]): string {
+  if (link.label) return link.label;
+  for (const r of rows) {
+    if (r.subject !== link.subject) continue;
+    const where = fieldsOf(r).where;
+    if (typeof where === "string" && where) return where;
+  }
+  return link.item ? `${appName(link.app)} ${link.item.length > 14 ? `…${link.item.slice(-8)}` : link.item}` : appName(link.app);
+}
+
+/** A link as a row, for opening it in its app. */
+function linkItem(link: LinkView, label: string): FeedItem {
+  return { app: link.app, source_context: link.context, source_label: label } as Partial<FeedItem> as FeedItem;
 }
 
 function Spark() {
@@ -503,7 +828,7 @@ export function Resolver({ item, feed }: { item: FeedItem; feed: Feed }) {
   const isAction = item.kind === "action";
   const submit = async (answer: string) => {
     if (isAction) return feed.resolve(item.id, "approve", answer);
-    if (item.kind === "message") return void (await feed.say(item.chain, answer));
+    if (item.kind === "message") return feed.answerAsk(item, answer);
     return feed.answer(item.id, answer);
   };
   const { kind, prompt, options } = item.ask;
@@ -572,6 +897,11 @@ export function Resolver({ item, feed }: { item: FeedItem; feed: Feed }) {
   );
 }
 
+/** A question a newer one replaced before you answered it: its buttons are gone. */
+function replaced(item: FeedItem): boolean {
+  return Boolean(item.superseded_by) && (item.status === "asked" || item.status === "received");
+}
+
 /** What was said on the latest step, as a line under the row. */
 function answerLine(item: FeedItem): string {
   if (item.kind === "notification") {
@@ -584,18 +914,57 @@ function answerLine(item: FeedItem): string {
   return item.note;
 }
 
-/** The body, when it says more than the title it starts with. */
+/** The command a row for a tool on your computer ran: one line says it, the rest is here when you want it. */
+function CommandDetails({ command }: { command: string }) {
+  return (
+    <details className="row-details">
+      <summary>Details</summary>
+      <pre>{command}</pre>
+    </details>
+  );
+}
+
+/** The body, when it says more than the title it starts with (a message's: its headline). */
 function extraBody(item: FeedItem): string {
   const body = item.body.trim();
+  if (item.kind === "message") return saysMore(item) ? body : "";
   const title = item.title.replace(/…$/, "").trim();
   if (!body || body === title) return "";
   return body;
 }
 
+/**
+ * A message's whole text, behind "More": the row already says its headline,
+ * and a long answer must not push the buttons out of reach.
+ */
+function MoreBody({ body }: { body: string }) {
+  const [more, setMore] = useState(false);
+  const id = useId();
+  return (
+    <div className="more-body">
+      <button type="button" className="link small" aria-expanded={more} aria-controls={id} onClick={() => setMore((v) => !v)}>
+        {more ? "Less" : "More"}
+      </button>
+      {more && (
+        <p id={id} className="quote more-text">
+          {body}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One chain: a line that opens in place, or with `card` a card in the strip of
+ * what needs you, which says who wants what and carries its buttons, so it is
+ * settled without opening. Opened, either shows the rest: the body, the flow,
+ * Open in its app, Later and Archive.
+ */
 function Row({
   item,
   lane,
   archived,
+  card,
   expanded,
   onToggle,
   feed,
@@ -607,6 +976,7 @@ function Row({
   item: FeedItem;
   lane: Lane;
   archived?: boolean;
+  card?: boolean;
   expanded: boolean;
   onToggle: () => void;
   feed: Feed;
@@ -621,35 +991,48 @@ function Row({
     if (expanded) ref.current?.scrollIntoView?.({ block: "nearest" });
   }, [expanded]);
   const body = extraBody(item);
+  const command = localCommand(item);
   const openable = Boolean(onOpenApp) && canOpen(item);
+  // Your agent's answer in a chat you started reads as that chat: the answer stays in its thread.
+  const root = useChainRoot(mayAnswer(item) ? item.chain : "", feed.loadChain);
+  const chat = answersYou(item, root) ? root : null;
+  const noRetry = noRetryLine(item, appName);
   return (
-    <li ref={ref} className={`row ${expanded ? "open" : ""} ${item.needs_you ? "needs" : ""}`}>
-      <button type="button" className="row-line" aria-expanded={expanded} aria-controls={bodyId} onClick={onToggle}>
-        <RowBadge item={item} />
-        <span className="row-text">
-          <span className="row-title">{item.title}</span>
-          <span className="row-where">{progressLine(item) ? `Working: ${progressLine(item)}` : whereOf(item)}</span>
-        </span>
-        <Status item={item} />
-        {item.chain_len > 1 && <span className="row-steps">{item.chain_len}</span>}
-        <span className="row-time">{timeLabel(item.chain_at || item.at)}</span>
+    <li ref={ref} className={`row ${card ? "need" : ""} ${expanded ? "open" : ""} ${item.needs_you ? "needs" : ""}`}>
+      <button type="button" className={card ? "need-line" : "row-line"} aria-expanded={expanded} aria-controls={bodyId} onClick={onToggle}>
+        {card ? <NeedHead item={item} /> : <PeopleLine item={item} chat={chat} />}
       </button>
+      {/* On a card the answer is always there: the reason the strip exists. */}
+      {card && <Settle item={item} feed={feed} onArchive={onArchive} />}
       {expanded && (
         <div id={bodyId} className="row-body">
-          {body && (item.kind === "action" ? <p>{body}</p> : <p className="quote">{body}</p>)}
+          {command ? (
+            <CommandDetails command={command} />
+          ) : (
+            body &&
+            (item.kind === "action" ? (
+              <p>{body}</p>
+            ) : item.kind === "message" && saysMore(item) ? (
+              <MoreBody key={item.id} body={body} />
+            ) : (
+              <p className="quote">{body}</p>
+            ))
+          )}
           <Typed item={item} />
           {item.breach && <p className="breach">Your agent {item.breach}.</p>}
           {item.why && item.kind === "action" && <p className="why">Why: {item.why}</p>}
           {item.note && <p className="note">{answerLine(item)}</p>}
+          {replaced(item) && <p className="note replaced">{REPLACED}</p>}
+          {noRetry && <p className="note">{noRetry}</p>}
           <LateHint item={item} live={agentLive(feed.settings?.agents)} />
-          {resolvable(item) && (
+          {!card && resolvable(item) && (
             <div className="row-answer">
               <Resolver key={item.id} item={item} feed={feed} />
             </div>
           )}
           {/* The decision comes before the flow: a long history must not push Approve out of reach. */}
           <div className="actions">
-            <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
+            {!card && <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />}
             {openable && (
               <button type="button" className="ghost small" onClick={() => onOpenApp?.(item)}>
                 Open in {appName(item.app)}
@@ -674,19 +1057,24 @@ function Row({
                     <kbd>S</kbd>
                   </button>
                 )}
-                <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onArchive(item)}>
-                  Archive
-                  <kbd>E</kbd>
-                </button>
+                {/* A card that can only be archived already carries Archive. */}
+                {!(card && noRetry) && (
+                  <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onArchive(item)}>
+                    Archive
+                    <kbd>E</kbd>
+                  </button>
+                )}
               </>
             )}
           </div>
-          {item.chain_len > 1 && <Flow chain={item.chain} lead={item.id} feed={feed} />}
+          <LinkChips feed={feed} chain={item.chain} onOpenApp={onOpenApp} onOpenChat={onChat} canAdd={false} />
+          {item.chain_len > 1 && <Story chain={item.chain} lead={item} feed={feed} />}
           <AskAgent
             key={item.chain}
             feed={feed}
             chain={item.chain}
             label={item.kind === "message" ? "Say more to your agent" : "Talk to your agent about this"}
+            defaultMode={item.mode === "public" ? "public" : "private"}
           />
         </div>
       )}
@@ -694,12 +1082,100 @@ function Row({
   );
 }
 
+/** A sentence's face: a teammate's initials, an app's badge, you or your agent. */
+function Face({ s, item, size }: { s: Sentence; item: FeedItem; size: "sm" | "md" }) {
+  if (s.actor === "person") {
+    return (
+      <span className={`badge badge-${size} badge-person`} title={s.who} aria-hidden="true">
+        {s.initials}
+      </span>
+    );
+  }
+  if (s.actor === "app") return <Badge app={item.app} size={size} />;
+  return (
+    <span className={`badge badge-${size} ${s.actor === "you" ? "badge-you" : "badge-agent"}`} aria-hidden="true">
+      {s.actor === "you" ? "You" : <Spark />}
+    </span>
+  );
+}
+
 /**
- * A chain's whole flow, oldest first: what arrived, what the agent did, what
- * you decided, and what came of it. Anything in it still waiting on you can be
- * settled from right here.
+ * A row: who did what, as one sentence, with where under it.
+ * `chat` is the message of yours that started the chain when the row is your
+ * agent's answer to it: the row is that conversation, and the answer is in its thread.
  */
-function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }) {
+function PeopleLine({ item, chat }: { item: FeedItem; chat: FeedItem | null }) {
+  const shown = chat ?? item;
+  const s = sentenceOf(shown, appName);
+  const working = progressLine(item);
+  const place = placeOf(shown, appName);
+  return (
+    <>
+      <Face s={s} item={shown} size="md" />
+      <span className="row-text">
+        <span className="row-title people-sentence">
+          <strong>{s.who}</strong> {s.verb}
+          {s.what && <span className="people-what"> {s.what}</span>}
+        </span>
+        <span className="row-where">{working ? `Working: ${working}` : chat ? `Agent replied${place ? ` · ${place}` : ""}` : place || whereOf(shown)}</span>
+      </span>
+      <Status item={chat ? { ...chat, status: "answered" } : item} />
+      {item.chain_len > 1 && <span className="row-steps">{item.chain_len}</span>}
+      <span className="row-time">{timeLabel(item.chain_at || item.at)}</span>
+    </>
+  );
+}
+
+/** A card's head: who wants what, as a sentence, with where and when under it. */
+function NeedHead({ item }: { item: FeedItem }) {
+  const s = sentenceOf(item, appName);
+  const working = progressLine(item);
+  return (
+    <>
+      <Face s={s} item={item} size="sm" />
+      <span className="need-text">
+        <span className="need-sentence">
+          <strong>{s.who}</strong> {s.verb}
+          {s.what && <span className="need-object">{s.what}</span>}
+        </span>
+        <span className="need-where">
+          {working
+            ? `Working: ${working}`
+            : `${item.app ? appName(item.app) : "Your agent"}${item.source_label ? ` · ${item.source_label}` : ""} · ${timeLabel(item.chain_at || item.at)}`}
+        </span>
+      </span>
+      <Status item={item} />
+    </>
+  );
+}
+
+/**
+ * What settles a card, right on it: the reply, the options, Approve and
+ * Decline; or, for a failure no retry can fix, Archive.
+ */
+function Settle({ item, feed, onArchive }: { item: FeedItem; feed: Feed; onArchive: (item: FeedItem) => void }) {
+  const c = choicesFor(item);
+  const decides = Boolean(c.approve) || c.decline || c.keep || c.undo || c.archive;
+  if (!resolvable(item) && !decides) return null;
+  return (
+    <div className="need-settle">
+      {resolvable(item) && <Resolver key={item.id} item={item} feed={feed} />}
+      {decides && (
+        <div className="actions">
+          <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
+          {c.archive && (
+            <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onArchive(item)}>
+              Archive
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Every row in a chain, oldest first, re-read whenever the feed changes. */
+function useChain(chain: string, feed: Feed): { items: FeedItem[] | null; failed: string | null } {
   const [items, setItems] = useState<FeedItem[] | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const { loadChain, page } = feed;
@@ -713,6 +1189,57 @@ function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }
     };
     // `page` is the point: re-read the flow whenever the feed changes.
   }, [chain, loadChain, page]);
+  return { items, failed };
+}
+
+/**
+ * A track of milestones: "Filed → PR #12 → CI green → Merged". Spans, not a
+ * list element, so it can sit inside a task post's button.
+ */
+function Track({ track }: { track: Milestone[] }) {
+  return (
+    <span className="track" role="list" aria-label={`Milestones: ${trackLine(track)}`}>
+      {track.map((m) => (
+        <span key={m.kind} role="listitem" className={`track-step tone-${m.tone}`}>
+          <span>{m.label}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * An open chain tells its story in milestones, with the
+ * whole flow behind "More". A chain with no story to tell shows its flow.
+ */
+function Story({ chain, lead, feed }: { chain: string; lead: FeedItem; feed: Feed }) {
+  const [more, setMore] = useState(false);
+  const id = useId();
+  const { items } = useChain(chain, feed);
+  const track = items ? milestonesOf(items, lead) : [];
+  if (items && track.length === 0) return <Flow chain={chain} lead={lead.id} feed={feed} />;
+  return (
+    <div className="story">
+      {track.length > 0 && <Track track={track} />}
+      <button type="button" className="link small" aria-expanded={more} aria-controls={id} onClick={() => setMore((v) => !v)}>
+        {more ? "Less" : "More"}
+      </button>
+      {more && (
+        <div id={id}>
+          <Flow chain={chain} lead={lead.id} feed={feed} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A chain's whole flow, oldest first: what arrived, what the agent did, what
+ * you decided, and what came of it. Anything in it still waiting on you can be
+ * settled from right here.
+ */
+function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }) {
+  const { items, failed } = useChain(chain, feed);
 
   if (failed) return <p className="err">{failed}</p>;
   if (!items) return <p className="muted">Loading the flow…</p>;
@@ -740,6 +1267,8 @@ function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }
             </div>
             <p className={s.first ? "flow-title" : ""}>{s.text}</p>
             {s.detail && <p className="flow-detail">{s.detail}</p>}
+            {replaced(s.item) && lastStepOf.get(s.item.id) === s.key && <p className="flow-detail replaced">{REPLACED}</p>}
+            {s.first && localCommand(s.item) && <CommandDetails command={localCommand(s.item)} />}
             {s.item.id !== lead && s.item.needs_you && lastStepOf.get(s.item.id) === s.key && (
               <div className="flow-settle">
                 {resolvable(s.item) && <Resolver key={s.item.id} item={s.item} feed={feed} />}
@@ -765,18 +1294,24 @@ export function AskAgent({
   chain,
   label,
   onPosted,
+  defaultMode = "private",
 }: {
   feed: Feed;
   chain: string;
   label: string;
   onPosted?: (message: FeedItem) => void;
+  /** Which agent it goes to unless you pick the other: the row's own, on a row. */
+  defaultMode?: MessageMode;
 }) {
   const id = useId();
   const [text, setText] = useState("");
+  const [mode, setMode] = useState<MessageMode>(defaultMode);
+  // Only a feed that lists modes takes one; an older feed refuses the argument.
+  const modes = feedModes(feed.settings);
   const send = async () => {
     const t = text.trim();
     if (!t || feed.busy) return;
-    const posted = await feed.say(chain, t);
+    const posted = await feed.say(chain, t, [], modes.length > 0 ? mode : undefined);
     if (!posted) return;
     setText("");
     onPosted?.(posted);
@@ -807,6 +1342,7 @@ export function AskAgent({
           }
         }}
       />
+      <ModePicker modes={modes} value={mode} onChange={setMode} disabled={feed.busy} />
       <button type="submit" className="primary small" disabled={feed.busy || !text.trim()}>
         Send
       </button>

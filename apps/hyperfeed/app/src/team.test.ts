@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { agentDigest, digestLine, groupSentence, headlineOf, isNoise, line, teamGroups } from "./team";
+import { agentDigest, digestLine, digestSince, groupSentence, headlineOf, isNoise, line, teamGroups } from "./team";
 
 const NOW = new Date(2026, 9, 9, 15, 0).getTime();
 const appName = (k: string) => ({ issues: "Issues", chat: "Chat" })[k] ?? k;
@@ -43,7 +43,7 @@ function row(over: Partial<FeedItem>): FeedItem {
     reply_call: "",
     doing: "",
     doing_at: 0,
-    attachments: [],
+    attachments: [], steps: [], draft: "", stop_at: 0, headline: "", mode: "", superseded_by: "", answers: "", answers_superseded: false, held_by: "", held_since: 0, subject: "",
     ...over,
   };
 }
@@ -64,11 +64,20 @@ describe("the team view's reading of the feed", () => {
       object: "Send the deck to Maya",
       person: false,
     });
+    // An older action titled with its bare method reads in plain words on its card too.
+    expect(headlineOf(row({ kind: "action", status: "pending", method: "set_summary", title: "set summary on the node" }), appName).object).toBe(
+      "Set the summary on the node",
+    );
     // The title already names the subject: it is not said twice.
     expect(
       headlineOf(row({ from: "Tomás", title: "Assigned HF-31 to you", fields: JSON.stringify({ from: "Tomás", what: "HF-31" }) }), appName),
     ).toMatchObject({ verb: "assigned HF-31 to you", object: "" });
     expect(headlineOf(row({ title: "Build failed" }), appName).who).toBe("Issues");
+    expect(headlineOf(row({ kind: "message", from: "agent", status: "asked", body: "Delete the duplicate?" }), appName)).toMatchObject({
+      who: "Your agent",
+      verb: "asks you",
+      object: "Delete the duplicate?",
+    });
   });
 
   it("keeps a card's text to its first line", () => {
@@ -170,6 +179,17 @@ describe("the team view's reading of the feed", () => {
     expect(d.items).toHaveLength(6);
     expect(digestLine(d)).toBe("Filed 1 issue, did 1 other thing, answered 1 message, 2 in progress, 1 failed, 1 waiting on you.");
     expect(digestLine(agentDigest([], NOW))).toBe("Nothing yet today.");
+  });
+
+  it("still counts the evening's work just after midnight", () => {
+    const halfPast = new Date(2026, 9, 11, 0, 30).getTime();
+    const lastNight = halfPast - 20 * 60_000;
+    const d = agentDigest([row({ kind: "action", status: "done", method: "send_message", at: lastNight, chain_at: lastNight })], halfPast);
+    expect(digestLine(d)).toBe("Did 1 thing.");
+    // Later in the day, today starts at midnight.
+    const afternoon = new Date(2026, 9, 11, 15, 0).getTime();
+    expect(digestSince(afternoon)).toBe(new Date(2026, 9, 11).getTime());
+    expect(digestSince(halfPast)).toBe(halfPast - 12 * 60 * 60 * 1000);
   });
 
   it("says what kind of work your agent did, and what waits on you from any day", () => {
