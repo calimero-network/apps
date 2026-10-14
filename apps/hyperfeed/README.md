@@ -432,8 +432,10 @@ in the row's `note` while it is current.
    that works in it, and a new chat to your private agent. When that agent meets work that needs
    code, it proposes a hand-off (an action in the app `mero-bot`, method `hand_off`) and the agent
    you gave code to takes the chat up only once you approve it. What waits on you in a chat is a
-   card in its thread, not a one-line note: a proposal shows what it would send (its body) and why,
-   and a message that reached you in the chain (a reply to one your agent sent) shows what was said
+   card in its thread, not a one-line note: a proposal shows what it would send and why,
+   its body (the call's arguments, `message: <p>Hi</p>`, as mero-bot keeps them to tell a write that
+   already landed) read as text: one argument as its text alone, several one per line, HTML as the
+   text it shows. A message that reached you in the chain (a reply to one your agent sent) shows what was said
    with its reply box, answered there or in the feed. `settings().message_modes` is empty:
    no client offers a mode any more. A message nobody
    has taken up after 30 seconds asks whether your agent (mero-bot) is running.

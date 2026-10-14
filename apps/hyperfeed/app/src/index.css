@@ -1889,6 +1889,12 @@ thead th {
   padding: 8px 10px;
 }
 
+/* A write's arguments, one per line. */
+.write-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .chat-action-why {
   margin: 0;
   font-size: 12px;

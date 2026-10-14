@@ -19,6 +19,7 @@ import {
   timeLabel,
   TYPE_LABELS,
   typedFacts,
+  writeText,
   type Lane,
 } from "./format";
 import { agentDigest, digestLine, isAgent } from "./team";
@@ -1017,7 +1018,7 @@ function Row({
           ) : (
             body &&
             (item.kind === "action" ? (
-              <p>{body}</p>
+              <p className="write-text">{writeText(item)}</p>
             ) : item.kind === "message" && saysMore(item) ? (
               <MoreBody key={item.id} body={body} />
             ) : (
