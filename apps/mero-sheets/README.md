@@ -35,6 +35,16 @@ mero-sheets is two halves:
 | `test/` | perf workflows (`test/perf/`) + `spec-smoke.workflow.yml` |
 | `docs/` | the docs site (Jekyll) + design history under `docs/superpowers/` |
 
+Inside the app, the top bar (`app/src/pages/app/AppPage.tsx`) carries a
+light/dark switch (`app/src/components/ThemeToggle.tsx`) and **Log out**. Light
+is the default; the choice is kept in `localStorage` under `mero-sheets:theme`
+(`app/src/theme.ts`), and an inline script in `app/index.html` applies it
+before the first paint. The landing page's toggle still writes the old
+`app:theme` key, which the app reads (and moves over) only while
+`mero-sheets:theme` is unset. Log out calls mero-react's `logout()` and returns
+to the landing page. The shared glass look of dialogs, panels and
+menus lives in `app/src/components/glass.ts`.
+
 ## Quickstart
 
 Requires Node 22 (`.nvmrc`), pnpm, a Rust toolchain with the
