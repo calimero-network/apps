@@ -3764,3 +3764,56 @@ fn a_session_grant_covers_one_action() {
         .breach
         .is_empty());
 }
+
+#[test]
+fn a_guard_covers_reads_too() {
+    let mut app = acting_in("pass");
+    let read_secret = |app: &TestHost<Hyperfeed>| {
+        app.view(|s| s.check_action("pass".to_owned(), "secret".to_owned(), false, None))
+            .unwrap()
+    };
+    // Off by default: reading a secret is a read like any other.
+    assert_eq!(read_secret(&app).decision, "act");
+
+    app.call(|s| s.set_guard("secret".to_owned(), true))
+        .unwrap();
+    let v = read_secret(&app);
+    assert_eq!(v.decision, "ask");
+    assert!(v.reason.contains("\"secret\""), "{}", v.reason);
+
+    // The same through an action that only reads but names the guard.
+    app.call(|s| {
+        s.propose_actions(
+            "pass".to_owned(),
+            "pass-1".to_owned(),
+            vec![act_def(
+                "secrets",
+                "Read secrets",
+                "secret",
+                false,
+                &["get_secret"],
+            )],
+            "Pass".to_owned(),
+        )
+    })
+    .unwrap();
+    app.call(|s| s.decide_actions("pass".to_owned(), "pass-1".to_owned(), "approve".to_owned()))
+        .unwrap();
+    let v = app
+        .view(|s| {
+            s.check_action(
+                "pass".to_owned(),
+                String::new(),
+                false,
+                Some("get_secret".to_owned()),
+            )
+        })
+        .unwrap();
+    assert_eq!(v.decision, "ask");
+
+    // Other reads still run.
+    let v = app
+        .view(|s| s.check_action("pass".to_owned(), String::new(), false, None))
+        .unwrap();
+    assert_eq!(v.decision, "act");
+}
