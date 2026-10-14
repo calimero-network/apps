@@ -9,6 +9,7 @@ const {
   mockClearStoredSession,
   mockGetGroupMetadata,
   mockSetGroupMetadata,
+  mockListMembers,
 } = vi.hoisted(() => ({
   mockListGroups: vi.fn(),
   mockGetGroupId: vi.fn(),
@@ -16,6 +17,7 @@ const {
   mockClearStoredSession: vi.fn(),
   mockGetGroupMetadata: vi.fn(),
   mockSetGroupMetadata: vi.fn(),
+  mockListMembers: vi.fn(),
 }));
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
@@ -27,6 +29,8 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
     // carry them or the listing never renders.
     getGroupMetadata = mockGetGroupMetadata;
     setGroupMetadata = mockSetGroupMetadata;
+    // Read for the TEE indicator; no TEE unless a test says otherwise.
+    listMembers = mockListMembers;
   },
 }));
 
@@ -47,6 +51,10 @@ describe("WorkspaceSwitcher", () => {
     // component must render the listing whether or not metadata resolves.
     mockGetGroupMetadata.mockReset().mockResolvedValue({ data: null, error: null });
     mockSetGroupMetadata.mockReset().mockResolvedValue({ data: undefined, error: null });
+    mockListMembers.mockReset().mockResolvedValue({
+      data: { members: [], teeMembers: [] },
+      error: null,
+    });
     mockGetGroupId.mockReset();
     mockSetGroupId.mockReset();
     mockClearStoredSession.mockReset();
@@ -93,5 +101,41 @@ describe("WorkspaceSwitcher", () => {
 
     expect(mockSetGroupId).not.toHaveBeenCalled();
     expect(mockClearStoredSession).not.toHaveBeenCalled();
+  });
+
+  describe("TEE indicator", () => {
+    // Workspace Admin shows TEE status to admins only. Every member sees this
+    // shield, read from the namespace's own member list.
+    const withTee = () =>
+      mockListMembers.mockResolvedValue({
+        data: { members: [], teeMembers: [{ identity: "cb62", role: "RelayTee" }] },
+        error: null,
+      });
+
+    it("shows a shield beside the workspace name when the namespace has a TEE node", async () => {
+      withTee();
+      render(<WorkspaceSwitcher isCollapsed={false} />);
+
+      expect(await screen.findByLabelText("TEE enabled")).toBeInTheDocument();
+      expect(mockListMembers).toHaveBeenCalledWith("group-current");
+    });
+
+    it("shows no shield when the namespace has no TEE node", async () => {
+      render(<WorkspaceSwitcher isCollapsed={false} />);
+
+      await screen.findByText("Current");
+      await waitFor(() => expect(mockListMembers).toHaveBeenCalled());
+      expect(screen.queryByLabelText("TEE enabled")).not.toBeInTheDocument();
+    });
+
+    it("explains the TEE at the top of the workspace menu", async () => {
+      withTee();
+      render(<WorkspaceSwitcher isCollapsed={false} />);
+
+      await screen.findByLabelText("TEE enabled");
+      fireEvent.click(await screen.findByText("Current"));
+
+      expect(screen.getByText(/hardware-attested node keeps this workspace in sync/i)).toBeInTheDocument();
+    });
   });
 });

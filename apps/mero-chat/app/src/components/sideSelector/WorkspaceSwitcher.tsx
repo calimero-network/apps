@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import styled from "styled-components";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { useWorkspaceName } from "../../hooks/useWorkspaceName";
+import { useNamespaceTee } from "../../hooks/useNamespaceTee";
 import {
   resolveWorkspaceName,
   shouldBackfillWorkspaceName,
@@ -56,6 +57,39 @@ const WorkspaceName = styled.span`
   flex: 1;
   text-align: left;
 `;
+
+// Shown to every member; the TEE's details live in Workspace Admin > Details,
+// which only admins can open.
+const TeeShield = styled.span`
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--glass-accent);
+`;
+
+const TeeNote = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
+  font-size: 11px;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--glass-ink) 65%, transparent);
+  white-space: normal;
+
+  strong {
+    display: block;
+    color: var(--glass-ink);
+    font-weight: 600;
+  }
+`;
+
+const ShieldIcon = ({ size }: { size: number }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <path d="M8 0 1.5 2.5v5C1.5 11.6 4.3 15 8 16c3.7-1 6.5-4.4 6.5-8.5v-5L8 0Zm-1 11.4L3.8 8.2l1.1-1.1L7 9.2l4.1-4.1 1.1 1.1L7 11.4Z" />
+  </svg>
+);
 
 const ChevronIcon = styled.div<{ $open: boolean }>`
   flex-shrink: 0;
@@ -187,6 +221,7 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
   // fallback for when it is NOT — an empty listing is exactly the case that
   // showed a truncated id here while Settings showed the name.
   const displayName = current?.alias || (currentGroupId ? currentName : "Workspace");
+  const teeEnabled = useNamespaceTee(currentGroupId);
 
   const handleSelect = useCallback((groupId: string) => {
     if (groupId === currentGroupId) { setIsOpen(false); return; }
@@ -218,7 +253,7 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
       <Trigger
         $isCollapsed={isCollapsed}
         onClick={() => setIsOpen((o) => !o)}
-        title={isCollapsed ? displayName : undefined}
+        title={isCollapsed ? (teeEnabled ? `${displayName} · TEE enabled` : displayName) : undefined}
       >
         <WorkspaceIcon>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -231,6 +266,11 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
         {!isCollapsed && (
           <>
             <WorkspaceName>{displayName}</WorkspaceName>
+            {teeEnabled && (
+              <TeeShield role="img" aria-label="TEE enabled" title="TEE enabled">
+                <ShieldIcon size={12} />
+              </TeeShield>
+            )}
             <ChevronIcon $open={isOpen}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <polyline points="6 9 12 15 18 9" />
@@ -242,6 +282,18 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
 
       {isOpen && (
         <Dropdown $isCollapsed={isCollapsed}>
+          {teeEnabled && (
+            <TeeNote>
+              <TeeShield>
+                <ShieldIcon size={12} />
+              </TeeShield>
+              <span>
+                <strong>TEE enabled</strong>
+                A hardware-attested node keeps this workspace in sync and
+                available when members are offline.
+              </span>
+            </TeeNote>
+          )}
           <DropdownLabel>Workspaces</DropdownLabel>
           {workspaces.map((w) => {
             const name = w.alias || w.groupId.slice(0, 12) + "…";
