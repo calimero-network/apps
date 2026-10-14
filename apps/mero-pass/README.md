@@ -149,29 +149,48 @@ default role, Editor or Viewer, by the next admin who opens the vault.
 
 ## Design
 
-Mero Pass uses the same design language as the Calimero landing, Calimero
-Cloud, the App Registry and the desktop app:
+Mero Pass uses the fleet's light glass, the same look as Mero CRM, Calendar
+and Issue Tracker, from `@calimero-apps/glass`:
 
-- charcoal `#131215` by default, with light available from the header toggle;
-- Power Grotesk, self-hosted in `app/public/fonts`;
-- square corners and 1px hairlines, with 950-weight uppercase headings and
-  tracked uppercase labels;
-- one lime.
+- a cool off-white ground under soft teal-tinted colour fields, frosted
+  translucent surfaces with a bright edge, pill buttons, larger radii;
+- Figtree, self-hosted by the glass package;
+- one near-black ink for the primary action.
 
-`#a5ff11` is only ever a fill, always with dark ink on it. Lime used as text
-is `--accent-text`, which turns olive `#487800` on the light theme. The tokens
-live in `app/src/index.css`, the app shell in `app/src/styles/shell.module.css`.
+`--accent` is only ever a fill (the glass ink, with `--accent-ink` on it);
+accent used as text, an icon or an outline is `--accent-text`. The tokens live
+in `app/src/index.css`.
+
+Light is the default for everyone. The sun/moon button in the top bar, or
+**Security → Appearance**, switches to dark ("smoked glass"); the choice is
+saved under `mero-pass:theme` (`app/src/lib/theme.ts`) only when someone
+picks it, and an inline script in `app/index.html` applies it before the
+first paint.
+
+Every signed-in screen sits in one frame, `app/src/components/AppShell.tsx`
+(`app/src/styles/frame.module.css`): a floating glass rail on the left with the
+mark, navigation, the vault's own sections and, at the bottom, who you are
+with **Lock** and **Log out**; and a slim glass top bar over the page. On a
+phone the rail opens as a drawer from the top bar's menu button. The pages
+inside the frame share `app/src/styles/shell.module.css`; the lock screen is
+`app/src/styles/gate.module.css`.
+
+**Log out** (the rail, the phone drawer, or Security → Your account) runs
+`app/src/auth/signOut.ts`: it locks the device key, so every open vault drops
+its keys and decrypted items; clears a copied secret from the clipboard at
+once; forgets the application resolved for this node; then calls mero-react's
+`logout()`. The theme, the auto-lock delay and the sealed device key stay.
 
 The landing page (`app/src/pages/landing/`) is hand-owned rather than generated
-from `scripts/landing/`. It follows the Calimero home page and the Cloud
-marketing site:
+from `scripts/landing/`, restyled to the same glass. It follows the Calimero
+home page and the Cloud marketing site:
 
 - a hero with a product shot;
 - numbered chapters;
-- a lime Cloud band;
+- a tinted Cloud band;
 - a comparison and an FAQ.
 
-It is dark only, like those pages.
+It follows the app's light/dark choice.
 
 A vault is laid out the way 1Password and LastPass lay one out
 (`app/src/pages/vault/`):
@@ -201,7 +220,12 @@ app/              React + Vite frontend
   src/lib/        crypto, deviceKey, recoveryKey, vaultSession, vaults, totp,
                   health, portability, shareLink
   src/pages/      landing, teams, team, vault, security, share
+  src/components/AppShell.tsx   the signed-in frame: rail, top bar, Lock, Log out
+  src/auth/       signOut: lock, clear clipboard, forget the app, log out
+  src/styles/     frame, shell (pages) and gate (lock screen) CSS modules
+  tests/          Playwright, no node: entry, landing, theme, Log out
   e2e/shots/      screenshot harness (fixtures in place of a node)
+  e2e/journey/    Playwright against a real node (session: theme, copy, Log out)
 ```
 
 ## Develop
@@ -218,6 +242,8 @@ pnpm -F mero-pass codegen
 # Frontend
 pnpm -F mero-pass test
 pnpm -F mero-pass dev        # http://localhost:5182
+pnpm -F mero-pass test:e2e   # Playwright specs in app/tests, no node
+MEROD_BINARY=… pnpm -F mero-pass test:journey   # e2e/journey: needs merod and the bundle
 ```
 
 The two-node scenario: `merobox bootstrap run apps/mero-pass/logic/workflows/e2e.yml`.
