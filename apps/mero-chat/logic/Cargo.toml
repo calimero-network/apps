@@ -55,6 +55,10 @@ icon        = "../app/public/icons/icon-512x512.png"
 # origin, compared by exact origin: a hosted login from any other origin dies on
 # "Login callback destination is not allowed".
 frontend    = "https://chat.hyperfeed.me"
+# Where chat was served before. Never opened, but a node's sign-in page trusts a
+# login callback from here too, so nodes and desktop launchers still opening a
+# bundle that names it keep signing in. Drop it once nothing does.
+frontend-aliases = ["https://mero-chat-pwa.vercel.app"]
 slug        = "com.calimero.chat"
 category    = "social"
 tags        = ["chat", "messaging", "social"]
