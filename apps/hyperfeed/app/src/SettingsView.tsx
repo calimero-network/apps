@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { AgentMode, NotificationMode } from "./backend";
+import type { ActionMode, AgentMode, NotificationMode } from "./backend";
 import { messageOf, type Feed, type PushState } from "./useFeed";
 import { Badge, NewFeedButton, type NewFeed } from "./FeedView";
 import { appKeyForPackage, appLook, CORE_PACKAGES, DEFAULT_APPS } from "./apps";
 import { GUARD_LABELS, TYPE_LABELS } from "./format";
-import type { Folder, LensView, ReachLine, RuleProposalView, RuleView } from "./generated/HyperfeedClient";
+import type { ActionSetView, Folder, LensView, ReachLine, RuleProposalView, RuleView } from "./generated/HyperfeedClient";
+import { groupSets, modeOf } from "./actions/actions";
 import type { Preview, PreviewRow } from "./preview";
 import { currentEndpoint, deviceName, inputOf, pushSupported, subscribe, unsubscribe } from "./push";
 import { AGENT_LIVE_MS } from "./theme";
@@ -26,10 +27,11 @@ const NOTIFICATION_OPTIONS: { id: NotificationMode; label: string }[] = [
 ];
 
 /** The parts of Settings, each its own page under `/settings/<id>`. */
-export type SettingsSection = "controls" | "rules" | "agents" | "lenses" | "alerts";
+export type SettingsSection = "controls" | "actions" | "rules" | "agents" | "lenses" | "alerts";
 
 const SECTIONS: { id: SettingsSection; label: string; hint: string }[] = [
   { id: "controls", label: "Controls", hint: "What your agent may do, and what always asks you" },
+  { id: "actions", label: "Actions", hint: "What your agent can do in each app, one action at a time" },
   { id: "rules", label: "Rules", hint: "The language your agents answer in, rules every agent keeps, and rules for one agent" },
   { id: "agents", label: "Agents", hint: "Who works for this feed, and what each can reach" },
   { id: "lenses", label: "Lenses", hint: "What your feed reads from each app" },
@@ -43,7 +45,7 @@ export function settingsSection(id: string | undefined): SettingsSection {
 
 /**
  * Settings, one section at a time: Controls (per-app permissions, pause,
- * guards), Rules (the language your agent answers in, your standing rules and
+ * guards), Actions (what your agent can do in each app, action by action), Rules (the language your agent answers in, your standing rules and
  * the ones it suggests), Agents (who reports in, what each can reach, how to
  * connect one), Lenses (what the feed reads from each app) and Alerts (phone
  * push). A section a feed cannot have, such as Alerts on a feed made before
@@ -82,6 +84,8 @@ export function SettingsView({
           const count =
             s.id === "lenses"
               ? feed.lenses.filter((l) => l.status === "proposed").length
+              : s.id === "actions"
+                ? feed.actionSets.filter((a) => a.status === "proposed").length
               : s.id === "rules"
                 ? (settings?.rule_proposals?.length ?? 0)
                 : 0;
@@ -116,6 +120,8 @@ export function SettingsView({
           <div className="empty">Loading your settings…</div>
         ) : current === "controls" ? (
           <ControlsSection feed={feed} installed={installed} install={install} />
+        ) : current === "actions" ? (
+          <ActionsSection feed={feed} newFeed={newFeed} />
         ) : current === "rules" ? (
           <RulesSection feed={feed} />
         ) : current === "agents" ? (
@@ -388,6 +394,152 @@ function LensesSection({ feed, preview, newFeed }: { feed: Feed; preview?: Previ
         )}
       </section>
     </div>
+  );
+}
+
+const ACTION_OPTIONS: { id: ActionMode; label: string }[] = [
+  { id: "", label: "Follow app" },
+  { id: "act", label: "Act" },
+  { id: "ask", label: "Ask first" },
+  { id: "off", label: "Off" },
+];
+
+const AGENT_LABELS: Record<string, string> = Object.fromEntries(AGENT_OPTIONS.map((o) => [o.id, o.label]));
+
+/**
+ * What your agent can do in each app, one action at a time: the actions it
+ * learned from each app's ABI ("Edit documents", "Delete your messages"),
+ * yours to approve, then to set apart from the app's mode.
+ */
+function ActionsSection({ feed, newFeed }: { feed: Feed; newFeed?: NewFeed }) {
+  const groups = useMemo(() => [...groupSets(feed.actionSets).entries()], [feed.actionSets]);
+  return (
+    <div className="controls">
+      <section className="panel full" aria-labelledby="h-actions">
+        <h2 id="h-actions">What your agent can do in each app</h2>
+        <p className="muted">
+          Your agent reads each app's ABI and groups its methods into actions you would recognise. Once you approve
+          them, they decide what each call is, whatever your agent says: whether it changes anything, and which of
+          your "always ask me before" switches covers it. Anything none of them names asks you every time. Set an
+          action apart from its app below; your switches and the pause still win.
+        </p>
+        {!feed.setActionMode ? (
+          <p className="notice">
+            Your feed was made by an earlier Hyperfeed. It still works, but it can't hold actions: those need a feed
+            made by the Hyperfeed installed now.
+            {newFeed && <NewFeedButton newFeed={newFeed} />}
+          </p>
+        ) : groups.length === 0 ? (
+          <p className="muted">
+            Nothing learned yet. Until you approve an app's actions, your agent says what each call is, and your
+            app modes and switches decide.
+          </p>
+        ) : (
+          <ul className="action-apps">
+            {groups.map(([app, g]) => (
+              <ActionApp key={app} app={app} active={g.active} proposed={g.proposed} feed={feed} />
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ActionApp({
+  app,
+  active,
+  proposed,
+  feed,
+}: {
+  app: string;
+  active?: ActionSetView;
+  proposed: ActionSetView[];
+  feed: Feed;
+}) {
+  const look = appLook(app);
+  const { pending, write } = usePending();
+  const appMode = feed.settings?.policies.find((p) => p.app === app)?.agent ?? "ask";
+  const setMode = feed.setActionMode;
+  return (
+    <li className="action-app" aria-labelledby={`h-actions-${app}`}>
+      <div className="lens-head">
+        <Badge app={app} size="sm" />
+        <h3 id={`h-actions-${app}`}>{look.name}</h3>
+        <span className="muted small-text">App mode: {AGENT_LABELS[appMode] ?? appMode}</span>
+      </div>
+      {proposed.map((s) => (
+        <div key={s.application_id} className="action-proposal">
+          <p>
+            <strong>
+              {active ? "Your agent relearned" : "Your agent learned"} {s.actions.length} action
+              {s.actions.length === 1 ? "" : "s"}
+            </strong>{" "}
+            <span className="muted mono" title={s.application_id}>
+              {s.application_id.slice(0, 8)}
+            </span>
+          </p>
+          <p>{s.summary}</p>
+          <p className="muted small-text">{s.actions.map((a) => a.label).join(" · ")}</p>
+          {active && <p className="muted small-text">The actions in force now stay until you approve these.</p>}
+          <div className="actions">
+            <button
+              type="button"
+              className="primary small"
+              disabled={feed.busy}
+              onClick={() => void feed.decideActions(s.app, s.application_id, "approve")}
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              className="ghost small"
+              disabled={feed.busy}
+              onClick={() => void feed.decideActions(s.app, s.application_id, "reject")}
+            >
+              Turn down
+            </button>
+          </div>
+        </div>
+      ))}
+      {active ? (
+        <ul className="action-list" aria-label={`Actions in ${look.name}`}>
+          {active.actions.map((a) => {
+            const mode = String(pending[`action:${app}/${a.id}`] ?? modeOf(feed.settings?.action_modes, app, a.id)) as ActionMode;
+            return (
+              <li key={a.id} className="action-row">
+                <div className="action-text">
+                  <strong>{a.label}</strong>
+                  {a.description && <span className="muted small-text">{a.description}</span>}
+                  <span className="action-tags">
+                    {!a.writes ? (
+                      <span className="pill">Only reads</span>
+                    ) : (
+                      a.category && <span className="pill pill-wait">Always asks: {GUARD_LABELS[a.category] ?? a.category}</span>
+                    )}
+                  </span>
+                  <details>
+                    <summary className="small-text">
+                      What this covers ({a.methods.length})
+                    </summary>
+                    <p className="mono small-text action-methods">{a.methods.join(", ")}</p>
+                  </details>
+                </div>
+                <Segmented
+                  label={`${a.label} in ${look.name}`}
+                  value={mode}
+                  options={ACTION_OPTIONS}
+                  disabled={feed.busy || !setMode}
+                  onChange={(m) => setMode && void write(`action:${app}/${a.id}`, m, () => setMode(app, a.id, m))}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="muted small-text">Nothing in force yet: your agent says what each call in {look.name} is.</p>
+      )}
+    </li>
   );
 }
 

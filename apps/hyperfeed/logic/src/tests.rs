@@ -65,12 +65,12 @@ fn feed(app: &TestHost<Hyperfeed>, filter: &str) -> FeedPage {
 fn an_unknown_app_asks_first() {
     let app = TestHost::new(Hyperfeed::init);
     let v = app
-        .view(|s| s.check_action("chat".to_owned(), String::new(), true))
+        .view(|s| s.check_action("chat".to_owned(), String::new(), true, None))
         .unwrap();
     assert_eq!(v.decision, "ask");
     // Reading is fine anywhere the agent is not switched off.
     let v = app
-        .view(|s| s.check_action("chat".to_owned(), String::new(), false))
+        .view(|s| s.check_action("chat".to_owned(), String::new(), false, None))
         .unwrap();
     assert_eq!(v.decision, "act");
 }
@@ -93,7 +93,7 @@ fn a_guard_turns_act_into_ask() {
     let mut input = action("sign", "proposed");
     input.category = "sign".to_owned();
     let v = app
-        .view(|s| s.check_action("sign".to_owned(), "sign".to_owned(), true))
+        .view(|s| s.check_action("sign".to_owned(), "sign".to_owned(), true, None))
         .unwrap();
     assert_eq!(v.decision, "ask");
     let item = app.call(|s| s.record_action(input)).unwrap();
@@ -103,7 +103,7 @@ fn a_guard_turns_act_into_ask() {
     // With the guard off, the same app's mode decides.
     app.call(|s| s.set_guard("sign".to_owned(), false)).unwrap();
     let v = app
-        .view(|s| s.check_action("sign".to_owned(), "sign".to_owned(), true))
+        .view(|s| s.check_action("sign".to_owned(), "sign".to_owned(), true, None))
         .unwrap();
     assert_eq!(v.decision, "act");
 }
@@ -163,7 +163,7 @@ fn pausing_makes_every_write_a_proposal() {
     let mut app = acting_in("chat");
     app.call(|s| s.set_paused(true)).unwrap();
     let v = app
-        .view(|s| s.check_action("chat".to_owned(), String::new(), true))
+        .view(|s| s.check_action("chat".to_owned(), String::new(), true, None))
         .unwrap();
     assert_eq!(
         v,
@@ -175,7 +175,7 @@ fn pausing_makes_every_write_a_proposal() {
     assert!(app.view(|s| s.settings()).unwrap().paused);
     app.call(|s| s.set_paused(false)).unwrap();
     let v = app
-        .view(|s| s.check_action("chat".to_owned(), String::new(), true))
+        .view(|s| s.check_action("chat".to_owned(), String::new(), true, None))
         .unwrap();
     assert_eq!(v.decision, "act");
 }
@@ -3454,4 +3454,313 @@ fn at_most_ten_devices_the_oldest_makes_room() {
     let list = app.view(|s| s.push_devices()).unwrap();
     assert_eq!(list.len(), MAX_PUSH_DEVICES);
     assert!(!list.iter().any(|d| d.endpoint == "https://push.example/0"));
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+
+fn act_def(id: &str, label: &str, category: &str, writes: bool, methods: &[&str]) -> ActionDef {
+    ActionDef {
+        id: id.to_owned(),
+        label: label.to_owned(),
+        description: String::new(),
+        category: category.to_owned(),
+        writes,
+        methods: methods.iter().map(|m| (*m).to_owned()).collect(),
+    }
+}
+
+/// Chat's actions, as an agent would learn them from its ABI.
+fn chat_actions() -> Vec<ActionDef> {
+    vec![
+        act_def(
+            "read",
+            "Read messages",
+            "",
+            false,
+            &["get_messages", "search"],
+        ),
+        act_def(
+            "send",
+            "Send messages",
+            "",
+            true,
+            &["send_message", "reply"],
+        ),
+        act_def("edit", "Edit your messages", "", true, &["edit_message"]),
+        act_def(
+            "delete",
+            "Delete your messages",
+            "delete",
+            true,
+            &["delete_message"],
+        ),
+    ]
+}
+
+fn approve_actions(app: &mut TestHost<Hyperfeed>, version: &str, actions: Vec<ActionDef>) {
+    app.call(|s| {
+        s.propose_actions(
+            "chat".to_owned(),
+            version.to_owned(),
+            actions,
+            "Chat".to_owned(),
+        )
+    })
+    .unwrap();
+    app.call(|s| s.decide_actions("chat".to_owned(), version.to_owned(), "approve".to_owned()))
+        .unwrap();
+}
+
+fn check(app: &TestHost<Hyperfeed>, method: &str, category: &str, writes: bool) -> Verdict {
+    app.view(|s| {
+        s.check_action(
+            "chat".to_owned(),
+            category.to_owned(),
+            writes,
+            Some(method.to_owned()),
+        )
+    })
+    .unwrap()
+}
+
+#[test]
+fn approved_actions_decide_what_a_call_is() {
+    let mut app = acting_in("chat");
+    // Before you approve anything, the agent's word is taken.
+    assert_eq!(check(&app, "delete_message", "", true).decision, "act");
+
+    app.call(|s| {
+        s.propose_actions(
+            "chat".to_owned(),
+            "app-1".to_owned(),
+            chat_actions(),
+            "Chat".to_owned(),
+        )
+    })
+    .unwrap();
+    // A proposal changes nothing until you approve it.
+    assert_eq!(check(&app, "delete_message", "", true).decision, "act");
+
+    app.call(|s| s.decide_actions("chat".to_owned(), "app-1".to_owned(), "approve".to_owned()))
+        .unwrap();
+    // The action's guard applies, whatever category the agent named.
+    let v = check(&app, "delete_message", "", true);
+    assert_eq!(v.decision, "ask");
+    assert!(v.reason.contains("\"delete\""), "{}", v.reason);
+    // An action with no guard of its own keeps the one the agent names: only
+    // the agent knows the person is new.
+    assert_eq!(
+        check(&app, "send_message", "new_contact", true).decision,
+        "ask"
+    );
+    assert_eq!(check(&app, "send_message", "", true).decision, "act");
+    // A reading action runs, even when the agent says it writes.
+    assert_eq!(check(&app, "search", "", true).decision, "act");
+    // A method no action names asks every time, even when said to only read.
+    let v = check(&app, "drop_channel", "", false);
+    assert_eq!(v.decision, "ask");
+    assert!(
+        v.reason.contains("isn't one of chat's actions"),
+        "{}",
+        v.reason
+    );
+    // An agent that names no method is judged by what it says.
+    let v = app
+        .view(|s| s.check_action("chat".to_owned(), String::new(), true, None))
+        .unwrap();
+    assert_eq!(v.decision, "act");
+
+    // Doing an undescribed thing without asking is a breach, and the row
+    // records what the actions say it was.
+    let mut input = action("chat", "done");
+    input.method = "drop_channel".to_owned();
+    let item = app.call(|s| s.record_action(input)).unwrap();
+    assert!(
+        item.breach.starts_with("acted without asking"),
+        "{}",
+        item.breach
+    );
+    let mut input = action("chat", "done");
+    input.method = "delete_message".to_owned();
+    let item = app.call(|s| s.record_action(input)).unwrap();
+    assert_eq!(item.category, "delete");
+    assert!(!item.breach.is_empty());
+}
+
+#[test]
+fn each_action_can_be_set_apart_from_its_app() {
+    let mut app = TestHost::new(Hyperfeed::init); // "chat" defaults to ask
+    approve_actions(&mut app, "app-1", chat_actions());
+    assert_eq!(check(&app, "edit_message", "", true).decision, "ask");
+
+    app.call(|s| s.set_action_mode("chat".to_owned(), "edit".to_owned(), "act".to_owned()))
+        .unwrap();
+    let v = check(&app, "edit_message", "", true);
+    assert_eq!(v.decision, "act");
+    assert!(v.reason.contains("Edit your messages"), "{}", v.reason);
+    // The others still follow the app.
+    assert_eq!(check(&app, "send_message", "", true).decision, "ask");
+
+    // A guard still wins over an action you let act.
+    app.call(|s| s.set_action_mode("chat".to_owned(), "delete".to_owned(), "act".to_owned()))
+        .unwrap();
+    assert_eq!(check(&app, "delete_message", "", true).decision, "ask");
+
+    // Off refuses, so a proposal for it is an error.
+    app.call(|s| s.set_action_mode("chat".to_owned(), "send".to_owned(), "off".to_owned()))
+        .unwrap();
+    assert_eq!(check(&app, "send_message", "", true).decision, "refuse");
+    let err = app
+        .call(|s| s.record_action(action("chat", "proposed")))
+        .unwrap_err();
+    assert!(format!("{err:?}").contains("you turned off"), "{err:?}");
+
+    // Ask on an app that acts.
+    app.call(|s| s.set_policy("chat".to_owned(), "act".to_owned(), "feed".to_owned()))
+        .unwrap();
+    app.call(|s| s.set_action_mode("chat".to_owned(), "send".to_owned(), "ask".to_owned()))
+        .unwrap();
+    assert_eq!(check(&app, "send_message", "", true).decision, "ask");
+    assert_eq!(check(&app, "reply", "", true).decision, "ask");
+
+    // Empty follows the app again, and settings lists only what you set.
+    app.call(|s| s.set_action_mode("chat".to_owned(), "send".to_owned(), String::new()))
+        .unwrap();
+    assert_eq!(check(&app, "send_message", "", true).decision, "act");
+    let modes = app.view(|s| s.settings()).unwrap().action_modes;
+    let set: Vec<(String, String)> = modes.into_iter().map(|m| (m.action, m.mode)).collect();
+    assert_eq!(
+        set,
+        vec![
+            ("delete".to_owned(), "act".to_owned()),
+            ("edit".to_owned(), "act".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn the_newest_approved_actions_stay_in_force_while_new_ones_wait() {
+    let mut app = acting_in("chat");
+    approve_actions(&mut app, "app-1", chat_actions());
+
+    // Version 2 moves delete_message out of any action.
+    let mut v2 = chat_actions();
+    v2.pop();
+    app.call(|s| s.propose_actions("chat".to_owned(), "app-2".to_owned(), v2, "v2".to_owned()))
+        .unwrap();
+    assert_eq!(check(&app, "delete_message", "", true).decision, "ask");
+    assert!(check(&app, "delete_message", "", true)
+        .reason
+        .contains("\"delete\""));
+
+    app.call(|s| s.decide_actions("chat".to_owned(), "app-2".to_owned(), "reject".to_owned()))
+        .unwrap();
+    assert!(check(&app, "delete_message", "", true)
+        .reason
+        .contains("\"delete\""));
+
+    app.call(|s| s.decide_actions("chat".to_owned(), "app-2".to_owned(), "approve".to_owned()))
+        .unwrap();
+    let v = check(&app, "delete_message", "", true);
+    assert!(
+        v.reason.contains("isn't one of chat's actions"),
+        "{}",
+        v.reason
+    );
+
+    let sets = app.view(|s| s.action_sets()).unwrap();
+    assert_eq!(sets.len(), 2);
+    assert_eq!(sets[0].application_id, "app-2");
+}
+
+#[test]
+fn actions_are_checked_and_only_the_owner_handles_them() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let propose = |actions: Vec<ActionDef>| {
+        move |s: &mut Hyperfeed| {
+            s.propose_actions(
+                "chat".to_owned(),
+                "app-1".to_owned(),
+                actions,
+                "x".to_owned(),
+            )
+        }
+    };
+    let twice = vec![
+        act_def("a", "A", "", true, &["m"]),
+        act_def("b", "B", "", true, &["m"]),
+    ];
+    let err = app.call(propose(twice)).unwrap_err();
+    assert!(format!("{err:?}").contains("is in two actions"), "{err:?}");
+    let bad_guard = vec![act_def("a", "A", "lunch", true, &["m"])];
+    assert!(app.call(propose(bad_guard)).is_err());
+    assert!(app.call(propose(Vec::new())).is_err());
+    let no_methods = vec![act_def("a", "A", "", true, &[])];
+    assert!(app.call(propose(no_methods)).is_err());
+
+    app.call(propose(chat_actions())).unwrap();
+    assert!(app
+        .call(|s| s.set_action_mode("chat".to_owned(), "send".to_owned(), "read".to_owned()))
+        .is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| {
+            s.decide_actions("chat".to_owned(), "app-1".to_owned(), "approve".to_owned())
+        })
+        .is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| {
+            s.set_action_mode("chat".to_owned(), "send".to_owned(), "act".to_owned())
+        })
+        .is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, propose(chat_actions()))
+        .is_err());
+}
+
+#[test]
+fn a_session_grant_covers_one_action() {
+    let mut app = TestHost::new(Hyperfeed::init); // "chat" defaults to ask
+    approve_actions(&mut app, "app-1", chat_actions());
+    let mut input = action("chat", "proposed");
+    input.ask = choose(&["Allow once", SESSION_GRANT]);
+    let proposal = app.call(|s| s.record_action(input)).unwrap();
+    app.call(|s| {
+        s.resolve_action(
+            proposal.id.clone(),
+            "approve".to_owned(),
+            SESSION_GRANT.to_owned(),
+        )
+    })
+    .unwrap();
+
+    // Sending again under it is fine; editing is another action.
+    let mut send = action("chat", "done");
+    send.method = "reply".to_owned();
+    send.grant = proposal.id.clone();
+    assert!(app
+        .call(|s| s.record_action(send))
+        .unwrap()
+        .breach
+        .is_empty());
+    let mut edit = action("chat", "done");
+    edit.method = "edit_message".to_owned();
+    edit.grant = proposal.id.clone();
+    assert!(!app
+        .call(|s| s.record_action(edit))
+        .unwrap()
+        .breach
+        .is_empty());
+
+    // A grant also covers an action you set to ask in an app that acts.
+    app.call(|s| s.set_policy("chat".to_owned(), "act".to_owned(), "feed".to_owned()))
+        .unwrap();
+    app.call(|s| s.set_action_mode("chat".to_owned(), "send".to_owned(), "ask".to_owned()))
+        .unwrap();
+    let mut send = action("chat", "done");
+    send.grant = proposal.id.clone();
+    assert!(app
+        .call(|s| s.record_action(send))
+        .unwrap()
+        .breach
+        .is_empty());
 }
