@@ -102,6 +102,9 @@ export interface Feed {
   /** Your standing rules: add one, remove one, or approve or dismiss one your agent suggested. */
   addRule: (text: string) => Promise<void>;
   removeRule: (id: string) => Promise<void>;
+  /** Your rules for one agent only; absent on a feed made before them. */
+  addAgentRule?: (agent: string, text: string) => Promise<void>;
+  removeAgentRule?: (id: string) => Promise<void>;
   approveRule: (id: string) => Promise<void>;
   dismissRule: (id: string) => Promise<void>;
   /** Put chains away (they come back when something new happens in them); undoable. False when the node refused it. */
@@ -227,6 +230,14 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     (app: string, agent: string) => run((b) => (b.setAssignment ? b.setAssignment(app, agent) : Promise.resolve())),
     [run],
   );
+  const addAgentRule = useCallback(
+    (agent: string, text: string) => run((b) => (b.addAgentRule ? b.addAgentRule(agent, text) : Promise.resolve())),
+    [run],
+  );
+  const removeAgentRule = useCallback(
+    (id: string) => run((b) => (b.removeAgentRule ? b.removeAgentRule(id) : Promise.resolve())),
+    [run],
+  );
   const addLink = useCallback(
     (chain: string, subject: string, label: string) =>
       run((b) => (b.addLink ? b.addLink(chain, subject, label).then(() => undefined) : Promise.resolve())),
@@ -318,6 +329,8 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     setPaused: useCallback((paused) => run((b) => b.setPaused(paused)), [run]),
     addRule: useCallback((text) => run((b) => b.addRule(text)), [run]),
     removeRule: useCallback((id) => run((b) => b.removeRule(id)), [run]),
+    addAgentRule: backend?.addAgentRule ? addAgentRule : undefined,
+    removeAgentRule: backend?.removeAgentRule ? removeAgentRule : undefined,
     approveRule: useCallback((id) => run((b) => b.approveRule(id)), [run]),
     dismissRule: useCallback((id) => run((b) => b.dismissRule(id)), [run]),
     archive: useCallback(

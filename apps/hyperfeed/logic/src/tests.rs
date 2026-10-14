@@ -2511,6 +2511,134 @@ fn only_the_owner_changes_standing_rules() {
     assert_eq!(rules(&app), vec!["Never push to main"]);
 }
 
+fn agent_rules(app: &TestHost<Hyperfeed>) -> Vec<(String, String)> {
+    app.view(|s| s.settings())
+        .unwrap()
+        .agent_rules
+        .into_iter()
+        .map(|r| (r.agent, r.text))
+        .collect()
+}
+
+#[test]
+fn you_add_and_remove_rules_for_one_agent() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    app.call(|s| s.add_rule("Never push to main".to_owned()))
+        .unwrap();
+    let first = app
+        .call(|s| {
+            s.add_agent_rule(
+                " mero-bot@studio ".to_owned(),
+                "  Run the tests first ".to_owned(),
+            )
+        })
+        .unwrap();
+    assert_eq!(first.agent, "mero-bot@studio", "trimmed");
+    assert_eq!(first.text, "Run the tests first", "trimmed");
+    app.call(|s| s.add_agent_rule("mero-bot@phone".to_owned(), "Keep answers short".to_owned()))
+        .unwrap();
+    // The same line for another agent is that agent's own.
+    app.call(|s| {
+        s.add_agent_rule(
+            "mero-bot@phone".to_owned(),
+            "Run the tests first".to_owned(),
+        )
+    })
+    .unwrap();
+    assert_eq!(
+        agent_rules(&app),
+        vec![
+            ("mero-bot@phone".to_owned(), "Keep answers short".to_owned()),
+            (
+                "mero-bot@phone".to_owned(),
+                "Run the tests first".to_owned()
+            ),
+            (
+                "mero-bot@studio".to_owned(),
+                "Run the tests first".to_owned()
+            ),
+        ]
+    );
+    // The general rules are untouched: every agent keeps them.
+    assert_eq!(rules(&app), vec!["Never push to main"]);
+    // The same rule twice for one agent is kept once.
+    let again = app
+        .call(|s| {
+            s.add_agent_rule(
+                "mero-bot@studio".to_owned(),
+                "run the TESTS first".to_owned(),
+            )
+        })
+        .unwrap();
+    assert_eq!(again.id, first.id);
+
+    app.call(|s| s.remove_agent_rule(first.id.clone())).unwrap();
+    assert_eq!(agent_rules(&app).len(), 2);
+    assert!(
+        app.call(|s| s.remove_agent_rule(first.id.clone())).is_err(),
+        "already removed"
+    );
+    assert!(app
+        .call(|s| s.remove_agent_rule("nope".to_owned()))
+        .is_err());
+}
+
+#[test]
+fn an_agent_rule_is_one_short_line_for_a_named_agent() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let a = || "mero-bot@studio".to_owned();
+    assert!(app
+        .call(|s| s.add_agent_rule("  ".to_owned(), "Be brief".to_owned()))
+        .is_err());
+    assert!(app
+        .call(|s| s.add_agent_rule(a(), "   ".to_owned()))
+        .is_err());
+    assert!(app
+        .call(|s| s.add_agent_rule(a(), "two\nlines".to_owned()))
+        .is_err());
+    assert!(app
+        .call(|s| s.add_agent_rule(a(), "x".repeat(MAX_RULE + 1)))
+        .is_err());
+    for i in 0..MAX_RULES {
+        app.call(|s| s.add_agent_rule(a(), format!("rule {i}")))
+            .unwrap();
+    }
+    assert!(app
+        .call(|s| s.add_agent_rule(a(), "one too many".to_owned()))
+        .is_err());
+    // The limit is per agent.
+    assert!(app
+        .call(|s| s.add_agent_rule("mero-bot@phone".to_owned(), "Be brief".to_owned()))
+        .is_ok());
+}
+
+#[test]
+fn only_the_owner_changes_agent_rules() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let rule = app
+        .call(|s| {
+            s.add_agent_rule(
+                "mero-bot@studio".to_owned(),
+                "Never push to main".to_owned(),
+            )
+        })
+        .unwrap();
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s
+            .add_agent_rule("mero-bot@studio".to_owned(), "Push anywhere".to_owned()))
+        .is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s.remove_agent_rule(rule.id.clone()))
+        .is_err());
+    assert_eq!(
+        agent_rules(&app),
+        vec![(
+            "mero-bot@studio".to_owned(),
+            "Never push to main".to_owned()
+        )]
+    );
+}
+
 #[test]
 fn a_suggested_rule_waits_until_you_approve_it() {
     let mut app = TestHost::new(Hyperfeed::init);

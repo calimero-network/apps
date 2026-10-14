@@ -30,7 +30,7 @@ export type SettingsSection = "controls" | "rules" | "agents" | "lenses" | "aler
 
 const SECTIONS: { id: SettingsSection; label: string; hint: string }[] = [
   { id: "controls", label: "Controls", hint: "What your agent may do, and what always asks you" },
-  { id: "rules", label: "Rules", hint: "The language your agent answers in, and the lines it keeps to on every turn" },
+  { id: "rules", label: "Rules", hint: "The language your agents answer in, rules every agent keeps, and rules for one agent" },
   { id: "agents", label: "Agents", hint: "Who works for this feed, and what each can reach" },
   { id: "lenses", label: "Lenses", hint: "What your feed reads from each app" },
   { id: "alerts", label: "Alerts", hint: "Push to your phone" },
@@ -750,8 +750,9 @@ const EXAMPLE_RULES = [
 ];
 
 /**
- * Settings → Rules: the language your agent answers in, then your standing
- * rules, short lines it keeps to on every turn. Only you add or remove them;
+ * Settings → Rules: the language your agents answer in, then your general
+ * rules, short lines every agent keeps to on every turn, then rules for one
+ * agent only, which it keeps on top of those. Only you add or remove them;
  * one your agent suggests after you corrected it waits here with one-tap
  * Approve, which adds it as yours. The language is a standing rule in a fixed
  * wording (see language.ts), shown as a picker rather than in the list.
@@ -779,6 +780,7 @@ function RulesSection({ feed }: { feed: Feed }) {
         </section>
       )}
       <StandingRules feed={feed} rules={others} total={rules.length} />
+      {feed.addAgentRule && Array.isArray(feed.settings?.agent_rules) && <AgentRules feed={feed} general={others.length} />}
     </div>
   );
 }
@@ -829,41 +831,144 @@ function LanguageRule({ feed, spoken }: { feed: Feed; spoken: RuleView[] }) {
   );
 }
 
-/** Your standing rules besides the language: each on its own line, and a field to add one. */
+/** Your general rules besides the language: every agent keeps each on every turn. */
 function StandingRules({ feed, rules, total }: { feed: Feed; rules: RuleView[]; total: number }) {
-  const id = useId();
-  const [text, setText] = useState("");
-  const full = total >= MAX_RULES;
-  const add = async () => {
-    const t = text.trim();
-    if (!t) return;
-    await feed.addRule(t);
-    setText("");
-  };
   return (
     <section className="panel" aria-labelledby="h-rules">
       <div className="panel-head">
-        <h2 id="h-rules">Standing rules</h2>
+        <h2 id="h-rules">General rules</h2>
         {total > MAX_RULES - 5 && (
           <span className="muted small-text" title="The language counts as one">
             {total} of {MAX_RULES} used
           </span>
         )}
       </div>
-      <p className="muted">Short lines your agent keeps to on every turn, whatever it is doing. Only you can change them.</p>
+      <p className="muted">
+        Short lines every agent keeps to on every turn, whatever it is doing. Only you can change them.
+      </p>
+      <RuleEditor
+        rules={rules}
+        full={total >= MAX_RULES}
+        busy={feed.busy}
+        listLabel="Your general rules"
+        empty="No rules yet. Add one every agent should always keep to, or start from one of these:"
+        examples={EXAMPLE_RULES}
+        onAdd={feed.addRule}
+        onRemove={feed.removeRule}
+      />
+    </section>
+  );
+}
+
+/**
+ * Rules for one agent only: it keeps your general rules first, then these.
+ * Pick the agent by the name it reports in; any agent that reported in, said
+ * what it reaches, works in an app or already has rules is offered.
+ */
+function AgentRules({ feed, general }: { feed: Feed; general: number }) {
+  const id = useId();
+  const settings = feed.settings!;
+  const all = settings.agent_rules ?? [];
+  const agents = [
+    ...new Set([
+      ...settings.agents.map((a) => a.name),
+      ...(settings.reach ?? []).map((r) => r.agent),
+      ...(settings.assignments ?? []).map((a) => a.agent),
+      ...all.map((r) => r.agent),
+    ]),
+  ].filter(Boolean);
+  const [picked, setPicked] = useState<string | null>(null);
+  const agent = picked !== null && agents.includes(picked) ? picked : (agents[0] ?? "");
+  const mine = all.filter((r) => r.agent === agent);
+  return (
+    <section className="panel" aria-labelledby="h-agent-rules">
+      <div className="panel-head">
+        <h2 id="h-agent-rules">Rules for one agent</h2>
+      </div>
+      <p className="muted">
+        Lines only this agent keeps to, on top of your language and general rules. Only you can change them.
+      </p>
+      {agents.length === 0 ? (
+        <p className="muted">No agent has reported in yet. Connect one in Agents, then give it its own rules here.</p>
+      ) : (
+        <>
+          <div className="language-pick">
+            <label htmlFor={`${id}-agent`}>Agent</label>
+            <select id={`${id}-agent`} value={agent} onChange={(e) => setPicked(e.target.value)}>
+              {agents.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                  {all.some((r) => r.agent === a) ? ` · ${all.filter((r) => r.agent === a).length}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="muted small-text">
+            {general === 0
+              ? `${agent} also answers in your language.`
+              : `${agent} also keeps your language and ${general} general ${general === 1 ? "rule" : "rules"}.`}
+          </p>
+          <RuleEditor
+            key={agent}
+            rules={mine}
+            full={mine.length >= MAX_RULES}
+            busy={feed.busy}
+            listLabel={`Rules for ${agent}`}
+            empty={`No rules for ${agent} yet.`}
+            onAdd={(text) => feed.addAgentRule!(agent, text)}
+            onRemove={(rid) => feed.removeAgentRule!(rid)}
+          />
+        </>
+      )}
+    </section>
+  );
+}
+
+/** A list of rules, each on its own line with Remove, and a field to add one. */
+function RuleEditor({
+  rules,
+  full,
+  busy,
+  listLabel,
+  empty,
+  examples = [],
+  onAdd,
+  onRemove,
+}: {
+  rules: { id: string; text: string }[];
+  full: boolean;
+  busy: boolean;
+  listLabel: string;
+  empty: string;
+  examples?: string[];
+  onAdd: (text: string) => Promise<void>;
+  onRemove: (id: string) => Promise<void>;
+}) {
+  const id = useId();
+  const [text, setText] = useState("");
+  const add = async () => {
+    const t = text.trim();
+    if (!t) return;
+    await onAdd(t);
+    setText("");
+  };
+  return (
+    <>
       {rules.length === 0 ? (
         <div className="rules-empty">
-          <p className="muted">No rules yet. Add one your agent should always keep to, or start from one of these:</p>
-          <div className="rule-examples">
-            {EXAMPLE_RULES.map((e) => (
-              <button key={e} type="button" className="chip" onClick={() => setText(e)}>
-                {e}
-              </button>
-            ))}
-          </div>
+          <p className="muted">{empty}</p>
+          {examples.length > 0 && (
+            <div className="rule-examples">
+              {examples.map((e) => (
+                <button key={e} type="button" className="chip" onClick={() => setText(e)}>
+                  {e}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
-        <ol className="rule-list" aria-label="Your standing rules">
+        <ol className="rule-list" aria-label={listLabel}>
           {rules.map((r, i) => (
             <li key={r.id} className="rule-item">
               <span className="rule-n" aria-hidden="true">
@@ -873,9 +978,9 @@ function StandingRules({ feed, rules, total }: { feed: Feed; rules: RuleView[]; 
               <button
                 type="button"
                 className="ghost small"
-                disabled={feed.busy}
+                disabled={busy}
                 aria-label={`Remove "${r.text}"`}
-                onClick={() => void feed.removeRule(r.id)}
+                onClick={() => void onRemove(r.id)}
               >
                 Remove
               </button>
@@ -897,11 +1002,11 @@ function StandingRules({ feed, rules, total }: { feed: Feed; rules: RuleView[]; 
           id={`${id}-rule`}
           value={text}
           maxLength={MAX_RULE}
-          placeholder={full ? "You have the most rules a feed holds: remove one first" : "Add a rule, like \"Never push to main\""}
+          placeholder={full ? "You have the most rules this holds: remove one first" : "Add a rule, like \"Never push to main\""}
           disabled={full}
           onChange={(e) => setText(e.target.value)}
         />
-        <button type="submit" className="primary small" disabled={feed.busy || full || !text.trim()}>
+        <button type="submit" className="primary small" disabled={busy || full || !text.trim()}>
           Add
         </button>
       </form>
@@ -910,7 +1015,7 @@ function StandingRules({ feed, rules, total }: { feed: Feed; rules: RuleView[]; 
           {text.length} of {MAX_RULE} characters
         </p>
       )}
-    </section>
+    </>
   );
 }
 

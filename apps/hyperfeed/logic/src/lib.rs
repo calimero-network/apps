@@ -1120,6 +1120,31 @@ impl Mergeable for Lease {
     }
 }
 
+/// A standing rule for one agent only ("Reply in one paragraph" for your
+/// phone's agent): it goes into that agent's turns after your general rules,
+/// which every agent keeps. Only you add or remove one; removing keeps the
+/// row with `removed`, like [`Rule`].
+#[app::mergeable(id = "hyperfeed::AgentRule")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AgentRule {
+    /// The agent's name, as it reports in: "mero-bot@studio".
+    pub agent: String,
+    pub text: String,
+    pub created_at: u64,
+    pub removed: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for AgentRule {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
+        Ok(())
+    }
+}
+
 /// A rule your agent suggested after you corrected it. It changes nothing
 /// until you approve it, which adds it as your own rule.
 #[app::mergeable(id = "hyperfeed::RuleProposal")]
@@ -1431,6 +1456,10 @@ pub struct SettingsView {
     /// is your default agent's. Absent on a feed made before assignments.
     #[serde(default)]
     pub assignments: Vec<AssignmentView>,
+    /// Your rules for one agent only, by agent then oldest first. Each agent
+    /// keeps `rules` and then its own. Absent on a feed made before them.
+    #[serde(default)]
+    pub agent_rules: Vec<AgentRuleView>,
 }
 
 /// One of your standing rules, as settings shows it.
@@ -1438,6 +1467,16 @@ pub struct SettingsView {
 #[serde(crate = "calimero_sdk::serde")]
 pub struct RuleView {
     pub id: String,
+    pub text: String,
+    pub created_at: u64,
+}
+
+/// One of your rules for one agent, as settings shows it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AgentRuleView {
+    pub id: String,
+    pub agent: String,
     pub text: String,
     pub created_at: u64,
 }
@@ -1543,6 +1582,8 @@ pub struct Hyperfeed {
     push_keys: UnorderedMap<String, PushKey>,
     /// Which agent works in each app, by app key. See [`Assignment`].
     assignments: UnorderedMap<String, Assignment>,
+    /// Your rules for one agent only, by id. See [`AgentRule`].
+    agent_rules: UnorderedMap<String, AgentRule>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1662,6 +1703,7 @@ impl Hyperfeed {
             push_devices: UnorderedMap::new(),
             push_keys: UnorderedMap::new(),
             assignments: UnorderedMap::new(),
+            agent_rules: UnorderedMap::new(),
         }
     }
 
@@ -3742,6 +3784,87 @@ impl Hyperfeed {
         Ok(())
     }
 
+    /// Your rules for one agent only, by agent then oldest first.
+    fn active_agent_rules(&self) -> app::Result<Vec<AgentRuleView>> {
+        let mut out: Vec<AgentRuleView> = self
+            .agent_rules
+            .entries()?
+            .filter(|(_, r)| !r.removed)
+            .map(|(id, r)| AgentRuleView {
+                id,
+                agent: r.agent,
+                text: r.text,
+                created_at: r.created_at,
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            a.agent
+                .cmp(&b.agent)
+                .then_with(|| a.created_at.cmp(&b.created_at))
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        Ok(out)
+    }
+
+    /// Add a rule for one agent only: it keeps it after your general rules,
+    /// which every agent keeps. Only you add rules; the same rule twice for
+    /// the same agent is kept once.
+    pub fn add_agent_rule(&mut self, agent: String, text: String) -> app::Result<AgentRuleView> {
+        self.require_owner()?;
+        let agent = agent.trim().to_owned();
+        Self::check_len("agent", &agent, MAX_KEY, true)?;
+        let text = Self::check_rule(&text)?;
+        let mine: Vec<AgentRuleView> = self
+            .active_agent_rules()?
+            .into_iter()
+            .filter(|r| r.agent == agent)
+            .collect();
+        if let Some(same) = mine.iter().find(|r| r.text.eq_ignore_ascii_case(&text)) {
+            return Ok(same.clone());
+        }
+        if mine.len() >= MAX_RULES {
+            return Err(AppError::msg(format!(
+                "{agent} has {MAX_RULES} rules, the limit; remove one first"
+            )));
+        }
+        // Strictly after this agent's newest rule, as in `insert_rule`.
+        let now = now_ms().max(mine.iter().map(|r| r.created_at + 1).max().unwrap_or(0));
+        let id = Self::fresh_id();
+        self.agent_rules.insert(
+            id.clone(),
+            AgentRule {
+                agent: agent.clone(),
+                text: text.clone(),
+                created_at: now,
+                removed: false,
+                updated_at: now,
+            },
+        )?;
+        app::emit!(Event::SettingsChanged);
+        Ok(AgentRuleView {
+            id,
+            agent,
+            text,
+            created_at: now,
+        })
+    }
+
+    /// Remove one of your rules for one agent.
+    pub fn remove_agent_rule(&mut self, id: String) -> app::Result<()> {
+        self.require_owner()?;
+        let mut rule = self
+            .agent_rules
+            .get(&id)?
+            .map(|r| r.clone())
+            .filter(|r| !r.removed)
+            .ok_or_else(|| AppError::msg(format!("no agent rule {id}")))?;
+        rule.removed = true;
+        rule.updated_at = now_ms().max(rule.updated_at + 1);
+        self.agent_rules.insert(id, rule)?;
+        app::emit!(Event::SettingsChanged);
+        Ok(())
+    }
+
     /// Your agent suggests a standing rule after you corrected it: `text` is
     /// the rule, `why` the correction, `chain` where it happened. It waits
     /// for you in Controls and in the chat; nothing changes until you approve
@@ -4412,6 +4535,7 @@ impl Hyperfeed {
             access,
             reach,
             assignments,
+            agent_rules: self.active_agent_rules()?,
         })
     }
 }
