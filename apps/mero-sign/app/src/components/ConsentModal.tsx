@@ -1,17 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { useCalimero } from '../lib/useCalimero';
 import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
-import { useTheme } from '../contexts/ThemeContext';
-import {
-  Button,
-  Box,
-  Flex,
-  Heading,
-  Text,
-  spacing,
-  colors,
-  radius,
-} from '@calimero-network/mero-ui';
+import { ShieldCheck } from 'lucide-react';
+import GlassDialog from './ui/GlassDialog';
+import ui from './ui/controls.module.css';
+import styles from './ConsentModal.module.css';
 interface ConsentModalProps {
   open: boolean;
   // ⚠️ No `userId`. Consent is recorded for the caller's own account inside the
@@ -26,35 +19,21 @@ interface ConsentModalProps {
   onClose: () => void;
 }
 
-const DisclosureText: React.FC<{ mode: string }> = ({ mode }) => (
-  <div
-    style={{
-      maxHeight: '60vh',
-      overflowY: 'auto',
-      paddingLeft: spacing[2].value,
-    }}
-  >
-    <Text
-      style={{
-        display: 'block',
-        marginBottom: spacing[3].value,
-        color: mode === 'dark' ? '#e5e7eb' : '#111827',
-      }}
-    >
+const DisclosureText: React.FC = () => (
+  <div className={styles.disclosure}>
+    <p className={styles.lead}>
       Please read this Electronic Records Disclosure and Consent (“Disclosure")
       carefully and retain a copy for your records.
-    </Text>
-    <ol
-      style={{ paddingLeft: spacing[4].value, marginBottom: spacing[3].value }}
-    >
-      <li style={{ marginBottom: spacing[2].value }}>
+    </p>
+    <ol className={styles.list}>
+      <li>
         You have the right to receive a paper copy of any record that we provide
         to you electronically. If you would like to receive a paper copy of any
         record, you may request it at any time by contacting us at{' '}
         <a href="mailto:support@calimero.network">support@calimero.network</a>.
         We may charge a reasonable fee for providing paper copies.
       </li>
-      <li style={{ marginBottom: spacing[2].value }}>
+      <li>
         You may withdraw your consent to receive records electronically at any
         time. To withdraw your consent, please notify us in writing at{' '}
         <a href="mailto:support@calimero.network">support@calimero.network</a>.
@@ -62,12 +41,12 @@ const DisclosureText: React.FC<{ mode: string }> = ({ mode }) => (
         withdrawing consent may delay the processing of your transaction or
         limit your ability to use certain services.
       </li>
-      <li style={{ marginBottom: spacing[2].value }}>
+      <li>
         Your consent applies to all records and disclosures related to your
         transactions with us, including but not limited to contracts,
         agreements, notices, and other communications.
       </li>
-      <li style={{ marginBottom: spacing[2].value }}>
+      <li>
         To withdraw your consent or to update your electronic contact
         information (such as your email address), please contact us at{' '}
         <a href="mailto:support@calimero.network">support@calimero.network</a>.
@@ -75,13 +54,13 @@ const DisclosureText: React.FC<{ mode: string }> = ({ mode }) => (
         complete email address and to maintain and update promptly any changes
         in this information.
       </li>
-      <li style={{ marginBottom: spacing[2].value }}>
+      <li>
         To request a paper copy of a record, contact us at{' '}
         <a href="mailto:support@calimero.network">support@calimero.network</a>.
         Please specify which record(s) you would like to receive. A reasonable
         fee may apply for each paper copy requested.
       </li>
-      <li style={{ marginBottom: spacing[2].value }}>
+      <li>
         To access and retain electronic records, you will need: a device with
         internet access, a current web browser, a valid email address, software
         capable of viewing PDFs, and sufficient storage or printing capability.
@@ -104,7 +83,6 @@ const ConsentModal: React.FC<ConsentModalProps> = ({
   onAccept,
   onClose,
 }) => {
-  const { mode } = useTheme();
   const [checked, setChecked] = useState(false);
   const [showDisclosure, setShowDisclosure] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -133,152 +111,88 @@ const ConsentModal: React.FC<ConsentModalProps> = ({
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-      }}
-    >
-      {/* Disclosure Modal */}
-      {showDisclosure && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000,
-            backgroundColor: 'rgba(0,0,0,0.6)',
-          }}
-        >
-          <Box
-            style={{
-              padding: spacing[6].value,
-              borderRadius: radius.lg.value,
-              maxWidth: '32rem',
-              width: '100%',
-              border: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
-              backgroundColor: mode === 'dark' ? '#1a1a1a' : '#ffffff',
-              boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-            }}
-          >
-            <Heading
-              size="sm"
-              style={{
-                marginBottom: spacing[4].value,
-                color: mode === 'dark' ? '#f3f4f6' : 'inherit',
-              }}
+    <>
+      <GlassDialog
+        open
+        onClose={onClose}
+        title="Consent to electronic signing"
+        size="sm"
+        testId="consent-dialog"
+        footer={
+          <>
+            <button
+              type="button"
+              className={ui.ghost}
+              onClick={onClose}
+              disabled={loading}
             >
-              Electronic Records Disclosure and Consent
-            </Heading>
-            <DisclosureText mode={mode} />
-            <Flex
-              justifyContent="flex-end"
-              style={{ marginTop: spacing[6].value }}
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={ui.success}
+              onClick={handleAccept}
+              disabled={!checked || loading}
+              data-testid="consent-accept"
             >
-              <Button
-                variant="secondary"
-                onClick={() => setShowDisclosure(false)}
-              >
-                Close
-              </Button>
-            </Flex>
-          </Box>
-        </div>
-      )}
-
-      {/* Main Consent Modal */}
-      <Box
-        data-testid="consent-dialog"
-        style={{
-          padding: spacing[6].value,
-          borderRadius: radius.lg.value,
-          maxWidth: '28rem',
-          width: '100%',
-          border: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
-          backgroundColor: mode === 'dark' ? '#1a1a1a' : '#ffffff',
-          boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-        }}
+              {loading ? <span className={ui.spinner} /> : null}
+              {loading ? 'Saving…' : 'Continue to sign'}
+            </button>
+          </>
+        }
       >
-        <Heading
-          size="md"
-          style={{
-            marginBottom: spacing[4].value,
-            color: mode === 'dark' ? '#f3f4f6' : 'inherit',
-          }}
-        >
-          Consent to Electronic Signing
-        </Heading>
-        <Text
-          style={{
-            marginBottom: spacing[4].value,
-            color: mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
-            fontSize: '0.95rem',
-          }}
-        >
-          Before signing, you must agree to conduct business electronically.{' '}
+        <div className={styles.body}>
+          <span className={styles.icon} aria-hidden="true">
+            <ShieldCheck size={22} />
+          </span>
+          <p className={styles.text}>
+            Before signing, you must agree to conduct business electronically.{' '}
+            <button
+              type="button"
+              className={styles.link}
+              onClick={() => setShowDisclosure(true)}
+            >
+              Read the agreement to conduct business electronically
+            </button>
+            .
+          </p>
+          <label className={styles.check}>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => setChecked(!checked)}
+              data-testid="consent-checkbox"
+            />
+            <span>
+              I agree to receive records electronically in accordance with
+              this Disclosure.
+            </span>
+          </label>
+          {error && <p className={styles.error}>{error}</p>}
+        </div>
+      </GlassDialog>
+
+      {/* The disclosure, over the consent dialog */}
+      <GlassDialog
+        open={showDisclosure}
+        onClose={() => setShowDisclosure(false)}
+        title="Electronic Records Disclosure and Consent"
+        size="lg"
+        layer="top"
+        footer={
           <button
             type="button"
-            style={{ textDecoration: 'underline', color: 'var(--primary)' }}
-            onClick={() => setShowDisclosure(true)}
+            className={ui.ghost}
+            onClick={() => setShowDisclosure(false)}
           >
-            Click to view agreement to conduct business
+            Close
           </button>
-          .
-        </Text>
-
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            marginBottom: spacing[4].value,
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={() => setChecked(!checked)}
-            style={{ marginRight: spacing[3].value }}
-          />
-          <Text style={{ color: mode === 'dark' ? '#e5e7eb' : '#111827' }}>
-            I agree to receive records electronically in accordance with this
-            Disclosure.
-          </Text>
-        </label>
-        {error && (
-          <div
-            style={{
-              color: colors.semantic.error.value,
-              marginBottom: spacing[3].value,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        <Flex
-          justifyContent="flex-end"
-          style={{ gap: spacing[3].value, marginTop: spacing[4].value }}
-        >
-          <Button variant="secondary" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button
-            variant="success"
-            onClick={handleAccept}
-            disabled={!checked || loading}
-          >
-            {loading ? 'Saving...' : 'Continue to Sign'}
-          </Button>
-        </Flex>
-      </Box>
-    </div>
+        }
+      >
+        <DisclosureText />
+      </GlassDialog>
+    </>
   );
 };
+
 export default ConsentModal;

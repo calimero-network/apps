@@ -1,17 +1,9 @@
 import React, { useRef, useEffect, useState } from 'react';
 import SignaturePad from 'signature_pad';
-import { Save, RotateCcw } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
-import {
-  Button,
-  Modal,
-  Text,
-  Box,
-  Flex,
-  spacing,
-  radius,
-} from '@calimero-network/mero-ui';
-import { useTheme } from '../contexts/ThemeContext';
+import { Check, RotateCcw } from 'lucide-react';
+import GlassDialog from './ui/GlassDialog';
+import ui from './ui/controls.module.css';
+import styles from './SignaturePad.module.css';
 
 interface SignaturePadComponentProps {
   onSave: (signatureData: string) => void;
@@ -24,7 +16,6 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
   onCancel,
   isOpen,
 }) => {
-  const { mode } = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [signaturePad, setSignaturePad] = useState<SignaturePad | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
@@ -33,6 +24,8 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
   useEffect(() => {
     if (isOpen && canvasRef.current) {
       const canvas = canvasRef.current;
+      // A fresh pad each time it opens, so it starts empty.
+      setIsEmpty(true);
 
       const backgroundColor = '#ffffff';
       const penColor = '#000000';
@@ -46,7 +39,10 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
 
       const resizeCanvas = () => {
         const ratio = Math.max(window.devicePixelRatio || 1, 1);
-        const rect = canvas.getBoundingClientRect();
+        // Layout size, not getBoundingClientRect: the dialog opens with a
+        // scale animation, and the transformed box measured mid-animation
+        // made the drawing surface smaller than the canvas on screen.
+        const rect = { width: canvas.offsetWidth, height: canvas.offsetHeight };
 
         // Store the current signature data
         const data = pad.toData();
@@ -80,7 +76,6 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
         }
       }, 100);
 
-      // Listen for theme changes - now we'll rely on the useEffect dependency
       window.addEventListener('resize', resizeCanvas);
 
       pad.addEventListener('beginStroke', () => setIsEmpty(false));
@@ -133,99 +128,54 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
   };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <Modal open={isOpen} onClose={onCancel} title="Create Your Signature">
-          <Box
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: spacing[4].value,
-            }}
+    <GlassDialog
+      open={isOpen}
+      onClose={onCancel}
+      title="Draw your signature"
+      description="Use your mouse, trackpad or finger."
+      size="lg"
+      layer="top"
+      footer={
+        <>
+          <button
+            type="button"
+            className={ui.ghost}
+            onClick={handleClear}
+            disabled={isSaving || isEmpty}
           >
-            <Box className="text-center">
-              <Text
-                size="sm"
-                className="text-muted-foreground"
-                style={{ marginBottom: spacing[4].value }}
-              >
-                Draw your signature in the box below
-              </Text>
-
-              <Box className="relative">
-                <canvas
-                  ref={canvasRef}
-                  data-testid="signature-pad"
-                  className="w-full cursor-crosshair"
-                  style={{
-                    height: '192px',
-                    border: `2px dashed ${mode === 'dark' ? '#4b5563' : '#d1d5db'}`,
-                    borderRadius: radius.md.value,
-                    backgroundColor: '#ffffff', // Keep white for signature visibility
-                  }}
-                  width={600}
-                  height={200}
-                />
-                {isEmpty && (
-                  <Box className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <Text size="sm" className="text-muted-foreground">
-                      Sign here using your mouse or touch screen
-                    </Text>
-                  </Box>
-                )}
-              </Box>
-
-              <Flex
-                style={{
-                  gap: spacing[3].value,
-                  paddingTop: spacing[4].value,
-                  justifyContent: 'center',
-                }}
-              >
-                <Button
-                  variant="secondary"
-                  onClick={handleClear}
-                  disabled={isSaving}
-                  style={{
-                    padding: `${spacing[2].value} ${spacing[4].value}`,
-                    ...(isSaving
-                      ? {
-                          opacity: 0.6,
-                          cursor: 'not-allowed',
-                          pointerEvents: 'none',
-                        }
-                      : {}),
-                  }}
-                >
-                  <RotateCcw className="w-4 h-4 mr-2" />
-                  Clear
-                </Button>
-                <Button
-                  onClick={handleSave}
-                  disabled={isEmpty || isSaving}
-                  variant="primary"
-                  style={{
-                    padding: `${spacing[2].value} ${spacing[4].value}`,
-                    ...(isEmpty || isSaving
-                      ? {
-                          backgroundColor: '#262626',
-                          color: '#ffffff',
-                          border: 'none',
-                          cursor: 'not-allowed',
-                          pointerEvents: 'none',
-                        }
-                      : {}),
-                  }}
-                >
-                  <Save className="w-4 h-4 mr-2" />
-                  {isSaving ? 'Saving...' : 'Save Signature'}
-                </Button>
-              </Flex>
-            </Box>
-          </Box>
-        </Modal>
-      )}
-    </AnimatePresence>
+            <RotateCcw size={16} />
+            Clear
+          </button>
+          <button
+            type="button"
+            className={ui.btn}
+            onClick={handleSave}
+            disabled={isEmpty || isSaving}
+            data-testid="save-signature"
+          >
+            {isSaving ? <span className={ui.spinner} /> : <Check size={16} />}
+            {isSaving ? 'Saving…' : 'Save signature'}
+          </button>
+        </>
+      }
+    >
+      {/* Paper-white in both themes: this is ink on a document. */}
+      <div className={styles.paper}>
+        <canvas
+          ref={canvasRef}
+          data-testid="signature-pad"
+          className={styles.canvas}
+          width={600}
+          height={200}
+        />
+        <span className={styles.baseline} aria-hidden="true">
+          <span className={styles.cross}>×</span>
+        </span>
+        {isEmpty && (
+          <span className={styles.placeholder}>Sign here</span>
+        )}
+      </div>
+    </GlassDialog>
   );
 };
 

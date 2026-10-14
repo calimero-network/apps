@@ -1,0 +1,48 @@
+/* The drawing surface: a sheet of paper with a signature line, white in both
+   themes because the drawing is black ink that ends up on a document. */
+.paper {
+  position: relative;
+  border-radius: var(--sign-radius);
+  background: #ffffff;
+  border: 1.5px dashed #c9cfdc;
+  overflow: hidden;
+}
+.canvas {
+  display: block;
+  width: 100%;
+  height: 220px;
+  cursor: crosshair;
+  touch-action: none;
+}
+.baseline {
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  bottom: 48px;
+  border-bottom: 1.5px solid #d5dae5;
+  pointer-events: none;
+}
+.cross {
+  position: absolute;
+  left: -2px;
+  bottom: 2px;
+  font-size: 20px;
+  line-height: 1;
+  color: #9aa1b2;
+}
+.placeholder {
+  position: absolute;
+  inset: 0 0 56px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: #9aa1b2;
+}
+
+@media (max-width: 639px) {
+  .canvas {
+    height: 200px;
+  }
+}
