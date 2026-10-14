@@ -2176,6 +2176,10 @@ const AppShell = styled.div`
   font-family: var(--glass-font);
   /* Controls (and the dialogs rendered in here) take the app's type. */
   button, input, select, textarea { font-family: inherit; }
+  /* A touch browser (iOS Safari) zooms the page in when a field under 16px
+     takes focus and does not zoom back out, leaving the page panned sideways
+     with the row numbers and column A out of view. */
+  @media (pointer: coarse) { input, select, textarea { font-size: 16px; } }
   @media (max-width: 640px) { padding: 8px 8px 6px; gap: 8px; }
 `;
 
