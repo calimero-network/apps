@@ -806,6 +806,24 @@ test.describe("T15 – Save/Open project buttons", () => {
     await expect(page.getByTestId("import-file-input")).toBeAttached();
   });
 
+  test("opening a project asks first, over the whole window", async ({ page }) => {
+    await gotoCanvas(page);
+    const snapshot = { version: 1, exportedAt: 0, boardName: "B", boardDescription: "", elements: [], comments: [] };
+    await page.getByTestId("import-file-input").setInputFiles({
+      name: "board.merodesign",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(snapshot)),
+    });
+    const dialog = page.getByTestId("confirm-dialog");
+    await expect(dialog).toBeVisible();
+    // The scrim covers the window, not just the toolbar the dialog is rendered
+    // in: an ancestor with backdrop-filter would confine this fixed overlay.
+    const viewport = page.viewportSize()!;
+    expect(await dialog.locator("..").boundingBox()).toEqual({ x: 0, y: 0, width: viewport.width, height: viewport.height });
+    await page.getByTestId("confirm-cancel").click();
+    await expect(dialog).toHaveCount(0);
+  });
+
   test("Save button calls get_elements, get_comments, get_board RPCs", async ({ page }) => {
     const calls: string[] = [];
     await injectAuth(page);

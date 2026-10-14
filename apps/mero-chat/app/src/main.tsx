@@ -1,3 +1,4 @@
+import "@calimero-apps/glass/glass.css";
 import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
@@ -31,6 +32,11 @@ import { log } from "./utils/logger.ts";
 import { APP_SLUG } from "./utils/invitation.ts";
 import { applyDevOverlay } from "./utils/devOverlay.ts";
 import { purgeLegacyIdentityDisplayNames } from "./utils/messengerName.ts";
+import { applyTheme, readStoredTheme } from "./theme/theme.ts";
+
+// index.html already set the theme before paint; this keeps the meta colour
+// and attribute right if that inline script was skipped (e.g. a cached shell).
+applyTheme(readStoredTheme());
 
 // Single-global-name model: legacy `curb_username_<identity>` rows from
 // older app versions are no longer read; clean them up once on startup so

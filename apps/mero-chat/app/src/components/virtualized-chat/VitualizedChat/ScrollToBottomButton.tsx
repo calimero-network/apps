@@ -20,17 +20,16 @@ const Button = styled.button`
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  /* Calimero green (brand-700, the send button's green) with white arrows.
-     The lighter brand-600 #A5FF11 is too bright for white to read on. */
-  background-color: var(--color-brand-700, #73b30c);
-  color: #fff;
+  /* The glass primary: ink fill with the on-ink arrows. */
+  background-color: var(--glass-ink);
+  color: var(--glass-on-ink);
   border: none;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   transition: all 0.2s ease-in-out;
 
   &:hover {
-    background-color: #5e930a;
+    background-color: var(--glass-ink-2);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     transform: translateY(-2px);
   }
