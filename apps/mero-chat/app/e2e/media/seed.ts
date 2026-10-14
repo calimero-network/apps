@@ -2,11 +2,13 @@
 // have, from the scene the shooter injected as window.__SHOT_SCENE__.
 import { CONTEXTS, ME, NAMESPACE_ID, NAMESPACE_NAME } from "./world";
 
-type Scene = { open?: string; noWorkspace?: boolean; unauthenticated?: boolean };
+type Scene = { open?: string; noWorkspace?: boolean; unauthenticated?: boolean; theme?: "light" | "dark" };
 const scene: Scene = (globalThis as { __SHOT_SCENE__?: Scene }).__SHOT_SCENE__ ?? {};
 
 localStorage.clear();
 sessionStorage.clear();
+
+if (scene.theme) localStorage.setItem("mero-chat:theme", scene.theme);
 
 if (!scene.unauthenticated) {
   const exp = Date.now() + 3600_000 * 24;

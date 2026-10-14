@@ -27,10 +27,12 @@ const ProfileIconContainerGroup = styled.div<{
   height: 24px;
   border-radius: 50%;
   ${({ $counter }) =>
-    $counter ? "background-color: #25252A; color: #6E6E78;" : "color: #FFF;"}
+    $counter
+      ? "background-color: var(--glass-sunken); color: var(--glass-muted);"
+      : "color: var(--glass-ink);"}
   text-align: center;
   /* Body/Small */
-  font-family: Helvetica Neue;
+  font-family: var(--glass-font);
   font-size: 14px;
   font-style: normal;
   font-weight: 400;
@@ -40,7 +42,8 @@ const ProfileIconContainerGroup = styled.div<{
      header read "MC TE PN" for "MO TB PN". 4px keeps the stacked look without
      covering a letter. */
   margin-left: -4px;
-  border: solid 1px ${({ $isHovered }) => ($isHovered ? "#fff" : "#0e0e10")};
+  border: solid 1px
+    ${({ $isHovered }) => ($isHovered ? "var(--glass-line-strong)" : "var(--glass-line)")};
 `;
 
 export default function UsersButtonGroup(props: UsersButtonGroupProps) {

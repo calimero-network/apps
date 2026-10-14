@@ -98,18 +98,18 @@ const PermalinkBanner = styled.div`
   gap: 12px;
   padding: 6px 14px;
   border-radius: 999px;
-  background-color: #1d1d21;
-  border: 1px solid #2f2f35;
-  color: #fff;
+  background-color: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line);
+  color: var(--glass-ink);
   font-size: 12px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--chat-pop-shadow);
 `;
 
 const PermalinkBannerButton = styled.button`
   background: none;
   border: none;
   padding: 0;
-  color: #a0ff5a;
+  color: var(--glass-accent);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -137,7 +137,7 @@ const ContainerPadding = styled.div<{ $isThread?: boolean }>`
 `;
 
 const ThreadTitle = styled.div`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 18px;
   font-style: normal;
   font-weight: 500;
@@ -148,7 +148,7 @@ const ThreadContainer = styled.div`
   position: relative;
   padding-bottom: 20px;
   margin-right: 16px;
-  border-bottom: 2px solid #282933;
+  border-bottom: 2px solid var(--glass-line);
   display: flex;
   justify-content: space-between;
   @media (max-width: 1024px) {
@@ -159,9 +159,9 @@ const ThreadContainer = styled.div`
 `;
 
 const CloseSvg = styled.svg`
-  fill: #777583;
+  fill: var(--glass-muted);
   :hover {
-    fill: #fff;
+    fill: var(--glass-ink);
   }
   cursor: pointer;
 `;

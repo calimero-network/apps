@@ -22,7 +22,7 @@ const EmojiWinkIcon: React.FC = () => {
         imageRendering="optimizeQuality"
         fillRule="evenodd"
         clipRule="evenodd"
-        fill="#fff"
+        fill="var(--glass-ink)"
         viewBox="0 0 512 512.003"
         height="14px"
         width="14px"
