@@ -1,14 +1,22 @@
 .panel {
-  /* 24px wider than before: the layers tree indents, and a group row carries a
-     disclosure triangle, a count and a menu that would not otherwise fit. */
+  /* Floats over the board's right edge, inset from the sheet (CanvasPage
+     `.workspace` reserves --md-panel-space for it). 24px wider than it once was:
+     the layers tree indents, and a group row carries a disclosure triangle, a
+     count and a menu that would not otherwise fit. */
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 150;
   width: 264px;
-  flex-shrink: 0;
-  /* Frosted glass; the width above is what the canvas is sized against. */
+  border-radius: 20px;
+  border: 1px solid var(--glass-edge);
+  /* Frosted glass over the board. Nothing in it is position: fixed (its menus
+     are absolute), so the blur cannot trap an overlay. */
   background: var(--glass-surface);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
-  border-left: 1px solid var(--glass-line);
-  box-shadow: inset 1px 0 0 var(--glass-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow-float);
   font-size: 12px;
   color: var(--glass-ink);
   display: flex;
@@ -16,36 +24,50 @@
   overflow: hidden;
 }
 
+@media (max-width: 760px) {
+  .panel {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    height: 42%;
+    border-radius: 18px;
+  }
+}
+
 /* ── Tab bar ─────────────────────────────────────────────────────── */
-/* Tabs as one segmented pill, like the rest of the kit. */
+/* Tabs as one segmented control: a sunken track, the current tab a raised chip. */
 .tabBar {
   display: flex;
   gap: 2px;
-  margin: 10px 12px 4px;
+  margin: 10px 10px 6px;
   padding: 3px;
-  border-radius: 999px;
+  border-radius: 13px;
   background: var(--glass-sunken);
+  box-shadow: inset 0 0 0 1px var(--glass-line);
   flex-shrink: 0;
 }
 
 .tabBtn {
   flex: 1;
-  padding: 5px 4px;
-  font-size: 11.5px;
-  font-weight: 500;
+  height: 28px;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 600;
   background: none;
   border: none;
-  border-radius: 999px;
+  border-radius: 10px;
   color: var(--glass-muted);
   cursor: pointer;
   transition: color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .tabBtn:hover { color: var(--glass-ink); }
 .tabBtnActive {
-  color: var(--glass-on-ink);
-  font-weight: 600;
-  background: var(--glass-ink);
-  box-shadow: 0 6px 14px -8px rgba(14, 18, 34, 0.6);
+  color: var(--glass-ink);
+  font-weight: 700;
+  background: var(--glass-surface-solid);
+  box-shadow: 0 1px 2px rgba(14, 18, 34, 0.08), 0 4px 10px -6px rgba(14, 18, 34, 0.35), 0 0 0 1px var(--glass-line);
 }
 
 /* ── Tab content wrapper ─────────────────────────────────────────── */
@@ -60,12 +82,62 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 40px 16px 16px;
+  gap: 6px;
+  padding: 26px 18px 18px;
   color: var(--glass-muted);
-  font-size: 12px;
+  font-size: 12.5px;
   text-align: center;
   line-height: 1.5;
+}
+.emptyArt {
+  width: 100%;
+  display: grid;
+  place-items: center;
+  padding: 12px 0 8px;
+  margin-bottom: 6px;
+  border-radius: 16px;
+  background: var(--glass-surface-solid);
+  box-shadow: inset 0 0 0 1px var(--glass-line);
+}
+.emptyTitle {
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--glass-ink);
+}
+.emptyShortcuts {
+  list-style: none;
+  width: 100%;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--glass-line);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.emptyShortcuts li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px 6px 10px;
+  border-radius: 10px;
+  background: var(--glass-sunken);
+  color: var(--glass-ink-2);
+  font-size: 11.5px;
+  font-weight: 550;
+}
+.emptyShortcuts kbd {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  font: 700 11px/1 var(--glass-font);
+  color: var(--glass-ink);
+  background: var(--glass-surface-solid);
+  box-shadow: 0 1px 0 var(--glass-line-strong), 0 0 0 1px var(--glass-line);
 }
 
 /* ── Hint ────────────────────────────────────────────────────────── */

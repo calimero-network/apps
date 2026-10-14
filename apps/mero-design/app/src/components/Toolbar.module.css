@@ -1,35 +1,53 @@
 .bar {
-  height: 48px;
+  height: 54px;
   display: flex;
   align-items: center;
-  /* Glass over the shell's tinted fields. Height and padding are what the
-     canvas below is sized against, so only the paint changed. No
-     backdrop-filter: it would make the bar the containing block for the
-     position: fixed import confirm it renders, shrinking that to the bar. */
+  /* A floating glass bar over the tinted ground, FigJam-style. It is frosted,
+     which makes it the containing block for any position: fixed descendant —
+     so the import confirm it opens is portalled to <body> (ConfirmDialog). */
+  position: relative;
+  border-radius: 20px;
+  border: 1px solid var(--glass-edge);
   background: var(--glass-surface);
-  border-bottom: 1px solid var(--glass-line);
-  box-shadow: inset 0 1px 0 var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
   font-family: var(--glass-font);
   color: var(--glass-ink);
-  padding: 0 12px;
+  padding: 0 8px 0 6px;
   gap: 6px;
   flex-shrink: 0;
-  /* Above the comments overlay (100-120). The dropdowns inside this element are
-     trapped in its stacking context, so their own z-index cannot rescue them —
-     the bar itself has to outrank the overlay. */
+  /* Above the comments overlay (100-120) and the inspector. The dropdowns inside
+     this element are trapped in its stacking context, so their own z-index
+     cannot rescue them — the bar itself has to outrank the overlay. */
   z-index: 300;
   user-select: none;
 }
 
 .logo {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14.5px;
+  font-weight: 750;
   white-space: nowrap;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.03em;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding-right: 4px;
 }
+
+/* The tools sit in their own sunken tray inside the bar. */
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 14px;
+  background: var(--glass-sunken);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tools::-webkit-scrollbar { display: none; }
 
 .divider {
   width: 1px;
@@ -39,38 +57,34 @@
   flex-shrink: 0;
 }
 
-.tools {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
 /* A hairline between tool groups: navigation | shapes | drawing | content. */
 .toolGroup {
   display: flex;
   gap: 2px;
   padding: 0 4px;
+  flex-shrink: 0;
 }
 .toolGroup + .toolGroup { border-left: 1px solid var(--glass-line-strong); }
 .toolGroup:first-child { padding-left: 0; }
 
 .tool {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: var(--glass-radius-sm);
+  border-radius: 11px;
   background: transparent;
   font-size: 12px;
   cursor: pointer;
   color: var(--glass-ink-2);
   transition: background 0.1s;
 }
-.tool:hover { background: var(--glass-sunken); color: var(--glass-ink); }
+.tool:hover { background: var(--glass-surface-solid); color: var(--glass-ink); }
 .tool:disabled { opacity: 0.35; cursor: not-allowed; }
-.tool.active { background: var(--glass-ink); color: var(--glass-on-ink); box-shadow: 0 6px 14px -8px rgba(14, 18, 34, 0.6); }
+.tool.active { background: var(--glass-ink); color: var(--glass-on-ink); box-shadow: 0 8px 16px -8px rgba(14, 18, 34, 0.7); }
 
 .section {
   display: flex;
@@ -104,17 +118,23 @@
 .bgBtn.bgActive { border-color: var(--glass-ink); box-shadow: 0 0 0 1px var(--glass-ink); }
 
 .exportBtn {
-  padding: 4px 11px;
-  border: 1px solid var(--glass-line-strong);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: none;
   border-radius: 999px;
   background: var(--glass-surface-solid);
-  font-size: 11px;
-  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+  font-size: 12.5px;
+  font-weight: 650;
   color: var(--glass-ink);
   cursor: pointer;
-  transition: background 0.1s, border-color 0.1s;
+  white-space: nowrap;
+  transition: background 0.1s;
 }
-.exportBtn:hover { background: var(--glass-sunken); border-color: var(--glass-line-strong); }
+.exportBtn:hover { background: var(--glass-sunken); }
 
 .importError {
   font-size: 11px;
@@ -124,15 +144,15 @@
 }
 
 .backBtn {
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   border-radius: 999px;
   background: transparent;
-  font-size: 14px;
+  font-size: 16px;
   color: var(--glass-ink-2);
   cursor: pointer;
   flex-shrink: 0;
@@ -142,12 +162,13 @@
 .spacer { flex: 1; }
 
 .logoutBtn {
-  padding: 4px 12px;
-  border: 1px solid var(--glass-line-strong);
+  height: 34px;
+  padding: 0 14px;
+  border: none;
   border-radius: 999px;
-  background: var(--glass-surface-solid);
-  font-size: 11px;
-  font-weight: 600;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 650;
   color: var(--glass-ink-2);
   cursor: pointer;
   flex-shrink: 0;
@@ -155,21 +176,24 @@
 .logoutBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
 .previewBtn {
-  padding: 4px 12px;
-  border: 1.5px solid var(--glass-line-strong);
+  height: 34px;
+  padding: 0 15px;
+  border: none;
   border-radius: 999px;
   background: var(--glass-surface-solid);
-  font-size: 11px;
-  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+  font-size: 12.5px;
+  font-weight: 650;
   color: var(--glass-ink);
   cursor: pointer;
   flex-shrink: 0;
+  white-space: nowrap;
   transition: background 0.1s, color 0.1s;
 }
 .previewBtn:hover { background: var(--glass-sunken); }
 .previewBtnActive { background: var(--glass-ink); border-color: var(--glass-ink); color: var(--glass-on-ink); }
-.presentBtn { margin-left: 6px; background: var(--glass-ink); border-color: var(--glass-ink); color: var(--glass-on-ink); box-shadow: 0 8px 18px -10px rgba(14, 18, 34, 0.6); }
-.presentBtn:hover { background: var(--glass-ink-2); border-color: var(--glass-ink-2); color: var(--glass-on-ink); }
+.presentBtn { margin-left: 2px; background: var(--glass-ink); color: var(--glass-on-ink); box-shadow: 0 10px 22px -10px rgba(14, 18, 34, 0.75); }
+.presentBtn:hover { background: var(--glass-ink-2); color: var(--glass-on-ink); }
 
 .exportSep {
   display: block;
@@ -182,21 +206,22 @@
 
 /* Icon button (comment, etc.) */
 .iconBtn {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid transparent;
-  border-radius: var(--glass-radius-sm);
+  border: none;
+  border-radius: 999px;
   background: transparent;
   color: var(--glass-ink-2);
   cursor: pointer;
-  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  transition: background 0.1s, color 0.1s;
   flex-shrink: 0;
 }
 .iconBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
-.iconBtnActive { background: var(--glass-ink); color: var(--glass-on-ink); border-color: var(--glass-ink); }
+.iconBtnActive { background: var(--glass-ink); color: var(--glass-on-ink); }
+.iconBtnActive:hover { background: var(--glass-ink-2); color: var(--glass-on-ink); }
 
 /* Members */
 .membersWrap {
@@ -207,13 +232,13 @@
 
 .membersBtn {
   position: relative;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: var(--glass-radius-sm);
+  border-radius: 999px;
   background: transparent;
   color: var(--glass-ink-2);
   cursor: pointer;
@@ -239,14 +264,14 @@
 
 .membersDropdown {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 12px);
   right: 0;
   /* Floats over the canvas: solid, never frosted. */
   background: var(--glass-surface-solid);
   border: 1px solid var(--glass-edge);
-  border-radius: var(--glass-radius);
+  border-radius: 18px;
   box-shadow: var(--glass-shadow-float);
-  min-width: 180px;
+  min-width: 200px;
   z-index: 200;
   padding: 8px 6px;
 }
@@ -301,14 +326,16 @@
 
 .optionsDropdown {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 12px);
   left: 0;
   /* Floats over the canvas: solid, never frosted. */
   background: var(--glass-surface-solid);
   border: 1px solid var(--glass-edge);
-  border-radius: var(--glass-radius);
+  border-radius: 18px;
   box-shadow: var(--glass-shadow-float);
-  min-width: 200px;
+  min-width: 230px;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
   z-index: 200;
   padding: 6px;
 }
@@ -341,7 +368,7 @@
   text-align: left;
   padding: 7px 12px;
   border: none;
-  border-radius: var(--glass-radius-sm);
+  border-radius: 11px;
   background: transparent;
   font-size: 12px;
   color: var(--glass-ink);
@@ -357,3 +384,29 @@
   color: var(--glass-muted);
 }
 
+
+/* The project's own title, beside the mark. */
+.brandText { white-space: nowrap; }
+
+@media (max-width: 1180px) {
+  .brandText { display: none; }
+}
+@media (max-width: 760px) {
+  /* Two rows: the actions on top, the whole tool tray below it, scrolling
+     sideways when it does not fit. */
+  .bar {
+    height: auto;
+    flex-wrap: wrap;
+    row-gap: 6px;
+    border-radius: 18px;
+    gap: 4px;
+    padding: 6px;
+  }
+  .logo { display: none; }
+  .hideNarrow { display: none; }
+  .optionsLabel { display: none; }
+  .divider { display: none; }
+  .spacer { display: block; }
+  .tools { order: 10; flex: 1 1 100%; justify-content: flex-start; }
+  .tool { width: 34px; height: 34px; }
+}

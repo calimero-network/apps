@@ -1,24 +1,88 @@
+/* The editor: the board is a rounded sheet over the tinted glass ground, and
+   every piece of chrome (toolbar, inspector, zoom) floats over it as frosted
+   glass. The canvas sizes itself to `.canvasWrap` (FabricCanvas measures its
+   own box), so nothing here has to agree with a number in the script. */
 .root {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  padding: 10px;
   overflow: hidden;
-  /* The app shell: glass ground and tinted fields, behind the frosted toolbar and panel. */
   background-color: var(--glass-ground);
   background-image: var(--glass-fields);
   font-family: var(--glass-font);
 }
 
 .workspace {
+  /* How much of the sheet's right edge the inspector covers; the zoom pill
+     centres itself in what is left. */
+  --md-panel-space: 284px;
+  --md-panel-bottom: 0px;
   flex: 1;
-  display: flex;
-  overflow: hidden;
+  min-height: 0;
+  position: relative;
 }
 
 .canvasWrap {
-  flex: 1;
-  position: relative;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
+  border-radius: 22px;
+  background: var(--md-board);
+  box-shadow:
+    0 0 0 1px var(--glass-line),
+    0 1px 0 0 rgba(255, 255, 255, 0.6) inset,
+    0 30px 60px -40px rgba(30, 40, 90, 0.45);
+}
+
+/* What a blank board says. Centred in the part of the sheet the inspector
+   leaves, and click-through, so the first drag still reaches the canvas. */
+.emptyHint {
+  position: absolute;
+  top: 50%;
+  left: calc((100% - var(--md-panel-space)) / 2);
+  transform: translate(-50%, -60%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 320px;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  z-index: 5;
+  animation: hintIn 0.4s ease 0.6s both;
+}
+.emptyHintIcons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.emptyHintIcons svg {
+  width: 48px;
+  height: 48px;
+  padding: 12px;
+  border-radius: 16px;
+  color: var(--glass-ink-2);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+}
+.emptyHintIcons svg:nth-child(2) { transform: translateY(-8px); color: #65a30d; }
+.emptyHintTitle { font-size: 17px; font-weight: 750; letter-spacing: -0.02em; color: var(--glass-ink); }
+.emptyHintText { font-size: 13.5px; line-height: 1.5; color: var(--glass-muted); }
+@keyframes hintIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 760px) {
+  .emptyHint { top: 28%; }
+  .root { padding: 8px; gap: 8px; }
+  .workspace { --md-panel-space: 0px; --md-panel-bottom: calc(42% + 8px); }
+  .canvasWrap { border-radius: 18px; }
 }
 
 .previewOverlay {

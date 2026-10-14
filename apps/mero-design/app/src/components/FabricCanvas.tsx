@@ -34,6 +34,7 @@ import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore, type Tool } from "../store/canvasStore";
 import { wheelAction } from "../utils/wheel";
+import { useTheme, type Theme } from "../utils/theme";
 import {
   detachMoved,
   isConnector,
@@ -128,10 +129,28 @@ interface Props {
   onViewportChange?: (zoom: number, panX: number, panY: number) => void;
 }
 
+/**
+ * The colour the board is painted on screen. Only the default white follows
+ * the app theme — softly tinted in light, smoked in dark; Gray and Black are a
+ * choice the user made and stay as they are. Exports never use this: they
+ * paint the chosen colour (`withSolidBgData`).
+ *
+ * The light tint stays within a few levels of white on purpose: it is a hint of
+ * the glass, not a colour, and the pixel specs compare the board to white.
+ */
+function boardDisplayColor(background: string, theme: Theme): string {
+  if (background !== "#ffffff") return background;
+  return theme === "dark" ? BOARD_DARK : BOARD_LIGHT;
+}
+const BOARD_LIGHT = "#fbfbfd";
+const BOARD_DARK = "#141925";
+
 function makeDotPattern(bgColor: string): HTMLCanvasElement {
   const dotColor =
     bgColor === "#111111" ? "#252525" :
     bgColor === "#808080" ? "#686868" :
+    bgColor === BOARD_DARK ? "#2c3346" :
+    bgColor === BOARD_LIGHT ? "#d3d8e2" :
     "#d8d8d8";
   const size = 20;
   const el = document.createElement("canvas");
@@ -151,6 +170,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
   ({ contextId, previewMode = false, addingComment = false, readOnly = false, onViewportChange }, ref) => {
     countRender("FabricCanvas");
     const canvasElRef = useRef<HTMLCanvasElement>(null);
+    const wrapRef = useRef<HTMLDivElement>(null);
+    const { theme } = useTheme();
     const fabricRef = useRef<Canvas | null>(null);
     const previewRef = useRef(previewMode);
     const addingCommentRef = useRef(addingComment);
@@ -302,7 +323,14 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     }));
 
     /* ── canvas dimensions helper ────────────────────────────────── */
+    // The canvas fills its own box: whatever the page gives `.wrap`. Measured,
+    // not derived from the window, so the floating chrome around it can change
+    // shape without the board being cut off or overhanging.
     function getSize() {
+      const el = wrapRef.current;
+      if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+        return { w: el.clientWidth, h: el.clientHeight };
+      }
       if (previewRef.current) return { w: window.innerWidth, h: window.innerHeight };
       return { w: window.innerWidth - 240, h: window.innerHeight - 48 };
     }
@@ -332,10 +360,13 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
       const resize = () => {
         const { w: nw, h: nh } = getSize();
+        if (nw === fc.width && nh === fc.height) return;
         fc.setDimensions({ width: nw, height: nh });
         fc.renderAll();
       };
       window.addEventListener("resize", resize);
+      const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
+      if (ro && wrapRef.current) ro.observe(wrapRef.current);
 
       /* ── wheel: pan, or zoom on pinch / ⌘ ─────────────────────── */
       // Which of those it is, and how far, lives in utils/wheel — see the note
@@ -405,6 +436,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
       return () => {
         window.removeEventListener("resize", resize);
+        ro?.disconnect();
         fc.dispose();
         fabricRef.current = null;
       };
@@ -420,11 +452,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     useEffect(() => {
       const fc = fabricRef.current;
       if (!fc) return;
-      const src = makeDotPattern(background);
+      const src = makeDotPattern(boardDisplayColor(background, theme));
       const pattern = new Pattern({ source: src, repeat: "repeat" });
       fc.set("backgroundColor", pattern);
       fc.renderAll();
-    }, [background]);
+    }, [background, theme]);
 
     /* ── sync elements store → canvas ───────────────────────────── */
     // This used to be `fc.clear()` followed by a rebuild of every element, on
@@ -1519,7 +1551,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     }
 
     return (
-      <div className={styles.wrap}>
+      <div className={styles.wrap} ref={wrapRef}>
         <canvas ref={canvasElRef} data-testid="fabric-canvas" />
         {editingEl && fabricRef.current && canvasElRef.current && (
           <TextBoxEditor
