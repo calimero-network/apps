@@ -1,0 +1,9 @@
+{
+  "// note": "Solution file — references only. Type check with `tsc -b`; `tsc --noEmit` on a solution file checks NOTHING and exits 0.",
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.test.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}

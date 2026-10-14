@@ -1,0 +1,13 @@
+{
+  "// note": "Unit tests. Node types on purpose: generated.test.ts reads logic/res/abi.json off disk to assert the client covers the contract.",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/test",
+    "tsBuildInfoFile": "./dist-types/test.tsbuildinfo",
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx"
+  },
+  "include": ["src", "src/lens/fixtures/*.json", "src/fixtures/github/*.json"],
+  "// exclude": "The generated landing page, and the two entry files that import it (App.tsx routes to it, main.tsx mounts App): see tsconfig.app.json. Both are still type-checked there.",
+  "exclude": ["src/pages/landing", "src/App.tsx", "src/main.tsx"]
+}
