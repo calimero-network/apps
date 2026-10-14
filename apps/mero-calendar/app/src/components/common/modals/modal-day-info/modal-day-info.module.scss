@@ -1,66 +1,67 @@
+// Everything on one day (the month view's "N More"). Centred in the scrim by
+// `margin: auto`, like the event dialog — see `.overlay` in common.scss.
 .modal {
-  position: fixed;
-  background: var(--mc-surface);
-  padding: 15px 10px 15px 10px;
-  border: 1px solid var(--glass-edge);
-  border-radius: 18px;
-  max-width: 210px;
-  width: 100%;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 100;
-  cursor: auto;
   position: relative;
-  box-shadow: var(--shadow);
-  
+  margin: auto;
+  background: var(--glass-surface-solid);
+  padding: 18px 14px 16px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 22px;
+  max-width: 300px;
+  width: 100%;
+  cursor: auto;
+  box-shadow: var(--glass-shadow-float);
+  animation: mc-fade-in 0.15s ease-out;
+
   &__close {
     position: absolute;
     right: 10px;
     top: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     outline: none;
     border: none;
     cursor: pointer;
-    border-radius: 50%;
-    width: 24px;
-    height: 24px;
+    border-radius: 999px;
+    width: 34px;
+    height: 34px;
     background: transparent;
-    font-size: 22px;
+    color: var(--glass-ink-2);
+    font-size: 18px;
+
+    &:hover {
+      background: var(--glass-sunken);
+      color: var(--glass-ink);
+    }
   }
 
   &__label {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-bottom: 10px;
+    gap: 4px;
+    margin-bottom: 14px;
 
     &__name {
       color: var(--mc-text-dim);
       font-size: 11px;
-      letter-spacing: .8px;
-      line-height: 16px;
-      padding-bottom: 0;
+      font-weight: 700;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
     }
 
     &__number {
-      font-weight: 400;
-      cursor: pointer;
-      position: relative;
-      outline: none;
-      letter-spacing: -0.6px;
-      padding-right: 1px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
       border-radius: 50%;
       color: var(--mc-text);
-      font-size: 26px;
-      line-height: 40px;
-      width: 40px;
-      height: 40px;
+      font-size: 24px;
+      line-height: 44px;
+      width: 44px;
+      height: 44px;
       text-align: center;
-
-      &:hover {
-        background-color: var(--mc-hover);
-      }
+      background: var(--glass-sunken);
     }
   }
 
@@ -74,9 +75,8 @@
   }
 
   &__empty__events {
-    font-size: 12px;
-    color: var(--mc-text);
+    font-size: 13px;
+    text-align: center;
+    color: var(--mc-text-dim);
   }
 }
-
-

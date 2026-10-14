@@ -1,15 +1,16 @@
+// The date picker's popover: a solid float, like every menu in the app.
 .mini__calendar {
-  width: 200px;
-  border-radius: 14px;
+  width: 264px;
+  border-radius: 18px;
   overflow: hidden;
   text-transform: capitalize;
   // Was #fff — see the note in time-picker.module.scss.
-  background-color: var(--mc-surface);
-  border: 1px solid var(--mc-border);
-  box-shadow: var(--shadow);
+  background-color: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow-float);
+  animation: mc-fade-in 0.12s ease-out;
 
   &__body {
-    border-radius: 0 0 14px 14px;
-    padding: 5px;
+    padding: 4px 10px 12px;
   }
 }
