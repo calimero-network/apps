@@ -10,120 +10,129 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The fleet's light glass (@calimero-apps/glass, imported first in index.tsx).
+   This app's tint lights the colour fields behind the frame. */
+:root {
+  --glass-tint: #a3e635;
+}
+
 @layer base {
-  /* Calimero green on MeroDesign neutrals. --primary (#a5ff11) is a fill only,
-     under --primary-foreground; green text, icons and rings use --primary-ink.
+  /* Light glass on the app's own tokens: the values below are the shared
+     --glass-* colours written as HSL channels, because Tailwind reads every
+     token as hsl(var(--token) / alpha). --primary is the near-black glass ink,
+     a fill only, under --primary-foreground; accent text, icons and rings use
+     --primary-ink (the glass accent blue). Translucent glass belongs to the
+     frame (top bar, sidebar); --card stays opaque paper for the documents.
      The landing hero (.cal-lp-a) follows the landing page's theme, not the app's. */
   :root,
   [data-cal-lp-theme='light'] .cal-lp-a {
     /* Native controls (scrollbars, checkboxes, date pickers) follow the theme instead of staying light. */
     color-scheme: light;
 
-    --background: 0 0% 98%;
-    --foreground: 0 0% 7%;
+    --background: 228 38.5% 97.5%; /* --glass-ground #f6f7fb */
+    --foreground: 228 41.7% 9.4%; /* --glass-ink #0e1222 */
 
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 7%;
+    --card: 0 0% 100%; /* --glass-surface-solid */
+    --card-foreground: 228 41.7% 9.4%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 7%;
+    --popover-foreground: 228 41.7% 9.4%;
 
-    --primary: 83 100% 53%;
-    --primary-foreground: 260 8% 8%;
-    --primary-ink: 82 100% 24%;
+    --primary: 228 41.7% 9.4%; /* --glass-ink */
+    --primary-foreground: 0 0% 100%; /* --glass-on-ink */
+    --primary-ink: 228.9 63.1% 51.2%; /* --glass-accent #3451d1 */
 
-    /* The current selection: a lime wash, pre-blended so it stays opaque. */
-    --selected: 83 100% 85%;
-    --selected-foreground: 260 8% 8%;
+    /* The current selection: an accent wash, pre-blended so it stays opaque. */
+    --selected: 230 60% 94.1%;
+    --selected-foreground: 228 41.7% 9.4%;
 
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 20%;
+    --secondary: 228 15.2% 93.5%; /* --glass-sunken on the ground */
+    --secondary-foreground: 226.2 17.8% 28.6%; /* --glass-ink-2 */
 
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 40%;
+    --muted: 228 15.2% 93.5%;
+    --muted-foreground: 226.2 10.5% 48.6%; /* --glass-muted */
 
-    --accent: 0 0% 94%;
-    --accent-foreground: 0 0% 7%;
+    --accent: 230 15% 92.2%;
+    --accent-foreground: 228 41.7% 9.4%;
 
-    --destructive: 6 63% 46%;
+    --destructive: 338 73% 37%; /* --glass-bad-ink */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 88%;
-    --input: 0 0% 88%;
+    --border: 222.9 14.3% 90.4%; /* --glass-line on the ground */
+    --input: 230 10.3% 88.6%;
     --ring: var(--primary-ink);
 
-    --radius: 0.5rem;
+    --radius: 0.875rem;
 
     /* Custom tokens */
-    --success: var(--primary-ink);
+    --success: 155 81% 23%; /* --glass-good-ink */
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
     --warning-ink: 26 90% 37%;
 
     /* Encryption/Security accent */
-    --secure: 82 100% 19%;
+    --secure: 155 81% 23%;
     --secure-foreground: 0 0% 100%;
-    --secure-muted: 83 100% 91%;
+    --secure-muted: 149 67% 90%; /* --glass-good-bg */
 
     /* Sync status */
-    --synced: var(--primary);
+    --synced: 152 66% 40%;
     --syncing: 38 92% 50%;
-    --offline: 0 0% 53%;
+    --offline: 226.2 10.5% 48.6%;
   }
 
-  /* Neutral near-blacks, not blue-greys. The lime needs no deepening here, so
-     ink and fill are the same green. */
+  /* Smoked glass: the glass dark values, same structure. */
   .dark,
   [data-cal-lp-theme='dark'] .cal-lp-a {
     color-scheme: dark;
 
-    --background: 240 7% 6%;
-    --foreground: 0 0% 93%;
+    --background: 226.2 37.1% 6.9%; /* #0b0e18 */
+    --foreground: 226.7 31% 94.3%; /* #eceef5 */
 
-    --card: 240 5% 9%;
-    --card-foreground: 0 0% 93%;
+    --card: 225.7 32.3% 12.7%; /* #161b2b */
+    --card-foreground: 226.7 31% 94.3%;
 
-    --popover: 240 5% 9%;
-    --popover-foreground: 0 0% 93%;
+    --popover: 225.7 32.3% 12.7%;
+    --popover-foreground: 226.7 31% 94.3%;
 
-    --primary: 83 100% 53%;
-    --primary-foreground: 260 8% 8%;
-    --primary-ink: 83 100% 53%;
+    --primary: 226.7 31% 94.3%; /* the ink, light on dark */
+    --primary-foreground: 226.2 37.1% 6.9%;
+    --primary-ink: 227.5 100% 80.2%; /* #9aafff */
 
-    --selected: 84 48% 13%;
-    --selected-foreground: 83 100% 88%;
+    --selected: 226 28% 25%;
+    --selected-foreground: 226.7 31% 94.3%;
 
-    --secondary: 240 5% 12%;
-    --secondary-foreground: 0 0% 85%;
+    --secondary: 225 22% 18%;
+    --secondary-foreground: 223.3 19.1% 81.6%;
 
-    --muted: 240 5% 12%;
-    --muted-foreground: 240 3% 64%;
+    --muted: 225 22% 18%;
+    --muted-foreground: 224.4 13.8% 61.8%;
 
-    --accent: 240 6% 13%;
-    --accent-foreground: 0 0% 93%;
+    --accent: 225 22% 18%;
+    --accent-foreground: 226.7 31% 94.3%;
 
-    --destructive: 0 100% 71%;
-    --destructive-foreground: 260 8% 8%;
+    --destructive: 339 87% 76%; /* #f78bb0 */
+    --destructive-foreground: 226.2 37.1% 6.9%;
 
-    --border: 240 5% 17%;
-    --input: 240 5% 17%;
+    --border: 224 17% 21%;
+    --input: 224 17% 21%;
     --ring: var(--primary-ink);
 
     /* Custom tokens - dark */
-    --success: var(--primary-ink);
-    --success-foreground: 260 8% 8%;
+    --success: 150 61% 69%; /* #7fe0b0 */
+    --success-foreground: 226.2 37.1% 6.9%;
     --warning: 38 85% 55%;
-    --warning-foreground: 260 8% 8%;
+    --warning-foreground: 226.2 37.1% 6.9%;
     --warning-ink: 43 96% 56%;
 
-    --secure: var(--primary-ink);
-    --secure-foreground: 260 8% 8%;
-    --secure-muted: 85 33% 13%;
+    --secure: 150 61% 69%;
+    --secure-foreground: 226.2 37.1% 6.9%;
+    --secure-muted: 156 57% 13%; /* #0e3324 */
 
-    --synced: var(--primary);
+    --synced: 150 61% 60%;
     --syncing: 38 85% 55%;
-    --offline: 240 2% 44%;
+    --offline: 224 14% 50%;
   }
 }
 
@@ -135,7 +144,7 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     accent-color: hsl(var(--primary));
-    font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
+    font-family: var(--glass-font);
   }
 
   h1,
@@ -163,7 +172,7 @@
 /* ── BlockNote editor theming ──────────────────────────────────────
    BlockNote ships its own complete styling (@blocknote/mantine/style.css);
    here we only re-point its CSS custom properties at our design tokens so
-   the editor inherits the green accent + light/dark system. Both
+   the editor inherits the glass accent + light/dark system. Both
    data-color-scheme values map to the SAME hsl(var(--token)) - those
    tokens already flip with the `.dark` class, so the editor follows the
    app theme automatically. The leading `html` raises specificity above
@@ -185,8 +194,8 @@ html .bn-container[data-color-scheme='dark'] {
   --bn-colors-disabled-background: hsl(var(--muted));
   --bn-colors-border: hsl(var(--border));
   --bn-colors-side-menu: hsl(var(--muted-foreground));
-  --bn-border-radius: 0.5rem;
-  --bn-font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
+  --bn-border-radius: 0.75rem;
+  --bn-font-family: var(--glass-font);
 }
 
 /* The editor sits inside the shell's own padded, centered column. */
@@ -244,9 +253,9 @@ html .bn-container[data-color-scheme='dark'] {
   scroll-margin-top: 24px;
 }
 
-/* A section opened from a link: a brief lime wash that fades out. */
+/* A section opened from a link: a brief accent wash that fades out. */
 .section-wash {
-  --section-wash: hsl(var(--primary) / 0.2);
+  --section-wash: hsl(var(--primary-ink) / 0.16);
   border-radius: 6px;
   margin-inline: -10px;
   padding-inline: 10px;
@@ -254,14 +263,14 @@ html .bn-container[data-color-scheme='dark'] {
 }
 
 .dark .section-wash {
-  --section-wash: hsl(var(--primary) / 0.1);
+  --section-wash: hsl(var(--primary-ink) / 0.14);
 }
 
 @keyframes section-wash {
   0%,
   40% {
     background-color: var(--section-wash);
-    box-shadow: inset 3px 0 0 hsl(var(--primary));
+    box-shadow: inset 3px 0 0 hsl(var(--primary-ink));
   }
   100% {
     background-color: transparent;
@@ -288,13 +297,13 @@ html .bn-container[data-color-scheme='dark'] {
 
 /* In-app links are document chips; other links get the link look below, since preflight strips the browser's. */
 .bn-editor a[href^='/app/'] {
-  --doc-chip: hsl(var(--primary) / 0.2);
-  --doc-chip-hover: hsl(var(--primary) / 0.32);
+  --doc-chip: hsl(var(--primary-ink) / 0.12);
+  --doc-chip-hover: hsl(var(--primary-ink) / 0.2);
   --doc-chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E"); /* lucide file-text, as in the editor header */
   color: hsl(var(--card-foreground));
   text-decoration: none;
   background-color: var(--doc-chip);
-  border-bottom: 1.5px solid hsl(var(--primary));
+  border-bottom: 1.5px solid hsl(var(--primary-ink));
   border-radius: 3px 3px 0 0;
   padding: 0 3px;
   box-decoration-break: clone;
@@ -303,8 +312,8 @@ html .bn-container[data-color-scheme='dark'] {
 }
 
 .dark .bn-editor a[href^='/app/'] {
-  --doc-chip: hsl(var(--primary) / 0.1);
-  --doc-chip-hover: hsl(var(--primary) / 0.18);
+  --doc-chip: hsl(var(--primary-ink) / 0.14);
+  --doc-chip-hover: hsl(var(--primary-ink) / 0.22);
 }
 
 .bn-editor a[href^='/app/']::before {

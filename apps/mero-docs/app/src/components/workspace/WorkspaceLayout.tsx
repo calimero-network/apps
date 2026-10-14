@@ -299,9 +299,9 @@ export function WorkspaceLayout() {
   );
 
   return (
-    <div className="flex h-dvh flex-col bg-background">
-      {/* Top bar */}
-      <header className="flex h-14 items-center justify-between gap-2 border-b border-border bg-card px-3 md:px-4">
+    <div className="glass-fields flex h-dvh flex-col">
+      {/* Top bar: the floating glass header every app shares. */}
+      <header className="glass-header flex h-14 shrink-0 items-center justify-between gap-2 px-3 md:px-4">
         <div className="flex min-w-0 items-center gap-2 md:gap-4">
           <Button
             variant="ghost"
@@ -395,7 +395,7 @@ export function WorkspaceLayout() {
             )
           )}
 
-          <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <main className="m-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-white/90 bg-card shadow-[0_14px_36px_-24px_rgba(40,50,110,0.4)] dark:border-white/[0.08]">
             {showSettings && namespaceId ? (
               <div className="flex-1 overflow-y-auto">
                 <NamespaceSettingsPanel key={`settings:${namespaceId}`} />
