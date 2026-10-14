@@ -5,6 +5,8 @@ import { tokens as t } from '../theme';
 import { APP_DISPLAY_NAME } from '../config';
 import { SelectMenu } from './Dropdown';
 import { LogoMark } from './icons';
+import ThemeToggle from './ThemeToggle';
+import { useSignOut } from '../auth/signOut';
 
 interface Props {
   namespaces: Namespace[];
@@ -19,8 +21,14 @@ interface Props {
  *  picker instead of assuming the visitor has none yet. */
 export default function NsEmptyState({ namespaces, onSelect, onCreate, onJoin }: Props): React.ReactElement {
   const hasNamespaces = namespaces.length > 0;
+  const signOut = useSignOut();
   return (
     <Wrap data-testid="ns-empty-state">
+      {/* No sidebar here, so the theme switch and Log out sit in the corner. */}
+      <Corner>
+        <ThemeToggle />
+        <button type="button" className="logout" data-testid="logout-btn" onClick={signOut}>Log out</button>
+      </Corner>
       <Panel>
         <span className="mark"><LogoMark /></span>
         <h1>Welcome to {APP_DISPLAY_NAME}</h1>
@@ -52,6 +60,14 @@ export default function NsEmptyState({ namespaces, onSelect, onCreate, onJoin }:
 const Wrap = styled.div`
   flex: 1; min-height: 100vh; display: flex; align-items: center; justify-content: center;
   padding: 24px; background: transparent; color: ${t.color.text}; font-family: ${t.font.sans};
+`;
+const Corner = styled.div`
+  position: fixed; top: 16px; right: 16px; display: flex; align-items: center; gap: 6px;
+  .logout {
+    font-family: inherit; font-size: 13px; font-weight: 600; padding: 9px 16px; cursor: pointer;
+    border-radius: ${t.radiusPill}; color: ${t.color.text}; background: ${t.color.raised}; border: 1px solid ${t.color.border};
+    &:hover { background: ${t.color.raised2}; }
+  }
 `;
 const Panel = styled.div`
   max-width: 440px; text-align: center;

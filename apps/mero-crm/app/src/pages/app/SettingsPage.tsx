@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { useToast } from '@calimero-network/mero-ui';
-import { tokens as t } from '../../theme';
-import { KindIcon } from '../../components/icons';
-import { Button, Input, Label, Page, Panel, Row, Select } from '../../components/ui';
+import { tokens as t, useTheme } from '../../theme';
+import { IconLogout, KindIcon } from '../../components/icons';
+import { Button, Input, Label, Page, Panel, Row, Select, Tabs } from '../../components/ui';
+import { useSignOut } from '../../auth/signOut';
 import { ACTIVITY_KINDS, ACTIVITY_LABEL } from '../../utils/crm';
 import { describeError } from '../../utils/errors';
 import type { StageView } from '../../hooks/useCrm';
 import { useAppCtx } from './appContext';
 
 /** Pipeline setup: stages, the automations that keep deals moving, and the
- *  two knobs (currency, rotting threshold). Shared by everyone on the pipeline. */
+ *  two knobs (currency, rotting threshold), shared by everyone on the pipeline;
+ *  then this browser's own appearance and the way out. */
 export default function SettingsPage(): React.ReactElement {
   const { data } = useAppCtx();
   const toast = useToast();
@@ -97,7 +99,39 @@ export default function SettingsPage(): React.ReactElement {
           onRotting={(days) => run(() => data.act((c) => c.setRottingDays({ days })), 'Saved')}
         />
       </Panel>
+
+      <Account />
     </Page>
+  );
+}
+
+/** Per-person, per-browser: the light/dark choice and Log out. */
+function Account() {
+  const { theme, setTheme } = useTheme();
+  const signOut = useSignOut();
+  return (
+    <Panel data-testid="account-settings">
+      <h3>Your account</h3>
+      <AccountRows>
+        <div className="row">
+          <div>
+            <div className="name">Appearance</div>
+            <div className="hint">Light or dark, for this browser only.</div>
+          </div>
+          <Tabs role="group" aria-label="Appearance">
+            <button aria-pressed={theme === 'light'} onClick={() => setTheme('light')} data-testid="appearance-light">Light</button>
+            <button aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')} data-testid="appearance-dark">Dark</button>
+          </Tabs>
+        </div>
+        <div className="row">
+          <div>
+            <div className="name">Log out</div>
+            <div className="hint">Signs this browser out of your node. Your pipeline stays on it.</div>
+          </div>
+          <Button onClick={signOut} data-testid="settings-logout-btn"><IconLogout size={14} /> Log out</Button>
+        </div>
+      </AccountRows>
+    </Panel>
   );
 }
 
@@ -211,6 +245,16 @@ function General({ currency, rottingDays, onCurrency, onRotting }: {
   );
 }
 
+const AccountRows = styled.div`
+  display: flex; flex-direction: column;
+  .row {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding: 12px 0; border-top: 1px solid ${t.color.border};
+  }
+  .row:first-child { border-top: none; padding-top: 0; }
+  .name { font-size: 13px; font-weight: 600; color: ${t.color.text}; }
+  .hint { font-size: 12px; color: ${t.color.text3}; margin-top: 2px; }
+`;
 const StageList = styled.ul`
   list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px;
   li { display: flex; align-items: center; gap: 8px; }

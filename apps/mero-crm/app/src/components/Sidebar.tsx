@@ -8,8 +8,9 @@ import { SelectMenu } from './Dropdown';
 import type { PipelineEntry } from '../hooks/useWorkspace';
 import type { Namespace } from '@calimero-network/mero-react';
 import {
-  IconBoard, IconMembers, IconDeals, IconActivities, IconContacts, IconInsights, IconSettings,
+  IconBoard, IconMembers, IconDeals, IconActivities, IconContacts, IconInsights, IconSettings, IconLogout,
 } from './icons';
+import { useSignOut } from '../auth/signOut';
 import { JoinSyncBanner } from '@calimero-apps/join-sync';
 
 export interface SidebarProps {
@@ -40,7 +41,8 @@ export interface SidebarProps {
 
 /**
  * Fixed left rail: namespace switcher, pipelines in the active namespace, primary
- * nav with live counts, and a footer with the peer-sync indicator + identity.
+ * nav with live counts, and a footer with the peer-sync indicator, identity
+ * and Log out.
  */
 export default function Sidebar({
   openDeals,
@@ -64,6 +66,7 @@ export default function Sidebar({
   canAddPipeline,
 }: SidebarProps): React.ReactElement {
   const loc = useLocation();
+  const signOut = useSignOut();
   const sub = loc.pathname.startsWith(APP_ROUTE) ? loc.pathname.slice(APP_ROUTE.length) : '';
   const is = (path: string) => (path === '/deals' ? sub === '/deals' || sub.startsWith('/deals/') : sub === path);
 
@@ -179,6 +182,9 @@ export default function Sidebar({
             <span className="me-name">You</span>
             <span className="me-key" data-testid="current-identity-label">{currentUserLabel || '-'}</span>
           </span>
+          <button type="button" className="logout" data-testid="logout-btn" onClick={signOut} aria-label="Log out" title="Log out">
+            <IconLogout />
+          </button>
         </div>
       </Footer>
     </Aside>
@@ -283,7 +289,12 @@ const Footer = styled.div`
     100% { opacity: 0; }
   }
   .me-row { display: flex; align-items: center; gap: 9px; }
-  .me-meta { display: flex; flex-direction: column; min-width: 0; }
+  .me-meta { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+  .logout {
+    flex: 0 0 auto; width: 32px; height: 32px; display: inline-grid; place-items: center;
+    border: none; border-radius: ${t.radiusPill}; background: transparent; color: ${t.color.text3}; cursor: pointer;
+    &:hover { background: ${t.color.hover}; color: ${t.color.text}; }
+  }
   .me-name { font-size: 12.5px; font-weight: 600; }
   .me-key { font-size: 11px; color: ${t.color.text3}; font-family: ${t.font.mono}; }
   @media (prefers-reduced-motion: reduce) { .pulse-dot::after { animation: none; } }
