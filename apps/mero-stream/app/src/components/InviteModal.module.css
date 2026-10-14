@@ -9,8 +9,8 @@
   max-height: calc(100vh - 48px);
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface);
+  border-radius: var(--radius-xl);
+  background: var(--glass-surface-solid);
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
@@ -19,7 +19,6 @@
 
 .dialog::backdrop {
   background: var(--overlay);
-  backdrop-filter: blur(2px);
 }
 
 .body {
@@ -140,7 +139,7 @@
   color: var(--accent-text);
   background: var(--accent);
   border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 8px;
+  border-radius: 999px;
   cursor: pointer;
 }
 .primary:hover {
@@ -244,7 +243,7 @@
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: 999px;
   cursor: pointer;
 }
 .secondary:hover {

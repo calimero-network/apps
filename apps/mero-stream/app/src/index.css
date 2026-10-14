@@ -1,74 +1,79 @@
 /* ── Theme tokens ───────────────────────────────────────────────────────────
  *
- * The Calimero brand palette, matching the landing page this app ships with:
- * green #a5ff11, near-black #131215, off-white #fcfcfc. Flat fills, hairline
- * borders, small radii. Nothing here is a gradient and nothing glows.
+ * The fleet's light glass (@calimero-apps/glass, imported first in main.tsx):
+ * a cool off-white ground under soft colour fields tinted with this app's
+ * cyan, frosted translucent surfaces for the frame, near-black ink for primary
+ * controls, Figtree throughout. The app's own token NAMES are kept and mapped
+ * onto glass values, so every module keeps its classes.
  *
- * LIGHT IS THE DEFAULT. It used to be dark with a blue accent, so the app and
- * its own landing page looked like two products — you met Calimero green on the
- * marketing page and a blue-on-slate app one click later. Dark is still here
- * under `data-theme="dark"`, and the whole set stays token-driven so both
- * remain switchable.
+ * Tokens the contrast test reads (index.contrast.test.ts) are written as hex
+ * literals equal to the glass values, because a `var()` cannot be measured.
  *
- * The green is a FILL, not an ink: #a5ff11 on white is ~1.5:1, so accent TEXT
- * uses `--accent-ink` (#5f9400) and text ON the green uses `--accent-text`
- * (near-black). Using --accent for a label is a contrast bug every time.
+ * LIGHT IS THE DEFAULT. Dark is still here under `data-theme="dark"` as smoked
+ * glass; the glass package switches its own tokens on the same marker.
+ *
+ * The accent is now the INK fill: primary buttons are near-black with white
+ * text (`--accent` / `--accent-text`), and accent TEXT uses `--accent-ink`.
  *
  * The one thing that does NOT go light: the video stage. A white surround is
- * the fastest way to make a correctly decoded frame look wrong, and a violet or
- * bright cast behind a tile is the one thing you cannot subtract from your
+ * the fastest way to make a correctly decoded frame look wrong, and a coloured
+ * or bright cast behind a tile is the one thing you cannot subtract from your
  * judgement of the picture — which is most of what this app is for. `--stage`
  * and `--tile` stay dark in both themes, deliberately.
  */
+:root {
+  --glass-tint: #22d3ee;
+}
+
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
 
-  /* Shared Calimero light palette (apps redesign). Old token names are kept
-     and mapped onto it, so nothing that still reads them slips unstyled. */
-  --bg: #f6f6f3;
-  --bg-subtle: #efefeb;
+  --bg: var(--glass-ground);
+  --bg-subtle: var(--glass-sunken);
+  /* Solid white: what floats over content (dialogs, menus) sits on this. */
   --bg-elev: #ffffff;
-  --surface: #ffffff;
-  --surface-hover: #f3f3f0;
-  --surface-sunken: #f1f1ee;
-  --surface-strong: #e9e9e4;
-  --border: #e5e5e0;
-  --border-strong: #d4d4ce;
+  --surface: var(--glass-surface);
+  --surface-hover: #f4f4f6;
+  --surface-sunken: var(--glass-sunken);
+  --surface-strong: rgba(14, 18, 34, 0.09);
+  --border: var(--glass-line);
+  --border-strong: var(--glass-line-strong);
 
-  --text: #131215;
-  --text-dim: #4a4a4f;
-  /* Held to AA on --surface-hover, the darkest light surface it sits on. See
-     the contrast test in index.contrast.test.ts. */
-  --text-faint: #6b6b70;
+  --text: #0e1222;
+  --text-dim: #3c4256;
+  /* A shade under --glass-muted so it holds AA on --surface-hover, the darkest
+     light surface it sits on. See index.contrast.test.ts. */
+  --text-faint: #5f6578;
 
-  --accent: #a5ff11;
-  --accent-hover: #b4ff3a;
-  --accent-soft: #f0ffd6;
-  /* Text ON the green fill. */
-  --accent-text: #131215;
-  /* Accent-coloured TEXT on light surfaces — the fill itself is ~1.5:1. */
-  --accent-ink: #4a7300;
+  /* The primary fill is the glass ink, with white on it. */
+  --accent: #0e1222;
+  --accent-hover: #262b3d;
+  --accent-soft: color-mix(in srgb, var(--glass-accent-solid) 12%, transparent);
+  /* Text ON the ink fill. */
+  --accent-text: #ffffff;
+  /* Accent-coloured TEXT and links: the glass accent. */
+  --accent-ink: #3451d1;
   /* Kept as an alias: older rules use --accent-fg for "text on the accent". */
-  --accent-fg: #131215;
+  --accent-fg: #ffffff;
 
-  --success: #2f7a00;
-  --success-soft: #eef8e4;
-  --warning: #9a5b00;
-  --warning-soft: #fff4e0;
-  --info: #1d5fbf;
-  --info-soft: #eaf1fc;
+  --success: var(--glass-good-ink);
+  --success-soft: var(--glass-good-bg);
+  --warning: var(--glass-wait-ink);
+  --warning-soft: var(--glass-wait-bg);
+  --info: var(--glass-busy-ink);
+  --info-soft: var(--glass-busy-bg);
   --danger: #c62828;
-  --danger-soft: #fdecec;
+  --danger-soft: var(--glass-bad-bg);
 
   /* Legacy status names, read as status WORDS, so held to the body rule. */
-  --green: #2f7a00;
+  --green: #0b6b43;
   --red: #c62828;
-  /* Text ON the red fill, the way --accent-text is text on the green. The
-     right ink FLIPS between themes, so it cannot be one shared constant. */
+  /* Text ON the red fill. The right ink FLIPS between themes, so it cannot be
+     one shared constant. */
   --red-text: #ffffff;
   --red-hover: #a51d1d;
-  --amber: #9a5b00;
+  --amber: #6b4e00;
 
   /* The video stage stays dark in both themes: a white surround makes a
      correctly decoded frame look wrong. Everything AROUND it is light. */
@@ -78,101 +83,62 @@
   --stage-text: #e8e8ea;
   --stage-text-faint: #9a9aa0;
 
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
-  --shadow-xs: 0 1px 2px rgba(19, 18, 21, 0.05);
-  --shadow-sm: 0 1px 2px rgba(19, 18, 21, 0.04), 0 2px 8px rgba(19, 18, 21, 0.05);
-  --shadow-md: 0 4px 12px rgba(19, 18, 21, 0.06), 0 12px 32px rgba(19, 18, 21, 0.08);
+  --radius-sm: 8px;
+  --radius: var(--glass-radius-sm);
+  --radius-lg: var(--glass-radius);
+  --radius-xl: var(--glass-radius-lg);
+  --shadow-xs: 0 1px 2px rgba(14, 18, 34, 0.05);
+  --shadow-sm: var(--glass-shadow);
+  --shadow-md: var(--glass-shadow-float);
   --shadow: var(--shadow-md);
-  --ring: 0 0 0 3px rgba(165, 255, 17, 0.45);
-  --overlay: rgba(19, 18, 21, 0.32);
+  --ring: 0 0 0 3px
+    color-mix(in srgb, var(--glass-accent-solid) 35%, transparent);
+  --overlay: rgba(14, 18, 34, 0.28);
 
-  --scrollbar: #d4d4ce;
-  --scrollbar-hover: #b4b4ae;
+  --scrollbar: var(--glass-line-strong);
+  --scrollbar-hover: rgba(14, 18, 34, 0.28);
 
-  --font-display:
-    "Power Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
-    sans-serif;
+  --font-display: var(--glass-font);
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --font:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  --font: var(--glass-font);
 }
 
+/* Dark: smoked glass, the same structure. */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #131215;
-  --bg-elev: #1a191d;
-  --surface: #1a191d;
-  --surface-hover: #232227;
-  --surface-strong: #2b2a30;
-  --border: #2a292f;
-  --border-strong: #3a3940;
+  --bg-elev: #161b2b;
+  --surface-hover: #232838;
+  --surface-strong: rgba(255, 255, 255, 0.1);
 
-  --text: #fcfcfc;
-  --text-dim: #b4b4b8;
-  --text-faint: #8e8e8e;
+  --text: #eceef5;
+  --text-dim: #c7ccd9;
+  --text-faint: #9097ab;
 
-  /* Same green in both themes — it is the one constant across every app. On
-     #131215 the brand green is legible as ink, so accent text uses it directly. */
-  --accent: #a5ff11;
-  --accent-hover: #b6ff3d;
-  --accent-soft: rgba(165, 255, 17, 0.16);
-  --accent-text: #131215;
-  --accent-ink: #a5ff11;
-  --accent-fg: #131215;
+  --accent: #eceef5;
+  --accent-hover: #ffffff;
+  --accent-text: #0b0e18;
+  --accent-ink: #9aafff;
+  --accent-fg: #0b0e18;
 
-  --green: #a5ff11;
-  --red: #ef4444;
-  --red-text: #131215;
-  /* LIGHTER than --red, not darker. Every other hover in this theme brightens,
-     and #dc2626 (which this was) dropped the near-black ink on the Stop button
-     to 3.9:1 the moment you pointed at it — a control that is legible until you
-     reach for it. */
-  --red-hover: #f26060;
-  --danger: #ef4444;
-  --amber: #f59e0b;
+  --green: #7fe0b0;
+  --red: #f26060;
+  --red-text: #0b0e18;
+  /* LIGHTER than --red, not darker: every other hover in this theme brightens,
+     and a darker red drops the near-black ink on the Stop button below AA the
+     moment you point at it. */
+  --red-hover: #f47c7c;
+  --danger: #f26060;
+  --amber: #f5dc8a;
 
   --stage: #08090b;
   --tile: #000000;
   --stage-text: #e8e8ea;
   --stage-text-faint: #8e8e8e;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-
-  --scrollbar: #3a3940;
-  --scrollbar-hover: #4a4952;
-
-  --bg-subtle: #26252b;
-  --surface-sunken: #161519;
-  --tile-bg: #222126;
-  --success: #a5ff11;
-  --success-soft: rgba(165, 255, 17, 0.12);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.14);
-  --info: #7aa7ff;
-  --info-soft: rgba(122, 167, 255, 0.14);
-  --danger-soft: rgba(239, 68, 68, 0.14);
+  --scrollbar-hover: rgba(255, 255, 255, 0.28);
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.5);
   --overlay: rgba(0, 0, 0, 0.55);
-}
-
-@font-face {
-  font-family: "Power Grotesk";
-  src: url("/fonts/powerGrotesk/PowerGrotesk-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Power Grotesk";
-  src: url("/fonts/powerGrotesk/PowerGrotesk-Bold.woff2") format("woff2");
-  font-weight: 600 700;
-  font-display: swap;
 }
 
 * {
@@ -187,8 +153,11 @@ body,
   height: 100%;
 }
 
+/* The glass ground with the tinted colour fields over it (glass-fields). */
 body {
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;

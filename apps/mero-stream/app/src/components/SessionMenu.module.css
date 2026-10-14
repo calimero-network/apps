@@ -17,7 +17,7 @@
   font-variant-numeric: tabular-nums;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--surface);
+  background: var(--glass-surface-solid);
   white-space: nowrap;
 }
 
