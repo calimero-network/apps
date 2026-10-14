@@ -9,41 +9,63 @@ import SettingsIcon from "./SettingsIcon";
 import AdminIcon from "./AdminIcon";
 import GroupInviteIcon from "./GroupInviteIcon";
 import { WebSocketStatus } from "../WebSocketStatus";
-import CurbLogoIcon from "/logo.svg";
+import ThemeToggle from "./ThemeToggle";
+import ChatAppIcon from "/icons/icon-96x96.png";
 
 const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #0e0e10;
+  background-color: var(--glass-surface);
+  /* No backdrop-filter: it would make this the containing block for the
+     position: fixed modals rendered inside it. Nothing sharp scrolls under
+     the frame, only the soft fields, so the translucent fill reads the same. */
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
   padding-left: 0.375rem;
   padding-right: 0.75rem;
-  border-bottom: 1px solid #282933;
+  @media (min-width: 1025px) {
+    position: relative;
+    z-index: 30;
+    margin: 12px 16px 0;
+    border-radius: 20px;
+  }
   @media (max-width: 1024px) {
     ${(props) => (props.$isSidebarOpen ? "display: none;" : "display: flex;")}
     position: fixed;
     left: 0;
     right: 0;
     z-index: 1000;
+    /* Messages scroll under it here, so it is solid. */
+    background-color: var(--glass-surface-solid);
+    border-width: 0 0 1px;
+    border-color: var(--glass-line);
   }
 `;
 
-const CurbNameContainer = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.125rem;
-  color: #fff;
+const AppMark = styled.img`
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  box-shadow: 0 0 0 1px var(--glass-line);
+`;
+
+const AppName = styled.strong`
+  color: var(--glass-ink);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
   @media (min-width: 1025px) {
-    padding-right: 6rem;
-  }
-  @media (max-width: 1024px) {
-    padding-right: 0.625rem;
+    padding-right: 3.5rem;
   }
 `;
+
 const VerticalSeparatorFull = styled.div`
   width: 1px;
-  height: 60px;
-  background-color: #282933;
+  height: 32px;
+  background-color: var(--glass-line-strong);
   @media (max-width: 1024px) {
     display: none;
   }
@@ -51,8 +73,8 @@ const VerticalSeparatorFull = styled.div`
 `;
 
 export const OrgNameContainer = styled.div<{ $isMobile: boolean }>`
-  color: #777583;
-  font-family: Helvetica Neue;
+  color: var(--glass-muted);
+  font-family: var(--glass-font);
   font-size: 14px;
   font-style: normal;
   font-weight: 500;
@@ -64,7 +86,7 @@ export const OrgNameContainer = styled.div<{ $isMobile: boolean }>`
   display: flex;
   justify-content: center;
   align-items: center;
-  border-left: 1px solid #282933;
+  border-left: 1px solid var(--glass-line-strong);
   @media (max-width: 1024px) {
     display: ${(props) => (props.$isMobile ? "flex" : "none")};
   }
@@ -73,13 +95,22 @@ export const OrgNameContainer = styled.div<{ $isMobile: boolean }>`
 
 const ItemsContainer = styled.div<{ $align: boolean }>`
   display: flex;
+  min-width: 0;
   ${(props) => props.$align && "align-items: center;"}
+`;
+
+/* The member avatars are a shortcut to the channel's details, which the
+   channel name also opens; on a phone they give their room to the controls. */
+const MembersSlot = styled(ItemsContainer)`
+  @media (max-width: 560px) {
+    display: none;
+  }
 `;
 
 const LogoContainer = styled.div<{ $isMobile: boolean; justify?: boolean }>`
   display: flex;
-  gap: 0.5rem;
-  padding: 0 1rem;
+  gap: 0.625rem;
+  padding: 0 1rem 0 0.75rem;
   @media (max-width: 1024px) {
       display: ${(props) => (props.$isMobile ? "flex" : "none")};
     }
@@ -89,7 +120,7 @@ const LogoContainer = styled.div<{ $isMobile: boolean; justify?: boolean }>`
 `;
 
 const BackIcon = styled.svg`
-  fill: #5765f2;
+  fill: var(--glass-accent);
   display: none;
   @media (max-width: 1024px) {
     display: flex;
@@ -112,28 +143,32 @@ const FlexContainer = styled.div`
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-shrink: 0;
+  @media (max-width: 1024px) {
+    gap: 0.125rem;
+  }
 `;
 
 const SearchButton = styled.button<{ $active: boolean }>`
   border: none;
   background: ${(props) =>
-    props.$active ? "rgba(165, 255, 17, 0.12)" : "transparent"};
-  color: ${(props) => (props.$active ? "#a5ff11" : "#c8c7d1")};
+    props.$active ? "color-mix(in srgb, var(--glass-accent) 12%, transparent)" : "transparent"};
+  color: ${(props) => (props.$active ? "var(--glass-accent)" : "var(--glass-ink-2)")};
   width: 36px;
   height: 36px;
-  border-radius: 4px;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  fill: #777583;
+  fill: var(--glass-muted);
   cursor: pointer;
   transition:
     color 0.2s ease,
     background 0.2s ease;
   &:hover {
-    color: #ffffff;
-    fill: #ffffff;
-    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--glass-ink);
+    fill: var(--glass-ink);
+    background-color: color-mix(in srgb, var(--glass-ink) 10%, transparent);
   }
     transition: background-color 0.2s;
 `;
@@ -152,13 +187,8 @@ const SearchIcon = () => (
 export const CurbLogo = ({ isMobile }: { isMobile: boolean }) => {
   return (
     <LogoContainer $isMobile={isMobile} role="banner">
-      <img
-        src={CurbLogoIcon}
-        alt="Mero Chat Application Logo"
-        height="32px"
-        width="auto"
-      />
-      <CurbNameContainer></CurbNameContainer>
+      <AppMark src={ChatAppIcon} alt="Mero Chat Application Logo" />
+      <AppName>Chat</AppName>
     </LogoContainer>
   );
 };
@@ -181,7 +211,7 @@ const BackIconContainer = ({ onClick }: { onClick: () => void }) => {
         xmlns="http://www.w3.org/2000/svg"
         width="16"
         height="16"
-        fill="white"
+        fill="var(--glass-ink)"
         className="bi bi-chevron-left"
         viewBox="0 0 16 16"
         aria-hidden="true"
@@ -269,7 +299,7 @@ export default function CurbNavbar({
         {activeChat &&
           activeChat?.type === "channel" &&
           channelUserList.size > 0 && (
-            <ItemsContainer $align={false}>
+            <MembersSlot $align={false}>
               <ChannelDetailsPopup
                 toggle={
                   <div>
@@ -291,7 +321,7 @@ export default function CurbNavbar({
                 onChannelLeft={onChannelLeft}
                 getSubgroupForContext={getSubgroupForContext}
               />
-            </ItemsContainer>
+            </MembersSlot>
           )}
         <WebSocketStatus
           isSubscribed={wsIsSubscribed}
@@ -308,6 +338,7 @@ export default function CurbNavbar({
         </SearchButton>
         <GroupInviteIcon />
         <AdminIcon />
+        <ThemeToggle />
         <SettingsIcon />
       </FlexContainer>
     </NavigationBar>

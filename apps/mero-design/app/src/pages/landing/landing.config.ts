@@ -22,6 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
+  tint: "#bef264",
   trust: ["Live collaboration", "Infinite canvas", "Files on your nodes"],
   explainer: [
     "A collaborative design tool in the shape of Figma — an infinite canvas with shapes, text and images that several people can work on at once. The difference is where the file lives: in a Calimero context on your infrastructure, shared only with the teammates you invite.",

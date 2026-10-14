@@ -22,6 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
+  tint: "#fb923c",
   trust: ["Invite-only threads", "No feed ranking", "Replicated peer-to-peer"],
   explainer: [
     "A discussion forum for a group that wants threads without a platform. Posts and comments live in a Calimero context shared by its members, replicated between their own nodes.",

@@ -22,6 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
+  tint: "#38bdf8",
   trust: ["Boards never leave your device", "Commit-reveal placement", "Node or account"],
   explainer: [
     "Turn-based Battleships for two players, where the interesting part is not the game — it is the trust model. Your fleet lives on your own device and nowhere else: not on your opponent’s node, not on yours, and not on the relay if you play from an account.",

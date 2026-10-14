@@ -22,6 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
+  tint: "#a78bfa",
   trust: ["No game server", "Rules run in the contract", "No accounts"],
   explainer: [
     "Two-player chess where the board is not hosted anywhere. A table is a Calimero context holding two seats and a list of moves, and it replicates between the two players’ own nodes — so a game is a thing the two of you have, not a row in somebody else’s database.",

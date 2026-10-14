@@ -22,6 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
+  tint: "#2dd4bf",
   themeStorageKey: "app:theme",
   trust: ["Pipeline on your nodes", "Built-in deal assistant", "No per-seat vendor"],
   explainer: [

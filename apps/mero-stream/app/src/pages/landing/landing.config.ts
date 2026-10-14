@@ -22,6 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web",
+  tint: "#22d3ee",
   experimental: true,
   trust: ["Measured, not promised", "Deterministic codec", "Web only"],
   explainer: [

@@ -1,7 +1,7 @@
 import { styled } from "styled-components";
 
 const MessagesBubble = styled.div<{ $backgroundColor?: string; $color?: string }>`
-  color: ${({ $color }) => $color || "#fff"};
+  color: ${({ $color }) => $color || "var(--glass-ink)"};
   ${({ $backgroundColor }) =>
     $backgroundColor && `background-color: ${$backgroundColor};`}
   display: flex;

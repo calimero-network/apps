@@ -50,7 +50,7 @@ test.describe('Mero CRM landing page', () => {
     // The attribute states the intent; this is what actually got painted. A
     // stray prefers-color-scheme rule anywhere in landing.css would pass the
     // line above and fail this one.
-    await expect(root).toHaveCSS('background-color', 'rgb(252, 252, 252)');
+    await expect(root).toHaveCSS('background-color', 'rgb(246, 247, 251)');
 
     // ⚠️ And again on a REPEAT visit, which is a different code path and the
     // one that was actually broken. mero-calendar, mero-meet, mero-sheets and
@@ -60,7 +60,7 @@ test.describe('Mero CRM landing page', () => {
     // while every visit after it is dark.
     await page.reload();
     await expect(root).toHaveAttribute('data-cal-lp-theme', 'light');
-    await expect(root).toHaveCSS('background-color', 'rgb(252, 252, 252)');
+    await expect(root).toHaveCSS('background-color', 'rgb(246, 247, 251)');
   });
 
   test('the theme toggle lives in the footer and flips both ways', async ({ page }) => {

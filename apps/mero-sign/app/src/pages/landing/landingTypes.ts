@@ -168,6 +168,12 @@ export interface LandingConfig {
   iconSrc: string;
   availability: Availability;
   /**
+   * The colour behind this app's glass, from its own icon. Only the soft light
+   * under the page changes per app; surfaces, ink and buttons are the same
+   * everywhere. Generated from `TINTS` in generate.mjs.
+   */
+  tint?: string;
+  /**
    * The localStorage key this app's OWN theme switch uses, for the apps that
    * ship one. Set it and the landing toggle writes that key too, so choosing
    * dark here is still dark after sign-in. Omit it for apps with no theme of

@@ -256,7 +256,7 @@ test.describe('${meta.name} landing page', () => {
     // The attribute states the intent; this is what actually got painted. A
     // stray prefers-color-scheme rule anywhere in landing.css would pass the
     // line above and fail this one.
-    await expect(root).toHaveCSS('background-color', 'rgb(252, 252, 252)');
+    await expect(root).toHaveCSS('background-color', 'rgb(246, 247, 251)');
 
     // ⚠️ And again on a REPEAT visit, which is a different code path and the
     // one that was actually broken. mero-calendar, mero-meet, mero-sheets and
@@ -266,7 +266,7 @@ test.describe('${meta.name} landing page', () => {
     // while every visit after it is dark.
     await page.reload();
     await expect(root).toHaveAttribute('data-cal-lp-theme', 'light');
-    await expect(root).toHaveCSS('background-color', 'rgb(252, 252, 252)');
+    await expect(root).toHaveCSS('background-color', 'rgb(246, 247, 251)');
   });
 
   test('the theme toggle lives in the footer and flips both ways', async ({ page }) => {
@@ -547,6 +547,38 @@ function renderOverview(o) {
   return lines;
 }
 
+/**
+ * The light behind each app's glass, taken from the app's own icon so the page
+ * and the icon read as one thing. Every app shares the same glass surfaces and
+ * ink; only this tint differs, which is how you can tell the apps apart at a
+ * glance. Override per app with `tint` in apps.config.mjs.
+ */
+const TINTS = {
+  battleships: '#38bdf8',
+  'kv-store': '#94a3b8',
+  'mero-blocks': '#f59e0b',
+  'mero-calendar': '#5b7cfa',
+  'mero-chat': '#ffc93c',
+  'mero-chess': '#a78bfa',
+  'mero-crm': '#2dd4bf',
+  'mero-design': '#bef264',
+  'mero-docs': '#a3e635',
+  'mero-forum': '#fb923c',
+  'mero-issue-tracker': '#84cc16',
+  'mero-kombat': '#f43f5e',
+  'mero-models': '#818cf8',
+  'mero-pass': '#14b8a6',
+  'mero-pixart': '#e879f9',
+  'mero-sheets': '#4ade80',
+  'mero-sign': '#38bdf8',
+  'mero-standup': '#f59e0b',
+  'mero-stream': '#22d3ee',
+  'mero-updates': '#3b82f6',
+  'mero-vote': '#22c55e',
+  merraria: '#84cc16',
+  'scaffolding-e2e': '#94a3b8',
+};
+
 function renderConfig(app, entry, meta) {
   // Presentation-only override. The registry metadata stays exactly as
   // published — this changes the heading on the web page and nothing else.
@@ -586,6 +618,8 @@ function renderConfig(app, entry, meta) {
   // icons live under /icons/), and a wrong path is a broken image, not an error.
   lines.push(`  iconSrc: ${entry.iconSrc ? q(entry.iconSrc) : "'/icon-512.png'"},`);
   lines.push(`  availability: ${q(entry.availability)},`);
+  const tint = entry.tint ?? TINTS[app];
+  if (tint) lines.push(`  tint: ${q(tint)},`);
   if (entry.themeStorageKey) lines.push(`  themeStorageKey: ${q(entry.themeStorageKey)},`);
   if (entry.experimental) lines.push('  experimental: true,');
   if (entry.playableOffline) lines.push('  playableOffline: true,');
