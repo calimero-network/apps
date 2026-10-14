@@ -153,13 +153,13 @@ function track(
   // A step that came to nothing (drawn, then deleted) is dropped, not kept as
   // an undo that does nothing.
   const kept = joins || !top || !isEmpty(top) ? s.undoStack : s.undoStack.slice(0, -1);
-  let entry: HistoryEntry = joins ? top : { changes: {}, at: now };
   const byId = new Map(s.elements.map((e) => [e.id, e] as const));
-  for (const el of changed) entry = record(entry, byId.get(el.id) ?? null, el, now);
+  const edits: [Element | null, Element | null][] = changed.map((el) => [byId.get(el.id) ?? null, el]);
   for (const id of removed) {
     const was = byId.get(id);
-    if (was) entry = record(entry, was, null, now);
+    if (was) edits.push([was, null]);
   }
+  const entry = record(joins ? top : { changes: {}, at: now }, edits, now);
   return {
     undoStack: joins ? [...kept.slice(0, -1), entry] : [...kept, entry].slice(-MAX_HISTORY),
     redoStack: joins ? s.redoStack : [],
