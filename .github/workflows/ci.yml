@@ -273,7 +273,11 @@ jobs:
           JS_DEPS: ${{ steps.locks.outputs.js_deps }}
           APP_FILES: ${{ steps.filter.outputs.app_files }}
           EXTRA_PATHS: ${{ steps.locks.outputs.extra_paths }}
-          BROWSER_SHARDS: '{"mero-docs": 4}' # runners per app whose browser e2e outgrows one job's limit
+          # Runners per app whose browser e2e outgrows one job's limit. Playwright
+          # splits by test count in project order, so mero-docs' last shard
+          # takes most of the ~30s two-node tests: at 4 it ran 24.4 of the
+          # job's 25 minutes and timed out after two in-run retries.
+          BROWSER_SHARDS: '{"mero-docs": 6}'
         run: |
           set -euo pipefail
           # pnpm importers arrive as bare dirs (`apps/x/app`); give them a file
