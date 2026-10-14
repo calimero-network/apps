@@ -8,13 +8,13 @@ const TypeSelectorHeader = styled.div`
   border-top-right-radius: 0.375rem;
   padding-left: 4px;
   pading-right: 4px;
-  border-bottom: 1px solid #777583;
+  border-bottom: 1px solid var(--glass-line-strong);
 `;
 const EmojiComponentContainer = styled.div`
   width: fit-content;
   height: 420px;
-  background-color: #0e0e10;
-  border: 1px solid #777583;
+  background-color: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 0.375rem;
   @media (max-width: 1024px) {
     height: 362px;
@@ -40,7 +40,7 @@ const SelectedTypeTitle = styled.div`
   font-size: 12px;
   padding-left: 24px;
   margin-top: 0.725rem;
-  color: #777583;
+  color: var(--glass-muted);
 `;
 
 const typesIcons = [
@@ -97,7 +97,7 @@ const EmojiItemDesktop = styled.div`
   width: 30px;
   border-radius: 0.375rem;
   :hover {
-    background-color: #34343a;
+    background-color: var(--glass-sunken);
   }
   @media (max-width: 1024px) {
     display: none;
@@ -113,7 +113,7 @@ const EmojiItemMobile = styled.div`
   width: 30px;
   border-radius: 0.375rem;
   :hover {
-    background-color: #34343a;
+    background-color: var(--glass-sunken);
   }
   @media (min-width: 1024px) {
     display: none;
@@ -128,13 +128,13 @@ const DisplayEmojiGrid = styled.div`
   height: 58px;
   border-bottom-left-radius: 0.375rem;
   border-bottom-right-radius: 0.375rem;
-  border-top: 1px solid #777583;
+  border-top: 1px solid var(--glass-line-strong);
   font-style: normal;
   font-weight: 600;
   padding-top: 1rem;
   line-height: normal;
   font-size: 12px;
-  color: #777583;
+  color: var(--glass-muted);
   padding-left: 8px;
   padding-right: 8px;
   overflow: hidden;
@@ -151,7 +151,7 @@ const EmojiDisplay = styled.div`
   font-weight: 600;
   line-height: normal;
   font-size: 12px;
-  color: #777583;
+  color: var(--glass-muted);
 `;
 
 interface EmojiSelectorProps {

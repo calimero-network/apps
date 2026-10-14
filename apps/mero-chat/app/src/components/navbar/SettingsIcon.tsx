@@ -7,16 +7,16 @@ const SettingsIconWrapper = styled.div`
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  border-radius: 6px;
-  stroke: #777583;
+  border-radius: 10px;
+  stroke: var(--glass-muted);
   padding: 0.375rem;
   width: 36px;
   height: 36px;
   justify-content: center;
   transition: all 0.15s ease;
   &:hover {
-    background-color: rgba(165, 255, 17, 0.08);
-    stroke: #a5ff11;
+    background-color: color-mix(in srgb, var(--glass-accent) 8%, transparent);
+    stroke: var(--glass-accent);
   }
 `;
 

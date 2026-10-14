@@ -15,16 +15,30 @@ const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #0e0e10;
+  background-color: var(--glass-surface);
+  /* No backdrop-filter: it would make this the containing block for the
+     position: fixed modals rendered inside it. Nothing sharp scrolls under
+     the frame, only the soft fields, so the translucent fill reads the same. */
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
   padding-left: 0.375rem;
   padding-right: 0.75rem;
-  border-bottom: 1px solid #282933;
+  @media (min-width: 1025px) {
+    position: relative;
+    z-index: 30;
+    margin: 12px 16px 0;
+    border-radius: 20px;
+  }
   @media (max-width: 1024px) {
     ${(props) => (props.$isSidebarOpen ? "display: none;" : "display: flex;")}
     position: fixed;
     left: 0;
     right: 0;
     z-index: 1000;
+    /* Messages scroll under it here, so it is solid. */
+    background-color: var(--glass-surface-solid);
+    border-width: 0 0 1px;
+    border-color: var(--glass-line);
   }
 `;
 
@@ -32,7 +46,7 @@ const CurbNameContainer = styled.div`
   display: flex;
   align-items: center;
   gap: 0.125rem;
-  color: #fff;
+  color: var(--glass-ink);
   @media (min-width: 1025px) {
     padding-right: 6rem;
   }
@@ -42,8 +56,8 @@ const CurbNameContainer = styled.div`
 `;
 const VerticalSeparatorFull = styled.div`
   width: 1px;
-  height: 60px;
-  background-color: #282933;
+  height: 32px;
+  background-color: var(--glass-line-strong);
   @media (max-width: 1024px) {
     display: none;
   }
@@ -51,8 +65,8 @@ const VerticalSeparatorFull = styled.div`
 `;
 
 export const OrgNameContainer = styled.div<{ $isMobile: boolean }>`
-  color: #777583;
-  font-family: Helvetica Neue;
+  color: var(--glass-muted);
+  font-family: var(--glass-font);
   font-size: 14px;
   font-style: normal;
   font-weight: 500;
@@ -64,7 +78,7 @@ export const OrgNameContainer = styled.div<{ $isMobile: boolean }>`
   display: flex;
   justify-content: center;
   align-items: center;
-  border-left: 1px solid #282933;
+  border-left: 1px solid var(--glass-line-strong);
   @media (max-width: 1024px) {
     display: ${(props) => (props.$isMobile ? "flex" : "none")};
   }
@@ -117,23 +131,23 @@ const FlexContainer = styled.div`
 const SearchButton = styled.button<{ $active: boolean }>`
   border: none;
   background: ${(props) =>
-    props.$active ? "rgba(165, 255, 17, 0.12)" : "transparent"};
-  color: ${(props) => (props.$active ? "#a5ff11" : "#c8c7d1")};
+    props.$active ? "color-mix(in srgb, var(--glass-accent) 12%, transparent)" : "transparent"};
+  color: ${(props) => (props.$active ? "var(--glass-accent)" : "var(--glass-ink-2)")};
   width: 36px;
   height: 36px;
-  border-radius: 4px;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  fill: #777583;
+  fill: var(--glass-muted);
   cursor: pointer;
   transition:
     color 0.2s ease,
     background 0.2s ease;
   &:hover {
-    color: #ffffff;
-    fill: #ffffff;
-    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--glass-ink);
+    fill: var(--glass-ink);
+    background-color: color-mix(in srgb, var(--glass-ink) 10%, transparent);
   }
     transition: background-color 0.2s;
 `;
@@ -181,7 +195,7 @@ const BackIconContainer = ({ onClick }: { onClick: () => void }) => {
         xmlns="http://www.w3.org/2000/svg"
         width="16"
         height="16"
-        fill="white"
+        fill="var(--glass-ink)"
         className="bi bi-chevron-left"
         viewBox="0 0 16 16"
         aria-hidden="true"

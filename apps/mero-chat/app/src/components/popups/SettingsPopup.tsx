@@ -51,7 +51,7 @@ const Header = styled.div`
   align-items: center;
   margin-bottom: 1.25rem;
   padding-bottom: 0.875rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
 `;
 
 const TitleGroup = styled.div`
@@ -63,20 +63,20 @@ const TitleGroup = styled.div`
 const TitleIcon = styled.div`
   width: 28px;
   height: 28px;
-  border-radius: 7px;
-  background: rgba(165, 255, 17, 0.1);
-  border: 1px solid rgba(165, 255, 17, 0.2);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--glass-accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-accent) 20%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
 
   svg {
-    stroke: #a5ff11;
+    stroke: var(--glass-accent);
   }
 `;
 
 const Title = styled.h2`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 14px;
   font-weight: 600;
   margin: 0;
@@ -86,28 +86,28 @@ const Title = styled.h2`
 const CloseButton = styled.button`
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   width: 28px;
   height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 10px;
   transition: all 0.15s ease;
 
   &:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--glass-ink);
+    background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
   }
 `;
 
 // ─── Workspace card ────────────────────────────────────────────────────────────
 
 const WorkspaceCard = styled.div`
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--glass-ink) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
+  border-radius: 12px;
   padding: 0.75rem 0.875rem;
   margin-bottom: 1.25rem;
   display: flex;
@@ -126,7 +126,7 @@ const WorkspaceInfo = styled.div`
 const WorkspaceLabel = styled.span`
   font-size: 0.68rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 `;
@@ -134,7 +134,7 @@ const WorkspaceLabel = styled.span`
 const WorkspaceName = styled.span`
   font-size: 0.85rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--glass-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -148,7 +148,7 @@ const WorkspaceIdRow = styled.div`
 
 const WorkspaceIdText = styled.span`
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: color-mix(in srgb, var(--glass-ink) 60%, transparent);
   font-family: monospace;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -164,19 +164,19 @@ const RoleBadge = styled.span<{ $admin: boolean; $mod?: boolean }>`
   border-radius: 5px;
   letter-spacing: 0.04em;
   background: ${({ $admin, $mod }) =>
-    $admin ? "rgba(165, 255, 17, 0.12)" : $mod ? "rgba(124, 58, 237, 0.12)" : "rgba(255, 255, 255, 0.07)"};
+    $admin ? "color-mix(in srgb, var(--glass-accent) 12%, transparent)" : $mod ? "rgba(124, 58, 237, 0.12)" : "color-mix(in srgb, var(--glass-ink) 7%, transparent)"};
   border: 1px solid ${({ $admin, $mod }) =>
-    $admin ? "rgba(165, 255, 17, 0.3)" : $mod ? "rgba(124, 58, 237, 0.35)" : "rgba(255, 255, 255, 0.12)"};
+    $admin ? "color-mix(in srgb, var(--glass-accent) 30%, transparent)" : $mod ? "rgba(124, 58, 237, 0.35)" : "color-mix(in srgb, var(--glass-ink) 12%, transparent)"};
   color: ${({ $admin, $mod }) =>
-    $admin ? "#a5ff11" : $mod ? "#a78bfa" : "rgba(255, 255, 255, 0.55)"};
+    $admin ? "var(--glass-accent)" : $mod ? "#7c3aed" : "color-mix(in srgb, var(--glass-ink) 55%, transparent)"};
 `;
 
 // ─── Profile section ────────────────────────────────────────────────────────
 
 const ProfileCard = styled.div`
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--glass-ink) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
+  border-radius: 12px;
   padding: 0.75rem 0.875rem;
   margin-bottom: 0.75rem;
   display: flex;
@@ -191,14 +191,14 @@ const ProfileAvatar = styled.div<{ $hasImage: boolean }>`
   background: ${({ $hasImage }) =>
     $hasImage
       ? "transparent"
-      : "linear-gradient(135deg, rgba(87, 101, 242, 0.5) 0%, rgba(165, 255, 17, 0.2) 100%)"};
-  border: 1px solid rgba(255, 255, 255, 0.1);
+      : "linear-gradient(135deg, rgba(87, 101, 242, 0.5) 0%, color-mix(in srgb, var(--glass-accent) 20%, transparent) 100%)"};
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.9rem;
   font-weight: 700;
-  color: #fff;
+  color: var(--glass-ink);
   flex-shrink: 0;
   text-transform: uppercase;
   cursor: pointer;
@@ -213,7 +213,7 @@ const ProfileAvatar = styled.div<{ $hasImage: boolean }>`
 const AvatarOverlay = styled.div`
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(14, 18, 34, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -237,7 +237,7 @@ const ProfileInfo = styled.div`
 const ProfileLabel = styled.span`
   font-size: 0.68rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 `;
@@ -245,7 +245,7 @@ const ProfileLabel = styled.span`
 const ProfileUsername = styled.span`
   font-size: 0.88rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--glass-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -259,7 +259,7 @@ const IdentityRow = styled.div`
 
 const IdentityText = styled.span`
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--glass-ink) 35%, transparent);
   font-family: monospace;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -270,7 +270,7 @@ const IdentityText = styled.span`
 const CopyButton = styled.button`
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.25);
+  color: color-mix(in srgb, var(--glass-ink) 25%, transparent);
   cursor: pointer;
   padding: 0;
   display: flex;
@@ -279,7 +279,7 @@ const CopyButton = styled.button`
   transition: color 0.15s ease;
 
   &:hover {
-    color: rgba(255, 255, 255, 0.65);
+    color: color-mix(in srgb, var(--glass-ink) 65%, transparent);
   }
 `;
 
@@ -290,7 +290,7 @@ const DangerZone = styled.div`
   padding: 0.75rem 0.875rem;
   background: rgba(255, 59, 59, 0.04);
   border: 1px solid rgba(255, 59, 59, 0.18);
-  border-radius: 8px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -300,7 +300,7 @@ const DangerZone = styled.div`
 const DangerLabel = styled.span`
   font-size: 0.75rem;
   font-weight: 500;
-  color: rgba(255, 100, 100, 0.7);
+  color: var(--glass-bad-ink);
 `;
 
 const LeaveWorkspaceButton = styled.button`
@@ -308,19 +308,19 @@ const LeaveWorkspaceButton = styled.button`
   align-items: center;
   gap: 0.375rem;
   padding: 0.4rem 0.875rem;
-  border-radius: 7px;
+  border-radius: 10px;
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
   border: 1px solid rgba(255, 80, 80, 0.3);
   background: rgba(255, 80, 80, 0.08);
-  color: rgba(255, 110, 110, 0.85);
+  color: var(--glass-bad-ink);
 
   &:hover {
     border-color: rgba(255, 80, 80, 0.55);
     background: rgba(255, 80, 80, 0.16);
-    color: #ff7a7a;
+    color: var(--glass-bad-ink);
   }
 
   &:disabled {
@@ -336,17 +336,17 @@ const ConfirmActions = styled.div`
 
 const CancelLeaveButton = styled.button`
   padding: 0.4rem 0.75rem;
-  border-radius: 7px;
+  border-radius: 10px;
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 12%, transparent);
+  background: color-mix(in srgb, var(--glass-ink) 4%, transparent);
+  color: color-mix(in srgb, var(--glass-ink) 70%, transparent);
 
   &:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
+    background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
+    color: var(--glass-ink);
   }
 `;
 
@@ -355,7 +355,7 @@ const CancelLeaveButton = styled.button`
 const LogoutSection = styled.div`
   margin-top: 1.25rem;
   padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -372,7 +372,7 @@ const SessionButton = styled.button`
   align-items: center;
   gap: 0.375rem;
   padding: 0.4rem 0.875rem;
-  border-radius: 7px;
+  border-radius: 10px;
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
@@ -380,26 +380,26 @@ const SessionButton = styled.button`
 `;
 
 const ChangeWorkspaceButton = styled(SessionButton)`
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.72);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 12%, transparent);
+  background: color-mix(in srgb, var(--glass-ink) 4%, transparent);
+  color: color-mix(in srgb, var(--glass-ink) 72%, transparent);
 
   &:hover {
-    border-color: rgba(255, 255, 255, 0.22);
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
+    border-color: color-mix(in srgb, var(--glass-ink) 22%, transparent);
+    background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
+    color: var(--glass-ink);
   }
 `;
 
 const LogoutButton = styled(SessionButton)`
   border: 1px solid rgba(255, 80, 80, 0.25);
   background: rgba(255, 80, 80, 0.06);
-  color: rgba(255, 100, 100, 0.8);
+  color: var(--glass-bad-ink);
 
   &:hover {
     border-color: rgba(255, 80, 80, 0.5);
     background: rgba(255, 80, 80, 0.12);
-    color: #ff6464;
+    color: var(--glass-bad-ink);
   }
 
   svg { opacity: 0.7; }
@@ -671,11 +671,11 @@ export default function SettingsPopup({
           )}
           <AvatarOverlay className="avatar-overlay">
             {uploading ? (
-              <SpinnerSvg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <SpinnerSvg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--glass-ink)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56" />
               </SpinnerSvg>
             ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--glass-ink)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                 <circle cx="12" cy="13" r="4" />
               </svg>
@@ -697,7 +697,7 @@ export default function SettingsPopup({
               <IdentityText title={identity}>{identityShort}</IdentityText>
               <CopyButton onClick={handleCopyIdentity} aria-label="Copy identity">
                 {copied ? (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#a5ff11" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--glass-accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 ) : (
@@ -723,7 +723,7 @@ export default function SettingsPopup({
               <WorkspaceIdText title={groupId}>{groupId}</WorkspaceIdText>
               <CopyButton onClick={handleCopyWorkspaceId} aria-label="Copy workspace ID">
                 {copiedWorkspace ? (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#a5ff11" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--glass-accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 ) : (

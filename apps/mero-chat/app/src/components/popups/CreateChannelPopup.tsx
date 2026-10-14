@@ -20,7 +20,7 @@ const Header = styled.div`
   align-items: center;
   margin-bottom: 1.5rem;
   padding-bottom: 0.875rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
 `;
 
 const TitleGroup = styled.div`
@@ -32,9 +32,9 @@ const TitleGroup = styled.div`
 const TitleIcon = styled.div`
   width: 28px;
   height: 28px;
-  border-radius: 7px;
-  background: rgba(165, 255, 17, 0.1);
-  border: 1px solid rgba(165, 255, 17, 0.2);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--glass-accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-accent) 20%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -42,7 +42,7 @@ const TitleIcon = styled.div`
 `;
 
 const Title = styled.h2`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 14px;
   font-weight: 600;
   margin: 0;
@@ -52,21 +52,21 @@ const Title = styled.h2`
 const CloseButton = styled.button`
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   width: 28px;
   height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 10px;
   transition: all 0.15s ease;
   flex-shrink: 0;
   padding: 0;
 
   &:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--glass-ink);
+    background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
   }
 `;
 
@@ -79,7 +79,7 @@ const Field = styled.div`
 const Label = styled.div`
   font-size: 0.68rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--glass-ink) 35%, transparent);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin-bottom: 0.5rem;
@@ -90,7 +90,7 @@ const InputWrapper = styled.div`
 `;
 
 const FieldError = styled.p`
-  color: #ff6b6b;
+  color: var(--glass-bad-ink);
   font-size: 0.72rem;
   margin: 0.3rem 0 0;
 `;
@@ -103,32 +103,32 @@ const OptionRow = styled.div`
 const OptionButton = styled.button<{ $active: boolean }>`
   flex: 1;
   padding: 0.5rem 0.75rem;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid ${({ $active }) =>
-    $active ? "rgba(165, 255, 17, 0.4)" : "rgba(255, 255, 255, 0.07)"};
+    $active ? "color-mix(in srgb, var(--glass-accent) 40%, transparent)" : "color-mix(in srgb, var(--glass-ink) 7%, transparent)"};
   background: ${({ $active }) =>
-    $active ? "rgba(165, 255, 17, 0.08)" : "rgba(255, 255, 255, 0.03)"};
+    $active ? "color-mix(in srgb, var(--glass-accent) 8%, transparent)" : "color-mix(in srgb, var(--glass-ink) 3%, transparent)"};
   color: ${({ $active }) =>
-    $active ? "#a5ff11" : "rgba(255, 255, 255, 0.45)"};
+    $active ? "var(--glass-accent)" : "color-mix(in srgb, var(--glass-ink) 45%, transparent)"};
   transition: all 0.15s ease;
 
   &:hover {
     border-color: ${({ $active }) =>
-      $active ? "rgba(165, 255, 17, 0.55)" : "rgba(255, 255, 255, 0.14)"};
+      $active ? "color-mix(in srgb, var(--glass-accent) 55%, transparent)" : "color-mix(in srgb, var(--glass-ink) 14%, transparent)"};
     background: ${({ $active }) =>
-      $active ? "rgba(165, 255, 17, 0.12)" : "rgba(255, 255, 255, 0.05)"};
-    color: ${({ $active }) => ($active ? "#a5ff11" : "rgba(255, 255, 255, 0.65)")};
+      $active ? "color-mix(in srgb, var(--glass-accent) 12%, transparent)" : "color-mix(in srgb, var(--glass-ink) 5%, transparent)"};
+    color: ${({ $active }) => ($active ? "var(--glass-accent)" : "color-mix(in srgb, var(--glass-ink) 65%, transparent)")};
   }
 `;
 
 const BtnSpinner = styled.div`
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(165, 255, 17, 0.3);
-  border-top-color: #a5ff11;
+  border: 2px solid color-mix(in srgb, var(--glass-accent) 30%, transparent);
+  border-top-color: var(--glass-accent);
   border-radius: 50%;
   animation: ${spin} 0.7s linear infinite;
 `;
@@ -216,7 +216,7 @@ export default function CreateChannelPopup({
       <Header>
         <TitleGroup>
           <TitleIcon>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a5ff11" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--glass-accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
           </TitleIcon>

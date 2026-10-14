@@ -18,8 +18,8 @@ const DropdownSelector = styled.div`
 `;
 
 const SelectedChannelName = styled.div`
-  color: #fff;
-  font-family: Helvetica Neue;
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
   font-size: 20px;
   font-style: normal;
   font-weight: 500;
@@ -48,7 +48,7 @@ const SelectedChannelName = styled.div`
 `;
 
 const MobileCogIcon = styled.i`
-  color: #777583;
+  color: var(--glass-muted);
   display: none;
   @media (max-width: 1024px) {
     display: block;
@@ -59,7 +59,7 @@ const MobileCogIcon = styled.i`
 `;
 
 const ChevronIcon = styled.i`
-  color: #777583;
+  color: var(--glass-muted);
   font-size: 1rem;
   margin-top: 0.2rem;
   transition: transform 0.2s ease;
@@ -105,7 +105,7 @@ const ChannelTypeIcon = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #777583;
+  color: var(--glass-muted);
   svg {
     width: 12px;
     height: 12px;

@@ -20,15 +20,15 @@ const StatusContainer = styled.div`
   align-items: center;
   gap: 0.5rem;
   padding: 0.375rem 0.75rem;
-  background-color: rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  border: 1px solid #282933;
+  background-color: color-mix(in srgb, var(--glass-ink) 5%, transparent);
+  border-radius: 10px;
+  border: 1px solid var(--glass-line);
   cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-    border-color: #3a3a4a;
+    background-color: color-mix(in srgb, var(--glass-ink) 8%, transparent);
+    border-color: var(--glass-line);
   }
 
   @media (max-width: 768px) {
@@ -44,7 +44,7 @@ const StatusDot = styled.div<{ $status: "connected" | "idle" | "disconnected" }>
   background-color: ${(props) => {
     if (props.$status === "connected") return "#4ade80";
     if (props.$status === "idle") return "#fbbf24";
-    return "#9ca3af";
+    return "var(--glass-muted)";
   }};
   animation: ${(props) => props.$status !== "disconnected" ? "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite" : "none"};
 
@@ -59,7 +59,7 @@ const StatusDot = styled.div<{ $status: "connected" | "idle" | "disconnected" }>
 `;
 
 const StatusText = styled.span`
-  color: #e4e4e7;
+  color: var(--glass-ink-2);
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
@@ -73,9 +73,9 @@ const TooltipContainer = styled.div<{ $show: boolean }>`
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  background-color: #1a1a1f;
-  border: 1px solid #282933;
-  border-radius: 8px;
+  background-color: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line);
+  border-radius: 12px;
   padding: 0.75rem;
   min-width: 240px;
   max-width: 320px;
@@ -91,23 +91,23 @@ const TooltipContainer = styled.div<{ $show: boolean }>`
   }
   
   &::-webkit-scrollbar-track {
-    background: #1a1a1f;
+    background: var(--glass-surface-solid);
   }
   
   &::-webkit-scrollbar-thumb {
-    background: #3a3a4a;
+    background: var(--glass-sunken);
     border-radius: 3px;
   }
   
   &::-webkit-scrollbar-thumb:hover {
-    background: #4a4a5a;
+    background: var(--glass-sunken);
   }
 `;
 
 const TooltipRow = styled.div`
   display: flex;
   justify-content: space-between;
-  color: #9ca3af;
+  color: var(--glass-muted);
   font-size: 11px;
   margin-bottom: 0.375rem;
 
@@ -116,11 +116,11 @@ const TooltipRow = styled.div`
   }
 
   span:first-child {
-    color: #6b7280;
+    color: var(--glass-muted);
   }
 
   span:last-child {
-    color: #e4e4e7;
+    color: var(--glass-ink-2);
     font-weight: 500;
   }
 `;
@@ -244,7 +244,7 @@ export function WebSocketStatus({ isSubscribed, contextId, subscriptionCount = 0
         </TooltipRow>
         <TooltipRow>
           <span>Subscriptions:</span>
-          <span style={{ fontWeight: "600", color: subscriptionCount > 0 ? "#4ade80" : "#e4e4e7" }}>
+          <span style={{ fontWeight: "600", color: subscriptionCount > 0 ? "#4ade80" : "var(--glass-ink-2)" }}>
             {subscriptionCount} {subscriptionCount === 1 ? "context" : "contexts"}
           </span>
         </TooltipRow>
@@ -267,11 +267,11 @@ export function WebSocketStatus({ isSubscribed, contextId, subscriptionCount = 0
         {Object.keys(eventCounts).length > 0 && (
           <>
             <div style={{ 
-              borderTop: "1px solid #282933", 
+              borderTop: "1px solid var(--glass-line)", 
               margin: "0.5rem 0 0.375rem 0",
               paddingTop: "0.375rem"
             }}>
-              <span style={{ color: "#6b7280", fontSize: "10px", fontWeight: "600" }}>
+              <span style={{ color: "var(--glass-muted)", fontSize: "10px", fontWeight: "600" }}>
                 EVENT COUNTS
               </span>
             </div>
@@ -284,13 +284,13 @@ export function WebSocketStatus({ isSubscribed, contextId, subscriptionCount = 0
                 </TooltipRow>
               ))}
             <div style={{ 
-              borderTop: "1px solid #282933", 
+              borderTop: "1px solid var(--glass-line)", 
               marginTop: "0.375rem",
               paddingTop: "0.375rem"
             }}>
               <TooltipRow>
-                <span style={{ fontWeight: "600", color: "#e4e4e7" }}>Total:</span>
-                <span style={{ fontWeight: "600", color: "#e4e4e7" }}>
+                <span style={{ fontWeight: "600", color: "var(--glass-ink-2)" }}>Total:</span>
+                <span style={{ fontWeight: "600", color: "var(--glass-ink-2)" }}>
                   {Object.values(eventCounts).reduce((sum, count) => sum + count, 0)}
                 </span>
               </TooltipRow>

@@ -43,12 +43,12 @@ const InputGroup = styled.div`
 const Label = styled.label`
   font-size: 0.7rem;
   font-weight: 500;
-  color: #b8b8d1;
+  color: var(--glass-ink-2);
 `;
 
 const Note = styled.p`
   font-size: 0.6rem;
-  color: #b8b8d1;
+  color: var(--glass-ink-2);
   margin-top: 0.2rem;
 `;
 
@@ -56,28 +56,28 @@ const Select = styled.select`
   appearance: none;
   -webkit-appearance: none;
   padding: 0.65rem 2.5rem 0.65rem 0.85rem;
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: color-mix(in srgb, var(--glass-ink) 6%, transparent);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b8b8d1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   background-size: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
   border-radius: 10px;
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 0.8rem;
   cursor: pointer;
   transition: border-color 0.15s ease, background-color 0.15s ease;
   width: 100%;
 
   &:hover:not(:disabled) {
-    background-color: rgba(255, 255, 255, 0.09);
-    border-color: rgba(255, 255, 255, 0.22);
+    background-color: color-mix(in srgb, var(--glass-ink) 9%, transparent);
+    border-color: color-mix(in srgb, var(--glass-ink) 22%, transparent);
   }
 
   &:focus {
     outline: none;
     border-color: #7c3aed;
-    background-color: rgba(255, 255, 255, 0.09);
+    background-color: color-mix(in srgb, var(--glass-ink) 9%, transparent);
     box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18);
   }
 
@@ -87,8 +87,8 @@ const Select = styled.select`
   }
 
   option {
-    background: #18181c;
-    color: #e8e8f0;
+    background: var(--glass-surface-solid);
+    color: var(--glass-ink);
   }
 `;
 
@@ -102,16 +102,16 @@ const Message = styled.div<{ type?: "success" | "error" | "info" }>`
         ? "#e74c3c"
         : type === "info"
           ? "#3b82f6"
-          : "#b8b8d1"};
+          : "var(--glass-ink-2)"};
 `;
 
 const NewUsernameBanner = styled.div`
   font-size: 0.68rem;
   padding: 0.45rem 0.65rem;
-  border-radius: 6px;
+  border-radius: 10px;
   background: rgba(59, 130, 246, 0.08);
   border: 1px solid rgba(59, 130, 246, 0.22);
-  color: rgba(147, 197, 253, 0.85);
+  color: var(--glass-accent);
   line-height: 1.45;
 `;
 

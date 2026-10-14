@@ -15,21 +15,21 @@ const NotificationButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: 8px;
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: color-mix(in srgb, var(--glass-ink) 10%, transparent);
   }
 
   svg {
-    fill: #777583;
+    fill: var(--glass-muted);
     width: 20px;
     height: 20px;
   }
 
   &:hover svg {
-    fill: #fff;
+    fill: var(--glass-ink);
   }
 `;
 
@@ -37,8 +37,8 @@ const NotificationBadge = styled.span`
   position: absolute;
   top: 4px;
   right: 4px;
-  background-color: #73b30c;
-  color: white;
+  background-color: var(--glass-ink);
+  color: var(--glass-on-ink);
   border-radius: 10px;
   min-width: 18px;
   height: 18px;
@@ -56,9 +56,9 @@ const NotificationDropdown = styled.div<{ $isOpen: boolean }>`
   right: 20px;
   width: 400px;
   max-height: 600px;
-  background-color: #1a1a1f;
-  border: 1px solid #282933;
-  border-radius: 8px;
+  background-color: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line);
+  border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 1000;
   display: ${(props) => (props.$isOpen ? "block" : "none")};
