@@ -70,21 +70,23 @@ const Corner = styled.div`
   }
 `;
 const Panel = styled.div`
-  max-width: 440px; text-align: center;
-  padding: 40px 32px; background: ${t.color.panel};
-  border: 1px solid ${t.color.border}; border-radius: ${t.radiusModal}; box-shadow: ${t.shadow};
+  max-width: 460px; width: 100%; text-align: center;
+  padding: 44px 36px; background: ${t.color.glass};
+  -webkit-backdrop-filter: ${t.blur}; backdrop-filter: ${t.blur};
+  border: 1px solid ${t.color.edge}; border-radius: 26px; box-shadow: ${t.shadow};
+  @media (max-width: 720px) { padding: 32px 22px; }
   .mark {
     display: inline-grid; place-items: center; width: 46px; height: 46px; margin-bottom: 18px;
     border-radius: 12px; background: ${t.color.accentDim}; border: 1px solid ${t.color.accentBorder};
     color: ${t.color.accentText};
   }
-  h1 { font-size: 21px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 10px; }
+  h1 { font-size: 24px; font-weight: 750; letter-spacing: -0.035em; margin: 0 0 10px; }
   p { font-size: 13.5px; color: ${t.color.text2}; margin: 0 0 26px; line-height: 1.6; }
   .pick { display: flex; width: 100%; margin: -12px 0 26px; }
   .pick > button { width: 100%; padding: 10px 12px; border-radius: ${t.radius}; font-size: 13px; font-weight: 600; }
   .pick [role="listbox"] { text-align: left; font-weight: 500; }
   .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-  button { border-radius: ${t.radiusPill}; font-size: 13px; font-weight: 600; padding: 11px 18px; cursor: pointer; }
+  .row button { font-family: inherit; border-radius: ${t.radiusPill}; font-size: 13.5px; font-weight: 600; min-height: 42px; padding: 0 20px; cursor: pointer; }
   .primary { background: ${t.color.accent}; color: ${t.color.onAccent}; border: 1px solid transparent; &:hover { background: ${t.color.accentHover}; } }
   .secondary { background: ${t.color.raised}; color: ${t.color.text}; border: 1px solid ${t.color.border}; &:hover { background: ${t.color.raised2}; } }
 `;

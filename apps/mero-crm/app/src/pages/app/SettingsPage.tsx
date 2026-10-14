@@ -153,15 +153,15 @@ function StageRow({
         <button onClick={onUp} disabled={first} aria-label={`Move ${stage.name} up`}>↑</button>
         <button onClick={onDown} disabled={last} aria-label={`Move ${stage.name} down`}>↓</button>
       </div>
-      <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="Stage name" style={{ flex: 1, maxWidth: 420 }} />
-      <Input value={prob} onChange={(e) => setProb(e.target.value)} aria-label="Win probability" style={{ width: 70 }} inputMode="numeric" />
+      <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="Stage name" style={{ flex: '1 1 100px', width: 'auto', minWidth: 0, maxWidth: 420 }} />
+      <Input value={prob} onChange={(e) => setProb(e.target.value)} aria-label="Win probability" style={{ width: 60 }} inputMode="numeric" />
       <span className="pct">%</span>
       <Button
         $small
         $variant="primary"
         disabled={!valid}
         onClick={() => onSave(name.trim(), p)}
-        style={{ visibility: dirty ? 'visible' : 'hidden' }}
+        className={dirty ? 'save' : 'save idle'}
       >Save</Button>
       <Button
         $small
@@ -180,8 +180,8 @@ function AddStage({ onAdd }: { onAdd: (name: string, probability: number) => voi
   const p = Number(prob);
   const valid = !!name.trim() && Number.isInteger(p) && p >= 0 && p <= 100;
   return (
-    <Row $gap={8} style={{ marginTop: 10 }}>
-      <Input placeholder="New stage name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} data-testid="new-stage-name" />
+    <Row $gap={8} $wrap style={{ marginTop: 14 }}>
+      <Input placeholder="New stage name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: '1 1 180px', width: 'auto' }} data-testid="new-stage-name" />
       <Input value={prob} onChange={(e) => setProb(e.target.value)} style={{ width: 70 }} aria-label="Win probability" inputMode="numeric" />
       <span style={{ color: t.color.text3 }}>%</span>
       <Button disabled={!valid} onClick={() => { onAdd(name.trim(), p); setName(''); }} data-testid="new-stage-add">Add stage</Button>
@@ -198,7 +198,7 @@ function AddAutomation({ stages, onAdd }: { stages: StageView[]; onAdd: (stageId
   const d = Number(days);
   const valid = !!stageId && !!subject.trim() && Number.isInteger(d) && d >= 0 && d <= 365;
   return (
-    <Row $wrap $gap={8} style={{ marginTop: 10 }}>
+    <Row $wrap $gap={8} style={{ marginTop: 14 }}>
       <span className="lbl" style={{ fontSize: 12.5, color: t.color.text2 }}>When a deal enters</span>
       <Select value={stageId} onChange={(e) => setStageId(e.target.value)} style={{ width: 150 }} aria-label="Stage" data-testid="auto-stage">
         {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -256,21 +256,28 @@ const AccountRows = styled.div`
   .hint { font-size: 12px; color: ${t.color.text3}; margin-top: 2px; }
 `;
 const StageList = styled.ul`
-  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px;
-  li { display: flex; align-items: center; gap: 8px; }
-  .order { display: flex; flex-direction: column; }
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px;
+  li {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 10px 8px 6px; border-radius: 16px; background: ${t.color.raised}; box-shadow: ${t.shadowCard};
+  }
+  .order { display: flex; flex-direction: column; gap: 1px; }
   .order button {
-    background: none; border: none; color: ${t.color.text3}; cursor: pointer; font-size: 10px; line-height: 1; padding: 1px 4px;
-    &:hover:not(:disabled) { color: ${t.color.text}; }
+    width: 24px; height: 17px; display: grid; place-items: center; border-radius: 6px;
+    background: none; border: none; color: ${t.color.text3}; cursor: pointer; font-size: 11px; line-height: 1;
+    &:hover:not(:disabled) { color: ${t.color.text}; background: ${t.color.hover}; }
     &:disabled { opacity: 0.3; cursor: default; }
   }
   .pct { color: ${t.color.text3}; }
+  /* Keeps its place on a wide screen so nothing jumps; gives it up on a phone. */
+  .save.idle { visibility: hidden; }
+  @media (max-width: 720px) { .save.idle { display: none; } }
 `;
 const AutoList = styled.ul`
   list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column;
   li {
-    display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid ${t.color.border};
-    font-size: 12.5px; color: ${t.color.text2};
+    display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid ${t.color.border};
+    font-size: 13px; color: ${t.color.text2}; line-height: 1.5;
     strong { color: ${t.color.text}; font-weight: 600; }
     svg { vertical-align: -2px; }
   }
@@ -278,6 +285,10 @@ const AutoList = styled.ul`
   li.off span { opacity: 0.5; }
   li.none { color: ${t.color.text3}; }
   span { flex: 1; }
-  input[type='checkbox'] { accent-color: ${t.color.accent}; width: 15px; height: 15px; cursor: pointer; }
-  .x { background: none; border: none; color: ${t.color.text3}; cursor: pointer; font-size: 16px; &:hover { color: ${t.color.danger}; } }
+  input[type='checkbox'] { accent-color: ${t.color.accent}; width: 17px; height: 17px; cursor: pointer; flex: 0 0 auto; }
+  .x {
+    width: 28px; height: 28px; border-radius: 999px; flex: 0 0 auto;
+    background: none; border: none; color: ${t.color.text3}; cursor: pointer; font-size: 17px;
+    &:hover { color: ${t.color.danger}; background: ${t.color.badBg}; }
+  }
 `;

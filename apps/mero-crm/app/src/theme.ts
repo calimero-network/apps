@@ -102,6 +102,8 @@ export const tokens = {
     panel: 'var(--crm-panel)',
     /** Frosted frame surface (sidebar, columns, panels). Never for content. */
     glass: 'var(--crm-glass)',
+    /** Pipeline lane: lighter frost than a panel. */
+    lane: 'var(--crm-lane)',
     raised: 'var(--crm-raised)',
     raised2: 'var(--crm-raised2)',
     hover: 'var(--crm-hover)',
@@ -135,11 +137,16 @@ export const tokens = {
   },
   shadow: 'var(--crm-shadow)',
   shadowFloat: 'var(--crm-shadow-float)',
+  /** Solid content card on glass; `shadowLift` is its hover. */
+  shadowCard: 'var(--crm-shadow-card)',
+  shadowLift: 'var(--crm-shadow-lift)',
+  /** Soft focus halo for inputs. */
+  focus: 'var(--crm-focus)',
   blur: 'var(--glass-blur)',
-  radius: '10px',
-  radiusSm: '8px',
-  radiusModal: '20px',
-  radiusLg: '16px',
+  radius: '12px',
+  radiusSm: '10px',
+  radiusModal: '22px',
+  radiusLg: '20px',
   radiusPill: '999px',
   font: {
     sans: 'var(--glass-font)',
