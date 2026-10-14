@@ -1,134 +1,170 @@
+// The floating glass top bar (the `glass-header` look): frosted, rounded,
+// inset from the page edges, with a bright top edge.
+//
+// ⚠️ It is frosted with `backdrop-filter`, which makes it the containing block
+// of any `position: fixed` descendant. Nothing fixed may live in here: the
+// modals and the event popup render from their providers at the root, and the
+// phone's floating "Add event" sits in the sidebar, outside this element.
 .header {
-  display: flex;
-  height: 60px;
-  padding: 0 48px;
+  flex: none;
+  display: grid;
+  grid-template-columns: auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "lead today arrows title view session";
   align-items: center;
+  column-gap: 10px;
+  min-height: 64px;
+  padding: 0 12px 0 14px;
+  margin: 12px 16px 0;
+  border-radius: 20px;
   background: var(--mc-header-bg);
-  box-shadow: var(--mc-shadow);
-  border-bottom: 1px solid var(--mc-border);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
   position: relative;
+  z-index: 30;
+
+  // A phone: two rows. Where you are and the session on top; moving through
+  // time underneath.
+  @media screen and (max-width: 720px) {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "lead title title session"
+      "today arrows view view";
+    row-gap: 8px;
+    padding: 10px 10px 10px 12px;
+    margin: 10px 10px 0;
+  }
+}
+
+.lead {
+  grid-area: lead;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: 6px;
+}
+
+.mark {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--accent-soft);
 
   @media screen and (max-width: 720px) {
-    padding: 0px 15px;
+    display: none;
+  }
+}
+
+// Ghost pill shared by Back and Today.
+%pill {
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 999px;
+  font: 600 13.5px/1 var(--font);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 }
 
 .back {
-  border: 1px solid var(--mc-border);
-  background: var(--mc-surface);
-  color: var(--mc-text);
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  cursor: pointer;
-  margin-right: 16px;
-  transition: background 0.12s;
-
-  &:hover { background: var(--mc-hover); }
-}
-
-.headerRight {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.create__btn {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-width: 50px;
-  min-height: 50px;
-  border-radius: 8px;
-  padding-left: 10px;
-  padding-right: 10px;
-  border: 1px solid var(--mc-border);
-  position: absolute;
-  left: 5px;
-  cursor: pointer;
-  top: calc(100% + 15px);
-  background-color: var(--mc-surface);
-  color: var(--mc-text);
-  box-shadow: var(--shadow-sm);
-  z-index: 5;
+  @extend %pill;
+  padding: 0 14px 0 8px;
+  background: transparent;
+  color: var(--glass-ink-2);
 
   &:hover {
-    transition: border 280ms cubic-bezier(0.4, 0, 0.2, 1),
-      box-shadow 280ms cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: var(--shadow);
-    background-color: var(--mc-hover);
-    border-color: var(--accent);
-  }
-
-  &:active {
-    background-color: var(--mc-hover);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    box-shadow: var(--shadow-sm);
-    pointer-events: none;
+    background: var(--glass-sunken);
+    color: var(--glass-ink);
   }
 }
 
-.navigation {
+.today {
+  @extend %pill;
+  grid-area: today;
+  padding: 0 16px;
+  background: var(--glass-surface-solid);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+  color: var(--glass-ink);
+
+  &:hover {
+    background: var(--glass-sunken);
+  }
+}
+
+.arrows {
+  grid-area: arrows;
+  display: flex;
+  gap: 2px;
+}
+
+.arrow {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--glass-ink-2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+
+  &:hover {
+    background: var(--glass-sunken);
+    color: var(--glass-ink);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.title {
+  grid-area: title;
+  min-width: 0;
+  margin: 0 0 0 6px;
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--mc-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &::first-letter {
+    text-transform: uppercase;
+  }
+
+  @media screen and (max-width: 720px) {
+    margin-left: 4px;
+    font-size: 18px;
+  }
+}
+
+.view {
+  grid-area: view;
+  justify-self: end;
+}
+
+.session {
+  grid-area: session;
   display: flex;
   align-items: center;
-
-  &__icon {
-    font-size: 15px;
-    margin-left: 10px;
-    background-color: var(--mc-surface);
-    color: var(--mc-text);
-    text-align: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    outline: none;
-    border: 1px solid var(--mc-border);
-    cursor: pointer;
-
-    @media screen and (max-width: 400px) {
-      margin-left: 5px;
-      width: 25px;
-      height: 25px;
-    }
-
-    &:hover {
-      background-color: var(--mc-hover);
-    }
-  }
-
-  &__body {
-    margin-left: 15px;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-
-    @media screen and (max-width: 400px) {
-      margin-left: 10px;
-    }
-  }
-
-  &__icons {
-    display: flex;
-  }
-
-  &__date {
-    margin-left: 5px;
-    display: inline-block;
-    font-size: 14px;
-    color: var(--mc-text);
-
-    &::first-letter {
-      text-transform: uppercase;
-    }
-  }
+  gap: 6px;
+  margin-left: 4px;
 }
-

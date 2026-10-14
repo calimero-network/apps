@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import styled from 'styled-components';
 import { useToast } from '@calimero-network/mero-ui';
-import { tokens as t } from '../../theme';
 import { Overlay, Dialog, Close, Actions, ErrorLine } from '../../components/modalKit';
-import { Button, Empty, Input, Label, Money, Page, Row, Table } from '../../components/ui';
+import { Button, Empty, Input, Label, Money, Page, PageHead, Table, TableCard } from '../../components/ui';
+import AvatarGlyph from '../../components/AvatarGlyph';
+import { IconPlus } from '../../components/icons';
 import { contactMatches } from '../../utils/crm';
 import { describeError } from '../../utils/errors';
 import type { ContactView } from '../../hooks/useCrm';
@@ -41,32 +43,48 @@ export default function ContactsPage(): React.ReactElement {
 
   return (
     <Page>
-      <Row>
-        <span style={{ fontSize: 12.5, color: t.color.text2 }}>{rows.length} people</span>
-        <Button $variant="primary" style={{ marginLeft: 'auto' }} onClick={() => setEditing('new')} data-testid="new-contact-btn">+ Person</Button>
-      </Row>
+      <PageHead>
+        <span className="stat"><strong>{rows.length}</strong> people</span>
+        <span className="end">
+          <Button $variant="primary" onClick={() => setEditing('new')} data-testid="new-contact-btn"><IconPlus size={12} /> Person</Button>
+        </span>
+      </PageHead>
       {rows.length === 0 ? (
         <Empty>
           <strong>{searchQuery.trim() ? `Nobody matches “${searchQuery.trim()}”` : 'No people yet'}</strong>
           Add the people you sell to, then link them to deals.
         </Empty>
       ) : (
+        <TableCard>
         <Table data-testid="contacts-table">
           <thead>
             <tr>
-              <th>Name</th><th>Organization</th><th>Email</th><th>Phone</th>
-              <th className="num">Open deals</th><th className="num">Won</th><th />
+              <th>Name</th><th className="hide-sm">Organization</th><th className="hide-sm">Email</th><th className="hide-sm">Phone</th>
+              <th className="num">Open deals</th><th className="num hide-sm">Won</th><th />
             </tr>
           </thead>
           <tbody>
             {rows.map((c) => (
               <tr key={c.id} data-testid="contact-row" onClick={() => setEditing(c)}>
-                <td><div className="title">{c.name}</div>{c.job_title && <div className="muted">{c.job_title}</div>}</td>
-                <td>{c.organization || <span className="muted">—</span>}</td>
-                <td>{c.email ? <a href={`mailto:${c.email}`} onClick={(e) => e.stopPropagation()}>{c.email}</a> : <span className="muted">—</span>}</td>
-                <td>{c.phone || <span className="muted">—</span>}</td>
+                <td>
+                  <Person>
+                    <AvatarGlyph seed={c.name} size="md" />
+                    <span>
+                      <div className="title">{c.name}</div>
+                      {(c.job_title || c.organization) && (
+                        <div className="muted">
+                          <span className="hide-sm">{c.job_title}</span>
+                          <span className="show-sm">{c.organization || c.job_title}</span>
+                        </div>
+                      )}
+                    </span>
+                  </Person>
+                </td>
+                <td className="hide-sm">{c.organization || <span className="muted">—</span>}</td>
+                <td className="hide-sm">{c.email ? <a className="link" href={`mailto:${c.email}`} onClick={(e) => e.stopPropagation()}>{c.email}</a> : <span className="muted">—</span>}</td>
+                <td className="hide-sm">{c.phone || <span className="muted">—</span>}</td>
                 <td className="num">{c.open_deals}</td>
-                <td className="num">{c.won_value ? <Money value={c.won_value} currency={currency} /> : <span className="muted">—</span>}</td>
+                <td className="num hide-sm">{c.won_value ? <Money value={c.won_value} currency={currency} /> : <span className="muted">—</span>}</td>
                 <td className="num">
                   <Button $small onClick={(e) => { e.stopPropagation(); openNewDeal({ contactId: c.id }); }}>+ Deal</Button>
                 </td>
@@ -74,6 +92,7 @@ export default function ContactsPage(): React.ReactElement {
             ))}
           </tbody>
         </Table>
+        </TableCard>
       )}
       {editing && (
         <ContactDialog
@@ -133,7 +152,7 @@ function ContactDialog({
       <Dialog onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={isNew ? 'New person' : 'Edit person'}>
         <Close onClick={onClose} aria-label="Close">×</Close>
         <h3>{isNew ? 'New person' : initial.name}</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 18 }}>
           {field('name', 'Name', 'Full name')}
           {field('organization', 'Organization', 'Company')}
           {field('job_title', 'Job title', 'e.g. Head of Operations')}
@@ -152,3 +171,9 @@ function ContactDialog({
     </Overlay>
   );
 }
+
+const Person = styled.div`
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  .show-sm { display: none; }
+  @media (max-width: 720px) { .show-sm { display: inline; } }
+`;

@@ -15,6 +15,7 @@ import TeamMembersPanel from "./TeamMembersPanel";
 import { useEnsureAppId } from "../../hooks/useEnsureAppId";
 import CalendarLogo from "../../components/common/logo/CalendarLogo";
 import ThemeToggle from "../../components/common/theme-toggle/ThemeToggle";
+import LogoutButton from "../../components/common/logout-button/LogoutButton";
 import { useToast } from "../../contexts/ToastContext";
 import { extractErrorMessage, humanizeError } from "../../utils/errorMessage";
 import {
@@ -43,7 +44,7 @@ export default function TeamCalendarsPage() {
   // `admin`, not `mero.admin`: the session-aware client (see TeamsPage). On an
   // account, `createGroupInNamespace`/`createContext` are delegated creation
   // through the relay; the raw client's node routes answer 403 there.
-  const { admin, isDelegated, logout } = useMero();
+  const { admin, isDelegated } = useMero();
 
   const [calendars, setCalendars] = useState<string[]>([]);
   /**
@@ -304,11 +305,6 @@ export default function TeamCalendarsPage() {
     }
   }
 
-  function handleLogout() {
-    logout();
-    navigate("/");
-  }
-
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -317,9 +313,7 @@ export default function TeamCalendarsPage() {
         </span>
         <div className={styles.headerRight}>
           <ThemeToggle />
-          <button className="mc-btn mc-btn--ghost" onClick={handleLogout}>
-            Logout
-          </button>
+          <LogoutButton />
         </div>
       </header>
 

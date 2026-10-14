@@ -1,7 +1,38 @@
-.calendar {
+// The shell fills the viewport; the grid card is the only thing that scrolls.
+//
+// ⚠️ No `backdrop-filter`, `filter` or `transform` on the shell or its body:
+// the phone's floating "Add event" is `position: fixed` inside it, and any of
+// those would become its containing block.
+.calendar-shell {
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 60px);
+
+  &__body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    gap: 16px;
+    padding: 16px;
+
+    @media screen and (max-width: 720px) {
+      padding: 10px;
+    }
+  }
+}
+
+// The grid is content, so it is SOLID and sharp: an opaque rounded card set on
+// the glass ground beside the frosted rail.
+.calendar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--glass-radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
   background: var(--mc-bg);
   color: var(--mc-text);
 
@@ -12,4 +43,3 @@
     padding-left: 8px;
   }
 }
-

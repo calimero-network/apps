@@ -11,6 +11,7 @@ import {
   laneOf,
   localCommand,
   noRetryLine,
+  previewOf,
   progressLine,
   REPLACED,
   resolvable,
@@ -1000,21 +1001,24 @@ function extraBody(item: FeedItem): string {
 }
 
 /**
- * A message's whole text, behind "More": the row already says its headline,
- * and a long answer must not push the buttons out of reach.
+ * A message's text: its first lines on the row, read without a click, and
+ * the rest behind "More", so a long answer does not push the buttons out of
+ * reach.
  */
 function MoreBody({ body }: { body: string }) {
   const [more, setMore] = useState(false);
   const id = useId();
+  const preview = previewOf(body);
+  const cut = preview !== body;
   return (
     <div className="more-body">
-      <button type="button" className="link small" aria-expanded={more} aria-controls={id} onClick={() => setMore((v) => !v)}>
-        {more ? "Less" : "More"}
-      </button>
-      {more && (
-        <div id={id}>
-          <Markdown className="quote more-text md-body" text={body} />
-        </div>
+      <div id={id}>
+        {(more || !cut || preview) && <Markdown className="quote more-text md-body" text={more || !cut ? body : preview} />}
+      </div>
+      {cut && (
+        <button type="button" className="link small" aria-expanded={more} aria-controls={id} onClick={() => setMore((v) => !v)}>
+          {more ? "Less" : "More"}
+        </button>
       )}
     </div>
   );
@@ -1081,93 +1085,143 @@ function Row({
   useEffect(() => {
     if (expanded) ref.current?.scrollIntoView?.({ block: "nearest" });
   }, [expanded]);
-  const body = extraBody(item);
-  const command = localCommand(item);
-  const openable = Boolean(onOpenApp) && canOpen(item);
   // Your agent's answer in a chat you started reads as that chat: the answer stays in its thread.
   const root = useChainRoot(mayAnswer(item) ? item.chain : "", feed.loadChain);
   const chat = answersYou(item, root) ? root : null;
-  const noRetry = noRetryLine(item, appName);
   return (
     <li ref={ref} className={`row ${card ? "need" : ""} ${expanded ? "open" : ""} ${item.needs_you ? "needs" : ""}`}>
       <button type="button" className={card ? "need-line" : "row-line"} aria-expanded={expanded} aria-controls={bodyId} onClick={onToggle}>
-        {card ? <NeedHead item={item} /> : <PeopleLine item={item} chat={chat} />}
+        {card ? <NeedHead item={item} /> : <PeopleLine item={item} chat={chat} turnShown={expanded && turnShows(item)} />}
       </button>
       {/* On a card the answer is always there: the reason the strip exists. */}
       {card && <Settle item={item} feed={feed} onArchive={onArchive} />}
       {expanded && (
-        <div id={bodyId} className="row-body">
-          {command ? (
-            <CommandDetails command={command} />
-          ) : (
-            body &&
-            (item.kind === "action" ? (
-              <p className="write-text">{writeText(item)}</p>
-            ) : item.kind === "message" && saysMore(item) ? (
-              <MoreBody key={item.id} body={body} />
-            ) : (
-              <p className="quote">{body}</p>
-            ))
-          )}
-          {item.kind === "message" && item.from === "agent" && findRefs(item.body).length > 0 && <RowRefCards item={item} feed={feed} />}
-          {/* Your agent's turn on what you said: its steps as they happen, the answer as it is written, and Stop. */}
-          <WorkBlock item={item} clock={Date.now} busy={feed.busy} onStop={(id) => void feed.stop(id)} />
-          <Typed item={item} />
-          {item.breach && <p className="breach">Your agent {item.breach}.</p>}
-          {item.why && item.kind === "action" && <p className="why">Why: {item.why}</p>}
-          {item.note && <p className="note">{answerLine(item)}</p>}
-          {replaced(item) && <p className="note replaced">{REPLACED}</p>}
-          {noRetry && <p className="note">{noRetry}</p>}
-          <LateHint item={item} live={agentLive(feed.settings?.agents)} />
-          {!card && resolvable(item) && (
-            <div className="row-answer">
-              <Resolver key={item.id} item={item} feed={feed} />
-            </div>
-          )}
-          {/* The decision comes before the flow: a long history must not push Approve out of reach. */}
-          <div className="actions">
-            {!card && <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />}
-            {openable && (
-              <button type="button" className="ghost small" onClick={() => onOpenApp?.(item)}>
-                Open in {appName(item.app)}
-                <kbd>O</kbd>
-              </button>
-            )}
-            {onChat && <ChatLink item={item} feed={feed} onChat={onChat} />}
-            <span className="grow" />
-            {archived ? (
-              <button type="button" className="ghost small" disabled={feed.busy} onClick={() => void feed.unarchive([item.chain])}>
-                Unarchive
-              </button>
-            ) : (
-              <>
-                {lane !== "done" && (
-                  <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onLater(item)}>
-                    Later
-                    <kbd>S</kbd>
-                  </button>
-                )}
-                {/* A card that can only be archived already carries Archive. */}
-                {!(card && noRetry) && (
-                  <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onArchive(item)}>
-                    Archive
-                    <kbd>E</kbd>
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-          <LinkChips feed={feed} chain={item.chain} onOpenApp={onOpenApp} onOpenChat={onChat} canAdd={false} />
-          {item.chain_len > 1 && <Story chain={item.chain} lead={item} feed={feed} />}
-          <AskAgent
-            key={item.chain}
-            feed={feed}
-            chain={item.chain}
-            label={item.kind === "message" ? "Say more to your agent" : "Talk to your agent about this"}
-          />
-        </div>
+        <RowBody
+          id={bodyId}
+          item={item}
+          lane={lane}
+          archived={archived}
+          card={card}
+          feed={feed}
+          onChat={onChat}
+          onOpenApp={onOpenApp}
+          onArchive={onArchive}
+          onLater={onLater}
+        />
       )}
     </li>
+  );
+}
+
+/** Whether a row's body shows your agent's turn (Working…, its steps, Stop), so its line need not say it too. */
+export function turnShows(item: FeedItem): boolean {
+  return item.kind === "message" && item.from === "you" && item.status === "thinking";
+}
+
+/**
+ * Everything about a chain, opened: the body, the answer or the decision,
+ * Open chat, Later and Archive, its links, its flow, and a box to talk to
+ * your agent about it. A row opens into it; Team shows the open one the same.
+ */
+export function RowBody({
+  id,
+  item,
+  lane,
+  archived,
+  card,
+  feed,
+  onChat,
+  onOpenApp,
+  onArchive,
+  onLater,
+}: {
+  id?: string;
+  item: FeedItem;
+  lane: Lane;
+  archived?: boolean;
+  /** Its card already carries the answer and the decision. */
+  card?: boolean;
+  feed: Feed;
+  onChat?: (chain: string) => void;
+  onOpenApp?: (item: FeedItem) => void;
+  onArchive: (item: FeedItem) => void;
+  onLater: (item: FeedItem) => void;
+}) {
+  const body = extraBody(item);
+  const command = localCommand(item);
+  const openable = Boolean(onOpenApp) && canOpen(item);
+  const noRetry = noRetryLine(item, appName);
+  return (
+    <div id={id} className="row-body">
+      {command ? (
+        <CommandDetails command={command} />
+      ) : (
+        body &&
+        (item.kind === "action" ? (
+          <p className="write-text">{writeText(item)}</p>
+        ) : item.kind === "message" && saysMore(item) ? (
+          <MoreBody key={item.id} body={body} />
+        ) : (
+          <p className="quote">{body}</p>
+        ))
+      )}
+      {item.kind === "message" && item.from === "agent" && findRefs(item.body).length > 0 && <RowRefCards item={item} feed={feed} />}
+      {/* Your agent's turn on what you said: its steps as they happen, the answer as it is written, and Stop. */}
+      <WorkBlock item={item} clock={Date.now} busy={feed.busy} onStop={(id) => void feed.stop(id)} />
+      <Typed item={item} />
+      {item.breach && <p className="breach">Your agent {item.breach}.</p>}
+      {item.why && item.kind === "action" && <p className="why">Why: {item.why}</p>}
+      {item.note && <p className="note">{answerLine(item)}</p>}
+      {replaced(item) && <p className="note replaced">{REPLACED}</p>}
+      {noRetry && <p className="note">{noRetry}</p>}
+      <LateHint item={item} live={agentLive(feed.settings?.agents)} />
+      {!card && resolvable(item) && (
+        <div className="row-answer">
+          <Resolver key={item.id} item={item} feed={feed} />
+        </div>
+      )}
+      {/* The decision comes before the flow: a long history must not push Approve out of reach. */}
+      <div className="actions">
+        {!card && <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />}
+        {openable && (
+          <button type="button" className="ghost small" onClick={() => onOpenApp?.(item)}>
+            Open in {appName(item.app)}
+            <kbd>O</kbd>
+          </button>
+        )}
+        {onChat && <ChatLink item={item} feed={feed} onChat={onChat} />}
+        <span className="grow" />
+        {archived ? (
+          <button type="button" className="ghost small" disabled={feed.busy} onClick={() => void feed.unarchive([item.chain])}>
+            Unarchive
+          </button>
+        ) : (
+          <>
+            {lane !== "done" && (
+              <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onLater(item)}>
+                Later
+                <kbd>S</kbd>
+              </button>
+            )}
+            {/* A card that can only be archived already carries Archive. */}
+            {!(card && noRetry) && (
+              <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onArchive(item)}>
+                Archive
+                <kbd>E</kbd>
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      <LinkChips feed={feed} chain={item.chain} onOpenApp={onOpenApp} onOpenChat={onChat} canAdd={false} />
+      {item.chain_len > 1 && <Story chain={item.chain} lead={item} feed={feed} />}
+      <AskAgent
+        key={item.chain}
+        feed={feed}
+        chain={item.chain}
+        label={item.kind === "message" ? "Say more to your agent" : "Talk to your agent about this"}
+      />
+    </div>
   );
 }
 
@@ -1193,10 +1247,11 @@ function Face({ s, item, size }: { s: Sentence; item: FeedItem; size: "sm" | "md
  * `chat` is the message of yours that started the chain when the row is your
  * agent's answer to it: the row is that conversation, and the answer is in its thread.
  */
-function PeopleLine({ item, chat }: { item: FeedItem; chat: FeedItem | null }) {
+function PeopleLine({ item, chat, turnShown = false }: { item: FeedItem; chat: FeedItem | null; turnShown?: boolean }) {
   const shown = chat ?? item;
   const s = sentenceOf(shown, appName);
-  const working = progressLine(item);
+  // Opened, your agent's turn shows under the message: the line does not say it twice.
+  const working = turnShown ? "" : progressLine(item);
   const place = placeOf(shown, appName);
   return (
     <>
@@ -1208,7 +1263,7 @@ function PeopleLine({ item, chat }: { item: FeedItem; chat: FeedItem | null }) {
         </span>
         <span className="row-where">{working ? `Working: ${working}` : chat ? `Agent replied${place ? ` · ${place}` : ""}` : place || whereOf(shown)}</span>
       </span>
-      <Status item={chat ? { ...chat, status: "answered" } : item} />
+      {!turnShown && <Status item={chat ? { ...chat, status: "answered" } : item} />}
       {item.chain_len > 1 && <span className="row-steps">{item.chain_len}</span>}
       <span className="row-time">{timeLabel(item.chain_at || item.at)}</span>
     </>

@@ -12,21 +12,25 @@ export const Overlay = styled.div`
   position: fixed; inset: 0; z-index: 100;
   display: flex; align-items: center; justify-content: center; padding: 20px;
   background: ${t.color.scrim};
+  /* The overlay is fixed itself and holds only its dialog, so this blur
+     cannot trap anything. */
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   animation: ${fadeIn} 0.15s ease both;
 `;
 export const Dialog = styled.div`
   position: relative; width: 100%; max-width: 420px;
-  background: ${t.color.panel}; border: 1px solid ${t.color.borderStrong}; border-radius: ${t.radiusModal};
-  padding: 28px 26px 24px; box-shadow: ${t.shadowFloat};
+  background: ${t.color.panel}; border: 1px solid ${t.color.edge}; border-radius: ${t.radiusModal};
+  padding: 30px 28px 26px; box-shadow: ${t.shadowFloat};
+  max-height: calc(100dvh - 40px); overflow-y: auto;
   font-family: ${t.font.sans}; color: ${t.color.text};
   animation: ${pop} 0.18s ease both;
-  h3 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 8px; }
+  h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 8px; padding-right: 28px; }
   .sub { font-size: 13px; line-height: 1.55; color: ${t.color.text2}; margin: 0; }
 `;
 export const Close = styled.button`
-  position: absolute; top: 14px; right: 14px; width: 30px; height: 30px;
+  position: absolute; top: 16px; right: 16px; width: 32px; height: 32px;
   display: grid; place-items: center; font-size: 20px; line-height: 1;
-  color: ${t.color.text3}; background: transparent; border: none; border-radius: 6px; cursor: pointer;
+  color: ${t.color.text3}; background: transparent; border: none; border-radius: 999px; cursor: pointer;
   &:hover { background: ${t.color.hover}; color: ${t.color.text}; }
 `;
 export const Field = styled.div`
@@ -35,10 +39,10 @@ export const Field = styled.div`
   input {
     width: 100%; box-sizing: border-box;
     font-size: 13px; color: ${t.color.text}; background: ${t.color.raised};
-    border: 1px solid ${t.color.border}; border-radius: ${t.radius}; padding: 10px 12px;
-    outline: none; font-family: inherit;
+    border: 1px solid ${t.color.borderStrong}; border-radius: ${t.radius}; padding: 11px 14px;
+    outline: none; font-family: inherit; transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
     &::placeholder { color: ${t.color.text3}; }
-    &:focus { border-color: ${t.color.accentBorder}; }
+    &:focus { border-color: ${t.color.accentBorder}; box-shadow: 0 0 0 3px ${t.focus}; }
     &:disabled { opacity: 0.6; }
   }
 `;

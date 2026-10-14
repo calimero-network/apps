@@ -2404,6 +2404,14 @@ body {
   padding: 6px 6px 6px 10px;
 }
 
+/* On a phone the inline box's label takes its own line: the box keeps the width to write in. */
+@media (max-width: 640px) {
+  .ask-inline .ask-label {
+    flex-basis: 100%;
+    min-height: 0;
+  }
+}
+
 .lane {
   border-radius: var(--radius);
   background: var(--surface);
@@ -3407,6 +3415,23 @@ body {
   padding: 12px 14px;
   position: sticky;
   top: 12px;
+}
+
+/* What you opened in Team (what you asked, a card you discuss, the bell's row): a row's body, under the ask box. */
+.team-open {
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.team-open .team-head {
+  margin-bottom: 0;
+}
+
+.team-open .row-body {
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .team-digest {
