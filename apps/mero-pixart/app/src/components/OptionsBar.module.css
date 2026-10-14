@@ -5,7 +5,10 @@
   height: 40px;
   flex-shrink: 0;
   padding: 0 14px;
-  background: var(--bg-2);
+  /* Frosted glass; the height is what the canvas is sized against. */
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
   overflow-y: hidden;

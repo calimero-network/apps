@@ -4,7 +4,10 @@
   gap: 12px;
   height: 24px;
   padding: 0 12px;
-  background: var(--bg-1);
+  /* Frosted glass; the height is what the canvas is sized against. */
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border-top: 1px solid var(--border);
   font-size: 11px;
   color: var(--text-dim);
