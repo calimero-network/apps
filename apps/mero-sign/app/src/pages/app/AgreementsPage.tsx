@@ -1,7 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import {
+  ArrowRight,
+  Copy,
+  FileSignature,
+  Layers,
+  MoreHorizontal,
+  PenLine,
+  Plus,
+  UserPlus,
+} from 'lucide-react';
 
-import { AppHeader } from '../../components/AppHeader';
+import { AppShell } from '../../components/shell/AppShell';
+import { hueOf } from '../../lib/monogram';
 import {
   useActiveWorkspace,
   setActiveWorkspace,
@@ -210,15 +228,17 @@ export default function AgreementsPage() {
 
   if (gone) {
     return (
-      <div className={styles.root}>
-        <AppHeader />
+      <AppShell>
         <main className={styles.main}>
-          <h1 className={styles.title}>That workspace is not on this node</h1>
-          <p className={styles.subtitle}>
-            It was remembered from a previous session, but this node does not
-            have it — it may have been reset, or the workspace deleted. Nothing
-            of yours is lost; pick a workspace to carry on.
-          </p>
+          <header className={styles.pageHead}>
+            <span className={styles.eyebrow}>Agreements</span>
+            <h1 className={styles.title}>That workspace is not on this node</h1>
+            <p className={styles.subtitle}>
+              It was remembered from a previous session, but this node does not
+              have it — it may have been reset, or the workspace deleted.
+              Nothing of yours is lost; pick a workspace to carry on.
+            </p>
+          </header>
           {error && (
             <p className={styles.error} data-testid="list-error">
               {error}
@@ -230,48 +250,61 @@ export default function AgreementsPage() {
               onClick={() => navigate('/workspaces')}
               data-testid="go-workspaces"
             >
+              <Layers size={16} />
               Choose a workspace
             </button>
           </div>
         </main>
-      </div>
+      </AppShell>
     );
   }
 
   if (!workspaceId) {
     return (
-      <div className={styles.root}>
-        <AppHeader />
+      <AppShell>
         <main className={styles.main}>
-          <h1 className={styles.title}>Your agreements</h1>
-          <p className={styles.subtitle}>
-            An agreement lives in a workspace — the group of people who sign it.
-            Open or create one to get started.
-          </p>
-          <div className={styles.joinRow}>
-            <button
-              className={styles.btn}
-              onClick={() => navigate('/workspaces')}
-              data-testid="go-workspaces"
-            >
-              Choose a workspace
-            </button>
+          <header className={styles.pageHead}>
+            <span className={styles.eyebrow}>Agreements</span>
+            <h1 className={styles.title}>Your agreements</h1>
+            <p className={styles.subtitle}>
+              An agreement lives in a workspace — the group of people who sign
+              it. Open or create one to get started.
+            </p>
+          </header>
+          <div className={styles.emptyState}>
+            <span className={styles.emptyIcon}>
+              <Layers size={24} />
+            </span>
+            <p className={styles.emptyTitle}>No workspace open</p>
+            <p className={styles.empty}>
+              Pick the workspace whose agreements you want to see.
+            </p>
+            <div className={styles.joinRow}>
+              <button
+                className={styles.btn}
+                onClick={() => navigate('/workspaces')}
+                data-testid="go-workspaces"
+              >
+                Choose a workspace
+              </button>
+            </div>
           </div>
         </main>
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className={styles.root}>
-      <AppHeader back={{ label: 'Workspaces', to: '/workspaces' }} />
-
+    <AppShell back={{ label: 'Workspaces', to: '/workspaces' }}>
       <main className={styles.main}>
-        <h1 className={styles.title}>Agreements</h1>
-        <p className={styles.subtitle}>
-          An agreement holds the documents a group of people sign. Everything in
-          one lives on the nodes of the people invited to this workspace.
-        </p>
+        <header className={styles.pageHead}>
+          <span className={styles.eyebrow}>Workspace</span>
+          <h1 className={styles.title}>Agreements</h1>
+          <p className={styles.subtitle}>
+            An agreement holds the documents a group of people sign. Everything
+            in one lives on the nodes of the people invited to this workspace.
+          </p>
+        </header>
 
         {error && (
           <p className={styles.error} data-testid="list-error">
@@ -279,144 +312,217 @@ export default function AgreementsPage() {
           </p>
         )}
 
-        <div className={styles.createRow}>
-          <input
-            className={styles.input}
-            placeholder="New agreement name…"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void create()}
-            data-testid="new-agreement-name"
-          />
-          <button
-            className={styles.btn}
-            onClick={() => void create()}
-            disabled={creating || !newName.trim()}
-            data-testid="create-agreement"
-          >
-            {creating ? <span className={styles.spinner} /> : null}
-            {creating ? 'Creating…' : 'Create'}
-          </button>
-        </div>
+        <section className={styles.panel}>
+          <div className={styles.panelHead}>
+            <span className={styles.panelIcon}>
+              <Plus size={20} />
+            </span>
+            <div>
+              <h2 className={styles.panelTitle}>New agreement</h2>
+              <p className={styles.panelText}>
+                One agreement per set of documents — an NDA, a contract, a
+                term sheet.
+              </p>
+            </div>
+          </div>
+          <div className={styles.createRow}>
+            <input
+              className={styles.input}
+              placeholder="New agreement name…"
+              aria-label="New agreement name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void create()}
+              data-testid="new-agreement-name"
+            />
+            <button
+              className={styles.btn}
+              onClick={() => void create()}
+              disabled={creating || !newName.trim()}
+              data-testid="create-agreement"
+            >
+              {creating ? <span className={styles.spinner} /> : null}
+              {creating ? 'Creating…' : 'Create'}
+            </button>
+          </div>
+        </section>
 
-        {isSyncing ? (
-          <JoinSyncBanner show what="agreements" onDismiss={dismissSyncing} />
-        ) : loading ? (
-          <p className={styles.empty}>Loading…</p>
-        ) : error ? null /* the error above already says why the list is empty;
-                            "No agreements yet. Create one above" underneath it
-                            contradicts it */ : rows.length === 0 ? (
-          <p className={styles.empty} data-testid="agreements-empty">
-            No agreements yet. Create one above.
-          </p>
-        ) : (
-          <div className={styles.grid} data-testid="agreements-grid">
-            {rows.map((row) => (
-              <div
-                key={row.agreementId}
-                className={styles.cardWrap}
-                ref={menuOpenId === row.agreementId ? menuRef : null}
-                data-testid="agreement-card"
-              >
-                <button
-                  className={styles.card}
-                  disabled={!row.contextId || opening === row.agreementId}
-                  onClick={() => void open(row)}
-                >
-                  <span className={styles.cardName}>
-                    {displayName([row.name], row.agreementId, 'Agreement')}
-                  </span>
-                  <span className={styles.cardSub}>
-                    {!row.contextId
-                      ? 'Still replicating…'
-                      : opening === row.agreementId
-                        ? 'Opening…'
-                        : row.joined
-                          ? `${row.memberCount === 1 ? '1 person' : `${row.memberCount} people`}`
-                          : 'Not joined yet'}
-                  </span>
-                </button>
-                <button
-                  className={styles.menuBtn}
-                  title="More options"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpenId(
-                      menuOpenId === row.agreementId ? null : row.agreementId,
-                    );
-                  }}
-                >
-                  ⋯
-                </button>
-                {menuOpenId === row.agreementId && (
-                  <div className={styles.dropdown}>
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>In this workspace</h2>
+            {rows.length > 0 && (
+              <span className={styles.count}>{rows.length}</span>
+            )}
+          </div>
+          {isSyncing ? (
+            <JoinSyncBanner show what="agreements" onDismiss={dismissSyncing} />
+          ) : loading ? (
+            <div className={styles.skeletonGrid} aria-label="Loading…">
+              <span className={styles.skeleton} />
+              <span className={styles.skeleton} />
+              <span className={styles.skeleton} />
+            </div>
+          ) : error ? null /* the error above already says why the list is
+                              empty; "No agreements yet. Create one above"
+                              underneath it contradicts it */ : rows.length ===
+            0 ? (
+            <div className={styles.emptyState}>
+              <span className={styles.emptyIcon}>
+                <FileSignature size={24} />
+              </span>
+              <p className={styles.emptyTitle}>Nothing to sign yet</p>
+              <p className={styles.empty} data-testid="agreements-empty">
+                No agreements yet. Create one above.
+              </p>
+            </div>
+          ) : (
+            <div className={styles.grid} data-testid="agreements-grid">
+              {rows.map((row) => {
+                const name = displayName([row.name], row.agreementId, 'Agreement');
+                return (
+                  <div
+                    key={row.agreementId}
+                    className={styles.cardWrap}
+                    ref={menuOpenId === row.agreementId ? menuRef : null}
+                    data-testid="agreement-card"
+                  >
                     <button
-                      className={styles.dropdownItem}
-                      disabled={!row.contextId}
-                      onClick={() => {
-                        setMenuOpenId(null);
-                        void open(row);
-                      }}
+                      className={styles.card}
+                      disabled={!row.contextId || opening === row.agreementId}
+                      onClick={() => void open(row)}
                     >
-                      Open
+                      <span
+                        className={styles.cardIcon}
+                        style={{ '--hue': hueOf(name) } as CSSProperties}
+                        aria-hidden="true"
+                      >
+                        <FileSignature size={20} />
+                      </span>
+                      <span className={styles.cardName}>{name}</span>
+                      <span className={styles.cardSub}>
+                        {!row.contextId
+                          ? 'Still replicating…'
+                          : opening === row.agreementId
+                            ? 'Opening…'
+                            : row.joined
+                              ? `${row.memberCount === 1 ? '1 person' : `${row.memberCount} people`}`
+                              : 'Not joined yet'}
+                      </span>
+                      <span className={styles.cardFoot}>
+                        Open agreement <ArrowRight size={14} />
+                      </span>
                     </button>
                     <button
-                      className={styles.dropdownItem}
-                      onClick={() => {
-                        setMenuOpenId(null);
-                        void navigator.clipboard.writeText(
-                          row.contextId ?? row.agreementId,
+                      className={`${styles.menuBtn} ${
+                        menuOpenId === row.agreementId ? styles.menuBtnOpen : ''
+                      }`}
+                      title="More options"
+                      aria-label="More options"
+                      aria-expanded={menuOpenId === row.agreementId}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpenId(
+                          menuOpenId === row.agreementId
+                            ? null
+                            : row.agreementId,
                         );
                       }}
                     >
-                      Copy id
+                      <MoreHorizontal size={18} />
                     </button>
+                    {menuOpenId === row.agreementId && (
+                      <div className={styles.dropdown} role="menu">
+                        <button
+                          className={styles.dropdownItem}
+                          role="menuitem"
+                          disabled={!row.contextId}
+                          onClick={() => {
+                            setMenuOpenId(null);
+                            void open(row);
+                          }}
+                        >
+                          <ArrowRight size={16} />
+                          Open
+                        </button>
+                        <button
+                          className={styles.dropdownItem}
+                          role="menuitem"
+                          onClick={() => {
+                            setMenuOpenId(null);
+                            void navigator.clipboard.writeText(
+                              row.contextId ?? row.agreementId,
+                            );
+                          }}
+                        >
+                          <Copy size={16} />
+                          Copy id
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <div className={styles.panelPair}>
+          {/* Inside the workspace, next to the agreements it will be used
+              on — not on the root screen beside the workspace list. See the
+              note in `WorkspacesPage`. */}
+          <section className={styles.panel}>
+            <div className={styles.panelHead}>
+              <span className={styles.panelIcon}>
+                <PenLine size={20} />
+              </span>
+              <div>
+                <h2 className={styles.panelTitle}>Your signatures</h2>
+                <p className={styles.panelText}>
+                  The drawings you sign with. They stay in your own private
+                  context and never leave your node, so they are the same in
+                  every workspace.
+                </p>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+            <div className={styles.joinRow}>
+              <button
+                className={styles.btnGhost}
+                onClick={() => navigate('/signatures')}
+                data-testid="go-signatures"
+              >
+                Open signature library
+              </button>
+            </div>
+          </section>
 
-        {/* Inside the workspace, next to the agreements it will be used on —
-            not on the root screen beside the workspace list. See the note in
-            `WorkspacesPage`. */}
-        <div className={styles.joinSection}>
-          <p className={styles.joinLabel}>Your signatures</p>
-          <div className={styles.joinRow}>
-            <button
-              className={styles.btnGhost}
-              onClick={() => navigate('/signatures')}
-              data-testid="go-signatures"
-            >
-              Open signature library
-            </button>
-          </div>
-          <p className={styles.hint}>
-            The drawings you sign with. They stay in your own private context
-            and never leave your node, so they are the same in every workspace.
-          </p>
-        </div>
-
-        <div className={styles.joinSection}>
-          <p className={styles.joinLabel}>
-            Inviting someone? Invitations are to the workspace.
-          </p>
-          <div className={styles.joinRow}>
-            <button
-              className={styles.btnGhost}
-              onClick={() => navigate('/workspaces')}
-              data-testid="go-workspaces"
-            >
-              Manage workspaces
-            </button>
-          </div>
-          <p className={styles.hint}>
-            One link covers the workspace and every agreement in it, so a signer
-            you already work with does not need a new one for each document.
-          </p>
+          <section className={styles.panel}>
+            <div className={styles.panelHead}>
+              <span className={styles.panelIcon}>
+                <UserPlus size={20} />
+              </span>
+              <div>
+                <h2 className={styles.panelTitle}>
+                  Inviting someone? Invitations are to the workspace.
+                </h2>
+                <p className={styles.panelText}>
+                  One link covers the workspace and every agreement in it, so a
+                  signer you already work with does not need a new one for
+                  each document.
+                </p>
+              </div>
+            </div>
+            <div className={styles.joinRow}>
+              <button
+                className={styles.btnGhost}
+                onClick={() => navigate('/workspaces')}
+                data-testid="go-workspaces"
+              >
+                Manage workspaces
+              </button>
+            </div>
+          </section>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }

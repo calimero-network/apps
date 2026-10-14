@@ -22,8 +22,11 @@
 //
 // `public/pdf.worker.min.js` is a stale hand-copied 5.3.93 that nothing
 // referenced; it is deleted with this change.
-import * as pdfjsLib from 'pdfjs-dist';
-import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+// The LEGACY worker, matching the legacy API build in `./pdfjs` — see there for
+// why. A worker from the other build is the same version but assumes engine
+// features the legacy build exists to avoid.
+import { pdfjsLib } from './pdfjs';
+import workerSrc from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 let configured = false;
 

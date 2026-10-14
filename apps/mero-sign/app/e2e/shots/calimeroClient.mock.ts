@@ -6,10 +6,12 @@
 import {
   ALICE,
   current,
+  DOC_BLOB_IDS,
   SIGNATURE_PNG,
   SUBGROUPS,
   WORKSPACES,
 } from './fixtures';
+import { samplePdf } from './samplePdf';
 
 // ⚠️ STABLE IDENTITIES. Every page does
 // `useMemo(() => new ClientApiDataSource(app), [app])` and then depends on that
@@ -112,9 +114,13 @@ export const adminApi = () => ({
 
 export const blobClient = {
   uploadBlob: async () => ({ data: { blobId: 'blob-new' }, error: null }),
-  downloadBlob: async () =>
-    // A real Blob, so the page's FileReader path runs exactly as it does live.
-    await (await fetch(SIGNATURE_PNG)).blob(),
+  // A document's blob is the sample contract; anything else is a signature.
+  // Real Blobs either way, so the page's FileReader and pdf.js paths run
+  // exactly as they do live.
+  downloadBlob: async (blobId: string) =>
+    DOC_BLOB_IDS.includes(blobId)
+      ? samplePdf()
+      : await (await fetch(SIGNATURE_PNG)).blob(),
 };
 
 export const rpcClient = {

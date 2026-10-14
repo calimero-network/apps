@@ -1,0 +1,83 @@
+/* Consent before the first signature, and the disclosure it links to.
+   `--sign-*` tokens only, so both themes follow. */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--sign-good-bg);
+  color: var(--sign-good-ink);
+}
+.text {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--sign-ink-2);
+}
+.link {
+  display: inline;
+  text-align: left;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 650;
+  color: var(--sign-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--sign-radius);
+  background: var(--sign-sunken);
+  border: 1px solid var(--sign-line);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--sign-ink);
+  cursor: pointer;
+}
+.check input {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: var(--sign-good-ink);
+  cursor: pointer;
+}
+.error {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--sign-bad-bg);
+  color: var(--sign-bad-ink);
+  font-size: 13.5px;
+}
+
+.disclosure {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--sign-ink-2);
+}
+.lead {
+  margin-bottom: 14px;
+  color: var(--sign-ink);
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 22px;
+}
+.disclosure a {
+  color: var(--sign-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

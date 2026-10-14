@@ -1,5 +1,10 @@
 // Screenshot harness entry. Renders the REAL pages against fixture modules, so
 // what is photographed is the shipping UI rather than a re-implementation.
+// In the app's order: the shared glass stylesheet first, so index.css maps
+// onto it (src/main.tsx does the same). Without it every --glass-* token is
+// unset and the shots show unstyled serif pages.
+import '@calimero-apps/glass/glass.css';
+import '../../src/index.css';
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -34,7 +39,6 @@ try {
 } catch {
   /* a blocked localStorage just means those scenarios show their empty state */
 }
-import '../../src/index.css';
 
 /**
  * Force the states a click would otherwise reach.
@@ -73,6 +77,48 @@ function Driver() {
 
     const byTestId = (id: string) => () =>
       document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+    // A visible button whose text is `text`: the signing controls render twice
+    // (toolbar and phone sheet), and only one of them is on screen.
+    const shown = (el: HTMLElement | null | undefined) =>
+      el && el.getClientRects().length > 0 ? el : null;
+    /** The Sign control on screen; on a phone that is behind the actions FAB. */
+    const signControl = () => {
+      const direct =
+        shown(byTestId('sign-document')()) ??
+        shown(byTestId('sign-document-mobile')());
+      if (direct) return direct;
+      shown(
+        document.querySelector<HTMLElement>(
+          '[aria-label="Open document actions"]',
+        ),
+      )?.click();
+      return null;
+    };
+
+    /** Open the first document, then walk as far into signing as asked. */
+    function openViewer() {
+      clickWhenPresent(
+        () =>
+          document.querySelector<HTMLElement>(
+            '[data-testid="document-card"] button',
+          ),
+        () => {
+          if (current.open === 'viewer') return;
+          // The viewer mounts once pdf.js has the bytes; give it its own
+          // longer wait than the 3s a list control gets.
+          clickWhenPresent(
+            signControl,
+            () => {
+              if (current.open !== 'viewer-pad') return;
+              clickWhenPresent(
+                () => shown(byTestId('draw-signature')()),
+              );
+            },
+            200,
+          );
+        },
+      );
+    }
 
     if (current.tab) {
       clickWhenPresent(byTestId(`tab-${current.tab}`), () => {
@@ -82,14 +128,15 @@ function Driver() {
           clickWhenPresent(byTestId('open-upload'));
         if (current.open === 'invite')
           clickWhenPresent(byTestId('mint-invite'));
+        if (current.open?.startsWith('viewer')) openViewer();
       });
     } else if (current.open === 'delete-signature') {
       clickWhenPresent(
         () => {
           const card = document.querySelector('[data-testid="signature-card"]');
-          return [
-            ...(card?.querySelectorAll<HTMLElement>('button') ?? []),
-          ].find((b) => b.textContent?.trim() === '⋯');
+          return card?.querySelector<HTMLElement>(
+            'button[title="More options"]',
+          );
         },
         () =>
           clickWhenPresent(() =>

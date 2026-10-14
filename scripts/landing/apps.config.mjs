@@ -842,6 +842,9 @@ export const APPS = {
     ownConnect: true,
     displayName: 'Mero Sign',
     e2eDir: 'tests',
+    // Same light/dark key as the app shell (src/theme.ts), so the landing
+    // choice carries through sign-in.
+    themeStorageKey: 'mero-sign:theme',
     availability: 'web+desktop',
     trust: ['No signing service', 'Roles per signatory', 'Verify peer-to-peer'],
     explainer: [

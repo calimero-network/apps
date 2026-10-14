@@ -1,7 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  ArrowRight,
+  Copy,
+  Layers,
+  Link2,
+  MoreHorizontal,
+  Plus,
+  Server,
+  UserPlus,
+} from 'lucide-react';
 
-import { AppHeader } from '../../components/AppHeader';
+import { AppShell } from '../../components/shell/AppShell';
 import {
   NOT_INSTALLED_MESSAGE,
   useApplicationId,
@@ -14,6 +31,7 @@ import {
 } from '../../lib/agreements';
 import { encodeInvite } from '../../lib/inviteCodec';
 import { invitationUrl } from '../../lib/inviteLink';
+import { hueOf, initials } from '../../lib/monogram';
 import { adminApi, apiClient } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
 import { joinWorkspaceFromInvitation } from '../../api/invitationJoin';
@@ -246,20 +264,37 @@ export default function WorkspacesPage() {
   const body = useMemo(() => {
     if (notInstalled) {
       return (
-        <p className={styles.empty} data-testid="not-installed">
-          {NOT_INSTALLED_MESSAGE}
-        </p>
+        <div className={styles.emptyState}>
+          <span className={styles.emptyIcon}>
+            <Server size={24} />
+          </span>
+          <p className={styles.empty} data-testid="not-installed">
+            {NOT_INSTALLED_MESSAGE}
+          </p>
+        </div>
       );
     }
     if (loading || idLoading) {
-      return <p className={styles.empty}>Loading…</p>;
+      return (
+        <div className={styles.skeletonGrid} aria-label="Loading…">
+          <span className={styles.skeleton} />
+          <span className={styles.skeleton} />
+          <span className={styles.skeleton} />
+        </div>
+      );
     }
     if (banner?.kind === 'error') return null;
     if (rows.length === 0) {
       return (
-        <p className={styles.empty} data-testid="workspaces-empty">
-          No workspaces yet. Create one above, or paste an invitation below.
-        </p>
+        <div className={styles.emptyState}>
+          <span className={styles.emptyIcon}>
+            <Layers size={24} />
+          </span>
+          <p className={styles.emptyTitle}>No workspaces yet</p>
+          <p className={styles.empty} data-testid="workspaces-empty">
+            No workspaces yet. Create one above, or paste an invitation below.
+          </p>
+        </div>
       );
     }
     return (
@@ -272,6 +307,13 @@ export default function WorkspacesPage() {
             data-testid="workspace-card"
           >
             <button className={styles.card} onClick={() => open(row)}>
+              <span
+                className={styles.cardIcon}
+                style={{ '--hue': hueOf(row.name) } as CSSProperties}
+                aria-hidden="true"
+              >
+                {initials(row.name)}
+              </span>
               <span className={styles.cardName}>{row.name}</span>
               <span className={styles.cardSub}>
                 {row.agreementCount === 1
@@ -282,10 +324,17 @@ export default function WorkspacesPage() {
                   ? '1 person'
                   : `${row.memberCount} people`}
               </span>
+              <span className={styles.cardFoot}>
+                Open workspace <ArrowRight size={14} />
+              </span>
             </button>
             <button
-              className={styles.menuBtn}
+              className={`${styles.menuBtn} ${
+                menuOpenId === row.namespaceId ? styles.menuBtnOpen : ''
+              }`}
               title="More options"
+              aria-label="More options"
+              aria-expanded={menuOpenId === row.namespaceId}
               onClick={(e) => {
                 e.stopPropagation();
                 setMenuOpenId(
@@ -293,36 +342,42 @@ export default function WorkspacesPage() {
                 );
               }}
             >
-              ⋯
+              <MoreHorizontal size={18} />
             </button>
             {menuOpenId === row.namespaceId && (
-              <div className={styles.dropdown}>
+              <div className={styles.dropdown} role="menu">
                 <button
                   className={styles.dropdownItem}
+                  role="menuitem"
                   onClick={() => {
                     setMenuOpenId(null);
                     open(row);
                   }}
                 >
+                  <ArrowRight size={16} />
                   Open
                 </button>
                 <button
                   className={styles.dropdownItem}
+                  role="menuitem"
                   data-testid="invite-to-workspace"
                   onClick={() => {
                     setMenuOpenId(null);
                     void invite(row);
                   }}
                 >
+                  <UserPlus size={16} />
                   Invite someone
                 </button>
                 <button
                   className={styles.dropdownItem}
+                  role="menuitem"
                   onClick={() => {
                     setMenuOpenId(null);
                     void navigator.clipboard.writeText(row.namespaceId);
                   }}
                 >
+                  <Copy size={16} />
                   Copy id
                 </button>
               </div>
@@ -343,16 +398,17 @@ export default function WorkspacesPage() {
   ]);
 
   return (
-    <div className={styles.root}>
-      <AppHeader />
-
+    <AppShell>
       <main className={styles.main}>
-        <h1 className={styles.title}>Your workspaces</h1>
-        <p className={styles.subtitle}>
-          A workspace holds the people you sign with, and the agreements you
-          sign with them. Invitations are to a workspace — one link covers
-          everything in it.
-        </p>
+        <header className={styles.pageHead}>
+          <span className={styles.eyebrow}>Workspaces</span>
+          <h1 className={styles.title}>Your workspaces</h1>
+          <p className={styles.subtitle}>
+            A workspace holds the people you sign with, and the agreements you
+            sign with them. Invitations are to a workspace — one link covers
+            everything in it.
+          </p>
+        </header>
 
         {banner && (
           <p
@@ -363,37 +419,72 @@ export default function WorkspacesPage() {
           </p>
         )}
 
-        <div className={styles.createRow}>
-          <input
-            className={styles.input}
-            placeholder="New workspace name…"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void create()}
-            data-testid="new-workspace-name"
-          />
-          <button
-            className={styles.btn}
-            onClick={() => void create()}
-            disabled={creating || !newName.trim() || !applicationId}
-            data-testid="create-workspace"
-          >
-            {creating ? <span className={styles.spinner} /> : null}
-            {creating ? 'Creating…' : 'Create'}
-          </button>
-        </div>
-        {creating && status && <p className={styles.hint}>{status}</p>}
+        <section className={styles.panel}>
+          <div className={styles.panelHead}>
+            <span className={styles.panelIcon}>
+              <Plus size={20} />
+            </span>
+            <div>
+              <h2 className={styles.panelTitle}>New workspace</h2>
+              <p className={styles.panelText}>
+                Name it after the people or the deal — you can invite them as
+                soon as it exists.
+              </p>
+            </div>
+          </div>
+          <div className={styles.createRow}>
+            <input
+              className={styles.input}
+              placeholder="New workspace name…"
+              aria-label="New workspace name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void create()}
+              data-testid="new-workspace-name"
+            />
+            <button
+              className={styles.btn}
+              onClick={() => void create()}
+              disabled={creating || !newName.trim() || !applicationId}
+              data-testid="create-workspace"
+            >
+              {creating ? <span className={styles.spinner} /> : null}
+              {creating ? 'Creating…' : 'Create'}
+            </button>
+          </div>
+          {creating && status && <p className={styles.hint}>{status}</p>}
+        </section>
 
-        {body}
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>All workspaces</h2>
+            {rows.length > 0 && (
+              <span className={styles.count}>{rows.length}</span>
+            )}
+          </div>
+          {body}
+        </section>
 
-        <div className={styles.joinSection}>
-          <p className={styles.joinLabel}>
-            Got an invitation? Join a workspace.
-          </p>
+        <section className={styles.panel}>
+          <div className={styles.panelHead}>
+            <span className={styles.panelIcon}>
+              <Link2 size={20} />
+            </span>
+            <div>
+              <h2 className={styles.panelTitle}>
+                Got an invitation? Join a workspace.
+              </h2>
+              <p className={styles.panelText}>
+                Opening the link works too — you only need this if it arrived
+                as text.
+              </p>
+            </div>
+          </div>
           <div className={styles.joinRow}>
             <input
               className={styles.input}
               placeholder="Paste the link or code you were sent…"
+              aria-label="Invitation link or code"
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void join()}
@@ -409,17 +500,13 @@ export default function WorkspacesPage() {
               {joining ? 'Joining…' : 'Join'}
             </button>
           </div>
-          <p className={styles.hint}>
-            Opening the link works too — you only need this if it arrived as
-            text.
-          </p>
-        </div>
+        </section>
 
         {/* ⚠️ NO SIGNATURE LIBRARY HERE. It used to sit on this screen, which
             is the app's ROOT — the list of workspaces you belong to. Your
             signatures are not a peer of your workspaces; they are a tool you
             reach for while working inside one. It lives on the agreements
-            screen now, where a document is about to be signed.
+            screen (and in the rail), where a document is about to be signed.
 
             The DATA is unchanged and deliberately so: a signature is stored
             in this node's own private context and is the same drawing in
@@ -433,14 +520,24 @@ export default function WorkspacesPage() {
           className={styles.modalBackdrop}
           onClick={() => setInviteFor(null)}
         >
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h2 className={styles.modalTitle}>Invite to {inviteFor.name}</h2>
+          <div
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invite-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className={styles.modalTitle} id="invite-title">
+              Invite to {inviteFor.name}
+            </h2>
             <p className={styles.modalDesc}>
               Anyone with this link can join the workspace and its agreements.
               The node expires it after 24 hours.
             </p>
             {minting ? (
-              <p className={styles.empty}>Minting…</p>
+              <p className={styles.empty}>
+                <span className={styles.spinner} /> Minting…
+              </p>
             ) : (
               <textarea
                 className={styles.textarea}
@@ -452,22 +549,23 @@ export default function WorkspacesPage() {
             )}
             <div className={styles.modalRow}>
               <button
-                className={styles.btn}
-                disabled={!inviteLink}
-                onClick={() => void navigator.clipboard.writeText(inviteLink)}
-              >
-                Copy link
-              </button>
-              <button
                 className={styles.btnGhost}
                 onClick={() => setInviteFor(null)}
               >
                 Done
               </button>
+              <button
+                className={styles.btn}
+                disabled={!inviteLink}
+                onClick={() => void navigator.clipboard.writeText(inviteLink)}
+              >
+                <Copy size={16} />
+                Copy link
+              </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   );
 }

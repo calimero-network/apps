@@ -1,7 +1,7 @@
 // src/services/embeddingService.ts
 import * as tf from '@tensorflow/tfjs';
 import * as use from '@tensorflow-models/universal-sentence-encoder';
-import * as pdfjsLib from 'pdfjs-dist';
+import { pdfjsLib } from './pdfjs';
 
 import { configurePdfWorker } from './pdfWorker';
 

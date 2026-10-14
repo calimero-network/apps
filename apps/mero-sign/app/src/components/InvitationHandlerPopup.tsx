@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { styled } from 'styled-components';
 import { useCalimero } from '../lib/useCalimero';
-import { Button, colors } from '@calimero-network/mero-ui';
 import { shouldRetain } from '@calimero-apps/invite';
 import {
   InvitationRedeemError,
@@ -22,49 +21,66 @@ import {
 // see, and its own copy of the name resolution that the dashboard had a
 // different copy of.
 
+// The glass dialog look, from the `--sign-*` tokens (src/index.css), so the
+// prompt follows the light/dark switch like the rest of the app.
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--sign-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 99999;
-  backdrop-filter: blur(8px);
+  padding: 24px;
+  z-index: 500;
 `;
 
 const PopupContainer = styled.div`
-  background: #1a1a1f;
-  border: 1px solid ${colors.semantic.success.value}40;
-  border-radius: 12px;
-  padding: 2rem;
-  width: 90%;
-  max-width: 450px;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 440px;
+  padding: 28px;
+  border-radius: var(--sign-radius-xl);
+  background: var(--sign-solid);
+  border: 1px solid var(--sign-edge);
+  box-shadow: var(--sign-shadow-float);
+  color: var(--sign-ink);
+  text-align: center;
 `;
 
 const Title = styled.h2`
-  color: ${colors.semantic.success.value};
-  font-size: 1.4rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
-  text-align: center;
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  margin-bottom: 14px;
 `;
 
 const Message = styled.div<{ type?: 'success' | 'error' | 'info' }>`
-  padding: 0.75rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  text-align: center;
-  margin-bottom: 1rem;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 4px;
   color: ${({ type }) =>
-    type === 'error'
-      ? colors.semantic.error.value
-      : colors.semantic.success.value};
+    type === 'error' ? 'var(--sign-bad-ink)' : 'var(--sign-busy-ink)'};
   background: ${({ type }) =>
-    type === 'error'
-      ? `${colors.semantic.error.value}20`
-      : `${colors.semantic.success.value}20`};
+    type === 'error' ? 'var(--sign-bad-bg)' : 'var(--sign-busy-bg)'};
+`;
+
+const Pill = styled.button<{ $primary?: boolean }>`
+  flex: 1;
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  background: ${({ $primary }) =>
+    $primary ? 'var(--sign-primary)' : 'var(--sign-solid)'};
+  color: ${({ $primary }) =>
+    $primary ? 'var(--sign-on-primary)' : 'var(--sign-ink)'};
+  box-shadow: ${({ $primary }) =>
+    $primary
+      ? 'var(--sign-primary-shadow)'
+      : 'inset 0 0 0 1px var(--sign-line-strong)'};
 `;
 
 const STAGE_COPY: Record<RedeemStage, { title: string; body: string }> = {
@@ -92,8 +108,8 @@ const STAGE_COPY: Record<RedeemStage, { title: string; body: string }> = {
 
 const ButtonGroup = styled.div`
   display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
+  gap: 10px;
+  margin-top: 18px;
 `;
 
 interface InvitationHandlerPopupProps {
@@ -191,22 +207,14 @@ export default function InvitationHandlerPopup({
           <Title>Could not join</Title>
           <Message type="error">{errorMessage}</Message>
           <ButtonGroup>
-            {retryable && (
-              <Button
-                onClick={() => void run()}
-                variant="primary"
-                style={{ flex: 1 }}
-              >
-                Try again
-              </Button>
-            )}
-            <Button
-              onClick={() => onError(retain)}
-              variant="secondary"
-              style={{ flex: 1 }}
-            >
+            <Pill type="button" onClick={() => onError(retain)}>
               Cancel
-            </Button>
+            </Pill>
+            {retryable && (
+              <Pill type="button" $primary onClick={() => void run()}>
+                Try again
+              </Pill>
+            )}
           </ButtonGroup>
         </PopupContainer>
       </Overlay>

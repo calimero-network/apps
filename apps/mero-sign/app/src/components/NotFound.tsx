@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import { Compass } from 'lucide-react';
+import { AppShell } from './shell/AppShell';
 import styles from '../pages/app/AgreementsPage.module.css';
 
 // ── The terminal catch-all ───────────────────────────────────────────────────
@@ -14,30 +16,29 @@ import styles from '../pages/app/AgreementsPage.module.css';
 
 export default function NotFound() {
   return (
-    <div className={styles.root}>
-      <header className={styles.header}>
-        <span className={styles.logo}>
-          <span className={styles.mark}>M</span> Mero Sign
-        </span>
-      </header>
-
+    <AppShell bare>
       <main className={styles.main}>
-        <h1 className={styles.title} data-testid="not-found">
-          That page does not exist
-        </h1>
-        <p className={styles.subtitle}>
-          The address you opened is not one this app has. Nothing is wrong with
-          your node.
-        </p>
-        <div className={styles.createRow}>
-          <Link className={styles.btn} to="/agreements">
-            Your agreements
-          </Link>
-          <Link className={styles.btnGhost} to="/landing">
-            What is Mero Sign?
-          </Link>
-        </div>
+        <section className={`${styles.panel} ${styles.gate}`}>
+          <span className={styles.gateIcon}>
+            <Compass size={26} />
+          </span>
+          <h1 className={styles.title} data-testid="not-found">
+            That page does not exist
+          </h1>
+          <p className={styles.subtitle}>
+            The address you opened is not one this app has. Nothing is wrong
+            with your node.
+          </p>
+          <div className={styles.joinRow}>
+            <Link className={styles.btn} to="/agreements">
+              Your agreements
+            </Link>
+            <Link className={styles.btnGhost} to="/landing">
+              What is Mero Sign?
+            </Link>
+          </div>
+        </section>
       </main>
-    </div>
+    </AppShell>
   );
 }

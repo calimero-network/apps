@@ -1,0 +1,402 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   The document viewer: a glass header and control bar over a soft "desk"
+   stage, with the PDF page paper-white in both themes because that is what
+   gets signed. `--sign-*` tokens only (src/index.css) for the chrome.
+
+   ⚠️ Nothing here sets `transform`, `filter` or `backdrop-filter` on the
+   viewer box: its phone FAB is `position: fixed`, and any of those would make
+   the viewer its containing block. Its dialogs are portalled (GlassDialog).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--sign-solid);
+  color: var(--sign-ink);
+}
+
+/* ── Header ────────────────────────────────────────────────────────────── */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 14px 14px 18px;
+  border-bottom: 1px solid var(--sign-line);
+}
+.fileIcon {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: var(--glass-grad);
+  color: #ffffff;
+}
+.fileText {
+  flex: 1;
+  min-width: 0;
+}
+.fileName {
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fileMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--sign-muted);
+}
+.metaChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--sign-good-bg);
+  color: var(--sign-good-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.headActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.desktopOnly {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.close {
+  background: var(--sign-sunken);
+}
+
+/* ── Controls ──────────────────────────────────────────────────────────── */
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--sign-line);
+  background: color-mix(in srgb, var(--sign-sunken) 60%, var(--sign-solid));
+}
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--sign-solid);
+  box-shadow: inset 0 0 0 1px var(--sign-line);
+}
+.group button {
+  width: 34px;
+  height: 34px;
+}
+.readout {
+  min-width: 56px;
+  text-align: center;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--sign-ink);
+}
+.readoutMuted {
+  color: var(--sign-muted);
+}
+.pageNote {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sign-good-ink);
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--sign-busy-bg);
+  color: var(--sign-busy-ink);
+  font-size: 13.5px;
+  font-weight: 650;
+  text-align: center;
+}
+
+/* ── Stage and page ────────────────────────────────────────────────────── */
+.stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 28px 24px 40px;
+  background: var(--sign-stage);
+}
+.pageWrap {
+  display: flex;
+  justify-content: center;
+  min-width: min-content;
+}
+/* No max-width on the page: it is shown at exactly `width * scale`, which
+   signature placement relies on; a page wider than the stage scrolls. */
+.page {
+  position: relative;
+  flex-shrink: 0;
+}
+.canvas {
+  display: block;
+  background: #ffffff;
+  border-radius: 4px;
+  box-shadow: var(--sign-page-shadow);
+  touch-action: pan-x pan-y;
+}
+.sharp {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  background: #ffffff;
+  pointer-events: none;
+}
+.placing {
+  cursor: crosshair;
+  outline: 2px dashed color-mix(in srgb, var(--sign-accent) 70%, transparent);
+  outline-offset: 4px;
+}
+
+/* ── Phone FAB ─────────────────────────────────────────────────────────── */
+.fab {
+  display: none;
+}
+
+/* ── Loading, error and empty states ───────────────────────────────────── */
+.state {
+  flex: 1;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px 24px;
+  text-align: center;
+}
+.stateSpinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--sign-line-strong);
+  border-top-color: var(--sign-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.stateIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: var(--sign-sunken);
+  color: var(--sign-ink-2);
+}
+.stateIconBad {
+  background: var(--sign-bad-bg);
+  color: var(--sign-bad-ink);
+}
+.stateText {
+  max-width: 44ch;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--sign-ink-2);
+}
+.stateActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Option lists (signature picker, phone actions) ────────────────────── */
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.optionsLabel {
+  margin: 10px 2px 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sign-muted);
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 1px solid var(--sign-line-strong);
+  border-radius: var(--sign-radius);
+  background: var(--sign-solid);
+  text-align: left;
+  color: var(--sign-ink);
+  transition: background 140ms ease-out, border-color 140ms ease-out, transform 140ms ease-out;
+}
+.option:hover:not(:disabled) {
+  background: var(--sign-hover);
+  border-color: color-mix(in srgb, var(--sign-accent) 45%, transparent);
+}
+.option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.optionPrimary {
+  border-color: transparent;
+  background: var(--sign-busy-bg);
+}
+.optionPrimary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sign-busy-bg) 80%, var(--sign-accent) 12%);
+}
+.optionIcon {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: var(--sign-solid);
+  color: var(--sign-accent);
+  box-shadow: inset 0 0 0 1px var(--sign-line);
+}
+.optionIconGood {
+  color: var(--sign-good-ink);
+}
+.optionPaper {
+  width: 76px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid var(--sign-line-strong);
+}
+.optionPaper img {
+  max-width: 90%;
+  max-height: 34px;
+  object-fit: contain;
+}
+.optionText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.optionTitle {
+  font-size: 14.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.optionSub {
+  font-size: 13px;
+  color: var(--sign-muted);
+}
+.optionChevron {
+  flex-shrink: 0;
+  color: var(--sign-muted);
+}
+.optionsEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 22px 12px 8px;
+  text-align: center;
+  color: var(--sign-ink-2);
+  font-size: 14px;
+}
+.optionsEmpty svg {
+  color: var(--sign-muted);
+  margin-bottom: 4px;
+}
+
+@media (max-width: 639px) {
+  .head {
+    padding: 10px 10px 10px 14px;
+    gap: 10px;
+  }
+  .fileIcon {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+  }
+  .fileName {
+    font-size: 15px;
+  }
+  .desktopOnly {
+    display: none;
+  }
+  .controls {
+    padding: 8px 10px;
+  }
+  .pageNote {
+    display: none;
+  }
+  .stage {
+    padding: 16px 12px 96px;
+  }
+  .fab {
+    position: fixed;
+    right: 18px;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    z-index: 5;
+    width: 58px;
+    height: 58px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 999px;
+    background: var(--sign-primary);
+    color: var(--sign-on-primary);
+    box-shadow: 0 16px 34px -14px rgba(14, 18, 34, 0.7), 0 0 0 1px var(--sign-line);
+  }
+}
+
+/* ── Signature overlays on the page (SignatureOverlay.tsx) ─────────────── */
+:global(.signature-overlay) {
+  touch-action: none;
+}
+@media (max-width: 639px) {
+  :global(.signature-overlay) button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  :global(.signature-overlay) [class*='cursor-'] {
+    min-width: 32px;
+    min-height: 32px;
+  }
+}
