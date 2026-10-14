@@ -17,7 +17,7 @@ export const state = () => readState();
  * Everything after that is the real path: the provider parses the fragment,
  * runs `resolveTokenAdoption`, stores the bundle and clears the URL itself.
  */
-export async function login(page: Page, opts: { withContext?: boolean } = {}) {
+export async function login(page: Page, opts: { withContext?: boolean; contextId?: string } = {}) {
   const s = state();
   await page.addInitScript(
     ([key, url]) => window.localStorage.setItem(key, url),
@@ -31,10 +31,29 @@ export async function login(page: Page, opts: { withContext?: boolean } = {}) {
     application_id: s.applicationId,
   });
   // Omitted when the spec wants to land on the context picker instead.
-  if (opts.withContext !== false) params.set("context_id", s.contextId);
+  if (opts.withContext !== false) params.set("context_id", opts.contextId ?? s.contextId);
 
   await page.goto(`/#${params.toString()}`);
   await expect(page.getByRole("heading", { name: "Mero Vote" })).toBeVisible();
+}
+
+/**
+ * A new context of the same application and namespace, through the admin API.
+ *
+ * For a spec that needs state no other spec has touched: the setup context is
+ * shared by every spec, so once one of them joins the roster there is no
+ * "first-time user" left in it.
+ */
+export async function freshContext(): Promise<string> {
+  const s = state();
+  const resp = await fetch(`${s.nodeUrl}/admin-api/contexts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${s.accessToken}` },
+    body: JSON.stringify({ applicationId: s.applicationId, groupId: s.namespaceId, initializationParams: [] }),
+  });
+  if (!resp.ok) throw new Error(`create context -> ${resp.status}: ${await resp.text()}`);
+  const body = await resp.json();
+  return ((body.data ?? body) as { contextId: string }).contextId;
 }
 
 /** Wait until the vote panel is interactive (a context is open). */

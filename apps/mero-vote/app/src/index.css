@@ -224,8 +224,11 @@ a { color: var(--info); }
 .ctx-main, .ctx-side { display: grid; gap: 20px; min-width: 0; align-content: start; }
 .ctx-side { position: sticky; top: 100px; }
 @media (max-width: 1000px) {
-  .ctx-layout { grid-template-columns: minmax(0, 1fr); }
-  .ctx-side { position: static; }
+  .ctx-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  /* One column: the side cards join the layout's own grid, so one of them
+     can be ordered ahead of the polls. */
+  .ctx-side { display: contents; }
+  .you-card.needs-name { order: -1; }
 }
 
 /* ── cards ─────────────────────────────────────────────────────────────────
@@ -525,6 +528,27 @@ td.mono { font-family: var(--mono); }
 .status.none { color: var(--text-faint); }
 .status.bad { color: var(--danger); }
 .who { display: flex; align-items: center; gap: 10px; font-weight: 600; white-space: nowrap; }
+.cell-label { display: none; }
+/* The trustees on a phone: each row a card, the trustee on top and one
+   labelled status chip per step below, instead of four columns that scroll
+   sideways. */
+@media (max-width: 640px) {
+  .trustee-table, .trustee-table tbody, .trustee-table tr, .trustee-table td { display: block; }
+  .trustee-table thead { display: none; }
+  .trustee-table tr { display: grid; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .trustee-table tr:last-child { border-bottom: 0; }
+  .trustee-table td { height: auto; padding: 0; border: 0; }
+  .trustee-table td:first-child { margin-bottom: 4px; }
+  .trustee-table td + td { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; }
+  .trustee-table .cell-label {
+    display: block; color: var(--text-faint); font-weight: 700; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .trustee-table .who { white-space: normal; overflow-wrap: anywhere; }
+  .trustee-table .who .avatar { flex-shrink: 0; }
+  .trustee-table .status { height: 26px; padding: 0 10px; border-radius: 999px; background: var(--bg-subtle); }
+  .trustee-table .status.done { background: var(--success-soft); }
+  .trustee-table .status.wait { background: var(--warning-soft); }
+}
 
 /* ── context picker ────────────────────────────────────────────────────── */
 .ns-strip { display: flex; align-items: center; gap: 8px; }
