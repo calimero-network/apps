@@ -6,8 +6,9 @@
  * its cell. `@nickname` mentions a collaborator: their app tells them.
  */
 import React, { useEffect, useState } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { C } from '../theme';
+import { chip, closeButton, overlay, sheetHeader, sideSheet } from './glass';
 import type { Comment } from '../hooks/useSpreadsheet';
 import { ago, nsToMs } from '../lib/time';
 
@@ -174,38 +175,24 @@ function Composer({ placeholder, initial = '', onSubmit, testId }: {
   );
 }
 
-const slideIn = keyframes`from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; }`;
-const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
-
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 200;
-  background: rgba(14, 18, 34, 0.3); backdrop-filter: blur(2px);
-  animation: ${fadeIn} 0.18s ease;
+  ${overlay}
+  z-index: 200;
   display: flex; justify-content: flex-end;
 `;
 const Panel = styled.div`
-  width: 420px; max-width: 100vw; height: 100%;
-  background: ${C.paper}; border-left: 1px solid ${C.line};
-  display: flex; flex-direction: column;
-  animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: -20px 0 60px -20px rgba(14, 18, 34, 0.25);
+  ${sideSheet}
+  --sheet-w: 420px;
 `;
 const Header = styled.div`
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 18px; border-bottom: 1px solid ${C.line};
-  .title { font-size: 15px; font-weight: 700; color: ${C.ink}; }
+  ${sheetHeader}
 `;
 const CloseBtn = styled.button`
-  width: 30px; height: 30px; font-size: 20px; color: ${C.mutedSoft};
-  background: transparent; border: none; border-radius: 8px; cursor: pointer;
-  &:hover { background: ${C.paper2}; color: ${C.ink}; }
+  ${closeButton}
 `;
 const Tabs = styled.div`display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid ${C.line};`;
 const Chip = styled.button`
-  font-size: 11px; padding: 3px 9px; border-radius: 999px;
-  border: 1px solid ${C.line}; background: ${C.paper}; color: ${C.muted}; cursor: pointer;
-  &:disabled { opacity: 0.45; cursor: default; }
-  &[aria-pressed='true'] { border-color: ${C.green}; color: ${C.greenDeep}; background: ${C.paper2}; }
+  ${chip}
 `;
 const Body = styled.div`flex: 1; overflow-y: auto; padding: 12px 16px 24px;`;
 const Empty = styled.p`margin: 16px 0; font-size: 13px; color: ${C.muted}; text-align: center;`;
@@ -239,8 +226,8 @@ const ComposerBox = styled.div`
   textarea {
     width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical;
     padding: 9px 11px; font: 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 10px; outline: none;
-    &:focus { border-color: ${C.green}; }
+    color: ${C.ink}; background: var(--glass-sunken); border: 1px solid var(--glass-line); border-radius: 10px; outline: none;
+    &:focus { border-color: var(--glass-accent); }
   }
   .err { margin: 6px 0 0; font-size: 12px; color: ${C.danger}; }
   button {

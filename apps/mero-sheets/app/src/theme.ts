@@ -1,4 +1,4 @@
-import React, { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 /**
  * App theme — light / dark.
@@ -119,20 +119,4 @@ export function useTheme(): { theme: ThemeMode; toggle: () => void } {
 /** Test-only: forget the cached choice so the next read goes to storage. */
 export function resetThemeForTests(): void {
   current = null;
-}
-
-/**
- * Moon icon for the theme toggle: OUTLINE in light mode, FILLED in dark mode.
- */
-export function MoonIcon({ filled, size = 17 }: { filled: boolean; size?: number }): React.ReactElement {
-  return React.createElement(
-    'svg',
-    {
-      width: size, height: size, viewBox: '0 0 24 24',
-      fill: filled ? 'currentColor' : 'none',
-      stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round',
-      'aria-hidden': true,
-    },
-    React.createElement('path', { d: 'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' }),
-  );
 }

@@ -770,8 +770,8 @@ const CornerTh = styled.th`
   left: 0;
   z-index: 5;
   background: ${C.paper2};
-  border-right: 2px solid ${C.line};
-  border-bottom: 2px solid ${C.line};
+  border-right: 1px solid ${C.line};
+  border-bottom: 1px solid ${C.line};
   width: 52px;
   min-width: 52px;
 `;
@@ -782,12 +782,14 @@ const ColTh = styled.th<{ $selected: boolean }>`
   z-index: 2;
   /* Opaque, tint as an inset shadow: frozen headers sit over scrolled ones. */
   background: ${C.paper2};
-  box-shadow: ${(p) => (p.$selected ? 'inset 0 0 0 999px color-mix(in srgb, var(--glass-accent-solid) 12%, transparent)' : 'none')};
+  box-shadow: ${(p) => (p.$selected ? `inset 0 -2px 0 ${ACCENT}, inset 0 0 0 999px color-mix(in srgb, var(--glass-accent-solid) 12%, transparent)` : 'none')};
   border-right: 1px solid ${C.line};
-  border-bottom: 2px solid ${C.line};
+  border-bottom: 1px solid ${C.line};
   text-align: center;
-  font-size: 12px;
-  font-weight: 600;
+  font-family: var(--glass-font);
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
   color: ${(p) => (p.$selected ? ACCENT_TEXT : C.muted)};
   padding: 4px 2px;
   cursor: pointer;
@@ -811,7 +813,7 @@ const ResizeHandle = styled.span<{ $axis: 'row' | 'col' }>`
 /** Header and body cells standing in for the columns scrolled out of view. */
 const GapTh = styled.th`
   position: sticky; top: 0; z-index: 1;
-  background: ${C.paper2}; border-bottom: 2px solid ${C.line};
+  background: ${C.paper2}; border-bottom: 1px solid ${C.line};
 `;
 const GapTd = styled.td`
   padding: 0; border: none; background: ${C.paper};
@@ -823,12 +825,13 @@ const RowTh = styled.td<{ $selected: boolean }>`
   z-index: 2;
   /* Opaque, tint as an inset shadow: frozen headers sit over scrolled ones. */
   background: ${C.paper2};
-  box-shadow: ${(p) => (p.$selected ? 'inset 0 0 0 999px color-mix(in srgb, var(--glass-accent-solid) 12%, transparent)' : 'none')};
-  border-right: 2px solid ${C.line};
+  box-shadow: ${(p) => (p.$selected ? `inset -2px 0 0 ${ACCENT}, inset 0 0 0 999px color-mix(in srgb, var(--glass-accent-solid) 12%, transparent)` : 'none')};
+  border-right: 1px solid ${C.line};
   border-bottom: 1px solid ${C.line};
   text-align: center;
-  font-size: 11px;
-  font-weight: 500;
+  font-family: var(--glass-font);
+  font-size: 11.5px;
+  font-weight: 550;
   color: ${(p) => (p.$selected ? ACCENT_TEXT : C.muted)};
   padding: 2px 4px;
   cursor: pointer;
@@ -912,7 +915,7 @@ const Checkbox = styled.span`
 
 const FilterBtn = styled.button<{ $active: boolean }>`
   position: absolute; top: 3px; right: 3px; width: 17px; height: 17px;
-  border-radius: 4px; cursor: pointer; padding: 0; font-size: 10px; line-height: 1;
+  border-radius: 6px; cursor: pointer; padding: 0; font-size: 10px; line-height: 1;
   color: ${(p) => (p.$active ? C.onAccent : C.muted)};
   background: ${(p) => (p.$active ? C.green : C.paper2)};
   border: 1px solid ${C.line};

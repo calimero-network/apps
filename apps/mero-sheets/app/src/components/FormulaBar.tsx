@@ -239,62 +239,69 @@ const dropIn = keyframes`
 const Bar = styled.div`
   display: flex;
   align-items: center;
-  height: 40px;
-  /* Frame, not content: frosted like the toolbar (no backdrop blur here, so
-     its autocomplete dropdown stays a plain solid popover). */
-  background: var(--glass-surface);
-  border-top: 1px solid var(--glass-edge);
-  border-bottom: 1px solid ${C.line};
+  gap: 8px;
+  height: 46px;
+  padding: 0 8px;
+  /* Part of the solid sheet card: no blur here, so its autocomplete dropdown
+     is a plain solid popover over the grid. */
+  background: var(--glass-surface-solid);
+  border-bottom: 1px solid var(--glass-line-strong);
   flex-shrink: 0;
-  gap: 0;
   position: relative;
   z-index: 10;
 `;
 
+/* The selected cell's address, as a chip. */
 const CellRef = styled.div`
-  width: 72px;
+  min-width: 60px;
+  height: 30px;
   flex-shrink: 0;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 600;
+  display: grid;
+  place-items: center;
+  padding: 0 10px;
+  font-size: 12.5px;
+  font-weight: 700;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   color: ${C.ink};
-  padding: 0 8px;
+  background: var(--glass-sunken);
+  border-radius: 9px;
   letter-spacing: 0.04em;
 `;
 
 const Divider = styled.div`
   width: 1px;
-  height: 100%;
-  background: ${C.line};
+  height: 20px;
+  background: var(--glass-line-strong);
   flex-shrink: 0;
 `;
 
 const FxLabel = styled.div`
-  width: 36px;
   flex-shrink: 0;
-  text-align: center;
-  font-size: 12px;
+  padding: 0 2px;
+  font-size: 13px;
+  font-weight: 700;
   font-style: italic;
-  color: ${C.muted};
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  border-right: 1px solid ${C.line};
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  color: var(--glass-accent);
+  font-family: Georgia, 'Times New Roman', serif;
 `;
 
 const InputWrap = styled.div`
   flex: 1;
+  min-width: 0;
   position: relative;
-  height: 100%;
+  height: 34px;
+  border-radius: 10px;
+  transition: background 0.15s, box-shadow 0.15s;
+  &:focus-within {
+    background: color-mix(in srgb, var(--glass-accent-solid) 6%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--glass-accent-solid) 35%, transparent);
+  }
 `;
 
 const Input = styled.input`
   width: 100%;
   height: 100%;
-  padding: 0 10px;
+  padding: 0 8px;
   font-size: 13.5px;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   color: ${C.ink};
@@ -302,13 +309,9 @@ const Input = styled.input`
   border: none;
   outline: none;
 
-  &:focus {
-    background: color-mix(in srgb, var(--glass-accent-solid) 6%, transparent);
-  }
-
   &::placeholder {
     color: ${C.mutedSoft};
-    font-style: italic;
+    font-family: var(--glass-font);
     font-size: 13px;
   }
 
@@ -320,13 +323,14 @@ const Input = styled.input`
 
 const Dropdown = styled.div`
   position: absolute;
-  top: calc(100% + 2px);
+  top: calc(100% + 10px);
   left: 0;
   right: 0;
-  background: ${C.paper};
-  border: 1px solid ${C.line};
-  border-radius: 10px;
-  box-shadow: 0 12px 32px -12px rgba(14, 18, 34, 0.25);
+  padding: 6px;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: 14px;
+  box-shadow: var(--glass-shadow-float);
   z-index: 100;
   overflow: hidden;
   animation: ${dropIn} 0.15s cubic-bezier(0.22, 1, 0.36, 1);
@@ -338,19 +342,20 @@ const DropdownItem = styled.div`
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 9px 14px;
+  padding: 9px 12px;
+  border-radius: 9px;
   cursor: pointer;
   transition: background 0.12s;
 
   &:hover {
-    background: ${C.paper2};
+    background: var(--glass-sunken);
   }
 
   .fn-name {
     font-size: 13px;
     font-weight: 700;
     font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-    color: ${C.green};
+    color: var(--glass-accent);
     min-width: 70px;
     flex-shrink: 0;
   }

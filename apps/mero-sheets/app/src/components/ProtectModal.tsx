@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { C } from '../theme';
+import { dialogSurface, overlay, primaryPill } from './glass';
 
 /**
  * Protected ranges on this sheet: protect the selection (or the whole sheet)
@@ -133,21 +134,15 @@ export default function ProtectModal({
   );
 }
 
-const fadeIn = keyframes`from{opacity:0;}to{opacity:1;}`;
-const pop = keyframes`from{opacity:0;transform:translateY(10px) scale(0.97);}to{opacity:1;transform:none;}`;
-
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 120;
+  ${overlay}
+  z-index: 120;
   display: flex; align-items: center; justify-content: center; padding: 20px;
-  background: rgba(14,20,15,0.5); backdrop-filter: blur(4px);
-  animation: ${fadeIn} 0.18s ease both;
 `;
 const Dialog = styled.div`
+  ${dialogSurface}
   width: 100%; max-width: 440px; max-height: calc(100vh - 40px); overflow-y: auto;
-  background: ${C.paper}; border: 1px solid ${C.line}; border-radius: 18px;
-  padding: 28px 26px 24px; box-shadow: 0 40px 90px -40px rgba(14,20,15,0.5);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  animation: ${pop} 0.22s cubic-bezier(0.22,1,0.36,1) both;
+  padding: 30px 28px 26px;
   h3 { font-size: 19px; font-weight: 800; letter-spacing: -0.4px; color: ${C.ink}; margin: 0 0 8px; }
   .sub { font-size: 13.5px; line-height: 1.55; color: ${C.muted}; margin: 0; }
   code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; color: ${C.greenDeep}; }
@@ -163,21 +158,18 @@ const Field = styled.div`
   .none { margin: 0; font-size: 13px; color: ${C.mutedSoft}; }
   input[type='text'], input:not([type]) {
     width: 100%; box-sizing: border-box; padding: 11px 14px; font-size: 14px;
-    color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line};
-    border-radius: 11px; outline: none;
-    &:focus { border-color: ${C.green}; box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-accent-solid) 18%, transparent); }
+    color: ${C.ink}; background: var(--glass-sunken); border: 1px solid var(--glass-line);
+    border-radius: 12px; outline: none;
+    &:focus { border-color: var(--glass-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-accent-solid) 18%, transparent); }
   }
 `;
 const Buttons = styled.div`
   display: flex; gap: 8px; margin-top: 14px;
-  .ghost { padding: 12px 16px; font-size: 13.5px; border-radius: 11px; cursor: pointer; background: none; border: 1px solid ${C.line}; color: ${C.ink}; }
+  .ghost { padding: 12px 16px; font-size: 13.5px; border-radius: 12px; cursor: pointer; background: none; border: 1px solid ${C.line}; color: ${C.ink}; }
 `;
 const PrimaryBtn = styled.button`
-  flex: 1; padding: 12px 18px;
-  font-size: 13.5px; font-weight: 600; border-radius: 11px; cursor: pointer;
-  color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink);
-  &:hover:not(:disabled) { background: ${C.greenHover}; }
-  &:disabled { opacity: 0.5; cursor: default; }
+  ${primaryPill}
+  flex: 1;
 `;
 const List = styled.ul`
   list-style: none; margin: 20px 0 0; padding: 0; border-top: 1px solid ${C.line};

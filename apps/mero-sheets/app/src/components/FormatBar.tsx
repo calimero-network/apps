@@ -145,36 +145,53 @@ export default function FormatBar({ style, format, disabled, formatDisabled, onS
   );
 }
 
+/* The format strip along the sheet card's top: grouped, quiet controls on the
+   card's own surface (it sits inside the solid sheet card, never over it). */
 const Bar = styled.div`
-  display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
-  padding: 4px 12px; border-bottom: 1px solid ${C.line}; background: var(--glass-surface);
+  display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
+  padding: 6px 10px; border-bottom: 1px solid var(--glass-line);
+  background: color-mix(in srgb, var(--glass-ink) 2%, var(--glass-surface-solid));
+  font-family: var(--glass-font);
+  @media (max-width: 640px) {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    &::-webkit-scrollbar { display: none; }
+    > * { flex-shrink: 0; }
+  }
 `;
 const Btn = styled.button`
-  min-width: 26px; height: 26px; padding: 0 5px; border-radius: 6px; cursor: pointer;
-  font-size: 12.5px; color: ${C.ink}; background: none; border: 1px solid transparent;
-  &:hover:not(:disabled) { background: ${C.paper2}; }
-  &[aria-pressed='true'] { background: ${C.paper2}; border-color: ${C.green}; color: ${C.greenDeep}; }
-  &:disabled { opacity: 0.4; cursor: default; }
+  min-width: 30px; height: 30px; padding: 0 7px; border-radius: 9px; cursor: pointer;
+  font: 500 13px/1 var(--glass-font); color: var(--glass-ink-2); background: none; border: none;
+  transition: background 0.12s, color 0.12s;
+  &:hover:not(:disabled) { background: var(--glass-sunken); color: ${C.ink}; }
+  &[aria-pressed='true'] { background: var(--glass-ink); color: var(--glass-on-ink); }
+  &:focus-visible { outline: 2px solid var(--glass-accent); outline-offset: 1px; }
+  &:disabled { opacity: 0.35; cursor: default; }
 `;
-const TextBtn = styled(Btn)`font-size: 12px; color: ${C.muted};`;
-const Sep = styled.span`width: 1px; height: 18px; background: ${C.line}; margin: 0 4px;`;
+const TextBtn = styled(Btn)`font-size: 12.5px; font-weight: 600; padding: 0 10px; border-radius: 999px;`;
+const Sep = styled.span`width: 1px; height: 18px; background: var(--glass-line-strong); margin: 0 6px;`;
 const ColorPick = styled.label<{ $swatch?: string; $fill?: boolean }>`
   position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border-radius: 6px; cursor: pointer; font-size: 13px; color: ${C.ink};
-  &:hover { background: ${C.paper2}; }
-  span { line-height: 1; border-bottom: 3px solid ${(p) => p.$swatch || (p.$fill ? 'transparent' : C.ink)}; }
+  width: 30px; height: 30px; border-radius: 9px; cursor: pointer; font-size: 13px; color: ${C.ink};
+  &:hover { background: var(--glass-sunken); }
+  span { line-height: 1; border-bottom: 3px solid ${(p) => p.$swatch || (p.$fill ? 'transparent' : C.ink)}; border-radius: 1px; }
   input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
   input:disabled { cursor: default; }
 `;
 const AlignIcon = styled.span<{ $align: 'left' | 'center' | 'right' }>`
   display: inline-block; width: 12px; height: 10px;
   background:
-    linear-gradient(${C.ink}, ${C.ink}) 0 0 / 100% 2px no-repeat,
-    linear-gradient(${C.ink}, ${C.ink}) ${(p) => (p.$align === 'left' ? '0' : p.$align === 'center' ? '50%' : '100%')} 50% / 60% 2px no-repeat,
-    linear-gradient(${C.ink}, ${C.ink}) 0 100% / 100% 2px no-repeat;
+    linear-gradient(currentColor, currentColor) 0 0 / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) ${(p) => (p.$align === 'left' ? '0' : p.$align === 'center' ? '50%' : '100%')} 50% / 60% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 100% / 100% 2px no-repeat;
 `;
 const Select = styled.select`
-  height: 26px; font-size: 12px; padding: 0 6px; border-radius: 6px;
-  color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line};
-  &:disabled { opacity: 0.5; }
+  height: 30px; font: 600 12.5px/1 var(--glass-font); padding: 0 28px 0 12px; border-radius: 999px; cursor: pointer;
+  color: ${C.ink}; background-color: var(--glass-sunken); border: none;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 15px) 13px, calc(100% - 11px) 13px;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  &:focus-visible { outline: 2px solid var(--glass-accent); outline-offset: 1px; }
+  &:disabled { opacity: 0.5; cursor: default; }
 `;

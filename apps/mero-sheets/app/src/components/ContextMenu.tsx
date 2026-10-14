@@ -104,22 +104,23 @@ const Menu = styled.div`
   min-width: 160px;
   max-height: calc(100vh - 16px);
   overflow-y: auto;
-  padding: 4px;
-  background: ${C.paper};
+  padding: 6px;
+  background: var(--glass-surface-solid);
   border: 1px solid var(--glass-edge);
-  border-radius: 14px;
+  border-radius: 16px;
+  font-family: var(--glass-font);
   box-shadow: var(--glass-shadow-float);
 `;
 
 const Divider = styled.div`
   height: 1px;
-  margin: 4px 6px;
-  background: ${C.line};
+  margin: 5px 8px;
+  background: var(--glass-line);
 `;
 
 const MenuLabel = styled.div`
-  padding: 4px 10px 6px;
-  font-size: 11px;
+  padding: 6px 10px 6px;
+  font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.4px;
   text-transform: uppercase;
@@ -131,19 +132,19 @@ const MenuItem = styled.button`
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 7px 10px;
-  font-size: 13px;
+  padding: 8px 10px;
+  font: 500 13px/1.2 var(--glass-font);
   color: ${C.ink};
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
   text-align: left;
-  &:hover { background: ${C.paper2}; }
+  &:hover { background: var(--glass-sunken); }
 `;
 
 const Check = styled.span`
   width: 12px;
-  color: ${C.green};
+  color: var(--glass-accent);
   flex-shrink: 0;
 `;

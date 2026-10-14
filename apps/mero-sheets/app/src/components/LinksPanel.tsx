@@ -5,8 +5,9 @@
  * cell on its sheet changes.
  */
 import React, { useEffect, useState } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { C } from '../theme';
+import { closeButton, overlay, sheetHeader, sideSheet } from './glass';
 
 /** `canStop`: whoever linked it, or an owner, may stop it. */
 export interface LinkOut { id: string; name: string; where: string | null; target: string; canStop: boolean }
@@ -111,23 +112,20 @@ export default function LinksPanel({
   );
 }
 
-const slideIn = keyframes`from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; }`;
-const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 200; background: rgba(14, 18, 34, 0.3); backdrop-filter: blur(2px);
-  animation: ${fadeIn} 0.18s ease; display: flex; justify-content: flex-end;
+  ${overlay}
+  z-index: 200;
+  display: flex; justify-content: flex-end;
 `;
 const Panel = styled.div`
-  width: 440px; max-width: 100vw; height: 100%; background: ${C.paper}; border-left: 1px solid ${C.line};
-  display: flex; flex-direction: column; animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  ${sideSheet}
+  --sheet-w: 440px;
 `;
 const Header = styled.div`
-  display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid ${C.line};
-  .title { font-size: 15px; font-weight: 700; color: ${C.ink}; }
+  ${sheetHeader}
 `;
 const CloseBtn = styled.button`
-  width: 30px; height: 30px; font-size: 20px; color: ${C.mutedSoft}; background: transparent; border: none; border-radius: 8px; cursor: pointer;
-  &:hover { background: ${C.paper2}; color: ${C.ink}; }
+  ${closeButton}
 `;
 const Form = styled.div`
   padding: 12px 18px; border-bottom: 1px solid ${C.line};
@@ -135,8 +133,8 @@ const Form = styled.div`
   .muted { color: ${C.mutedSoft}; }
   code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; color: ${C.greenDeep}; }
   .row { display: flex; gap: 8px; margin-bottom: 8px; }
-  select, input { flex: 1; min-width: 0; padding: 7px 9px; font-size: 13px; color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 8px; }
-  button { padding: 7px 16px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink); }
+  select, input { flex: 1; min-width: 0; padding: 7px 9px; font-size: 13px; color: ${C.ink}; background: var(--glass-sunken); border: 1px solid var(--glass-line); border-radius: 8px; }
+  button { padding: 7px 16px; font-size: 13px; font-weight: 600; border-radius: 999px; cursor: pointer; color: var(--glass-on-ink); background: var(--glass-ink); border: none; }
   button:disabled { opacity: 0.5; cursor: default; }
 `;
 const Note = styled.p`margin: 0; padding: 8px 18px; font-size: 12.5px; color: ${C.muted}; border-bottom: 1px solid ${C.line};`;

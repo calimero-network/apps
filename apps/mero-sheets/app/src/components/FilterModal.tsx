@@ -3,8 +3,9 @@
  * Filter views are yours alone: nobody else's sheet changes.
  */
 import React, { useEffect, useState } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { C } from '../theme';
+import { dialogSurface, overlay, primaryPill } from './glass';
 
 export default function FilterModal({
   column, values, shown, onApply, onClose,
@@ -62,17 +63,17 @@ export default function FilterModal({
   );
 }
 
-const fadeIn = keyframes`from{opacity:0;}to{opacity:1;}`;
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 20px;
-  background: rgba(14,20,15,0.5); backdrop-filter: blur(4px); animation: ${fadeIn} 0.18s ease both;
+  ${overlay}
+  z-index: 120;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
 `;
 const Dialog = styled.div`
-  width: 100%; max-width: 340px; background: ${C.paper}; border: 1px solid ${C.line}; border-radius: 16px; padding: 22px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  ${dialogSurface}
+  width: 100%; max-width: 340px; padding: 22px;
   h3 { font-size: 17px; font-weight: 800; color: ${C.ink}; margin: 0 0 4px; }
   .sub { font-size: 12.5px; color: ${C.muted}; margin: 0 0 12px; }
-  > input { width: 100%; padding: 8px 10px; font-size: 13px; color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 8px; }
+  > input { width: 100%; padding: 8px 10px; font-size: 13px; color: ${C.ink}; background: var(--glass-sunken); border: 1px solid var(--glass-line); border-radius: 8px; }
   .bulk { display: flex; gap: 12px; margin: 8px 0; }
   .bulk button { font-size: 12px; color: ${C.greenDeep}; background: none; border: none; cursor: pointer; padding: 0; }
 `;
@@ -82,6 +83,6 @@ const List = styled.ul`
   em { color: ${C.muted}; }
 `;
 const Apply = styled.button`
-  width: 100%; margin-top: 12px; padding: 10px; font-size: 13px; font-weight: 600; border-radius: 10px; cursor: pointer;
-  color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink);
+  ${primaryPill}
+  width: 100%; margin-top: 12px;
 `;

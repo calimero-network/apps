@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useMero } from '@calimero-network/mero-react';
 import { C } from '../theme';
+import { primaryPill, secondaryPill } from './glass';
 import { decodeInvite, type SheetsInvitePayload } from '../lib/inviteCodec';
 import { onInvitation, type CapturedInvitation } from "@calimero-apps/invite";
 import { acceptInvite, keepsInvitation } from '../lib/workspaces';
@@ -158,11 +159,11 @@ const Prompt = styled.div<{ $bad?: boolean }>`
   pointer-events: auto;
   display: flex; align-items: center; gap: 14px;
   max-width: 720px; width: 100%;
-  padding: 12px 14px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: ${C.paper}; border-radius: 14px;
-  border: 1px solid ${(p) => (p.$bad ? C.danger : C.green)};
-  box-shadow: 0 20px 50px -24px rgba(14,20,15,0.6);
+  padding: 12px 12px 12px 18px;
+  font-family: var(--glass-font);
+  background: var(--glass-surface-solid); border-radius: 20px;
+  border: 1px solid ${(p) => (p.$bad ? C.danger : 'var(--glass-edge)')};
+  box-shadow: var(--glass-shadow-float);
   animation: ${slideIn} 0.2s cubic-bezier(0.22,1,0.36,1) both;
 `;
 
@@ -175,17 +176,11 @@ const Text = styled.span`
 const Sub = styled.span`font-size: 12.5px; color: ${C.muted};`;
 
 const Accept = styled.button`
-  flex-shrink: 0; padding: 9px 18px;
-  font-size: 13px; font-weight: 600; border-radius: 10px; cursor: pointer;
-  color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink);
-  &:hover:not(:disabled) { background: ${C.greenHover}; }
-  &:disabled { opacity: 0.6; cursor: default; }
+  ${primaryPill}
+  flex-shrink: 0;
 `;
 
 const Ghost = styled.button`
-  flex-shrink: 0; padding: 9px 14px;
-  font-size: 13px; font-weight: 500; border-radius: 10px; cursor: pointer;
-  color: ${C.muted}; background: transparent; border: 1px solid ${C.line};
-  &:hover:not(:disabled) { background: ${C.paper2}; color: ${C.ink}; }
-  &:disabled { opacity: 0.6; cursor: default; }
+  ${secondaryPill}
+  flex-shrink: 0;
 `;
