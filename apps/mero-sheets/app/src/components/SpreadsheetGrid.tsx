@@ -747,6 +747,9 @@ const ACCENT_TEXT = C.greenDeep; // readable accent for selected header labels
 const GridContainer = styled.div`
   flex: 1;
   overflow: auto;
+  /* A swipe that hits the grid's edge stops there: it neither pans the page
+     nor turns into the browser's back gesture. */
+  overscroll-behavior: contain;
   position: relative;
   outline: none;
   background: ${C.paper};
@@ -757,8 +760,14 @@ const GridContainer = styled.div`
   &::-webkit-scrollbar-thumb { background: ${C.line}; border-radius: 4px; }
 `;
 
+/* Separate borders, not collapsed: a collapsed border belongs to the table's
+   grid, not the cell, so a sticky header cell slides away from its own edge,
+   and on a phone the row numbers and the corner lose their right rule as soon
+   as the grid scrolls sideways. Every cell draws only its right and bottom
+   rules, so with no spacing the lines are the same 1px. */
 const Table = styled.table`
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
   margin-bottom: 60px;
   user-select: none;

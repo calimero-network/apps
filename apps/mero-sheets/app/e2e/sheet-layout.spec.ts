@@ -4,9 +4,14 @@
  *  - A rejected tab rename says why in a message nothing covers. The tab
  *    strip scrolls sideways, and a scroller clips both axes, so a message
  *    anchored inside a tab was cut off by the strip it floats above.
+ *  - On a phone the grid scrolls sideways inside itself: the row numbers stay
+ *    pinned at its left edge with their right rule (a collapsed table border
+ *    used to scroll off with the cells), column A comes back on swiping back,
+ *    and the page itself never scrolls sideways, not even by zooming in on a
+ *    focused field.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { openNewWorkbook, clearAuth } from './helpers';
+import { openNewWorkbook, clearAuth, cell } from './helpers';
 
 /** Renames the first tab to the second tab's name, which the engine refuses. */
 async function renameToDuplicate(page: Page) {
@@ -77,4 +82,97 @@ test.describe('Sheet card layout', () => {
     });
   }
 
+});
+
+test.describe('Sheet card layout on a touch phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test.afterEach(async ({ page }) => {
+    await clearAuth(page);
+  });
+
+  test('the row numbers stay pinned, edge and all, while the grid swipes sideways, and column A comes back', async ({ page }) => {
+    await openNewWorkbook(page, { name: 'Phone grid' });
+    await expect(page.getByTestId('item-sheet')).toHaveCount(1);
+    const grid = page.getByRole('grid', { name: 'Spreadsheet grid' });
+    const rowHeader = page.getByLabel('Row 1', { exact: true });
+    const gridBox = (await grid.boundingBox())!;
+    const gutter = async () => {
+      const rh = (await rowHeader.boundingBox())!;
+      // The corner and the row numbers.
+      return page.screenshot({ clip: { x: gridBox.x, y: gridBox.y, width: rh.x + rh.width - gridBox.x, height: 200 } });
+    };
+    // The gutter draws its own right rule, in its last pixel column: that
+    // column differs from the plain gutter a few pixels in (clear of the row
+    // numbers). A collapsed table border belongs to the table instead, and
+    // scrolls away with the cells.
+    const expectGutterEdge = async () => {
+      const rh = (await rowHeader.boundingBox())!;
+      const strip = (x: number) => page.screenshot({ clip: { x, y: gridBox.y, width: 1, height: 200 } });
+      const edge = await strip(rh.x + rh.width - 1);
+      const inside = await strip(rh.x + rh.width - 6);
+      expect(edge.equals(inside), 'the row numbers keep their right rule').toBe(false);
+    };
+    const pageScroll = () => page.evaluate(() => ({
+      overflow: document.documentElement.scrollWidth - window.innerWidth,
+      scrollX: window.scrollX,
+    }));
+    const swipe = async (dx: number) => {
+      const cdp = await page.context().newCDPSession(page);
+      const y = gridBox.y + 150;
+      const from = dx < 0 ? gridBox.x + gridBox.width - 10 : gridBox.x + 70;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from, y }] });
+      for (let i = 1; i <= 8; i++) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from + (dx * i) / 8, y }] });
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await cdp.detach();
+    };
+    const settledScroll = async () => {
+      let last = -1;
+      await expect.poll(async () => {
+        const now = await grid.evaluate((el) => el.scrollLeft);
+        const same = now === last;
+        last = now;
+        return same;
+      }, { intervals: [150] }).toBe(true);
+      return last;
+    };
+
+    const atRest = await gutter();
+    await swipe(-280);
+    expect(await settledScroll()).toBeGreaterThan(150);
+    await expect(cell(page, 0, 0)).not.toBeInViewport({ ratio: 1 });
+    const rh = (await rowHeader.boundingBox())!;
+    expect(Math.abs(rh.x - gridBox.x)).toBeLessThanOrEqual(1);
+    // The gutter is drawn the same as at rest: its edge moves with it instead
+    // of scrolling off with the cells, so it still reads as a pinned column.
+    expect((await gutter()).equals(atRest), 'the corner and row numbers are drawn as at rest').toBe(true);
+    await expectGutterEdge();
+    expect(await pageScroll()).toEqual({ overflow: 0, scrollX: 0 });
+
+    // Swiping back brings column A back beside the row numbers.
+    await expect(async () => {
+      await swipe(280);
+      expect(await settledScroll()).toBe(0);
+    }).toPass();
+    await expect(cell(page, 0, 0)).toBeInViewport({ ratio: 1 });
+    const a1 = (await cell(page, 0, 0).boundingBox())!;
+    expect(Math.abs(a1.x - (rh.x + rh.width))).toBeLessThanOrEqual(1);
+    expect((await gutter()).equals(atRest), 'the corner and row numbers are drawn as at rest').toBe(true);
+    expect(await pageScroll()).toEqual({ overflow: 0, scrollX: 0 });
+  });
+
+  test('text fields are at least 16px, so a phone does not zoom the page in on focus', async ({ page }) => {
+    // iOS Safari zooms the page in when a field under 16px takes focus, and
+    // does not zoom back out: the page then pans sideways and the row numbers
+    // and column A slide out of view.
+    await openNewWorkbook(page, { name: 'Phone zoom' });
+    await cell(page, 0, 0).click();
+    const fontSize = (loc: ReturnType<Page['locator']>) => loc.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    expect(await fontSize(page.getByLabel('Formula bar'))).toBeGreaterThanOrEqual(16);
+    await page.getByTestId('item-sheet').first().dblclick();
+    expect(await fontSize(page.getByLabel('Rename sheet'))).toBeGreaterThanOrEqual(16);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  });
 });
