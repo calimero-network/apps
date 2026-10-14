@@ -138,6 +138,8 @@ function NodeFeedApp({
         preview={nodePreview(node)}
         newFeed={newFeed.ready ? newFeed : undefined}
         openLink={openLink}
+        installed={node.installed}
+        install={node.install}
       />
     </Shell>
   );
@@ -200,6 +202,8 @@ function Screen({
   preview,
   newFeed,
   openLink,
+  installed = null,
+  install = null,
 }: {
   base: string;
   page: Page;
@@ -209,6 +213,10 @@ function Screen({
   preview: Preview;
   newFeed?: NewFeed;
   openLink?: (item: FeedItem) => Promise<string | null>;
+  /** The apps installed on your node; null in the demo. */
+  installed?: string[] | null;
+  /** Install an app on your node by its package; null in the demo. */
+  install?: ((pkg: string) => Promise<void>) | null;
 }) {
   const navigate = useNavigate();
   const { chain = "", section } = useParams();
@@ -224,6 +232,8 @@ function Screen({
         newFeed={newFeed}
         section={settingsSection(section)}
         base={base}
+        installed={installed}
+        install={install}
       />
     );
   return (
