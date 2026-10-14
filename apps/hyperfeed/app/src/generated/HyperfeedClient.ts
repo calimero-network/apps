@@ -205,6 +205,29 @@ export interface Asked {
 }
 
 /**
+ * Which of your agents works in one app: the agent's name, as it reports in
+ * (`mero-bot@<host>`). Only that agent takes the app's work (its new items,
+ * your decisions about its actions, your messages about it) and only it may
+ * call the app. An app with none is your default agent's: the private one.
+ */
+export interface Assignment {
+  /**
+   * Empty: back to the default agent.
+   */
+  agent: string;
+  updated_at: number;
+}
+
+/**
+ * Which agent works in one app, as settings shows it.
+ */
+export interface AssignmentView {
+  app: string;
+  agent: string;
+  updated_at: number;
+}
+
+/**
  * An image on a message: a blob on your node, announced to the feed's
  * context, and what the client needs to show it before fetching it.
  */
@@ -678,6 +701,10 @@ export interface Hyperfeed {
    * The runtime's VAPID public key, under `vapid`.
    */
   push_keys: Record<string, PushKey>;
+  /**
+   * Which agent works in each app, by app key. See [`Assignment`].
+   */
+  assignments: Record<string, Assignment>;
 }
 
 /**
@@ -1143,7 +1170,7 @@ export interface Reach {
  */
 export interface ReachLine {
   /**
-   * What it runs: a message mode (`private`, `public`) or `default`.
+   * What it runs: `default`, or the kind of work a profile is routed to.
    */
   serves: string;
   profile: string;
@@ -1237,8 +1264,9 @@ export interface SettingsView {
    */
   rule_proposals: RuleProposalView[];
   /**
-   * The modes a message of yours may be sent with ([`MESSAGE_MODES`]).
-   * Empty on a feed made before modes, which refuses a `mode` argument.
+   * The modes a client offers beside Send. Always empty: which agent takes
+   * your work is set per app (`assignments`). A `mode` argument is still
+   * taken and kept, for clients made before assignments.
    */
   message_modes: string[];
   /**
@@ -1250,6 +1278,11 @@ export interface SettingsView {
    * What each agent last reported it can reach, by agent name.
    */
   reach: ReachView[];
+  /**
+   * Which agent works in each app you assigned, by app. An app with none
+   * is your default agent's. Absent on a feed made before assignments.
+   */
+  assignments: AssignmentView[];
 }
 
 /**
@@ -2327,6 +2360,21 @@ export class HyperfeedClient {
    */
   public async setAccess(params: { agent: string; folders: Folder[]; shell: boolean; web: boolean }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'set_access', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_assignment
+   *
+   * Assign `app_key` to `agent` (its name, as it reports in): from then on
+   * only that agent takes the app's work and calls it. An empty `agent`
+   * gives the app back to your default agent. Your agent's runtime refuses
+   * this method to the agent, so only you move an app between agents.
+   *
+   * @intent mutating
+   */
+  public async setAssignment(params: { app_key: string; agent: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_assignment', argsJson: params });
     return response as void;
   }
 

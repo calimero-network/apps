@@ -870,10 +870,9 @@ fn a_message_says_how_private_it_is() {
         ["public", "private"],
         "read back the same in the chain"
     );
-    assert_eq!(
-        app.view(|s| s.settings()).unwrap().message_modes,
-        ["private", "public"],
-        "settings name the modes, so a client knows this feed takes them"
+    assert!(
+        app.view(|s| s.settings()).unwrap().message_modes.is_empty(),
+        "no mode is offered: which agent takes your work is set per app"
     );
 
     let r = app.call(|s| s.say(String::new(), "Hi".to_owned(), None, Some("act".to_owned())));
@@ -954,6 +953,46 @@ fn you_set_what_an_agent_reaches_and_it_reports_what_it_can() {
         s.set_access(agent.clone(), Vec::new(), true, true)
     });
     assert!(r.is_err(), "only the owner sets what an agent reaches");
+}
+
+#[test]
+fn you_assign_an_app_to_an_agent_and_can_give_it_back() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    assert!(
+        app.view(|s| s.settings()).unwrap().assignments.is_empty(),
+        "a new feed assigns nothing: every app is the default agent's"
+    );
+    let laptop = "mero-bot@laptop".to_owned();
+    app.call(|s| s.set_assignment("mero-bot".to_owned(), laptop.clone()))
+        .unwrap();
+    app.call(|s| s.set_assignment("chat".to_owned(), laptop.clone()))
+        .unwrap();
+    let set = app.view(|s| s.settings()).unwrap().assignments;
+    let apps: Vec<(&str, &str)> = set
+        .iter()
+        .map(|a| (a.app.as_str(), a.agent.as_str()))
+        .collect();
+    assert_eq!(
+        apps,
+        [("chat", laptop.as_str()), ("mero-bot", laptop.as_str())]
+    );
+
+    // The latest write wins, and an empty agent gives the app back.
+    app.call(|s| s.set_assignment("chat".to_owned(), String::new()))
+        .unwrap();
+    let set = app.view(|s| s.settings()).unwrap().assignments;
+    assert_eq!(set.len(), 1);
+    assert_eq!(set[0].app, "mero-bot");
+
+    assert!(
+        app.call(|s| s.set_assignment("Not An App".to_owned(), laptop.clone()))
+            .is_err(),
+        "an app key is checked like a policy's"
+    );
+    let r = app.call_as_account(STRANGER, STRANGER, |s| {
+        s.set_assignment("chat".to_owned(), "mero-bot@theirs".to_owned())
+    });
+    assert!(r.is_err(), "only the owner assigns an app");
 }
 
 fn choose(options: &[&str]) -> Ask {

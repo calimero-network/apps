@@ -110,7 +110,15 @@ steps:
     args:
       name: "mero-bot@laptop"
       lines:
-        - { serves: "private", profile: "near", model: "glm", attested: true, folders: [], shell: false, web: false }
+        - { serves: "default", profile: "near", model: "glm", attested: true, folders: [], shell: false, web: false }
+
+  - name: Owner assigns code to the laptop's agent
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_assignment
+    args: { app_key: "mero-bot", agent: "mero-bot@laptop" }
 
   - name: Owner reads the settings
     type: call
@@ -126,14 +134,16 @@ steps:
       access_1: result.output.access.0
       reach_1: result.output.reach.0
       reach_line_1: result.output.reach.0.lines.0
+      assignment_1: result.output.assignments.0
 
   - name: Assert the policy and the guard are stored
     type: json_assert
     statements:
-      - 'json_subset({{settings_1}}, {"output": {"paused": false, "policies": [{"app": "chat", "agent": "act", "notifications": "push"}], "message_modes": ["private", "public"]}})'
+      - 'json_subset({{settings_1}}, {"output": {"paused": false, "policies": [{"app": "chat", "agent": "act", "notifications": "push"}], "message_modes": []}})'
+      - 'json_subset({{assignment_1}}, {"app": "mero-bot", "agent": "mero-bot@laptop"})'
       - 'json_subset({{access_1}}, {"agent": "mero-bot@laptop", "folders": [{"path": "~/workspace", "write": true}, {"path": "/srv/specs", "write": false}], "shell": false, "web": true})'
       - 'json_subset({{reach_1}}, {"agent": "mero-bot@laptop"})'
-      - 'json_subset({{reach_line_1}}, {"serves": "private", "profile": "near", "attested": true, "folders": [], "shell": false, "web": false})'
+      - 'json_subset({{reach_line_1}}, {"serves": "default", "profile": "near", "attested": true, "folders": [], "shell": false, "web": false})'
 
   - name: The agent checks before acting in chat
     type: call
@@ -997,6 +1007,17 @@ steps:
     outputs:
       access_error: error
 
+  - name: node-2 tries to take an app for an agent
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: set_assignment
+    args: { app_key: "chat", agent: "mero-bot@theirs" }
+    expected_failure: true
+    outputs:
+      assignment_error: error
+
   - name: node-2 reads the lenses
     type: call
     node: feed-node-2
@@ -1015,6 +1036,7 @@ steps:
       - "is_set({{say_error}})"
       - "is_set({{lens_error}})"
       - "is_set({{access_error}})"
+      - "is_set({{assignment_error}})"
 
   - name: Assert node-2 holds the approved lens
     type: json_assert

@@ -93,6 +93,8 @@ export interface Feed {
   setGuard: (category: string, enabled: boolean) => Promise<void>;
   /** Only on a feed that keeps what each agent may reach. */
   setAccess?: (agent: string, folders: Folder[], shell: boolean, web: boolean) => Promise<void>;
+  /** Which agent works in an app; absent on a feed made before assignments. */
+  setAssignment?: (app: string, agent: string) => Promise<void>;
   setPaused: (paused: boolean) => Promise<void>;
   /** Your standing rules: add one, remove one, or approve or dismiss one your agent suggested. */
   addRule: (text: string) => Promise<void>;
@@ -218,6 +220,10 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       run((b) => (b.setAccess ? b.setAccess(agent, folders, shell, web) : Promise.resolve())),
     [run],
   );
+  const setAssignment = useCallback(
+    (app: string, agent: string) => run((b) => (b.setAssignment ? b.setAssignment(app, agent) : Promise.resolve())),
+    [run],
+  );
   const addLink = useCallback(
     (chain: string, subject: string, label: string) =>
       run((b) => (b.addLink ? b.addLink(chain, subject, label).then(() => undefined) : Promise.resolve())),
@@ -307,6 +313,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     setPolicy: useCallback((k, agent, notifications) => run((b) => b.setPolicy(k, agent, notifications)), [run]),
     setGuard: useCallback((category, enabled) => run((b) => b.setGuard(category, enabled)), [run]),
     setAccess: backend?.setAccess ? setAccess : undefined,
+    setAssignment: backend?.setAssignment ? setAssignment : undefined,
     setPaused: useCallback((paused) => run((b) => b.setPaused(paused)), [run]),
     addRule: useCallback((text) => run((b) => b.addRule(text)), [run]),
     removeRule: useCallback((id) => run((b) => b.removeRule(id)), [run]),

@@ -26,7 +26,6 @@ import { TASKS_SHOWN, taskCandidates, taskOf, type TaskPost } from "./tasks";
 import { answersYou, mayAnswer, placeOf, sentenceOf, useChainRoot, type Sentence } from "./people";
 import { milestonesOf, trackLine, type Milestone } from "./milestones";
 import { CheckpointDetails } from "./CheckpointDetails";
-import { feedModes, ModePicker, type MessageMode } from "./modes";
 import { WatchList } from "./WatchList";
 import type { CheckpointView } from "./checkpoint";
 
@@ -1074,7 +1073,6 @@ function Row({
             feed={feed}
             chain={item.chain}
             label={item.kind === "message" ? "Say more to your agent" : "Talk to your agent about this"}
-            defaultMode={item.mode === "public" ? "public" : "private"}
           />
         </div>
       )}
@@ -1294,24 +1292,19 @@ export function AskAgent({
   chain,
   label,
   onPosted,
-  defaultMode = "private",
 }: {
   feed: Feed;
   chain: string;
   label: string;
   onPosted?: (message: FeedItem) => void;
-  /** Which agent it goes to unless you pick the other: the row's own, on a row. */
-  defaultMode?: MessageMode;
 }) {
   const id = useId();
   const [text, setText] = useState("");
-  const [mode, setMode] = useState<MessageMode>(defaultMode);
-  // Only a feed that lists modes takes one; an older feed refuses the argument.
-  const modes = feedModes(feed.settings);
   const send = async () => {
     const t = text.trim();
     if (!t || feed.busy) return;
-    const posted = await feed.say(chain, t, [], modes.length > 0 ? mode : undefined);
+    // Which agent answers is set per app in Settings → Agents, not per message.
+    const posted = await feed.say(chain, t, []);
     if (!posted) return;
     setText("");
     onPosted?.(posted);
@@ -1342,7 +1335,6 @@ export function AskAgent({
           }
         }}
       />
-      <ModePicker modes={modes} value={mode} onChange={setMode} disabled={feed.busy} />
       <button type="submit" className="primary small" disabled={feed.busy || !text.trim()}>
         Send
       </button>

@@ -277,6 +277,25 @@
         }
       ]
     },
+    "Assignment": {
+      "kind": "record",
+      "doc": "Which of your agents works in one app: the agent's name, as it reports in\n(`mero-bot@<host>`). Only that agent takes the app's work (its new items,\nyour decisions about its actions, your messages about it) and only it may\ncall the app. An app with none is your default agent's: the private one.",
+      "fields": [
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Empty: back to the default agent."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Attachment": {
       "kind": "record",
       "doc": "An image on a message: a blob on your node, announced to the feed's\ncontext, and what the client needs to show it before fetching it.",
@@ -901,6 +920,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "The runtime's VAPID public key, under `vapid`."
+        },
+        {
+          "name": "assignments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Assignment"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Which agent works in each app, by app key. See [`Assignment`]."
         }
       ]
     },
@@ -1498,7 +1531,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "What it runs: a message mode (`private`, `public`) or `default`."
+          "doc": "What it runs: `default`, or the kind of work a profile is routed to."
         },
         {
           "name": "profile",

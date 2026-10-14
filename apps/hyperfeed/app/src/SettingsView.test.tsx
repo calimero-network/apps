@@ -253,8 +253,8 @@ describe("Settings → Agents: what your agents can reach", () => {
   const AGENT = "mero-bot@laptop";
   const reported = (b: DemoBackend) =>
     b.agentReach(AGENT, [
-      { serves: "private", profile: "near", model: "z-ai/glm-5.3-flash", attested: true, folders: [], shell: false, web: false },
-      { serves: "public", profile: "claude", model: "", attested: false, folders: [{ path: "~/workspace/calimero", write: true }], shell: true, web: true },
+      { serves: "default", profile: "near", model: "z-ai/glm-5.3-flash", attested: true, folders: [], shell: false, web: false },
+      { serves: "converse", profile: "claude", model: "", attested: false, folders: [{ path: "~/workspace/calimero", write: true }], shell: true, web: true },
     ]);
 
   it("shows what each agent reports, then narrows it to what you set", async () => {
@@ -263,9 +263,9 @@ describe("Settings → Agents: what your agents can reach", () => {
     render(<Harness backend={backend} section="agents" />);
     const agent = within(await section()).getByRole("group", { name: `What ${AGENT} can reach` });
     expect(within(agent).getByRole("list", { name: `What ${AGENT} reports` })).toHaveTextContent(
-      "Private · near (z-ai/glm-5.3-flash), attested: Calimero apps only",
+      "Default · near (z-ai/glm-5.3-flash), attested: Calimero apps only",
     );
-    expect(within(agent).getByText(/Public/).closest("li")).toHaveTextContent("claude: Calimero apps, ~/workspace/calimero, shell, web");
+    expect(within(agent).getByText(/Your messages/).closest("li")).toHaveTextContent("claude: Calimero apps, ~/workspace/calimero, shell, web");
     expect(within(agent).getByText(/Not set by you/)).toBeInTheDocument();
 
     // Starts from what it reported: the workspace, read and write, shell and web on.
@@ -310,5 +310,60 @@ describe("Settings → Agents: what your agents can reach", () => {
     render(<Harness backend={new OlderFeed(true, 0)} section="agents" />);
     await screen.findByRole("region", { name: "Your agents" });
     expect(screen.queryByRole("region", { name: "What your agents can reach" })).toBeNull();
+  });
+});
+
+describe("Settings → Agents: who works in each app", () => {
+  const section = () => screen.findByRole("region", { name: "Who works in each app" });
+  const TEE = "mero-bot@td-1";
+  const LAPTOP = "mero-bot@laptop";
+  const line = (attested: boolean) => ({ serves: "default", profile: attested ? "near" : "claude", model: "", attested, folders: [], shell: false, web: false });
+
+  it("leaves every app on your private agent until you give one to another agent", async () => {
+    const backend = new DemoBackend(true, 0);
+    backend.agentReach(TEE, [line(true)]);
+    backend.agentReach(LAPTOP, [line(false)]);
+    render(<Harness backend={backend} section="agents" />);
+    const panel = await section();
+    const code = within(panel).getByRole("combobox", { name: "Agent for Code" }) as HTMLSelectElement;
+    const chat = within(panel).getByRole("combobox", { name: "Agent for Chat" }) as HTMLSelectElement;
+    expect(code.value).toBe("");
+    expect(within(code).getByRole("option", { name: `Default: Private agent (${TEE})` })).toBeInTheDocument();
+    expect(within(code).getByRole("option", { name: `${TEE} (private)` })).toBeInTheDocument();
+    expect(within(code).getByRole("option", { name: LAPTOP })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.change(code, { target: { value: LAPTOP } });
+    });
+    expect((await backend.settings()).assignments).toMatchObject([{ app: "mero-bot", agent: LAPTOP }]);
+    expect(code.value).toBe(LAPTOP);
+    // Chat stays with the private agent.
+    expect(chat.value).toBe("");
+
+    // Back to the default.
+    await act(async () => {
+      fireEvent.change(code, { target: { value: "" } });
+    });
+    expect((await backend.settings()).assignments).toEqual([]);
+  });
+
+  it("says any agent takes an app while no private agent reports in", async () => {
+    const backend = new DemoBackend(true, 0);
+    backend.agentReach(LAPTOP, [line(false)]);
+    render(<Harness backend={backend} section="agents" />);
+    const chat = within(await section()).getByRole("combobox", { name: "Agent for Chat" });
+    expect(within(chat).getByRole("option", { name: /Default: Any agent/ })).toBeInTheDocument();
+  });
+
+  it("is not there on a feed that predates assignments", async () => {
+    class OlderFeed extends DemoBackend {
+      override async settings() {
+        const { assignments: _a, ...rest } = await super.settings();
+        return rest as Awaited<ReturnType<DemoBackend["settings"]>>;
+      }
+    }
+    render(<Harness backend={new OlderFeed(true, 0)} section="agents" />);
+    await screen.findByRole("region", { name: "Your agents" });
+    expect(screen.queryByRole("region", { name: "Who works in each app" })).toBeNull();
   });
 });

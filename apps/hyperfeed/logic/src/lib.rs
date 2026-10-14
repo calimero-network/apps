@@ -192,10 +192,9 @@ pub const AGENT_MODES: &[&str] = &["act", "ask", "read", "off"];
 /// The mode for an app nobody has set a policy for. Asking is the only safe
 /// default: an agent that discovers a new app should not get to act in it.
 pub const DEFAULT_AGENT_MODE: &str = "ask";
-/// How private a message of yours is, which says which of your agents takes
-/// it: `private`, for an agent whose model runs where no operator can read it
-/// (an attested TEE), or `public`, for any agent you configured (one with your
-/// repositories and tools, say). Your agent's runtime maps each to an agent.
+/// How private a message of yours is: `private` or `public`. Clients made
+/// before per-app assignments ([`Assignment`]) sent one to pick the agent that
+/// takes the message; it is still taken and kept, and no longer offered.
 /// Not [`AGENT_MODES`], which say how freely the agent may act in an app.
 pub const MESSAGE_MODES: &[&str] = &["private", "public"];
 /// Folders one agent may be given, and the length of one folder's path.
@@ -678,6 +677,28 @@ impl Mergeable for Policy {
     }
 }
 
+/// Which of your agents works in one app: the agent's name, as it reports in
+/// (`mero-bot@<host>`). Only that agent takes the app's work (its new items,
+/// your decisions about its actions, your messages about it) and only it may
+/// call the app. An app with none is your default agent's: the private one.
+#[app::mergeable(id = "hyperfeed::Assignment")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Assignment {
+    /// Empty: back to the default agent.
+    pub agent: String,
+    pub updated_at: u64,
+}
+
+impl Mergeable for Assignment {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
+        Ok(())
+    }
+}
+
 /// One "always ask me before" switch.
 #[app::mergeable(id = "hyperfeed::Guard")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -865,7 +886,7 @@ impl Mergeable for Access {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ReachLine {
-    /// What it runs: a message mode (`private`, `public`) or `default`.
+    /// What it runs: `default`, or the kind of work a profile is routed to.
     pub serves: String,
     pub profile: String,
     pub model: String,
@@ -901,6 +922,15 @@ pub struct AccessView {
     pub folders: Vec<Folder>,
     pub shell: bool,
     pub web: bool,
+    pub updated_at: u64,
+}
+
+/// Which agent works in one app, as settings shows it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AssignmentView {
+    pub app: String,
+    pub agent: String,
     pub updated_at: u64,
 }
 
@@ -1385,8 +1415,9 @@ pub struct SettingsView {
     /// Rules your agent suggested that wait for you, newest first.
     #[serde(default)]
     pub rule_proposals: Vec<RuleProposalView>,
-    /// The modes a message of yours may be sent with ([`MESSAGE_MODES`]).
-    /// Empty on a feed made before modes, which refuses a `mode` argument.
+    /// The modes a client offers beside Send. Always empty: which agent takes
+    /// your work is set per app (`assignments`). A `mode` argument is still
+    /// taken and kept, for clients made before assignments.
     #[serde(default)]
     pub message_modes: Vec<String>,
     /// What you let each agent reach on its computer, by agent name. An agent
@@ -1396,6 +1427,10 @@ pub struct SettingsView {
     /// What each agent last reported it can reach, by agent name.
     #[serde(default)]
     pub reach: Vec<ReachView>,
+    /// Which agent works in each app you assigned, by app. An app with none
+    /// is your default agent's. Absent on a feed made before assignments.
+    #[serde(default)]
+    pub assignments: Vec<AssignmentView>,
 }
 
 /// One of your standing rules, as settings shows it.
@@ -1506,6 +1541,8 @@ pub struct Hyperfeed {
     push_devices: UnorderedMap<String, PushDevice>,
     /// The runtime's VAPID public key, under `vapid`.
     push_keys: UnorderedMap<String, PushKey>,
+    /// Which agent works in each app, by app key. See [`Assignment`].
+    assignments: UnorderedMap<String, Assignment>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1624,6 +1661,7 @@ impl Hyperfeed {
             links: UnorderedMap::new(),
             push_devices: UnorderedMap::new(),
             push_keys: UnorderedMap::new(),
+            assignments: UnorderedMap::new(),
         }
     }
 
@@ -3990,6 +4028,24 @@ impl Hyperfeed {
         Ok(())
     }
 
+    /// Assign `app_key` to `agent` (its name, as it reports in): from then on
+    /// only that agent takes the app's work and calls it. An empty `agent`
+    /// gives the app back to your default agent. Your agent's runtime refuses
+    /// this method to the agent, so only you move an app between agents.
+    pub fn set_assignment(&mut self, app_key: String, agent: String) -> app::Result<()> {
+        self.require_owner()?;
+        Self::check_app(&app_key)?;
+        Self::check_len("agent", &agent, MAX_KEY, false)?;
+        let updated_at = match self.assignments.get(&app_key)? {
+            Some(a) => now_ms().max(a.updated_at + 1),
+            None => now_ms(),
+        };
+        self.assignments
+            .insert(app_key, Assignment { agent, updated_at })?;
+        app::emit!(Event::SettingsChanged);
+        Ok(())
+    }
+
     /// An agent saying what it can reach: one line per agent profile it runs.
     /// Shown to you in Controls beside what you set with `set_access`.
     pub fn agent_reach(&mut self, name: String, lines: Vec<ReachLine>) -> app::Result<()> {
@@ -4330,6 +4386,18 @@ impl Hyperfeed {
             })
             .collect();
         reach.sort_by(|a, b| a.agent.cmp(&b.agent));
+        // An app given back to the default agent keeps its record, with no agent.
+        let mut assignments: Vec<AssignmentView> = self
+            .assignments
+            .entries()?
+            .filter(|(_, a)| !a.agent.is_empty())
+            .map(|(app, a)| AssignmentView {
+                app,
+                agent: a.agent,
+                updated_at: a.updated_at,
+            })
+            .collect();
+        assignments.sort_by(|a, b| a.app.cmp(&b.app));
         Ok(SettingsView {
             owner: self.owner.get().clone(),
             paused: self.is_paused()?,
@@ -4338,9 +4406,12 @@ impl Hyperfeed {
             agents,
             rules: self.active_rules()?,
             rule_proposals: self.waiting_rule_proposals()?,
-            message_modes: MESSAGE_MODES.iter().map(|m| (*m).to_owned()).collect(),
+            // Which agent takes a message is set per app now (`assignments`), so
+            // clients no longer offer a mode; one a message carries is still kept.
+            message_modes: Vec::new(),
             access,
             reach,
+            assignments,
         })
     }
 }

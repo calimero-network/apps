@@ -107,6 +107,11 @@ export interface FeedBackend {
    * replaces what was set. Only a feed whose settings carry `access` has it.
    */
   setAccess?(agent: string, folders: Folder[], shell: boolean, web: boolean): Promise<void>;
+  /**
+   * Which agent works in `app` (its name as it reports in); `""` gives the app
+   * back to the default. Only a feed whose settings carry `assignments` has it.
+   */
+  setAssignment?(app: string, agent: string): Promise<void>;
   /** Add one of your standing rules: a short line your agent keeps to on every turn. */
   addRule(text: string): Promise<RuleView>;
   removeRule(id: string): Promise<void>;
@@ -201,6 +206,7 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
     setGuard: (category, enabled) => client.setGuard({ category, enabled }),
     setPaused: (paused) => client.setPaused({ paused }),
     setAccess: (agent, folders, shell, web) => client.setAccess({ agent, folders, shell, web }),
+    setAssignment: (app, agent) => client.setAssignment({ app_key: app, agent }),
     addRule: (text) => client.addRule({ text }),
     removeRule: (id) => client.removeRule({ id }),
     approveRule: (id) => client.approveRule({ id }),

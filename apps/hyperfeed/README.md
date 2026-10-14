@@ -33,7 +33,7 @@ same warrant path it uses everywhere else.
 | Row | Written by | Holds |
 | --- | --- | --- |
 | **Action** | your agent | app, source context, method, guard category, title, why, the warrant's intent hash, the executing relay, its chain and ask, every status step, and a *breach* note when the rules say it should have asked |
-| **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said`. Yours may carry up to four **images** (PNG, JPEG, WebP or GIF, 10 MB each): blobs on your node announced to the feed's context, of which the feed keeps only the id, name, type and size, beside the message by id. Yours may also carry a **mode**, `private` or `public`, saying how private it is and so which of your agents takes it, kept beside the message by id |
+| **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said`. Yours may carry up to four **images** (PNG, JPEG, WebP or GIF, 10 MB each): blobs on your node announced to the feed's context, of which the feed keeps only the id, name, type and size, beside the message by id. One sent by an older client may also carry a **mode**, `private` or `public`, kept beside the message by id; which agent takes a message is now set per app (see Assignment) |
 | **Notification** | your client, or your agent | app, source context, sender, title, event kind, and whether it needs you. Keyed by the state transition that produced it, so each of your devices records the same event once (see [the collector](#notifications-the-collector)). A notification a lens made also carries its **item type**, the type's **fields**, and the **reply call** that answers it in its app, kept beside it by id |
 | **Lens** | your agent proposes, you approve | for one app version: which of its events become feed items, of which type, and how your answer goes back. JSON, up to 32 kB; `proposed`, `approved` or `rejected` |
 | **Policy** | you | per app: the agent mode (`act` / `ask` / `read` / `off`) and notification routing (`push` / `feed` / `mute`) |
@@ -42,7 +42,8 @@ same warrant path it uses everywhere else.
 | **Archived** | you | per chain: put away, with the chain's latest activity then and an optional return time ("later"). It is out of the feed until something new happens in it or that time passes |
 | **Presence** | your agent | per agent name: when it last reported in. The app shows "Agent live" for 90 seconds after a report |
 | **Access** | you | per agent name: what it may reach on its computer besides your Calimero apps: folders (each read only, or read and write), a shell, the web. Last-writer-wins. The agent's runtime enforces it before every tool call and refuses `set_access` to the agent |
-| **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (mode, model, attested or not, folders, shell, web). Settings → Agents shows it beside your Access |
+| **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (what it serves, model, attested or not, folders, shell, web). Settings → Agents shows it beside your Access. An agent whose every line is attested is a **private** agent |
+| **Assignment** | you | per app: which of your agents works in it, by the name it reports in with. Last-writer-wins; an empty agent gives the app back. Only that agent takes the app's work (new items, your decisions on its rows, your messages in a chat about it) and calls the app. An app with none is your private agents', or any agent's while none reports in. Code is the app `mero-bot` (the tools on a computer). The agent's runtime enforces it and refuses `set_assignment` to the agent |
 | **Link** | your agent, or you | per task: a subject it works on (`<app>:<context>[:<id>]`) with a label, shown as a chip on the task's post. Your agent's writes add them; you add one from its address or take one off, and a link you took off stays off. The chip counts and groups what teammates did there, and opens it in its app beside the feed |
 | **Subject** | your agent | what an action touched in another app, as `<app>:<context>[:<id>]` (the id from its `issue_id`, `doc_id` or `thread_id` arg), kept beside the action by id, and the chain that last touched each subject. A typed notification whose reply call goes to the same subject, recorded with no chain of its own, joins that chain unless you put it away: one thread per task, teammates' comments included |
 
@@ -341,12 +342,12 @@ in the row's `note` while it is current.
    with `agent_ack(id, "failed", why)`. A proposal or action the conversation leads to goes in the
    same `chain`. An agent that was away reads `open_questions()` when it starts.
    The app's Chat page (`/chat`) is these chains as chats: New chat is `say("", text)`, every
-   message after it is `say(chain, text)`, and your answers show as they land. Beside Send, a
-   picker sends each message as **Private** (`mode: "private"`: only an agent whose model no
-   operator can read, such as one in an attested TEE) or **Public** (`mode: "public"`: whichever
-   agent you set up for it, such as one with your repositories); a chat
-   opens on the mode of your last message in it. `settings().message_modes` lists the modes a feed
-   takes; a feed made before modes lists none, refuses a `mode` argument, and shows no picker. A message nobody
+   message after it is `say(chain, text)`, and your answers show as they land. Which agent answers
+   is set per app in Settings → Agents (`set_assignment`): a chat about an app goes to the agent
+   that works in it, and a new chat to your private agent. When that agent meets work that needs
+   code, it proposes a hand-off (an action in the app `mero-bot`, method `hand_off`) and the agent
+   you gave code to takes the chat up only once you approve it. `settings().message_modes` is empty:
+   no client offers a mode any more. A message nobody
    has taken up after 30 seconds asks whether your agent (mero-bot) is running.
 
 An outcome recorded where the rules said `ask` or `refuse` is still stored, with `breach` set, and
@@ -361,7 +362,8 @@ stays in "Needs you" until you keep it or undo it. Events the contract emits: `A
 **The owner's methods**, which the app calls: `resolve_action(id, decision, answer)` with
 `approve`, `decline`, `undo` or `keep` (`answer` is `""` except for approving a proposal with an
 ask); `answer_notification(id, answer)`; `set_policy(app_key, agent, notifications)`;
-`set_guard(category, enabled)`; `set_paused(paused)`; `set_access(agent, folders, shell, web)`; `record_notification(input)`;
+`set_guard(category, enabled)`; `set_paused(paused)`; `set_access(agent, folders, shell, web)`;
+`set_assignment(app_key, agent)` (`agent` `""` gives the app back to the default); `record_notification(input)`;
 `say(chain, text, headline, mode)`; `decide_lens(app_key, application_id, decision)`; `mark_seen(ids)` and
 `mark_all_seen()`; `archive(chains, until)` (`until` 0 = until something new happens, else ms
 for "later") and `unarchive(chains)`; `feed("archived", …)` lists what is put away. An agent kit can call them too, since it
