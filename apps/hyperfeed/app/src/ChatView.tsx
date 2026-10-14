@@ -4,7 +4,7 @@ import type { Feed } from "./useFeed";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
 import { Choices, NewFeedButton, Resolver, type NewFeed } from "./FeedView";
 import { RuleSuggestion } from "./SettingsView";
-import { choicesFor, heldLine, laneOf, localCommand, REPLACED, resolvable, statusOf, timeLabel } from "./format";
+import { choicesFor, heldLine, laneOf, localCommand, REPLACED, resolvable, statusOf, timeLabel, writeText } from "./format";
 import { Markdown } from "./markdown";
 import { RefCards, type MergeContext } from "./RefCards";
 import { prKey } from "./github";
@@ -509,7 +509,7 @@ function ActionCard({ item, feed }: { item: FeedItem; feed: Feed }) {
   const incoming = item.kind === "notification";
   const heading = incoming ? sentenceText(sentenceOf(item, appName)) : item.title;
   const where = incoming ? placeOf(item, appName) : item.app && item.app !== "mero-bot" ? appName(item.app) : "";
-  const body = command ? "" : item.body.trim();
+  const body = command ? "" : incoming ? item.body.trim() : writeText(item);
   return (
     <div className="chat-action" role="group" aria-label={`Waiting for you: ${heading}`}>
       <div className="chat-action-head">

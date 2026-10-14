@@ -217,7 +217,7 @@ describe("chat with your agent", () => {
       writes: true,
       undoable: false,
       title: "Send a message in Chat",
-      body: "message: Which of chutes, opengradient, venice, ironclaw is worth a closer look?",
+      body: "message: <p>Which of chutes, opengradient, venice, ironclaw is worth a closer look?</p>",
       why: "Ask mode is on for Chat. Waiting in mero-bot to run it.",
       outcome: "proposed",
       intent_hash: "",
@@ -230,7 +230,7 @@ describe("chat with your agent", () => {
     });
     render(<Harness backend={backend} start={q.chain} />);
     const card = await within(await screen.findByRole("log")).findByRole("group", { name: "Waiting for you: Send a message in Chat" });
-    expect(within(card).getByLabelText("What it sends")).toHaveTextContent("Which of chutes, opengradient, venice, ironclaw");
+    expect(within(card).getByLabelText("What it sends")).toHaveTextContent(/^Which of chutes, opengradient, venice, ironclaw is worth a closer look\?$/);
     expect(within(card).getByText(/Ask mode is on for Chat/)).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: "Approve" })).toBeInTheDocument();
   });
