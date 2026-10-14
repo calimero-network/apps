@@ -2,8 +2,8 @@
   position: fixed;
   background: var(--mc-surface);
   padding: 15px 10px 15px 10px;
-  border: 1px solid var(--mc-border);
-  border-radius: 8px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 18px;
   max-width: 210px;
   width: 100%;
   left: 50%;
@@ -12,7 +12,7 @@
   z-index: 100;
   cursor: auto;
   position: relative;
-  box-shadow: 0px 24px 38px 3px rgb(0 0 0 / 14%), 0px 9px 46px 8px rgb(0 0 0 / 12%), 0px 11px 15px -7px rgb(0 0 0 / 20%);
+  box-shadow: var(--shadow);
   
   &__close {
     position: absolute;

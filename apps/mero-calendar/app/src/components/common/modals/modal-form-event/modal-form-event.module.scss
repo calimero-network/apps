@@ -3,8 +3,8 @@
   background: var(--mc-surface);
   color: var(--mc-text);
   padding: 20px 15px 20px 25px;
-  border: 1px solid var(--mc-border);
-  border-radius: 8px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
   max-width: 600px;
   width: 100%;
   left: 50%;
@@ -141,10 +141,10 @@
       border: none;
       color: var(--accent-text);
       background-color: var(--accent-fill);
-      padding: 9px 18px;
-      border-radius: 8px;
+      padding: 10px 20px;
+      border-radius: 999px;
       cursor: pointer;
-      font-weight: 500;
+      font-weight: 600;
 
       &:hover {
         background-color: var(--accent-fill-dim);

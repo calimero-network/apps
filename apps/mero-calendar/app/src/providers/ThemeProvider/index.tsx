@@ -8,8 +8,9 @@ import {
 } from "react";
 
 // FEATURE (dark/light mode): a ThemeProvider that toggles a `data-theme`
-// attribute on <html>, persisted to localStorage and defaulting to the OS
-// preference. All calendar/app colors are CSS custom properties (see
+// attribute on <html>, persisted to localStorage and defaulting to LIGHT (the
+// fleet's glass look opens light for everyone; dark is the user's choice
+// through the toggle, and a saved choice is always kept). All calendar/app colors are CSS custom properties (see
 // src/styles/theme.css) keyed off [data-theme], so flipping the attribute
 // re-themes the whole app with no React re-render of the calendar.
 
@@ -40,13 +41,7 @@ function getInitialTheme(): Theme {
   } catch {
     /* ignore */
   }
-  if (
-    typeof window !== "undefined" &&
-    window.matchMedia &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches
-  ) {
-    return "dark";
-  }
+  // Light first: no saved choice opens light, whatever the OS prefers.
   return "light";
 }
 

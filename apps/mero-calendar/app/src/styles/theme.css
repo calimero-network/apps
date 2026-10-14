@@ -11,121 +11,91 @@
    <html data-theme> attribute.
 ════════════════════════════════════════════════════════════════════════ */
 
+/* ── Light glass ─────────────────────────────────────────────────────────
+   The fleet's shared look (@calimero-apps/glass, imported first in
+   src/index.tsx): a cool off-white ground under soft colour fields tinted with
+   this app's icon colour, frosted surfaces for the frame, and one near-black
+   ink for primary controls. Every token below keeps its NAME and only maps its
+   VALUE onto a --glass-* token, so the calendar SCSS is untouched and dark mode
+   follows automatically: glass.css swaps every --glass-* value under
+   `:root[data-theme='dark']`, which is the marker this app's ThemeProvider
+   writes onto <html>.
+
+   The Calimero lime is gone from the app. The old FILL / INK split is kept,
+   because it is still the right split: --accent-fill is now the glass ink
+   (near-black in light, near-white in dark) under --accent-text, the colour
+   that reads on it, and --accent is the glass accent blue for text, icons,
+   outlines and focus rings. */
 :root {
-  --radius: 8px;
-  --radius-sm: 6px;
-  --radius-lg: 12px;
-  --font: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --glass-tint: #5b7cfa;
 
-  /* ── Calimero brand accent ──────────────────────────────────────────────
-     Brand values from @calimero-network/mero-ui: brand-600 #A5FF11 (the
-     signature lime), brand-700 #73B30C, brand-900 #2D381B.
+  --radius: var(--glass-radius);
+  --radius-sm: var(--glass-radius-sm);
+  --radius-lg: var(--glass-radius-lg);
+  --font: var(--glass-font);
 
-     ⚠️ Split into a FILL and an INK on purpose. #A5FF11 scores 1.24:1 against
-     white — as button *fill* under near-black text it is 14:1 and unmistakably
-     Calimero, but the same value as text or as a 1px outline on a light surface
-     is invisible. Every text/border/icon use therefore takes --accent (a
-     darkened brand green, 5.40:1 on white), and only a filled control takes
-     --accent-fill. The previous indigo was a single token doing both jobs,
-     which is exactly the trap this split avoids. */
-  --accent: #4a7607; /* ink: text, icons, outlines, focus rings */
-  --accent-dim: #3f6606; /* ink, pressed/hover */
-  --accent-fill: #a5ff11; /* brand lime — filled controls only */
-  --accent-fill-dim: #8fdd0e; /* brand lime, hover */
-  --accent-soft: rgba(115, 179, 12, 0.16);
-  /* ⚠️ brand-900, NOT a near-black. #1a1a1a on the lime was 14:1 and read as
-     a flat black slab stamped on the button — technically correct, visually
-     harsh. #2D381B is Calimero's own darkest brand step: still 9.99:1 (and
-     7.39:1 on the hover), but it belongs to the same family as the fill, so
-     the label sits in the button rather than on top of it. */
-  --accent-text: #2d381b; /* on --accent-fill */
+  --accent: var(--glass-accent); /* ink: text, icons, outlines, focus rings */
+  --accent-dim: #263fae; /* ink, pressed/hover */
+  --accent-fill: var(--glass-ink); /* filled controls: the near-black ink */
+  --accent-fill-dim: #262c40; /* ink, hover */
+  --accent-soft: color-mix(in srgb, var(--glass-accent-solid) 14%, transparent);
+  --accent-text: var(--glass-on-ink); /* on --accent-fill */
 
-  --danger: #ff5d6c;
-  /* Tint for an invalid field, mirroring --accent-soft. Alpha rather than a
-     flat colour so it works over any surface in either theme. */
-  --danger-soft: rgba(255, 93, 108, 0.14);
-  --ok: #43d17a;
-  --warn: #ffb02e;
+  --danger: #e5484d;
+  --danger-soft: rgba(229, 72, 77, 0.12);
+  --ok: #18a058;
+  --warn: #c4841d;
 
-  --shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
-  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.12);
+  /* Things that float (dropdowns, dialogs) take the float shadow; small raised
+     controls take the soft surface shadow. */
+  --shadow: var(--glass-shadow-float);
+  --shadow-sm: var(--glass-shadow);
 }
 
 /* ── Light theme (default) ───────────────────────────────────────────── */
 :root,
 [data-theme="light"] {
-  --bg-0: #f5f8f2; /* app background */
-  --bg-1: #ffffff; /* primary surface — cards, panels */
-  --bg-2: #ffffff; /* raised surface — header */
-  --bg-3: #eef2e9; /* hover / inset */
-  --bg-4: #e5ebdd; /* active / selected */
-  --border: #e3e8dc;
-  --border-strong: #ccd5c0;
+  --bg-0: var(--glass-ground); /* app background (the fields sit over it) */
+  --bg-1: var(--glass-surface-solid); /* text-dense surfaces: inputs, panels */
+  --bg-2: var(--glass-surface-solid); /* floating: dropdowns, popovers */
+  --bg-3: var(--glass-sunken); /* hover / inset */
+  --bg-4: var(--glass-line); /* active / selected */
+  --border: var(--glass-line);
+  --border-strong: var(--glass-line-strong);
 
-  --text: #1b2114;
-  --text-dim: #5a6350;
-  /* 3.45:1 on white. The indigo palette's #97a0b0 was 2.71:1 — under the 3:1
-     floor for incidental text, which is why timestamps and id stubs read as
-     smudges on a bright screen. */
-  --text-faint: #858d78;
+  --text: var(--glass-ink);
+  --text-dim: var(--glass-muted);
+  /* 3.2:1 on white: incidental text only (timestamps, id stubs). */
+  --text-faint: #858a9b;
 
-  /* calendar tokens */
-  --mc-bg: #ffffff;
-  --mc-surface: #ffffff;
-  --mc-surface-alt: #f5f8f2;
-  --mc-text: #2c3327;
-  --mc-text-dim: #5a6350;
-  --mc-border: #e3e8dc;
-  --mc-border-soft: #eef2e9;
-  --mc-header-bg: #ffffff;
-  --mc-today-bg: #ebffcb;
+  /* calendar tokens. The grid itself is CONTENT: solid and sharp, never glass. */
+  --mc-bg: var(--glass-surface-solid);
+  --mc-surface: var(--glass-surface-solid); /* modals, popups, selects: solid */
+  --mc-surface-alt: var(--glass-ground);
+  --mc-text: var(--glass-ink);
+  --mc-text-dim: var(--glass-muted);
+  --mc-border: var(--glass-line);
+  --mc-border-soft: var(--glass-line);
+  --mc-header-bg: var(--glass-surface); /* the floating header: frosted */
+  --mc-today-bg: var(--accent-soft);
   --mc-today-text: var(--accent);
-  --mc-hover: #f2f6ec;
-  --mc-grid-line: #e9eee1;
-  --mc-shadow: 0 1px 0 rgba(0, 0, 0, 0.11);
+  --mc-hover: var(--glass-sunken);
+  --mc-grid-line: var(--glass-line);
+  --mc-shadow: none;
 }
 
-/* ── Dark theme ──────────────────────────────────────────────────────── */
+/* ── Dark theme: smoked glass ────────────────────────────────────────────
+   The --glass-* values switch themselves under this same marker; only the
+   few literal values above need a dark counterpart. */
 [data-theme="dark"] {
-  --bg-0: #0a0e13;
-  --bg-1: #0f1419;
-  --bg-2: #141a21;
-  --bg-3: #1b232c;
-  --bg-4: #232e39;
-  --border: #232b34;
-  --border-strong: #303a45;
-
-  --text: #e6eaef;
-  --text-dim: #9aa6b2;
-  --text-faint: #5c6772;
-
-  /* On a dark surface the brand lime needs no darkening — #A5FF11 is 14.1:1 on
-     --bg-2 — so ink and fill are the same value here. */
-  --accent: #a5ff11;
-  --accent-dim: #8fdd0e;
-  --accent-fill: #a5ff11;
-  --accent-fill-dim: #8fdd0e;
-  --accent-soft: rgba(165, 255, 17, 0.16);
-  --accent-text: #2d381b;
-  --danger-soft: rgba(255, 93, 108, 0.22);
-
-  --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
-
-  /* calendar tokens */
-  --mc-bg: #0f1419;
-  --mc-surface: #141a21;
-  --mc-surface-alt: #0f1419;
-  --mc-text: #e6eaef;
-  --mc-text-dim: #9aa6b2;
-  --mc-border: #232b34;
-  --mc-border-soft: #1b232c;
-  --mc-header-bg: #141a21;
-  --mc-today-bg: #24310f;
-  --mc-today-text: #a5ff11;
-  --mc-hover: #1b232c;
-  --mc-grid-line: #232b34;
-  --mc-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+  --accent-dim: #c3cfff;
+  --accent-fill-dim: #c7ccd9;
+  --text-faint: #6f7589;
+  --danger: #ff6b7a;
+  --danger-soft: rgba(255, 107, 122, 0.2);
+  --ok: #7fe0b0;
+  --warn: #f5a524;
+  color-scheme: dark;
 }
 
 /* ── Legacy alias names ───────────────────────────────────────────────────
@@ -147,17 +117,26 @@
   --secondary: var(--accent);
   --secondary-7: var(--accent-dim);
   --color-placeholder: var(--mc-text-dim);
-  --background-color-calendar-header: var(--mc-header-bg);
+  /* The mini-calendar header sits in a popover, which is solid, so it takes
+     the solid surface rather than the frosted app header's. */
+  --background-color-calendar-header: var(--mc-surface);
 }
 
 * {
   box-sizing: border-box;
 }
 
+/* The page: the glass ground with this app's tinted colour fields over it
+   (the `glass-fields` declarations). `background-color` stays the plain
+   ground so anything reading it gets one colour. */
 body {
+  margin: 0;
   font-family: var(--font);
-  background: var(--bg-0);
+  background-color: var(--bg-0);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
@@ -172,17 +151,17 @@ body {
   gap: 6px;
   height: 36px;
   padding: 0 16px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-3);
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
   color: var(--text);
-  font-size: 13px;
-  font-weight: 500;
-  border: 1px solid var(--border);
+  font-size: 13.5px;
+  font-weight: 600;
+  border: 1px solid var(--border-strong);
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, transform 0.06s;
 }
 .mc-btn:hover {
-  background: var(--bg-4);
+  background: var(--bg-3);
   border-color: var(--border-strong);
 }
 .mc-btn:active {
@@ -192,14 +171,13 @@ body {
   opacity: 0.45;
   cursor: not-allowed;
 }
-/* The brand CTA: lime fill, near-black label. */
+/* The primary CTA: the glass ink fill under its own on-ink label. */
 .mc-btn--primary {
   background: var(--accent-fill);
   color: var(--accent-text);
   border-color: var(--accent-fill);
-  /* 500, not 600. On a fill this bright, semi-bold reads as shouting; the
-     contrast is doing the emphasis already. */
-  font-weight: 500;
+  font-weight: 600;
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
 }
 .mc-btn--primary:hover {
   background: var(--accent-fill-dim);
@@ -229,8 +207,8 @@ body {
   height: 36px;
   padding: 0 12px;
   background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
   color: var(--text);
   font-size: 13px;
   outline: none;
@@ -243,8 +221,7 @@ body {
 .mc-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(5, 8, 11, 0.55);
-  backdrop-filter: blur(3px);
+  background: rgba(14, 18, 34, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -259,8 +236,8 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  background: var(--glass-surface-solid);
   color: var(--text);
   cursor: pointer;
   font-size: 16px;

@@ -9,9 +9,9 @@
     box-shadow: var(--shadow-sm);
     font-weight: 500;
     font-size: 1.3rem;
-    color: var(--accent);
+    color: var(--mc-text);
     background: var(--mc-surface);
-    border-radius: 4px;
+    border-radius: 999px;
     display: flex;
     align-items: center;
     cursor: pointer;
@@ -64,8 +64,8 @@
       overscroll-behavior: contain;
 
       background: var(--mc-surface);
-      border: 1px solid var(--mc-border);
-      border-radius: 6px;
+      border: 1px solid var(--glass-edge);
+      border-radius: var(--glass-radius);
       box-shadow: var(--shadow);
     }
   }
