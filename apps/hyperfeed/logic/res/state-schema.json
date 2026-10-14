@@ -167,6 +167,123 @@
         }
       ]
     },
+    "ActionDef": {
+      "kind": "record",
+      "doc": "One action, as your agent proposes it and settings shows it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Stable within the app, e.g. `edit`; your setting for it is kept by it."
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What it is, for you: \"Edit documents\"."
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One line on what it covers: \"Write, format and reorder text\"."
+        },
+        {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The guard that always covers it, or empty when that depends on the\ncall (sending to someone new): then the category the agent names stands."
+        },
+        {
+          "name": "writes",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether it changes anything. An action that only reads always may run."
+        },
+        {
+          "name": "methods",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "The app's methods it covers, by name."
+        }
+      ]
+    },
+    "ActionRule": {
+      "kind": "record",
+      "doc": "Your setting for one action, kept by `<app>/<action id>`. It outlives the\nset it was made under: a new version's action with the same id keeps it.",
+      "fields": [
+        {
+          "name": "mode",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`ACTION_MODES`], or empty to follow the app again."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ActionSet": {
+      "kind": "record",
+      "doc": "An app version's actions, as your agent learned them from its ABI.",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "actions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ActionDef"
+            }
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One line for you: what changed, or what the set covers."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "[`LENS_PROPOSED`], [`LENS_APPROVED`] or [`LENS_REJECTED`]."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "AgentAccount": {
       "kind": "record",
       "doc": "An agent's own account you added to the feed, by account.",
@@ -648,6 +765,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "How each app version's events become feed items, by `<app>@<application id>`."
+        },
+        {
+          "name": "action_sets",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ActionSet"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "What your agent can do in each app version, by `<app>@<application id>`.\nSee [`actions`]."
+        },
+        {
+          "name": "action_rules",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ActionRule"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your setting for each action apart from its app, by `<app>/<action id>`."
         },
         {
           "name": "archived",

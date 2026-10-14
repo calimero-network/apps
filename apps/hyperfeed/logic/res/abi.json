@@ -206,6 +206,57 @@
         }
       ]
     },
+    "ActionDef": {
+      "kind": "record",
+      "doc": "One action, as your agent proposes it and settings shows it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Stable within the app, e.g. `edit`; your setting for it is kept by it."
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What it is, for you: \"Edit documents\"."
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One line on what it covers: \"Write, format and reorder text\"."
+        },
+        {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The guard that always covers it, or empty when that depends on the\ncall (sending to someone new): then the category the agent names stands."
+        },
+        {
+          "name": "writes",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether it changes anything. An action that only reads always may run."
+        },
+        {
+          "name": "methods",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "The app's methods it covers, by name."
+        }
+      ]
+    },
     "ActionInput": {
       "kind": "record",
       "doc": "What the agent reports for one action.",
@@ -332,6 +383,140 @@
             "kind": "string"
           },
           "doc": "For a draft you send yourself: the call that sends it in its app,\n`{\"method\": ..., \"args\": {...}}`, where `\"=answer\"` in an arg is your\nedit of the draft. Your client makes it as you when you approve; the\nagent never does. Only on a proposal. See `members.rs`."
+        }
+      ]
+    },
+    "ActionModeView": {
+      "kind": "record",
+      "doc": "One action you set apart from its app's mode.",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "action",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mode",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ActionRule": {
+      "kind": "record",
+      "doc": "Your setting for one action, kept by `<app>/<action id>`. It outlives the\nset it was made under: a new version's action with the same id keeps it.",
+      "fields": [
+        {
+          "name": "mode",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`ACTION_MODES`], or empty to follow the app again."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ActionSet": {
+      "kind": "record",
+      "doc": "An app version's actions, as your agent learned them from its ABI.",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "actions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ActionDef"
+            }
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One line for you: what changed, or what the set covers."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "[`LENS_PROPOSED`], [`LENS_APPROVED`] or [`LENS_REJECTED`]."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ActionSetView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "actions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ActionDef"
+            }
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
         }
       ]
     },
@@ -917,6 +1102,23 @@
       "fields": [
         {
           "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ActionsChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "app",
           "type": {
             "kind": "string"
           }
@@ -1692,6 +1894,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "How each app version's events become feed items, by `<app>@<application id>`."
+        },
+        {
+          "name": "action_sets",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ActionSet"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "What your agent can do in each app version, by `<app>@<application id>`.\nSee [`actions`]."
+        },
+        {
+          "name": "action_rules",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ActionRule"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your setting for each action apart from its app, by `<app>/<action id>`."
         },
         {
           "name": "archived",
@@ -3662,6 +3892,16 @@
           "doc": "Your rules for one agent only, by agent then oldest first. Each agent\nkeeps `rules` and then its own. Absent on a feed made before them."
         },
         {
+          "name": "action_modes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ActionModeView"
+            }
+          },
+          "doc": "Actions you set apart from their app's mode, by app then action.\nAbsent on a feed made before actions."
+        },
+        {
           "name": "agent_accounts",
           "type": {
             "kind": "list",
@@ -4141,6 +4381,18 @@
   },
   "methods": [
     {
+      "name": "action_sets",
+      "doc": "Every app's actions, newest first: what your agent learned for each\napp version, and whether you approved it. An app's newest approved set\nis the one in force.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ActionSetView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "add_agent_account",
       "doc": "Add an agent with an account of its own (a cloud agent, say) under\n`name`, the name it reports in with. From then on it works your feed as\nyour agent does, speaking only as `name`; what decides for you stays\nyours. Adding it again renames it. It must also be a member of this\nfeed's context: invite it there as you would anyone.",
       "params": [
@@ -4597,7 +4849,7 @@
     },
     {
       "name": "check_action",
-      "doc": "What your rules say about an action before the agent takes it.",
+      "doc": "What your rules say about an action before the agent takes it. Name\nthe app `method` it calls: once you approved the app's actions, they\ndecide what the call is, not `category` and `writes`. Older agents omit\nit and are judged by what they say.",
       "params": [
         {
           "name": "app_key",
@@ -4616,6 +4868,13 @@
           "type": {
             "kind": "bool"
           }
+        },
+        {
+          "name": "method",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
         }
       ],
       "returns": {
@@ -4727,6 +4986,34 @@
       ],
       "returns": {
         "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "decide_actions",
+      "doc": "Approve or turn down the actions your agent proposed for an app\nversion. Once approved they decide what each call in the app is, and\na method none of them names asks you every time.",
+      "params": [
+        {
+          "name": "app_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "decision",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ActionSetView"
       },
       "intent": "mutating"
     },
@@ -4952,6 +5239,43 @@
         }
       },
       "intent": "read_only"
+    },
+    {
+      "name": "propose_actions",
+      "doc": "The agent proposes an app version's actions, learned from its ABI:\nwhich methods make up each thing you would recognise (\"Edit\ndocuments\"), whether it writes, and the guard that covers it. It waits\nfor you; the app's newest approved set stays in force meanwhile. The\nsame actions proposed again change nothing.",
+      "params": [
+        {
+          "name": "app_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "actions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ActionDef"
+            }
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ActionSetView"
+      },
+      "intent": "mutating"
     },
     {
       "name": "propose_lens",
@@ -5386,6 +5710,34 @@
       "intent": "mutating"
     },
     {
+      "name": "set_action_mode",
+      "doc": "Set one action apart from its app's mode: `act` without asking, `ask`\nfirst, `off`, or empty to follow the app again. Your guards and the\npause still apply.",
+      "params": [
+        {
+          "name": "app_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "action",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mode",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "set_assignment",
       "doc": "Assign `app_key` to `agent` (its name, as it reports in): from then on\nonly that agent takes the app's work and calls it. An empty `agent`\ngives the app back to your default agent. Your agent's runtime refuses\nthis method to the agent, so only you move an app between agents.",
       "params": [
@@ -5663,6 +6015,13 @@
       "payload": {
         "$ref": "Event_ActionRecorded"
       }
+    },
+    {
+      "name": "ActionsChanged",
+      "payload": {
+        "$ref": "Event_ActionsChanged"
+      },
+      "doc": "An app's actions were proposed, approved or turned down: re-read\n`action_sets`."
     },
     {
       "name": "ArchiveChanged",

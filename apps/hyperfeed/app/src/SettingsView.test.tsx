@@ -36,9 +36,15 @@ describe("Settings: one section at a time", () => {
   it("lists its sections, marks the open one, and shows only that one", async () => {
     render(<Harness backend={new DemoBackend(true, 0)} />);
     const links = within(await nav()).getAllByRole("link");
-    expect(links.map((l) => l.textContent?.replace(/\d+$/, ""))).toEqual(["Controls", "Rules", "Agents", "Lenses"]);
+    expect(links.map((l) => l.textContent?.replace(/\d+$/, ""))).toEqual(["Controls", "Actions", "Rules", "Agents", "Lenses"]);
     expect(within(await nav()).getByRole("link", { current: "page" })).toHaveTextContent("Controls");
-    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/settings/controls", "/settings/rules", "/settings/agents", "/settings/lenses"]);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual([
+      "/settings/controls",
+      "/settings/actions",
+      "/settings/rules",
+      "/settings/agents",
+      "/settings/lenses",
+    ]);
     expect(await screen.findByRole("region", { name: "Always ask me before" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "General rules" })).toBeNull();
     expect(screen.queryByRole("region", { name: "What your feed reads from each app" })).toBeNull();
@@ -131,6 +137,47 @@ describe("Settings → Controls: what your agent may do, app by app", () => {
   it("lists the usual apps until the node says what is installed", async () => {
     render(<Harness backend={new DemoBackend(false, 0)} />);
     expect(await names()).toEqual(DEFAULT_APPS.map((a) => appLook(a).name));
+  });
+});
+
+describe("Settings → Actions: what your agent can do in each app", () => {
+  it("lists an app's actions in words, with what each covers and your setting", async () => {
+    render(<Harness backend={new DemoBackend(true, 0)} section="actions" />);
+    const chat = await screen.findByRole("list", { name: "Actions in Chat" });
+    expect(within(chat).getByText("Edit your messages")).toBeInTheDocument();
+    expect(within(chat).getByText("Only reads", { exact: false })).toBeInTheDocument();
+    expect(within(chat).getByText("Always asks: Deleting anything")).toBeInTheDocument();
+    const edit = within(chat).getByRole("group", { name: "Edit your messages in Chat" });
+    expect(within(edit).getByRole("button", { name: "Act" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(chat).getAllByText(/What this covers/).length).toBeGreaterThan(0);
+  });
+
+  it("sets one action apart from its app, and back", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} section="actions" />);
+    const send = await screen.findByRole("group", { name: "Send messages in Chat" });
+    fireEvent.click(within(send).getByRole("button", { name: "Off" }));
+    await waitFor(() => expect(backend.verdict("chat", "", true, "send_message").decision).toBe("refuse"));
+    fireEvent.click(within(send).getByRole("button", { name: "Follow app" }));
+    await waitFor(() => expect(backend.verdict("chat", "", true, "send_message").decision).not.toBe("refuse"));
+  });
+
+  it("counts the actions waiting for you, and approves them", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} section="actions" />);
+    const link = within(await screen.findByRole("navigation", { name: "Settings" })).getByRole("link", { name: /Actions/ });
+    expect(await within(link).findByLabelText("1 waiting for you")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Actions in Docs" })).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    expect(await screen.findByRole("list", { name: "Actions in Docs" })).toBeInTheDocument();
+    expect(backend.verdict("docs", "", true, "delete_doc").reason).toContain('"delete"');
+  });
+
+  it("says what to do on a feed made before actions", async () => {
+    const backend = new DemoBackend(false, 0);
+    Object.assign(backend, { setActionMode: undefined });
+    render(<Harness backend={backend} section="actions" />);
+    expect(await screen.findByText(/can't hold actions/)).toBeInTheDocument();
   });
 });
 

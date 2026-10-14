@@ -453,3 +453,78 @@ describe("drafts you send, and agent accounts", () => {
     expect((await b.settings()).agent_accounts).toEqual([]);
   });
 });
+
+describe("DemoBackend follows approved actions, as the contract does", () => {
+  const def = (id: string, label: string, category: string, writes: boolean, methods: string[]) => ({
+    id, label, description: "", category, writes, methods,
+  });
+  const chat = [
+    def("read", "Read messages", "", false, ["get_messages", "search"]),
+    def("send", "Send messages", "", true, ["send_message", "reply"]),
+    def("edit", "Edit your messages", "", true, ["edit_message"]),
+    def("delete", "Delete your messages", "delete", true, ["delete_message"]),
+  ];
+  const approved = async (b: DemoBackend, version = "app-1", actions = chat) => {
+    await b.proposeActions("chat", version, actions, "Chat");
+    await b.decideActions("chat", version, "approve");
+  };
+
+  it("lets approved actions decide what a call is", async () => {
+    const b = fresh();
+    await b.setPolicy("chat", "act", "feed");
+    expect(b.verdict("chat", "", true, "delete_message").decision).toBe("act");
+    await b.proposeActions("chat", "app-1", chat, "Chat");
+    expect(b.verdict("chat", "", true, "delete_message").decision).toBe("act");
+    await b.decideActions("chat", "app-1", "approve");
+    expect(b.verdict("chat", "", true, "delete_message").reason).toContain('"delete"');
+    expect(b.verdict("chat", "new_contact", true, "send_message").decision).toBe("ask");
+    expect(b.verdict("chat", "", true, "send_message").decision).toBe("act");
+    expect(b.verdict("chat", "", true, "search").decision).toBe("act");
+    expect(b.verdict("chat", "", false, "drop_channel").reason).toContain("isn't one of chat's actions");
+    expect(b.verdict("chat", "", true).decision).toBe("act");
+
+    const undescribed = await b.recordAction(action("chat", "done", { method: "drop_channel" }));
+    expect(undescribed.breach).toMatch(/^acted without asking/);
+    const deleted = await b.recordAction(action("chat", "done", { method: "delete_message" }));
+    expect(deleted.category).toBe("delete");
+  });
+
+  it("sets each action apart from its app, under the guards", async () => {
+    const b = fresh();
+    await approved(b);
+    await b.setActionMode("chat", "edit", "act");
+    expect(b.verdict("chat", "", true, "edit_message").reason).toContain("Edit your messages");
+    expect(b.verdict("chat", "", true, "send_message").decision).toBe("ask");
+    await b.setActionMode("chat", "delete", "act");
+    expect(b.verdict("chat", "", true, "delete_message").decision).toBe("ask");
+    await b.setActionMode("chat", "send", "off");
+    await expect(b.recordAction(action("chat", "proposed"))).rejects.toThrow(/you turned off/);
+    await b.setActionMode("chat", "send", "");
+    expect((await b.settings()).action_modes).toEqual([
+      { app: "chat", action: "delete", mode: "act" },
+      { app: "chat", action: "edit", mode: "act" },
+    ]);
+  });
+
+  it("keeps the newest approved actions in force while new ones wait", async () => {
+    const b = fresh();
+    await b.setPolicy("chat", "act", "feed");
+    await approved(b);
+    await b.proposeActions("chat", "app-2", chat.slice(0, 3), "v2");
+    expect(b.verdict("chat", "", true, "delete_message").reason).toContain('"delete"');
+    await b.decideActions("chat", "app-2", "approve");
+    expect(b.verdict("chat", "", true, "delete_message").reason).toContain("isn't one of chat's actions");
+    expect((await b.actionSets()).map((s) => s.application_id)).toEqual(["app-2", "app-1"]);
+  });
+
+  it("holds a session grant to one action", async () => {
+    const b = fresh();
+    await approved(b);
+    const proposal = await b.recordAction(action("chat", "proposed", { ask: ask("choose", ["Allow once", "Allow for this session"]) }));
+    await b.resolveAction(proposal.id, "approve", "Allow for this session");
+    const reply = await b.recordAction(action("chat", "done", { method: "reply", grant: proposal.id }));
+    expect(reply.breach).toBe("");
+    const edit = await b.recordAction(action("chat", "done", { method: "edit_message", grant: proposal.id }));
+    expect(edit.breach).not.toBe("");
+  });
+});

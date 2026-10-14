@@ -104,6 +104,11 @@ pub use watches::{
 mod prs;
 pub use prs::{PrInput, PrSeen, PrView, CHECK_STATES, MAX_FAILING, MAX_PRS, PR_STATES};
 
+mod actions;
+pub use actions::{
+    ActionDef, ActionModeView, ActionRule, ActionSet, ActionSetView, ACTION_MODES, MAX_ACTIONS,
+    MAX_ACTION_METHODS,
+};
 mod links;
 pub use links::{
     split_subject, Link, LinkInput, LinkView, FROM_SUBJECT, LINK_BY, MAX_LINKS, TASK_SUBJECT,
@@ -1470,6 +1475,10 @@ pub struct SettingsView {
     /// keeps `rules` and then its own. Absent on a feed made before them.
     #[serde(default)]
     pub agent_rules: Vec<AgentRuleView>,
+    /// Actions you set apart from their app's mode, by app then action.
+    /// Absent on a feed made before actions.
+    #[serde(default)]
+    pub action_modes: Vec<ActionModeView>,
     /// Agents with accounts of their own you added, by name. Absent on a feed
     /// made before them.
     #[serde(default)]
@@ -1544,6 +1553,11 @@ pub struct Hyperfeed {
     typed: UnorderedMap<String, Typed>,
     /// How each app version's events become feed items, by `<app>@<application id>`.
     lenses: UnorderedMap<String, Lens>,
+    /// What your agent can do in each app version, by `<app>@<application id>`.
+    /// See [`actions`].
+    action_sets: UnorderedMap<String, ActionSet>,
+    /// Your setting for each action apart from its app, by `<app>/<action id>`.
+    action_rules: UnorderedMap<String, ActionRule>,
     /// Chains you put away, by chain id.
     archived: UnorderedMap<String, Archived>,
     /// Agents that report in, by name.
@@ -1642,6 +1656,12 @@ pub enum Event<'a> {
         app: &'a str,
         status: &'a str,
     },
+    /// An app's actions were proposed, approved or turned down: re-read
+    /// `action_sets`.
+    ActionsChanged {
+        app: &'a str,
+        status: &'a str,
+    },
     /// Chains were put away or brought back: re-read the feed.
     ArchiveChanged {
         count: u32,
@@ -1696,6 +1716,8 @@ impl Hyperfeed {
             messages: UnorderedMap::new(),
             typed: UnorderedMap::new(),
             lenses: UnorderedMap::new(),
+            action_sets: UnorderedMap::new(),
+            action_rules: UnorderedMap::new(),
             archived: UnorderedMap::new(),
             presence: UnorderedMap::new(),
             asks: UnorderedMap::new(),
@@ -1866,16 +1888,25 @@ impl Hyperfeed {
         Ok(self.agent.get("main")?.is_some_and(|a| a.paused))
     }
 
-    fn verdict(&self, app: &str, category: &str, writes: bool) -> app::Result<Verdict> {
+    /// The rules' answer for a call the app's actions resolved: the app's
+    /// mode, then the pause, your guards and your setting for the action.
+    fn verdict_for(&self, app: &str, call: &actions::Resolved) -> app::Result<Verdict> {
         let policy = self.policy_for(app)?;
         let answer = |decision: &str, reason: String| Verdict {
             decision: decision.to_owned(),
             reason,
         };
+        let label = call.action.as_ref().map(|a| a.label.as_str());
         if policy.agent == "off" {
             return Ok(answer("refuse", format!("your agent is off in {app}")));
         }
-        if !writes {
+        if let (Some(label), "off") = (label, call.mode.as_str()) {
+            return Ok(answer(
+                "refuse",
+                format!("you turned off \"{label}\" in {app}"),
+            ));
+        }
+        if !call.writes {
             return Ok(answer("act", format!("reading in {app} is allowed")));
         }
         if policy.agent == "read" {
@@ -1887,8 +1918,29 @@ impl Hyperfeed {
         if self.is_paused()? {
             return Ok(answer("ask", "your agent is paused".to_owned()));
         }
-        if self.guard_on(category)? {
-            return Ok(answer("ask", format!("\"{category}\" always needs you")));
+        if self.guard_on(&call.category)? {
+            return Ok(answer(
+                "ask",
+                format!("\"{}\" always needs you", call.category),
+            ));
+        }
+        if call.uncovered {
+            return Ok(answer(
+                "ask",
+                format!("this isn't one of {app}'s actions yet"),
+            ));
+        }
+        match (label, call.mode.as_str()) {
+            (Some(label), "ask") => {
+                return Ok(answer("ask", format!("\"{label}\" asks first in {app}")))
+            }
+            (Some(label), "act") => {
+                return Ok(answer(
+                    "act",
+                    format!("you let your agent \"{label}\" in {app}"),
+                ))
+            }
+            _ => {}
         }
         if policy.agent == "ask" {
             return Ok(answer("ask", format!("your agent asks first in {app}")));
@@ -1896,21 +1948,34 @@ impl Hyperfeed {
         Ok(answer("act", format!("your agent may act in {app}")))
     }
 
-    /// Whether `grant` lets an outcome in `app` stand without asking: the
-    /// app's mode is Ask, nothing else (a pause, a guard) needs you, and
-    /// `grant` is a proposal in that app you allowed for the session within
-    /// [`GRANT_WINDOW_MS`].
-    fn granted(&self, grant: &str, app: &str, category: &str, now: u64) -> app::Result<bool> {
+    /// Whether `grant` lets an outcome in `app` stand without asking: only
+    /// the app's mode, or your setting for the action, asked for you (not a
+    /// pause, a guard or a method no action names), and `grant` is a proposal
+    /// in that app, for the same action when the app has actions, that you
+    /// allowed for the session within [`GRANT_WINDOW_MS`].
+    fn granted(
+        &self,
+        grant: &str,
+        app: &str,
+        call: &actions::Resolved,
+        now: u64,
+    ) -> app::Result<bool> {
         if grant.is_empty()
-            || self.policy_for(app)?.agent != "ask"
+            || self.policy_for(app)?.agent == "off"
+            || call.mode == "off"
+            || call.uncovered
             || self.is_paused()?
-            || self.guard_on(category)?
+            || self.guard_on(&call.category)?
         {
             return Ok(false);
         }
         let Some(proposal) = self.actions.get(grant)? else {
             return Ok(false);
         };
+        let action = call.action.as_ref().map(|a| a.id.clone());
+        if action.is_some() && self.action_of(app, &proposal.method)? != action {
+            return Ok(false);
+        }
         Ok(proposal.app == app
             && proposal.history.iter().any(|s| {
                 s.status == STATUS_APPROVED
@@ -2542,16 +2607,23 @@ impl Hyperfeed {
 
     // ── the agent's side ─────────────────────────────────────────────────────
 
-    /// What your rules say about an action before the agent takes it.
+    /// What your rules say about an action before the agent takes it. Name
+    /// the app `method` it calls: once you approved the app's actions, they
+    /// decide what the call is, not `category` and `writes`. Older agents omit
+    /// it and are judged by what they say.
     pub fn check_action(
         &self,
         app_key: String,
         category: String,
         writes: bool,
+        method: Option<String>,
     ) -> app::Result<Verdict> {
         Self::check_app(&app_key)?;
         Self::check_category(&category)?;
-        self.verdict(&app_key, &category, writes)
+        let method = method.unwrap_or_default();
+        Self::check_len("method", &method, MAX_SHORT, false)?;
+        let call = self.resolve_call(&app_key, &method, &category, writes)?;
+        self.verdict_for(&app_key, &call)
     }
 
     /// Record an action: a proposal for you to approve, or an outcome.
@@ -2597,12 +2669,17 @@ impl Hyperfeed {
         }
 
         let now = now_ms();
+        let mut call =
+            self.resolve_call(&input.app, &input.method, &input.category, input.writes)?;
         // A draft you send is the agent reading and proposing; the write is
         // yours. So an app your agent may only read still takes one.
-        let verdict = self.verdict(&input.app, &input.category, input.writes && !sends)?;
+        let writes = call.writes;
+        call.writes = writes && !sends;
+        let verdict = self.verdict_for(&input.app, &call)?;
+        call.writes = writes;
         // An unknown or stale grant is not an error: the outcome still happened,
         // and is recorded with its breach.
-        let granted = self.granted(&input.grant, &input.app, &input.category, now)?;
+        let granted = self.granted(&input.grant, &input.app, &call, now)?;
         let (status, breach) = match (input.outcome.as_str(), verdict.decision.as_str()) {
             ("proposed", "refuse") => {
                 return Err(AppError::msg(format!("not allowed: {}", verdict.reason)))
@@ -2628,8 +2705,9 @@ impl Hyperfeed {
             source_context: input.source_context,
             source_label: input.source_label,
             method: input.method,
-            category: input.category,
-            writes: input.writes,
+            // What the app's actions say it is, when they name it.
+            category: call.category,
+            writes: call.writes,
             // The agent undoes what it did; it did not send this.
             undoable: input.undoable && !sends,
             title: input.title,
@@ -3393,6 +3471,45 @@ impl Hyperfeed {
             status: &lens.status,
         });
         Ok(Self::lens_view(lens))
+    }
+
+    /// The agent proposes an app version's actions, learned from its ABI:
+    /// which methods make up each thing you would recognise ("Edit
+    /// documents"), whether it writes, and the guard that covers it. It waits
+    /// for you; the app's newest approved set stays in force meanwhile. The
+    /// same actions proposed again change nothing.
+    pub fn propose_actions(
+        &mut self,
+        app_key: String,
+        application_id: String,
+        actions: Vec<ActionDef>,
+        summary: String,
+    ) -> app::Result<ActionSetView> {
+        self.actions_propose(app_key, application_id, actions, summary)
+    }
+
+    /// Approve or turn down the actions your agent proposed for an app
+    /// version. Once approved they decide what each call in the app is, and
+    /// a method none of them names asks you every time.
+    pub fn decide_actions(
+        &mut self,
+        app_key: String,
+        application_id: String,
+        decision: String,
+    ) -> app::Result<ActionSetView> {
+        self.actions_decide(app_key, application_id, decision)
+    }
+
+    /// Set one action apart from its app's mode: `act` without asking, `ask`
+    /// first, `off`, or empty to follow the app again. Your guards and the
+    /// pause still apply.
+    pub fn set_action_mode(
+        &mut self,
+        app_key: String,
+        action: String,
+        mode: String,
+    ) -> app::Result<()> {
+        self.action_mode_set(app_key, action, mode)
     }
 
     /// Pause the agent: every write it wants to make becomes a proposal.
@@ -4501,6 +4618,13 @@ impl Hyperfeed {
         }
     }
 
+    /// Every app's actions, newest first: what your agent learned for each
+    /// app version, and whether you approved it. An app's newest approved set
+    /// is the one in force.
+    pub fn action_sets(&self) -> app::Result<Vec<ActionSetView>> {
+        self.action_set_list()
+    }
+
     /// Every lens, newest first: what your agent learned for each app version,
     /// and whether you approved it.
     pub fn lenses(&self) -> app::Result<Vec<LensView>> {
@@ -4603,6 +4727,7 @@ impl Hyperfeed {
             reach,
             assignments,
             agent_rules: self.active_agent_rules()?,
+            action_modes: self.action_mode_list()?,
             agent_accounts: self.agent_account_list()?,
         })
     }

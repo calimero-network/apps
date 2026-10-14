@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  ActionSetView,
   Attachment,
   CheckpointView,
   FeedItem,
@@ -15,7 +16,7 @@ import type {
   WatchView,
 } from "./generated/HyperfeedClient";
 import { fillReplyCall } from "./lens/lens";
-import type { AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
+import type { ActionMode, AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
 import type { BlobStore } from "./attachments";
 
 export interface Feed {
@@ -23,6 +24,8 @@ export interface Feed {
   settings: SettingsView | null;
   /** What your agent learned for each app version, newest first. */
   lenses: LensView[];
+  /** What your agent can do in each app version, newest first; [] on a feed made before actions. */
+  actionSets: ActionSetView[];
   /**
    * The feed was made by a Hyperfeed from before lenses: it works, but holds
    * no lenses or typed rows until it is created again with the latest one.
@@ -45,6 +48,9 @@ export interface Feed {
    */
   answer: (id: string, answer: string) => Promise<void>;
   decideLens: (appKey: string, applicationId: string, decision: "approve" | "reject") => Promise<void>;
+  decideActions: (appKey: string, applicationId: string, decision: "approve" | "reject") => Promise<void>;
+  /** Set one action apart from its app's mode; absent on a feed made before actions. */
+  setActionMode?: (appKey: string, action: string, mode: ActionMode) => Promise<void>;
   /**
    * Talk to your agent about a chain ("" starts a new one). Resolves to your
    * message, so the caller can open its chain; null when the node refused it.
@@ -147,6 +153,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
   const [page, setPage] = useState<FeedPage | null>(null);
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [lenses, setLenses] = useState<LensView[]>([]);
+  const [actionSets, setActionSets] = useState<ActionSetView[]>([]);
   const [outdated, setOutdated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -177,10 +184,12 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
           if (/method "?lenses"? not found/i.test(messageOf(e))) return null;
           throw e;
         });
-        const [p, s, l] = await Promise.all([backend.feed(filter, appKey), backend.settings(), lensesOrOld]);
+        const actionsOrNone = backend.actionSets ? backend.actionSets() : Promise.resolve([]);
+        const [p, s, l, a] = await Promise.all([backend.feed(filter, appKey), backend.settings(), lensesOrOld, actionsOrNone]);
         setPage(p);
         setSettings(s);
         setLenses(l ?? []);
+        setActionSets(a);
         setOutdated(l === null);
         const stale = readError.current;
         readError.current = null;
@@ -227,6 +236,11 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
   const setAccess = useCallback(
     (agent: string, folders: Folder[], shell: boolean, web: boolean) =>
       run((b) => (b.setAccess ? b.setAccess(agent, folders, shell, web) : Promise.resolve())),
+    [run],
+  );
+  const setActionMode = useCallback(
+    (app: string, action: string, mode: ActionMode) =>
+      run((b) => (b.setActionMode ? b.setActionMode(app, action, mode) : Promise.resolve())),
     [run],
   );
   const setAssignment = useCallback(
@@ -278,6 +292,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     page,
     settings,
     lenses,
+    actionSets,
     outdated,
     error,
     busy,
@@ -310,6 +325,12 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       (appKey, applicationId, decision) => run((b) => b.decideLens(appKey, applicationId, decision)),
       [run],
     ),
+    decideActions: useCallback(
+      (appKey, applicationId, decision) =>
+        run((b) => (b.decideActions ? b.decideActions(appKey, applicationId, decision) : Promise.resolve())),
+      [run],
+    ),
+    setActionMode: backend?.setActionMode ? setActionMode : undefined,
     say: useCallback(
       async (chain, text, attachments, mode) => {
         let posted: FeedItem | null = null;
