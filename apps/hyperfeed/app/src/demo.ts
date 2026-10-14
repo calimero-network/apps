@@ -1,5 +1,7 @@
 import type {
+  ActionDef,
   ActionInput,
+  ActionSetView,
   AppCount,
   Ask,
   Attachment,
@@ -17,13 +19,22 @@ import type {
   TurnStep,
   Verdict,
 } from "./generated/HyperfeedClient";
-import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter, type NotificationMode } from "./backend";
+import { PAGE_SIZE, type ActionMode, type AgentMode, type Decision, type FeedBackend, type Filter, type NotificationMode } from "./backend";
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
 import { mergeWatchInput, moveWatch, newWatch } from "./watches";
 import { replySubject, splitSubject } from "./subject";
-import type { AccessView, AgentRuleView, AssignmentView, Folder, LinkView, PrInput, PrView, ReachLine, ReachView, WatchInput, WatchView } from "./generated/HyperfeedClient";
+import type { AccessView, AgentAccountView, AgentRuleView, AssignmentView, Folder, LinkView, PrInput, PrView, ReachLine, ReachView, WatchInput, WatchView } from "./generated/HyperfeedClient";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
+import chatActions from "./actions/fixtures/chat.json";
+import docsActions from "./actions/fixtures/docs.json";
+import calendarActions from "./actions/fixtures/calendar.json";
+import sheetsActions from "./actions/fixtures/sheets.json";
+import issuesActions from "./actions/fixtures/issues.json";
+import crmActions from "./actions/fixtures/crm.json";
+import signActions from "./actions/fixtures/sign.json";
+import passActions from "./actions/fixtures/pass.json";
+import nodeActions from "./actions/fixtures/node.json";
 
 /**
  * The Hyperfeed contract's rules, in memory, so the app can be tried without a
@@ -94,6 +105,7 @@ export class DemoBackend implements FeedBackend {
   private rules: RuleView[] = [];
   /** Your rules for one agent only, oldest first. */
   private agentRules: AgentRuleView[] = [];
+  private agentAccounts: AgentAccountView[] = [];
   /** What each agent may reach, and what each reported it can, by agent name. */
   private access = new Map<string, AccessView>();
   private reach = new Map<string, ReachView>();
@@ -102,6 +114,9 @@ export class DemoBackend implements FeedBackend {
   /** Chains put away: the chain's latest activity then, and when "later" brings it back (0: never). */
   private archivedChains = new Map<string, { at: number; until: number }>();
   private lensRows = new Map<string, LensView>();
+  /** Each app version's actions, by `<app>@<application id>`, and your setting for each action, by `<app>/<action>`. */
+  private actionRows = new Map<string, ActionSetView>();
+  private actionModes = new Map<string, ActionMode>();
   /** The chain that last touched each subject, by its key; see `subject.ts`. */
   private subjectChains = new Map<string, string>();
   /** What the feed sent into other apps, newest last: the demo's stand-in for them. */
@@ -118,6 +133,7 @@ export class DemoBackend implements FeedBackend {
   ) {
     if (seed) this.seed();
     if (seed) this.seedLenses();
+    if (seed) this.seedActions();
   }
 
   /** Called whenever the feed changes, as a node's event stream would. */
@@ -147,23 +163,68 @@ export class DemoBackend implements FeedBackend {
     return this.guards.get(category) ?? GUARDS.find(([name]) => name === category)?.[1] ?? false;
   }
 
-  verdict(app: string, category: string, writes: boolean): Verdict {
+  /** Mirrors `Hyperfeed::resolve_call`: what a call is, once the app's approved actions have had their say. */
+  private resolveCall(app: string, method: string, category: string, writes: boolean): Resolved {
+    const said: Resolved = { category, writes, mode: "", uncovered: false };
+    if (!method) return said;
+    const set = this.activeSet(app);
+    if (!set) return said;
+    const action = set.actions.find((a) => a.methods.includes(method));
+    // Nobody described it, so nothing says it only reads.
+    if (!action) return { ...said, writes: true, uncovered: true };
+    return {
+      // The action's guard when it names one; otherwise the agent's stands.
+      category: action.category || category,
+      writes: action.writes,
+      action,
+      mode: this.actionModes.get(`${app}/${action.id}`) ?? "",
+      uncovered: false,
+    };
+  }
+
+  /** The app's set in force: its newest approved one. */
+  private activeSet(app: string): ActionSetView | undefined {
+    let best: ActionSetView | undefined;
+    for (const s of this.actionRows.values()) {
+      if (s.app === app && s.status === "approved" && (!best || s.updated_at > best.updated_at)) best = s;
+    }
+    return best;
+  }
+
+  /** `method`: the app method the call makes; the app's approved actions then decide what it is. */
+  verdict(app: string, category: string, writes: boolean, method = ""): Verdict {
+    return this.verdictFor(app, this.resolveCall(app, method, category, writes));
+  }
+
+  /** Mirrors `Hyperfeed::verdict_for`. */
+  private verdictFor(app: string, call: Resolved): Verdict {
     const mode = this.policy(app).agent;
+    const label = call.action?.label;
     const answer = (decision: string, reason: string): Verdict => ({ decision, reason });
     if (mode === "off") return answer("refuse", `your agent is off in ${app}`);
-    if (!writes) return answer("act", `reading in ${app} is allowed`);
+    if (label && call.mode === "off") return answer("refuse", `you turned off "${label}" in ${app}`);
+    // A guard covers reads too: "Reading a secret" is about nothing else.
+    if (!call.writes && this.guardOn(call.category)) return answer("ask", `"${call.category}" always needs you`);
+    if (!call.writes) return answer("act", `reading in ${app} is allowed`);
     if (mode === "read") return answer("refuse", `your agent may only read in ${app}`);
     if (this.paused) return answer("ask", "your agent is paused");
-    if (this.guardOn(category)) return answer("ask", `"${category}" always needs you`);
+    if (this.guardOn(call.category)) return answer("ask", `"${call.category}" always needs you`);
+    if (call.uncovered) return answer("ask", `this isn't one of ${app}'s actions yet`);
+    if (label && call.mode === "ask") return answer("ask", `"${label}" asks first in ${app}`);
+    if (label && call.mode === "act") return answer("act", `you let your agent "${label}" in ${app}`);
     if (mode === "ask") return answer("ask", `your agent asks first in ${app}`);
     return answer("act", `your agent may act in ${app}`);
   }
 
-  /** Mirrors `Hyperfeed::granted`: a session you allowed in this app, under its Ask mode alone. */
-  private granted(grant: string, app: string, category: string): boolean {
-    if (!grant || this.policy(app).agent !== "ask" || this.paused || this.guardOn(category)) return false;
+  /**
+   * Mirrors `Hyperfeed::granted`: a session you allowed in this app, for the
+   * same action when the app has actions, where only a mode asked for you.
+   */
+  private granted(grant: string, app: string, call: Resolved): boolean {
+    if (!grant || this.policy(app).agent === "off" || call.mode === "off" || call.uncovered || this.paused || this.guardOn(call.category)) return false;
     const proposal = this.items.get(grant);
     if (proposal?.kind !== "action" || proposal.app !== app) return false;
+    if (call.action && this.resolveCall(app, proposal.method, "", true).action?.id !== call.action.id) return false;
     const now = this.now();
     return proposal.history.some((s) => s.status === "approved" && s.note === SESSION_GRANT && now - s.at <= GRANT_WINDOW_MS);
   }
@@ -320,6 +381,11 @@ export class DemoBackend implements FeedBackend {
       reach: [...this.reach.values()].map((r) => ({ ...r, lines: r.lines.map((l) => ({ ...l })) })).sort((a, b) => a.agent.localeCompare(b.agent)),
       assignments: [...this.assignments.values()].filter((a) => a.agent).map((a) => ({ ...a })).sort((a, b) => a.app.localeCompare(b.app)),
       agent_rules: this.agentRules.map((r) => ({ ...r })).sort((a, b) => a.agent.localeCompare(b.agent) || a.created_at - b.created_at),
+      action_modes: [...this.actionModes.entries()]
+        .filter(([, mode]) => mode)
+        .map(([key, mode]) => ({ app: key.slice(0, key.indexOf("/")), action: key.slice(key.indexOf("/") + 1), mode }))
+        .sort((a, b) => a.app.localeCompare(b.app) || a.action.localeCompare(b.action)),
+      agent_accounts: this.agentAccounts.map((a) => ({ ...a })).sort((a, b) => a.name.localeCompare(b.name)),
     };
   }
 
@@ -364,6 +430,23 @@ export class DemoBackend implements FeedBackend {
     this.agentRules.push(rule);
     this.changed();
     return { ...rule };
+  }
+
+  async addAgentAccount(account: string, name: string): Promise<void> {
+    const acc = account.trim();
+    const n = name.trim();
+    if (!acc) throw new Error("account must not be empty");
+    if (!n) throw new Error("name must not be empty");
+    const other = this.agentAccounts.find((a) => a.name === n && a.account !== acc);
+    if (other) throw new Error(`"${n}" is already the name of agent account ${other.account}; remove it first`);
+    this.agentAccounts = [...this.agentAccounts.filter((a) => a.account !== acc), { account: acc, name: n, added_at: this.tick() }];
+    this.changed();
+  }
+
+  async removeAgentAccount(account: string): Promise<void> {
+    if (!this.agentAccounts.some((a) => a.account === account)) throw new Error(`no agent account ${account}`);
+    this.agentAccounts = this.agentAccounts.filter((a) => a.account !== account);
+    this.changed();
   }
 
   async removeAgentRule(id: string): Promise<void> {
@@ -454,7 +537,8 @@ export class DemoBackend implements FeedBackend {
     this.breaches.delete(id);
     const updated = this.step({ ...item, reviewed_at: reviewedAt }, next, note);
     this.changed();
-    if (this.agentDelayMs > 0 && next !== "declined") setTimeout(() => this.agentCompletes(id), this.agentDelayMs);
+    // A draft with a reply call is sent by the feed itself, never by the agent.
+    if (this.agentDelayMs > 0 && next !== "declined" && !item.reply_call) setTimeout(() => this.agentCompletes(id), this.agentDelayMs);
     return updated;
   }
 
@@ -494,6 +578,18 @@ export class DemoBackend implements FeedBackend {
     return done;
   }
 
+  async completeAction(id: string, outcome: "done" | "failed", note: string): Promise<FeedItem> {
+    const item = this.get(id, "action");
+    const next =
+      item.status === "approved" || item.status === "retrying"
+        ? outcome
+        : null;
+    if (!next) throw new Error(`action ${id} is ${item.status}; nothing is waiting on the agent`);
+    const done = this.step(item, next, note);
+    this.changed();
+    return done;
+  }
+
   /** The other app, as far as the demo goes: it takes the call. */
   async callApp(contextId: string, method: string, args: Record<string, unknown>): Promise<unknown> {
     this.sent.push({ contextId, method, args });
@@ -512,6 +608,88 @@ export class DemoBackend implements FeedBackend {
     this.lensRows.set(key, next);
     this.changed();
     return { ...next };
+  }
+
+  async actionSets(): Promise<ActionSetView[]> {
+    return [...this.actionRows.values()].sort((a, b) => b.updated_at - a.updated_at).map(copySet);
+  }
+
+  /** What your agent does when it learns an app version's actions. Mirrors `propose_actions`. */
+  async proposeActions(appKey: string, applicationId: string, actions: ActionDef[], summary: string): Promise<ActionSetView> {
+    if (!actions.length) throw new Error("an app has 1 to 40 actions, got 0");
+    const methods = actions.flatMap((a) => a.methods);
+    const twice = methods.find((m, i) => methods.indexOf(m) !== i);
+    if (twice) throw new Error(`"${twice}" is in two actions; a method belongs to one`);
+    const key = `${appKey}@${applicationId}`;
+    const set: ActionSetView = {
+      app: appKey,
+      application_id: applicationId,
+      actions: actions.map((a) => ({ ...a, methods: [...a.methods] })),
+      summary,
+      status: "proposed",
+      updated_at: this.tick(),
+    };
+    this.actionRows.set(key, set);
+    this.changed();
+    return copySet(set);
+  }
+
+  async decideActions(appKey: string, applicationId: string, decision: "approve" | "reject"): Promise<ActionSetView> {
+    const key = `${appKey}@${applicationId}`;
+    const set = this.actionRows.get(key);
+    if (!set) throw new Error(`no actions for ${appKey} at ${applicationId}`);
+    const next = { ...set, status: decision === "approve" ? "approved" : "rejected", updated_at: this.tick() };
+    this.actionRows.set(key, next);
+    this.changed();
+    return copySet(next);
+  }
+
+  async setActionMode(appKey: string, action: string, mode: ActionMode): Promise<void> {
+    if (!["", "act", "ask", "off"].includes(mode)) throw new Error(`mode must be one of act, ask, off, got "${mode}"`);
+    this.actionModes.set(`${appKey}/${action}`, mode);
+    this.changed();
+  }
+
+  /** What the pretend agent learned: Chat's actions in force (editing your messages set to act), the other core apps' and node management's waiting for you. */
+  private seedActions() {
+    const at = this.now();
+    this.actionRows.set("chat@demo-chat", {
+      app: "chat",
+      application_id: "demo-chat",
+      actions: chatActions as ActionDef[],
+      summary: "Reading, sending, editing and deleting your messages; drafts, reactions, your profile and roles.",
+      status: "approved",
+      updated_at: at - 3 * 60 * MINUTE,
+    });
+    this.actionModes.set("chat/edit", "act");
+    this.actionRows.set("docs@demo-docs", {
+      app: "docs",
+      application_id: "demo-docs",
+      actions: docsActions as ActionDef[],
+      summary: "Reading, creating, editing and commenting on documents; tags, archive, and deleting.",
+      status: "proposed",
+      updated_at: at - 4 * MINUTE,
+    });
+    // The other core apps' actions, learned and waiting for you.
+    const waiting: [string, unknown, string][] = [
+      ["calendar", calendarActions, "Reading, adding, changing and deleting events, and your display name."],
+      ["sheets", sheetsActions, "Reading and editing workbooks, comments, charts and links; roles, protected ranges and deleting."],
+      ["issues", issuesActions, "Reading, filing, triaging and commenting on issues, and deleting them."],
+      ["crm", crmActions, "Reading the pipeline; contacts, deals, activities and stages; deleting."],
+      ["sign", signActions, "Reading, uploading and signing documents; signers, shared spaces and deleting."],
+      ["pass", passActions, "Reading the vault and its secrets; adding, trashing and purging secrets; devices and members."],
+      ["node", nodeActions, "Seeing what's on your node; installing apps, making and joining spaces, inviting people, leaving and deleting."],
+    ];
+    waiting.forEach(([app, actions, summary], i) => {
+      this.actionRows.set(`${app}@demo-${app}`, {
+        app,
+        application_id: `demo-${app}`,
+        actions: actions as ActionDef[],
+        summary,
+        status: "proposed",
+        updated_at: at - (5 + i) * MINUTE,
+      });
+    });
   }
 
   /** What the pretend agent learned: Chat in use, Vote waiting for you. */
@@ -1055,6 +1233,20 @@ export class DemoBackend implements FeedBackend {
     return item;
   }
 
+  /** As the contract's `check_send_call`: a JSON object naming a method and its args. */
+  private static checkSendCall(call: string) {
+    let value: { method?: unknown; args?: unknown };
+    try {
+      value = JSON.parse(call) as typeof value;
+    } catch (e) {
+      throw new Error(`send_call is not JSON: ${String(e)}`);
+    }
+    if (typeof value?.method !== "string" || !value.method.trim()) throw new Error("send_call names no method");
+    if (!value.args || typeof value.args !== "object" || Array.isArray(value.args)) {
+      throw new Error("send_call's args must be an object");
+    }
+  }
+
   async recordAction(input: ActionInput, at = this.now()): Promise<FeedItem> {
     if (input.ask.kind && input.outcome !== "proposed") {
       throw new Error("an ask belongs on a proposal; a done or failed action has nothing to answer");
@@ -1062,7 +1254,14 @@ export class DemoBackend implements FeedBackend {
     if (input.grant && input.outcome === "proposed") {
       throw new Error("a grant belongs on a done or failed action; a proposal waits for you");
     }
-    const verdict = this.verdict(input.app, input.category, input.writes);
+    const sends = !!input.send_call;
+    if (sends) {
+      DemoBackend.checkSendCall(input.send_call);
+      if (input.outcome !== "proposed") throw new Error("a send_call belongs on a proposal: it is a draft you send yourself");
+    }
+    const call = this.resolveCall(input.app, input.method, input.category, input.writes);
+    // A draft you send is the agent reading and proposing; the write is yours.
+    const verdict = this.verdictFor(input.app, sends ? { ...call, writes: false } : call);
     let status: string;
     let breach = "";
     if (input.outcome === "proposed") {
@@ -1070,7 +1269,7 @@ export class DemoBackend implements FeedBackend {
       status = "pending";
     } else {
       status = input.outcome === "failed" ? "failed" : "done";
-      const granted = this.granted(input.grant, input.app, input.category);
+      const granted = this.granted(input.grant, input.app, call);
       if (verdict.decision === "ask" && !granted) breach = `acted without asking: ${verdict.reason}`;
       if (verdict.decision === "refuse") breach = `acted where it may not: ${verdict.reason}`;
     }
@@ -1084,13 +1283,15 @@ export class DemoBackend implements FeedBackend {
       title: input.title,
       body: input.body,
       method: input.method,
-      category: input.category,
+      // What the app's actions say it is, when they name it.
+      category: call.category,
       why: input.why,
       intent_hash: input.intent_hash,
       executor: input.executor,
-      undoable: input.undoable,
+      undoable: input.undoable && !sends,
       history: [{ status, note: input.note, at: t }],
       subject: input.subject ?? "",
+      reply_call: input.send_call ?? "",
     });
     // A thing you took off this task stays off it.
     if (item.subject && !this.linkRows.get(`${item.chain}|${item.subject}`)?.removed) {
@@ -1328,6 +1529,7 @@ function action(input: Partial<ActionInput>): ActionInput {
     ask: NO_ASK,
     grant: "",
     subject: "",
+    send_call: "",
     ...input,
   };
 }
@@ -1414,4 +1616,17 @@ function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chai
     answers: "",
     answers_superseded: false, held_by: "", held_since: 0, subject: "",
   };
+}
+
+/** What a call is, once the app's approved actions have had their say. Mirrors the contract's `Resolved`. */
+interface Resolved {
+  category: string;
+  writes: boolean;
+  action?: ActionDef;
+  mode: ActionMode;
+  uncovered: boolean;
+}
+
+function copySet(s: ActionSetView): ActionSetView {
+  return { ...s, actions: s.actions.map((a) => ({ ...a, methods: [...a.methods] })) };
 }

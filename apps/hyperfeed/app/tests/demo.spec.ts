@@ -51,19 +51,16 @@ test("in the demo, you ask your agent and the pretend agent answers in the same 
   const stream = page.getByRole("main");
   await stream.getByLabel("Ask your agent").fill("What's left before the board meeting?");
   await stream.getByRole("button", { name: "Send", exact: true }).first().click();
-  // It opens as a chat: your question, then the pretend agent's answer.
-  await expect(page).toHaveURL(/\/demo\/chat\//);
-  const thread = page.getByRole("log");
-  await expect(thread).toContainText("What's left before the board meeting?");
-  await explain(expect(thread.getByText(/pretend agent/)).toBeVisible({ timeout: 15_000 }));
-  // The same chain, in the feed: in your agent's digest, as your question with its answer in the thread.
-  await page.getByRole("link", { name: "Feed", exact: true }).click();
+  // It opens in place, on the feed: your question in your agent's digest, then its answer.
+  await expect(page).toHaveURL(/\/demo$/);
   const agent = page.getByRole("region", { name: "Your agent today" });
-  await agent.getByRole("button", { name: /^Show/ }).click();
   const chat = agent.locator("li.row", { hasText: "What's left before the board meeting?" });
-  await expect(chat).toContainText("Agent replied");
-  await chat.locator(".row-line, .need-line").click();
+  await explain(expect(chat).toContainText("Agent replied", { timeout: 15_000 }));
   await expect(chat.getByRole("list", { name: "The whole flow" })).toContainText("pretend agent");
+  // The whole conversation is a click away, in Chat.
+  await chat.getByRole("button", { name: "Open chat" }).click();
+  await expect(page).toHaveURL(/\/demo\/chat\//);
+  await expect(page.getByRole("log")).toContainText("pretend agent");
 });
 
 test("in the demo, the chat page holds your chats with your agent", async ({ page }) => {
@@ -120,12 +117,20 @@ for (const [device, size] of [
 ] as const) {
   test(`on ${device}, you archive a chat after confirming, restore it from Archived chats, and Undo brings it back`, async ({ page }) => {
     const explain = watch(page);
+    // The pretend agent takes your message up after 0.7 s and answers after
+    // 2.8 s, and anything new brings an archived chat back: on a slow runner the
+    // answer landed between Archive and Restore and took the chat off the shelf
+    // mid-click. The page's clock is held, and moved on only far enough for the
+    // agent to take the message up, so it is working on it and never answers.
+    await page.clock.install();
     await page.setViewportSize(size);
     await page.goto("/demo/chat");
+    await page.clock.pauseAt(Date.now() + 1_000);
     await page.getByRole("button", { name: "New chat" }).click();
     await page.getByLabel("Message your agent").fill("Throwaway question");
     await page.getByLabel("Message your agent").press("Enter");
     await expect(page.getByRole("log").getByText("Throwaway question", { exact: true })).toBeVisible();
+    await page.clock.runFor(1_000);
 
     await page.getByRole("button", { name: "Archive chat" }).click();
     const ask = page.getByRole("group", { name: "Archive this chat?" });

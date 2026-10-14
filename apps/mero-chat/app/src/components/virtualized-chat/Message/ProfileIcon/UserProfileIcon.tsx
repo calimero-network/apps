@@ -18,8 +18,10 @@ const ActiveStatusCricle = styled.div<{ $active: boolean }>`
   height: 10px;
   border-radius: 50%;
   ${({ $active }: { $active: boolean }) =>
-    $active ? "background-color: #00FF66;" : "background-color: #777583;"}
-  border: 1px solid #1A1A1D;
+    $active
+      ? "background-color: #22c55e;"
+      : "background-color: var(--glass-line-strong);"}
+  border: 1px solid var(--glass-line);
 `;
 
 interface UserProfileIconProps {

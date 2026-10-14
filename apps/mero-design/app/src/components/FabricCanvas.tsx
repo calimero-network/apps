@@ -26,6 +26,7 @@ import {
 import { v4 as uuid } from "uuid";
 import { rpcCall } from "../api/rpc";
 import { addElements, deleteElements, updateElements, type ElementPatch } from "../api/elementBatch";
+import { redoOnBoard, undoOnBoard } from "../api/history";
 import { applyTopLeftOrigin } from "../utils/fabricDefaults";
 import { isPaintable } from "../utils/color";
 import { createMutationReporter } from "../utils/mutationErrors";
@@ -34,6 +35,7 @@ import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore, type Tool } from "../store/canvasStore";
 import { wheelAction } from "../utils/wheel";
+import { useTheme, type Theme } from "../utils/theme";
 import {
   detachMoved,
   isConnector,
@@ -128,10 +130,28 @@ interface Props {
   onViewportChange?: (zoom: number, panX: number, panY: number) => void;
 }
 
+/**
+ * The colour the board is painted on screen. Only the default white follows
+ * the app theme — softly tinted in light, smoked in dark; Gray and Black are a
+ * choice the user made and stay as they are. Exports never use this: they
+ * paint the chosen colour (`withSolidBgData`).
+ *
+ * The light tint stays within a few levels of white on purpose: it is a hint of
+ * the glass, not a colour, and the pixel specs compare the board to white.
+ */
+function boardDisplayColor(background: string, theme: Theme): string {
+  if (background !== "#ffffff") return background;
+  return theme === "dark" ? BOARD_DARK : BOARD_LIGHT;
+}
+const BOARD_LIGHT = "#fbfbfd";
+const BOARD_DARK = "#141925";
+
 function makeDotPattern(bgColor: string): HTMLCanvasElement {
   const dotColor =
     bgColor === "#111111" ? "#252525" :
     bgColor === "#808080" ? "#686868" :
+    bgColor === BOARD_DARK ? "#2c3346" :
+    bgColor === BOARD_LIGHT ? "#d3d8e2" :
     "#d8d8d8";
   const size = 20;
   const el = document.createElement("canvas");
@@ -151,6 +171,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
   ({ contextId, previewMode = false, addingComment = false, readOnly = false, onViewportChange }, ref) => {
     countRender("FabricCanvas");
     const canvasElRef = useRef<HTMLCanvasElement>(null);
+    const wrapRef = useRef<HTMLDivElement>(null);
+    const { theme } = useTheme();
     const fabricRef = useRef<Canvas | null>(null);
     const previewRef = useRef(previewMode);
     const addingCommentRef = useRef(addingComment);
@@ -191,8 +213,6 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       removeElement,
       cacheImage,
       snapshot,
-      undo,
-      redo,
       copyElements,
       getPasted,
       editingTextId,
@@ -214,8 +234,6 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         removeElement: s.removeElement,
         cacheImage: s.cacheImage,
         snapshot: s.snapshot,
-        undo: s.undo,
-        redo: s.redo,
         copyElements: s.copyElements,
         getPasted: s.getPasted,
         editingTextId: s.editingTextId,
@@ -302,7 +320,14 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     }));
 
     /* ── canvas dimensions helper ────────────────────────────────── */
+    // The canvas fills its own box: whatever the page gives `.wrap`. Measured,
+    // not derived from the window, so the floating chrome around it can change
+    // shape without the board being cut off or overhanging.
     function getSize() {
+      const el = wrapRef.current;
+      if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+        return { w: el.clientWidth, h: el.clientHeight };
+      }
       if (previewRef.current) return { w: window.innerWidth, h: window.innerHeight };
       return { w: window.innerWidth - 240, h: window.innerHeight - 48 };
     }
@@ -332,10 +357,13 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
       const resize = () => {
         const { w: nw, h: nh } = getSize();
+        if (nw === fc.width && nh === fc.height) return;
         fc.setDimensions({ width: nw, height: nh });
         fc.renderAll();
       };
       window.addEventListener("resize", resize);
+      const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
+      if (ro && wrapRef.current) ro.observe(wrapRef.current);
 
       /* ── wheel: pan, or zoom on pinch / ⌘ ─────────────────────── */
       // Which of those it is, and how far, lives in utils/wheel — see the note
@@ -405,6 +433,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
       return () => {
         window.removeEventListener("resize", resize);
+        ro?.disconnect();
         fc.dispose();
         fabricRef.current = null;
       };
@@ -420,11 +449,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     useEffect(() => {
       const fc = fabricRef.current;
       if (!fc) return;
-      const src = makeDotPattern(background);
+      const src = makeDotPattern(boardDisplayColor(background, theme));
       const pattern = new Pattern({ source: src, repeat: "repeat" });
       fc.set("backgroundColor", pattern);
       fc.renderAll();
-    }, [background]);
+    }, [background, theme]);
 
     /* ── sync elements store → canvas ───────────────────────────── */
     // This used to be `fc.clear()` followed by a rebuild of every element, on
@@ -1267,14 +1296,16 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
         const mod = e.metaKey || e.ctrlKey;
 
-        if (mod && e.key === "z" && !e.shiftKey) {
+        // Lower-cased: with Shift held, Ctrl+Shift+Z reports "Z" on Windows and Linux.
+        const key = e.key.toLowerCase();
+        if (mod && key === "z" && !e.shiftKey) {
           e.preventDefault();
-          if (!readOnlyRef.current) undo();
+          if (!readOnlyRef.current) void undoOnBoard(contextId, reportFailure.current);
           return;
         }
-        if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        if (mod && (key === "y" || (key === "z" && e.shiftKey))) {
           e.preventDefault();
-          if (!readOnlyRef.current) redo();
+          if (!readOnlyRef.current) void redoOnBoard(contextId, reportFailure.current);
           return;
         }
         if (mod && e.key === "c") {
@@ -1308,8 +1339,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
           // One store update for the whole paste, not one per element (each of
           // which rebuilt the element list and re-ran the canvas reconcile).
-          useCanvasStore.getState().upsertElements(pasted);
+          // The snapshot goes first: it opens the undo step the paste lands in.
           snapshot();
+          useCanvasStore.getState().upsertElements(pasted);
           // Select the copies, not the originals: a paste you cannot
           // immediately drag is a paste you have to go and find.
           selectElements(pasted.map((el) => el.id));
@@ -1417,7 +1449,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         window.removeEventListener("keyup", onKeyUp);
         if (previewObjRef.current) { fc.remove(previewObjRef.current); previewObjRef.current = null; }
       };
-    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, selectWithPointer, upsertElement, removeElement, snapshot, undo, redo, copyElements, getPasted, startTextEdit]);
+    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, selectWithPointer, upsertElement, removeElement, snapshot, copyElements, getPasted, startTextEdit]);
 
     useEffect(() => {
       (canvasElRef.current as (HTMLCanvasElement & { _cacheImage?: typeof cacheImage }) | null)!._cacheImage = cacheImage;
@@ -1519,7 +1551,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     }
 
     return (
-      <div className={styles.wrap}>
+      <div className={styles.wrap} ref={wrapRef}>
         <canvas ref={canvasElRef} data-testid="fabric-canvas" />
         {editingEl && fabricRef.current && canvasElRef.current && (
           <TextBoxEditor

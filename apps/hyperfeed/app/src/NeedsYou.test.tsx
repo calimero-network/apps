@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { useEffect, useState } from "react";
 import { DemoBackend } from "./demo";
 import { useFeed } from "./useFeed";
-import { NeedsYou, opensIn } from "./NeedsYou";
+import { NeedsYou, opensAt } from "./NeedsYou";
 import type { Attention } from "./useAttention";
 
 const attention: Attention = { supported: true, on: false, blocked: false, toggle: async () => undefined };
@@ -45,6 +45,7 @@ async function approvalInChat(backend: DemoBackend) {
     ask: { kind: "choose", prompt: "Run it?", options: ["Allow once", "Allow for this session"], draft: "" },
     grant: "",
     subject: "",
+    send_call: "",
   });
   return q.chain;
 }
@@ -99,11 +100,16 @@ describe("Needs you, behind the bell", () => {
 });
 
 describe("where a row opens", () => {
-  it("opens your agent's question and a command it asked about in their chat, anything else in the feed", async () => {
+  it("opens everything in the feed, in place: your agent's question and a command it asked about in a chat too", async () => {
     const backend = new DemoBackend(true, 0);
-    const waiting = (await backend.feed("needs_you", "")).items;
-    for (const i of waiting) expect(opensIn(i)).toBe(i.kind === "message" ? "chat" : "feed");
     const chain = await approvalInChat(backend);
-    expect(opensIn((await backend.chain(chain)).find((i) => i.kind === "action")!)).toBe("chat");
+    const q = await backend.say("", "Clean up #calimero");
+    backend.agentAsk(q.chain, q.id, "Two hellos there. Delete one?", { kind: "choose", prompt: "Delete one?", options: ["Delete it", "Keep both"], draft: "" });
+    const waiting = [...(await backend.feed("needs_you", "")).items, (await backend.chain(chain)).find((i) => i.kind === "action")!];
+    expect(waiting.some((i) => i.kind === "message")).toBe(true);
+    for (const i of waiting) {
+      expect(opensAt("", i)).toBe(`/?open=${encodeURIComponent(i.chain)}`);
+      expect(opensAt("/demo", i)).toBe(`/demo?open=${encodeURIComponent(i.chain)}`);
+    }
   });
 });

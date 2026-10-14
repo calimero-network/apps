@@ -39,7 +39,7 @@
 
 .current {
   background: var(--accent-soft);
-  border-color: rgba(165, 255, 17, 0.4);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   color: var(--text);
 }
 .current:hover { background: var(--accent-soft); }

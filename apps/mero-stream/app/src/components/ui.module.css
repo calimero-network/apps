@@ -46,8 +46,8 @@
   padding: 0 16px;
   background: var(--accent);
   color: var(--accent-text);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   font-weight: 500;
   font-size: 14px;
   font-family: inherit;
@@ -77,7 +77,7 @@
 }
 
 .secondary {
-  background: var(--surface);
+  background: var(--glass-surface-solid);
   color: var(--text);
   border: 1px solid var(--border-strong);
 }
@@ -105,7 +105,7 @@
 
 .statusPending {
   color: var(--text-dim);
-  background: var(--surface);
+  background: var(--glass-surface-solid);
   border: 1px solid var(--border);
 }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { FeedView } from "./FeedView";
 import { SettingsView, settingsSection } from "./SettingsView";
@@ -11,11 +11,11 @@ import { useFeed, type Feed } from "./useFeed";
 import { useNodeFeed } from "./useNodeFeed";
 import { demoPreview, nodePreview, type Preview } from "./preview";
 import { useNewFeed, useOpenFeed } from "./newFeed";
-import { appLink } from "./links";
+import { appLink, linkNamer } from "./links";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { AGENT_LIVE_MS, useTheme } from "./theme";
 import { useAttention } from "./useAttention";
-import { NeedsYou, opensIn, waitingCount } from "./NeedsYou";
+import { NeedsYou, opensAt, waitingCount } from "./NeedsYou";
 import type { NewFeed } from "./FeedView";
 import LandingPage from "./pages/landing/LandingPage";
 import DocsPage from "./pages/landing/DocsPage";
@@ -93,7 +93,10 @@ function NodeFeedApp({
 }) {
   const node = useNodeFeed(contextId);
   const newFeed = useNewFeed(applicationId);
-  const feed = useFeed(node.backend, node.nudge);
+  const base = useFeed(node.backend, node.nudge);
+  // Each chat a task touched, named from the chat ("#launch", "DM with Ronit"), read in its own context.
+  const nameLink = useMemo(() => linkNamer(node.hostFor), [node.hostFor]);
+  const feed = useMemo(() => ({ ...base, nameLink }), [base, nameLink]);
   const [query, setQuery] = useState("");
   const { mero, admin } = useMero();
   // A row's app, signed in to this node, at the row's context.
@@ -223,6 +226,23 @@ function Screen({
   const { chain = "", section } = useParams();
   const openChat = (c: string) => navigate(c ? `${base}/chat/${encodeURIComponent(c)}` : `${base}/chat`);
   const [view, setView] = useFeedView();
+  // The bell opens a row in place: `?open=<chain>`, read once by the feed, in Lanes.
+  const [params, setParams] = useSearchParams();
+  const focus = page === "feed" ? (params.get("open") ?? "") : "";
+  useEffect(() => {
+    if (focus && view !== "lanes") setView("lanes");
+  }, [focus, view, setView]);
+  const focused = useCallback(
+    () =>
+      setParams(
+        (p) => {
+          p.delete("open");
+          return p;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
   if (page === "chat") return <ChatView feed={feed} chain={chain} onOpen={openChat} newFeed={newFeed} />;
   if (page === "settings")
     return (
@@ -254,7 +274,7 @@ function Screen({
       {view === "team" ? (
         <TeamView feed={feed} query={query} onChat={openChat} />
       ) : (
-        <FeedView feed={feed} query={query} newFeed={newFeed} onChat={openChat} openLink={openLink} />
+        <FeedView feed={feed} query={query} newFeed={newFeed} onChat={openChat} openLink={openLink} focus={focus} onFocused={focused} />
       )}
     </>
   );
@@ -394,7 +414,7 @@ function Shell({
                   }}
                   onOpen={(item) => {
                     setNeedsOpen(false);
-                    navigate(opensIn(item) === "chat" ? `${base}/chat/${encodeURIComponent(item.chain)}` : base || "/");
+                    navigate(opensAt(base, item));
                   }}
                 />
               )}

@@ -6,10 +6,13 @@ import { useCanvasStore, type Background } from "../store/canvasStore";
 import { fileToDataUrl } from "../utils/export";
 import { getImageDimensions } from "../utils/image";
 import Logo from "./Logo";
+import ThemeToggle from "./ThemeToggle";
 import styles from "./Toolbar.module.css";
 import type { Member, CursorState } from "../types";
 import { validateSnapshot, type ProjectSnapshot } from "../utils/projectFile";
 import { useToast } from "../contexts/ToastContext";
+import { redoOnBoard, undoOnBoard } from "../api/history";
+import { createMutationReporter } from "../utils/mutationErrors";
 import ConfirmDialog from "./ConfirmDialog";
 import { STARTERS, type StarterId } from "../starter/starters";
 
@@ -99,6 +102,18 @@ const IconSticky = () => (
     <path d="M13.5 9.5h-4v4"/>
   </svg>
 );
+const IconSliders = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+    <path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6"/>
+    <circle cx="10" cy="4.5" r="1.5"/>
+    <circle cx="6" cy="11.5" r="1.5"/>
+  </svg>
+);
+const IconChevron = () => (
+  <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 6l4 4 4-4"/>
+  </svg>
+);
 const IconMembers = () => (
   <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="6" cy="5" r="2.5"/>
@@ -181,7 +196,7 @@ interface Props {
 }
 
 export default function Toolbar({
-  contextId: _contextId,
+  contextId,
   onBack, onLogout,
   onExportPng, onExportSvg,
   onPreview,
@@ -199,18 +214,18 @@ export default function Toolbar({
   boardHasContent = false,
 }: Props) {
   countRender("Toolbar");
-  // Selector: the toolbar shows a tool, a background and two stack depths, and
-  // has no reason to re-render when an element moves or the selection changes.
-  const { activeTool, setTool, background, setBackground, undo, redo, undoStack, redoStack } = useCanvasStore(
+  // Selector: the toolbar shows a tool, a background and whether there is
+  // anything to undo or redo, and has no reason to re-render when an element
+  // moves or the selection changes. Booleans, not the stacks: every local edit
+  // replaces the undo stack.
+  const { activeTool, setTool, background, setBackground, canUndo, canRedo } = useCanvasStore(
     useShallow((s) => ({
       activeTool: s.activeTool,
       setTool: s.setTool,
       background: s.background,
       setBackground: s.setBackground,
-      undo: s.undo,
-      redo: s.redo,
-      undoStack: s.undoStack,
-      redoStack: s.redoStack,
+      canUndo: s.undoStack.length > 0,
+      canRedo: s.redoStack.length > 0,
     })),
   );
   // Loading the starter clears the board, so an occupied board asks once. Kept as
@@ -224,6 +239,7 @@ export default function Toolbar({
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [pendingImport, setPendingImport] = useState<{ name: string; snapshot: ProjectSnapshot } | null>(null);
   const { showToast } = useToast();
+  const reportFailure = createMutationReporter((m) => showToast(m, "error"));
 
   // Close options on outside click
   useEffect(() => {
@@ -273,7 +289,7 @@ export default function Toolbar({
   return (
     <div className={styles.bar}>
       <button className={styles.backBtn} onClick={onBack} title="Back to projects">←</button>
-      <span className={styles.logo}><Logo size={20} /> Mero Design</span>
+      <span className={styles.logo}><Logo size={28} /> <span className={styles.brandText}>Mero Design</span></span>
 
       <div className={styles.divider} />
 
@@ -321,7 +337,9 @@ export default function Toolbar({
           data-testid="options-btn"
           title="Options"
         >
-          Options ▾
+          <IconSliders />
+          <span className={styles.optionsLabel}>Options</span>
+          <IconChevron />
         </button>
         {optionsOpen && (
           <div className={styles.optionsDropdown} data-testid="options-dropdown">
@@ -384,15 +402,15 @@ export default function Toolbar({
             <p className={styles.optionsGroupLabel}>History</p>
             <button
               className={styles.optionsItem}
-              onClick={() => { undo(); setOptionsOpen(false); }}
+              onClick={() => { void undoOnBoard(contextId, reportFailure); setOptionsOpen(false); }}
               data-testid="undo-btn"
-              disabled={readOnly || undoStack.length === 0}
+              disabled={readOnly || !canUndo}
             >Undo (Ctrl+Z)</button>
             <button
               className={styles.optionsItem}
-              onClick={() => { redo(); setOptionsOpen(false); }}
+              onClick={() => { void redoOnBoard(contextId, reportFailure); setOptionsOpen(false); }}
               data-testid="redo-btn"
-              disabled={readOnly || redoStack.length === 0}
+              disabled={readOnly || !canRedo}
             >Redo (Ctrl+Y)</button>
           </div>
         )}
@@ -455,7 +473,7 @@ export default function Toolbar({
           <IconComment />
         </button>
       )}
-      <button className={styles.previewBtn} onClick={onPreview} title="Preview canvas (Esc to exit)">
+      <button className={`${styles.previewBtn} ${styles.hideNarrow}`} onClick={onPreview} title="Preview canvas (Esc to exit)">
         Preview
       </button>
       {onPresent && (
@@ -469,9 +487,10 @@ export default function Toolbar({
         </button>
       )}
 
-      <div className={styles.divider} />
+      <div className={`${styles.divider} ${styles.hideNarrow}`} />
 
-      <button className={styles.logoutBtn} onClick={onLogout} title="Logout">Logout</button>
+      <ThemeToggle className={styles.iconBtn} />
+      <button className={`${styles.logoutBtn} ${styles.hideNarrow}`} onClick={onLogout} title="Logout">Logout</button>
 
       <input
         ref={fileInputRef}

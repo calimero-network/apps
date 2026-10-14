@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { FeedView, type NewFeed } from "./FeedView";
@@ -6,22 +6,40 @@ import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { subjectKey } from "./subject";
+import { clearGithubCache } from "./github";
+import { fakeGitHub, greenRuns, openPr, prRoutes, PR_URL } from "./test/github";
 
 function Harness({
   backend,
   newFeed,
   openLink,
   onChat,
+  nameLink,
+  focus,
+  onFocused,
 }: {
   backend: DemoBackend;
   newFeed?: NewFeed;
   openLink?: (item: FeedItem) => Promise<string | null>;
   onChat?: (chain: string) => void;
+  nameLink?: Feed["nameLink"];
+  focus?: string;
+  onFocused?: () => void;
 }) {
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
   const feed = useFeed(backend, nudge);
-  return <FeedView feed={feed} query="" newFeed={newFeed} openLink={openLink} onChat={onChat} />;
+  return (
+    <FeedView
+      feed={nameLink ? { ...feed, nameLink } : feed}
+      query=""
+      newFeed={newFeed}
+      openLink={openLink}
+      onChat={onChat}
+      focus={focus}
+      onFocused={onFocused}
+    />
+  );
 }
 
 const stream = () => screen.getByRole("main");
@@ -295,7 +313,7 @@ describe("FeedView", () => {
     await backend.recordAction({
       app: "sheets", source_context: "ctx", source_label: "", method: "update", category: "", writes: true, undoable: false,
       title: "Pulled the numbers into a sheet", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-      chain: mention.chain, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "",
+      chain: mention.chain, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "", send_call: "",
     });
     render(<Harness backend={backend} />);
     const row = await rowFor(/can you share the numbers/i);
@@ -320,7 +338,7 @@ describe("FeedView", () => {
     await backend.recordAction({
       app: "sheets", source_context: "", source_label: "", method: "update", category: "", writes: true, undoable: false,
       title: "Pulled the numbers into a sheet", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-      chain: mention.id, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "",
+      chain: mention.id, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "", subject: "", send_call: "",
     });
     render(<Harness backend={backend} />);
     // Your reply is still being delivered: the chain is in progress, not done.
@@ -361,7 +379,10 @@ describe("FeedView", () => {
     await act(async () => {
       fireEvent.click(more);
     });
-    expect(within(row).getByText(/300\. An idea worth trying/)).toBeInTheDocument();
+    // As markdown: the numbered lines are a list, as Chat shows them.
+    const list = row.querySelector(".more-text ol") as HTMLElement;
+    expect(within(list).getAllByRole("listitem")).toHaveLength(300);
+    expect(within(list).getAllByRole("listitem")[299]).toHaveTextContent("An idea worth trying, with its reasons.");
     expect(within(row).getByRole("button", { name: "Less" })).toHaveAttribute("aria-expanded", "true");
   });
 
@@ -443,7 +464,7 @@ describe("FeedView", () => {
     await backend.recordAction({
       app: "issue-tracker", source_context: "repo", source_label: "", method: "set_status", category: "", writes: true, undoable: false,
       title: "Moved the sync bug to In progress", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-      chain: task.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"),
+      chain: task.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"), send_call: "",
     });
     const comment = await backend.recordNotification({
       key: "repo:a>b:0", app: "issue-tracker", source_context: "repo", source_label: "", from: "Xabi", title: "Commented on your issue Sync bug",
@@ -616,9 +637,10 @@ describe("FeedView", () => {
     expect(opened).toEqual(["sign"]);
   });
 
-  it("asks the agent from the top of the feed and opens the new conversation in its digest", async () => {
+  it("asks the agent from the top of the feed and opens the new conversation in place, not in Chat", async () => {
     const backend = new DemoBackend(true, 0);
-    render(<Harness backend={backend} />);
+    const opened: string[] = [];
+    render(<Harness backend={backend} onChat={(c) => opened.push(c)} />);
     await rowFor(/Vendor NDA/);
     const box = within(stream()).getByLabelText("Ask your agent");
     fireEvent.change(box, { target: { value: "What's left before the board meeting?" } });
@@ -630,6 +652,7 @@ describe("FeedView", () => {
     expect(within(row).getByText("Sent · waiting for your agent")).toBeInTheDocument();
     expect(within(row).getAllByRole("button")[0]).toHaveAttribute("aria-expanded", "true");
     expect(box).toHaveValue("");
+    expect(opened).toEqual([]);
   });
 
   it("says why a message to your agent was not sent, and keeps your words", async () => {
@@ -725,7 +748,7 @@ describe("FeedView", () => {
       await backend.recordAction({
         app: "issue-tracker", source_context: "repo", source_label: "", method: "set_status", category: "", writes: true, undoable: false,
         title: "Moved the sync bug to In progress", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
-        chain: asked.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"),
+        chain: asked.chain, ask: blankAsk, grant: "", subject: subjectKey("issue-tracker", "repo", "issue-7"), send_call: "",
       });
       await backend.recordNotification({
         key: "repo:a>b:0", app: "issue-tracker", source_context: "repo", source_label: "", from: "Xabi Ortiz", title: "Commented on your issue Sync bug",
@@ -790,6 +813,31 @@ describe("FeedView", () => {
       fireEvent.click(within(linked2).getByRole("button", { name: "Take Sync bug off the task" }));
     });
     await waitFor(() => expect(within(linked2).queryByRole("button", { name: /Sync bug/ })).not.toBeInTheDocument());
+  });
+
+  it("names each chat a task touched by the chat itself, never just \"Chat\" twice", async () => {
+    // The task that showed four chips all reading "Chat": each was a different context.
+    const backend = new DemoBackend(false, 0);
+    const names: Record<string, string> = { "ctx-dm": "DM with Ronit", "ctx-launch": "#launch" };
+    render(<Harness backend={backend} nameLink={async (l) => names[l.context] ?? ""} />);
+    const asked = await act(async () => backend.say("", "Send a message to Ronit"));
+    const blankAsk = { kind: "", prompt: "", options: [], draft: "" };
+    await act(async () => {
+      for (const ctx of ["ctx-dm", "ctx-launch", "ctx-other"]) {
+        await backend.recordAction({
+          app: "chat", source_context: ctx, source_label: "", method: "send_message", category: "", writes: true, undoable: false,
+          title: "Sent a message", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
+          chain: asked.chain, ask: blankAsk, grant: "", send_call: "", subject: subjectKey("chat", ctx, ""),
+        });
+      }
+    });
+    const tasks = await screen.findByRole("region", { name: "Your tasks" });
+    const post = await within(tasks).findByRole("article", { name: "Send a message to Ronit" });
+    const linked = await within(post).findByRole("group", { name: "Linked" });
+    expect(await within(linked).findByRole("button", { name: "Take DM with Ronit off the task" })).toBeInTheDocument();
+    expect(await within(linked).findByRole("button", { name: "Take #launch off the task" })).toBeInTheDocument();
+    // One the chat could not name: as before, the app's name.
+    expect(within(linked).getByRole("button", { name: "Take Chat off the task" })).toBeInTheDocument();
   });
 
   it("gives a task started from a chat its own post, with a link back to the chat", async () => {
@@ -897,6 +945,136 @@ describe("FeedView", () => {
       const row = await openRow(/Vendor NDA/);
       expect(await within(row).findByRole("list", { name: "The whole flow" })).toBeInTheDocument();
       expect(within(row).queryByRole("button", { name: "More" })).not.toBeInTheDocument();
+    });
+  });
+});
+
+/** Your agent, in a chat, asks before running a command on your computer. */
+async function approvalInChat(backend: DemoBackend) {
+  const q = await backend.say("", "Run the tests");
+  backend.agentAck(q.id);
+  await backend.recordAction({
+    app: "mero-bot", source_context: "", source_label: "This computer", method: "Bash", category: "", writes: true, undoable: false,
+    title: "Run npm test", body: "$ npm test", why: "", outcome: "proposed", intent_hash: "", executor: "", note: "", chain: q.chain,
+    ask: { kind: "choose", prompt: "Run it?", options: ["Allow once", "Allow for this session"], draft: "" }, grant: "", subject: "", send_call: "",
+  });
+  return q.chain;
+}
+
+describe("acting from the feed, with Chat for the history", () => {
+  it("opens the row the bell points at in place, with its buttons: a command your agent asked about in a chat", async () => {
+    const backend = new DemoBackend(false, 0);
+    const chain = await approvalInChat(backend);
+    const focused = vi.fn();
+    const opened: string[] = [];
+    render(<Harness backend={backend} focus={chain} onFocused={focused} onChat={(c) => opened.push(c)} />);
+    const row = await rowFor(/npm test/);
+    await waitFor(() => expect(within(row).getAllByRole("button")[0]).toHaveAttribute("aria-expanded", "true"));
+    expect(focused).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      fireEvent.click(within(row).getByRole("button", { name: "Allow once" }));
+    });
+    const action = (await backend.chain(chain)).find((i) => i.kind === "action")!;
+    expect(action.status).toBe("approved");
+    // The whole conversation is a click away.
+    await act(async () => {
+      fireEvent.click(within(await rowFor(/npm test/)).getByRole("button", { name: "Open chat" }));
+    });
+    expect(opened).toEqual([chain]);
+  });
+
+  it("answers your agent's question the bell points at, in place", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Clean up #calimero");
+    backend.agentAsk(q.chain, q.id, "Two hellos there. Delete one?", { kind: "choose", prompt: "Delete one?", options: ["Delete it", "Keep both"], draft: "" });
+    render(<Harness backend={backend} focus={q.chain} onChat={() => undefined} />);
+    const row = await rowFor(/Two hellos there/);
+    await act(async () => {
+      fireEvent.click(within(row).getByRole("button", { name: "Delete it" }));
+    });
+    const said = (await backend.chain(q.chain)).filter((m) => m.from === "you").map((m) => m.body);
+    expect(said).toEqual(["Clean up #calimero", "Delete it"]);
+  });
+
+  it("shows your agent working on what you asked, with Stop, without leaving the feed", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Refactor everything");
+    backend.agentAck(q.id);
+    backend.agentWork(q.id, [{ id: "t1", title: "Reading the repo", status: "running", at: Date.now() }]);
+    render(<Harness backend={backend} focus={q.chain} />);
+    const row = await rowFor(/Refactor everything/);
+    expect(await within(row).findByText("Working…")).toBeInTheDocument();
+    expect(within(row).getByText(/Reading the repo/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(row).getByRole("button", { name: "Stop" }));
+    });
+    expect((await backend.chain(q.chain))[0]!.stop_at).toBeGreaterThan(0);
+  });
+
+  it("says when a conversation is long enough to continue in Chat", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Plan the offsite");
+    for (let i = 0; i < 4; i++) {
+      const [last] = (await backend.chain(q.chain)).filter((m) => m.from === "you").slice(-1);
+      backend.agentSay(q.chain, last!.id, `Answer ${i}`);
+      await backend.say(q.chain, `Follow-up ${i}`);
+    }
+    render(<Harness backend={backend} focus={q.chain} onChat={() => undefined} />);
+    const row = await rowFor(/Follow-up 3/);
+    expect(await within(row).findByRole("button", { name: "Continue in chat" })).toBeInTheDocument();
+  });
+
+  describe("an answer that links to a PR", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      clearGithubCache();
+    });
+
+    it("shows the PR's card on the row, and Merge sets a merge watch on its chain", async () => {
+      vi.stubGlobal("fetch", fakeGitHub(prRoutes(openPr(), greenRuns())));
+      const backend = new DemoBackend(false, 0);
+      const q = await backend.say("", "status?");
+      backend.agentSay(q.chain, q.id, `Opened ${PR_URL}, all green.`);
+      render(<Harness backend={backend} focus={q.chain} />);
+      const pr = await screen.findByRole("group", { name: "Pull request calimero-network/apps#435" });
+      await act(async () => {
+        fireEvent.click(within(pr).getByRole("button", { name: "Merge" }));
+      });
+      const [w] = await backend.watches(q.chain);
+      expect(w).toMatchObject({ chain: q.chain, condition: "pr_green", pr: 435, action: "merge" });
+    });
+  });
+
+  describe("with images", () => {
+    // jsdom has no object URLs; the page only hands them to <img>.
+    const { createObjectURL, revokeObjectURL } = URL;
+    beforeEach(() => {
+      let n = 0;
+      URL.createObjectURL = () => `blob:test/${n++}`;
+      URL.revokeObjectURL = () => undefined;
+    });
+    afterEach(() => {
+      URL.createObjectURL = createObjectURL;
+      URL.revokeObjectURL = revokeObjectURL;
+    });
+
+    it("sends a picked image with what you ask from the top of the feed", async () => {
+      const backend = new DemoBackend(false, 0);
+      render(<Harness backend={backend} />);
+      const ask = (await screen.findByLabelText("Ask your agent")).closest("form")!;
+      const png = new File([new Uint8Array(1024)], "error.png", { type: "image/png" });
+      await act(async () => {
+        fireEvent.change(within(ask).getByLabelText("Attach images", { selector: "input" }), { target: { files: [png] } });
+      });
+      expect(within(ask).getByRole("img", { name: "error.png" })).toBeInTheDocument();
+      fireEvent.change(within(ask).getByLabelText("Ask your agent"), { target: { value: "What is this error?" } });
+      await act(async () => {
+        fireEvent.click(within(ask).getByRole("button", { name: "Send" }));
+      });
+      const [asked] = (await backend.feed("agent", "")).items;
+      expect(asked!.body).toBe("What is this error?");
+      expect(asked!.attachments).toEqual([expect.objectContaining({ name: "error.png", mime: "image/png" })]);
+      expect(within(ask).queryByRole("img", { name: "error.png" })).not.toBeInTheDocument();
     });
   });
 });

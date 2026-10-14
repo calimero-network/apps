@@ -27,14 +27,16 @@ If you are an agent acting for this user in their Calimero apps, this feed is wh
 
 ### Before writing in another app
 
-Call `check_action` with the app's short key (`chat`, `crm`, `kv-store`: the package's last segment without `mero-`), a guard category (`sign`, `money`, `new_contact`, `delete`, `invite`, `secret`, or `""`) and `writes: true`.
+Call `check_action` with the app's short key (`chat`, `crm`, `kv-store`: the package's last segment without `mero-`), a guard category (`sign`, `money`, `new_contact`, `delete`, `invite`, `secret`, or `""`), `writes: true`, and the app `method` you are about to call.
+
+Once the user approved the app's actions (see "Describe an app's actions"), the action that names `method` decides whether the call writes and, when it names one, its guard; your `category` stands only where the action leaves it empty (sending to someone new). A method no approved action names always asks.
 
 - `act`: do it, then `record_action` with `outcome: "done"` (or `"failed"` with a `note`).
 - `ask`: do not do it. `record_action` with `outcome: "proposed"` and wait for the user's decision.
 - `refuse`: do not do it, and do not propose it.
 
 ```json
-{ "app_key": "chat", "category": "", "writes": true }
+{ "app_key": "chat", "category": "", "writes": true, "method": "send_message" }
 ```
 
 ### Record an action
@@ -113,6 +115,24 @@ their answer goes back. You write it from the app's ABI; the user approves it.
 - Write the lens as JSON: `{ "version": 1, "events": { "<Event>": { "type", "read"?, "let"?, "show_if"?, "fields", "title"?, "ask"?, "reply"? } | "ignore" } }`. A string starting with `=` is an expression.
 - Record only what concerns the user, never what they did themselves (`mine(...)`), and name every event the app emits.
 - `propose_lens` with `app_key`, `application_id`, the lens as a JSON string, and one sentence for the user. It waits for their approval. With mero-bot, propose through its `propose_lens` tool, which checks the lens against the ABI first.
+
+### Describe an app's actions
+
+Actions are what you can do in an app, in words the user would use ("Edit documents", "Delete your
+messages"), each covering some of the app's methods. You write them from the app's ABI; the user
+approves them, then can set each one to act, ask first, or off, apart from the app's mode.
+
+- `action_sets` lists every app version's actions, with its status. An app's newest approved set is in force.
+- Group methods the user would think of as one thing. Every reading method goes in an action with
+  `writes: false`; anything that changes state goes in one with `writes: true`. A method belongs to one action.
+- Give an action a guard `category` only when every call is covered by it (`delete_message`: `delete`).
+  Leave it `""` when it depends on the call, such as sending to someone new: then the category you pass to `check_action` stands.
+- Cover every method but `init`. One you leave out asks the user every time.
+- `propose_actions` with `app_key`, `application_id`, the actions (`[{ id, label, description, category, writes, methods }]`)
+  and one sentence for the user. It waits for their approval; the set in force stays meanwhile. Propose again for a new app version.
+- The node itself is the app key `node`: your node tools (installing apps, spaces, invitations) are its methods,
+  named as the tool is (`install_application`, `leave_namespace`), and pass them as `method` to `check_action`.
+  Its actions ship with Hyperfeed and mero-bot; propose them under `application_id` `node-v1`, and a changed list under the next one.
 
 ### One session per chain
 

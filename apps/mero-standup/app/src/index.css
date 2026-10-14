@@ -1,70 +1,41 @@
 /* ── tokens ────────────────────────────────────────────────────────────────
-   Dark is the default; light follows the system unless the menu overrides it
-   (`data-theme` on <html>, set before first paint in main.tsx). Both palettes
-   keep text at >= 4.5:1 on their surfaces. */
+   The fleet's light glass (@calimero-apps/glass, imported first in main.tsx):
+   a cool off-white ground under soft fields tinted with this app's amber,
+   frosted frame, solid content, one near-black ink for primary fills.
+   Light is the default, whatever the system prefers; dark (smoked glass) is
+   the menu's choice, `data-theme="dark"` on <html>, set before first paint in
+   main.tsx. glass.css switches every `--glass-*` token under that marker, so
+   the dark block below only restates what glass does not own. */
 :root {
-  --bg: #0f1115;
-  --surface: #161920;
-  --surface-2: #1d212a;
-  --surface-3: #252a35;
-  --border: #2b303b;
-  --text: #e8eaef;
-  --text-dim: #9aa1ae;
-  --accent: #f59e0b;
-  --accent-ink: #231503;
-  --accent-soft: rgba(245, 158, 11, 0.14);
-  --danger: #f87171;
-  --danger-soft: rgba(248, 113, 113, 0.12);
-  --ok: #4ade80;
-  --code-bg: #0b0d11;
-  --avatar-l: 32%;
-  --avatar-fg-l: 85%;
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-  color-scheme: dark;
-}
+  --glass-tint: #f59e0b;
 
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: #f6f7f9;
-    --surface: #ffffff;
-    --surface-2: #f3f4f7;
-    --surface-3: #e9ebf0;
-    --border: #e1e4ea;
-    --text: #171a21;
-    --text-dim: #5d6574;
-    --accent: #b45309;
-    --accent-ink: #ffffff;
-    --accent-soft: rgba(180, 83, 9, 0.1);
-    --danger: #c0262d;
-    --danger-soft: rgba(192, 38, 45, 0.08);
-    --ok: #15803d;
-    --code-bg: #f1f2f5;
-    --avatar-l: 88%;
-    --avatar-fg-l: 28%;
-    --shadow: 0 8px 28px rgba(20, 24, 33, 0.12);
-    color-scheme: light;
-  }
-}
-
-:root[data-theme="light"] {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --surface-2: #f3f4f7;
-  --surface-3: #e9ebf0;
-  --border: #e1e4ea;
-  --text: #171a21;
-  --text-dim: #5d6574;
-  --accent: #b45309;
-  --accent-ink: #ffffff;
-  --accent-soft: rgba(180, 83, 9, 0.1);
-  --danger: #c0262d;
-  --danger-soft: rgba(192, 38, 45, 0.08);
-  --ok: #15803d;
-  --code-bg: #f1f2f5;
+  --bg: var(--glass-ground);
+  --surface: var(--glass-surface);
+  --surface-2: var(--glass-surface-solid);
+  --surface-3: var(--glass-sunken);
+  --border: var(--glass-line);
+  --text: var(--glass-ink);
+  --text-dim: var(--glass-muted);
+  /* The primary FILL is the ink; accent TEXT (links, today, active chips)
+     reads --link. */
+  --accent: var(--glass-ink);
+  --accent-ink: var(--glass-on-ink);
+  --accent-soft: var(--glass-busy-bg);
+  --link: var(--glass-accent);
+  --danger: var(--glass-bad-ink);
+  --danger-soft: var(--glass-bad-bg);
+  --ok: var(--glass-good-ink);
+  --code-bg: var(--glass-sunken);
   --avatar-l: 88%;
   --avatar-fg-l: 28%;
-  --shadow: 0 8px 28px rgba(20, 24, 33, 0.12);
+  --shadow: var(--glass-shadow-float);
   color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --avatar-l: 32%;
+  --avatar-fg-l: 85%;
+  color-scheme: dark;
 }
 
 /* ── base ──────────────────────────────────────────────────────────────── */
@@ -73,9 +44,11 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--glass-font);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
@@ -162,7 +135,7 @@ button.link:hover:not(:disabled) { text-decoration: underline; }
 button.link.quiet { color: var(--text-dim); }
 button.link.quiet:hover:not(:disabled) { color: var(--text); }
 button.icon-button { padding: 7px; }
-button.danger { background: var(--danger); color: #fff; }
+button.danger { background: var(--danger); color: var(--glass-on-ink); }
 button.ghost.danger-text, .menu-item.danger-text { color: var(--danger); }
 .icon { flex: none; }
 
@@ -500,4 +473,99 @@ td.mono { word-break: break-all; }
   .week-strip { padding: 8px; }
   .week-row .icon-button { padding: 5px; }
   .week-day .dn { font-size: 0.95rem; }
+}
+
+/* ── glass: the frame frosted, the content solid ───────────────────────── */
+/* Last in the file on purpose: it restyles the shells above without touching
+   their layout. Cards are translucent panels over the fields; the updates,
+   decisions and inputs inside them stay solid; the menu that floats over
+   content is opaque. */
+
+.topbar {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  margin: 12px 0 16px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 20px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
+}
+
+.brand-name { font-weight: 800; letter-spacing: -0.035em; font-size: 1.05rem; }
+h1 { font-weight: 800; letter-spacing: -0.035em; }
+
+.card {
+  border-color: var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+}
+
+.update,
+.decision,
+.digest-person,
+.team-row {
+  border-radius: var(--glass-radius);
+  border-color: var(--glass-line);
+}
+
+input,
+textarea,
+.invite-link {
+  border-radius: 12px;
+  border-color: var(--glass-line-strong);
+}
+
+pre { border-radius: 12px; }
+
+button { border-radius: 999px; padding: 8px 16px; }
+button.icon-button { padding: 7px; }
+.segmented { border-radius: 999px; padding: 3px; background: var(--glass-sunken); border-color: transparent; }
+.segmented button { border-radius: 999px; }
+.segmented button.active { background: var(--glass-surface-solid); box-shadow: 0 1px 2px rgba(14, 18, 34, 0.12); }
+
+.tab { border-radius: 0; padding: 9px 14px; }
+.week-day { border-radius: 14px; padding: 6px 0; }
+.week-day:hover:not(:disabled) { background: var(--glass-sunken); }
+.week-day.active { background: var(--glass-surface-solid); outline: 1px solid var(--glass-line-strong); box-shadow: var(--glass-shadow); }
+.week-day.is-today .dn { color: var(--link); }
+.week-day .dot { background: var(--link); }
+.team-row { padding: 12px 14px; }
+.new-decision { border-radius: var(--glass-radius); }
+.new-decision:hover, .team-row:hover { border-color: var(--glass-line-strong); color: var(--text); }
+
+.menu-panel {
+  background: var(--glass-surface-solid);
+  border-color: var(--glass-edge);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow-float);
+}
+.menu-item { border-radius: 10px; }
+.menu-item:hover,
+.menu-button:hover,
+.team-name:hover,
+button.ghost:hover:not(:disabled) { background: var(--glass-sunken); }
+
+/* Accent text: links and the marks of what is selected. */
+a,
+button.link,
+.badge,
+.hint,
+.chip.active,
+.tag.active,
+.team-row-open,
+.today-link { color: var(--link); }
+.chip.active,
+.tag.active { border-color: color-mix(in srgb, var(--link) 40%, transparent); }
+.decision.highlight { border-color: var(--link); box-shadow: 0 0 0 3px var(--accent-soft); }
+.timeline-dot { background: var(--link); border-color: var(--glass-surface-solid); }
+.welcome { border-color: var(--glass-edge); }
+
+@media (max-width: 560px) {
+  .topbar { top: 8px; margin: 8px 0 12px; }
 }

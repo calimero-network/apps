@@ -97,11 +97,11 @@ keep them that way, and republish the bundle if a domain changes.
 | app | Vercel project | Root Directory | Output | Frontend URL (= redirect URI) |
 |---|---|---|---|---|
 | `battleships` | `battleships` | `apps/battleships/app` | `dist` | https://battleships.vercel.app |
-| `hyperfeed` | `hyperfeed` | `apps/hyperfeed/app` | `dist` | https://hyperfeed-two.vercel.app |
+| `hyperfeed` | `hyperfeed` | `apps/hyperfeed/app` | `dist` | https://hyperfeed.me (www redirects here) |
 | `kv-store` | `mero-kv-store` | `apps/kv-store/app` | `dist` | https://mero-kv-store.vercel.app |
 | `mero-blocks` | `mero-blocks` | `apps/mero-blocks/app` | `dist` | https://mero-blocks.vercel.app/ |
 | `mero-calendar` | `mero-calendar` | `apps/mero-calendar/app` | `dist` | https://mero-calendar.vercel.app |
-| `mero-chat` | `mero-chat-pwa` | `apps/mero-chat/app` | `dist` | https://mero-chat-pwa.vercel.app |
+| `mero-chat` | `mero-chat-pwa` | `apps/mero-chat/app` | `dist` | https://chat.hyperfeed.me |
 | `mero-chess` | `mero-chess` | `apps/mero-chess/app` | `dist` | https://mero-chess.vercel.app ⚠️ not created yet |
 | `mero-kombat` | `mero-kombat` | `apps/mero-kombat/app` | `dist` | https://mero-kombat.vercel.app ⚠️ not created yet |
 | `mero-models` | `mero-models` | `apps/mero-models/app` | `dist` | https://mero-models.vercel.app ⚠️ not created yet |

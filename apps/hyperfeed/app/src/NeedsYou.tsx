@@ -4,7 +4,7 @@ import type { Feed } from "./useFeed";
 import type { Attention } from "./useAttention";
 import { appLook } from "./apps";
 import { alertOf } from "./attention";
-import { localCommand, timeLabel } from "./format";
+import { timeLabel } from "./format";
 
 const appName = (key: string) => appLook(key).name;
 
@@ -145,10 +145,11 @@ function SummaryRow({ title, body, at, onOpen }: { title: string; body: string; 
 }
 
 /**
- * Where a row opens: your agent's question, and a command on your computer it
- * asked about in a chat, in that chat; anything else in the feed, whose
- * "Needs you" strip carries its buttons.
+ * Where a row opens: in the feed, opened in place, whatever it is. Its
+ * "Needs you" card carries its buttons (your agent's question with its
+ * options or reply, Approve on a command it asked about), and Open chat is a
+ * click away for the whole conversation.
  */
-export function opensIn(item: FeedItem): "chat" | "feed" {
-  return item.kind === "message" || localCommand(item) ? "chat" : "feed";
+export function opensAt(base: string, item: FeedItem): string {
+  return `${base || "/"}?open=${encodeURIComponent(item.chain)}`;
 }

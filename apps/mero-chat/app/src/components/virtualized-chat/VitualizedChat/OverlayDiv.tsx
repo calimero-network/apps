@@ -8,5 +8,5 @@ export const OverlayDiv = styled.div<{
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.5)'
+  background-color: var(--chat-scrim)'
 `;

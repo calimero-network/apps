@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNod
 import type { FeedItem, LinkView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
-import { canOpen, chainLink, subjectFromLink } from "./links";
+import { canOpen, chainLink, subjectFromLink, type NameLink } from "./links";
 import { agentLive, notPickedUp } from "./theme";
 import {
   choicesFor,
@@ -19,6 +19,7 @@ import {
   timeLabel,
   TYPE_LABELS,
   typedFacts,
+  writeText,
   type Lane,
 } from "./format";
 import { agentDigest, digestLine, isAgent } from "./team";
@@ -27,6 +28,11 @@ import { answersYou, mayAnswer, placeOf, sentenceOf, useChainRoot, type Sentence
 import { milestonesOf, trackLine, type Milestone } from "./milestones";
 import { CheckpointDetails } from "./CheckpointDetails";
 import { WatchList } from "./WatchList";
+import { WorkBlock } from "./WorkBlock";
+import { Markdown } from "./markdown";
+import { RefCards, useMergeContext } from "./RefCards";
+import { findRefs } from "./github";
+import { AttachButton, PickedImages, useImagePicker } from "./ImagePicker";
 import type { CheckpointView } from "./checkpoint";
 
 const appName = (key: string) => appLook(key).name;
@@ -36,6 +42,9 @@ export const LATER_MS = 3 * 60 * 60 * 1000;
 
 /** How many done rows show before "Show all". */
 const DONE_SHOWN = 5;
+
+/** A conversation longer than this many rows reads better in Chat: its row offers "Continue in chat". */
+export const LONG_CHAT = 6;
 
 /** The lanes under what needs you: what is underway, what is done. */
 const LANES: { id: Lane; label: string; empty: string }[] = [
@@ -73,6 +82,11 @@ export function NewFeedButton({ newFeed }: { newFeed: NewFeed }) {
  * actions); nothing is shown twice. Done rows are archived out of
  * the way, one at a time or all at once, and come back on their own when
  * something new happens in them.
+ *
+ * You act from here: what you ask your agent, at the top or on a row, opens
+ * in place with its progress and its answer, and so does a task post or a
+ * row the bell points at. Chat is one click away on a conversation, for its
+ * whole history.
  */
 export function FeedView({
   feed,
@@ -80,12 +94,18 @@ export function FeedView({
   newFeed,
   onChat,
   openLink,
+  focus = "",
+  onFocused,
 }: {
   feed: Feed;
   query: string;
   newFeed?: NewFeed;
-  /** Open a chat with your agent; without it, a new conversation opens in place. */
+  /** Open a conversation in Chat; without it, rows offer no way there. */
   onChat?: (chain: string) => void;
+  /** A chain to open in place once the feed has it, as the bell asks; "" for none. */
+  focus?: string;
+  /** The focus was applied: whoever set it may clear it. */
+  onFocused?: () => void;
   /** The signed-in address that shows a row in its app; without it, rows have no Open. */
   openLink?: (item: FeedItem) => Promise<string | null>;
 }) {
@@ -172,6 +192,27 @@ export function FeedView({
     [feed, step],
   );
 
+  // Opening a chain from elsewhere (what you just asked, a task post, the
+  // bell): a done row past the first few shows, and its digest opens with it.
+  const { setFilter } = feed;
+  const focusOn = useCallback(
+    (chain: string) => {
+      if (archivedView && !items.some((i) => i.chain === chain)) setFilter("all");
+      if (lanes.done.findIndex((i) => i.chain === chain) >= DONE_SHOWN) setAllDone(true);
+      setOpen(chain);
+    },
+    [archivedView, items, lanes, setFilter],
+  );
+  // Once per focus: the row then closes and moves as you like.
+  const focused = useRef("");
+  useEffect(() => {
+    if (!focus) focused.current = "";
+    if (!focus || !page || focused.current === focus) return;
+    focused.current = focus;
+    focusOn(focus);
+    onFocused?.();
+  }, [focus, page, focusOn, onFocused]);
+
   // The keys: J/K move, E archive, S later, O open in its app, U undo, Esc close.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -208,7 +249,7 @@ export function FeedView({
   return (
     <div className={`feed-page ${panel ? "with-panel" : ""}`}>
       <main className="feed-main">
-        <AskAgent feed={feed} chain="" label="Ask your agent" onPosted={(m) => (onChat ? onChat(m.chain) : setOpen(m.chain))} />
+        <AskAgent feed={feed} chain="" label="Ask your agent" onPosted={(m) => focusOn(m.chain)} />
 
         {feed.outdated && (
           <div className="notice" role="status">
@@ -255,10 +296,8 @@ export function FeedView({
             <TaskPosts
               feed={feed}
               candidates={candidates}
-              onOpen={(chain) => {
-                if (onChat) return onChat(chain);
-                setOpen(chain);
-              }}
+              onOpen={focusOn}
+              onOpenChat={onChat ?? focusOn}
               onOpenApp={openLink ? (item) => void openApp(item) : undefined}
             />
             <section className="needs-strip" aria-label="Needs you">
@@ -474,11 +513,15 @@ function TaskPosts({
   feed,
   candidates,
   onOpen,
+  onOpenChat,
   onOpenApp,
 }: {
   feed: Feed;
   candidates: FeedItem[];
+  /** Opens a task's chain in place. */
   onOpen: (chain: string) => void;
+  /** Opens the chat a task came from, or a task started from it. */
+  onOpenChat: (chain: string) => void;
   /** Opens a linked thing in its app beside the feed. */
   onOpenApp?: (item: FeedItem) => void;
 }) {
@@ -514,7 +557,7 @@ function TaskPosts({
           task={t}
           onOpen={() => onOpen(t.chain)}
           onOpenApp={onOpenApp}
-          onOpenChat={onOpen}
+          onOpenChat={onOpenChat}
           checkpoint={checkpoints.get(t.chain)}
           feed={feed}
         />
@@ -601,7 +644,7 @@ export function LinkChips({
   /** Offer "+ Link"; without, a chain with no links shows nothing. */
   canAdd?: boolean;
 }) {
-  const { loadLinks, loadChain, removeLink, page } = feed;
+  const { loadLinks, loadChain, removeLink, nameLink, page } = feed;
   const addLink = canAdd ? feed.addLink : undefined;
   const [links, setLinks] = useState<LinkView[]>([]);
   const [rows, setRows] = useState<FeedItem[]>([]);
@@ -609,6 +652,21 @@ export function LinkChips({
   const [adding, setAdding] = useState(false);
   const [paste, setPaste] = useState("");
   const [bad, setBad] = useState(false);
+  const [names, setNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!nameLink) return;
+    let live = true;
+    // Unlabelled links are named from the thing itself (the namer reads each once); a label you or the agent gave wins.
+    for (const l of links) {
+      if (l.label) continue;
+      void nameLink(l).then((name) => {
+        if (live && name) setNames((n) => ({ ...n, [l.subject]: name }));
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [links, nameLink]);
   useEffect(() => {
     if (!loadLinks) return;
     let live = true;
@@ -652,7 +710,7 @@ export function LinkChips({
               </span>
             );
           }
-          const label = linkLabel(l, rows);
+          const label = linkLabel(l, rows, names[l.subject]);
           return (
             <span key={l.subject} className={`link-chip${open === l.subject ? " open" : ""}`}>
               <button
@@ -712,7 +770,7 @@ export function LinkChips({
           ))}
       </div>
       {shown && (
-        <ul className="link-group" aria-label={`In ${linkLabel(shown, rows)}`}>
+        <ul className="link-group" aria-label={`In ${linkLabel(shown, rows, names[shown.subject])}`}>
           {about.length === 0 && <li className="link-empty">Nothing from teammates there yet.</li>}
           {about.map((n) => {
             const s = sentenceOf(n, appName);
@@ -737,11 +795,13 @@ export function LinkChips({
 }
 
 /**
- * What a link's chip says: its label; else where a teammate's notification
+ * What a link's chip says: its label; else what the thing itself is called
+ * (`named`, from {@link NameLink}); else where a teammate's notification
  * about it says it is (an issue's title, "#launch"); else the app and the thing's id.
  */
-export function linkLabel(link: LinkView, rows: FeedItem[]): string {
+export function linkLabel(link: LinkView, rows: FeedItem[], named = ""): string {
   if (link.label) return link.label;
+  if (named) return named;
   for (const r of rows) {
     if (r.subject !== link.subject) continue;
     const where = fieldsOf(r).where;
@@ -952,11 +1012,36 @@ function MoreBody({ body }: { body: string }) {
         {more ? "Less" : "More"}
       </button>
       {more && (
-        <p id={id} className="quote more-text">
-          {body}
-        </p>
+        <div id={id}>
+          <Markdown className="quote more-text md-body" text={body} />
+        </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The PRs and runs your agent's answer links to, as Chat shows them: where
+ * each stands, and Merge, a merge watch on this chain.
+ */
+function RowRefCards({ item, feed }: { item: FeedItem; feed: Feed }) {
+  const { merge } = useMergeContext(feed, item.chain);
+  return <RefCards text={item.body} busy={feed.busy} onSend={(request) => void feed.say(item.chain, request, [])} merge={merge} />;
+}
+
+/**
+ * The way to a row's conversation in Chat, for its whole history: on your
+ * agent's messages, and on any chain you started by saying something. A long
+ * one says to continue there.
+ */
+function ChatLink({ item, feed, onChat }: { item: FeedItem; feed: Feed; onChat: (chain: string) => void }) {
+  const root = useChainRoot(item.kind === "message" ? "" : item.chain, feed.loadChain);
+  const chat = item.kind === "message" || (root?.kind === "message" && root.from === "you");
+  if (!chat) return null;
+  return (
+    <button type="button" className="ghost small" onClick={() => onChat(item.chain)}>
+      {item.chain_len > LONG_CHAT ? "Continue in chat" : "Open chat"}
+    </button>
   );
 }
 
@@ -1017,13 +1102,16 @@ function Row({
           ) : (
             body &&
             (item.kind === "action" ? (
-              <p>{body}</p>
+              <p className="write-text">{writeText(item)}</p>
             ) : item.kind === "message" && saysMore(item) ? (
               <MoreBody key={item.id} body={body} />
             ) : (
               <p className="quote">{body}</p>
             ))
           )}
+          {item.kind === "message" && item.from === "agent" && findRefs(item.body).length > 0 && <RowRefCards item={item} feed={feed} />}
+          {/* Your agent's turn on what you said: its steps as they happen, the answer as it is written, and Stop. */}
+          <WorkBlock item={item} clock={Date.now} busy={feed.busy} onStop={(id) => void feed.stop(id)} />
           <Typed item={item} />
           {item.breach && <p className="breach">Your agent {item.breach}.</p>}
           {item.why && item.kind === "action" && <p className="why">Why: {item.why}</p>}
@@ -1045,11 +1133,7 @@ function Row({
                 <kbd>O</kbd>
               </button>
             )}
-            {onChat && item.kind === "message" && (
-              <button type="button" className="ghost small" onClick={() => onChat(item.chain)}>
-                Open chat
-              </button>
-            )}
+            {onChat && <ChatLink item={item} feed={feed} onChat={onChat} />}
             <span className="grow" />
             {archived ? (
               <button type="button" className="ghost small" disabled={feed.busy} onClick={() => void feed.unarchive([item.chain])}>
@@ -1307,13 +1391,19 @@ export function AskAgent({
 }) {
   const id = useId();
   const [text, setText] = useState("");
+  // Images go with it as they do in Chat: picked, pasted or dropped.
+  const picker = useImagePicker(feed.images);
+  const sendable = (text.trim() || picker.picked.length > 0) && !feed.busy && !picker.uploading;
   const send = async () => {
     const t = text.trim();
-    if (!t || feed.busy) return;
+    if (!sendable) return;
+    const attachments = await picker.upload();
+    if (!attachments) return;
     // Which agent answers is set per app in Settings → Agents, not per message.
-    const posted = await feed.say(chain, t, []);
+    const posted = await feed.say(chain, t, attachments);
     if (!posted) return;
     setText("");
+    picker.clear();
     onPosted?.(posted);
   };
   return (
@@ -1323,7 +1413,10 @@ export function AskAgent({
         e.preventDefault();
         void send();
       }}
+      onDragOver={picker.onDragOver}
+      onDrop={picker.onDrop}
     >
+      <PickedImages picker={picker} />
       <label htmlFor={`${id}-ask`} className="ask-label">
         <Spark />
         <span className={chain ? "" : "sr-only"}>{label}</span>
@@ -1335,6 +1428,7 @@ export function AskAgent({
         aria-label={label}
         placeholder={chain ? "Ask about this, or tell your agent what to do next…" : "Tell your agent… (Enter to send)"}
         onChange={(e) => setText(e.target.value)}
+        onPaste={picker.onPaste}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
@@ -1342,8 +1436,9 @@ export function AskAgent({
           }
         }}
       />
-      <button type="submit" className="primary small" disabled={feed.busy || !text.trim()}>
-        Send
+      <AttachButton picker={picker} busy={feed.busy} />
+      <button type="submit" className="primary small" disabled={!sendable}>
+        {picker.uploading ? "Uploading…" : "Send"}
       </button>
     </form>
   );

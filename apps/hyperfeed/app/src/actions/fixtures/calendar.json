@@ -1,0 +1,57 @@
+[
+  {
+    "id": "read",
+    "label": "See your calendar",
+    "description": "Events, private ones included, and who is in the calendar.",
+    "category": "",
+    "writes": false,
+    "methods": [
+      "get_events",
+      "get_private_events",
+      "get_members"
+    ]
+  },
+  {
+    "id": "create",
+    "label": "Add events",
+    "description": "Add an event everyone in the calendar sees, or a private one only you see.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "create_event",
+      "create_private_event"
+    ]
+  },
+  {
+    "id": "edit",
+    "label": "Change events",
+    "description": "Move or edit an event. Editing a private event can make it shared.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "update_event",
+      "update_private_event"
+    ]
+  },
+  {
+    "id": "delete",
+    "label": "Delete events",
+    "description": "Removes the event, for everyone when it is shared.",
+    "category": "delete",
+    "writes": true,
+    "methods": [
+      "delete_event",
+      "delete_private_event"
+    ]
+  },
+  {
+    "id": "profile",
+    "label": "Set your display name",
+    "description": "The name others see on your events.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "set_username"
+    ]
+  }
+]

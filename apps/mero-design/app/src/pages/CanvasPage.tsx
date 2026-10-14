@@ -41,15 +41,15 @@ export default function CanvasPage() {
   // re-render CanvasPage and, through it, the canvas, the toolbar and the whole
   // layers tree. Measured at 300 elements: 309ms p95 for a click. See e2e/perf/.
   const {
-    setElements, upsertElement, upsertElements, removeElements, cacheImage, selectWithPointer, elements, imageCache,
+    setElements, upsertElement, applyRemoteElements, removeRemoteElements, cacheImage, selectWithPointer, elements, imageCache,
     previewMode, setPreviewMode, presenting, startPresentation,
   } =
     useCanvasStore(
       useShallow((s) => ({
         setElements: s.setElements,
         upsertElement: s.upsertElement,
-        upsertElements: s.upsertElements,
-        removeElements: s.removeElements,
+        applyRemoteElements: s.applyRemoteElements,
+        removeRemoteElements: s.removeRemoteElements,
         cacheImage: s.cacheImage,
         selectWithPointer: s.selectWithPointer,
         elements: s.elements,
@@ -444,7 +444,7 @@ export default function CanvasPage() {
       if (!projectId) return;
       const changes = collectBoardChanges(raw);
 
-      if (changes.remove.length > 0) removeElements(changes.remove);
+      if (changes.remove.length > 0) removeRemoteElements(changes.remove);
       if (changes.layers) {
         // A reorder renumbers everything; the full list covers any fetch too.
         rpcCall<Element[]>(projectId, "get_elements", {})
@@ -452,7 +452,7 @@ export default function CanvasPage() {
           .catch(() => {});
       } else if (changes.fetch.length > 0) {
         getElementsByIds(projectId, changes.fetch)
-          .then((els) => upsertElements(els))
+          .then((els) => applyRemoteElements(els))
           .catch(() => {});
       }
       if (changes.comments) {
@@ -484,7 +484,7 @@ export default function CanvasPage() {
           .catch(() => {});
       }
     },
-    [projectId, upsertElements, removeElements, setElements],
+    [projectId, applyRemoteElements, removeRemoteElements, setElements],
   );
 
   // The stream dropped and came back (the node was restarted, the machine
@@ -726,6 +726,23 @@ export default function CanvasPage() {
             onCancelAdd={() => setAddingComment(false)}
             readOnly={!canEdit}
           />
+          {elements.length === 0 && (
+            // A blank board says what to do next. It never takes a pointer:
+            // the first drag has to land on the canvas under it.
+            <div className={styles.emptyHint} aria-hidden="true" data-testid="board-empty-hint">
+              <span className={styles.emptyHintIcons}>
+                <svg viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="5" width="18" height="14" rx="3" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg>
+                <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg>
+                <svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 6h14M12 6v13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+              </span>
+              <strong className={styles.emptyHintTitle}>{canEdit ? "A blank board" : "Nothing on this board yet"}</strong>
+              <span className={styles.emptyHintText}>
+                {canEdit
+                  ? "Pick a shape from the toolbar and drag on the board to draw it."
+                  : "You can look around; editors will fill it in."}
+              </span>
+            </div>
+          )}
         </div>
         <PropertiesPanel contextId={projectId ?? ""} readOnly={!canEdit} />
       </div>

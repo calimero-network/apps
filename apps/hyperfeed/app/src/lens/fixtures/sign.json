@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "events": {
+    "DocumentUploaded": {
+      "type": "request",
+      "read": [
+        {
+          "as": "who",
+          "call": "whoami",
+          "args": {}
+        },
+        {
+          "as": "details",
+          "call": "get_context_details",
+          "args": {
+            "context_id_str": "=context.id"
+          }
+        }
+      ],
+      "let": {
+        "ps": "=details.participants",
+        "my_level": "=str(ps[0].user_id) == str(who) ? ps[0].permission_level : str(ps[1].user_id) == str(who) ? ps[1].permission_level : str(ps[2].user_id) == str(who) ? ps[2].permission_level : str(ps[3].user_id) == str(who) ? ps[3].permission_level : str(ps[4].user_id) == str(who) ? ps[4].permission_level : str(ps[5].user_id) == str(who) ? ps[5].permission_level : str(ps[6].user_id) == str(who) ? ps[6].permission_level : str(ps[7].user_id) == str(who) ? ps[7].permission_level : str(ps[8].user_id) == str(who) ? ps[8].permission_level : str(ps[9].user_id) == str(who) ? ps[9].permission_level : str(ps[10].user_id) == str(who) ? ps[10].permission_level : str(ps[11].user_id) == str(who) ? ps[11].permission_level : null"
+      },
+      "show_if": "=!details.is_private && !(str(event.uploaded_by) == str(who) || mine(event.uploaded_by)) && (my_level == 'Sign' || my_level == 'Admin')",
+      "fields": {
+        "asks_for": "='sign ' + event.name",
+        "detail": "='New document in ' + details.context_name + '. Open it in Sign to review, consent and sign.'",
+        "where": "=details.context_name"
+      },
+      "title": "='Waiting for your signature: ' + event.name",
+      "needs_you": true
+    },
+    "ParticipantPermissionChanged": {
+      "type": "status",
+      "read": [
+        {
+          "as": "who",
+          "call": "whoami",
+          "args": {}
+        },
+        {
+          "as": "details",
+          "call": "get_context_details",
+          "args": {
+            "context_id_str": "=context.id"
+          }
+        }
+      ],
+      "show_if": "=!details.is_private && (str(event.user_id) == str(who) || mine(event.user_id))",
+      "fields": {
+        "what": "Your permission changed",
+        "state": "='An admin set your level in ' + details.context_name + ' to ' + event.permission + (event.permission == 'Read' ? ': you can view documents but no longer sign them' : event.permission == 'Sign' ? ': you can view and sign documents' : ': you can sign and manage participants and documents')",
+        "where": "=details.context_name"
+      },
+      "title": "='Your permission in ' + details.context_name + ' is now ' + event.permission"
+    },
+    "ParticipantLeft": {
+      "type": "status",
+      "read": [
+        {
+          "as": "who",
+          "call": "whoami",
+          "args": {}
+        },
+        {
+          "as": "details",
+          "call": "get_context_details",
+          "args": {
+            "context_id_str": "=context.id"
+          }
+        }
+      ],
+      "show_if": "=!details.is_private && (str(event.user_id) == str(who) || mine(event.user_id))",
+      "fields": {
+        "what": "Removed from an agreement",
+        "state": "='An admin removed you from ' + details.context_name + '. You can no longer sign its documents.'",
+        "where": "=details.context_name"
+      },
+      "title": "='Removed from ' + details.context_name"
+    },
+    "DocumentSigned": "ignore",
+    "DocumentDeleted": "ignore",
+    "ParticipantJoined": "ignore",
+    "ParticipantInvited": "ignore",
+    "SignatureCreated": "ignore",
+    "SignatureDeleted": "ignore",
+    "ContextJoined": "ignore",
+    "ContextLeft": "ignore"
+  }
+}

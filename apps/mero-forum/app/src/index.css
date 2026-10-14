@@ -1,12 +1,15 @@
 /* ── Theme tokens ───────────────────────────────────────────────────────────
  *
- * The Calimero light palette shared by the app family: near-black ink, lime
- * #a5ff11 as a FILL, hairline borders, flat surfaces. Nothing here is a
- * gradient and nothing glows. LIGHT is the default; dark stays available under
+ * The fleet's light glass (@calimero-apps/glass, imported first in main.tsx):
+ * a cool off-white ground under soft fields tinted with this app's orange,
+ * frosted frame, solid content, and one near-black ink for primary fills.
+ * LIGHT is the default; dark (smoked glass) stays available under
  * `data-theme="dark"` and every rule reads tokens so both remain switchable.
  *
- * The green is a FILL, not an ink: #a5ff11 on white is ~1.5:1, so accent TEXT
- * uses `--accent-ink` and text ON the green uses `--accent-text`.
+ * The values are glass's own. The ones index.contrast.test.ts reads are spelt
+ * as hex (it parses them); the rest point at the `--glass-*` tokens. The
+ * accent is the ink FILL; accent TEXT uses `--accent-ink` and text ON the
+ * fill uses `--accent-text`.
  *
  * Older token names (--bg-elev, --green, --red, --amber, --shadow, …) are kept
  * as aliases of the new set, and index.contrast.test.ts holds every ink to WCAG
@@ -25,128 +28,131 @@
   font-display: swap;
 }
 
+:root {
+  --glass-tint: #fb923c;
+}
+
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg: #f6f6f3;
-  --bg-subtle: #efefeb;
+  --bg: #f6f7fb;
+  --bg-subtle: var(--glass-sunken);
   --bg-elev: #ffffff;
-  --surface: #ffffff;
-  --surface-hover: #f3f3f0;
-  --surface-sunken: #f1f1ee;
-  --surface-strong: #e9e9e5;
-  --border: #e5e5e0;
-  --border-strong: #d4d4ce;
+  --surface: var(--glass-surface-solid);
+  --surface-hover: #f0f1f6;
+  --surface-sunken: var(--glass-sunken);
+  --surface-strong: rgba(14, 18, 34, 0.07);
+  --border: var(--glass-line);
+  --border-strong: var(--glass-line-strong);
 
-  --text: #131215;
-  --text-dim: #4a4a4f;
-  --text-faint: #6b6b70;
+  --text: #0e1222;
+  --text-dim: #3c4256;
+  /* --glass-muted (#6f7589) is 4.1:1 on the hover surface; one step darker
+     clears AA for the small captions this is used for. */
+  --text-faint: #5d6377;
 
-  --accent: #a5ff11;
-  --accent-hover: #b4ff3a;
-  --accent-soft: #f0ffd6;
-  --accent-text: #131215;
-  --accent-ink: #4a7300;
+  --accent: #0e1222;
+  --accent-hover: #2a3045;
+  --accent-soft: #e3e9ff;
+  --accent-text: #ffffff;
+  --accent-ink: #3451d1;
   /* Alias: older rules use --accent-fg for "text on the accent". */
-  --accent-fg: #131215;
+  --accent-fg: #ffffff;
 
-  --danger: #c62828;
-  --danger-soft: #fdecec;
-  --warning: #9a5b00;
-  --warning-soft: #fff4e0;
-  --info: #1d5fbf;
-  --info-soft: #eaf1fc;
-  --success: #2f7a00;
-  --success-soft: #eef8e4;
+  --danger: #a2194b;
+  --danger-soft: #ffe4ea;
+  --warning: #6b4e00;
+  --warning-soft: #fef0b8;
+  --info: #3451d1;
+  --info-soft: #e3e9ff;
+  --success: #0b6b43;
+  --success-soft: #d6f7e6;
 
   /* Legacy names, mapped onto the set above. */
-  --green: #2f7a00;
-  --red: #c62828;
+  --green: #0b6b43;
+  --red: #a2194b;
   --red-text: #ffffff;
-  --red-hover: #a51d1d;
-  --amber: #9a5b00;
+  --red-hover: #84123c;
+  --amber: #6b4e00;
 
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
-  --shadow-xs: 0 1px 2px rgba(19, 18, 21, 0.05);
-  --shadow-sm: 0 1px 2px rgba(19, 18, 21, 0.04), 0 2px 8px rgba(19, 18, 21, 0.05);
-  --shadow-md: 0 4px 12px rgba(19, 18, 21, 0.06), 0 12px 32px rgba(19, 18, 21, 0.08);
+  --radius-sm: var(--glass-radius-sm);
+  --radius: 14px;
+  --radius-lg: 18px;
+  --radius-xl: var(--glass-radius-lg);
+  --shadow-xs: 0 1px 2px rgba(14, 18, 34, 0.05);
+  --shadow-sm: var(--glass-shadow);
+  --shadow-md: var(--glass-shadow-float);
   --shadow: var(--shadow-md);
-  --ring: 0 0 0 3px rgba(165, 255, 17, 0.45);
-  --overlay: rgba(19, 18, 21, 0.32);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--glass-tint) 45%, transparent);
+  --overlay: rgba(14, 18, 34, 0.32);
 
-  --scrollbar: #d4d4ce;
-  --scrollbar-hover: #b4b4ae;
+  --scrollbar: rgba(14, 18, 34, 0.16);
+  --scrollbar-hover: rgba(14, 18, 34, 0.28);
 
-  --font-display:
-    "Power Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
-    sans-serif;
-  --font:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--glass-font);
+  --font: var(--glass-font);
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
   /* join-sync banner picks these up. */
-  --join-sync-bg: #eaf1fc;
-  --join-sync-border: #c9dbf5;
-  --join-sync-fg: #131215;
+  --join-sync-bg: #e3e9ff;
+  --join-sync-border: #c9d4fb;
+  --join-sync-fg: #0e1222;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #131215;
-  --bg-subtle: #18171b;
-  --bg-elev: #1a191d;
-  --surface: #1a191d;
-  --surface-hover: #232227;
-  --surface-sunken: #161519;
-  --surface-strong: #2b2a30;
-  --border: #2a292f;
-  --border-strong: #3a3940;
+  /* Smoked glass: glass.css switches its own tokens under this marker too. */
+  --bg: #0b0e18;
+  --bg-subtle: var(--glass-sunken);
+  --bg-elev: #161b2b;
+  --surface: var(--glass-surface-solid);
+  --surface-hover: #1f2537;
+  --surface-sunken: var(--glass-sunken);
+  --surface-strong: rgba(255, 255, 255, 0.09);
+  --border: var(--glass-line);
+  --border-strong: var(--glass-line-strong);
 
-  --text: #fcfcfc;
-  --text-dim: #b4b4b8;
-  --text-faint: #8e8e8e;
+  --text: #eceef5;
+  --text-dim: #c7ccd9;
+  --text-faint: #9097ab;
 
-  --accent: #a5ff11;
-  --accent-hover: #b6ff3d;
-  --accent-soft: #24301a;
-  --accent-text: #131215;
-  --accent-ink: #a5ff11;
-  --accent-fg: #131215;
+  --accent: #eceef5;
+  --accent-hover: #ffffff;
+  --accent-soft: #1c2650;
+  --accent-text: #0b0e18;
+  --accent-ink: #9aafff;
+  --accent-fg: #0b0e18;
 
-  --danger: #ef4444;
-  --danger-soft: #2e1a1c;
-  --warning: #f59e0b;
-  --warning-soft: #2c2416;
-  --info: #7aa7ec;
-  --info-soft: #1a2333;
-  --success: #a5ff11;
-  --success-soft: #1e2a16;
+  --danger: #f78bb0;
+  --danger-soft: #3d0f1e;
+  --warning: #f5dc8a;
+  --warning-soft: #3a300f;
+  --info: #9aafff;
+  --info-soft: #1c2650;
+  --success: #7fe0b0;
+  --success-soft: #0e3324;
 
-  --green: #a5ff11;
-  --red: #ef4444;
-  --red-text: #131215;
+  --green: #7fe0b0;
+  --red: #f78bb0;
+  --red-text: #0b0e18;
   /* LIGHTER than --red: every hover in this theme brightens. */
-  --red-hover: #f26060;
-  --amber: #f59e0b;
+  --red-hover: #fba9c6;
+  --amber: #f5dc8a;
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-sm: var(--glass-shadow);
+  --shadow-md: var(--glass-shadow-float);
   --shadow: var(--shadow-md);
   --overlay: rgba(0, 0, 0, 0.55);
 
-  --scrollbar: #3a3940;
-  --scrollbar-hover: #4a4952;
+  --scrollbar: rgba(255, 255, 255, 0.14);
+  --scrollbar-hover: rgba(255, 255, 255, 0.24);
 
-  --join-sync-bg: #1a2333;
-  --join-sync-border: #2a3a55;
-  --join-sync-fg: #fcfcfc;
+  --join-sync-bg: #1c2650;
+  --join-sync-border: #2a3a75;
+  --join-sync-fg: #eceef5;
 }
 
 * {
@@ -162,7 +168,9 @@ body,
 }
 
 body {
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
@@ -701,13 +709,13 @@ a {
   flex-shrink: 0;
   line-height: 1;
   user-select: none;
-  background: #e8efe0;
-  color: #3d5f00;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .ui-avatar[data-square="true"] {
   border-radius: 28%;
 }
-.ui-avatar[data-tone="0"] { background: #f0ffd6; color: #4a7300; }
+.ui-avatar[data-tone="0"] { background: #ffedd5; color: #9a3412; }
 .ui-avatar[data-tone="1"] { background: #e6eefb; color: #1d4f9f; }
 .ui-avatar[data-tone="2"] { background: #fbe9e4; color: #9a3412; }
 .ui-avatar[data-tone="3"] { background: #efe8fb; color: #5b3aa8; }
@@ -1635,5 +1643,125 @@ button.ghost:focus-visible {
   .composer {
     padding-left: 12px;
     padding-right: 12px;
+  }
+}
+
+/* ══ glass: the frame frosted, the timeline solid ═════════════════════════ */
+/* Last in the file on purpose: it restyles the shell above without touching
+   its layout. The fields show through the gutters; the rail and the sidebar
+   cards are translucent panels over them; the timeline stays a solid sheet
+   with a floating frosted header; menus and dialogs stay opaque. */
+
+.x-shell {
+  background: transparent;
+}
+
+.x-main {
+  background: var(--glass-surface-solid);
+  border-color: var(--glass-edge);
+}
+
+/* The header floats over the timeline it scrolls. */
+.x-head {
+  top: 10px;
+  margin: 10px 10px 0;
+  border: 1px solid var(--glass-edge);
+  border-radius: 18px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
+}
+
+.x-head .tab:hover {
+  background: var(--glass-sunken);
+}
+
+.x-head .tab:first-child:hover {
+  border-bottom-left-radius: 17px;
+}
+
+.x-head .tab:last-child:hover {
+  border-bottom-right-radius: 17px;
+}
+
+.x-headTitle {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+/* Rail and sidebar cards: glass panels. No backdrop-filter here: it would
+   make them the containing block for the fixed dialogs some of their buttons
+   open, and nothing but the soft fields ever sits behind them. */
+.x-sideCard {
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+}
+
+.ui-brandName {
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.ui-menu {
+  background: var(--glass-surface-solid);
+  border-color: var(--glass-edge);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow-float);
+}
+
+.ui-input,
+.composer textarea,
+.namebarInput {
+  border-radius: 12px;
+}
+
+.ui-btn-primary {
+  border-color: transparent;
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
+}
+
+:root[data-theme="dark"] .ui-btn-primary {
+  box-shadow: none;
+}
+
+@media (min-width: 1061px) {
+  .x-main {
+    margin: 12px 0;
+    min-height: calc(100vh - 24px);
+    border: 1px solid var(--glass-edge);
+    border-radius: var(--glass-radius-lg);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .x-railInner {
+    top: 12px;
+    height: calc(100vh - 24px);
+    margin: 12px 0;
+    padding: 12px;
+    border: 1px solid var(--glass-edge);
+    border-radius: var(--glass-radius-lg);
+    background: var(--glass-surface);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+  }
+
+  .x-aside {
+    padding-top: 12px;
+  }
+}
+
+@media (max-width: 1060px) {
+  .x-aside {
+    background: var(--glass-surface-solid);
+  }
+}
+
+@media (max-width: 700px) {
+  .x-rail {
+    background: var(--glass-surface-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }

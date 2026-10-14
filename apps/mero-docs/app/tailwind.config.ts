@@ -14,7 +14,7 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter Variable', 'Inter', 'system-ui', 'sans-serif'],
+        sans: ['Figtree', 'Inter Variable', 'Inter', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono Variable', 'JetBrains Mono', 'monospace'],
       },
       colors: {

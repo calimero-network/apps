@@ -1,19 +1,21 @@
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Attachment, FeedItem, LinkView, PrView, WatchView } from "./generated/HyperfeedClient";
+import type { Attachment, FeedItem, LinkView, WatchView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
-import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
+import type { BlobStore } from "./attachments";
+import { AttachButton, PickedImages, useImagePicker } from "./ImagePicker";
 import { Choices, NewFeedButton, Resolver, type NewFeed } from "./FeedView";
 import { RuleSuggestion } from "./SettingsView";
-import { choicesFor, heldLine, laneOf, localCommand, REPLACED, resolvable, statusOf, timeLabel } from "./format";
+import { choicesFor, heldLine, laneOf, localCommand, REPLACED, resolvable, statusOf, timeLabel, writeText } from "./format";
 import { Markdown } from "./markdown";
-import { RefCards, type MergeContext } from "./RefCards";
-import { prKey } from "./github";
+import { RefCards, useMergeContext, type MergeContext } from "./RefCards";
 import { agentLive, notPickedUp } from "./theme";
 import { WorkBlock } from "./WorkBlock";
 import { WatchList } from "./WatchList";
 import { isActive } from "./watches";
 import { chainLink } from "./links";
 import { ModeChip } from "./modes";
+import { appLook } from "./apps";
+import { placeOf, sentenceOf, sentenceText } from "./people";
 
 /**
  * Chats with your agent.
@@ -76,21 +78,8 @@ export function ChatView({
     };
   }, [loadChain, chain, page]);
 
-  // The chain's watches and the PRs your agent's runtime saw on GitHub: what
-  // each PR card's merge control goes by. Read again with the feed.
-  const [watches, setWatches] = useState<WatchView[]>([]);
-  const [prs, setPrs] = useState<PrView[]>([]);
-  const { loadWatches, loadPrs, mergeWhenGreen, cancelWatch } = feed;
-  useEffect(() => {
-    let live = true;
-    if (!chain || !loadWatches) setWatches([]);
-    else void loadWatches(chain).then((w) => live && setWatches(w), () => live && setWatches([]));
-    if (!chain || !loadPrs) setPrs([]);
-    else void loadPrs("").then((p) => live && setPrs(p), () => live && setPrs([]));
-    return () => {
-      live = false;
-    };
-  }, [loadWatches, loadPrs, chain, page]);
+  // What each PR card's merge control goes by, and the chain's watches.
+  const { merge, watches } = useMergeContext(feed, chain);
   // Tasks started from this chat, and the chat this one came from: pointers in the thread.
   const [links, setLinks] = useState<LinkView[]>([]);
   const { loadLinks } = feed;
@@ -113,6 +102,7 @@ export function ChatView({
   // How many watches each chat still waits on, in every chain: a chat with
   // one ("merge #57 after #459") isn't done, whatever its last answer said.
   const [waiting, setWaiting] = useState<Map<string, number>>(new Map());
+  const { loadWatches } = feed;
   useEffect(() => {
     let live = true;
     const count = (all: WatchView[]) => {
@@ -126,18 +116,6 @@ export function ChatView({
       live = false;
     };
   }, [loadWatches, page]);
-  const merge =useMemo<MergeContext | undefined>(() => {
-    if (!chain) return undefined;
-    const seen = new Map<string, PrView>();
-    for (const p of prs) seen.set(prKey(p.repo, p.pr), p);
-    return {
-      watches,
-      seen,
-      onMerge: mergeWhenGreen ? (repo, pr) => void mergeWhenGreen(chain, repo, pr) : undefined,
-      onCancel: cancelWatch ? (id) => void cancelWatch(id) : undefined,
-    };
-  }, [chain, prs, watches, mergeWhenGreen, cancelWatch]);
-
   const send = useCallback(
     async (text: string, attachments: Attachment[]) => {
       const posted = await feed.say(chain, text, attachments);
@@ -467,7 +445,7 @@ function Thread({
             </div>
             <WorkBlock item={m} clock={clock} busy={busy} onStop={onStop} />
           </Fragment>
-        ) : m.kind === "action" && (resolvable(m) || choicesFor(m).approve || choicesFor(m).decline) ? (
+        ) : waitsOnYou(m) ? (
           <ActionCard item={m} feed={feed} />
         ) : (
           <div className="chat-event">
@@ -484,19 +462,47 @@ function Thread({
 }
 
 /**
+ * A row in this chat that waits on you: your agent's proposal, or a message
+ * that reached you here (a reply to one your agent sent) and asks for an answer.
+ * It gets a card, as the feed's Needs you strip gives it, not a one-line note.
+ */
+export function waitsOnYou(item: FeedItem): boolean {
+  if (item.kind === "action") return resolvable(item) || Boolean(choicesFor(item).approve) || choicesFor(item).decline;
+  if (item.kind === "notification") return resolvable(item) || (item.needs_you && item.status === "received" && !item.superseded_by);
+  return false;
+}
+
+const appName = (key: string) => appLook(key).name;
+
+/**
  * What your agent waits on you for in this chat (a command on your computer,
- * a write in an app), with the same buttons the feed gives it: answered here
- * or there, the first answer wins.
+ * a write in an app, a message to answer), with what it would send or what was
+ * said, and the same buttons the feed gives it: answered here or there, the
+ * first answer wins.
  */
 function ActionCard({ item, feed }: { item: FeedItem; feed: Feed }) {
   const command = localCommand(item);
+  const incoming = item.kind === "notification";
+  const heading = incoming ? sentenceText(sentenceOf(item, appName)) : item.title;
+  const where = incoming ? placeOf(item, appName) : item.app && item.app !== "mero-bot" ? appName(item.app) : "";
+  const body = command ? "" : incoming ? item.body.trim() : writeText(item);
   return (
-    <div className="chat-action" role="group" aria-label={`Waiting for you: ${item.title}`}>
+    <div className="chat-action" role="group" aria-label={`Waiting for you: ${heading}`}>
       <div className="chat-action-head">
-        <strong>{item.title}</strong>
+        <span className="chat-action-title">
+          <strong>{heading}</strong>
+          {where && <span className="chat-action-where">{where}</span>}
+        </span>
         <span className={`pill pill-${statusOf(item).tone}`}>{statusOf(item).label}</span>
       </div>
       {command && command !== item.title && <pre className="chat-action-command">{command}</pre>}
+      {/* What you are approving, or what was said to you: never a decision made blind. */}
+      {body && body !== item.title && (
+        <p className="chat-action-body" aria-label={incoming ? "Message" : "What it sends"}>
+          {body}
+        </p>
+      )}
+      {!incoming && item.why && <p className="chat-action-why">Why: {item.why}</p>}
       {resolvable(item) && <Resolver key={item.id} item={item} feed={feed} />}
       <div className="actions">
         <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
@@ -590,12 +596,6 @@ function BubbleImage({ attachment, store }: { attachment: Attachment; store: Blo
   );
 }
 
-/** An image picked for the next message, before it is uploaded. */
-interface Picked {
-  file: File;
-  preview: string;
-}
-
 function Composer({
   busy,
   fresh,
@@ -610,56 +610,17 @@ function Composer({
 }) {
   const id = useId();
   const [text, setText] = useState("");
-  const [picked, setPicked] = useState<Picked[]>([]);
-  const [refused, setRefused] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const pickedRef = useRef(picked);
-  pickedRef.current = picked;
-  // The previews' object URLs go with the composer.
-  useEffect(() => () => pickedRef.current.forEach((p) => URL.revokeObjectURL(p.preview)), []);
+  const picker = useImagePicker(images);
 
-  const add = (files: Iterable<File>) => {
-    if (!images) return;
-    const next = [...picked];
-    let why: string | null = null;
-    for (const file of files) {
-      const refusal = refuseImage(file, next.length);
-      if (refusal) {
-        why = refusal;
-        continue;
-      }
-      next.push({ file, preview: URL.createObjectURL(file) });
-    }
-    setPicked(next);
-    setRefused(why);
-  };
-  const remove = (p: Picked) => {
-    URL.revokeObjectURL(p.preview);
-    setPicked((all) => all.filter((x) => x !== p));
-  };
-
-  const sendable = (text.trim() || picked.length > 0) && !busy && !uploading;
+  const sendable = (text.trim() || picker.picked.length > 0) && !busy && !picker.uploading;
   const send = async () => {
     const t = text.trim();
     if (!sendable) return;
-    let attachments: Attachment[] = [];
-    if (picked.length > 0 && images) {
-      setUploading(true);
-      try {
-        for (const p of picked) attachments.push(await uploadImage(images, p.file));
-      } catch (e) {
-        setRefused(`Couldn't upload the image: ${e instanceof Error ? e.message : String(e)}`);
-        return;
-      } finally {
-        setUploading(false);
-      }
-    }
+    const attachments = await picker.upload();
+    if (!attachments) return;
     if (await onSend(t, attachments)) {
       setText("");
-      picked.forEach((p) => URL.revokeObjectURL(p.preview));
-      setPicked([]);
-      setRefused(null);
+      picker.clear();
     }
   };
 
@@ -670,59 +631,12 @@ function Composer({
         e.preventDefault();
         void send();
       }}
-      onDragOver={(e) => {
-        if (images && e.dataTransfer.types.includes("Files")) e.preventDefault();
-      }}
-      onDrop={(e) => {
-        if (!images || e.dataTransfer.files.length === 0) return;
-        e.preventDefault();
-        add(Array.from(e.dataTransfer.files));
-      }}
+      onDragOver={picker.onDragOver}
+      onDrop={picker.onDrop}
     >
-      {(picked.length > 0 || refused) && (
-        <div className="composer-attachments">
-          {picked.map((p) => (
-            <span key={p.preview} className="composer-thumb">
-              <img src={p.preview} alt={p.file.name || "Pasted image"} />
-              <button type="button" className="composer-thumb-remove" aria-label={`Remove ${p.file.name || "image"}`} onClick={() => remove(p)}>
-                ×
-              </button>
-            </span>
-          ))}
-          {refused && (
-            <span className="composer-refused" role="alert">
-              {refused}
-            </span>
-          )}
-        </div>
-      )}
+      <PickedImages picker={picker} />
       <div className="composer-row">
-        {images && (
-          <>
-            <input
-              ref={fileInput}
-              type="file"
-              accept={IMAGE_TYPES.join(",")}
-              multiple
-              hidden
-              aria-label="Attach images"
-              onChange={(e) => {
-                add(Array.from(e.target.files ?? []));
-                e.target.value = "";
-              }}
-            />
-            <button
-              type="button"
-              className="ghost composer-attach"
-              aria-label="Attach images"
-              title="Attach images (or paste, or drop them here)"
-              disabled={busy || uploading || picked.length >= MAX_ATTACHMENTS}
-              onClick={() => fileInput.current?.click()}
-            >
-              📎
-            </button>
-          </>
-        )}
+        <AttachButton picker={picker} busy={busy} />
         <label htmlFor={`${id}-say`} className="sr-only">
           Message your agent
         </label>
@@ -733,12 +647,7 @@ function Composer({
           autoFocus
           placeholder={fresh ? "Ask a question or hand your agent a task…" : "Reply to your agent…"}
           onChange={(e) => setText(e.target.value)}
-          onPaste={(e) => {
-            const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
-            if (!images || files.length === 0) return;
-            e.preventDefault();
-            add(files);
-          }}
+          onPaste={picker.onPaste}
           onKeyDown={(e) => {
             // Enter sends; Shift+Enter is a new line.
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -748,7 +657,7 @@ function Composer({
           }}
         />
         <button type="submit" className="button primary" disabled={!sendable}>
-          {uploading ? "Uploading…" : "Send"}
+          {picker.uploading ? "Uploading…" : "Send"}
         </button>
       </div>
     </form>

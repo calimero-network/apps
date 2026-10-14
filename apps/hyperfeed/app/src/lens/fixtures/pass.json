@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "events": {
+    "SecretChanged": {
+      "type": "change",
+      "read": [
+        { "as": "secret", "call": "get_secret", "args": { "id": "=event.secret_id" } },
+        { "as": "logs", "call": "get_audit_logs", "args": {} },
+        { "as": "info", "call": "vault_info", "args": {} }
+      ],
+      "let": { "entry": "=logs[0]" },
+      "show_if": "=secret.id == event.secret_id && mine(secret.created_by) && entry.target == event.secret_id && !entry.redacted && !mine(entry.account) && (entry.action == 'secret_updated' || entry.action == 'secret_trashed' || entry.action == 'secret_restored')",
+      "fields": {
+        "from": "=entry.account",
+        "what": "='your ' + secret.kind",
+        "summary": "=entry.action == 'secret_trashed' ? 'Moved it to the trash' : entry.action == 'secret_restored' ? 'Restored it from the trash' : 'Edited it'",
+        "where": "=info.name"
+      },
+      "title": "=entry.action == 'secret_trashed' ? 'Trashed your ' + secret.kind : entry.action == 'secret_restored' ? 'Restored your ' + secret.kind : 'Changed your ' + secret.kind"
+    },
+    "MembersChanged": {
+      "type": "status",
+      "read": [
+        { "as": "logs", "call": "get_audit_logs", "args": {} },
+        { "as": "info", "call": "vault_info", "args": {} }
+      ],
+      "let": { "entry": "=logs[0]" },
+      "show_if": "=mine(entry.target) && !entry.redacted && !mine(entry.account) && (entry.action == 'member_removed' || entry.action == 'role_set:admin' || entry.action == 'role_set:editor' || entry.action == 'role_set:viewer')",
+      "fields": {
+        "what": "=entry.action == 'member_removed' ? 'You were removed from a vault' : 'Your vault role changed'",
+        "state": "=entry.action == 'member_removed' ? 'You no longer have access to ' + info.name : 'You are now ' + info.my_role + ' in ' + info.name",
+        "where": "=info.name"
+      }
+    },
+    "KeysChanged": "ignore",
+    "VaultRenamed": "ignore"
+  }
+}

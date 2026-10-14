@@ -32,7 +32,7 @@ const Header = styled.div`
   align-items: center;
   margin-bottom: 1rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
 `;
 
 const TitleGroup = styled.div`
@@ -44,19 +44,19 @@ const TitleGroup = styled.div`
 const TitleIcon = styled.div`
   width: 28px;
   height: 28px;
-  border-radius: 7px;
-  background: rgba(124, 58, 237, 0.12);
+  border-radius: 10px;
+  background: var(--chat-violet-soft);
   border: 1px solid rgba(124, 58, 237, 0.25);
   display: flex;
   align-items: center;
   justify-content: center;
   svg {
-    fill: #7c3aed;
+    fill: var(--chat-violet);
   }
 `;
 
 const Title = styled.h2`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 14px;
   font-weight: 600;
   margin: 0;
@@ -66,25 +66,25 @@ const Title = styled.h2`
 const CloseButton = styled.button`
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   width: 28px;
   height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 10px;
   transition: all 0.15s ease;
   &:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--glass-ink);
+    background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
   }
 `;
 
 const TabBar = styled.div`
   display: flex;
   gap: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
   margin-bottom: 1rem;
 `;
 
@@ -97,41 +97,41 @@ const Tab = styled.button<{ $active: boolean }>`
   cursor: pointer;
   transition: all 0.15s ease;
   border-bottom: 2px solid transparent;
-  color: rgba(255, 255, 255, 0.45);
+  color: color-mix(in srgb, var(--glass-ink) 45%, transparent);
 
   ${({ $active }) =>
     $active &&
     css`
-      color: #a5ff11;
-      border-bottom-color: #a5ff11;
+      color: var(--glass-accent);
+      border-bottom-color: var(--glass-accent);
     `}
 
   &:hover {
-    color: rgba(255, 255, 255, 0.8);
+    color: color-mix(in srgb, var(--glass-ink) 80%, transparent);
   }
 `;
 
 const ErrorBanner = styled.div`
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.25);
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 0.5rem 0.75rem;
   margin-bottom: 0.75rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 0.78rem;
-  color: #f87171;
+  color: var(--glass-bad-ink);
 `;
 
 const DismissButton = styled.button`
   background: transparent;
   border: none;
-  color: #f87171;
+  color: var(--glass-bad-ink);
   cursor: pointer;
   font-size: 0.75rem;
   padding: 0.125rem 0.375rem;
-  border-radius: 4px;
+  border-radius: 8px;
   &:hover {
     background: rgba(239, 68, 68, 0.15);
   }
@@ -142,7 +142,7 @@ const LoadingContainer = styled.div`
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: color-mix(in srgb, var(--glass-ink) 40%, transparent);
   font-size: 0.85rem;
 `;
 
@@ -241,6 +241,7 @@ export default function AdminPanel({
               groupId={groupId}
               group={admin.group}
               subgroupCount={admin.subgroupCount}
+              teeMembers={admin.teeMembers}
               actionLoading={admin.actionLoading}
               onSetDefaultCapabilities={admin.setDefaultCapabilities}
               onSetSubgroupVisibility={admin.setSubgroupVisibility}

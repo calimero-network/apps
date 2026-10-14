@@ -4,6 +4,7 @@ import { deleteElements, updateElements } from "../api/elementBatch";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
+import { registerPendingWrite } from "../store/history";
 import { useToast } from "../contexts/ToastContext";
 import { savedMessage } from "../utils/saveFile";
 import { createMutationReporter } from "../utils/mutationErrors";
@@ -37,6 +38,7 @@ import type { StrokeStyle } from "../types";
 import ScreensPanel from "./ScreensPanel";
 import { useGroupActions } from "../hooks/useGroupActions";
 import type { Element } from "../types";
+import { SelectArt } from "./Artwork";
 import styles from "./PropertiesPanel.module.css";
 import controls from "./ui/controls.module.css";
 
@@ -130,10 +132,31 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     row?.scrollIntoView({ block: "nearest" });
   }, [tab, selectionKey]);
 
+  /** The write `rpcDebounceRef` is holding, so an undo can send it first. */
+  const heldRpcRef = useRef<(() => void) | null>(null);
+
   function scheduleRpc(fn: () => void) {
     if (rpcDebounceRef.current) clearTimeout(rpcDebounceRef.current);
-    rpcDebounceRef.current = setTimeout(fn, 2000);
+    heldRpcRef.current = fn;
+    rpcDebounceRef.current = setTimeout(() => {
+      rpcDebounceRef.current = null;
+      heldRpcRef.current = null;
+      fn();
+    }, 2000);
   }
+
+  // An undo inside the debounce window would write the old value and then
+  // have this held edit land on top of it; undo sends it now, first.
+  const flushPendingRef = useRef(flushPending);
+  flushPendingRef.current = flushPending;
+  useEffect(() => registerPendingWrite(() => {
+    if (rpcDebounceRef.current) clearTimeout(rpcDebounceRef.current);
+    rpcDebounceRef.current = null;
+    const held = heldRpcRef.current;
+    heldRpcRef.current = null;
+    held?.();
+    flushPendingRef.current();
+  }), []);
 
   /**
    * Edits waiting on the debounce, merged. The timer used to be replaced with
@@ -909,11 +932,19 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
 
   const propertiesPanel = selectedElementIds.length > 1 ? multiPanel : !el ? (
     <div className={styles.emptyState}>
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round">
-        <rect x="3" y="3" width="18" height="18" rx="2"/>
-        <path d="M3 9h18M9 21V9"/>
-      </svg>
+      <div className={styles.emptyArt}><SelectArt /></div>
+      <p className={styles.emptyTitle}>Nothing selected</p>
       <p>Select an element to edit its properties.</p>
+      {!readOnly && (
+        <ul className={styles.emptyShortcuts} aria-label="Shortcuts">
+          <li>Rectangle <kbd>R</kbd></li>
+          <li>Circle <kbd>O</kbd></li>
+          <li>Text <kbd>T</kbd></li>
+          <li>Sticky <kbd>S</kbd></li>
+          <li>Pen <kbd>P</kbd></li>
+          <li>Hand <kbd>H</kbd></li>
+        </ul>
+      )}
     </div>
   ) : (
     <div className={styles.propContent}>

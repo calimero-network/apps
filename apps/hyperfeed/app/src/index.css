@@ -744,6 +744,80 @@ input:focus-visible {
   margin-left: 10px;
 }
 
+/* ── actions ─────────────────────────────────────────────────────────────── */
+
+.action-apps,
+.action-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.action-apps {
+  gap: 14px;
+}
+
+.action-app {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.action-app h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.action-proposal {
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--wait-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.action-proposal p {
+  margin: 0;
+}
+
+.action-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.action-row:first-child {
+  border-top: 0;
+}
+
+.action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.action-tags:empty {
+  display: none;
+}
+
+.action-methods {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
 /* ── lenses ──────────────────────────────────────────────────────────────── */
 
 .lenses {
@@ -1580,7 +1654,8 @@ thead th {
   overflow-wrap: anywhere;
 }
 
-.bubble-body {
+.bubble-body,
+.md-body {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1588,21 +1663,26 @@ thead th {
 }
 
 .bubble-body ul,
-.bubble-body ol {
+.bubble-body ol,
+.md-body ul,
+.md-body ol {
   margin: 0;
   padding-left: 20px;
 }
 
-.bubble-body li {
+.bubble-body li,
+.md-body li {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.bubble-body li + li {
+.bubble-body li + li,
+.md-body li + li {
   margin-top: 2px;
 }
 
-.bubble-body :not(pre) > code {
+.bubble-body :not(pre) > code,
+.md-body :not(pre) > code {
   padding: 1px 4px;
   border-radius: 4px;
   background: rgba(127, 127, 127, 0.16);
@@ -1788,6 +1868,43 @@ thead th {
   background: var(--sunken);
   border-radius: 8px;
   padding: 6px 8px;
+}
+
+.chat-action-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chat-action-where {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* What a proposal sends, or the message that reached you: readable before you decide, scrolls when long. */
+.chat-action-body {
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--sunken);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+/* A write's arguments, one per line. */
+.write-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-action-why {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .chat-event {
@@ -2264,6 +2381,20 @@ body {
 
 .ask:focus-within {
   box-shadow: 0 0 0 2px var(--accent-solid);
+}
+
+/* Picked images sit on a line of their own, above what you write. */
+.ask:has(.composer-attachments) {
+  flex-wrap: wrap;
+}
+
+.ask .composer-attachments {
+  flex-basis: 100%;
+}
+
+.ask .composer-attach {
+  min-height: 30px;
+  padding: 4px 6px;
 }
 
 .ask-inline {
