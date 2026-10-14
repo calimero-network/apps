@@ -1,37 +1,34 @@
-/* ── Mero Pass landing, in the calimero.network language ────────────────────
+/* ── Mero Pass landing, in the fleet's light glass ──────────────────────────
  *
- * A plain-CSS port of the Calimero landing's own setup — its colour tokens
- * (`colors.scss`, `.dark-mod`), fluid spacing (`spacings.scss`), type scale
- * (`_typography.scss`), 12-column grid, buttons, chapter markers, hairline
- * grids, lime band and footer — the same port Calimero Cloud's marketing site
- * makes. Values are copied, not re-derived.
+ * Hand-owned (not the generated template), restyled to the same glass as the
+ * app and the other landings (Hyperfeed's is the reference): the cool ground
+ * under teal-tinted colour fields, frosted surfaces with a bright edge, a
+ * floating pill header, pill buttons with a near-black ink primary, Figtree.
  *
- * Scoped to `.mp-ld` and dark only, like those pages: the marketing surfaces
- * are charcoal whatever the app's own light/dark choice is.
+ * Scoped to `.mp-ld`. Its tokens keep their old names (so every rule below
+ * reads the same variables) but hold glass values, and they follow the app's
+ * own light/dark choice: light by default, smoked glass in dark.
  */
 
 .mp-ld {
-  --background-inverse: #131215;
-  --background-gray: #4848480c;
-  --content-primary: #fcfcfc;
-  --content-secondary: #c8c8c8;
-  --content-tertiary: #8e8e8e;
-  --content-brand: #a4ff11;
-  --content-brand-hover: #73b30c;
-  --content-on-action: #131215;
-  --surface-action: #a4ff11;
-  --surface-brand: #4848480c;
-  --border-low-contrast: #282828;
-  --border-mid-contrast: #404040;
-  --border-brand: #a4ff11;
-  --layer-blur-low-contrast: #6deaad19;
-  --overlay-dark: #0000007f;
-  --shadow-button: 0 0 20px 0 rgb(181 255 17 / 50%);
-
-  /* The app-wide tokens the shared lockup reads, pinned dark here. */
-  --ink: #fcfcfc;
-  --border-strong: #404040;
-  --accent-text: #a4ff11;
+  --background-inverse: var(--glass-ground);
+  --background-gray: var(--glass-sunken);
+  --content-primary: var(--glass-ink);
+  --content-secondary: var(--glass-ink-2);
+  --content-tertiary: var(--glass-muted);
+  --content-brand: var(--glass-accent);
+  --content-brand-hover: var(--glass-ink);
+  --content-on-action: var(--glass-on-ink);
+  --surface-action: var(--glass-ink);
+  --surface-brand: var(--glass-sunken);
+  --border-low-contrast: var(--glass-line);
+  --border-mid-contrast: var(--glass-line-strong);
+  --border-brand: color-mix(in srgb, var(--glass-tint) 45%, transparent);
+  --layer-blur-low-contrast: var(--glass-surface);
+  --overlay-dark: rgba(14, 18, 34, 0.32);
+  --shadow-button: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
+  --ld-edge: var(--glass-edge);
+  --ld-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
 
   --spacing-6xl: clamp(8.75rem, 3.75rem + 5.556vw, 10rem);
   --spacing-5xl: clamp(6.875rem, 4.375rem + 2.778vw, 7.5rem);
@@ -52,23 +49,22 @@
   isolation: isolate;
   min-height: 100vh;
   overflow-x: clip;
-  background: var(--background-inverse);
+  /* The glass ground, with the teal-tinted fields over it. */
+  background-color: var(--background-inverse);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: var(--content-primary);
-  color-scheme: dark;
-  font-family: 'Power Grotesk', arial, helvetica, sans-serif;
-  font-weight: 300;
-  letter-spacing: 0.015em;
+  font-family: var(--glass-font);
+  font-weight: 400;
+  letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Desktop renders at 80%, as calimero.network and the Cloud site do. */
-@media (width >= 1100px) {
-  .mp-ld {
-    zoom: 0.8;
-  }
-  .mp-ld-hero {
-    min-height: calc(125vh - 6.5rem);
-  }
+/* Smoked glass: a dimmer edge highlight. */
+:root[data-theme='dark'] .mp-ld {
+  --overlay-dark: rgba(0, 0, 0, 0.6);
+  --shadow-button: 0 10px 24px -12px rgba(0, 0, 0, 0.8);
+  --ld-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), var(--glass-shadow);
 }
 
 @media (width < 1320px) {
@@ -103,8 +99,8 @@
 }
 
 .mp-ld ::selection {
-  background: var(--surface-action);
-  color: var(--content-on-action);
+  background: color-mix(in srgb, var(--glass-tint) 30%, transparent);
+  color: var(--content-primary);
 }
 
 /* ── Grid and background lines ──────────────────────────────────────────── */
@@ -140,9 +136,10 @@
   margin-inline: auto;
   pointer-events: none;
 }
+/* Kept for the markup, but invisible: glass has no column rules. */
 .mp-ld-lines span {
   width: 1px;
-  background: var(--border-low-contrast);
+  background: transparent;
 }
 @media (width < 1024px) {
   .mp-ld-lines span:nth-child(even) {
@@ -153,22 +150,39 @@
 /* ── Type ───────────────────────────────────────────────────────────────── */
 
 .mp-ld-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
   margin: 0;
-  font-weight: 400;
-  font-size: clamp(0.875rem, 0.831rem + 0.188vw, 1rem);
-  line-height: 1.5;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  color: var(--content-brand);
+  padding: 7px 14px;
+  border: 1px solid var(--ld-edge);
+  border-radius: 999px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--ld-shadow);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--content-secondary);
+}
+.mp-ld-eyebrow::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--glass-tint);
 }
 
 .mp-ld-title {
   max-width: 28ch;
   margin: 0 0 var(--spacing-xl);
-  font-weight: 950;
-  font-size: clamp(2.625rem, 1.125rem + 1.667vw, 3rem);
-  line-height: 1.16;
-  text-transform: uppercase;
+  font-weight: 800;
+  font-size: clamp(2.625rem, 1.125rem + 1.667vw, 3.25rem);
+  line-height: 1.04;
+  letter-spacing: -0.045em;
   text-wrap: balance;
   color: var(--content-primary);
 }
@@ -181,28 +195,27 @@
 .mp-ld-lede {
   max-width: 48ch;
   margin: 0;
-  font-weight: 300;
-  font-size: 1.125rem;
-  line-height: 1.6;
-  letter-spacing: 0.04em;
+  font-weight: 400;
+  font-size: 1.1875rem;
+  line-height: 1.55;
+  letter-spacing: 0;
   color: var(--content-secondary);
 }
 
 .mp-ld-meta {
   margin: 0;
-  font-weight: 400;
-  font-size: 0.75rem;
+  font-weight: 500;
+  font-size: 0.8125rem;
   line-height: 1.5;
-  letter-spacing: 0.23em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--content-tertiary);
 }
 
 .mp-ld-kicker {
   margin: 0 0 var(--spacing-2xs);
-  font-weight: 400;
-  font-size: 0.875rem;
-  letter-spacing: 0.28em;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--content-brand);
 }
@@ -215,15 +228,14 @@
   margin: var(--spacing-xl) 0 0;
   font-size: 1rem;
   line-height: 1.6;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   color: var(--content-tertiary);
 }
 
 .mp-ld-link {
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  font-size: 1rem;
   color: var(--content-brand);
   white-space: nowrap;
 }
@@ -240,59 +252,59 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.6rem;
-  padding: var(--spacing-s) var(--spacing-l);
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 22px;
   border: 1px solid transparent;
-  border-radius: 0;
+  border-radius: 999px;
   background: transparent;
   font-family: inherit;
-  font-weight: 700;
-  font-size: 1rem;
-  line-height: 1.5;
-  letter-spacing: 0.17em;
-  text-transform: uppercase;
+  font-weight: 600;
+  font-size: 15.5px;
+  line-height: 1;
+  letter-spacing: 0;
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background-color 0.3s ease-out,
-    color 0.3s ease-out,
-    box-shadow 0.3s ease-out;
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
 }
 .mp-ld-btn--primary {
   background: var(--surface-action);
   color: var(--content-on-action);
+  box-shadow: var(--shadow-button);
 }
+/* Frosted, ink text: the ghost every glass landing uses. */
 .mp-ld-btn--secondary {
-  border-color: var(--border-brand);
-  color: var(--content-brand);
-}
-.mp-ld-btn--secondary:hover {
-  background: var(--content-brand);
-  color: var(--content-on-action);
+  border-color: var(--ld-edge);
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: 0 0 0 1px var(--border-low-contrast);
+  color: var(--content-primary);
 }
 .mp-ld-btn--dark {
-  background: #131215;
-  color: #a4ff11;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
+  box-shadow: var(--shadow-button);
 }
 .mp-ld-btn--small {
-  padding: 0.55rem 1.1rem;
-  font-size: 0.875rem;
+  min-height: 38px;
+  padding: 0 16px;
+  font-size: 14.5px;
+}
+.mp-ld-btn:focus-visible {
+  outline: 2px solid var(--glass-accent-solid);
+  outline-offset: 3px;
 }
 @media (hover: hover) and (pointer: fine) {
+  .mp-ld-btn:hover {
+    transform: translateY(-1px);
+  }
   .mp-ld-btn--primary:hover,
-  .mp-ld-btn--secondary:hover {
-    box-shadow: var(--shadow-button);
-  }
   .mp-ld-btn--dark:hover {
-    box-shadow: 4px 4px 0 0 #131215;
-  }
-}
-@media (width < 1024px) {
-  .mp-ld-btn {
-    padding: 16px 24px;
-  }
-  .mp-ld-btn--small {
-    padding: 0.55rem 1rem;
+    filter: brightness(1.15);
   }
 }
 
@@ -308,18 +320,17 @@
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
 
+/* The floating glass pill every landing shares. */
 .mp-ld-header {
   position: sticky;
-  top: 0;
+  top: 14px;
   z-index: 20;
-  transition:
-    background-color 600ms,
-    backdrop-filter 600ms;
+  padding-top: 14px;
 }
-.mp-ld-header.is-scrolled {
-  background: rgb(19 18 21 / 85%);
-  backdrop-filter: blur(25px);
-  border-bottom: 1px solid var(--border-low-contrast);
+.mp-ld-header.is-scrolled .mp-ld-header__inner {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    var(--glass-shadow-float);
 }
 .mp-ld-header__inner {
   display: flex;
@@ -329,7 +340,14 @@
   width: calc(100% - var(--grid-margin) * 2);
   max-width: 1280px;
   margin-inline: auto;
-  padding-block: var(--spacing-m);
+  padding: 8px 8px 8px 20px;
+  border: 1px solid var(--ld-edge);
+  border-radius: 999px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--ld-shadow);
+  transition: box-shadow 0.4s ease;
 }
 .mp-ld-header__brand {
   display: inline-flex;
@@ -337,20 +355,23 @@
 }
 .mp-ld-header__nav {
   display: flex;
-  gap: 2rem;
+  gap: 2px;
 }
 .mp-ld-header__nav a {
-  padding: 8px 0;
-  font-weight: 700;
-  font-size: 0.875rem;
-  line-height: 1.7;
-  letter-spacing: 0.23em;
-  text-transform: uppercase;
-  color: var(--content-primary);
-  transition: color 0.2s;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 500;
+  font-size: 14.5px;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--content-secondary);
+  transition:
+    color 0.2s,
+    background-color 0.2s;
 }
 .mp-ld-header__nav a:hover {
-  color: var(--content-brand);
+  color: var(--content-primary);
+  background: var(--glass-sunken);
 }
 @media (width < 1024px) {
   .mp-ld-header__nav {
@@ -377,15 +398,20 @@
 }
 .mp-ld-hero__title {
   margin: 0;
-  font-weight: 400;
-  font-size: clamp(2.75rem, 1.9rem + 2vw, 4rem);
-  line-height: 1.05;
+  font-weight: 800;
+  font-size: clamp(2.75rem, 1.6rem + 3vw, 4.75rem);
+  line-height: 0.98;
+  letter-spacing: -0.05em;
   text-wrap: balance;
   color: var(--content-primary);
 }
+/* The second line in the brand gradient, as on every glass landing. */
 .mp-ld-hero__title > span {
   display: block;
-  color: var(--content-brand);
+  background: var(--glass-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .mp-ld-hero__shot {
   grid-column: 7 / -1;
@@ -397,7 +423,11 @@
   position: absolute;
   inset: 8% 6%;
   z-index: -1;
-  background: radial-gradient(closest-side, rgb(164 255 17 / 14%), transparent);
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--glass-tint) 35%, transparent),
+    transparent
+  );
   filter: blur(40px);
 }
 @media (width < 1024px) {
@@ -415,14 +445,22 @@
 
 /* ── The product shot ───────────────────────────────────────────────────── */
 
+/* A glass window with the vault drawn inside it, in the app's own tokens. */
 .mp-shot {
-  border: 1px solid var(--border-mid-contrast);
-  background: #131215;
-  box-shadow: 0 40px 80px rgb(0 0 0 / 45%);
+  overflow: hidden;
+  border: 1px solid var(--ld-edge);
+  border-radius: 24px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 40px 80px -40px rgba(20, 26, 60, 0.45),
+    0 0 0 1px var(--glass-line);
   font-size: 13px;
   font-weight: 400;
-  letter-spacing: 0.015em;
-  color: #fcfcfc;
+  letter-spacing: 0;
+  color: var(--glass-ink);
 }
 .mp-shot__bar {
   display: flex;
@@ -432,28 +470,25 @@
   border-bottom: 1px solid var(--border-low-contrast);
 }
 .mp-shot__crumb {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #8e8e8e;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--glass-muted);
 }
 .mp-shot__crumb--on {
-  color: #fcfcfc;
+  font-weight: 600;
+  color: var(--glass-ink);
 }
 .mp-shot__sep {
-  color: #404040;
+  color: var(--glass-line-strong);
 }
 .mp-shot__badge {
   margin-left: auto;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid rgb(164 255 17 / 35%);
-  background: rgb(164 255 17 / 8%);
-  color: #a4ff11;
-  font-size: 9.5px;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  background: var(--glass-good-bg);
+  color: var(--glass-good-ink);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 .mp-shot__body {
   padding: 1.3rem 1.2rem 1.2rem;
@@ -463,10 +498,11 @@
   align-items: center;
   gap: 0.6rem;
   margin: 0 0 0.35rem;
-  font-size: 10px;
-  letter-spacing: 0.28em;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #a4ff11;
+  color: var(--glass-accent);
 }
 .mp-shot__eyebrow::before {
   content: '';
@@ -477,9 +513,9 @@
 .mp-shot__title {
   margin: 0 0 1rem;
   font-size: 1.6rem;
-  font-weight: 950;
+  font-weight: 800;
   line-height: 1;
-  text-transform: uppercase;
+  letter-spacing: -0.03em;
 }
 .mp-shot__tabs {
   display: flex;
@@ -489,59 +525,59 @@
 }
 .mp-shot__tabs span {
   padding-bottom: 0.55rem;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #8e8e8e;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--glass-muted);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 }
 .mp-shot__tabs .is-on {
-  color: #fcfcfc;
-  border-bottom-color: #a4ff11;
+  color: var(--glass-ink);
+  border-bottom-color: var(--glass-ink);
 }
 .mp-shot__list {
+  display: grid;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--border-low-contrast);
 }
 .mp-shot__row {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
   column-gap: 0.8rem;
-  padding: 0.65rem 0.8rem;
-  background: #1a191c;
-}
-.mp-shot__row + .mp-shot__row {
-  border-top: 1px solid var(--border-low-contrast);
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--ld-edge);
+  border-radius: 14px;
+  background: var(--glass-surface);
+  box-shadow: 0 1px 2px rgba(14, 18, 34, 0.04);
 }
 .mp-shot__row.is-open {
-  background: #211f23;
+  background: var(--glass-surface-solid);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--glass-tint) 70%, transparent),
+    0 8px 24px -14px var(--glass-tint);
 }
 .mp-shot__kind {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid rgb(164 255 17 / 35%);
-  background: rgb(164 255 17 / 8%);
-  color: #a4ff11;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--glass-tint) 16%, transparent);
+  color: color-mix(in srgb, var(--glass-tint) 70%, var(--glass-ink));
 }
 .mp-shot__name {
   display: flex;
   flex-direction: column;
-  font-weight: 700;
-  font-size: 12.5px;
+  font-weight: 600;
+  font-size: 13px;
 }
 .mp-shot__name small {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 400;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #8e8e8e;
+  color: var(--glass-muted);
 }
 .mp-shot__tags {
   display: flex;
@@ -549,20 +585,19 @@
   gap: 0.35rem;
 }
 .mp-shot__tags em {
-  padding: 0.2rem 0.35rem;
-  border: 1px solid #404040;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--glass-sunken);
   font-style: normal;
-  font-size: 8.5px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #c8c8c8;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--glass-ink-2);
 }
 .mp-shot__tags b {
   width: 14px;
   text-align: center;
-  font-weight: 300;
-  color: #a4ff11;
+  font-weight: 400;
+  color: var(--glass-muted);
 }
 .mp-shot__fields {
   grid-column: 1 / -1;
@@ -570,8 +605,9 @@
   gap: 0.4rem;
   margin-top: 0.65rem;
   padding: 0.6rem 0.7rem;
-  background: #0f0e11;
   border: 1px solid var(--border-low-contrast);
+  border-radius: 10px;
+  background: var(--glass-sunken);
 }
 .mp-shot__fields span {
   display: flex;
@@ -582,19 +618,20 @@
 .mp-shot__totp i {
   width: 70px;
   font-style: normal;
-  font-size: 9px;
-  letter-spacing: 0.16em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #8e8e8e;
+  color: var(--glass-muted);
 }
 .mp-shot code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11.5px;
   letter-spacing: 0;
-  color: #fcfcfc;
+  color: var(--glass-ink);
 }
 .mp-shot__reveal {
-  color: #a4ff11 !important;
+  color: var(--glass-accent) !important;
 }
 .mp-shot__totp {
   grid-column: 2 / -1;
@@ -604,7 +641,7 @@
   gap: 0.5rem;
 }
 .mp-shot__totp code {
-  color: #a4ff11;
+  color: var(--glass-accent);
   font-size: 13px;
   letter-spacing: 0.1em;
 }
@@ -636,24 +673,25 @@
   align-items: center;
   gap: 0.75rem;
   margin: 0 0 1.5rem;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .mp-ld-marker__n {
-  font-weight: 700;
+  font-weight: 800;
   color: var(--content-brand);
 }
 .mp-ld-marker__rule {
   width: 2.5rem;
   height: 1px;
-  background: var(--border-low-contrast);
+  background: var(--border-mid-contrast);
 }
 .mp-ld-marker__label {
   color: var(--content-tertiary);
 }
 
-/* The two panels: today, and us — ours with a lime edge and a faint wash. */
+/* The two panels: today, and us — both glass, ours lit with the teal tint. */
 .mp-ld-versus {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -666,17 +704,32 @@
 }
 .mp-ld-panel {
   padding: var(--spacing-m) var(--spacing-l);
-  border: 1px solid var(--border-low-contrast);
+  border: 1px solid var(--ld-edge);
+  border-radius: 22px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--ld-shadow);
 }
 .mp-ld-panel--brand {
-  border-color: var(--border-brand);
-  background: var(--layer-blur-low-contrast);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--glass-tint) 14%, transparent),
+      transparent 70%
+    ),
+    var(--glass-surface);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 20px 44px -28px color-mix(in srgb, var(--glass-tint) 80%, transparent),
+    0 0 0 1px var(--border-brand);
 }
 .mp-ld-panel__title {
   margin: 0 0 var(--spacing-s);
   font-weight: 700;
   font-size: clamp(1.5rem, 0.5rem + 1.111vw, 1.75rem);
   line-height: 1.15;
+  letter-spacing: -0.025em;
 }
 
 .mp-ld-ticks {
@@ -691,29 +744,34 @@
   padding-left: 1.4rem;
   font-size: 1rem;
   line-height: 1.6;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   color: var(--content-secondary);
 }
 .mp-ld-ticks li::before {
   content: '';
   position: absolute;
-  top: 0.7em;
+  top: 0.6em;
   left: 0;
-  width: 6px;
-  height: 6px;
-  background: var(--content-brand);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--glass-tint);
 }
 .mp-ld-ticks--muted li::before {
   background: var(--content-tertiary);
 }
 
-/* What you see, next to what a node stores — the whole argument in one frame. */
+/* What you see, next to what a node stores — the whole argument in one
+   frame. Solid: it is read closely, like code. */
 .mp-ld-sealed {
   display: grid;
   grid-template-columns: 1fr 1fr;
   margin-top: var(--spacing-m);
-  border: 1px solid var(--border-low-contrast);
-  background: #1a1a1d;
+  overflow: hidden;
+  border: 1px solid var(--ld-edge);
+  border-radius: 22px;
+  background: var(--glass-surface-solid);
+  box-shadow: var(--glass-shadow);
 }
 .mp-ld-sealed__col {
   padding: var(--spacing-s) var(--spacing-m);
@@ -724,8 +782,8 @@
 .mp-ld-sealed__cap {
   margin: 0 0 var(--spacing-xs);
   font-weight: 700;
-  font-size: 0.875rem;
-  letter-spacing: 0.24em;
+  font-size: 0.8125rem;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--content-tertiary);
 }
@@ -739,7 +797,7 @@
   letter-spacing: 0;
 }
 .mp-ld-sealed dt {
-  color: #6b6b70;
+  color: var(--content-tertiary);
 }
 .mp-ld-sealed dd {
   margin: 0;
@@ -759,41 +817,53 @@
   }
 }
 
-/* The four-step flow: hairline-ruled columns, big lime numbers. */
+/* The four-step flow: one glass panel, hairline-ruled columns, big numbers. */
 .mp-ld-flow {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid var(--border-low-contrast);
+  overflow: hidden;
+  border: 1px solid var(--ld-edge);
+  border-radius: 22px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--ld-shadow);
 }
 .mp-ld-flow__step {
   display: flex;
   flex-direction: column;
-  padding: var(--spacing-l) var(--spacing-m) var(--spacing-l) 0;
+  padding: var(--spacing-l) var(--spacing-m);
 }
 .mp-ld-flow__step + .mp-ld-flow__step {
   padding-left: var(--spacing-m);
   border-left: 1px solid var(--border-low-contrast);
 }
 .mp-ld-flow__n {
-  font-weight: 950;
+  align-self: flex-start;
+  font-weight: 800;
   font-size: clamp(2.625rem, 1.125rem + 1.667vw, 3rem);
   line-height: 1.16;
-  color: var(--content-brand);
+  letter-spacing: -0.04em;
+  background: var(--glass-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .mp-ld-flow__title {
   margin: var(--spacing-2xs) 0;
   font-weight: 700;
-  font-size: clamp(1.5rem, 0.5rem + 1.111vw, 1.75rem);
+  font-size: clamp(1.375rem, 0.5rem + 1.111vw, 1.625rem);
   line-height: 1.15;
+  letter-spacing: -0.025em;
 }
 .mp-ld-flow__body {
   margin: 0;
   font-size: 1rem;
   line-height: 1.6;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   color: var(--content-secondary);
 }
 @media (width < 1024px) {
@@ -801,7 +871,6 @@
     grid-template-columns: 1fr 1fr;
   }
   .mp-ld-flow__step:nth-child(odd) {
-    padding-left: 0;
     border-left: 0;
   }
   .mp-ld-flow__step:nth-child(n + 3) {
@@ -814,7 +883,7 @@
   }
   .mp-ld-flow__step,
   .mp-ld-flow__step + .mp-ld-flow__step {
-    padding-left: 0;
+    padding-left: var(--spacing-m);
     border-left: 0;
   }
   .mp-ld-flow__step + .mp-ld-flow__step {
@@ -822,16 +891,14 @@
   }
 }
 
-/* A hairline card grid: the grid draws top and left, each card right and
-   bottom, so every rule is exactly one pixel. */
+/* A grid of glass cards. */
 .mp-ld-cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
   margin: 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid var(--border-low-contrast);
-  border-left: 1px solid var(--border-low-contrast);
 }
 @media (width < 1024px) {
   .mp-ld-cards {
@@ -848,28 +915,40 @@
   flex-direction: column;
   gap: var(--spacing-2xs);
   padding: var(--spacing-m) var(--spacing-l);
-  border-right: 1px solid var(--border-low-contrast);
-  border-bottom: 1px solid var(--border-low-contrast);
-  transition: background-color 0.3s;
+  border: 1px solid var(--ld-edge);
+  border-radius: 20px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--ld-shadow);
+  transition: transform 0.2s ease;
 }
 .mp-ld-card:hover {
-  background: var(--layer-blur-low-contrast);
+  transform: translateY(-2px);
 }
 .mp-ld-card__icon {
-  color: var(--content-brand);
+  display: inline-grid;
+  place-items: center;
+  align-self: flex-start;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--glass-tint) 16%, transparent);
+  color: color-mix(in srgb, var(--glass-tint) 70%, var(--glass-ink));
   margin-bottom: var(--spacing-2xs);
 }
 .mp-ld-card__title {
   margin: 0;
   font-weight: 700;
-  font-size: 1.438rem;
-  line-height: 1.4;
+  font-size: 1.375rem;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
 }
 .mp-ld-card__body {
   margin: 0;
   font-size: 1rem;
   line-height: 1.6;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   color: var(--content-secondary);
 }
 
@@ -898,32 +977,42 @@
   place-items: center;
   width: 2.75rem;
   height: 2.75rem;
-  color: var(--content-brand);
+  border: 1px solid var(--ld-edge);
+  border-radius: 14px;
+  background: var(--glass-surface);
+  box-shadow: var(--ld-shadow);
+  color: color-mix(in srgb, var(--glass-tint) 70%, var(--glass-ink));
 }
 .mp-ld-benefits__title {
   margin: 0 0 var(--spacing-3xs);
   font-weight: 700;
-  font-size: 1.438rem;
-  line-height: 1.4;
+  font-size: 1.375rem;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
 }
 .mp-ld-benefits__body {
   margin: 0;
   font-size: 1rem;
   line-height: 1.6;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   color: var(--content-secondary);
 }
 
-/* ── The lime band ──────────────────────────────────────────────────────── */
+/* ── The Cloud band: a tinted glass slab across the page ─────────────────── */
 
 .mp-ld-band {
-  --content-primary: #131215;
-  --content-secondary: #282828;
-  --content-tertiary: #404040;
-  --content-brand: #131215;
-
-  background: #a4ff11;
-  color: #131215;
+  border-block: 1px solid var(--ld-edge);
+  background:
+    linear-gradient(
+      120deg,
+      color-mix(in srgb, var(--glass-tint) 18%, transparent),
+      rgba(139, 92, 246, 0.1) 60%,
+      rgba(236, 72, 153, 0.08)
+    ),
+    var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  color: var(--content-primary);
 }
 .mp-ld-band__inner {
   grid-column: 1 / -1;
@@ -947,18 +1036,17 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid #131215;
+  border-top: 1px solid var(--border-mid-contrast);
 }
 .mp-ld-band__list li {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
   padding: var(--spacing-s) 0;
-  border-bottom: 1px solid #131215;
-  font-weight: 700;
-  font-size: 1rem;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
+  border-bottom: 1px solid var(--border-mid-contrast);
+  font-weight: 600;
+  font-size: 1.0625rem;
+  letter-spacing: 0;
 }
 @media (width < 1024px) {
   .mp-ld-band__inner {
@@ -968,9 +1056,13 @@
 
 /* ── Comparison table ───────────────────────────────────────────────────── */
 
+/* Solid: a comparison is read row by row. */
 .mp-ld-table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--border-low-contrast);
+  border: 1px solid var(--ld-edge);
+  border-radius: 22px;
+  background: var(--glass-surface-solid);
+  box-shadow: var(--glass-shadow);
 }
 .mp-ld-table {
   width: 100%;
@@ -992,8 +1084,8 @@
 }
 .mp-ld-table thead th {
   font-weight: 700;
-  font-size: 0.875rem;
-  letter-spacing: 0.24em;
+  font-size: 0.8125rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--content-tertiary);
   background: var(--background-gray);
@@ -1007,7 +1099,7 @@
   color: var(--content-tertiary);
 }
 .mp-ld-table .is-us {
-  background: var(--layer-blur-low-contrast);
+  background: color-mix(in srgb, var(--glass-tint) 9%, transparent);
   color: var(--content-primary);
   border-left: 1px solid var(--border-brand);
   border-right: 1px solid var(--border-brand);
@@ -1021,7 +1113,8 @@
 .mp-ld-faq {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  column-gap: var(--spacing-2xl);
+  align-items: start;
+  gap: 10px var(--spacing-m);
 }
 @media (width < 1024px) {
   .mp-ld-faq {
@@ -1029,16 +1122,23 @@
   }
 }
 .mp-ld-faq__item {
-  border-top: 1px solid var(--border-low-contrast);
+  padding: 0 22px;
+  border: 1px solid var(--ld-edge);
+  border-radius: 20px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--ld-shadow);
 }
 .mp-ld-faq__item summary {
   position: relative;
-  padding: var(--spacing-s) 2.5rem var(--spacing-s) 0;
+  padding: 18px 2.5rem 18px 0;
   cursor: pointer;
   list-style: none;
   font-weight: 700;
   font-size: 1.125rem;
   line-height: 1.4;
+  letter-spacing: -0.015em;
   transition: color 0.2s;
 }
 .mp-ld-faq__item summary::-webkit-details-marker {
@@ -1047,12 +1147,12 @@
 .mp-ld-faq__item summary::after {
   content: '+';
   position: absolute;
-  top: var(--spacing-s);
+  top: 18px;
   right: 0;
-  font-weight: 300;
+  font-weight: 400;
   font-size: 1.5rem;
   line-height: 1;
-  color: var(--content-brand);
+  color: var(--glass-accent-solid);
 }
 .mp-ld-faq__item[open] summary::after {
   content: '−';
@@ -1061,10 +1161,10 @@
   color: var(--content-brand);
 }
 .mp-ld-faq__item p {
-  margin: 0 0 var(--spacing-s);
+  margin: 0 0 18px;
   font-size: 1rem;
   line-height: 1.6;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   color: var(--content-secondary);
 }
 
@@ -1081,14 +1181,18 @@
 }
 .mp-ld-closing__title {
   margin: 0;
-  font-weight: 400;
-  font-size: clamp(2.75rem, 1.9rem + 2vw, 4rem);
-  line-height: 1.05;
+  font-weight: 800;
+  font-size: clamp(2.75rem, 1.6rem + 3vw, 4.5rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
   text-wrap: balance;
 }
 .mp-ld-closing__title > span {
   display: block;
-  color: var(--content-brand);
+  background: var(--glass-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .mp-ld-closing .mp-ld-lede {
   max-width: 60ch;
@@ -1100,34 +1204,22 @@
 
 /* ── Footer ─────────────────────────────────────────────────────────────── */
 
+/* A frosted slab along the bottom of the page. */
 .mp-ld-footer {
   position: relative;
   overflow: hidden;
-  padding-top: var(--spacing-6xl);
-  background: var(--background-gray);
+  padding-top: var(--spacing-4xl);
+  border-top: 1px solid var(--ld-edge);
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 .mp-ld-footer__glow {
   position: absolute;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background:
-    radial-gradient(
-      495px circle at 10% 20%,
-      rgb(225 234 223 / 5%),
-      transparent 70%
-    ),
-    radial-gradient(
-      365px circle at 50% 100%,
-      rgb(109 234 173 / 5%),
-      transparent 70%
-    ),
-    radial-gradient(
-      400px circle at 90% 10%,
-      rgb(255 255 255 / 5%),
-      transparent 70%
-    );
-  filter: blur(40px);
+  background: none;
 }
 .mp-ld-footer__top {
   grid-column: 1 / -1;
@@ -1160,7 +1252,7 @@
 .mp-ld-footer__about .mp-ld-footer__tag {
   font-family: inherit;
   font-size: 1rem;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   line-height: 1.6;
 }
 .mp-ld-footer__mark {
@@ -1168,6 +1260,7 @@
   place-items: center;
   width: 22px;
   height: 22px;
+  border-radius: 6px;
   flex: none;
 }
 /* The keyhole is knocked OUT of the padlock body, so it has to be painted in
@@ -1193,21 +1286,21 @@
 .mp-ld-footer__head {
   margin: 0 0 var(--spacing-2xs);
   font-weight: 700;
-  font-size: 0.875rem;
-  letter-spacing: 0.24em;
+  font-size: 0.8125rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--content-primary);
 }
 .mp-ld-footer__cols a {
   padding-block: 8px;
-  font-size: 1.125rem;
+  font-size: 1rem;
   line-height: 1.2;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   color: var(--content-tertiary);
-  transition: opacity 0.4s;
+  transition: color 0.2s;
 }
 .mp-ld-footer__cols a:hover {
-  opacity: 0.5;
+  color: var(--content-primary);
 }
 .mp-ld-footer__bottom {
   grid-column: 1 / -1;
@@ -1217,10 +1310,9 @@
   gap: var(--spacing-s);
   padding-block: var(--spacing-xl);
   border-top: 1px solid var(--border-low-contrast);
-  font-weight: 400;
-  font-size: 0.75rem;
-  letter-spacing: 0.23em;
-  text-transform: uppercase;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  letter-spacing: 0;
   color: var(--content-tertiary);
 }
 .mp-ld-footer__links {
@@ -1241,7 +1333,7 @@
   height: 4px;
   margin-inline: 16px;
   border-radius: 50%;
-  background: var(--content-secondary);
+  background: var(--content-tertiary);
 }
 
 /* The header's call to action, shortened where the bar is a phone wide. */

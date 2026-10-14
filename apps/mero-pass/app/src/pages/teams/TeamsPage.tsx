@@ -1,9 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMero, useNodeIdentity } from '@calimero-network/mero-react';
+import { Lock } from '@calimero-network/mero-icons';
 
-import AppHeader from '../../components/AppHeader';
+import AppShell from '../../components/AppShell';
 import InviteModal from '../../components/InviteModal';
+import { ChevronIcon, PlusIcon, UsersIcon } from '../../components/icons';
 import { useApplicationId } from '../../hooks/useApplicationId';
 import { useRedeemInvitation } from '../../hooks/useRedeemInvitation';
 import { NOT_AN_INVITATION, parseInvitation } from '../../lib/redeemFlow';
@@ -15,6 +23,7 @@ import {
   mintTeamInvite,
 } from '../../lib/vaults';
 import type { TeamRow } from '../../lib/vaults';
+import { hueOf, monogramOf } from '../../lib/itemView';
 import styles from '../../styles/shell.module.css';
 import { describeError } from '../../lib/errors';
 
@@ -31,12 +40,9 @@ import { describeError } from '../../lib/errors';
  *
  * ── The look ────────────────────────────────────────────────────────────────
  *
- * MeroDesign's Teams screen, taken rather than approximated: #fafafa page, one
- * 800px column, a 22px title, a create row, and a grid of white cards on
- * #e0e0e0 with a ⋯ menu that appears on hover. What was here was a mero-ui
- * `Card` stack on a dark background with a search box above it and a "Reload"
- * button — three different button styles and a navbar that rendered the
- * connection flow to somebody already connected.
+ * The fleet's glass: the private vault as one wide card on top, the teams as
+ * a grid of frosted cards (a monogram tile, the counts as chips, a ⋯ menu on
+ * hover), and "start a team" beside "join a team" as two panels underneath.
  */
 export default function TeamsPage() {
   // `admin`, never `mero.admin`: the session-aware client. On an account the
@@ -219,16 +225,21 @@ export default function TeamsPage() {
   const sharedTeams = teams.filter((t) => !t.personal);
 
   return (
-    <div className={styles.root}>
-      <AppHeader />
-
+    <AppShell crumb="Your vaults">
       <main className={styles.main}>
-        <p className={styles.eyebrow}>Mero Pass</p>
+        <p className={styles.eyebrow}>End-to-end encrypted</p>
         <h1 className={styles.title}>Your vaults</h1>
         <p className={styles.subtitle}>
           Keep credentials to yourself in your private vault, or share them with
           people you invite to a team.
         </p>
+
+        {error && (
+          <p className={styles.error} data-testid="error">
+            {error}
+          </p>
+        )}
+        {busy && <p className={styles.status}>{busy}</p>}
 
         {/* ── Private ──────────────────────────────────────────────────────
             Above the teams, because it is the one vault that is always yours
@@ -241,28 +252,42 @@ export default function TeamsPage() {
         {loading ? (
           <p className={styles.empty}>Loading…</p>
         ) : personalTeam ? (
-          <div className={styles.grid}>
-            <button
-              type="button"
-              className={styles.card}
-              onClick={() =>
-                navigate(
-                  personalVaultId
-                    ? `/vault/${personalVaultId}`
-                    : `/teams/${personalTeam.namespaceId}`,
-                )
-              }
-              data-testid="personal-card"
-            >
-              <span className={styles.cardName}>{personalTeam.name}</span>
-              <span className={styles.cardSub}>Only you · never shared</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            className={styles.hero}
+            onClick={() =>
+              navigate(
+                personalVaultId
+                  ? `/vault/${personalVaultId}`
+                  : `/teams/${personalTeam.namespaceId}`,
+              )
+            }
+            data-testid="personal-card"
+          >
+            <span className={styles.heroIcon} aria-hidden="true">
+              <Lock size={26} />
+            </span>
+            <span className={styles.heroText}>
+              <span className={styles.heroName}>{personalTeam.name}</span>
+              <span className={styles.heroSub}>
+                Only you · never shared · synced across your own devices
+              </span>
+            </span>
+            <span className={styles.heroGo} aria-hidden="true">
+              Open <ChevronIcon size={14} />
+            </span>
+          </button>
         ) : (
-          <div className={styles.createRow}>
-            <p className={`${styles.empty} ${styles.emptyInline}`}>
-              A vault only you can open, synced across your own devices.
-            </p>
+          <div className={`${styles.hero} ${styles.heroOffer}`}>
+            <span className={styles.heroIcon} aria-hidden="true">
+              <Lock size={26} />
+            </span>
+            <span className={styles.heroText}>
+              <span className={styles.heroName}>A vault just for you</span>
+              <span className={styles.heroSub}>
+                A vault only you can open, synced across your own devices.
+              </span>
+            </span>
             <button
               type="button"
               className={styles.btn}
@@ -275,38 +300,16 @@ export default function TeamsPage() {
           </div>
         )}
 
-        <h2 className={styles.sectionTitle}>Teams</h2>
+        <h2 className={styles.sectionTitle}>
+          Teams
+          {!loading && sharedTeams.length > 0 && (
+            <span className={styles.sectionCount}>{sharedTeams.length}</span>
+          )}
+        </h2>
         <p className={styles.subtitle}>
           A team is the people. Every vault inside it is readable by everyone
           you invite.
         </p>
-
-        <div className={styles.createRow}>
-          <input
-            className={styles.input}
-            placeholder="New team name…"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void create()}
-            data-testid="team-name"
-          />
-          <button
-            type="button"
-            className={styles.btn}
-            onClick={() => void create()}
-            disabled={!admin || !appId || !newName.trim() || !!busy}
-            data-testid="team-create"
-          >
-            Create
-          </button>
-        </div>
-
-        {error && (
-          <p className={styles.error} data-testid="error">
-            {error}
-          </p>
-        )}
-        {busy && <p className={styles.status}>{busy}</p>}
 
         {notInstalled ? (
           <p className={styles.empty} data-testid="not-installed">
@@ -322,7 +325,7 @@ export default function TeamsPage() {
           // answer.
           error ? null : (
             <p className={styles.empty} data-testid="teams-empty">
-              No teams yet. Create one above, or paste an invitation below.
+              No teams yet. Start one or paste an invitation below.
             </p>
           )
         ) : (
@@ -339,10 +342,24 @@ export default function TeamsPage() {
                   onClick={() => navigate(`/teams/${team.namespaceId}`)}
                   data-testid="team-card"
                 >
-                  <span className={styles.cardName}>{team.name}</span>
+                  <span className={styles.cardTop}>
+                    <span
+                      className={styles.avatar}
+                      style={{ '--hue': hueOf(team.name) } as CSSProperties}
+                      aria-hidden="true"
+                    >
+                      {monogramOf(team.name)}
+                    </span>
+                    <span className={styles.cardName}>{team.name}</span>
+                  </span>
                   <span className={styles.cardSub}>
-                    {team.vaultCount} vault{team.vaultCount === 1 ? '' : 's'} ·{' '}
-                    {team.memberCount} member{team.memberCount === 1 ? '' : 's'}
+                    <span className={styles.chip}>
+                      {team.vaultCount} vault{team.vaultCount === 1 ? '' : 's'}
+                    </span>
+                    <span className={styles.chip}>
+                      {team.memberCount} member
+                      {team.memberCount === 1 ? '' : 's'}
+                    </span>
                   </span>
                 </button>
                 <button
@@ -356,14 +373,21 @@ export default function TeamsPage() {
                   }}
                   title="More options"
                   aria-label={`More options for ${team.name}`}
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpenId === team.namespaceId}
                   data-testid="team-menu"
                 >
                   ⋯
                 </button>
                 {menuOpenId === team.namespaceId && (
-                  <div className={styles.dropdown} data-testid="team-dropdown">
+                  <div
+                    className={styles.dropdown}
+                    role="menu"
+                    data-testid="team-dropdown"
+                  >
                     <button
                       type="button"
+                      role="menuitem"
                       className={styles.dropdownItem}
                       onClick={() => {
                         setMenuOpenId(null);
@@ -374,6 +398,7 @@ export default function TeamsPage() {
                     </button>
                     <button
                       type="button"
+                      role="menuitem"
                       className={styles.dropdownItem}
                       onClick={() => void inviteTo(team)}
                     >
@@ -381,6 +406,7 @@ export default function TeamsPage() {
                     </button>
                     <button
                       type="button"
+                      role="menuitem"
                       className={styles.dropdownItem}
                       onClick={() => {
                         setMenuOpenId(null);
@@ -396,53 +422,103 @@ export default function TeamsPage() {
           </div>
         )}
 
-        {/* ── Join ────────────────────────────────────────────────────────
-            Below the list rather than beside the create row: creating a team
-            and joining somebody else's are different intents, and a person
-            doing one is not half-doing the other. Same placement as Mero
-            Sign's workspaces screen.
+        {/* ── Start one, or join one ──────────────────────────────────────
+            Side by side: creating a team and joining somebody else's are
+            different intents, and a person doing one is not half-doing the
+            other. Same pairing as Mero Sign's workspaces screen.
         */}
-        <div className={styles.section} data-testid="join-section">
-          <p className={styles.sectionLabel}>Got an invitation? Join a team.</p>
-          <div className={styles.createRow}>
-            <input
-              className={styles.input}
-              placeholder="Paste the link or code you were sent…"
-              value={joinCode}
-              onChange={(e) => {
-                setJoinCode(e.target.value);
-                // Clear a previous complaint as soon as they start fixing it;
-                // a stale error under a field they have just edited reads as
-                // the new value being rejected too.
-                if (redeemer.error) redeemer.setError(null);
-              }}
-              onKeyDown={(e) => e.key === 'Enter' && void join()}
-              data-testid="join-code"
-            />
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={() => void join()}
-              disabled={!admin || !joinCode.trim() || redeemer.busy}
-              data-testid="join-submit"
-            >
-              {redeemer.busy ? 'Joining…' : 'Join'}
-            </button>
+        <div className={styles.split}>
+          <div className={styles.panel}>
+            <div className={styles.panelHead}>
+              <span className={styles.panelIcon} aria-hidden="true">
+                <PlusIcon size={18} />
+              </span>
+              <span>
+                <span className={styles.panelTitle}>Start a team</span>
+                <br />
+                <span className={styles.panelSub}>
+                  You become its Admin and can invite people.
+                </span>
+              </span>
+            </div>
+            <div className={styles.createRow}>
+              <input
+                className={styles.input}
+                placeholder="New team name…"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void create()}
+                aria-label="New team name"
+                data-testid="team-name"
+              />
+              <button
+                type="button"
+                className={styles.btn}
+                onClick={() => void create()}
+                disabled={!admin || !appId || !newName.trim() || !!busy}
+                data-testid="team-create"
+              >
+                Create
+              </button>
+            </div>
           </div>
-          <p className={styles.sectionHint}>
-            Opening the link works too — you only need this if it arrived as
-            text. Joining a team gives you every vault in it.
-          </p>
-          {redeemer.status && (
-            <p className={styles.status} data-testid="join-status">
-              {redeemer.status}
+
+          <div className={styles.panel} data-testid="join-section">
+            <div className={styles.panelHead}>
+              <span className={styles.panelIcon} aria-hidden="true">
+                <UsersIcon size={18} />
+              </span>
+              <span>
+                <span className={styles.panelTitle}>
+                  Got an invitation? Join a team.
+                </span>
+                <br />
+                <span className={styles.panelSub}>
+                  Joining a team gives you every vault in it.
+                </span>
+              </span>
+            </div>
+            <div className={styles.createRow}>
+              <input
+                className={styles.input}
+                placeholder="Paste the link or code you were sent…"
+                value={joinCode}
+                onChange={(e) => {
+                  setJoinCode(e.target.value);
+                  // Clear a previous complaint as soon as they start fixing
+                  // it; a stale error under a field they have just edited
+                  // reads as the new value being rejected too.
+                  if (redeemer.error) redeemer.setError(null);
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && void join()}
+                aria-label="Invitation link or code"
+                data-testid="join-code"
+              />
+              <button
+                type="button"
+                className={styles.btn}
+                onClick={() => void join()}
+                disabled={!admin || !joinCode.trim() || redeemer.busy}
+                data-testid="join-submit"
+              >
+                {redeemer.busy ? 'Joining…' : 'Join'}
+              </button>
+            </div>
+            <p className={styles.sectionHint}>
+              Opening the link works too — you only need this if it arrived as
+              text.
             </p>
-          )}
-          {redeemer.error && (
-            <p className={styles.error} data-testid="join-error">
-              {redeemer.error}
-            </p>
-          )}
+            {redeemer.status && (
+              <p className={styles.status} data-testid="join-status">
+                {redeemer.status}
+              </p>
+            )}
+            {redeemer.error && (
+              <p className={styles.error} data-testid="join-error">
+                {redeemer.error}
+              </p>
+            )}
+          </div>
         </div>
       </main>
 
@@ -453,6 +529,6 @@ export default function TeamsPage() {
         hint="Anyone who opens this link can join the team and read every vault in it."
         onClose={() => setInvite(null)}
       />
-    </div>
+    </AppShell>
   );
 }

@@ -5,6 +5,7 @@ import { copySecret } from '../lib/clipboard';
 import { createShareFragment, shareUrl } from '../lib/shareLink';
 import type { Secret } from '../lib/vaultSession';
 import shell from '../styles/shell.module.css';
+import { CloseIcon } from './icons';
 import styles from './SecretForm.module.css';
 
 const EXPIRY = [
@@ -91,7 +92,7 @@ export default function ShareModal({
             onClick={onClose}
             aria-label="Close"
           >
-            ✕
+            <CloseIcon size={18} />
           </button>
         </header>
 

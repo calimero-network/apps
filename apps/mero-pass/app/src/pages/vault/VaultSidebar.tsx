@@ -68,7 +68,14 @@ function Item({
   );
 }
 
+/**
+ * The vault's own navigation. `rail` is the column in the app frame's rail (or
+ * the phone drawer), grouped under small labels; `chips` is the same list as
+ * one scrolling row of pills, for a phone with the drawer shut.
+ */
 export default function VaultSidebar({
+  variant,
+  vaultName,
   view,
   onView,
   counts,
@@ -77,6 +84,9 @@ export default function VaultSidebar({
   flagged,
   personal,
 }: {
+  variant: 'rail' | 'chips';
+  /** Shown over the rail's list, so it is clear whose categories these are. */
+  vaultName?: string;
   view: View;
   onView: (v: View) => void;
   /** Live items per kind; `all` is the total. */
@@ -89,7 +99,15 @@ export default function VaultSidebar({
 }) {
   const is = (v: View) => sameView(view, v);
   return (
-    <nav className={styles.side} aria-label="Vault sections">
+    <nav
+      className={variant === 'rail' ? styles.side : styles.sideChips}
+      aria-label="Vault sections"
+    >
+      {variant === 'rail' && vaultName && (
+        <p className={styles.sideVault} title={vaultName}>
+          {vaultName}
+        </p>
+      )}
       <p className={styles.sideLabel}>Items</p>
       <Item
         active={is({ type: 'all' })}

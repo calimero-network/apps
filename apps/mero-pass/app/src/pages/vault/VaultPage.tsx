@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
 
-import AppHeader from '../../components/AppHeader';
+import AppShell, { InRail } from '../../components/AppShell';
 import DeviceApprovals from '../../components/DeviceApprovals';
 import HealthPanel from '../../components/HealthPanel';
 import ImportExport from '../../components/ImportExport';
@@ -11,15 +18,24 @@ import LockGate from '../../components/LockGate';
 import SecretForm from '../../components/SecretForm';
 import ShareModal from '../../components/ShareModal';
 import VaultPeople from '../../components/VaultPeople';
-import { PlusIcon } from '../../components/icons';
+import { KeyIcon, PlusIcon } from '../../components/icons';
 import type { AuditView } from '../../generated/MeroPassClient';
 import { useApplicationId } from '../../hooks/useApplicationId';
+import { useShellNav } from '../../hooks/useShellNav';
 import { useVaultSession } from '../../hooks/useVaultSession';
 import { CLIPBOARD_CLEAR_MS, copySecret } from '../../lib/clipboard';
 import { deviceKeeper } from '../../lib/deviceKey';
 import { describeError } from '../../lib/errors';
 import { analyse } from '../../lib/health';
-import { CATEGORIES, asDate, byName, matches, who } from '../../lib/itemView';
+import {
+  CATEGORIES,
+  asDate,
+  byName,
+  hueOf,
+  matches,
+  monogramOf,
+  who,
+} from '../../lib/itemView';
 import type { Kind } from '../../lib/secretKinds';
 import { useVaultClient, useVaultName } from '../../lib/vault';
 import {
@@ -77,12 +93,11 @@ export default function VaultPage() {
   const { vaultId } = useParams<{ vaultId: string }>();
   const vaultName = useVaultName(vaultId ?? null);
   return (
-    <div className={shell.root}>
-      <AppHeader back={{ label: 'Teams', to: '/teams' }} crumb={vaultName} />
+    <AppShell back={{ label: 'Vaults', to: '/teams' }} crumb={vaultName}>
       <LockGate>
         <VaultBody />
       </LockGate>
-    </div>
+    </AppShell>
   );
 }
 
@@ -93,6 +108,7 @@ function VaultBody() {
   // `AdminLike`). `isDelegated` hides the invitation to an invite-only vault:
   // that needs a subgroup invitation, which only a node can mint today.
   const { admin, isDelegated } = useMero();
+  const { closeNav } = useShellNav();
   const { appId } = useApplicationId();
   const client = useVaultClient(contextId);
   const vaultName = useVaultName(contextId);
@@ -303,9 +319,32 @@ function VaultBody() {
 
   const shownError = error ?? sessionError;
 
+  // One set of props for the vault's navigation, wherever it renders: in the
+  // rail, or inline as chips on a phone with the drawer shut.
+  const sideProps = {
+    view,
+    onView: (v: View) => {
+      setView(v);
+      setSelected(null);
+      closeNav();
+    },
+    counts,
+    tags,
+    trashed: trashed.length,
+    flagged,
+    personal,
+  };
+
   return (
     <main className={styles.main}>
       <div className={styles.bar}>
+        <span
+          className={styles.barTile}
+          style={{ '--hue': hueOf(vaultName) } as CSSProperties}
+          aria-hidden="true"
+        >
+          {monogramOf(vaultName)}
+        </span>
         <div className={styles.barTitle}>
           <h1 className={styles.barName} data-testid="vault-heading">
             {vaultName}
@@ -439,7 +478,7 @@ function VaultBody() {
         </div>
       )}
       {session && state === 'ready' && approvals.length > 0 && (
-        <div className={styles.strip}>
+        <div className={`${styles.strip} ${styles.stripPlain}`}>
           <div className={styles.stripText}>
             <DeviceApprovals
               session={session}
@@ -452,20 +491,13 @@ function VaultBody() {
       )}
 
       {readable && (
-        <div className={styles.panes} data-picked={current ? 'true' : 'false'}>
-          <VaultSidebar
-            view={view}
-            onView={(v) => {
-              setView(v);
-              setSelected(null);
-            }}
-            counts={counts}
-            tags={tags}
-            trashed={trashed.length}
-            flagged={flagged}
-            personal={personal}
-          />
+        <InRail fallback={<VaultSidebar variant="chips" {...sideProps} />}>
+          <VaultSidebar variant="rail" vaultName={vaultName} {...sideProps} />
+        </InRail>
+      )}
 
+      {readable && (
+        <div className={styles.panes} data-picked={current ? 'true' : 'false'}>
           {tool ? (
             <section className={styles.wide}>
               {tool === 'health' && (
@@ -572,6 +604,9 @@ function VaultBody() {
                   />
                 ) : (
                   <div className={styles.detailEmpty}>
+                    <span className={styles.detailEmptyIcon} aria-hidden="true">
+                      <KeyIcon size={28} />
+                    </span>
                     {shown.length > 0
                       ? 'Pick an item to see it here.'
                       : state === 'ready'
