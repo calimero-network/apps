@@ -76,6 +76,19 @@ export function monogramOf(name: string): string {
 }
 
 /**
+ * A stable hue (0–359) for a team's or vault's tile, so the same name gets
+ * the same colour on every device and in every session. Derived from the
+ * NAME the person sees, never an id, and never sent anywhere.
+ */
+export function hueOf(name: string): number {
+  let h = 0;
+  for (const ch of name.trim().toLowerCase()) {
+    h = (h * 31 + (ch.codePointAt(0) ?? 0)) % 360;
+  }
+  return h;
+}
+
+/**
  * Search runs here, over decrypted text, because the node holds only
  * ciphertext. Names, tags, usernames and sites match; secret values never do,
  * so a search box over someone's shoulder cannot confirm a password.

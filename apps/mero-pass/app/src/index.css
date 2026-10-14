@@ -172,14 +172,23 @@ a {
   border-radius: 999px;
 }
 
-@keyframes mp-slide-in {
+/* Opacity only, never a transform: a page container that animates `transform`
+   is, for the length of the animation, the containing block of every
+   `position: fixed` child it holds (the copy toast, for one). */
+@keyframes mp-fade-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+  }
+}
+@keyframes mp-slide-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

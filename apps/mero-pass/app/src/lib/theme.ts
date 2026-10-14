@@ -10,6 +10,8 @@
 //   * it is applied before React renders (`index.html` does it inline, before
 //     first paint), so the page never flashes the wrong theme.
 
+import { useSyncExternalStore } from 'react';
+
 export type ThemeMode = 'light' | 'dark';
 
 export const THEME_KEY = 'mero-pass:theme';
@@ -31,6 +33,8 @@ export function currentTheme(): ThemeMode {
   return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 }
 
+const listeners = new Set<() => void>();
+
 /** Show `mode`, and tell the browser chrome to match. */
 export function applyTheme(mode: ThemeMode): void {
   if (typeof document === 'undefined') return;
@@ -38,6 +42,22 @@ export function applyTheme(mode: ThemeMode): void {
   document
     .querySelector('meta[name="theme-color"]')
     ?.setAttribute('content', mode === 'light' ? '#f6f7fb' : '#0b0e18');
+  for (const fn of listeners) fn();
+}
+
+/**
+ * The mode on screen, reactively. The top-bar toggle and Security →
+ * Appearance both change it, and each has to show what the other did.
+ */
+export function useTheme(): ThemeMode {
+  return useSyncExternalStore(
+    (fn) => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    currentTheme,
+    () => DEFAULT_THEME,
+  );
 }
 
 /** Save and show `mode`. Only the toggle calls this. */

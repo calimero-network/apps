@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   useLocation,
   useNavigate,
@@ -7,11 +13,13 @@ import {
 } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
 
-import AppHeader from '../../components/AppHeader';
+import AppShell from '../../components/AppShell';
 import InviteModal from '../../components/InviteModal';
 import MembersPanel from '../../components/MembersPanel';
+import { PlusIcon } from '../../components/icons';
 import { useApplicationId } from '../../hooks/useApplicationId';
 import { useTeamCapabilities } from '../../hooks/useTeamCapabilities';
+import { hueOf, monogramOf } from '../../lib/itemView';
 import { canCreateVault, canInvite } from '../../lib/roles';
 import {
   DEFAULT_INVITE_SECS,
@@ -34,9 +42,9 @@ type Tab = 'vaults' | 'people';
 /**
  * One team: the vaults in it, and the people it is shared with.
  *
- * MeroDesign's Projects screen — a back link in the header, tabs on a 2px rule,
- * and a card grid — rather than the stack of mero-ui `Card`s with a heading,
- * three sub-headings and a members panel bolted underneath that was here.
+ * In the fleet's glass: the team's monogram tile and name, a segmented
+ * Vaults / People control, the vaults as frosted cards with their facts as
+ * chips, and "add a vault" as a panel under them.
  *
  * Both halves are gated on the caller's real CAPABILITY MASK, never on a role
  * string and never on "they opened the page", so a Member is not shown a button
@@ -249,20 +257,27 @@ export default function TeamPage() {
   );
 
   return (
-    <div className={styles.root}>
-      <AppHeader back={{ label: 'Teams', to: '/teams' }} crumb={heading} />
-
+    <AppShell back={{ label: 'Vaults', to: '/teams' }} crumb={heading}>
       <main className={styles.mainWide}>
         <div className={styles.titleRow}>
-          <div>
-            <p className={styles.eyebrow}>Team</p>
-            <h1 className={styles.title} data-testid="team-heading">
-              {heading}
-            </h1>
-            <p className={styles.subtitle}>
-              Open vaults are shared with everyone in this team; invite-only
-              vaults with the people invited to them.
-            </p>
+          <div className={styles.titleRowHead}>
+            <span
+              className={`${styles.avatar} ${styles.avatarLarge}`}
+              style={{ '--hue': hueOf(heading) } as CSSProperties}
+              aria-hidden="true"
+            >
+              {monogramOf(heading)}
+            </span>
+            <div>
+              <p className={styles.eyebrow}>Team</p>
+              <h1 className={styles.title} data-testid="team-heading">
+                {heading}
+              </h1>
+              <p className={styles.subtitle}>
+                Open vaults are shared with everyone in this team; invite-only
+                vaults with the people invited to them.
+              </p>
+            </div>
           </div>
           {mayInvite && (
             <div className={styles.titleRowActions}>
@@ -287,7 +302,7 @@ export default function TeamPage() {
                 disabled={!!busy}
                 data-testid="invite-team"
               >
-                Invite
+                <PlusIcon size={15} /> Invite
               </button>
             </div>
           )}
@@ -330,50 +345,11 @@ export default function TeamPage() {
 
         {tab === 'vaults' ? (
           <>
-            {mayCreateVault ? (
-              <div className={styles.createRow}>
-                <input
-                  className={styles.input}
-                  placeholder="New vault name — “Bank logins”, “Production keys”…"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && void create()}
-                  data-testid="vault-name"
-                />
-                {/* Not offered to an account: an invite-only vault is only
-                    reachable by a vault invitation, and minting one is a
-                    node's operation (`createGroupInvitation` has no account
-                    form yet). An account would create a vault nobody else
-                    could ever be let into. */}
-                {!isDelegated && (
-                  <label className={styles.rowSub}>
-                    <input
-                      type="checkbox"
-                      checked={restricted}
-                      onChange={(e) => setRestricted(e.target.checked)}
-                      data-testid="vault-restricted"
-                    />{' '}
-                    Invite-only
-                  </label>
-                )}
-                <button
-                  type="button"
-                  className={styles.btn}
-                  onClick={() => void create()}
-                  disabled={!admin || !appId || !newName.trim() || !!busy}
-                  data-testid="vault-create"
-                >
-                  Create
-                </button>
-              </div>
-            ) : (
-              !capsLoading && (
-                <p className={styles.status} data-testid="member-notice">
-                  You are a Member of this team, so you can open every vault
-                  below but not create new ones. An Admin can change that under
-                  People.
-                </p>
-              )
+            {!mayCreateVault && !capsLoading && (
+              <p className={styles.status} data-testid="member-notice">
+                You are a Member of this team, so you can open every vault below
+                but not create new ones. An Admin can change that under People.
+              </p>
             )}
 
             {notInstalled ? (
@@ -388,7 +364,7 @@ export default function TeamPage() {
               <p className={styles.empty} data-testid="vaults-empty">
                 No vaults in this team yet.
                 {mayCreateVault
-                  ? ' Create one above — everyone already in the team gets it.'
+                  ? ' Create one below — everyone already in the team gets it.'
                   : ' An Admin can create the first one.'}
               </p>
             ) : (
@@ -402,16 +378,41 @@ export default function TeamPage() {
                       disabled={!vault.contextId || !!busy}
                       data-testid="vault-card"
                     >
-                      <span className={styles.cardName}>{vault.name}</span>
+                      <span className={styles.cardTop}>
+                        <span
+                          className={styles.avatar}
+                          style={
+                            { '--hue': hueOf(vault.name) } as CSSProperties
+                          }
+                          aria-hidden="true"
+                        >
+                          {monogramOf(vault.name)}
+                        </span>
+                        <span className={styles.cardName}>{vault.name}</span>
+                      </span>
                       <span className={styles.cardSub}>
-                        {vault.restricted ? 'Invite-only · ' : ''}
-                        {vault.memberCount} member
-                        {vault.memberCount === 1 ? '' : 's'}
-                        {vault.contextId
-                          ? vault.joined
-                            ? ' · you are in'
-                            : ' · not joined'
-                          : ' · syncing'}
+                        {vault.restricted && (
+                          <span className={styles.chip}>Invite-only</span>
+                        )}
+                        <span className={styles.chip}>
+                          {vault.memberCount} member
+                          {vault.memberCount === 1 ? '' : 's'}
+                        </span>
+                        {vault.contextId ? (
+                          vault.joined ? (
+                            <span
+                              className={`${styles.chip} ${styles.chipGood}`}
+                            >
+                              You are in
+                            </span>
+                          ) : (
+                            <span className={styles.chip}>Not joined</span>
+                          )
+                        ) : (
+                          <span className={`${styles.chip} ${styles.chipWait}`}>
+                            Syncing
+                          </span>
+                        )}
                       </span>
                     </button>
                     {/* An open vault's invitation is a TEAM invitation with
@@ -433,11 +434,65 @@ export default function TeamPage() {
                           aria-label={`Invite someone to ${vault.name}`}
                           data-testid="vault-invite"
                         >
-                          ＋
+                          <PlusIcon size={15} />
                         </button>
                       )}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {mayCreateVault && (
+              <div className={`${styles.panel} ${styles.panelSpaced}`}>
+                <div className={styles.panelHead}>
+                  <span className={styles.panelIcon} aria-hidden="true">
+                    <PlusIcon size={18} />
+                  </span>
+                  <span>
+                    <span className={styles.panelTitle}>Add a vault</span>
+                    <br />
+                    <span className={styles.panelSub}>
+                      Everyone in the team gets an open vault; an invite-only
+                      one only the people you invite to it.
+                    </span>
+                  </span>
+                </div>
+                <div className={styles.createRow}>
+                  <input
+                    className={styles.input}
+                    placeholder="New vault name — “Bank logins”, “Production keys”…"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && void create()}
+                    aria-label="New vault name"
+                    data-testid="vault-name"
+                  />
+                  {/* Not offered to an account: an invite-only vault is only
+                      reachable by a vault invitation, and minting one is a
+                      node's operation (`createGroupInvitation` has no account
+                      form yet). An account would create a vault nobody else
+                      could ever be let into. */}
+                  {!isDelegated && (
+                    <label className={styles.check}>
+                      <input
+                        type="checkbox"
+                        checked={restricted}
+                        onChange={(e) => setRestricted(e.target.checked)}
+                        data-testid="vault-restricted"
+                      />
+                      Invite-only
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    className={styles.btn}
+                    onClick={() => void create()}
+                    disabled={!admin || !appId || !newName.trim() || !!busy}
+                    data-testid="vault-create"
+                  >
+                    Create
+                  </button>
+                </div>
               </div>
             )}
           </>
@@ -461,6 +516,6 @@ export default function TeamPage() {
         hint={invite?.hint}
         onClose={() => setInvite(null)}
       />
-    </div>
+    </AppShell>
   );
 }

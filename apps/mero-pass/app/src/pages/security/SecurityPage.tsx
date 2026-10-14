@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 
-import AppHeader from '../../components/AppHeader';
+import { useSignOut } from '../../auth/signOut';
+import AppShell from '../../components/AppShell';
 import LockGate from '../../components/LockGate';
+import { LogOutIcon } from '../../components/icons';
 import {
   AUTO_LOCK_CHOICES,
   useAutoLockMinutes,
@@ -19,6 +21,7 @@ import {
   restoreFromRecoveryKey,
   setUpRecoveryKey,
 } from '../../lib/recoveryKey';
+import { type ThemeMode, chooseTheme, useTheme } from '../../lib/theme';
 import { migrateDevice } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
 import { describeError, rawReason } from '../../lib/errors';
@@ -47,7 +50,9 @@ export default function SecurityPage() {
   // `admin` is the session-aware client; `mero.rpc` is what executes on each
   // vault's contract. On an account they are two objects (see `lib/vaults`
   // `VaultMero`), so the whole-account walks below take them apart.
-  const { mero, admin, isDelegated } = useMero();
+  const { mero, admin, isDelegated, nodeUrl } = useMero();
+  const signOut = useSignOut();
+  const theme = useTheme();
   const vaultMero = useMemo(
     () => (mero && admin ? { admin, rpc: mero.rpc } : null),
     [mero, admin],
@@ -191,8 +196,7 @@ export default function SecurityPage() {
   };
 
   return (
-    <div className={shell.root}>
-      <AppHeader back={{ label: 'Teams', to: '/teams' }} crumb="Security" />
+    <AppShell crumb="Security">
       <main className={shell.main}>
         <p className={shell.eyebrow}>This browser</p>
         <h1 className={shell.title}>Security</h1>
@@ -202,6 +206,33 @@ export default function SecurityPage() {
         </p>
         {error && <p className={shell.error}>{error}</p>}
         {status && <p className={shell.notice}>{status}</p>}
+
+        <section className={shell.section}>
+          <h2 className={shell.sectionLabel}>Appearance</h2>
+          <p className={shell.sectionHint}>
+            Light is the default. The choice is kept in this browser only.
+          </p>
+          <div
+            className={shell.tabs}
+            role="radiogroup"
+            aria-label="Appearance"
+            style={{ marginBottom: 0 }}
+          >
+            {(['light', 'dark'] as ThemeMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={theme === m}
+                className={`${shell.tab} ${theme === m ? shell.tabActive : ''}`}
+                onClick={() => chooseTheme(m)}
+                data-testid={`appearance-${m}`}
+              >
+                {m === 'light' ? 'Light' : 'Dark'}
+              </button>
+            ))}
+          </div>
+        </section>
 
         <section className={shell.section}>
           <h2 className={shell.sectionLabel}>Auto-lock</h2>
@@ -382,7 +413,27 @@ export default function SecurityPage() {
             </div>
           ))}
         </section>
+
+        <section className={shell.section} data-testid="account-section">
+          <h2 className={shell.sectionLabel}>Your account</h2>
+          <p className={shell.sectionHint}>
+            Signed in to{' '}
+            <span className={shell.mono}>{nodeUrl || 'this node'}</span>.
+            Logging out locks every vault key in this tab, clears a copied
+            password from the clipboard and ends the session. This browser's
+            device key stays on this device, locked, so its vaults open again
+            after you sign back in and unlock.
+          </p>
+          <button
+            type="button"
+            className={shell.btnDanger}
+            onClick={signOut}
+            data-testid="settings-logout"
+          >
+            <LogOutIcon size={15} /> Log out
+          </button>
+        </section>
       </main>
-    </div>
+    </AppShell>
   );
 }

@@ -1,0 +1,98 @@
+/* The lock screen: one frosted card in the middle of the page, a dark lock
+   tile (the app's own mark), the words, and the way back in. */
+
+.gate {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(1.5rem, 6vh, 4.5rem) 1rem 3rem;
+  animation: mp-fade-in 0.25s ease-out;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(440px, 100%);
+  padding: 2.25rem 2rem 2rem;
+  border: 1px solid var(--edge);
+  border-radius: 28px;
+  background:
+    radial-gradient(
+      120% 70% at 50% 0%,
+      color-mix(in srgb, var(--glass-tint) 16%, transparent),
+      transparent 70%
+    ),
+    var(--surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 0.5rem;
+  border-radius: 20px;
+  background: #090b10;
+  color: #34d399;
+  box-shadow: 0 18px 32px -16px rgba(9, 11, 16, 0.8);
+}
+
+.title {
+  font-size: 1.625rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.hint {
+  max-width: 36ch;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+.form > input {
+  flex: 1 1 100%;
+}
+
+.unlock {
+  flex: 1 1 100%;
+}
+
+.forgot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.link {
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
