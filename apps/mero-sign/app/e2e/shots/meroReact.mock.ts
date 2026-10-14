@@ -20,6 +20,8 @@ export function LoginModal() {
 
 export const useMero = () => ({
   mero: null,
+  // The shell shows which node the session is on.
+  nodeUrl: 'https://alice.calimero.network',
   isAuthenticated: true,
   connectToNode: () => {},
   logout: () => {},

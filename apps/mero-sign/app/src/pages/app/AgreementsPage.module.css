@@ -1,398 +1,653 @@
-.root { min-height: 100vh; background: var(--glass-ground); }
+/* ══════════════════════════════════════════════════════════════════════════
+   The list screens: workspaces, agreements, the signature library, and the
+   connect and not-found screens. One stylesheet because they share one
+   anatomy — a page head, a composer, a grid of cards, and secondary panels.
 
-.header {
-  display: flex;
-  align-items: center;
-  padding: 0 40px;
-  height: 56px;
-  border-bottom: 1px solid var(--glass-line);
-  background: var(--glass-surface-solid);
-}
-.logo { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+   Glass, from the `--sign-*` tokens in src/index.css: frosted panels and
+   cards on the tinted ground, solid menus and dialogs, near-black pill for
+   the primary action. Both themes follow <html data-theme>.
+   ══════════════════════════════════════════════════════════════════════════ */
 
-.headerRight {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.root {
+  min-height: 100vh;
 }
 
-.logoutBtn {
-  padding: 6px 14px;
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 6px;
-  background: var(--glass-surface-solid);
+.main {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 36px 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ── Page head ─────────────────────────────────────────────────────────── */
+.pageHead {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
-  color: var(--glass-ink-2);
-  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sign-accent);
 }
-.logoutBtn:hover { background: var(--glass-sunken); border-color: var(--glass-line-strong); }
+.title {
+  font-size: clamp(26px, 3.2vw, 34px);
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--sign-ink);
+}
+.subtitle {
+  max-width: 64ch;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--sign-ink-2);
+}
 
-.main { padding: 48px 40px; max-width: 800px; margin: 0 auto; }
+/* ── Panels: frosted sections ──────────────────────────────────────────── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+  border-radius: var(--sign-radius-lg);
+  background: var(--sign-glass);
+  -webkit-backdrop-filter: var(--sign-blur);
+  backdrop-filter: var(--sign-blur);
+  border: 1px solid var(--sign-edge);
+  box-shadow: var(--sign-highlight), var(--sign-shadow);
+}
+.panelHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.panelIcon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--sign-sunken);
+  color: var(--sign-ink-2);
+}
+.panelTitle {
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--sign-ink);
+}
+.panelText {
+  margin-top: 2px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--sign-muted);
+}
 
-.title { font-size: 22px; font-weight: 600; margin-bottom: 24px; }
+/* Two secondary panels side by side, one under the other on a phone. */
+.panelPair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
 
-.createRow { display: flex; gap: 10px; margin-bottom: 32px; }
+/* ── Sections ──────────────────────────────────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.sectionTitle {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--sign-ink);
+}
+.count {
+  display: inline-flex;
+  align-items: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--sign-sunken);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sign-ink-2);
+}
 
-.input {
+/* ── Inputs and buttons ────────────────────────────────────────────────── */
+.createRow,
+.joinRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.joinRow {
+  flex-wrap: wrap;
+}
+
+.input,
+.textarea {
   flex: 1;
-  padding: 9px 12px;
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 6px;
-  font-size: 13px;
+  min-width: 0;
+  height: 46px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1px solid var(--sign-line-strong);
+  background: var(--sign-solid);
+  font-size: 14.5px;
+  color: var(--sign-ink);
   outline: none;
+  transition: border-color 140ms ease-out, box-shadow 140ms ease-out;
 }
-.input:focus { border-color: var(--glass-ink); }
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--sign-muted);
+}
+.input:focus,
+.textarea:focus {
+  border-color: color-mix(in srgb, var(--sign-accent) 60%, transparent);
+  box-shadow: var(--sign-focus);
+}
+.textarea {
+  width: 100%;
+  height: auto;
+  min-height: 96px;
+  padding: 12px 14px;
+  font-family: var(--sign-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+  word-break: break-all;
+}
 
-.btn {
-  padding: 9px 18px;
-  background: var(--glass-ink);
-  color: var(--glass-on-ink);
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
+.btn,
+.btnGhost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 14.5px;
+  font-weight: 650;
   white-space: nowrap;
+  cursor: pointer;
+  transition: transform 140ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out, opacity 140ms ease-out;
 }
-.btn:hover:not(:disabled) { background: var(--glass-ink-2); }
-.btn:disabled { opacity: 0.5; }
+.btn {
+  background: var(--sign-primary);
+  color: var(--sign-on-primary);
+  box-shadow: var(--sign-primary-shadow);
+}
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.btn:disabled {
+  opacity: 0.42;
+  cursor: default;
+  box-shadow: none;
+}
+.btnGhost {
+  background: var(--sign-solid);
+  color: var(--sign-ink);
+  box-shadow: inset 0 0 0 1px var(--sign-line-strong);
+}
+.btnGhost:hover {
+  background: var(--sign-hover);
+}
+.btnDanger {
+  background: var(--sign-bad-ink);
+  color: var(--sign-solid);
+}
 
-.empty { color: var(--glass-muted); font-size: 13px; }
-
+/* ── Card grid ─────────────────────────────────────────────────────────── */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 16px;
-  margin-bottom: 48px;
 }
 
-/* Card with hover menu */
 .cardWrap {
   position: relative;
+  display: flex;
 }
-.cardWrap:hover .menuBtn { opacity: 1; }
+.cardWrap > .card {
+  flex: 1;
+}
 
 .card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  padding: 20px 18px;
+  gap: 4px;
   width: 100%;
-  background: var(--glass-surface-solid);
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 8px;
-  cursor: pointer;
+  min-height: 168px;
+  padding: 18px;
   text-align: left;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  border-radius: var(--sign-radius-lg);
+  border: 1px solid var(--sign-edge);
+  background: var(--sign-glass);
+  -webkit-backdrop-filter: var(--sign-blur);
+  backdrop-filter: var(--sign-blur);
+  box-shadow: var(--sign-highlight), var(--sign-shadow);
+  color: var(--sign-ink);
+  cursor: pointer;
+  transition: transform 160ms ease-out, box-shadow 160ms ease-out, border-color 160ms ease-out;
 }
-.card:hover { border-color: var(--glass-ink); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.card:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--sign-highlight), var(--sign-shadow-float);
+}
+.card:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.cardStatic {
+  cursor: default;
+}
+.cardStatic:hover {
+  transform: none;
+}
 
-.cardName { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-.cardSub { font-size: 11px; color: var(--glass-muted); }
+/* A monogram tile, coloured from the name (`--hue`, set inline). */
+.cardIcon {
+  --hue: 210;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: hsl(var(--hue) 85% 92%);
+  color: hsl(var(--hue) 62% 28%);
+}
+:global(:root[data-theme='dark']) .cardIcon {
+  background: hsl(var(--hue) 38% 22%);
+  color: hsl(var(--hue) 85% 82%);
+}
 
+.cardName {
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: var(--sign-ink);
+  overflow-wrap: anywhere;
+}
+.cardSub {
+  font-size: 13px;
+  color: var(--sign-muted);
+}
+.cardFoot {
+  margin-top: auto;
+  padding-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--sign-ink-2);
+}
+.card:hover .cardFoot {
+  color: var(--sign-ink);
+}
+
+/* A signature on paper: the drawing stays on white in both themes. */
+.sigPaper {
+  width: 100%;
+  height: 84px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid var(--sign-line);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.sigPaper img {
+  max-width: 88%;
+  max-height: 70px;
+  object-fit: contain;
+}
+
+/* ── Card menu ─────────────────────────────────────────────────────────── */
 .menuBtn {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--glass-surface-solid) 90%, transparent);
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 4px;
-  font-size: 14px;
-  color: var(--glass-ink-2);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s;
-  z-index: 2;
-  line-height: 1;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
   padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sign-solid);
+  box-shadow: inset 0 0 0 1px var(--sign-line);
+  color: var(--sign-ink-2);
+  opacity: 0;
+  transition: opacity 140ms ease-out, background 140ms ease-out;
+  z-index: 2;
 }
-.menuBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
+.cardWrap:hover .menuBtn,
+.cardWrap:focus-within .menuBtn,
+.menuBtnOpen {
+  opacity: 1;
+}
+.menuBtn:hover {
+  background: var(--sign-hover);
+  color: var(--sign-ink);
+}
+/* No hover on touch: the menu is always there to tap. */
+@media (hover: none) {
+  .menuBtn {
+    opacity: 1;
+  }
+}
 
 .dropdown {
   position: absolute;
-  top: 36px;
-  right: 0;
-  min-width: 120px;
-  background: var(--glass-surface-solid);
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-  z-index: 100;
-  overflow: hidden;
+  top: 52px;
+  right: 10px;
+  z-index: 20;
+  min-width: 184px;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--sign-solid);
+  border: 1px solid var(--sign-edge);
+  box-shadow: var(--sign-shadow-float);
+  animation: pop 140ms ease-out;
 }
-
 .dropdownItem {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 8px 14px;
-  font-size: 13px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--glass-ink-2);
-  transition: background 0.1s;
-}
-.dropdownItem:hover { background: var(--glass-sunken); }
-
-.dropdownDanger { color: var(--glass-bad-ink); }
-.dropdownDanger:hover { background: var(--glass-bad-bg); }
-
-/* Join section */
-.joinSection {
-  border-top: 1px solid var(--glass-line);
-  padding-top: 32px;
-  margin-top: 8px;
-}
-
-.joinLabel {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--glass-ink-2);
-  margin-bottom: 12px;
-}
-
-.joinRow {
   display: flex;
-  gap: 10px;
-  max-width: 480px;
-}
-
-.joinError {
-  font-size: 12px;
-  color: var(--glass-bad-ink);
-  margin-top: 6px;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   Everything above this line is mero-design's `TeamsPage.module.css`, copied
-   VERBATIM (`pages/TeamsPage.module.css` in apps/mero-design). Not re-expressed
-   in this app's tokens, and deliberately so: re-deriving the look from a
-   different palette is how mero-forum ended up "inspired by" it twice and was
-   rejected twice. If mero-design changes, re-copy rather than re-interpret.
-
-   Below: the classes mero-design has no use for, written in its idiom — and
-   ONE substitution.
-
-   ── The green ───────────────────────────────────────────────────────────────
-   mero-design's accent is blue (#2563eb). This app is green. Two rules, both
-   learned the expensive way:
-
-   * `#a5ff11` is a FILL, not an ink. It measures ~1.2:1 on white, so text ON
-     it must be near-black (#131215) and NEVER white — that exact pairing was
-     the mero-meet bug.
-   * Green TEXT on white uses #4e7a00 (~5:1), never the brand fill.
-
-   The primary button stays mero-design's black #111. A column of solid #a5ff11
-   reads as highlighting rather than as a list, so the green appears only where
-   it means something: the signed state, and the brand mark.
-   ───────────────────────────────────────────────────────────────────────────── */
-
-/* Equal-height cards. `.cardWrap` is the grid item and `.card` sits inside it,
-   so without this a long name makes one card taller than its neighbours and the
-   row reads as ragged. */
-.cardWrap { display: flex; }
-.cardWrap > .card { flex: 1; }
-
-/* The brand mark in the header. #a5ff11 as a FILL with near-black ink on it. */
-.mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--glass-grad);
-  color: var(--glass-on-ink);
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  font-size: 12px;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--sign-ink);
+}
+.dropdownItem svg {
+  color: var(--sign-muted);
+}
+.dropdownItem:hover:not(:disabled) {
+  background: var(--sign-hover);
+}
+.dropdownItem:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dropdownDanger,
+.dropdownDanger svg {
+  color: var(--sign-bad-ink);
+}
+.dropdownDanger:hover:not(:disabled) {
+  background: var(--sign-bad-bg);
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+/* ── Empty and loading states ──────────────────────────────────────────── */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 44px 24px;
+  border-radius: var(--sign-radius-lg);
+  border: 1.5px dashed var(--sign-line-strong);
+  background: color-mix(in srgb, var(--sign-solid) 35%, transparent);
+}
+.emptyIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: var(--sign-solid);
+  color: var(--sign-accent);
+  box-shadow: var(--sign-shadow);
+}
+.emptyTitle {
+  font-size: 16px;
   font-weight: 700;
-  flex-shrink: 0;
+  color: var(--sign-ink);
+}
+.empty {
+  max-width: 46ch;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--sign-muted);
 }
 
-/* Node host next to the logout button. Quiet: it is a diagnostic, not a
-   control, and the "connected" chrome it replaces rendered the whole
-   connection state to somebody who was already connected. */
-.nodeHost {
-  font-size: 11px;
-  color: var(--glass-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.skeletonGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 16px;
+}
+.skeleton {
+  height: 168px;
+  border-radius: var(--sign-radius-lg);
+  background: linear-gradient(100deg, var(--sign-sunken) 30%, color-mix(in srgb, var(--sign-solid) 70%, transparent) 50%, var(--sign-sunken) 70%);
+  background-size: 300% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
 }
 
-.subtitle {
-  font-size: 13px;
-  color: var(--glass-ink-2);
-  margin: -16px 0 24px;
+/* ── Banners ───────────────────────────────────────────────────────────── */
+.error,
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  font-size: 14px;
   line-height: 1.5;
 }
-
-/* A card's status line. Green INK (#4e7a00) for a completed agreement; grey
-   for everything else, so the colour marks a state rather than decorating. */
-.cardMeta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--glass-muted);
-  margin-top: 6px;
-}
-.cardMetaDone { color: var(--glass-good-ink); font-weight: 500; }
-
-.dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--glass-line-strong);
-  flex-shrink: 0;
-}
-.dotDone { background: var(--glass-good-ink); }
-
 .error {
-  font-size: 12px;
-  color: var(--glass-bad-ink);
-  margin-bottom: 16px;
+  background: var(--sign-bad-bg);
+  color: var(--sign-bad-ink);
 }
-
 .notice {
-  font-size: 13px;
-  color: var(--glass-good-ink);
-  margin-bottom: 16px;
+  background: var(--sign-good-bg);
+  color: var(--sign-good-ink);
+}
+.error svg,
+.notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
-/* The busy state on a button that is doing something, matching
-   ProjectsPage's spinner idiom. */
+.hint {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--sign-muted);
+}
+
 .spinner {
   display: inline-block;
-  width: 12px;
-  height: 12px;
-  border: 2px solid color-mix(in srgb, var(--glass-on-ink) 35%, transparent);
-  border-top-color: var(--glass-on-ink);
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
   border-radius: 50%;
   animation: signSpin 0.8s linear infinite;
-  vertical-align: -1px;
-  margin-right: 6px;
 }
-@keyframes signSpin { to { transform: rotate(360deg); } }
+@keyframes signSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
-/* Modal, in mero-design's card idiom: white on a hairline, no shadow theatre. */
+/* ── Dialogs ───────────────────────────────────────────────────────────── */
+/* Rendered in the content column, outside the frosted rail and top bar, so
+   `position: fixed` is the viewport and the scrim covers everything. */
 .modalBackdrop {
   position: fixed;
   inset: 0;
-  background: rgba(14, 18, 34, 0.28);
+  z-index: 200;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
   padding: 24px;
+  background: var(--sign-scrim);
+  animation: fade 140ms ease-out;
 }
 .modal {
-  background: var(--glass-surface-solid);
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
   width: 100%;
-  max-width: 460px;
-  padding: 24px;
+  max-width: 480px;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  padding: 26px;
+  border-radius: var(--sign-radius-xl);
+  background: var(--sign-solid);
+  border: 1px solid var(--sign-edge);
+  box-shadow: var(--sign-shadow-float);
+  color: var(--sign-ink);
+  animation: rise 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.modalTitle { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-.modalDesc { font-size: 13px; color: var(--glass-ink-2); margin-bottom: 16px; line-height: 1.5; }
-.modalRow { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
-
-.btnGhost {
-  padding: 9px 18px;
-  background: var(--glass-surface-solid);
-  color: var(--glass-ink-2);
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
+.modalTitle {
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
 }
-.btnGhost:hover { background: var(--glass-sunken); border-color: var(--glass-line-strong); }
+.modalDesc {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--sign-ink-2);
+  margin-bottom: 18px;
+}
+.modalRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
 
-.textarea {
+/* ── A single-purpose screen (connect, not found) ──────────────────────── */
+.gate {
   width: 100%;
-  padding: 9px 12px;
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: inherit;
-  outline: none;
-  resize: vertical;
-  min-height: 84px;
+  max-width: 600px;
+  margin: 6vh auto 0;
+  padding: 36px;
+  gap: 16px;
 }
-.textarea:focus { border-color: var(--glass-ink); }
-
-.hint { font-size: 11px; color: var(--glass-muted); margin-top: 6px; line-height: 1.5; }
-
-@media (max-width: 640px) {
-  .header { padding: 0 16px; }
-  .main { padding: 32px 16px; }
+.gateIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: var(--glass-grad);
+  color: #ffffff;
+  box-shadow: 0 12px 28px -14px rgba(62, 99, 245, 0.8);
 }
-
-/* ── glass: the fleet's light-glass frame (@calimero-apps/glass) ────────────
-   Last in the file on purpose: it restyles the shell above without touching
-   its layout. The page shows the tinted fields; the header floats as frosted
-   glass; cards are frosted frame; menus and modals that float over content
-   stay solid. Controls are pills, primary is the glass ink. */
-.root { background: transparent; }
-
-.header {
-  position: sticky;
-  top: 12px;
-  z-index: 30;
-  margin: 12px 16px 0;
-  border: 1px solid var(--glass-edge);
-  border-radius: 20px;
-  background: var(--glass-surface);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
+.gate .joinRow {
+  margin-top: 6px;
 }
 
-.logo { font-weight: 800; letter-spacing: -0.03em; }
-
-.card {
-  background: var(--glass-surface);
-  border-color: var(--glass-edge);
-  border-radius: var(--glass-radius);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
-}
-.card:hover { border-color: var(--glass-line-strong); box-shadow: var(--glass-shadow-float); }
-
-.btn,
-.btnGhost,
-.logoutBtn { border-radius: 999px; }
-.btn { box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6); }
-
-.input,
-.textarea { border-radius: var(--glass-radius-sm); background: var(--glass-surface-solid); }
-
-.menuBtn { border-radius: 999px; }
-
-/* Solid when it floats: nothing under a menu or a dialog shows through. */
-.dropdown {
-  background: var(--glass-surface-solid);
-  border-color: var(--glass-edge);
-  border-radius: 14px;
-  box-shadow: var(--glass-shadow-float);
-  padding: 4px;
-}
-.dropdownItem { border-radius: 10px; }
-.modal {
-  background: var(--glass-surface-solid);
-  border-color: var(--glass-edge);
-  border-radius: var(--glass-radius-lg);
-  box-shadow: var(--glass-shadow-float);
+/* ── Phone ─────────────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .main {
+    padding: 24px 0 0;
+    gap: 22px;
+  }
+  .panel {
+    padding: 18px;
+  }
+  .gate {
+    margin-top: 12px;
+    padding: 24px 20px;
+  }
+  .panelPair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .grid,
+  .skeletonGrid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .card {
+    min-height: 0;
+  }
+  .createRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  /* In a column, flex: 1 would mean a zero-height basis. */
+  .createRow > .input {
+    flex: 0 0 auto;
+  }
+  .joinRow > .btn,
+  .joinRow > .btnGhost {
+    flex: 1;
+  }
+  .modalBackdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal {
+    max-width: none;
+    max-height: 92dvh;
+    border-radius: var(--sign-radius-xl) var(--sign-radius-xl) 0 0;
+    padding: 22px 20px calc(22px + env(safe-area-inset-bottom));
+  }
+  .modalRow > * {
+    flex: 1;
+  }
 }

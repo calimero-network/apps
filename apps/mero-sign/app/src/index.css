@@ -4,37 +4,23 @@
    from the Vite root, which is the app for the app's build but e2e/shots for
    the screenshot harness, where `sm:block` and friends silently went missing. */
 @source '.';
+/* Tailwind's `dark:` follows the app's switch (src/theme.ts), not the OS. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 /* ══════════════════════════════════════════════════════════════════════════
-   Mero Sign — base styles
+   Mero Sign — base styles and the app's design tokens
 
-   This file is mero-design's `index.css`, plus the token aliases the handful of
-   remaining Tailwind components still read.
+   main.tsx imports @calimero-apps/glass first. Every colour the app uses is a
+   `--sign-*` token defined here from the shared `--glass-*` values, so the
+   whole app follows <html data-theme> (src/theme.ts): light by default, the
+   smoked-glass dark when the person picks it. glass.css switches its own
+   values on `data-theme="dark"`; the few Sign-only values that are not a
+   straight glass value (the scrim, the stage behind a PDF page, the glass
+   highlight) switch below.
 
-   ── What was here before, and why all of it went ─────────────────────────────
-
-   A dark-first token set (`--current-bg`, `--current-text`, …) with a light
-   theme layered on top by class, and then a block of `!important` rules written
-   to wrestle `@calimero-network/mero-ui` into that theme:
-
-       html.light h1, … { color: var(--current-text) !important; }
-       [class*="card"]  { background-color: var(--current-card) !important;
-                          color: var(--current-text) !important; }
-
-   The second one matches ANY class containing "card", case-insensitively — so
-   it captured `.card`, `.cardWrap`, `.cardName`, `.cardSub`, `.cardThumb` and
-   `.cardStatus` from the new stylesheets and repainted every one of them. The
-   first did the same to every heading. The first screenshots of this redesign
-   came back with the right layout in washed-out grey, because a dark theme's
-   ink was being forced onto white cards at `!important`.
-
-   ── The theme ────────────────────────────────────────────────────────────────
-
-   ONE theme: light. mero-design has no dark mode, and "white with black and
-   with greens" is the brief. The dark palette had no way to be reached from the
-   UI anyway — the toggle lived in the landing page's footer, and the landing
-   page carries its own tokens scoped to `.cal-lp-root` and is unaffected by
-   anything here (see the header of `pages/landing/landing.css`).
+   Components never write a hex colour for chrome. The one deliberate
+   exception is the document itself: a PDF page and the signature pad stay
+   paper-white in both themes, because that is what gets signed and printed.
    ══════════════════════════════════════════════════════════════════════════ */
 
 *,
@@ -45,47 +31,70 @@
   padding: 0;
 }
 
-/* ── The glass look ─────────────────────────────────────────────────────────
-   main.tsx imports @calimero-apps/glass first; every value below maps this
-   app's own token names onto its `--glass-*` values, so the components keep
-   their names and only the values move. The lime (#a5ff11) is gone: the
-   primary fill is the glass ink, accent text is the glass accent, and the
-   signed state uses the glass "good" green. */
 :root {
+  /* Sign's own colour of light behind the glass (its icon's sky blue). */
   --glass-tint: #38bdf8;
+  color-scheme: light;
 
-  /* ── mero-design's palette, mapped onto glass ───────────────────────────── */
-  --color-bg: var(--glass-surface-solid);
-  --color-page: var(--glass-ground);
-  --color-surface: var(--glass-sunken);
-  --color-border: var(--glass-line-strong);
-  --color-hairline: var(--glass-line);
-  --color-text: var(--glass-ink);
-  --color-text-secondary: var(--glass-ink-2);
-  --color-text-muted: var(--glass-muted);
-  --color-danger: var(--glass-bad-ink);
-  --radius: 12px;
-  --font: var(--glass-font);
+  /* ── Surfaces ──────────────────────────────────────────────────────────── */
+  --sign-ground: var(--glass-ground);
+  /* Frosted frame: rail, top bar, panels, cards. */
+  --sign-glass: var(--glass-surface);
+  /* Anything that floats over content: menus, dialogs, sheets. Solid. */
+  --sign-solid: var(--glass-surface-solid);
+  --sign-sunken: var(--glass-sunken);
+  --sign-hover: var(--glass-sunken);
+  --sign-line: var(--glass-line);
+  --sign-line-strong: var(--glass-line-strong);
+  --sign-edge: var(--glass-edge);
+  --sign-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  --sign-scrim: rgba(14, 18, 34, 0.42);
+  /* Behind a PDF page: a soft grey desk, so the white page reads as paper. */
+  --sign-stage: #e8ebf2;
+  --sign-page-shadow: 0 1px 2px rgba(14, 18, 34, 0.08), 0 18px 40px -18px rgba(14, 18, 34, 0.35);
 
-  /* The primary FILL, and the ink that goes on it. */
-  --color-accent-fill: var(--glass-ink);
-  --color-on-accent: var(--glass-on-ink);
-  /* Accent TEXT on a light surface. */
-  --color-accent-ink: var(--glass-accent);
-  /* The signed / success green. */
-  --color-success-ink: var(--glass-good-ink);
+  /* ── Ink ───────────────────────────────────────────────────────────────── */
+  --sign-ink: var(--glass-ink);
+  --sign-ink-2: var(--glass-ink-2);
+  --sign-muted: var(--glass-muted);
+  --sign-accent: var(--glass-accent);
+  /* The primary control: near-black pill, white label (inverted in dark). */
+  --sign-primary: var(--glass-ink);
+  --sign-on-primary: var(--glass-on-ink);
+  --sign-primary-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
 
-  /* ── Aliases for the components still on Tailwind ──────────────────────── */
-  /* PDFViewer, SignaturePad, AuditTrail, SignatureOverlay and LegalChatbot
-     read these. Pointed at the same glass palette. */
-  --current-bg: var(--color-page);
-  --current-text: var(--color-text);
-  --current-text-secondary: var(--color-text-secondary);
-  --current-surface: var(--color-bg);
-  --current-border: var(--color-border);
-  --current-card: var(--color-bg);
-  --color-primary: var(--color-accent-fill);
-  --color-background-dark: var(--color-on-accent);
+  /* ── States ────────────────────────────────────────────────────────────── */
+  --sign-good-bg: var(--glass-good-bg);
+  --sign-good-ink: var(--glass-good-ink);
+  --sign-wait-bg: var(--glass-wait-bg);
+  --sign-wait-ink: var(--glass-wait-ink);
+  --sign-busy-bg: var(--glass-busy-bg);
+  --sign-busy-ink: var(--glass-busy-ink);
+  --sign-bad-bg: var(--glass-bad-bg);
+  --sign-bad-ink: var(--glass-bad-ink);
+
+  /* ── Shape ─────────────────────────────────────────────────────────────── */
+  --sign-shadow: var(--glass-shadow);
+  --sign-shadow-float: var(--glass-shadow-float);
+  --sign-blur: var(--glass-blur);
+  --sign-focus: 0 0 0 3px color-mix(in srgb, var(--glass-accent) 30%, transparent);
+  --sign-radius-sm: 12px;
+  --sign-radius: 16px;
+  --sign-radius-lg: 20px;
+  --sign-radius-xl: 24px;
+  --sign-font: var(--glass-font);
+  --sign-mono: ui-monospace, 'SF Mono', Menlo, 'Cascadia Code', monospace;
+
+  /* ── Aliases older components still read ───────────────────────────────── */
+  --color-text: var(--sign-ink);
+  --color-text-secondary: var(--sign-ink-2);
+  --color-primary: var(--sign-primary);
+  --current-bg: var(--sign-ground);
+  --current-text: var(--sign-ink);
+  --current-text-secondary: var(--sign-ink-2);
+  --current-surface: var(--sign-solid);
+  --current-border: var(--sign-line-strong);
+  --current-card: var(--sign-solid);
 
   /* @calimero-network/mero-ui's brand (lime #a5ff11) ramp. Its primary button
      hard-codes BLACK text, so the glass ink cannot be its fill; the app's own
@@ -113,22 +122,47 @@
   --radius: 0.75rem;
 }
 
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --sign-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --sign-scrim: rgba(3, 5, 12, 0.66);
+  --sign-stage: #0d111c;
+  --sign-page-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 24px 48px -20px rgba(0, 0, 0, 0.9);
+  --sign-primary-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.9);
+
+  --background: 228 37.5% 6.3%;
+  --foreground: 228 26% 94.3%;
+  --card: 226 32% 12.7%;
+  --card-foreground: 228 26% 94.3%;
+  --primary: 228 26% 94.3%;
+  --primary-foreground: 228 37.5% 6.3%;
+  --muted: 226 20% 16%;
+  --muted-foreground: 225 12% 62%;
+  --border: 226 18% 20%;
+  --input: 226 18% 22%;
+  --ring: 228 26% 94.3%;
+  --destructive: 338 85% 76%;
+  --destructive-foreground: 228 37.5% 6.3%;
+}
+
 html,
 body,
 #root {
-  height: 100%;
-  font-family: var(--font);
-  font-size: 13px;
-  color: var(--color-text);
-  background: transparent;
+  min-height: 100%;
+  font-family: var(--sign-font);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--sign-ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* The page: the glass ground with the tinted light behind everything. */
-html { background-color: var(--glass-ground); }
+html {
+  background-color: var(--sign-ground);
+}
 body {
-  background-color: var(--glass-ground);
+  background-color: var(--sign-ground);
   background-image: var(--glass-fields);
   background-attachment: fixed;
 }
@@ -136,6 +170,7 @@ body {
 button {
   font-family: inherit;
   cursor: pointer;
+  color: inherit;
 }
 
 a {
@@ -147,26 +182,41 @@ input,
 textarea,
 select {
   font-family: inherit;
+  color: inherit;
 }
 
-/* One focus treatment across the app, matching the `#111` focus border the
-   copied stylesheets already use on inputs. */
+/* One focus treatment across the app: a soft accent halo. */
 :focus-visible {
-  outline: 2px solid var(--color-text);
-  outline-offset: 1px;
+  outline: 2px solid var(--sign-accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--glass-tint) 30%, transparent);
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--glass-line-strong);
+  background: var(--sign-line-strong);
   border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--glass-muted);
+  background-color: var(--sign-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

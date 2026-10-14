@@ -284,13 +284,13 @@ export const SIGNATURE_ROWS = [
   {
     id: 1,
     name: 'Signature 1',
-    blob_id: 'blob-sig-1',
+    blob_id: 'e1'.repeat(32),
     created_at: 1_700_000_000_000_000_000,
   },
   {
     id: 2,
     name: 'Signature 2',
-    blob_id: 'blob-sig-2',
+    blob_id: 'e2'.repeat(32),
     created_at: 1_700_600_000_000_000_000,
   },
 ];

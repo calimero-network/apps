@@ -411,7 +411,7 @@ export const setExecutorPublicKey = (key: string): void =>
 // call sites unwrapped it that way — and all of that goes with it.
 //
 // ⚠️ `getAppEndpointKey` went too, and it was not merely unused: it had been
-// reduced to `return null`, and `AppHeader` still called it to show which node
+// reduced to `return null`, and the app header still called it to show which node
 // the session was on. That readout had been blank ever since. The URL lives on
 // `useMero().nodeUrl`.
 

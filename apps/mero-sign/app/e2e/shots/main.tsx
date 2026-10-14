@@ -81,14 +81,11 @@ function Driver() {
     // (toolbar and phone sheet), and only one of them is on screen.
     const shown = (el: HTMLElement | null | undefined) =>
       el && el.getClientRects().length > 0 ? el : null;
-    const byText = (text: string) => () =>
-      [...document.querySelectorAll<HTMLElement>('button')].find(
-        (b) => b.textContent?.trim().startsWith(text) && shown(b),
-      );
     /** The Sign control on screen; on a phone that is behind the actions FAB. */
     const signControl = () => {
       const direct =
-        shown(byTestId('sign-document')()) ?? byText('Sign Document')();
+        shown(byTestId('sign-document')()) ??
+        shown(byTestId('sign-document-mobile')());
       if (direct) return direct;
       shown(
         document.querySelector<HTMLElement>(
@@ -114,9 +111,7 @@ function Driver() {
             () => {
               if (current.open !== 'viewer-pad') return;
               clickWhenPresent(
-                () =>
-                  shown(byTestId('draw-signature')()) ??
-                  byText('Draw Signature')(),
+                () => shown(byTestId('draw-signature')()),
               );
             },
             200,
@@ -139,9 +134,9 @@ function Driver() {
       clickWhenPresent(
         () => {
           const card = document.querySelector('[data-testid="signature-card"]');
-          return [
-            ...(card?.querySelectorAll<HTMLElement>('button') ?? []),
-          ].find((b) => b.textContent?.trim() === '⋯');
+          return card?.querySelector<HTMLElement>(
+            'button[title="More options"]',
+          );
         },
         () =>
           clickWhenPresent(() =>
