@@ -1,28 +1,28 @@
-.root { min-height: 100vh; background: #fafafa; }
+.root { min-height: 100vh; background: var(--glass-ground); }
 
 .header {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 14px 40px;
-  border-bottom: 1px solid #e8e8e8;
-  background: #fff;
+  border-bottom: 1px solid var(--glass-line);
+  background: var(--glass-surface-solid);
 }
-.back { background: none; border: none; font-size: 13px; color: #555; cursor: pointer; }
-.back:hover { color: #111; }
+.back { background: none; border: none; font-size: 13px; color: var(--glass-ink-2); cursor: pointer; }
+.back:hover { color: var(--glass-ink); }
 .logo { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .headerRight { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 
 .logoutBtn {
   padding: 6px 14px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--glass-line-strong);
   border-radius: 6px;
-  background: #fff;
+  background: var(--glass-surface-solid);
   font-size: 12px;
-  color: #555;
+  color: var(--glass-ink-2);
   cursor: pointer;
 }
-.logoutBtn:hover { background: #f5f5f5; border-color: #bbb; }
+.logoutBtn:hover { background: var(--glass-sunken); border-color: var(--glass-line-strong); }
 
 .main { padding: 32px 40px; max-width: 900px; margin: 0 auto; }
 
@@ -30,7 +30,7 @@
 .tabs {
   display: flex;
   gap: 0;
-  border-bottom: 2px solid #e8e8e8;
+  border-bottom: 2px solid var(--glass-line);
   margin-bottom: 28px;
 }
 
@@ -38,7 +38,7 @@
   padding: 10px 18px;
   font-size: 13px;
   font-weight: 500;
-  color: #888;
+  color: var(--glass-muted);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -46,26 +46,26 @@
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
-.tab:hover { color: #333; }
-.tabActive { color: #111; border-bottom-color: #111; }
+.tab:hover { color: var(--glass-ink-2); }
+.tabActive { color: var(--glass-ink); border-bottom-color: var(--glass-ink); }
 
 .createRow { display: flex; gap: 10px; margin-bottom: 28px; }
 
 .input {
   flex: 1;
   padding: 9px 12px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--glass-line-strong);
   border-radius: 6px;
   font-size: 13px;
   outline: none;
   max-width: 360px;
 }
-.input:focus { border-color: #111; }
+.input:focus { border-color: var(--glass-ink); }
 
 .btn {
   padding: 9px 18px;
-  background: #111;
-  color: #fff;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
   border: none;
   border-radius: 6px;
   font-size: 13px;
@@ -73,10 +73,10 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.btn:hover:not(:disabled) { background: #333; }
+.btn:hover:not(:disabled) { background: var(--glass-ink-2); }
 .btn:disabled { opacity: 0.5; }
 
-.empty { color: #888; font-size: 13px; }
+.empty { color: var(--glass-muted); font-size: 13px; }
 
 .grid {
   display: grid;
@@ -95,20 +95,20 @@
   flex-direction: column;
   align-items: flex-start;
   width: 100%;
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
   text-align: left;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.card:hover { border-color: #111; box-shadow: 0 2px 10px rgba(0,0,0,0.07); }
+.card:hover { border-color: var(--glass-ink); box-shadow: 0 2px 10px rgba(0,0,0,0.07); }
 
 .cardThumb {
   width: 100%;
   height: 110px;
-  background: linear-gradient(135deg, #f5f5f5 0%, #ececec 100%);
+  background: linear-gradient(135deg, var(--glass-sunken) 0%, var(--glass-line) 100%);
   animation: thumbShift 14s ease-in-out infinite;
 }
 
@@ -129,11 +129,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #e0e0e0;
+  background: color-mix(in srgb, var(--glass-surface-solid) 90%, transparent);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 4px;
   font-size: 14px;
-  color: #555;
+  color: var(--glass-ink-2);
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s;
@@ -141,15 +141,15 @@
   line-height: 1;
   padding: 0;
 }
-.menuBtn:hover { background: #f0f0f0; color: #111; }
+.menuBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
 .dropdown {
   position: absolute;
   top: 36px;
   right: 0;
   min-width: 120px;
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.1);
   z-index: 100;
@@ -165,13 +165,13 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: #333;
+  color: var(--glass-ink-2);
   transition: background 0.1s;
 }
-.dropdownItem:hover { background: #f5f5f5; }
+.dropdownItem:hover { background: var(--glass-sunken); }
 
-.dropdownDanger { color: #c0392b; }
-.dropdownDanger:hover { background: #fdf3f2; }
+.dropdownDanger { color: var(--glass-bad-ink); }
+.dropdownDanger:hover { background: var(--glass-bad-bg); }
 
 /* Invitations tab */
 .inviteSection {
@@ -183,7 +183,7 @@
 
 .inviteDesc {
   font-size: 13px;
-  color: #666;
+  color: var(--glass-ink-2);
   line-height: 1.5;
 }
 
@@ -191,8 +191,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f5f5f5;
-  border: 1px solid #e0e0e0;
+  background: var(--glass-sunken);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 6px;
   padding: 10px 12px;
 }
@@ -202,31 +202,31 @@
   font-size: 11px;
   font-family: monospace;
   word-break: break-all;
-  color: #333;
+  color: var(--glass-ink-2);
 }
 
 .copyBtn {
   flex-shrink: 0;
   padding: 5px 12px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--glass-line-strong);
   border-radius: 5px;
-  background: #fff;
+  background: var(--glass-surface-solid);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
 }
-.copyBtn:hover { background: #f5f5f5; }
+.copyBtn:hover { background: var(--glass-sunken); }
 
-.inviteError { font-size: 12px; color: #c0392b; }
+.inviteError { font-size: 12px; color: var(--glass-bad-ink); }
 
-.copiedMsg { font-size: 13px; color: #15803d; font-weight: 500; }
+.copiedMsg { font-size: 13px; color: var(--glass-good-ink); font-weight: 500; }
 
 .inviteSpinner {
   flex-shrink: 0;
   width: 16px;
   height: 16px;
-  border: 2px solid #d7d7d7;
-  border-top-color: #15803d;
+  border: 2px solid var(--glass-line-strong);
+  border-top-color: var(--glass-good-ink);
   border-radius: 50%;
   animation: inviteSpin 0.8s linear infinite;
 }
@@ -245,8 +245,8 @@
   width: 20px;
   height: 20px;
   border-radius: 5px;
-  background: #a5ff11;
-  color: #131215;
+  background: var(--glass-grad);
+  color: var(--glass-on-ink);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -257,7 +257,7 @@
 
 .nodeHost {
   font-size: 11px;
-  color: #999;
+  color: var(--glass-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   max-width: 220px;
   overflow: hidden;
@@ -266,7 +266,7 @@
 }
 
 .title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
-.subtitle { font-size: 13px; color: #666; margin-bottom: 24px; }
+.subtitle { font-size: 13px; color: var(--glass-ink-2); margin-bottom: 24px; }
 
 .sectionRow {
   display: flex;
@@ -279,13 +279,13 @@
 /* A document card. The thumb carries the STATUS, which is the one place a
    colour earns its keep on this screen. #a5ff11 is a fill with near-black ink;
    never white on it. */
-.thumbSigned { background: linear-gradient(135deg, #eaffc4 0%, #dcf7a8 100%); }
-.thumbPartial { background: linear-gradient(135deg, #f7f7f7 0%, #ededed 100%); }
+.thumbSigned { background: linear-gradient(135deg, var(--glass-good-bg) 0%, color-mix(in srgb, var(--glass-good-bg) 70%, var(--glass-good-ink) 12%) 100%); }
+.thumbPartial { background: linear-gradient(135deg, var(--glass-sunken) 0%, var(--glass-line) 100%); }
 
 .cardStatus {
   padding: 0 12px 12px;
   font-size: 11px;
-  color: #888;
+  color: var(--glass-muted);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -302,9 +302,9 @@
   font-weight: 600;
   letter-spacing: 0.02em;
 }
-.badgeSigned { background: #a5ff11; color: #131215; }
-.badgePartial { background: #f3f3f3; color: #555; }
-.badgePending { background: #f3f3f3; color: #888; }
+.badgeSigned { background: var(--glass-good-bg); color: var(--glass-good-ink); }
+.badgePartial { background: var(--glass-sunken); color: var(--glass-ink-2); }
+.badgePending { background: var(--glass-sunken); color: var(--glass-muted); }
 
 /* Participants, as rows rather than cards — a roster is a list, not a grid. */
 .rows { display: flex; flex-direction: column; }
@@ -313,7 +313,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px 0;
-  border-bottom: 1px solid #ebebeb;
+  border-bottom: 1px solid var(--glass-line);
 }
 .row:last-child { border-bottom: none; }
 
@@ -321,8 +321,8 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: #f0f0f0;
-  color: #555;
+  background: var(--glass-sunken);
+  color: var(--glass-ink-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -330,7 +330,7 @@
   font-weight: 600;
   flex-shrink: 0;
 }
-.avatarAdmin { background: #a5ff11; color: #131215; }
+.avatarAdmin { background: var(--glass-ink); color: var(--glass-on-ink); }
 
 .rowMain {
   min-width: 0;
@@ -353,31 +353,31 @@
 .rowSub {
   display: block;
   font-size: 11px;
-  color: #888;
+  color: var(--glass-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rowYou { color: #888; font-weight: 400; }
+.rowYou { color: var(--glass-muted); font-weight: 400; }
 .rowActions { display: flex; gap: 6px; flex-shrink: 0; }
 
 .smallBtn {
   padding: 5px 10px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--glass-line-strong);
   border-radius: 5px;
-  background: #fff;
+  background: var(--glass-surface-solid);
   font-size: 11px;
-  color: #555;
+  color: var(--glass-ink-2);
   cursor: pointer;
   white-space: nowrap;
 }
-.smallBtn:hover:not(:disabled) { background: #f5f5f5; border-color: #bbb; color: #111; }
+.smallBtn:hover:not(:disabled) { background: var(--glass-sunken); border-color: var(--glass-line-strong); color: var(--glass-ink); }
 .smallBtn:disabled { opacity: 0.5; cursor: default; }
-.smallBtnDanger { color: #c0392b; }
-.smallBtnDanger:hover:not(:disabled) { background: #fdf3f2; border-color: #e6b8b2; color: #c0392b; }
+.smallBtnDanger { color: var(--glass-bad-ink); }
+.smallBtnDanger:hover:not(:disabled) { background: var(--glass-bad-bg); border-color: color-mix(in srgb, var(--glass-bad-ink) 30%, transparent); color: var(--glass-bad-ink); }
 
 .section {
-  border-top: 1px solid #ebebeb;
+  border-top: 1px solid var(--glass-line);
   padding-top: 28px;
   margin-top: 32px;
 }
@@ -387,37 +387,37 @@
    otherwise refuses to join the system. */
 .drop {
   display: block;
-  border: 1px dashed #d5d5d5;
+  border: 1px dashed var(--glass-line-strong);
   border-radius: 6px;
   padding: 18px;
   text-align: center;
   font-size: 13px;
-  color: #666;
+  color: var(--glass-ink-2);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
-.drop:hover { border-color: #111; background: #fafafa; }
-.dropPicked { border-style: solid; border-color: #111; color: #111; font-weight: 500; }
+.drop:hover { border-color: var(--glass-ink); background: var(--glass-ground); }
+.dropPicked { border-style: solid; border-color: var(--glass-ink); color: var(--glass-ink); font-weight: 500; }
 .dropInput { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
 .note {
   font-size: 11px;
-  color: #999;
+  color: var(--glass-muted);
   line-height: 1.6;
   margin-top: 14px;
   padding-top: 14px;
-  border-top: 1px solid #ebebeb;
+  border-top: 1px solid var(--glass-line);
 }
 
-.error { font-size: 12px; color: #c0392b; margin-bottom: 14px; }
-.notice { font-size: 13px; color: #15803d; font-weight: 500; margin-bottom: 14px; }
+.error { font-size: 12px; color: var(--glass-bad-ink); margin-bottom: 14px; }
+.notice { font-size: 13px; color: var(--glass-good-ink); font-weight: 500; margin-bottom: 14px; }
 
 .spinner {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255,255,255,0.35);
-  border-top-color: #fff;
+  border: 2px solid color-mix(in srgb, var(--glass-on-ink) 35%, transparent);
+  border-top-color: var(--glass-on-ink);
   border-radius: 50%;
   animation: signSpin 0.8s linear infinite;
   vertical-align: -1px;
@@ -428,7 +428,7 @@
 .modalBackdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.35);
+  background: rgba(14, 18, 34, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -436,8 +436,8 @@
   padding: 24px;
 }
 .modal {
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.12);
   width: 100%;
@@ -447,23 +447,23 @@
   overflow-y: auto;
 }
 .modalTitle { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-.modalDesc { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.5; }
+.modalDesc { font-size: 13px; color: var(--glass-ink-2); margin-bottom: 16px; line-height: 1.5; }
 .modalRow { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
 
 .btnGhost {
   padding: 9px 18px;
-  background: #fff;
-  color: #555;
-  border: 1px solid #e0e0e0;
+  background: var(--glass-surface-solid);
+  color: var(--glass-ink-2);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
 }
-.btnGhost:hover { background: #f5f5f5; border-color: #bbb; }
+.btnGhost:hover { background: var(--glass-sunken); border-color: var(--glass-line-strong); }
 
-.label { font-size: 12px; font-weight: 500; color: #333; margin-bottom: 6px; }
-.hint { font-size: 11px; color: #999; margin-top: 6px; line-height: 1.5; }
+.label { font-size: 12px; font-weight: 500; color: var(--glass-ink-2); margin-bottom: 6px; }
+.hint { font-size: 11px; color: var(--glass-muted); margin-top: 6px; line-height: 1.5; }
 
 .fileInput { font-size: 13px; }
 
@@ -471,3 +471,68 @@
   .header { padding: 12px 16px; }
   .main { padding: 24px 16px; }
 }
+
+/* ── glass: the fleet's light-glass frame (@calimero-apps/glass) ────────────
+   Last in the file on purpose: it restyles the shell above without touching
+   its layout. The page shows the tinted fields; the header floats as frosted
+   glass; cards are frosted frame; menus and modals that float over content
+   stay solid. Controls are pills, primary is the glass ink. */
+.root { background: transparent; }
+
+.header {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  margin: 12px 16px 0;
+  border: 1px solid var(--glass-edge);
+  border-radius: 20px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
+}
+
+.logo { font-weight: 800; letter-spacing: -0.03em; }
+
+.card {
+  background: var(--glass-surface);
+  border-color: var(--glass-edge);
+  border-radius: var(--glass-radius);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+}
+.card:hover { border-color: var(--glass-line-strong); box-shadow: var(--glass-shadow-float); }
+
+.btn,
+.btnGhost,
+.logoutBtn { border-radius: 999px; }
+.btn { box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6); }
+
+.input,
+.textarea { border-radius: var(--glass-radius-sm); background: var(--glass-surface-solid); }
+
+.menuBtn { border-radius: 999px; }
+
+/* Solid when it floats: nothing under a menu or a dialog shows through. */
+.dropdown {
+  background: var(--glass-surface-solid);
+  border-color: var(--glass-edge);
+  border-radius: 14px;
+  box-shadow: var(--glass-shadow-float);
+  padding: 4px;
+}
+.dropdownItem { border-radius: 10px; }
+.modal {
+  background: var(--glass-surface-solid);
+  border-color: var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  box-shadow: var(--glass-shadow-float);
+}
+
+.tabs { border-bottom-color: var(--glass-line); }
+.tokenBox { border-radius: var(--glass-radius-sm); }
+.copyBtn,
+.smallBtn { border-radius: 999px; }
+.drop { border-radius: var(--glass-radius); }
+.badge { border-radius: 999px; }

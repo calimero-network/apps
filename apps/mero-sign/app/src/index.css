@@ -41,37 +41,39 @@
   padding: 0;
 }
 
+/* ── The glass look ─────────────────────────────────────────────────────────
+   main.tsx imports @calimero-apps/glass first; every value below maps this
+   app's own token names onto its `--glass-*` values, so the components keep
+   their names and only the values move. The lime (#a5ff11) is gone: the
+   primary fill is the glass ink, accent text is the glass accent, and the
+   signed state uses the glass "good" green. */
 :root {
-  /* ── mero-design's palette, verbatim ───────────────────────────────────── */
-  --color-bg: #ffffff;
-  --color-page: #fafafa;
-  --color-surface: #f5f5f5;
-  --color-border: #e0e0e0;
-  --color-hairline: #e8e8e8;
-  --color-text: #111111;
-  --color-text-secondary: #666666;
-  --color-text-muted: #888888;
-  --color-danger: #c0392b;
-  --radius: 6px;
-  --font:
-    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --glass-tint: #38bdf8;
 
-  /* ── The one substitution: green where mero-design is blue ─────────────── */
+  /* ── mero-design's palette, mapped onto glass ───────────────────────────── */
+  --color-bg: var(--glass-surface-solid);
+  --color-page: var(--glass-ground);
+  --color-surface: var(--glass-sunken);
+  --color-border: var(--glass-line-strong);
+  --color-hairline: var(--glass-line);
+  --color-text: var(--glass-ink);
+  --color-text-secondary: var(--glass-ink-2);
+  --color-text-muted: var(--glass-muted);
+  --color-danger: var(--glass-bad-ink);
+  --radius: 12px;
+  --font: var(--glass-font);
 
-  /* A FILL, never an ink. ~1.2:1 on white, so text ON it must be near-black. */
-  --color-accent-fill: #a5ff11;
-  /* The ink that goes on that fill. Never white — that pairing was the bug in
-     mero-meet, and it is unreadable. */
-  --color-on-accent: #131215;
-  /* Green TEXT on white. ~5:1, which is a legible ink rather than a highlight. */
-  --color-accent-ink: #4e7a00;
-  /* mero-design's own success green, for the cases it already styles. */
-  --color-success-ink: #15803d;
+  /* The primary FILL, and the ink that goes on it. */
+  --color-accent-fill: var(--glass-ink);
+  --color-on-accent: var(--glass-on-ink);
+  /* Accent TEXT on a light surface. */
+  --color-accent-ink: var(--glass-accent);
+  /* The signed / success green. */
+  --color-success-ink: var(--glass-good-ink);
 
   /* ── Aliases for the components still on Tailwind ──────────────────────── */
   /* PDFViewer, SignaturePad, AuditTrail, SignatureOverlay and LegalChatbot
-     read these. Pointed at the light palette so they inherit the same system
-     instead of carrying a second one. */
+     read these. Pointed at the same glass palette. */
   --current-bg: var(--color-page);
   --current-text: var(--color-text);
   --current-text-secondary: var(--color-text-secondary);
@@ -81,21 +83,30 @@
   --color-primary: var(--color-accent-fill);
   --color-background-dark: var(--color-on-accent);
 
-  /* shadcn variables, kept because `components/ui/*` reference them. */
+  /* @calimero-network/mero-ui's brand (lime #a5ff11) ramp. Its primary button
+     hard-codes BLACK text, so the glass ink cannot be its fill; the app's own
+     glass tint is, which black reads on. */
+  --color-brand-100: color-mix(in srgb, var(--glass-tint) 55%, #ffffff);
+  --color-brand-600: var(--glass-tint);
+  --color-brand-800: color-mix(in srgb, var(--glass-tint) 80%, var(--glass-ink));
+  --color-brand-900: var(--glass-sunken);
+
+  /* shadcn variables, kept because `components/ui/*` reference them; HSL
+     channels of the glass colours (Tailwind reads hsl(var(--token))). */
   --background: 0 0% 100%;
-  --foreground: 0 0% 7%;
+  --foreground: 228 41.7% 9.4%;
   --card: 0 0% 100%;
-  --card-foreground: 0 0% 7%;
-  --primary: 83 100% 53%;
-  --primary-foreground: 0 0% 7%;
-  --muted: 0 0% 96%;
-  --muted-foreground: 0 0% 40%;
-  --border: 0 0% 88%;
-  --input: 0 0% 88%;
-  --ring: 0 0% 7%;
-  --destructive: 6 63% 46%;
+  --card-foreground: 228 41.7% 9.4%;
+  --primary: 228 41.7% 9.4%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 228 15.2% 93.5%;
+  --muted-foreground: 226.2 10.5% 48.6%;
+  --border: 222.9 14.3% 90.4%;
+  --input: 230 10.3% 88.6%;
+  --ring: 228 41.7% 9.4%;
+  --destructive: 338 73% 37%;
   --destructive-foreground: 0 0% 100%;
-  --radius: 0.375rem;
+  --radius: 0.75rem;
 }
 
 html,
@@ -105,9 +116,17 @@ body,
   font-family: var(--font);
   font-size: 13px;
   color: var(--color-text);
-  background: var(--color-bg);
+  background: transparent;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* The page: the glass ground with the tinted light behind everything. */
+html { background-color: var(--glass-ground); }
+body {
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
 }
 
 button {
@@ -141,9 +160,9 @@ select {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d8d8d8;
-  border-radius: 4px;
+  background: var(--glass-line-strong);
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #bcbcbc;
+  background: var(--glass-muted);
 }

@@ -1,3 +1,5 @@
+// The fleet's shared light-glass look; first, so the app's own CSS maps onto it.
+import '@calimero-apps/glass/glass.css';
 import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';

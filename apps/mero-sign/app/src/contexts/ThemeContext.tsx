@@ -5,7 +5,7 @@ import React, {
   ReactNode,
 } from 'react';
 
-export type ThemeMode = 'dark';
+export type ThemeMode = 'light' | 'dark';
 
 interface ThemeContextType {
   mode: ThemeMode;
@@ -26,20 +26,22 @@ interface ThemeProviderProps {
 }
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const mode: ThemeMode = 'dark';
+  // Light first: the app opens on the fleet's light glass. There is no theme
+  // switch in this app; `html.dark` would turn @calimero-apps/glass into its
+  // smoked (dark) variant, so it is no longer set.
+  const mode: ThemeMode = 'light';
 
   useEffect(() => {
-    // Always set dark mode
     const body = document.body;
     const html = document.documentElement;
-    
+
     // Remove old classes
     body.classList.remove('theme-light', 'theme-dark');
     html.classList.remove('dark', 'light');
-    
-    // Add dark theme classes
-    body.classList.add('theme-dark');
-    html.classList.add('dark');
+
+    // Add the light theme classes
+    body.classList.add('theme-light');
+    html.classList.add('light');
   }, []);
 
   return (

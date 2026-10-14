@@ -1,12 +1,12 @@
-.root { min-height: 100vh; background: #fafafa; }
+.root { min-height: 100vh; background: var(--glass-ground); }
 
 .header {
   display: flex;
   align-items: center;
   padding: 0 40px;
   height: 56px;
-  border-bottom: 1px solid #e8e8e8;
-  background: #fff;
+  border-bottom: 1px solid var(--glass-line);
+  background: var(--glass-surface-solid);
 }
 .logo { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 
@@ -19,14 +19,14 @@
 
 .logoutBtn {
   padding: 6px 14px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--glass-line-strong);
   border-radius: 6px;
-  background: #fff;
+  background: var(--glass-surface-solid);
   font-size: 12px;
-  color: #555;
+  color: var(--glass-ink-2);
   cursor: pointer;
 }
-.logoutBtn:hover { background: #f5f5f5; border-color: #bbb; }
+.logoutBtn:hover { background: var(--glass-sunken); border-color: var(--glass-line-strong); }
 
 .main { padding: 48px 40px; max-width: 800px; margin: 0 auto; }
 
@@ -37,17 +37,17 @@
 .input {
   flex: 1;
   padding: 9px 12px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--glass-line-strong);
   border-radius: 6px;
   font-size: 13px;
   outline: none;
 }
-.input:focus { border-color: #111; }
+.input:focus { border-color: var(--glass-ink); }
 
 .btn {
   padding: 9px 18px;
-  background: #111;
-  color: #fff;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
   border: none;
   border-radius: 6px;
   font-size: 13px;
@@ -55,10 +55,10 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.btn:hover:not(:disabled) { background: #333; }
+.btn:hover:not(:disabled) { background: var(--glass-ink-2); }
 .btn:disabled { opacity: 0.5; }
 
-.empty { color: #888; font-size: 13px; }
+.empty { color: var(--glass-muted); font-size: 13px; }
 
 .grid {
   display: grid;
@@ -79,17 +79,17 @@
   align-items: flex-start;
   padding: 20px 18px;
   width: 100%;
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 8px;
   cursor: pointer;
   text-align: left;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.card:hover { border-color: #111; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.card:hover { border-color: var(--glass-ink); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
 
 .cardName { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-.cardSub { font-size: 11px; color: #888; }
+.cardSub { font-size: 11px; color: var(--glass-muted); }
 
 .menuBtn {
   position: absolute;
@@ -100,11 +100,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #e0e0e0;
+  background: color-mix(in srgb, var(--glass-surface-solid) 90%, transparent);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 4px;
   font-size: 14px;
-  color: #555;
+  color: var(--glass-ink-2);
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s;
@@ -112,15 +112,15 @@
   line-height: 1;
   padding: 0;
 }
-.menuBtn:hover { background: #f0f0f0; color: #111; }
+.menuBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
 .dropdown {
   position: absolute;
   top: 36px;
   right: 0;
   min-width: 120px;
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.1);
   z-index: 100;
@@ -136,17 +136,17 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: #333;
+  color: var(--glass-ink-2);
   transition: background 0.1s;
 }
-.dropdownItem:hover { background: #f5f5f5; }
+.dropdownItem:hover { background: var(--glass-sunken); }
 
-.dropdownDanger { color: #c0392b; }
-.dropdownDanger:hover { background: #fdf3f2; }
+.dropdownDanger { color: var(--glass-bad-ink); }
+.dropdownDanger:hover { background: var(--glass-bad-bg); }
 
 /* Join section */
 .joinSection {
-  border-top: 1px solid #ebebeb;
+  border-top: 1px solid var(--glass-line);
   padding-top: 32px;
   margin-top: 8px;
 }
@@ -154,7 +154,7 @@
 .joinLabel {
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--glass-ink-2);
   margin-bottom: 12px;
 }
 
@@ -166,7 +166,7 @@
 
 .joinError {
   font-size: 12px;
-  color: #c0392b;
+  color: var(--glass-bad-ink);
   margin-top: 6px;
 }
 
@@ -205,8 +205,8 @@
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  background: #a5ff11;
-  color: #131215;
+  background: var(--glass-grad);
+  color: var(--glass-on-ink);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -220,7 +220,7 @@
    connection state to somebody who was already connected. */
 .nodeHost {
   font-size: 11px;
-  color: #999;
+  color: var(--glass-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   max-width: 220px;
   overflow: hidden;
@@ -230,7 +230,7 @@
 
 .subtitle {
   font-size: 13px;
-  color: #666;
+  color: var(--glass-ink-2);
   margin: -16px 0 24px;
   line-height: 1.5;
 }
@@ -242,29 +242,29 @@
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: #888;
+  color: var(--glass-muted);
   margin-top: 6px;
 }
-.cardMetaDone { color: #4e7a00; font-weight: 500; }
+.cardMetaDone { color: var(--glass-good-ink); font-weight: 500; }
 
 .dot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #d0d0d0;
+  background: var(--glass-line-strong);
   flex-shrink: 0;
 }
-.dotDone { background: #a5ff11; }
+.dotDone { background: var(--glass-good-ink); }
 
 .error {
   font-size: 12px;
-  color: #c0392b;
+  color: var(--glass-bad-ink);
   margin-bottom: 16px;
 }
 
 .notice {
   font-size: 13px;
-  color: #15803d;
+  color: var(--glass-good-ink);
   margin-bottom: 16px;
 }
 
@@ -274,8 +274,8 @@
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255,255,255,0.35);
-  border-top-color: #fff;
+  border: 2px solid color-mix(in srgb, var(--glass-on-ink) 35%, transparent);
+  border-top-color: var(--glass-on-ink);
   border-radius: 50%;
   animation: signSpin 0.8s linear infinite;
   vertical-align: -1px;
@@ -287,7 +287,7 @@
 .modalBackdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.35);
+  background: rgba(14, 18, 34, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -295,8 +295,8 @@
   padding: 24px;
 }
 .modal {
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.12);
   width: 100%;
@@ -304,25 +304,25 @@
   padding: 24px;
 }
 .modalTitle { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-.modalDesc { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.5; }
+.modalDesc { font-size: 13px; color: var(--glass-ink-2); margin-bottom: 16px; line-height: 1.5; }
 .modalRow { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
 
 .btnGhost {
   padding: 9px 18px;
-  background: #fff;
-  color: #555;
-  border: 1px solid #e0e0e0;
+  background: var(--glass-surface-solid);
+  color: var(--glass-ink-2);
+  border: 1px solid var(--glass-line-strong);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
 }
-.btnGhost:hover { background: #f5f5f5; border-color: #bbb; }
+.btnGhost:hover { background: var(--glass-sunken); border-color: var(--glass-line-strong); }
 
 .textarea {
   width: 100%;
   padding: 9px 12px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--glass-line-strong);
   border-radius: 6px;
   font-size: 13px;
   font-family: inherit;
@@ -330,11 +330,69 @@
   resize: vertical;
   min-height: 84px;
 }
-.textarea:focus { border-color: #111; }
+.textarea:focus { border-color: var(--glass-ink); }
 
-.hint { font-size: 11px; color: #999; margin-top: 6px; line-height: 1.5; }
+.hint { font-size: 11px; color: var(--glass-muted); margin-top: 6px; line-height: 1.5; }
 
 @media (max-width: 640px) {
   .header { padding: 0 16px; }
   .main { padding: 32px 16px; }
+}
+
+/* ── glass: the fleet's light-glass frame (@calimero-apps/glass) ────────────
+   Last in the file on purpose: it restyles the shell above without touching
+   its layout. The page shows the tinted fields; the header floats as frosted
+   glass; cards are frosted frame; menus and modals that float over content
+   stay solid. Controls are pills, primary is the glass ink. */
+.root { background: transparent; }
+
+.header {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  margin: 12px 16px 0;
+  border: 1px solid var(--glass-edge);
+  border-radius: 20px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
+}
+
+.logo { font-weight: 800; letter-spacing: -0.03em; }
+
+.card {
+  background: var(--glass-surface);
+  border-color: var(--glass-edge);
+  border-radius: var(--glass-radius);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+}
+.card:hover { border-color: var(--glass-line-strong); box-shadow: var(--glass-shadow-float); }
+
+.btn,
+.btnGhost,
+.logoutBtn { border-radius: 999px; }
+.btn { box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6); }
+
+.input,
+.textarea { border-radius: var(--glass-radius-sm); background: var(--glass-surface-solid); }
+
+.menuBtn { border-radius: 999px; }
+
+/* Solid when it floats: nothing under a menu or a dialog shows through. */
+.dropdown {
+  background: var(--glass-surface-solid);
+  border-color: var(--glass-edge);
+  border-radius: 14px;
+  box-shadow: var(--glass-shadow-float);
+  padding: 4px;
+}
+.dropdownItem { border-radius: 10px; }
+.modal {
+  background: var(--glass-surface-solid);
+  border-color: var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  box-shadow: var(--glass-shadow-float);
 }

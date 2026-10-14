@@ -266,7 +266,7 @@ export default function SignaturesPage() {
                         height: 56,
                         marginBottom: 10,
                         background:
-                          'linear-gradient(135deg, #f5f5f5 0%, #ececec 100%)',
+                          'linear-gradient(135deg, var(--glass-sunken) 0%, var(--glass-line) 100%)',
                         borderRadius: 4,
                       }}
                     />
@@ -331,7 +331,7 @@ export default function SignaturesPage() {
               </button>
               <button
                 className={styles.btn}
-                style={{ background: '#c0392b' }}
+                style={{ background: 'var(--glass-bad-ink)' }}
                 onClick={() => void remove()}
                 data-testid="confirm-delete-signature"
               >

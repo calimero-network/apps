@@ -245,7 +245,7 @@ const ConsentModal: React.FC<ConsentModalProps> = ({
             onChange={() => setChecked(!checked)}
             style={{ marginRight: spacing[3].value }}
           />
-          <Text>
+          <Text style={{ color: mode === 'dark' ? '#e5e7eb' : '#111827' }}>
             I agree to receive records electronically in accordance with this
             Disclosure.
           </Text>
