@@ -305,6 +305,27 @@ test.describe("Chat UI — edit message", () => {
       timeout: 5_000,
     });
   });
+
+  test("a message pushed to the top by newer ones still opens its whole menu", async ({ page }) => {
+    // The menu picks up or down by where its row is. It used to decide once,
+    // when the row mounted at the bottom, so a row that newer messages had
+    // pushed to the top still opened upward and the list clipped "Edit".
+    const original = `ui-edit-top-${Date.now()}`;
+    await sendMessage(page, original);
+    await waitForMessage(page, original);
+    for (let i = 0; i < 6; i++) {
+      const newer = `ui-edit-top-newer-${i}-${Date.now()}`;
+      await sendMessage(page, newer);
+      await waitForMessage(page, newer);
+    }
+
+    await openActionsMenu(page, original);
+    await messageRow(page, original).getByText("Edit message", { exact: true }).click({ timeout: 5_000 });
+
+    await expect(
+      page.locator(".ProseMirror").filter({ hasText: original }).first(),
+    ).toBeVisible({ timeout: 5_000 });
+  });
 });
 
 // ── Delete message ────────────────────────────────────────────────────────────
