@@ -188,6 +188,16 @@ ${media.length ? `
 `;
 }
 
+// Comments in the generated spec use a plain hyphen, not an em dash: some
+// apps' CI (mero-docs) rejects em dashes in their sources. Only comment lines
+// change, so assertions on the app's own copy are untouched.
+function asciiComments(src) {
+  return src
+    .split('\n')
+    .map((line) => (/^\s*(\/\/|\/\*\*?|\*)/.test(line) ? line.replace(/\u2014/g, '-') : line))
+    .join('\n');
+}
+
 function renderSpec(app, entry, meta) {
   meta = { ...meta, name: entry.displayName ?? meta.name };
   const desktopOnly = entry.availability === 'desktop';
@@ -340,7 +350,8 @@ test.describe('${meta.name} landing page', () => {
     // renamed section is worse than no TOC.
     const hrefs = await links.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
     for (const href of hrefs) {
-      await expect(page.locator(href)).toHaveCount(1);
+      expect(href).toMatch(/^#./);
+      await expect(page.locator(href ?? '')).toHaveCount(1);
     }
   });
 
@@ -721,7 +732,7 @@ for (const [app, entry] of Object.entries(APPS)) {
   const SPEC_NAME = 'marketing-landing.spec.ts';
   const specDest = join(ROOT, 'apps', app, 'app', entry.e2eDir, SPEC_NAME);
   const targets = Object.entries(files).map(([n, c]) => [join(outDir, n), c, n]);
-  targets.push([specDest, renderSpec(app, entry, meta), `${entry.e2eDir}/${SPEC_NAME}`]);
+  targets.push([specDest, asciiComments(renderSpec(app, entry, meta)), `${entry.e2eDir}/${SPEC_NAME}`]);
 
   for (const [dest, content, name] of targets) {
     const current = existsSync(dest) ? readFileSync(dest, 'utf8') : null;

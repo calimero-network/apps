@@ -83,4 +83,35 @@ test.describe('Theme', () => {
     expect(await page.evaluate((k) => localStorage.getItem(k), KEY)).toBe('dark');
     expect(await page.evaluate(() => localStorage.getItem('app:theme'))).toBeNull();
   });
+
+  // The landing page's footer switch and the app's top-bar switch are one
+  // choice: the landing writes the app's own key, so whatever was picked last,
+  // on either, is what the app opens in.
+  for (const { label, appSaved, landingPick } of [
+    { label: 'with nothing saved yet', appSaved: null, landingPick: 'dark' },
+    { label: 'over a light the app saved', appSaved: 'light', landingPick: 'dark' },
+    { label: 'over a dark the app saved', appSaved: 'dark', landingPick: 'light' },
+  ] as const) {
+    test(`a theme picked on the landing page carries into the app, ${label}`, async ({ page }) => {
+      await page.goto('/');
+      if (appSaved) await page.evaluate(([k, v]) => localStorage.setItem(k, v), [KEY, appSaved] as const);
+      await page.reload();
+      const root = page.locator('.cal-lp-root');
+      const toggle = page.locator('.cal-lp-footer').getByTestId('theme-toggle');
+      // The landing opens light whatever the app saved; one click is dark,
+      // two are light again.
+      await expect(root).toHaveAttribute('data-cal-lp-theme', 'light');
+      await toggle.click();
+      if (landingPick === 'light') await toggle.click();
+      await expect(root).toHaveAttribute('data-cal-lp-theme', landingPick);
+
+      // Sign in with a fresh load, as the node's login redirect does (on `/`
+      // already, a hash-only change would not reload the page).
+      await page.goto('about:blank');
+      await loginViaHash(page, 0);
+      await expect(page.getByTestId('theme-toggle')).toBeVisible();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', landingPick);
+      expect(await page.evaluate((k) => localStorage.getItem(k), KEY)).toBe(landingPick);
+    });
+  }
 });
