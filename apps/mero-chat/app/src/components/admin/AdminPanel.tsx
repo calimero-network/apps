@@ -45,13 +45,13 @@ const TitleIcon = styled.div`
   width: 28px;
   height: 28px;
   border-radius: 10px;
-  background: rgba(124, 58, 237, 0.12);
+  background: var(--chat-violet-soft);
   border: 1px solid rgba(124, 58, 237, 0.25);
   display: flex;
   align-items: center;
   justify-content: center;
   svg {
-    fill: #7c3aed;
+    fill: var(--chat-violet);
   }
 `;
 

@@ -48,7 +48,7 @@ const Select = styled.select`
 
   &:focus {
     outline: none;
-    border-color: #7c3aed;
+    border-color: var(--chat-violet);
     background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
   }
 
@@ -99,17 +99,17 @@ const InfoValue = styled.span`
 const Button = styled.button`
   width: 100%;
   padding: 0.75rem;
-  background: #7c3aed;
-  color: var(--glass-ink);
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
   border: none;
-  border-radius: 12px;
+  border-radius: 999px;
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover:not(:disabled) {
-    background: #6d28d9;
+    background: var(--glass-ink-2);
     transform: translateY(-1px);
   }
 

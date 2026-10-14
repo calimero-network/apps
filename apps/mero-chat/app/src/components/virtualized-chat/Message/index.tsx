@@ -46,7 +46,7 @@ const ActionsContainerMobile = styled.div<{ $addPadding: boolean }>`
 
 const MessageContainer = styled.div<{ $editmode: boolean; $focused?: boolean }>`
   width: 100%;
-  border-radius: 8px;
+  border-radius: 16px;
   box-sizing: border-box;
   padding: 6px 0;
   position: relative;
@@ -76,7 +76,7 @@ const MessageContainer = styled.div<{ $editmode: boolean; $focused?: boolean }>`
       ${({ $editmode }) => !$editmode && "opacity: 1;"}
     }
     &:hover {
-      ${({ $editmode }) => !$editmode && "background-color: var(--glass-surface-solid);"}
+      ${({ $editmode }) => !$editmode && "background-color: color-mix(in srgb, var(--glass-ink) 3%, transparent);"}
     }
   }
 `;
@@ -115,11 +115,11 @@ const NameContainerSender = styled.div`
   display: flex;
   justify-content: start;
   align-items: center;
-  width: 100%;
-  color: var(--glass-muted);
-  font-size: 12px;
+  min-width: 0;
+  color: var(--glass-ink);
+  font-size: 13px;
   font-style: normal;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 100%;
 `;
 
@@ -129,13 +129,20 @@ export interface MessageTextProps {
 }
 
 export const MessageText = styled.div<MessageTextProps>`
-  flex-grow: 1;
+  /* The bubble: a solid card on the glass panel, squared off at the corner
+     nearest the sender, as in the fleet's chat mock. */
+  flex-grow: 0;
   flex-shrink: 1;
+  min-width: 0;
+  max-width: min(640px, calc(100% - 40px - 2rem));
   overflow: hidden;
   word-wrap: break-word;
-  padding-top: 0px;
-  padding-left: 2rem;
-  padding-right: 2rem;
+  margin-left: 40px;
+  margin-top: 4px;
+  padding: 8px 14px;
+  border-radius: 4px 18px 18px 18px;
+  background-color: var(--chat-card);
+  box-shadow: var(--chat-card-shadow);
   color: var(--glass-ink);
   font-family: var(--glass-font);
   font-size: 14px;
@@ -145,11 +152,14 @@ export const MessageText = styled.div<MessageTextProps>`
   -webkit-font-smoothing: antialiased applied;
 
   @media (max-width: 1024px) {
-    font-size: 12px;
-    padding-right: 0;
+    font-size: 13px;
+    max-width: calc(100% - 40px - 3.25rem);
   }
 
-  background-color: ${(props) => props.$globalMention && "color-mix(in srgb, var(--glass-accent) 5%, transparent)"};
+  ${(props) =>
+    props.$globalMention &&
+    `background-image: linear-gradient(color-mix(in srgb, var(--glass-accent) 9%, transparent), color-mix(in srgb, var(--glass-accent) 9%, transparent));
+     box-shadow: 0 0 0 1px color-mix(in srgb, var(--glass-accent) 30%, transparent);`}
 
   .mention-everyone,
   .mention-here {
@@ -173,6 +183,9 @@ export const MessageText = styled.div<MessageTextProps>`
     margin: 0 0 6px 0;
     padding: 0;
   }
+  .msg-content p:last-child {
+    margin-bottom: 0;
+  }
   .msg-content ul,
   .msg-content ol {
     margin: 4px 0 6px 16px;
@@ -183,12 +196,12 @@ export const MessageText = styled.div<MessageTextProps>`
     padding: 0;
   }
   .msg-content code {
-    background: var(--glass-surface-solid);
+    background: var(--glass-sunken);
     padding: 1px 4px;
     border-radius: 8px;
   }
   .msg-content pre {
-    background: var(--glass-surface-solid);
+    background: var(--glass-sunken);
     padding: 8px;
     border-radius: 10px;
     overflow: auto;
@@ -197,7 +210,7 @@ export const MessageText = styled.div<MessageTextProps>`
     margin: 6px 0;
     padding: 6px 10px 6px 10px;
     border-left: 3px solid var(--glass-accent);
-    background: var(--glass-surface-solid);
+    background: var(--glass-sunken);
   }
 
   /* URL Link Styles */
@@ -229,6 +242,9 @@ export const MessageText = styled.div<MessageTextProps>`
 
 const Tick = styled.div`
   padding-right: 2rem;
+  @media (max-width: 1024px) {
+    padding-right: 0;
+  }
   width: 24px;
   text-align: right;
   align-self: flex-end;
@@ -252,7 +268,7 @@ const AttachmentsContainer = styled.div<{ $hasText: boolean }>`
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 0 2rem;
+  padding: 0 2rem 0 40px;
   /* Below text, a gap separates the two. With no text the attachment IS the
      message, and sits directly under the sender line like text would. */
   margin-top: ${({ $hasText }) => ($hasText ? "8px" : "4px")};
@@ -272,7 +288,7 @@ const MessageContentContainer = styled.div`
 `;
 
 const MessageTime = styled.div`
-  padding-right: 2rem;
+  flex-shrink: 0;
   color: var(--glass-muted);
   font-family: var(--glass-font);
   font-size: 12px;

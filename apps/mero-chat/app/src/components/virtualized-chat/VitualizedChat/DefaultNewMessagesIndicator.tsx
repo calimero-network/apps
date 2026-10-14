@@ -12,7 +12,7 @@ const indicatorStyle: CSSProperties = {
   zIndex: 100,
   height: "40px",
   width: "40px",
-  backgroundColor: "#5765F2",
+  backgroundColor: "var(--glass-accent-solid)",
   color: "var(--glass-ink)",
   display: "flex",
   justifyContent: "center",

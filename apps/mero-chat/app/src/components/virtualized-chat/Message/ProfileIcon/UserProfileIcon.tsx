@@ -19,7 +19,7 @@ const ActiveStatusCricle = styled.div<{ $active: boolean }>`
   border-radius: 50%;
   ${({ $active }: { $active: boolean }) =>
     $active
-      ? "background-color: #00FF66;"
+      ? "background-color: #22c55e;"
       : "background-color: var(--glass-line-strong);"}
   border: 1px solid var(--glass-line);
 `;

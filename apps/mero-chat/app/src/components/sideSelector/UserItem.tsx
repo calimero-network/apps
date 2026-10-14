@@ -16,23 +16,23 @@ const UserListItem = styled.div<{
   display: flex;
   justify-content: ${(props) => (props.$isCollapsed ? "center" : "space-between")};
   align-items: center;
-  padding: 0.35rem ${(props) => (props.$isCollapsed ? "0" : "0.625rem")};
-  border-radius: 10px;
+  padding: 0.4rem ${(props) => (props.$isCollapsed ? "0" : "0.625rem")};
+  border-radius: 11px;
   cursor: pointer;
-  margin-bottom: 1px;
+  margin-bottom: 2px;
   transition: all 0.12s ease;
   position: relative;
-  border-left: 2px solid ${(props) => (props.$selected ? "var(--glass-accent)" : "transparent")};
 
-  background: ${(props) => (props.$selected ? "color-mix(in srgb, var(--glass-accent) 7%, transparent)" : "transparent")};
+  background: ${(props) => (props.$selected ? "var(--chat-card)" : "transparent")};
+  box-shadow: ${(props) => (props.$selected ? "var(--chat-card-shadow)" : "none")};
   color: ${(props) =>
-    props.$selected ? "var(--glass-ink)" : props.$hasUnread ? "var(--glass-ink)" : "var(--glass-muted)"};
-  font-weight: ${(props) => (props.$hasUnread && !props.$selected ? "600" : "400")};
+    props.$selected ? "var(--glass-ink)" : props.$hasUnread ? "var(--glass-ink)" : "var(--glass-ink-2)"};
+  font-weight: ${(props) => (props.$selected || props.$hasUnread ? "700" : "400")};
 
   &:hover {
-    background: color-mix(in srgb, var(--glass-ink) 5%, transparent) !important;
-    color: var(--glass-ink-2) !important;
-    border-left-color: ${(props) => (props.$selected ? "var(--glass-accent)" : "color-mix(in srgb, var(--glass-accent) 30%, transparent)")} !important;
+    background: ${(props) =>
+      props.$selected ? "var(--chat-card)" : "color-mix(in srgb, var(--glass-ink) 5%, transparent)"} !important;
+    color: var(--glass-ink) !important;
   }
 `;
 
@@ -45,8 +45,8 @@ const UserInfoContainer = styled.div`
 `;
 
 const NameContainer = styled.div`
-  font-size: 13.5px;
-  font-weight: 400;
+  font-size: 14px;
+  font-weight: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -82,10 +82,10 @@ const UnreadBadge = styled.span<{ $isMention?: boolean }>`
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  font-size: 10px;
-  font-weight: 600;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
   flex-shrink: 0;
   background: ${({ $isMention }) => ($isMention ? "var(--glass-ink)" : "color-mix(in srgb, var(--glass-ink) 18%, transparent)")};
   color: ${({ $isMention }) => ($isMention ? "var(--glass-on-ink)" : "var(--glass-ink)")};

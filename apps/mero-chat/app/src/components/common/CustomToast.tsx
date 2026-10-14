@@ -25,7 +25,7 @@ const ToastContainer = styled.div<{ $isVisible: boolean }>`
   background: var(--glass-surface-solid);
   border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
   border-radius: 14px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--chat-pop-shadow);
   backdrop-filter: blur(10px);
   overflow: hidden;
   transform: translateX(${(p) => (p.$isVisible ? '0' : '110%')});

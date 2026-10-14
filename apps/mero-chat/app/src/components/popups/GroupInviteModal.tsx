@@ -15,7 +15,8 @@ const fadeUp = keyframes`
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--chat-scrim);
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -29,7 +30,7 @@ const Modal = styled.div`
   border-radius: 14px;
   width: 90%;
   max-width: 460px;
-  box-shadow: 0 32px 64px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--chat-dialog-shadow);
   animation: ${fadeUp} 0.2s ease both;
   overflow: hidden;
 `;

@@ -59,7 +59,7 @@ html:root {
   --color-brand-800: color-mix(in srgb, var(--glass-tint) 85%, #000000);
   --color-brand-900: color-mix(in srgb, var(--glass-tint) 40%, transparent);
   --color-transparent-brand: var(--glass-sunken);
-  --color-transparent-black-50: rgba(14, 18, 34, 0.32);
+  --color-transparent-black-50: var(--chat-scrim);
   --color-background-primary: var(--glass-surface-solid);
   --color-background-secondary: var(--glass-sunken);
   --color-background-tertiary: var(--glass-line);
@@ -72,12 +72,37 @@ html:root {
   --font-secondary: var(--glass-font);
 }
 
-/* Dark, if a marker is ever set: glass.css switches its tokens, and these
-   follow. */
+/* Chat's own tokens, on top of glass. Everything that is not a plain glass
+   surface reads one of these, so the dark switch below reaches it. */
+:root {
+  /* Message bubbles and the composer: the solid cards the eye reads. */
+  --chat-card: var(--glass-surface-solid);
+  --chat-card-shadow: 0 1px 2px rgba(14, 18, 34, 0.05), 0 0 0 1px var(--glass-line);
+  /* Workspace-admin / moderator violet. */
+  --chat-violet: #7c3aed;
+  --chat-violet-soft: rgba(124, 58, 237, 0.12);
+  /* Dims the page under a dialog. */
+  --chat-scrim: rgba(14, 18, 34, 0.32);
+  /* Menus and popovers floating over content. */
+  --chat-pop-shadow: 0 18px 40px -18px rgba(20, 26, 60, 0.35), 0 0 0 1px var(--glass-line);
+  --chat-dialog-shadow: 0 32px 64px -24px rgba(20, 26, 60, 0.45);
+}
+
+/* Dark: the glass "smoked glass" look. glass.css switches its own tokens off
+   the same markers; these follow so Chat's extras match. */
 :root[data-theme='dark'],
 :root.dark,
 :root[data-glass-theme='dark'] {
   color-scheme: dark;
+  --chat-card: #1c2236;
+  --chat-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--glass-line);
+  --chat-violet: #b69cff;
+  --chat-violet-soft: rgba(167, 139, 250, 0.16);
+  --chat-scrim: rgba(3, 5, 12, 0.6);
+  --chat-pop-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.75), 0 0 0 1px var(--glass-line-strong);
+  --chat-dialog-shadow: 0 32px 64px -20px rgba(0, 0, 0, 0.85), 0 0 0 1px var(--glass-line-strong);
+  --color-transparent-black-50: rgba(3, 5, 12, 0.6);
+  --mero-shadow: rgba(0, 0, 0, 0.6);
 }
 
 html, body {
@@ -101,8 +126,8 @@ body {
   height: 100%;
   margin: 0px;
   position: relative;
-  background-color: #111111;
-  color: #FFF;
+  background-color: var(--glass-surface-solid);
+  color: var(--glass-ink);
   font-family: var(--glass-font);
   font-size: 16px;
   font-style: normal;
@@ -493,7 +518,7 @@ body {
   text-align: right;
 }
 .ql-editor.ql-blank::before {
-  color: rgba(0,0,0,0.6);
+  color: var(--glass-muted);
   content: attr(data-placeholder);
   font-style: italic;
   left: 15px;
@@ -1100,6 +1125,9 @@ body {
   --mero-disabled: var(--glass-line-strong);
   --mero-shadow: rgba(20, 26, 60, 0.18);
 }
+:root[data-theme='dark'] {
+  --mero-shadow: rgba(0, 0, 0, 0.6);
+}
 .mero-connect-button {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 24px;
@@ -1124,7 +1152,7 @@ body {
 .mero-dropdown-info { padding: 10px 20px; color: var(--mero-text-secondary); font-size: 14px; border-bottom: 1px solid var(--mero-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
 .mero-dropdown-item { display: block; width: 100%; padding: 10px 20px; background: none; border: none; color: var(--mero-text); text-align: left; cursor: pointer; font-size: 16px; text-decoration: none; font-family: inherit; }
 .mero-dropdown-item:hover { background-color: var(--mero-accent-hover); color: var(--mero-text); }
-.mero-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(14, 18, 34, 0.32); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+.mero-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: var(--chat-scrim); display: flex; justify-content: center; align-items: center; z-index: 1000; }
 .mero-modal-content { position: relative; background: var(--mero-bg); padding: 40px; border-radius: var(--glass-radius-lg); text-align: center; box-shadow: 0 4px 15px var(--mero-shadow); width: 90%; max-width: 500px; display: flex; flex-direction: column; align-items: center; color: var(--mero-text); }
 .mero-modal-close { position: absolute; top: 15px; right: 15px; background: none; border: none; font-size: 24px; color: var(--mero-text-secondary); cursor: pointer; line-height: 1; }
 .mero-modal-close:hover { color: var(--mero-text); }
@@ -1150,17 +1178,45 @@ body {
 
 /* ── glass: mero-ui's RichTextEditor ──────────────────────────────────────
    The composer paints itself dark with inline styles and an embedded
-   stylesheet; these restate its colours on the glass tokens. */
+   stylesheet; these restate it on the glass tokens. The toolbar and the text
+   box sit together in one solid rounded card, like a message bubble. */
+.full-width-editor {
+  background-color: var(--chat-card);
+  border-radius: 20px;
+  box-shadow: var(--chat-card-shadow), 0 12px 30px -24px rgba(20, 26, 60, 0.5);
+  overflow: hidden;
+  transition: box-shadow 0.15s ease;
+}
+
+.full-width-editor:focus-within {
+  box-shadow:
+    0 0 0 1px var(--glass-line-strong),
+    0 0 0 4px color-mix(in srgb, var(--glass-tint) 28%, transparent);
+}
+
 .full-width-editor > div:first-child {
   border-color: transparent transparent var(--glass-line) transparent !important;
+  border-radius: 0 !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
 }
 
 .full-width-editor > div:first-child button {
   color: var(--glass-ink-2) !important;
+  border-radius: 8px !important;
 }
 
 .full-width-editor > div:first-child button:hover {
   background-color: var(--glass-sunken) !important;
+  border-color: transparent !important;
+}
+
+/* The active format (bold on, list on): mero-ui marks it lime inline. */
+.full-width-editor > div:first-child button[style*="165, 255, 17"],
+.full-width-editor > div:first-child button[style*="165,255,17"] {
+  background-color: color-mix(in srgb, var(--glass-accent) 14%, transparent) !important;
+  border-color: color-mix(in srgb, var(--glass-accent) 30%, transparent) !important;
+  color: var(--glass-accent) !important;
 }
 
 .full-width-editor > div:first-child > div {
@@ -1168,16 +1224,11 @@ body {
 }
 
 .full-width-editor > div:has(.rich-text-editor-content) {
-  background-color: var(--glass-surface-solid) !important;
-  border-color: var(--glass-line-strong) !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
   color: var(--glass-ink) !important;
-  border-radius: var(--glass-radius) !important;
+  border-radius: 0 !important;
   box-shadow: none !important;
-}
-
-.full-width-editor > div:has(.rich-text-editor-content:focus) {
-  border-color: var(--glass-ink-2) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-tint) 35%, transparent) !important;
 }
 
 :root .full-width-editor .rich-text-editor-content,
@@ -1191,4 +1242,65 @@ body {
 
 :root .full-width-editor .rich-text-editor-content p.is-editor-empty:first-child::before {
   color: var(--glass-muted) !important;
+}
+
+:root .full-width-editor .rich-text-editor-content code,
+:root .full-width-editor .rich-text-editor-content pre {
+  background-color: var(--glass-sunken) !important;
+}
+
+/* ── glass: mero-ui's Button ──────────────────────────────────────────────
+   Button paints its palette inline (primary is the tint with black text,
+   which goes muddy in dark). The fleet's controls are pills, and the primary
+   one is the ink pill. */
+button[style*="border-radius: 12px"][style*="font-weight: 700"] {
+  border-radius: 999px !important;
+}
+
+button[style*="background-color: var(--color-brand-"] {
+  background-color: var(--glass-ink) !important;
+  color: var(--glass-on-ink) !important;
+  box-shadow: 0 10px 24px -14px rgba(14, 18, 34, 0.6) !important;
+}
+
+button[style*="background-color: var(--color-brand-"]:hover:not(:disabled) {
+  background-color: var(--glass-ink-2) !important;
+}
+
+button[style*="background-color: var(--color-brand-"]:disabled {
+  background-color: var(--glass-line-strong) !important;
+  color: var(--glass-muted) !important;
+  box-shadow: none !important;
+}
+
+/* ── Bootstrap leftovers (typeahead menus, form controls) ──────────────── */
+.dropdown-menu,
+.rbt-menu {
+  background-color: var(--glass-surface-solid) !important;
+  border: 1px solid var(--glass-line) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--chat-pop-shadow) !important;
+  color: var(--glass-ink) !important;
+}
+
+.dropdown-item {
+  color: var(--glass-ink) !important;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus,
+.dropdown-item.active {
+  background-color: var(--glass-sunken) !important;
+  color: var(--glass-ink) !important;
+}
+
+/* Inputs the app does not style itself still read the theme. */
+input,
+textarea,
+select {
+  color-scheme: inherit;
+}
+
+::placeholder {
+  color: var(--glass-muted);
 }

@@ -69,14 +69,17 @@ interface ChatContainerProps {
 const ChatContainerWrapper = styled.div`
   position: relative;
   display: flex;
-  background-color: var(--glass-surface-solid);
   @media (min-width: 1025px) {
+    /* The glass panel the conversation sits in; the messages and the
+       composer are the solid cards on it. No backdrop-filter: popovers and
+       dialogs open from inside, and a filter would confine them. */
+    background-color: var(--glass-surface);
     padding-left: 4px;
     margin: 12px 16px 12px 12px;
     height: calc(100vh - 109px);
     border: 1px solid var(--glass-edge);
-    border-radius: var(--glass-radius-lg);
-    box-shadow: var(--glass-shadow);
+    border-radius: 24px;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--glass-edge) 60%, transparent), var(--glass-shadow);
     overflow: hidden;
   }
   @media (max-width: 1024px) {

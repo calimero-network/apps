@@ -102,7 +102,7 @@ const PermalinkBanner = styled.div`
   border: 1px solid var(--glass-line);
   color: var(--glass-ink);
   font-size: 12px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--chat-pop-shadow);
 `;
 
 const PermalinkBannerButton = styled.button`

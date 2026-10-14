@@ -9,7 +9,8 @@ import SettingsIcon from "./SettingsIcon";
 import AdminIcon from "./AdminIcon";
 import GroupInviteIcon from "./GroupInviteIcon";
 import { WebSocketStatus } from "../WebSocketStatus";
-import CurbLogoIcon from "/logo.svg";
+import ThemeToggle from "./ThemeToggle";
+import ChatAppIcon from "/icons/icon-96x96.png";
 
 const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
   display: flex;
@@ -42,18 +43,25 @@ const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
   }
 `;
 
-const CurbNameContainer = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.125rem;
+const AppMark = styled.img`
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  box-shadow: 0 0 0 1px var(--glass-line);
+`;
+
+const AppName = styled.strong`
   color: var(--glass-ink);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
   @media (min-width: 1025px) {
-    padding-right: 6rem;
-  }
-  @media (max-width: 1024px) {
-    padding-right: 0.625rem;
+    padding-right: 3.5rem;
   }
 `;
+
 const VerticalSeparatorFull = styled.div`
   width: 1px;
   height: 32px;
@@ -87,13 +95,22 @@ export const OrgNameContainer = styled.div<{ $isMobile: boolean }>`
 
 const ItemsContainer = styled.div<{ $align: boolean }>`
   display: flex;
+  min-width: 0;
   ${(props) => props.$align && "align-items: center;"}
+`;
+
+/* The member avatars are a shortcut to the channel's details, which the
+   channel name also opens; on a phone they give their room to the controls. */
+const MembersSlot = styled(ItemsContainer)`
+  @media (max-width: 560px) {
+    display: none;
+  }
 `;
 
 const LogoContainer = styled.div<{ $isMobile: boolean; justify?: boolean }>`
   display: flex;
-  gap: 0.5rem;
-  padding: 0 1rem;
+  gap: 0.625rem;
+  padding: 0 1rem 0 0.75rem;
   @media (max-width: 1024px) {
       display: ${(props) => (props.$isMobile ? "flex" : "none")};
     }
@@ -103,7 +120,7 @@ const LogoContainer = styled.div<{ $isMobile: boolean; justify?: boolean }>`
 `;
 
 const BackIcon = styled.svg`
-  fill: #5765f2;
+  fill: var(--glass-accent);
   display: none;
   @media (max-width: 1024px) {
     display: flex;
@@ -126,6 +143,10 @@ const FlexContainer = styled.div`
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-shrink: 0;
+  @media (max-width: 1024px) {
+    gap: 0.125rem;
+  }
 `;
 
 const SearchButton = styled.button<{ $active: boolean }>`
@@ -166,13 +187,8 @@ const SearchIcon = () => (
 export const CurbLogo = ({ isMobile }: { isMobile: boolean }) => {
   return (
     <LogoContainer $isMobile={isMobile} role="banner">
-      <img
-        src={CurbLogoIcon}
-        alt="Mero Chat Application Logo"
-        height="32px"
-        width="auto"
-      />
-      <CurbNameContainer></CurbNameContainer>
+      <AppMark src={ChatAppIcon} alt="Mero Chat Application Logo" />
+      <AppName>Chat</AppName>
     </LogoContainer>
   );
 };
@@ -283,7 +299,7 @@ export default function CurbNavbar({
         {activeChat &&
           activeChat?.type === "channel" &&
           channelUserList.size > 0 && (
-            <ItemsContainer $align={false}>
+            <MembersSlot $align={false}>
               <ChannelDetailsPopup
                 toggle={
                   <div>
@@ -305,7 +321,7 @@ export default function CurbNavbar({
                 onChannelLeft={onChannelLeft}
                 getSubgroupForContext={getSubgroupForContext}
               />
-            </ItemsContainer>
+            </MembersSlot>
           )}
         <WebSocketStatus
           isSubscribed={wsIsSubscribed}
@@ -322,6 +338,7 @@ export default function CurbNavbar({
         </SearchButton>
         <GroupInviteIcon />
         <AdminIcon />
+        <ThemeToggle />
         <SettingsIcon />
       </FlexContainer>
     </NavigationBar>

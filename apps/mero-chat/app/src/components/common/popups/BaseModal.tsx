@@ -34,7 +34,7 @@ const Overlay = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  background: rgba(14, 18, 34, 0.32);
+  background: var(--chat-scrim);
   backdrop-filter: blur(10px);
 `;
 
@@ -54,7 +54,7 @@ const sharedContainer = css`
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
   box-sizing: border-box;
-  box-shadow: 0 32px 64px rgba(0, 0, 0, 0.7);
+  box-shadow: var(--chat-dialog-shadow);
   animation: ${fadeIn} 0.2s ease both;
   outline: none;
   &:focus, &:focus-visible { outline: none; }

@@ -43,9 +43,9 @@ const TextInput = styled.input`
 `;
 
 const TriggerButton = styled.button`
-  background: rgba(124, 58, 237, 0.12);
+  background: var(--chat-violet-soft);
   border: 1px solid rgba(124, 58, 237, 0.3);
-  color: #7c3aed;
+  color: var(--chat-violet);
   font-size: 0.78rem;
   font-weight: 500;
   padding: 0.4rem 1rem;
@@ -172,7 +172,7 @@ const Spinner = styled.span`
   width: 12px;
   height: 12px;
   border: 2px solid color-mix(in srgb, var(--glass-ink) 15%, transparent);
-  border-top-color: #7c3aed;
+  border-top-color: var(--chat-violet);
   border-radius: 50%;
   animation: ${spin} 0.6s linear infinite;
   margin-right: 0.375rem;

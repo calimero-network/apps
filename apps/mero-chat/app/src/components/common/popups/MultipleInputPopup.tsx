@@ -35,7 +35,7 @@ const Text = styled.div`
 const CloseButton = styled.div`
   color: var(--glass-ink);
   :hover {
-    color: #5765f2;
+    color: var(--glass-accent);
   }
   position: absolute;
   right: 1rem;

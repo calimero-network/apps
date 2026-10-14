@@ -76,7 +76,7 @@ const Select = styled.select`
 
   &:focus {
     outline: none;
-    border-color: #7c3aed;
+    border-color: var(--chat-violet);
     background-color: color-mix(in srgb, var(--glass-ink) 9%, transparent);
     box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18);
   }

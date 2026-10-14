@@ -82,7 +82,7 @@ const TooltipContainer = styled.div<{ $show: boolean }>`
   max-height: 400px;
   overflow-y: auto;
   z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--chat-pop-shadow);
   display: ${(props) => (props.$show ? "block" : "none")};
   
   /* Custom scrollbar */
