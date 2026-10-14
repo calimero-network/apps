@@ -14,7 +14,7 @@ help on an ask with one click, and ask the team questions of their own.
 | Package | `com.calimero.mero-updates` |
 | Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 35 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/e2e.yml`](logic/workflows/e2e.yml), 90 steps that call every contract method on real nodes |
-| Frontend | [`app/`](app): Vite, React and mero-react |
+| Frontend | [`app/`](app): Vite, React and mero-react. Light by default; the top-bar switch saves dark under `mero-updates:theme` (shared with the landing page, applied pre-paint by `index.html`). Log out ([`app/src/auth/signOut.ts`](app/src/auth/signOut.ts)) forgets the open audience, then calls mero-react's `logout()` |
 | Browser suites | `tests/` has the shell, landing page and theme default (no node). `e2e/` runs the founder's whole flow, the light/dark switch and every Log out against a real merod |
 
 ---
@@ -184,12 +184,12 @@ pnpm -F mero-updates codegen                     # ABI → src/generated/Updates
 pnpm -F mero-updates dev                         # http://localhost:5190
 
 pnpm -F mero-updates test                        # vitest
-pnpm -F mero-updates exec playwright test        # shell + landing, no node
+pnpm -F mero-updates exec playwright test        # shell, landing, theme default; no node
 
 # The real-node founder flow (needs merod and the bundle):
 cargo mero bundle --manifest-path apps/mero-updates/logic/Cargo.toml --dev \
   --app-version 0.0.0 --output apps/mero-updates/logic/dist/com.calimero.mero-updates.mpk
-pnpm -F mero-updates run test:e2e:node
+pnpm -F mero-updates run test:e2e:node            # founder flow, theme switch, Log out
 
 # The two-node scenario:
 cd apps/mero-updates/logic && merobox bootstrap run workflows/e2e.yml
