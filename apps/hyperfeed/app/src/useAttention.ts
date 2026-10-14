@@ -25,7 +25,7 @@ export interface Attention {
  * (always, alerts on or off). A banner only when the page is hidden or out of
  * focus: in front of you, the feed itself shows it.
  */
-export function useAttention(page: FeedPage | null, base: string): Attention {
+export function useAttention(page: FeedPage | null, base: string, total?: number): Attention {
   const navigate = useNavigate();
   const supported = typeof window !== "undefined" && "Notification" in window;
   const [wanted, setWanted] = useState(() => {
@@ -40,7 +40,8 @@ export function useAttention(page: FeedPage | null, base: string): Attention {
 
   // The title the page loaded with, so the count goes in front of it and away again.
   const baseTitle = useRef(typeof document !== "undefined" ? document.title : "hyperfeed");
-  const waiting = page?.counts.needs_you ?? 0;
+  // Everything the bell counts, Settings included, when the caller knows it.
+  const waiting = total ?? page?.counts.needs_you ?? 0;
   useEffect(() => {
     document.title = tabTitle(waiting, baseTitle.current);
   }, [waiting]);
@@ -51,16 +52,16 @@ export function useAttention(page: FeedPage | null, base: string): Attention {
   useEffect(() => {
     if (!page) return;
     const alerts = newAlerts(seen.current, page.items, appName);
-    // A filter can hide what started needing you; the count still rose.
-    if (alerts.length === 0 && seenCount.current != null && page.counts.needs_you > seenCount.current) {
+    // A filter can hide what started needing you, and a lens or rule waits in Settings: the count still rose.
+    if (alerts.length === 0 && seenCount.current != null && waiting > seenCount.current) {
       alerts.push({ chain: "", title: "Something needs you", body: "Open Hyperfeed to see it.", opens: "feed" });
     }
     seen.current = waitingKeys(page.items);
-    seenCount.current = page.counts.needs_you;
+    seenCount.current = waiting;
     if (!on || alerts.length === 0) return;
     if (document.visibilityState === "visible" && document.hasFocus()) return;
     for (const a of alerts) show(a, (to) => navigate(to), base);
-  }, [page, on, base, navigate]);
+  }, [page, waiting, on, base, navigate]);
 
   const toggle = useCallback(async () => {
     if (!supported) return;
