@@ -107,6 +107,10 @@
 .navActive svg {
   color: var(--sign-accent);
 }
+/* Dark: the solid fill is the drawer's own colour, so lift it instead. */
+:global(:root[data-theme='dark']) .navActive {
+  background: rgba(255, 255, 255, 0.08);
+}
 
 .spacer {
   flex: 1;
