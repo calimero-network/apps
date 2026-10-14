@@ -36,6 +36,8 @@ same warrant path it uses everywhere else.
 | **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said`. Yours may carry up to four **images** (PNG, JPEG, WebP or GIF, 10 MB each): blobs on your node announced to the feed's context, of which the feed keeps only the id, name, type and size, beside the message by id. One sent by an older client may also carry a **mode**, `private` or `public`, kept beside the message by id; which agent takes a message is now set per app (see Assignment) |
 | **Notification** | your client, or your agent | app, source context, sender, title, event kind, and whether it needs you. Keyed by the state transition that produced it, so each of your devices records the same event once (see [the collector](#notifications-the-collector)). A notification a lens made also carries its **item type**, the type's **fields**, and the **reply call** that answers it in its app, kept beside it by id |
 | **Lens** | your agent proposes, you approve | for one app version: which of its events become feed items, of which type, and how your answer goes back. JSON, up to 32 kB; `proposed`, `approved` or `rejected` |
+| **Actions** | your agent proposes, you approve | for one app version: what your agent can do there in your words, each action with the methods it covers, whether it writes and its guard; `proposed`, `approved` or `rejected`. The newest approved set of an app is in force |
+| **Action setting** | you | per app and action: `act`, `ask` or `off` apart from the app's mode |
 | **Policy** | you | per app: the agent mode (`act` / `ask` / `read` / `off`) and notification routing (`push` / `feed` / `mute`) |
 | **Guard** | you | "always ask me before…" for `sign`, `money`, `new_contact` and `delete` (on by default), and `invite` and `secret` (off by default) |
 | **Pause** | you | while paused, every write the agent wants to make becomes a proposal |
@@ -56,18 +58,31 @@ Every record merges deterministically:
 
 ## The rules the contract applies
 
-The agent calls `check_action(app_key, category, writes)` before it acts. It then calls
-`record_action` either with a **proposal** or with an **outcome**. The same verdict governs both:
+The agent calls `check_action(app_key, category, writes, method)` before it acts. It then calls
+`record_action` either with a **proposal** or with an **outcome**. The same verdict governs both.
+
+First the app's **actions** say what the call is. Your agent groups an app's methods into actions
+you would recognise ("Edit documents", "Delete your messages") and proposes them like a lens; once
+you approve them (**Settings → Actions**), the action that names the method decides whether the call
+writes and, when it names one, its guard, whatever the agent says. A method no approved action names
+asks you every time. With no approved actions, or an agent that names no method, the agent's
+`category` and `writes` stand. You can set each action to act, ask first or off, apart from its app.
 
 | Situation | Verdict |
 | --- | --- |
 | app mode `off` | refuse |
+| the action is set to `off` | refuse |
 | a read (`writes: false`) | act |
 | app mode `read`, and the action writes | refuse |
 | agent paused | ask |
 | the category's guard is on | ask |
+| the app has approved actions and none names the method | ask |
+| the action is set to `ask` | ask |
+| the action is set to `act` | act |
 | app mode `ask`, or an app with no policy | ask |
 | app mode `act` | act |
+
+"Allow for this session" covers the same action only, once an app has actions.
 
 - **A proposal the rules refuse is an error,** so the agent learns before it acts.
 - **An outcome the rules say needed you is still recorded,** flagged with a breach, and it stays in
@@ -275,7 +290,7 @@ account (your node's own identity, or your account through a warrant); anything 
 
 | Method | Args | Returns |
 | --- | --- | --- |
-| `check_action` | `app_key: string, category: string, writes: bool` | `Verdict { decision: "act" \| "ask" \| "refuse", reason }` |
+| `check_action` | `app_key: string, category: string, writes: bool, method?: string` | `Verdict { decision: "act" \| "ask" \| "refuse", reason }` |
 | `record_action` | `input: ActionInput` | `FeedItem`, the recorded row with its `id` |
 | `complete_action` | `id: string, outcome: "done" \| "failed", note: string` | `FeedItem` |
 | `record_notification` | `input: NotificationInput` | `FeedItem`; the same `key` again within 10 s returns the existing row |
@@ -439,12 +454,15 @@ stays in "Needs you" until you keep it or undo it. Events the contract emits: `A
 ask); `answer_notification(id, answer)`; `set_policy(app_key, agent, notifications)`;
 `set_guard(category, enabled)`; `set_paused(paused)`; `set_access(agent, folders, shell, web)`;
 `set_assignment(app_key, agent)` (`agent` `""` gives the app back to the default); `record_notification(input)`;
-`say(chain, text, headline, mode)`; `decide_lens(app_key, application_id, decision)`; `mark_seen(ids)` and
+`say(chain, text, headline, mode)`; `decide_lens(app_key, application_id, decision)`;
+`decide_actions(app_key, application_id, decision)`; `set_action_mode(app_key, action, mode)` (`act`, `ask`,
+`off`, or `""` to follow the app); `mark_seen(ids)` and
 `mark_all_seen()`; `archive(chains, until)` (`until` 0 = until something new happens, else ms
 for "later") and `unarchive(chains)`; `feed("archived", …)` lists what is put away. An agent kit can call them too, since it
 writes as you, but `resolve_action`, `answer_notification`, `decide_lens` and `say` are your decisions and your
 words, and an agent should never call them for itself. The agent's side of lenses is
-`propose_lens(app_key, application_id, spec, summary)` and `lenses()`.
+`propose_lens(app_key, application_id, spec, summary)` and `lenses()`; of actions,
+`propose_actions(app_key, application_id, actions, summary)` and `action_sets()`.
 
 ## Trust model, honestly
 
@@ -524,6 +542,9 @@ says the feed is too old.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
   Phone alerts (Settings → Alerts) keep your devices' push subscriptions and the runtime's VAPID
   public key in the feed; mero-bot's sender, which pushes what newly needs you, is a separate change.
+- Actions ship for Chat and Docs as checked fixtures (`app/src/actions/fixtures/`), used by the demo;
+  on your node they are learned and proposed by your agent. mero-bot does not propose them or pass
+  `method` to `check_action` yet; until it does, its own word decides, as before.
 - Lenses for apps other than Chat are learned on your node; none ships for them. A lens is tried on
   recent events only when there are some, so a quiet app's lens is checked against its ABI alone.
 - An answer the feed sends itself has no retry if the tab closes between the two calls; the row
