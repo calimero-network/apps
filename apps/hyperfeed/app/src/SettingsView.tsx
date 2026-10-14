@@ -10,6 +10,7 @@ import type { Preview, PreviewRow } from "./preview";
 import { currentEndpoint, deviceName, inputOf, pushSupported, subscribe, unsubscribe } from "./push";
 import { AGENT_LIVE_MS } from "./theme";
 import { DEFAULT_LANGUAGE, LANGUAGES, languageOf, languageRule } from "./language";
+import { assignedAgent, CODE_APP, defaultLabel, privateAgents } from "./assignments";
 
 const AGENT_OPTIONS: { id: AgentMode; label: string }[] = [
   { id: "act", label: "Act" },
@@ -269,6 +270,7 @@ function AgentsSection({ feed, contextId }: { feed: Feed; contextId: string | nu
   const settings = feed.settings;
   if (!settings) return null;
   const now = Date.now();
+  const privates = new Set(privateAgents(settings));
   return (
     <div className="controls">
       <section className="panel wide" aria-labelledby="h-agents">
@@ -282,6 +284,11 @@ function AgentsSection({ feed, contextId }: { feed: Feed; contextId: string | nu
               return (
                 <li key={a.name}>
                   <span className="mono">{a.name}</span>
+                  {privates.has(a.name) && (
+                    <span className="pill" title="Every model it runs is attested: no one, Calimero included, can read what it is told">
+                      Private
+                    </span>
+                  )}
                   <span className={`pill ${live ? "pill-good" : "pill-bad"}`}>
                     {live ? "Live" : `Last seen ${new Date(a.seen_at).toLocaleString()}`}
                   </span>
@@ -291,6 +298,9 @@ function AgentsSection({ feed, contextId }: { feed: Feed; contextId: string | nu
           </ul>
         )}
       </section>
+
+      {/* A feed made before assignments has no `assignments` in its settings, and no setter. */}
+      {feed.setAssignment && Array.isArray(settings.assignments) && <AgentAssignments feed={feed} />}
 
       {/* A feed made before access has no `access` in its settings, and no setter. */}
       {feed.setAccess && Array.isArray(settings.access) && <AgentReach feed={feed} />}
@@ -462,6 +472,85 @@ function PhoneAlerts({ feed }: { feed: Feed }) {
   );
 }
 
+/**
+ * Which agent works in each app: only that one takes the app's work (new
+ * items, your decisions on its rows, your chats about it) and calls the app.
+ * An app you leave on the default is your private agent's. Code is the app
+ * "mero-bot": the tools on a computer. Only you set these; mero-bot refuses
+ * `set_assignment` to the agent.
+ */
+function AgentAssignments({ feed }: { feed: Feed }) {
+  const settings = feed.settings!;
+  const { page } = feed;
+  const { pending, write } = usePending();
+  const apps = useMemo(() => {
+    const keys = new Set([CODE_APP, ...DEFAULT_APPS]);
+    for (const p of settings.policies) keys.add(p.app);
+    for (const a of page?.apps ?? []) keys.add(a.app);
+    for (const a of settings.assignments ?? []) keys.add(a.app);
+    return [...keys];
+  }, [settings, page]);
+  const privates = new Set(privateAgents(settings));
+  // Every agent that reported in or reported what it reaches, and any you assigned that hasn't yet.
+  const agents = [
+    ...new Set([...settings.agents.map((a) => a.name), ...(settings.reach ?? []).map((r) => r.agent), ...(settings.assignments ?? []).map((a) => a.agent)]),
+  ]
+    .filter(Boolean)
+    .sort();
+  return (
+    <section className="panel wide" aria-labelledby="h-assign">
+      <h2 id="h-assign">Who works in each app</h2>
+      <p className="muted">
+        Only the agent you pick takes an app's work and may call it. An app on the default goes to your private agent. When
+        an agent meets work that needs code, it asks you before handing it to the agent you gave Code.
+      </p>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">App</th>
+              <th scope="col">Agent</th>
+            </tr>
+          </thead>
+          <tbody>
+            {apps.map((app) => {
+              const look = appLook(app);
+              const name = app === CODE_APP ? "Code" : look.name;
+              const value = String(pending[`assign:${app}`] ?? assignedAgent(settings, app));
+              return (
+                <tr key={app}>
+                  <th scope="row">
+                    <span className="app-cell">
+                      <Badge app={app} size="sm" />
+                      {name}
+                      {app === CODE_APP && <span className="muted"> · shell, files and git on a computer</span>}
+                    </span>
+                  </th>
+                  <td>
+                    <select
+                      aria-label={`Agent for ${name}`}
+                      value={value}
+                      disabled={feed.busy}
+                      onChange={(e) => void write(`assign:${app}`, e.target.value, () => feed.setAssignment!(app, e.target.value))}
+                    >
+                      <option value="">{`Default: ${defaultLabel(settings)}`}</option>
+                      {agents.map((a) => (
+                        <option key={a} value={a}>
+                          {privates.has(a) ? `${a} (private)` : a}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 /** One line of what an agent reported it can reach: its profile, and where it reaches besides your apps. */
 function reachLabel(l: ReachLine): string {
   const who = `${l.profile}${l.model ? ` (${l.model})` : ""}${l.attested ? ", attested" : ""}`;
@@ -473,7 +562,15 @@ function reachLabel(l: ReachLine): string {
   return `${who}: Calimero apps${where.length ? `, ${where.join(", ")}` : " only"}`;
 }
 
-const SERVES: Record<string, string> = { default: "Default", private: "Private", public: "Public" };
+const SERVES: Record<string, string> = {
+  default: "Default",
+  converse: "Your messages",
+  triage: "New items",
+  "carry-out": "Your decisions",
+  learn: "Lenses",
+  watch: "Watches",
+  typed: "Typed",
+};
 
 /**
  * What each agent can reach on its computer besides your apps: what it

@@ -21,7 +21,7 @@ import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
 import { mergeWatchInput, moveWatch, newWatch } from "./watches";
 import { replySubject, splitSubject } from "./subject";
-import type { AccessView, Folder, LinkView, PrInput, PrView, ReachLine, ReachView, WatchInput, WatchView } from "./generated/HyperfeedClient";
+import type { AccessView, AssignmentView, Folder, LinkView, PrInput, PrView, ReachLine, ReachView, WatchInput, WatchView } from "./generated/HyperfeedClient";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 
@@ -95,6 +95,7 @@ export class DemoBackend implements FeedBackend {
   /** What each agent may reach, and what each reported it can, by agent name. */
   private access = new Map<string, AccessView>();
   private reach = new Map<string, ReachView>();
+  private assignments = new Map<string, AssignmentView>();
   private ruleProposals: RuleProposalView[] = [];
   /** Chains put away: the chain's latest activity then, and when "later" brings it back (0: never). */
   private archivedChains = new Map<string, { at: number; until: number }>();
@@ -311,9 +312,11 @@ export class DemoBackend implements FeedBackend {
         .filter((p) => p.status === "proposed")
         .sort((a, b) => b.created_at - a.created_at)
         .map((p) => ({ ...p })),
-      message_modes: [...MESSAGE_MODES],
+      // No client offers a mode any more: which agent works where is set per app.
+      message_modes: [],
       access: [...this.access.values()].map((a) => ({ ...a, folders: a.folders.map((f) => ({ ...f })) })).sort((a, b) => a.agent.localeCompare(b.agent)),
       reach: [...this.reach.values()].map((r) => ({ ...r, lines: r.lines.map((l) => ({ ...l })) })).sort((a, b) => a.agent.localeCompare(b.agent)),
+      assignments: [...this.assignments.values()].filter((a) => a.agent).map((a) => ({ ...a })).sort((a, b) => a.app.localeCompare(b.app)),
     };
   }
 
@@ -980,6 +983,12 @@ export class DemoBackend implements FeedBackend {
       if (f.path.split("/").includes("..")) throw new Error(`folder must be one path with no '..', got "${f.path}"`);
     }
     this.access.set(agent, { agent, folders: folders.map((f) => ({ ...f })), shell, web, updated_at: this.now() });
+    this.changed();
+  }
+
+  async setAssignment(app: string, agent: string): Promise<void> {
+    if (!/^[a-z0-9.-]+$/.test(app)) throw new Error(`app must be lowercase letters, digits, '-' or '.', got "${app}"`);
+    this.assignments.set(app, { app, agent, updated_at: this.now() });
     this.changed();
   }
 
