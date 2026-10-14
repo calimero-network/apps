@@ -355,7 +355,7 @@ export const DOCS = {
         concepts: [
           { term: 'Namespace', def: 'A team. The people in it are the people who can be invited to events.' },
           { term: 'Context', def: 'The team’s shared calendar. One per team.' },
-          { term: 'Shared event', def: 'An event in replicated state, owned by whoever created it. Reads are gated in the contract: you see an event only if you own it or were invited to it.' },
+          { term: 'Shared event', def: 'An event in replicated state, owned by whoever created it. Only its owner can change it. Every team member’s node holds it; your calendar lists it only if you own it or were invited to it.' },
           { term: 'Private event', def: 'An event declared `#[app::private]`. It is stored on your node only and is never replicated to anyone — not even to other members of the team.' },
           { term: 'Username', def: 'A display name you set, so the UI shows people rather than public keys. Last-writer-wins on its own clock.' },
         ],
@@ -382,7 +382,7 @@ export const DOCS = {
         id: 'storage',
         heading: 'What is stored, and where',
         bullets: [
-          'Shared events: title, time, owner and invitee list, replicated to team members and read-gated per event.',
+          'Shared events: title, time, owner and invitee list, replicated to every team member and editable only by their owner.',
           'Private events: the same fields, stored only on the node that created them and never replicated.',
           'Members: one username per member, so names can change without touching events.',
         ],
@@ -929,10 +929,10 @@ export const DOCS = {
         ],
         concepts: [
           { term: 'Namespace', def: 'A project you own and invite collaborators into.' },
-          { term: 'Context', def: 'One workbook: its sheets, its cells and its cursors.' },
+          { term: 'Context', def: 'One workbook: its sheets and its cells.' },
           { term: 'Sheet', def: 'A tab. Stored as a record; a workbook can hold several.' },
           { term: 'Cell', def: 'One entry in a map keyed by sheet and coordinate. Value, formula and format are separate, so formatting a cell does not fight with typing in it.' },
-          { term: 'Cursor', def: 'Where each collaborator is, in their own colour. Authored presence, kept out of the data.' },
+          { term: 'Cursor', def: 'Where each collaborator is and what they have selected, in their own colour. Live presence, never stored in the workbook.' },
         ],
       },
       {
@@ -941,7 +941,7 @@ export const DOCS = {
         steps: [
           { title: 'Connect a node', body: 'Press Connect to node and choose your node.' },
           { title: 'Create a project', body: 'A namespace you own, with one workbook in it.' },
-          { title: 'Type something', body: 'Enter values, or a formula: SUM, AVERAGE, MIN, MAX, COUNT and IF are built in, with autocomplete and inline help.' },
+          { title: 'Type something', body: 'Enter values, or a formula: 94 functions are built in, from SUM and IF to XLOOKUP and TEXT, with autocomplete and inline help.' },
           { title: 'Invite collaborators', body: 'Share the link. Their cursor appears in its own colour as soon as they arrive.' },
         ],
       },
@@ -960,7 +960,7 @@ export const DOCS = {
           'Project name and creation time.',
           'Sheets, keyed by id, with their names.',
           'Cells, keyed by sheet and coordinate, holding the raw value, the raw formula and the format separately.',
-          'Cursors, as authored presence — each one owned by the person it belongs to.',
+          'Not stored: cursors and selections. They travel on the node\'s ephemeral presence channel and vanish when you close the sheet.',
         ],
       },
       OFFLINE,
@@ -1149,7 +1149,7 @@ export const DOCS = {
         bullets: [
           'World name, seed and creation time.',
           'Tile overrides, keyed by coordinate.',
-          'Players and their positions, refreshed by heartbeat and reaped when they leave.',
+          'Players and their positions, refreshed by heartbeat; each player\'s row is theirs alone to write.',
         ],
       },
       OFFLINE,
