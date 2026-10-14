@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { appLink, canOpen, subjectFromLink } from "./links";
+import { appLink, canOpen, chatName, linkNamer, subjectFromLink } from "./links";
+import type { LensHost } from "./lens/lens";
 import { laneOf } from "./format";
 
 const row = (patch: Partial<FeedItem>): FeedItem =>
@@ -68,5 +69,67 @@ describe("subjectFromLink", () => {
     expect(subjectFromLink("https://example.com/?context-id=x")).toBe("");
     expect(subjectFromLink("https://mero-chat-pwa.vercel.app/")).toBe("");
     expect(subjectFromLink("just words")).toBe("");
+  });
+});
+
+/** A chat context as its host answers: `info` from `get_info`, `profiles` from `get_profiles`. */
+const chatHost = (info: unknown, profiles: unknown = [], names: Record<string, string> = {}): LensHost & { calls: string[] } => {
+  const calls: string[] = [];
+  return {
+    calls,
+    call: async <T,>(method: string) => {
+      calls.push(method);
+      if (method === "get_info") return info as T;
+      if (method === "get_profiles") return profiles as T;
+      throw new Error(`no ${method}`);
+    },
+    me: async () => new Set(["me-b58"]),
+    name: async (id: string) => names[id] ?? "",
+  };
+};
+
+describe("chatName", () => {
+  it("names a channel by its name", async () => {
+    expect(await chatName(chatHost({ name: "launch", context_type: "Channel" }))).toBe("#launch");
+  });
+
+  it("names a DM by the people in it besides you: their name on the node, else their username", async () => {
+    const profiles = [
+      { identity: "me-b58", username: "sandi" },
+      { identity: "ronit-b58", username: "ronit" },
+    ];
+    // A DM's own name is the frontend's "private_dm": never shown.
+    expect(await chatName(chatHost({ name: "private_dm", context_type: "Dm" }, profiles, { "ronit-b58": "Ronit Sabhaya" }))).toBe("DM with Ronit Sabhaya");
+    expect(await chatName(chatHost({ name: "private_dm", context_type: "Dm" }, profiles))).toBe("DM with ronit");
+    expect(await chatName(chatHost({ name: "private_dm", context_type: "Dm" }, [{ identity: "me-b58", username: "sandi" }]))).toBe("DM");
+  });
+});
+
+describe("linkNamer", () => {
+  const link = (context: string, app = "chat", item = "") => ({ app, context, item });
+
+  it("names a whole chat once per context, and nothing else", async () => {
+    const hosts: Record<string, ReturnType<typeof chatHost>> = {
+      a: chatHost({ name: "launch", context_type: "Channel" }),
+      b: chatHost({ name: "design", context_type: "Channel" }),
+    };
+    const name = linkNamer((ctx) => hosts[ctx] ?? null);
+    expect(await name(link("a"))).toBe("#launch");
+    expect(await name(link("b"))).toBe("#design");
+    expect(await name(link("a"))).toBe("#launch");
+    expect(hosts.a!.calls).toEqual(["get_info"]);
+    // A thread in a chat, another app, or a context no host reaches: the chip names itself as before.
+    expect(await name(link("a", "chat", "thread-1"))).toBe("");
+    expect(await name(link("a", "issue-tracker"))).toBe("");
+    expect(await name(link("gone"))).toBe("");
+  });
+
+  it("asks again after a failed read", async () => {
+    let fail = true;
+    const host = chatHost({ name: "launch", context_type: "Channel" });
+    const name = linkNamer(() => ({ ...host, call: async <T,>(m: string, a: Record<string, unknown>) => (fail ? Promise.reject(new Error("down")) : host.call<T>(m, a)) }));
+    expect(await name(link("a"))).toBe("");
+    fail = false;
+    expect(await name(link("a"))).toBe("#launch");
   });
 });
