@@ -80,14 +80,28 @@ export function useAttention(page: FeedPage | null, base: string): Attention {
 }
 
 function show(a: Alert, go: (to: string) => void, base: string) {
+  const to = a.opens === "chat" && a.chain ? `${base}/chat/${encodeURIComponent(a.chain)}` : base || "/";
+  const options = { body: a.body, tag: a.chain || "hyperfeed", icon: "/icon-192.png" };
   try {
-    const n = new Notification(a.title, { body: a.body, tag: a.chain || "hyperfeed", icon: "/favicon.svg" });
+    const n = new Notification(a.title, options);
     n.onclick = () => {
       window.focus();
-      go(a.opens === "chat" && a.chain ? `${base}/chat/${encodeURIComponent(a.chain)}` : base || "/");
+      go(to);
       n.close();
     };
   } catch {
-    // Some browsers only show banners from a service worker; the tab's title still counts.
+    // Android's Chrome (and a Home Screen app on iOS) shows banners only from
+    // a service worker: hand it to Hyperfeed's, whose click opens `data.url`.
+    void viaWorker(a.title, { ...options, data: { url: to } });
+  }
+}
+
+async function viaWorker(title: string, options: NotificationOptions): Promise<void> {
+  try {
+    if (!("serviceWorker" in navigator)) return;
+    const reg = (await navigator.serviceWorker.getRegistration("/")) ?? (await navigator.serviceWorker.register("/sw.js", { scope: "/" }));
+    await reg.showNotification(title, options);
+  } catch {
+    // No worker either: the tab's title and the bell still count what waits.
   }
 }

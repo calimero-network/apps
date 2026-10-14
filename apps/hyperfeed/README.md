@@ -16,7 +16,7 @@ each app, and talk to it about any of it.
 | Package | `com.calimero.hyperfeed` |
 | Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 50 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/feed.yml`](logic/workflows/feed.yml): every contract method on real nodes, the feed converging on a second node, and that node refused every write |
-| Frontend | [`app/`](app): Vite, React and mero-react. `/` (feed), `/chat` and `/settings` run against your node; `/demo` runs the same pages in memory. Settings has a section per path: `/settings/controls`, `/settings/agents`, `/settings/lenses`, `/settings/alerts` (`/controls` lands on the first) |
+| Frontend | [`app/`](app): Vite, React and mero-react. `/` (feed), `/chat` and `/settings` run against your node; `/demo` runs the same pages in memory. Settings has a section per path: `/settings/controls`, `/settings/agents`, `/settings/lenses`, `/settings/alerts` (`/controls` lands on the first). The bell in the top bar counts what needs you and opens it as a list, each with its buttons, whatever the feed shows; a chat waiting on your approval stays in Chat with the approval in its thread |
 
 ## Why it needs a contract of its own
 

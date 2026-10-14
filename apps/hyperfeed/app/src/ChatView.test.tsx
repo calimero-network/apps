@@ -160,6 +160,49 @@ describe("chat with your agent", () => {
     expect(within(thread()).queryByRole("group", { name: "Delete one?" })).not.toBeInTheDocument();
   });
 
+  it("keeps a chat in the list while an approval waits in it, and settles the approval there", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Run the tests");
+    backend.agentAck(q.id);
+    // As mero-bot asks before a command on your computer: a proposal in the chat's chain.
+    const asked = await backend.recordAction({
+      app: "mero-bot",
+      source_context: "",
+      source_label: "This computer",
+      method: "Bash",
+      category: "",
+      writes: true,
+      undoable: false,
+      title: "Run npm test",
+      body: "$ npm test",
+      why: "mero-bot asks before it runs this on your computer.",
+      outcome: "proposed",
+      intent_hash: "",
+      executor: "",
+      note: "",
+      chain: q.chain,
+      ask: { kind: "choose", prompt: "Run it?", options: ["Allow once", "Allow for this session"], draft: "" },
+      grant: "",
+      subject: "",
+    });
+    render(<Harness backend={backend} />);
+    // The chat stays listed, and says it waits on you.
+    const listed = await within(list()).findByRole("button", { name: /Run the tests/ });
+    expect(within(listed).getByText("Needs you")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(listed);
+    });
+    expect(await within(thread()).findByText("Run npm test")).toBeInTheDocument();
+    const options = within(thread()).getByRole("group", { name: "Run it?" });
+    await act(async () => {
+      fireEvent.click(within(options).getByRole("button", { name: "Allow once" }));
+    });
+    const [after] = (await backend.chain(q.chain)).filter((i) => i.id === asked.id);
+    expect(after!.status).toBe("approved");
+    await waitFor(() => expect(within(thread()).queryByRole("group", { name: "Run it?" })).not.toBeInTheDocument());
+  });
+
   it("retires an older question when your agent asks a newer one", async () => {
     const backend = new DemoBackend(false, 0);
     const q = await backend.say("", "Clean up #calimero");

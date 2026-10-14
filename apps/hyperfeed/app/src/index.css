@@ -1640,6 +1640,36 @@ thead th {
   align-self: flex-end;
 }
 
+.chat-action {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--wait-line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.chat-action-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.chat-action-command {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--sunken);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
 .chat-event {
   align-self: center;
   font-size: 13px;
@@ -1848,6 +1878,118 @@ body {
 .icon-button:hover {
   background: var(--sunken);
   color: var(--ink);
+}
+
+/* ── needs you, behind the bell ─────────────────────────────────────────── */
+.needs-wrap {
+  position: relative;
+}
+
+.needs-bell {
+  position: relative;
+}
+
+.needs-bell.on {
+  color: var(--wait-solid);
+}
+
+.needs-count {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--wait-solid);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.needs-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.needs-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.needs-panel-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.needs-panel-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.needs-panel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.needs-panel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--wait-line);
+  border-radius: 10px;
+}
+
+.needs-panel-what {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.needs-panel-time {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.needs-panel-body {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .needs-panel {
+    position: fixed;
+    top: 56px;
+    left: 16px;
+    right: 16px;
+    width: auto;
+  }
 }
 
 .topbar {
@@ -3091,6 +3233,16 @@ body {
 }
 
 /* Who is working on a chat right now. */
+.chat-item-needs {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wait-ink);
+  background: var(--wait-bg);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
 .chat-item-held,
 .chat-held {
   font-size: 12px;
