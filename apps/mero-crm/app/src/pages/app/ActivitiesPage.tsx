@@ -5,7 +5,7 @@ import { useToast } from '@calimero-network/mero-ui';
 import { tokens as t } from '../../theme';
 import { APP_ROUTE } from '../../config';
 import { KindIcon } from '../../components/icons';
-import { Button, Chip, DueChip, Empty, Input, Page, Panel, Row, Select } from '../../components/ui';
+import { Button, Chip, Count, DueChip, Empty, Input, Page, PageHead, Panel, Row, Select } from '../../components/ui';
 import {
   ACTIVITY_KINDS, ACTIVITY_LABEL, bucketActivities, dueInDays, fromDateInput, toDateInput,
   type ActivityBucket,
@@ -44,17 +44,17 @@ export default function ActivitiesPage(): React.ReactElement {
 
   return (
     <Page>
-      <Row $wrap $gap={10}>
-        <Select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} style={{ width: 150 }} aria-label="Filter by type">
+      <PageHead>
+        <Select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} style={{ width: 160 }} aria-label="Filter by type">
           <option value="">All types</option>
           {ACTIVITY_KINDS.map((k) => <option key={k} value={k}>{ACTIVITY_LABEL[k]}</option>)}
         </Select>
-        <span style={{ fontSize: 12.5, color: t.color.text2 }}>
-          <strong style={{ color: buckets.overdue.length ? t.color.urgent : t.color.text }}>{buckets.overdue.length}</strong> overdue ·{' '}
-          <strong style={{ color: t.color.text }}>{buckets.today.length}</strong> today ·{' '}
-          <strong style={{ color: t.color.text }}>{buckets.upcoming.length}</strong> upcoming
+        <span className="stat">
+          <strong style={buckets.overdue.length ? { color: t.color.urgent } : undefined}>{buckets.overdue.length}</strong> overdue ·{' '}
+          <strong>{buckets.today.length}</strong> today ·{' '}
+          <strong>{buckets.upcoming.length}</strong> upcoming
         </span>
-      </Row>
+      </PageHead>
 
       <QuickAdd
         deals={data.deals.filter((d) => d.status === 'open').map((d) => ({ id: d.id, title: d.title, contactId: d.contact_id }))}
@@ -75,7 +75,7 @@ export default function ActivitiesPage(): React.ReactElement {
         return (
           <Panel key={key} data-testid={`activities-${key}`}>
             <h3 style={key === 'overdue' ? { color: t.color.urgent } : undefined}>
-              {title} <span style={{ opacity: 0.7 }}>{items.length}</span>
+              {title} <Count>{items.length}</Count>
             </h3>
             {items.length === 0 ? <div style={{ fontSize: 12.5, color: t.color.text3 }}>{empty}</div> : (
               <Items>
@@ -161,12 +161,17 @@ function QuickAdd({
 }
 
 const Items = styled.ul`
-  list-style: none; margin: 0; padding: 0;
-  li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid ${t.color.border}; font-size: 12.5px; }
-  li:first-child { border-top: none; padding-top: 2px; }
+  list-style: none; margin: 0 -8px; padding: 0;
+  li {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 11px 8px; border-radius: 14px;
+    border-top: 1px solid ${t.color.border}; font-size: 13px; transition: background 120ms ease-out;
+  }
+  li:first-child { border-top-color: transparent; }
+  li:hover { background: ${t.color.hover}; }
+  li > svg { color: ${t.color.text3}; flex: 0 0 auto; }
   li.done .subj { text-decoration: line-through; color: ${t.color.text3}; }
-  .body { flex: 1; min-width: 0; }
-  .subj { color: ${t.color.text}; font-weight: 500; }
-  .meta { font-size: 11.5px; color: ${t.color.text3}; a { color: ${t.color.text2}; &:hover { color: ${t.color.accentText}; } } }
-  input[type='checkbox'] { accent-color: ${t.color.accent}; width: 15px; height: 15px; cursor: pointer; }
+  .body { flex: 1 1 180px; min-width: 0; }
+  .subj { color: ${t.color.text}; font-weight: 550; }
+  .meta { font-size: 12px; color: ${t.color.text3}; margin-top: 1px; a { color: ${t.color.text2}; font-weight: 550; &:hover { color: ${t.color.accentText}; } } }
+  input[type='checkbox'] { accent-color: ${t.color.accent}; width: 17px; height: 17px; cursor: pointer; flex: 0 0 auto; }
 `;

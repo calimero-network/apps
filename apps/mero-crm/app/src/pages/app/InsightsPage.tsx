@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import styled from 'styled-components';
 import { tokens as t } from '../../theme';
-import { Empty, Money, Page, Panel, Table } from '../../components/ui';
+import { Count, Empty, Money, Page, Panel, Table } from '../../components/ui';
 import { computeStats, dealHealth, formatMoney } from '../../utils/crm';
 import { useAppCtx } from './appContext';
 
@@ -91,6 +91,7 @@ export default function InsightsPage(): React.ReactElement {
 
         <Panel>
           <h3>By owner</h3>
+          <Scroll>
           <Table>
             <thead><tr><th>Owner</th><th className="num">Won</th><th className="num">Deals won</th><th className="num">Open</th></tr></thead>
             <tbody>
@@ -104,12 +105,14 @@ export default function InsightsPage(): React.ReactElement {
               ))}
             </tbody>
           </Table>
+          </Scroll>
         </Panel>
       </TwoCol>
 
       <Panel>
-        <h3>Needs attention <span style={{ opacity: 0.7 }}>{atRisk.length}</span></h3>
+        <h3>Needs attention <Count>{atRisk.length}</Count></h3>
         {atRisk.length === 0 ? <div style={{ fontSize: 12.5, color: t.color.text3 }}>Every open deal is on track.</div> : (
+          <Scroll>
           <Table>
             <thead><tr><th>Deal</th><th className="num">Value</th><th>Why</th></tr></thead>
             <tbody>
@@ -126,6 +129,7 @@ export default function InsightsPage(): React.ReactElement {
                 ))}
             </tbody>
           </Table>
+          </Scroll>
         )}
       </Panel>
     </Page>
@@ -133,35 +137,41 @@ export default function InsightsPage(): React.ReactElement {
 }
 
 const Tiles = styled.div`
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;
+  @media (max-width: 720px) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 `;
 const Tile = styled.div`
-  background: ${t.color.glass}; border: 1px solid ${t.color.edge}; border-radius: ${t.radiusLg}; padding: 14px 16px;
+  background: ${t.color.glass}; border: 1px solid ${t.color.edge}; border-radius: ${t.radiusLg}; padding: 18px 20px;
   -webkit-backdrop-filter: ${t.blur}; backdrop-filter: ${t.blur}; box-shadow: ${t.shadow};
-  display: flex; flex-direction: column; gap: 4px;
-  .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: ${t.color.text3}; font-weight: 600; }
-  .v { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-  .s { font-size: 11.5px; color: ${t.color.text2}; }
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  .k { font-size: 12px; color: ${t.color.text2}; font-weight: 600; }
+  .v { font-size: 28px; font-weight: 750; letter-spacing: -0.035em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .s { font-size: 12px; color: ${t.color.text3}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 720px) { padding: 14px; border-radius: 18px; .v { font-size: 22px; } }
 `;
 const TwoCol = styled.div`
-  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
-  @media (max-width: 980px) { grid-template-columns: 1fr; }
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px;
+  @media (max-width: 980px) { grid-template-columns: minmax(0, 1fr); gap: 14px; }
 `;
+/** Wide tables scroll inside their panel on a phone, never the page. */
+const Scroll = styled.div`overflow-x: auto; margin: 0 -6px; padding: 0 6px;`;
 const Bars = styled.div`
-  display: flex; flex-direction: column; gap: 8px;
-  .row { display: grid; grid-template-columns: 110px 1fr 90px; align-items: center; gap: 10px; font-size: 12px; }
-  .lbl { color: ${t.color.text2}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .track { height: 12px; }
-  .fill { display: block; height: 100%; min-width: 2px; background: ${t.color.accentText}; border-radius: 0 4px 4px 0; }
+  display: flex; flex-direction: column; gap: 12px;
+  .row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 96px; align-items: center; gap: 12px; font-size: 12.5px; }
+  .lbl { color: ${t.color.text2}; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .track { height: 10px; border-radius: 999px; background: ${t.color.raised2}; overflow: hidden; }
+  .fill { display: block; height: 100%; min-width: 4px; background: ${t.color.accentText}; border-radius: 999px; }
   .muted-fill { background: ${t.color.medium}; }
-  .val { text-align: right; font-variant-numeric: tabular-nums; color: ${t.color.text}; }
-  .muted { color: ${t.color.text3}; }
+  .val { text-align: right; font-variant-numeric: tabular-nums; color: ${t.color.text}; font-weight: 600; }
+  .muted { color: ${t.color.text3}; font-weight: 400; }
+  @media (max-width: 720px) { .row { grid-template-columns: 84px minmax(0, 1fr) 76px; gap: 8px; } }
 `;
 const Columns = styled.div`
-  display: flex; align-items: flex-end; gap: 8px; height: 170px; padding-top: 6px;
-  .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; min-width: 0; }
-  .track { flex: 1; width: 100%; max-width: 38px; display: flex; align-items: flex-end; border-bottom: 1px solid ${t.color.border}; }
-  .fill { display: block; width: 100%; min-height: 2px; background: ${t.color.accentText}; border-radius: 4px 4px 0 0; }
-  .val { font-size: 10.5px; color: ${t.color.text2}; font-variant-numeric: tabular-nums; white-space: nowrap; height: 14px; }
-  .lbl { font-size: 11px; color: ${t.color.text3}; white-space: nowrap; }
+  display: flex; align-items: flex-end; gap: 10px; height: 180px; padding-top: 6px;
+  .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; min-width: 0; }
+  .track { flex: 1; width: 100%; max-width: 40px; display: flex; align-items: flex-end; border-radius: 10px; background: ${t.color.raised2}; overflow: hidden; }
+  .fill { display: block; width: 100%; min-height: 3px; background: ${t.color.accentText}; border-radius: 10px; }
+  .val { font-size: 11px; font-weight: 600; color: ${t.color.text2}; font-variant-numeric: tabular-nums; white-space: nowrap; height: 14px; }
+  .lbl { font-size: 11.5px; color: ${t.color.text3}; white-space: nowrap; }
+  @media (max-width: 720px) { gap: 6px; .val { font-size: 10px; } .lbl { font-size: 10.5px; } }
 `;

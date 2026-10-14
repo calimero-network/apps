@@ -7,10 +7,11 @@ import './index.css';
 import App from './App';
 import { THEME } from './config';
 import { bootstrapSsoAndInvitation } from './auth/ssoBootstrap';
-import { applyTheme, getStoredTheme } from './theme';
+import { applyTheme, readStoredTheme } from './theme';
 
-// Apply the saved light/dark theme before first paint (avoids a flash).
-applyTheme(getStoredTheme());
+// index.html already put the saved theme on <html> before the first paint;
+// this re-applies it in case that inline script could not run.
+applyTheme(readStoredTheme());
 
 // Desktop auth-skip + web invitation capture. MUST run before React mounts so
 // MeroProvider reads an already-authenticated desktop session on first render
