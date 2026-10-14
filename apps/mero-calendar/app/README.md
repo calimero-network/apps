@@ -1,46 +1,44 @@
-# Getting Started with Create React App
+# Mero Calendar: web app
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+The React frontend of Mero Calendar, built with Vite. It talks to your own Calimero node through
+`@calimero-network/mero-react`. What the app does, and how the frontend and the contract fit together, is in
+[Mero Calendar's README](../README.md); this page covers working on the frontend.
 
-## Available Scripts
+## Scripts
 
-In the project directory, you can run:
+Run these from this directory (`apps/mero-calendar/app`):
 
-### `npm start`
+| Script                          | What it does                                          |
+| ------------------------------- | ----------------------------------------------------- |
+| `pnpm dev`                      | Vite dev server                                       |
+| `pnpm build`                    | Typecheck, then a production build into `dist/`       |
+| `pnpm preview`                  | Serve the production build                            |
+| `pnpm typecheck`                | `tsc -b`                                              |
+| `pnpm test` / `pnpm test:watch` | Vitest unit tests, once or watching                   |
+| `pnpm e2e` / `pnpm e2e:ui`      | Playwright browser tests against a mocked node        |
+| `pnpm e2e:integration`          | Playwright browser tests against a real node          |
+| `pnpm test:journey`             | Two-node journey: log in, create a team, invite, sync |
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+## Theme and Log out
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+- **Light by default.** The sun/moon switch in every signed-in top bar, and in the landing page's footer, flips to
+  dark. The choice is saved in `localStorage` under `mc-theme` (`src/providers/ThemeProvider`). An inline script
+  in `index.html` applies it to `<html data-theme>` before the first paint, so a dark reload never flashes light.
+  Keep that script's key and colours in step with the provider.
+- **Log out** ends every signed-in top bar (`src/components/common/logout-button/LogoutButton.tsx`). It calls
+  mero-react's `logout()` and returns to the landing page. On a phone the label collapses to its icon; the
+  accessible name stays "Log out".
+- Tests: `e2e/theme.spec.ts` (default light, the switch, persistence across reloads) and
+  `LogoutButton.test.tsx`.
 
-### `npm test`
+## Layout
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
-
-### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
-
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
-
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+| Path                    | Contents                                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `src/pages/landing`     | The public landing page, docs and preview (its config is generated, see `scripts/landing`) |
+| `src/pages/teams`       | Team list and a team's calendars                                                           |
+| `src/pages/calendar`    | The calendar itself                                                                        |
+| `src/providers`         | Theme provider                                                                             |
+| `src/components/common` | Shared header, dialogs, theme switch, Log out                                              |
+| `src/styles/theme.css`  | The light and dark colour tokens every surface reads                                       |
+| `e2e/`                  | Playwright specs: `integration/` runs against a node, `journey/` against two               |
