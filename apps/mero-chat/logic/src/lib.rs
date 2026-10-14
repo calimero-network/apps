@@ -1954,6 +1954,10 @@ impl MeroChat {
         let mut pointers = self.message_ids.entries_at(&key)?;
         pointers.sort_by_key(|(recorder, _)| *recorder);
         for (recorder, slot) in pointers {
+            // A pointer its recorder signed twice is sealed and points nowhere.
+            let Some(slot) = slot.value() else {
+                continue;
+            };
             let genuine = match &slot {
                 Slot::Channel(entry) => {
                     self.messages.owner_of_id(Id::from(*entry))? == Some(recorder)

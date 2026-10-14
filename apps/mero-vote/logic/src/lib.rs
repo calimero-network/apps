@@ -1716,6 +1716,8 @@ impl MeroVote {
             .ballot_bodies
             .entries_at(&hash)?
             .into_iter()
+            // A body its voter signed twice is sealed and has no value.
+            .filter_map(|(owner, body)| Some((owner, body.value()?)))
             .min_by_key(|(owner, _)| *owner)
             .map(|(_, body)| body))
     }

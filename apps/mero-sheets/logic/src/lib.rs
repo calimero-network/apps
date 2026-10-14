@@ -1906,7 +1906,13 @@ impl Spreadsheet {
             .entries()
             .map_err(|e| AppError::msg(format!("activity.query: {e}")))?
         {
-            let holders = self.activity.entries_at(&id)?;
+            // A row its author signed twice is sealed and matches no row.
+            let holders = self
+                .activity
+                .entries_at(&id)?
+                .into_iter()
+                .filter_map(|(owner, held)| Some((owner, held.value()?)))
+                .collect();
             out.push(ActivityEntry {
                 author: owner_hex(owner_among(holders, &d)),
                 id,
