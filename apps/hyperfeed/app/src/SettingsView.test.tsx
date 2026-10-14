@@ -1,21 +1,67 @@
 import { describe, expect, it } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
-import { ControlsView } from "./ControlsView";
+import { MemoryRouter } from "react-router-dom";
+import { SettingsView, settingsSection, type SettingsSection } from "./SettingsView";
 import { DemoBackend } from "./demo";
 import { demoPreview } from "./preview";
 import { useFeed } from "./useFeed";
 
-function Harness({ backend }: { backend: DemoBackend }) {
+function Harness({ backend, section = "controls" }: { backend: DemoBackend; section?: SettingsSection }) {
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
   const feed = useFeed(backend, nudge);
-  return <ControlsView feed={feed} contextId={null} preview={demoPreview()} />;
+  return (
+    <MemoryRouter>
+      <SettingsView feed={feed} contextId={null} preview={demoPreview()} section={section} />
+    </MemoryRouter>
+  );
 }
 
-describe("Controls: what your feed reads from each app", () => {
-  it("previews a lens on recent events, then approves it", async () => {
+describe("Settings: one section at a time", () => {
+  const nav = () => screen.findByRole("navigation", { name: "Settings" });
+
+  it("lists its sections, marks the open one, and shows only that one", async () => {
     render(<Harness backend={new DemoBackend(true, 0)} />);
+    const links = within(await nav()).getAllByRole("link");
+    expect(links.map((l) => l.textContent?.replace(/\d+$/, ""))).toEqual(["Controls", "Agents", "Lenses"]);
+    expect(within(await nav()).getByRole("link", { current: "page" })).toHaveTextContent("Controls");
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/settings/controls", "/settings/agents", "/settings/lenses"]);
+    expect(await screen.findByRole("region", { name: "Standing rules" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "What your feed reads from each app" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Connect your agent" })).toBeNull();
+  });
+
+  it("counts the lenses waiting for you beside Lenses", async () => {
+    render(<Harness backend={new DemoBackend(true, 0)} />);
+    const lenses = within(await nav()).getByRole("link", { name: /Lenses/ });
+    expect(await within(lenses).findByLabelText(/waiting for you/)).toBeInTheDocument();
+  });
+
+  it("names an unknown section Controls", () => {
+    expect(settingsSection(undefined)).toBe("controls");
+    expect(settingsSection("nope")).toBe("controls");
+    expect(settingsSection("agents")).toBe("agents");
+  });
+
+  it("lists who reports in under Agents, live or when last seen", async () => {
+    render(<Harness backend={new DemoBackend(true, 1)} section="agents" />);
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    expect(within(agents).getByText("demo agent").closest("li")).toHaveTextContent("Live");
+    expect(screen.getByRole("region", { name: "Connect your agent" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Standing rules" })).toBeNull();
+  });
+
+  it("says no agent has reported in yet", async () => {
+    render(<Harness backend={new DemoBackend(true, 0)} section="agents" />);
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    expect(within(agents).getByText(/No agent has reported in yet/)).toBeInTheDocument();
+  });
+});
+
+describe("Settings → Lenses: what your feed reads from each app", () => {
+  it("previews a lens on recent events, then approves it", async () => {
+    render(<Harness backend={new DemoBackend(true, 0)} section="lenses" />);
     const section = await screen.findByRole("region", { name: "What your feed reads from each app" });
     const vote = (await within(section).findByText("Polls you can vote in, as they open. Ballots are sealed: you vote in the Vote app.")).closest("li")!;
     expect(within(vote).getByText("Waiting for you")).toBeInTheDocument();
@@ -33,7 +79,7 @@ describe("Controls: what your feed reads from each app", () => {
   });
 
   it("shows Chat's lens skipping chatter and your own messages", async () => {
-    render(<Harness backend={new DemoBackend(true, 0)} />);
+    render(<Harness backend={new DemoBackend(true, 0)} section="lenses" />);
     const section = await screen.findByRole("region", { name: "What your feed reads from each app" });
     const chat = (await within(section).findByText(/DMs, mentions of you/)).closest("li")!;
     await act(async () => {
@@ -49,7 +95,7 @@ describe("Controls: what your feed reads from each app", () => {
   });
 });
 
-describe("Controls: standing rules", () => {
+describe("Settings → Controls: standing rules", () => {
   const section = () => screen.findByRole("region", { name: "Standing rules" });
 
   it("starts with none, then adds and removes your rules", async () => {
@@ -103,7 +149,7 @@ describe("Controls: standing rules", () => {
   });
 });
 
-describe("Controls: phone alerts", () => {
+describe("Settings → Alerts: phone alerts", () => {
   const section = () => screen.findByRole("region", { name: "Phone alerts" });
   const device = (endpoint: string, name: string, quiet = false) => ({
     endpoint,
@@ -124,21 +170,22 @@ describe("Controls: phone alerts", () => {
     };
   }
 
-  it("is not there on a feed that predates push", async () => {
-    render(<Harness backend={new DemoBackend(true, 0)} />);
+  it("is not there on a feed that predates push: Alerts opens Controls", async () => {
+    render(<Harness backend={new DemoBackend(true, 0)} section="alerts" />);
     await screen.findByRole("region", { name: "Standing rules" });
     expect(screen.queryByRole("region", { name: "Phone alerts" })).toBeNull();
+    expect(within(screen.getByRole("navigation", { name: "Settings" })).queryByRole("link", { name: /Alerts/ })).toBeNull();
   });
 
   it("says to start your agent's runtime before there is a key", async () => {
-    render(<Harness backend={new PushDemo(true, 0)} />);
+    render(<Harness backend={new PushDemo(true, 0)} section="alerts" />);
     expect(await within(await section()).findByText(/Start mero-bot against this feed first/)).toBeInTheDocument();
   });
 
   it("lists the devices pushed to, and takes one off", async () => {
     const backend = new PushDemo(true, 0);
     backend.key = "BRuntimeKey";
-    render(<Harness backend={backend} />);
+    render(<Harness backend={backend} section="alerts" />);
     const panel = await section();
     const list = await within(panel).findByRole("list", { name: "Devices your agent pushes to" });
     expect(within(list).getAllByRole("listitem").map((li) => li.firstChild?.textContent)).toEqual(["iPhone", "Android · quiet"]);
@@ -152,7 +199,7 @@ describe("Controls: phone alerts", () => {
   });
 });
 
-describe("Controls: what your agents can reach", () => {
+describe("Settings → Agents: what your agents can reach", () => {
   const section = () => screen.findByRole("region", { name: "What your agents can reach" });
   const AGENT = "mero-bot@laptop";
   const reported = (b: DemoBackend) =>
@@ -164,7 +211,7 @@ describe("Controls: what your agents can reach", () => {
   it("shows what each agent reports, then narrows it to what you set", async () => {
     const backend = new DemoBackend(true, 0);
     reported(backend);
-    render(<Harness backend={backend} />);
+    render(<Harness backend={backend} section="agents" />);
     const agent = within(await section()).getByRole("group", { name: `What ${AGENT} can reach` });
     expect(within(agent).getByRole("list", { name: `What ${AGENT} reports` })).toHaveTextContent(
       "Private · near (z-ai/glm-5.3-flash), attested: Calimero apps only",
@@ -211,8 +258,8 @@ describe("Controls: what your agents can reach", () => {
         return rest as Awaited<ReturnType<DemoBackend["settings"]>>;
       }
     }
-    render(<Harness backend={new OlderFeed(true, 0)} />);
-    await screen.findByRole("region", { name: "Standing rules" });
+    render(<Harness backend={new OlderFeed(true, 0)} section="agents" />);
+    await screen.findByRole("region", { name: "Your agents" });
     expect(screen.queryByRole("region", { name: "What your agents can reach" })).toBeNull();
   });
 });

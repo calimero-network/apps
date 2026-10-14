@@ -33,7 +33,7 @@ const SECTIONS: Section[] = [
       { term: "Ask", def: "How a row is answered in place: reply with text, choose one of a few options, or confirm with one button." },
       { term: "Policy", def: "What your agent may do in one app: act, ask first, read only, or off. An app you never set asks first." },
       { term: "Guard", def: "A kind of action that always needs you, whatever the app’s policy: signing, money, new contacts and deleting are on until you turn them off." },
-      { term: "Lens", def: "What your feed reads from one app version: which events concern you and how they read. Your agent proposes one; nothing is recorded until you approve it in Controls." },
+      { term: "Lens", def: "What your feed reads from one app version: which events concern you and how they read. Your agent proposes one; nothing is recorded until you approve it in Settings → Lenses." },
     ],
   },
   {
@@ -43,7 +43,7 @@ const SECTIONS: Section[] = [
     steps: [
       "Connect a node: press Open your feed and sign in on your node, or open Hyperfeed from the Calimero desktop app.",
       "Create your feed: one button makes the context. Notifications from your other apps start arriving while the app is open.",
-      "Set your rules: on Controls, choose what your agent may do in each app, and which guards always ask you.",
+      "Set your rules: in Settings → Controls, choose what your agent may do in each app, and which guards always ask you.",
       "Start your agent: run mero-bot against the same node. It finds your feed, reports in every half minute, and the header turns to Agent live.",
     ],
   },
@@ -86,9 +86,9 @@ const SECTIONS: Section[] = [
     heading: "When something looks wrong",
     terms: [
       { term: "No agent connected", def: "Nothing has reported in for 90 seconds. Start mero-bot against this node; if it stops with a 401, its sign-in expired: open the desktop app again or give it a username and password." },
-      { term: "A notification never arrived", def: "Notifications are recorded while something watches: this app while it is open, or mero-bot while it runs. Check Controls too: an app with no approved lens records nothing." },
+      { term: "A notification never arrived", def: "Notifications are recorded while something watches: this app while it is open, or mero-bot while it runs. Check Settings → Lenses too: an app with no approved lens records nothing." },
       { term: "You approved and nothing happened", def: "Your agent carries decisions out. Check the header says Agent live; mero-bot picks up approvals it missed when it starts." },
-      { term: "Your agent asked when it could have acted", def: "A guard is on for that kind of action, the app is set to ask first, or the agent is paused. Controls shows all three." },
+      { term: "Your agent asked when it could have acted", def: "A guard is on for that kind of action, the app is set to ask first, or the agent is paused. Settings → Controls shows all three." },
     ],
   },
 ];

@@ -154,7 +154,7 @@ describe("FeedView", () => {
       ...noRow, id, chain: id, kind: "action", app, method, title, status: "failed", needs_you: true, at, chain_at: at, note,
     });
     const items: FeedItem[] = [
-      failed("p1", "hyperfeed", "set_policy", "Set mero-bot to Act", "Only you can do this, in Hyperfeed's Controls"),
+      failed("p1", "hyperfeed", "set_policy", "Set mero-bot to Act", "Only you can do this, in Hyperfeed's Settings"),
       failed("p2", "chat", "pin_message", "Pin the stand-up", 'FunctionCallError: method "pin_message" not found'),
       failed("p3", "chat", "send_message", "Post the stand-up", "the node did not answer"),
     ];
