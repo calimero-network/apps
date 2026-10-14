@@ -2,7 +2,7 @@
   "name": "mero-forum",
   "private": true,
   "version": "0.1.0",
-  "description": "Mero Forum \u2014 a peer-to-peer discussion forum on Calimero",
+  "description": "Mero Forum — a peer-to-peer discussion forum on Calimero",
   "keywords": [
     "calimero",
     "forum",
@@ -26,6 +26,7 @@
     "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
+    "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/invite": "workspace:*",
     "@calimero-apps/join-sync": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",

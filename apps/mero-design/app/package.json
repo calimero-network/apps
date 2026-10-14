@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@9.15.9",
-  "description": "Mero Design \u2014 collaborative design tool on Calimero",
+  "description": "Mero Design — collaborative design tool on Calimero",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -22,6 +22,7 @@
     "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
+    "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/invite": "workspace:*",
     "@calimero-apps/join-sync": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",

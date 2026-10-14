@@ -1,0 +1,13 @@
+{
+  "name": "@calimero-apps/glass",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The fleet's shared light-glass look: tokens, the tinted background, frosted surfaces and pill controls, as plain CSS any styling world can import.",
+  "type": "module",
+  "exports": {
+    "./glass.css": "./src/glass.css"
+  },
+  "sideEffects": [
+    "*.css"
+  ]
+}
