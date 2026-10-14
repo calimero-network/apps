@@ -1,6 +1,7 @@
 import type { BlobStore } from "./attachments";
 import type {
   ActionInput,
+  ActionSetView,
   Attachment,
   CheckpointView,
   FeedItem,
@@ -27,6 +28,8 @@ export type Filter = "all" | "agent" | "notifications" | "needs_you" | "archived
 export type Decision = "approve" | "decline" | "undo" | "keep";
 export type AgentMode = "act" | "ask" | "read" | "off";
 export type NotificationMode = "push" | "feed" | "mute";
+/** How you set one action; "" follows its app. */
+export type ActionMode = "" | "act" | "ask" | "off";
 
 /**
  * Everything the screens need from a feed, whichever feed it is.
@@ -51,6 +54,11 @@ export interface FeedBackend {
   /** What your agent learned for each app version, and what you decided. */
   lenses(): Promise<LensView[]>;
   decideLens(appKey: string, applicationId: string, decision: "approve" | "reject"): Promise<LensView>;
+  /** What your agent can do in each app version, as it learned it, and what you decided; [] when the feed predates actions. */
+  actionSets?(): Promise<ActionSetView[]>;
+  decideActions?(appKey: string, applicationId: string, decision: "approve" | "reject"): Promise<ActionSetView>;
+  /** Set one action apart from its app's mode: "act", "ask", "off", or "" to follow the app again. */
+  setActionMode?(appKey: string, action: string, mode: ActionMode): Promise<void>;
   /** Every row in a chain, oldest first. */
   chain(chain: string): Promise<FeedItem[]>;
   /** Where the task in a chain stands, as your agent last wrote it; null when it wrote none, or the feed predates checkpoints. */
@@ -153,6 +161,15 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
     lenses: () => client.lenses(),
     decideLens: (appKey, applicationId, decision) =>
       client.decideLens({ app_key: appKey, application_id: applicationId, decision }),
+    actionSets: () =>
+      client.actionSets().catch((e: unknown) => {
+        if (lacksMethod(e, "action_sets")) return [];
+        throw e;
+      }),
+    decideActions: (appKey, applicationId, decision) =>
+      client.decideActions({ app_key: appKey, application_id: applicationId, decision }),
+    setActionMode: (appKey, action, mode) =>
+      client.setActionMode({ app_key: appKey, action, mode }).then(() => undefined),
     chain: (chain) => client.chain({ chain }),
     checkpoint: (chain) =>
       client.checkpoint({ chain }).then(
