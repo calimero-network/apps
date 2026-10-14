@@ -136,7 +136,7 @@ for (const [device, size] of [
     await page.clock.runFor(1_000);
 
     await page.getByRole("button", { name: "Archive chat" }).click();
-    const ask =page.getByRole("group", { name: "Archive this chat?" });
+    const ask = page.getByRole("group", { name: "Archive this chat?" });
     await expect(ask).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await ask.getByRole("button", { name: "Archive" }).click();
