@@ -491,3 +491,43 @@ export function heldLine(item: Pick<FeedItem, "held_by" | "held_since"> | undefi
   const mins = Math.max(0, Math.floor((now - (item?.held_since ?? now)) / 60_000));
   return `${name} · ${mins < 1 ? "just now" : mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} h`}`;
 }
+
+/** Where one argument starts in a write's body, as mero-bot writes it: `key: value`, joined by " · ". */
+const ARG_START = /(?:^| · )([A-Za-z_][\w.-]{0,63}): /g;
+
+/**
+ * What a write in an app sends, as a person reads it. mero-bot keeps the
+ * call's arguments as the row's body (`message: <p>Hi</p> · thread: 4`), which
+ * is also how it tells a write already landed, so the body stays as it is and
+ * only its display changes: one argument shows as its text alone, several as
+ * one line each, and HTML in a value as the text it shows. A local command, a
+ * hand-off and a body not in that shape show unchanged.
+ */
+export function writeText(item: FeedItem): string {
+  const body = item.body.trim();
+  if (item.kind !== "action" || item.app === "mero-bot" || !body) return body;
+  const starts = [...body.matchAll(ARG_START)];
+  if (starts[0]?.index !== 0) return body;
+  const args = starts.map((m, i) => {
+    const from = m.index! + m[0].length;
+    const to = i + 1 < starts.length ? starts[i + 1]!.index! : body.length;
+    return { key: m[1]!, text: htmlText(body.slice(from, to).trim()) };
+  });
+  if (args.length === 1) return args[0]!.text;
+  return args.map((a) => `${a.key}: ${a.text}`).join("\n");
+}
+
+/** HTML as the text it shows, its paragraphs and breaks as new lines; anything else as it is. */
+export function htmlText(value: string): string {
+  if (!/<\/?[a-z][^>]*>/i.test(value)) return value;
+  const marked = value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<\/(?:p|div|li|h[1-6]|blockquote|pre|tr)>/gi, "\n");
+  // Parsed, never put on the page: no script in it runs, and entities read as their characters.
+  const text =
+    typeof DOMParser === "undefined"
+      ? marked.replace(/<[^>]*>/g, "")
+      : (new DOMParser().parseFromString(marked, "text/html").body.textContent ?? "");
+  return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}

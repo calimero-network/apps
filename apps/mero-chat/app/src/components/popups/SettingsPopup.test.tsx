@@ -137,4 +137,30 @@ describe("SettingsPopup", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(setIsOpen).toHaveBeenCalledWith(false);
   });
+
+  it("switches the theme from the Appearance section", () => {
+    localStorage.removeItem("mero-chat:theme");
+    document.documentElement.removeAttribute("data-theme");
+    render(
+      <SettingsPopup
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        toggle={<button>Open</button>}
+      />,
+    );
+
+    const light = screen.getByRole("button", { name: "Light" });
+    const dark = screen.getByRole("button", { name: "Dark" });
+    expect(light).toHaveAttribute("aria-pressed", "true");
+    expect(dark).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(dark);
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(localStorage.getItem("mero-chat:theme")).toBe("dark");
+    expect(screen.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Light" }));
+    expect(document.documentElement).not.toHaveAttribute("data-theme");
+    expect(localStorage.getItem("mero-chat:theme")).toBe("light");
+  });
 });

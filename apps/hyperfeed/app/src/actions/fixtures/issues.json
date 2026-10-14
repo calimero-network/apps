@@ -1,0 +1,84 @@
+[
+  {
+    "id": "read",
+    "label": "Read issues",
+    "description": "Issues, their comments and status counts.",
+    "category": "",
+    "writes": false,
+    "methods": [
+      "get_issue",
+      "get_repo_info",
+      "get_status_counts",
+      "list_issues"
+    ]
+  },
+  {
+    "id": "create",
+    "label": "File issues",
+    "description": "Open a new issue.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "create_issue"
+    ]
+  },
+  {
+    "id": "triage",
+    "label": "Triage issues",
+    "description": "Status, priority, assignee, labels and impact.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "set_status",
+      "set_priority",
+      "set_assignee",
+      "add_label",
+      "remove_label",
+      "set_impact"
+    ]
+  },
+  {
+    "id": "edit",
+    "label": "Edit issue details",
+    "description": "The summary, reproduction steps and resolution criteria.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "set_summary",
+      "set_repro",
+      "set_resolution_criteria"
+    ]
+  },
+  {
+    "id": "comment",
+    "label": "Comment on issues",
+    "description": "Post a comment, or edit one of yours.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "add_comment",
+      "edit_comment"
+    ]
+  },
+  {
+    "id": "delete",
+    "label": "Delete issues and comments",
+    "description": "Removes them for everyone in the tracker.",
+    "category": "delete",
+    "writes": true,
+    "methods": [
+      "delete_issue",
+      "delete_comment"
+    ]
+  },
+  {
+    "id": "settings",
+    "label": "Change the tracked repository",
+    "description": "The repository this tracker links to.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "set_repo_url"
+    ]
+  }
+]
