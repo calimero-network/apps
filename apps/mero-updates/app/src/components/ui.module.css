@@ -44,8 +44,8 @@
   gap: 8px;
   background: var(--accent);
   color: var(--accent-fg);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   height: 36px;
   padding: 0 14px;
   font-weight: 500;

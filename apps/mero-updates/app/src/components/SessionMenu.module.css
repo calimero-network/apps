@@ -29,8 +29,8 @@
   height: 7px;
   flex: none;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-ink) 40%, transparent);
+  background: var(--green);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 22%, transparent);
 }
 
 .logout {
@@ -44,7 +44,7 @@
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 999px;
   padding: 0 10px;
   cursor: pointer;
   transition: color 120ms ease, background 120ms ease;

@@ -4,7 +4,8 @@
  * hierarchy and should read as one system. */
 .root {
   min-height: 100vh;
-  background: var(--bg);
+  /* Transparent: the body carries the glass ground and its tinted fields. */
+  background: transparent;
 }
 
 .main {
@@ -55,9 +56,11 @@
 
 /* ── Create ──────────────────────────────────────────────────────────────── */
 .createCard {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xs);
   padding: 16px 20px 20px;
   margin-bottom: 28px;
@@ -92,8 +95,9 @@
   padding: 0 16px;
   background: var(--accent);
   color: var(--accent-text);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  box-shadow: var(--shadow-button);
   font: inherit;
   font-size: 14px;
   font-weight: 500;
@@ -112,6 +116,7 @@
   background: var(--surface);
   color: var(--text);
   border-color: var(--border-strong);
+  box-shadow: none;
 }
 .btnSecondary:hover:not(:disabled) {
   background: var(--surface-hover);
@@ -133,7 +138,7 @@
   height: 32px;
   padding: 0 10px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 999px;
   background: transparent;
   font: inherit;
   font-size: 13px;
@@ -164,8 +169,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-ink) 40%, transparent);
+  background: var(--green);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 22%, transparent);
 }
 
 /* ── Status lines ────────────────────────────────────────────────────────── */
@@ -269,9 +274,11 @@
   min-height: 76px;
   padding: 16px 52px 16px 16px;
   position: relative;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xs);
   font: inherit;
   color: var(--text);
@@ -360,7 +367,7 @@
   padding: 0;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 999px;
   color: var(--text-faint);
   cursor: pointer;
   z-index: 2;
@@ -383,8 +390,8 @@
   max-width: 280px;
   padding: 6px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: 1px solid var(--edge);
+  border-radius: 18px;
   box-shadow: var(--shadow-md);
   z-index: 100;
 }
@@ -401,7 +408,7 @@
   text-align: left;
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
 }
 .dropdownItem svg {
@@ -451,8 +458,8 @@
   margin-bottom: 32px;
   text-align: center;
   border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass);
   font-size: 14px;
   color: var(--text-dim);
 }
@@ -484,9 +491,11 @@
   gap: 16px;
   align-items: flex-start;
   padding: 20px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xs);
 }
 .joinBody {
@@ -510,7 +519,7 @@
 /* ── Destructive confirm ─────────────────────────────────────────────────── */
 .confirmDialog {
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   padding: 24px;
   max-width: 480px;
   width: calc(100vw - 32px);
