@@ -7,7 +7,7 @@ import type { CreateContextResult } from "../popups/StartDMPopup";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";
 
 const DMContainer = styled.div`
-  background-color: #0e0e10;
+  background-color: transparent;
   padding-bottom: 1rem;
   @media (max-width: 1024px) {
     width: 100%;

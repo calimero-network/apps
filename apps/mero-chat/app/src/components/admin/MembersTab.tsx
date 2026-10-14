@@ -20,10 +20,10 @@ const MemberRow = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.625rem;
-  border-radius: 6px;
+  border-radius: 10px;
   transition: background 0.12s ease;
   &:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: color-mix(in srgb, var(--glass-ink) 4%, transparent);
   }
 `;
 
@@ -36,7 +36,7 @@ const MemberInfo = styled.div`
 
 const Identity = styled.span`
   font-size: 0.8rem;
-  color: #fff;
+  color: var(--glass-ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -57,11 +57,11 @@ const RoleBadge = styled.span<{ $admin: boolean }>`
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 0.125rem 0.375rem;
-  border-radius: 4px;
+  border-radius: 8px;
   background: ${({ $admin }) =>
-    $admin ? "rgba(124, 58, 237, 0.15)" : "rgba(255, 255, 255, 0.06)"};
+    $admin ? "rgba(124, 58, 237, 0.15)" : "color-mix(in srgb, var(--glass-ink) 6%, transparent)"};
   color: ${({ $admin }) =>
-    $admin ? "#a78bfa" : "rgba(255, 255, 255, 0.4)"};
+    $admin ? "var(--chat-violet)" : "color-mix(in srgb, var(--glass-ink) 40%, transparent)"};
 `;
 
 const Actions = styled.div`
@@ -72,17 +72,17 @@ const Actions = styled.div`
 `;
 
 const SmallButton = styled.button`
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.6);
+  background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
+  color: color-mix(in srgb, var(--glass-ink) 60%, transparent);
   font-size: 0.7rem;
   padding: 0.25rem 0.5rem;
   border-radius: 5px;
   cursor: pointer;
   transition: all 0.15s ease;
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    background: color-mix(in srgb, var(--glass-ink) 10%, transparent);
+    color: var(--glass-ink);
   }
   &:disabled {
     opacity: 0.4;
@@ -92,10 +92,10 @@ const SmallButton = styled.button`
 
 const RemoveButton = styled(SmallButton)`
   border-color: rgba(239, 68, 68, 0.2);
-  color: rgba(239, 68, 68, 0.7);
+  color: var(--glass-bad-ink);
   &:hover {
     background: rgba(239, 68, 68, 0.1);
-    color: #f87171;
+    color: var(--glass-bad-ink);
     border-color: rgba(239, 68, 68, 0.4);
   }
 `;
@@ -103,14 +103,14 @@ const RemoveButton = styled(SmallButton)`
 const EmptyState = styled.div`
   text-align: center;
   padding: 1.5rem;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   font-size: 0.82rem;
 `;
 
 const CapabilitiesOverlay = styled.div`
-  background: #1a1a1e;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
+  background: var(--glass-surface-solid);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
+  border-radius: 10px;
   padding: 0.625rem;
   margin-top: 0.25rem;
   margin-bottom: 0.25rem;
@@ -118,7 +118,7 @@ const CapabilitiesOverlay = styled.div`
 
 const CapLabel = styled.div`
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: color-mix(in srgb, var(--glass-ink) 40%, transparent);
   margin-bottom: 0.375rem;
 `;
 
@@ -134,8 +134,8 @@ const CapabilityRow = styled.label`
   justify-content: space-between;
   gap: 1rem;
   padding: 0.5rem 0.625rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
   border-radius: 5px;
 `;
 
@@ -146,13 +146,13 @@ const CapabilityInfo = styled.div`
 `;
 
 const CapabilityTitle = styled.div`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 0.78rem;
   font-weight: 500;
 `;
 
 const CapabilityDescription = styled.div`
-  color: rgba(255, 255, 255, 0.45);
+  color: color-mix(in srgb, var(--glass-ink) 45%, transparent);
   font-size: 0.68rem;
   line-height: 1.4;
 `;
@@ -160,7 +160,7 @@ const CapabilityDescription = styled.div`
 const CapabilityToggle = styled.input`
   width: 18px;
   height: 18px;
-  accent-color: #a5ff11;
+  accent-color: var(--glass-accent);
   cursor: pointer;
 `;
 
@@ -338,7 +338,7 @@ export default function MembersTab({
                 <SmallButton
                   onClick={saveCapabilities}
                   disabled={actionLoading}
-                  style={{ color: "#a5ff11", borderColor: "rgba(165,255,17,0.3)" }}
+                  style={{ color: "var(--glass-accent)", borderColor: "color-mix(in srgb, var(--glass-accent) 30%, transparent)" }}
                 >
                   Save
                 </SmallButton>

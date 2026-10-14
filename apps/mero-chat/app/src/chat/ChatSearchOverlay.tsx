@@ -41,10 +41,10 @@ const SearchOverlay = styled.div`
 const SearchOverlayPanel = styled.div`
   width: min(720px, 100%);
   max-height: 90%;
-  background-color: #0e0e10;
-  border: 1px solid #282933;
+  background-color: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line);
   border-radius: 10px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.65);
+  box-shadow: var(--chat-dialog-shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -56,12 +56,12 @@ const SearchOverlayHeader = styled.div`
   justify-content: space-between;
   gap: 16px;
   padding: 18px 24px 14px;
-  border-bottom: 1px solid #1e1f28;
+  border-bottom: 1px solid var(--glass-line);
 `;
 
 const SearchOverlayTitle = styled.h3`
   margin: 0;
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 18px;
   font-weight: 500;
 `;
@@ -94,12 +94,12 @@ const SearchInputWrapper = styled.div`
 `;
 
 const SearchMeta = styled.div`
-  color: #777583;
+  color: var(--glass-muted);
   font-size: 13px;
 `;
 
 const SearchErrorText = styled.div`
-  color: #ff5f56;
+  color: var(--glass-bad-ink);
   font-size: 13px;
 `;
 
@@ -113,14 +113,14 @@ const SearchResultsScroll = styled.div`
 `;
 
 const SearchResultItem = styled.div`
-  background-color: #141418;
-  border: 1px solid #1e1f28;
-  border-radius: 8px;
+  background-color: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line);
+  border-radius: 12px;
   padding: 12px 12px 14px;
 `;
 
 const SearchEmptyState = styled.div`
-  color: #777583;
+  color: var(--glass-muted);
   font-size: 13px;
   padding: 16px 0;
 `;
@@ -133,13 +133,13 @@ const CloseButton = styled.button`
   height: 32px;
   border-radius: 50%;
   border: none;
-  background: rgba(40, 41, 51, 0.6);
-  color: #c8c7d1;
+  background: var(--glass-sunken);
+  color: var(--glass-ink-2);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
   &:hover {
-    background: rgba(87, 101, 242, 0.2);
-    color: #fff;
+    background: color-mix(in srgb, var(--glass-accent) 20%, transparent);
+    color: var(--glass-ink);
   }
 `;
 

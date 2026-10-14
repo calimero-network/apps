@@ -4,7 +4,7 @@ import useNotificationSound from "../../hooks/useNotificationSound";
 import { Button } from "@calimero-network/mero-ui";
 
 const SettingsContainer = styled.div`
-  background-color: #0e0e10;
+  background-color: var(--glass-surface-solid);
   border-radius: 0.375rem;
   overflow: hidden;
 `;
@@ -18,8 +18,8 @@ const SettingsItem = styled.div<{
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  background-color: #0e0e10;
-  ${({ $borderbottom }) => $borderbottom && "border-bottom: 1px solid #282933;"}
+  background-color: var(--glass-surface-solid);
+  ${({ $borderbottom }) => $borderbottom && "border-bottom: 1px solid var(--glass-line);"}
   ${({ $roundedTop }) =>
     $roundedTop &&
     "border-top-left-radius: 0.375rem; border-top-right-radius: 0.375rem;"}
@@ -29,8 +29,8 @@ const SettingsItem = styled.div<{
 `;
 
 const Text = styled.h6`
-  color: #fff;
-  font-family: Helvetica Neue;
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
   font-size: 14px;
   font-style: normal;
   font-weight: 400;
@@ -44,7 +44,7 @@ const ToggleButton = styled.button<{ $active: boolean }>`
   height: 24px;
   border-radius: 12px;
   border: none;
-  background-color: ${({ $active }) => ($active ? "#73B30C" : "#686672")};
+  background-color: ${({ $active }) => ($active ? "var(--glass-ink)" : "var(--glass-line-strong)")};
   position: relative;
   cursor: pointer;
   transition: background-color 0.2s ease;
@@ -57,7 +57,7 @@ const ToggleButton = styled.button<{ $active: boolean }>`
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background-color: white;
+    background-color: var(--glass-surface-solid);
     transition: left 0.2s ease;
   }
 `;
@@ -66,7 +66,7 @@ const VolumeSlider = styled.input`
   width: 100px;
   height: 4px;
   border-radius: 2px;
-  background: #282933;
+  background: var(--glass-sunken);
   outline: none;
   -webkit-appearance: none;
 
@@ -76,7 +76,7 @@ const VolumeSlider = styled.input`
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #73b30c;
+    background: var(--glass-ink);
     cursor: pointer;
   }
 
@@ -84,7 +84,7 @@ const VolumeSlider = styled.input`
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #73b30c;
+    background: var(--glass-ink);
     cursor: pointer;
     border: none;
   }

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import styles from "./ConfirmDialog.module.css";
 
 interface Props {
@@ -22,6 +23,11 @@ interface Props {
  * Keys are caught in the capture phase while it is open: the board underneath
  * listens on `window`, and Backspace or an arrow key reaching it would edit the
  * selection behind the dialog.
+ *
+ * Rendered into `document.body`, not where it is declared: the toolbar that
+ * opens it is frosted glass, and `backdrop-filter` makes an element the
+ * containing block for its `position: fixed` descendants — the scrim would
+ * shrink to the toolbar instead of covering the window.
  */
 export default function ConfirmDialog({ title, message, confirmLabel, destructive, onConfirm, onCancel }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null);
@@ -38,7 +44,7 @@ export default function ConfirmDialog({ title, message, confirmLabel, destructiv
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onCancel, onConfirm]);
 
-  return (
+  return createPortal(
     <div className={styles.overlay} onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
       <div className={styles.modal} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message" data-testid="confirm-dialog">
         <h2 id="confirm-title" className={styles.title}>{title}</h2>
@@ -53,6 +59,7 @@ export default function ConfirmDialog({ title, message, confirmLabel, destructiv
           >{confirmLabel}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
