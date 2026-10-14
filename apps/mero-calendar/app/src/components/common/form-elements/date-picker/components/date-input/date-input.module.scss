@@ -1,20 +1,30 @@
-.date__input {
+// `input.` so the field outranks TextField's own `.text__field` (transparent,
+// borderless) whatever order the two stylesheets load in.
+input.date__input {
+  width: 100%;
+  height: 40px;
   cursor: pointer;
-  font-size: 14px;
+  font: 550 14px/1 var(--font);
   flex: 1;
-  padding: 5px;
+  padding: 0 12px;
   // An <input> does NOT inherit `color` — the UA stylesheet sets its own — so
   // with no declaration here this field rendered BLACK text on the dark
   // modal's field: 1.32:1, measured. Every sibling input (title, description,
   // time, peers) sets this and measures 14.5:1; this one was the odd one out,
   // and it is the field in the reported screenshot.
   color: var(--mc-text);
-  background-color: transparent;
-  border: none;
+  background-color: var(--glass-sunken);
+  border: 1px solid var(--glass-line);
+  border-radius: 12px;
   outline: none;
-  
-  &:focus, &:hover {
-    // Was #f6f6f6 — see the note in time-input.module.scss.
-    background-color: var(--mc-hover);
+  transition: border-color 0.15s, box-shadow 0.15s;
+
+  &:hover {
+    border-color: var(--glass-line-strong);
+  }
+
+  &:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
   }
 }

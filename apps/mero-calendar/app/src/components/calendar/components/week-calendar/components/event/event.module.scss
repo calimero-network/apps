@@ -1,25 +1,75 @@
+// A timed event: a soft tint of the event's colour with a solid bar on its
+// leading edge, and the title in the ink, so it reads in either theme whatever
+// colour the owner picked. `--ev` is the event colour, set inline.
 .event {
   position: absolute;
   width: 90%;
-  background-color: var(--accent-fill);
   z-index: 1;
-  border-radius: 4px;
-  padding: 8px;
-  color: var(--accent-text);
-  border: 1px solid #fff;
+  border-radius: 10px;
+  padding: 6px 8px 6px 11px;
+  background: color-mix(in srgb, var(--ev, var(--accent)) 17%, var(--mc-bg));
+  color: var(--mc-text);
+  box-shadow:
+    inset 3px 0 0 var(--ev, var(--accent)),
+    0 0 0 1.5px var(--mc-bg);
   font-size: 12px;
-  letter-spacing: .1px;
   line-height: 15px;
   overflow: hidden;
   white-space: nowrap;
   cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+
+  &:hover {
+    background: color-mix(in srgb, var(--ev, var(--accent)) 26%, var(--mc-bg));
+    box-shadow:
+      inset 3px 0 0 var(--ev, var(--accent)),
+      0 0 0 1.5px var(--mc-bg),
+      0 10px 22px -14px rgba(20, 26, 60, 0.55);
+  }
+
+  // Private: node-local, never synced. Marked by the lock and a dashed edge.
+  &_private {
+    outline: 1.5px dashed var(--ev, var(--accent));
+    outline-offset: -1.5px;
+  }
+
+  &_compact {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  // The title keeps its room; the time gives way first.
+  &_compact &__title {
+    width: auto;
+    max-width: 100%;
+    flex: 0 0 auto;
+    margin-bottom: 0;
+  }
+
+  &_compact &__time {
+    flex: 0 1 auto;
+  }
 
   &__title {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    margin-bottom: 8px;
+    margin-bottom: 3px;
+    font-weight: 650;
+  }
+
+  &__time {
+    min-width: 0;
+    color: var(--glass-ink-2);
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
-
