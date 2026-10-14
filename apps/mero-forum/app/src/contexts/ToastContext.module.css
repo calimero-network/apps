@@ -30,14 +30,14 @@
   line-height: 1.4;
   text-align: left;
   cursor: pointer;
-  background: #131215;
-  color: #fcfcfc;
+  background: #0e1222;
+  color: #ffffff;
   box-shadow: var(--shadow-md);
   animation: toast-in 160ms ease-out;
 }
 :root[data-theme="dark"] .toast {
-  background: #fcfcfc;
-  color: #131215;
+  background: #eceef5;
+  color: #0b0e18;
 }
 .icon {
   display: inline-flex;
@@ -47,16 +47,16 @@
   min-width: 0;
 }
 .success .icon {
-  color: #a5ff11;
+  color: #7fe0b0;
 }
 :root[data-theme="dark"] .success .icon {
-  color: #4a7300;
+  color: #0b6b43;
 }
 .error .icon {
-  color: #ff8a80;
+  color: #f78bb0;
 }
 :root[data-theme="dark"] .error .icon {
-  color: #c62828;
+  color: #a2194b;
 }
 
 @keyframes toast-in {
