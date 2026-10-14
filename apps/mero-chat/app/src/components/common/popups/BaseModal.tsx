@@ -34,7 +34,7 @@ const Overlay = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--chat-scrim);
   backdrop-filter: blur(10px);
 `;
 
@@ -44,8 +44,8 @@ const OverlayChild = styled(Overlay)`
 
 const sharedContainer = css`
   position: relative;
-  background: #111113;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--glass-surface-solid);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
   padding: 1.75rem;
   border-radius: 16px;
   width: 480px;
@@ -54,7 +54,7 @@ const sharedContainer = css`
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
   box-sizing: border-box;
-  box-shadow: 0 32px 64px rgba(0, 0, 0, 0.7);
+  box-shadow: var(--chat-dialog-shadow);
   animation: ${fadeIn} 0.2s ease both;
   outline: none;
   &:focus, &:focus-visible { outline: none; }

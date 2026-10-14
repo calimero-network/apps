@@ -2,7 +2,7 @@
   "name": "mero-stream",
   "private": true,
   "version": "0.1.0",
-  "description": "Calimero Mero Stream \u2014 streaming media OVER the Calimero contract (Task 3 capacity probe)",
+  "description": "Calimero Mero Stream — streaming media OVER the Calimero contract (Task 3 capacity probe)",
   "keywords": [
     "calimero",
     "streaming",
@@ -27,6 +27,7 @@
     "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
+    "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/invite": "workspace:*",
     "@calimero-apps/join-sync": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",

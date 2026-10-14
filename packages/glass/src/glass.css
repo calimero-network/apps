@@ -1,0 +1,194 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   @calimero-apps/glass — the fleet's shared light-glass look.
+
+   The same look Hyperfeed and the generated landing pages use: a cool
+   off-white ground under soft colour fields, frosted translucent surfaces, one
+   near-black ink for primary controls, and the blue → violet → pink brand
+   gradient for marks. Each app tints the light behind its glass with its own
+   icon colour (`--glass-tint`), which is how the apps tell themselves apart.
+
+   Plain CSS on purpose: the apps style with styled-components, CSS modules,
+   Tailwind and plain CSS, and every one of those can import a stylesheet.
+   Everything here is a `--glass-*` custom property or a `glass-` class, so it
+   cannot collide with an app's own names. An app adopts it by mapping its own
+   tokens onto these (see README.md), never by renaming its classes.
+
+   Light is the default for everyone. Dark is opt-in through the app's own
+   switch, and is picked up from whichever marker that app already sets.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@import './fonts.css';
+
+:root {
+  --glass-tint: #3e63f5;
+
+  --glass-ground: #f6f7fb;
+  --glass-surface: rgba(255, 255, 255, 0.66);
+  --glass-surface-solid: #ffffff;
+  --glass-sunken: rgba(14, 18, 34, 0.045);
+  --glass-ink: #0e1222;
+  --glass-ink-2: #3c4256;
+  --glass-muted: #6f7589;
+  --glass-line: rgba(14, 18, 34, 0.08);
+  --glass-line-strong: rgba(14, 18, 34, 0.14);
+  --glass-edge: rgba(255, 255, 255, 0.9);
+  --glass-on-ink: #ffffff;
+
+  /* Text and links; --glass-accent-solid is a fill white text sits on. */
+  --glass-accent: #3451d1;
+  --glass-accent-solid: #3e63f5;
+  --glass-grad: linear-gradient(95deg, #3e63f5 0%, #8b5cf6 50%, #ec4899 100%);
+
+  --glass-wait-bg: #fef0b8;
+  --glass-wait-ink: #6b4e00;
+  --glass-good-bg: #d6f7e6;
+  --glass-good-ink: #0b6b43;
+  --glass-busy-bg: #e3e9ff;
+  --glass-busy-ink: #3451d1;
+  --glass-bad-bg: #ffe4ea;
+  --glass-bad-ink: #a2194b;
+
+  --glass-shadow: 0 1px 1px rgba(14, 18, 34, 0.03), 0 14px 36px -24px rgba(40, 50, 110, 0.4), 0 0 0 1px var(--glass-line);
+  --glass-shadow-float: 0 30px 60px -30px rgba(20, 26, 60, 0.45), 0 0 0 1px var(--glass-line);
+  --glass-blur: blur(24px) saturate(180%);
+  --glass-radius-sm: 10px;
+  --glass-radius: 16px;
+  --glass-radius-lg: 22px;
+  --glass-font: 'Figtree Variable', 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --glass-fields:
+    radial-gradient(900px 700px at -5% -10%, color-mix(in srgb, var(--glass-tint) 26%, transparent) 0, transparent 62%),
+    radial-gradient(800px 640px at 105% 0%, rgba(236, 72, 153, 0.14) 0, transparent 60%),
+    radial-gradient(900px 760px at 85% 105%, color-mix(in srgb, var(--glass-tint) 20%, transparent) 0, transparent 60%),
+    radial-gradient(760px 640px at -5% 100%, rgba(139, 92, 246, 0.12) 0, transparent 60%);
+}
+
+/* Dark: smoked glass with the same structure. Every app marks dark its own
+   way, so all three markers the fleet uses switch it. */
+:root[data-theme='dark'],
+:root.dark,
+[data-glass-theme='dark'] {
+  --glass-ground: #0b0e18;
+  --glass-surface: rgba(28, 33, 52, 0.62);
+  --glass-surface-solid: #161b2b;
+  --glass-sunken: rgba(255, 255, 255, 0.06);
+  --glass-ink: #eceef5;
+  --glass-ink-2: #c7ccd9;
+  --glass-muted: #9097ab;
+  --glass-line: rgba(255, 255, 255, 0.08);
+  --glass-line-strong: rgba(255, 255, 255, 0.14);
+  --glass-edge: rgba(255, 255, 255, 0.08);
+  --glass-on-ink: #0b0e18;
+  --glass-accent: #9aafff;
+  --glass-accent-solid: #4a6cff;
+  --glass-wait-bg: #3a300f;
+  --glass-wait-ink: #f5dc8a;
+  --glass-good-bg: #0e3324;
+  --glass-good-ink: #7fe0b0;
+  --glass-busy-bg: #1c2650;
+  --glass-busy-ink: #9aafff;
+  --glass-bad-bg: #3d0f1e;
+  --glass-bad-ink: #f78bb0;
+  --glass-shadow: 0 18px 40px -26px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--glass-line);
+  --glass-shadow-float: 0 30px 60px -30px rgba(0, 0, 0, 0.9), 0 0 0 1px var(--glass-line);
+  --glass-fields:
+    radial-gradient(900px 700px at -5% -10%, color-mix(in srgb, var(--glass-tint) 22%, transparent) 0, transparent 62%),
+    radial-gradient(800px 640px at 105% 0%, rgba(236, 72, 153, 0.12) 0, transparent 60%),
+    radial-gradient(900px 760px at 85% 105%, color-mix(in srgb, var(--glass-tint) 16%, transparent) 0, transparent 60%),
+    radial-gradient(760px 640px at -5% 100%, rgba(139, 92, 246, 0.1) 0, transparent 60%);
+}
+
+/* ── The page: the ground and the tinted light behind everything ───────────
+   `background-color` stays the plain ground so a test or a screenshot reading
+   it gets one colour; the fields are images over it. */
+.glass-fields {
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Surfaces ──────────────────────────────────────────────────────────────
+   Glass for the frame: headers, sidebars, toolbars, panels, cards. */
+.glass-surface {
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+}
+
+/* Anything that floats over content (menus, popovers, dialogs) is solid, so
+   what is under it never shows through its text. */
+.glass-float {
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow-float);
+}
+
+/* The floating header every app shares. */
+.glass-header {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  margin: 12px 16px 0;
+  border-radius: 20px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
+}
+
+/* ── Controls ──────────────────────────────────────────────────────────── */
+.glass-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
+  color: var(--glass-ink);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+  font: 600 14.5px/1 var(--glass-font);
+  cursor: pointer;
+}
+
+.glass-btn--primary {
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
+}
+
+.glass-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* The gradient outline always means an assistant prepared this, and nothing
+   happens until a person says so. */
+.glass-suggested {
+  background: linear-gradient(135deg, rgba(62, 99, 245, 0.12), rgba(236, 72, 153, 0.1));
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: var(--glass-radius);
+}
+
+.glass-grad-text {
+  background: var(--glass-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

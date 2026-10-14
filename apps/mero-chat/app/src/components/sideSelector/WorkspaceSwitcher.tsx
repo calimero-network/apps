@@ -24,15 +24,15 @@ const Trigger = styled.button<{ $isCollapsed: boolean }>`
   justify-content: ${({ $isCollapsed }) => ($isCollapsed ? "center" : "flex-start")};
   background: transparent;
   border: none;
-  border-radius: 7px;
+  border-radius: 10px;
   cursor: pointer;
-  color: #c8c7d1;
+  color: var(--glass-ink-2);
   transition: background 0.15s ease, color 0.15s ease;
   min-width: 0;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: #fff;
+    background: color-mix(in srgb, var(--glass-ink) 5%, transparent);
+    color: var(--glass-ink);
   }
 `;
 
@@ -59,7 +59,7 @@ const WorkspaceName = styled.span`
 
 const ChevronIcon = styled.div<{ $open: boolean }>`
   flex-shrink: 0;
-  color: rgba(255, 255, 255, 0.4);
+  color: color-mix(in srgb, var(--glass-ink) 40%, transparent);
   transform: ${({ $open }) => ($open ? "rotate(180deg)" : "rotate(0deg)")};
   transition: transform 0.2s ease;
   display: flex;
@@ -74,10 +74,10 @@ const Dropdown = styled.div<{ $isCollapsed: boolean }>`
   position: absolute;
   top: calc(100% + 4px);
   ${({ $isCollapsed }) => ($isCollapsed ? "left: 48px; top: 0;" : "left: 0.75rem; right: 0.75rem;")}
-  background: #18181c;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 9px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  background: var(--glass-surface-solid);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
+  border-radius: 14px;
+  box-shadow: var(--chat-pop-shadow);
   z-index: 200;
   overflow: hidden;
   min-width: 160px;
@@ -89,10 +89,10 @@ const DropdownItem = styled.button<{ $active: boolean }>`
   gap: 8px;
   width: 100%;
   padding: 0.5rem 0.75rem;
-  background: ${({ $active }) => ($active ? "rgba(165,255,17,0.08)" : "transparent")};
+  background: ${({ $active }) => ($active ? "color-mix(in srgb, var(--glass-accent) 8%, transparent)" : "transparent")};
   border: none;
   cursor: pointer;
-  color: ${({ $active }) => ($active ? "#a5ff11" : "#c8c7d1")};
+  color: ${({ $active }) => ($active ? "var(--glass-accent)" : "var(--glass-ink-2)")};
   font-size: 12px;
   font-weight: 500;
   text-align: left;
@@ -102,8 +102,8 @@ const DropdownItem = styled.button<{ $active: boolean }>`
   text-overflow: ellipsis;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: #fff;
+    background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+    color: var(--glass-ink);
   }
 `;
 
@@ -111,7 +111,7 @@ const ActiveDot = styled.div`
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #a5ff11;
+  background: var(--glass-ink);
   flex-shrink: 0;
 `;
 
@@ -127,7 +127,7 @@ const DropdownLabel = styled.div`
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.25);
+  color: color-mix(in srgb, var(--glass-ink) 25%, transparent);
 `;
 
 export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProps) {

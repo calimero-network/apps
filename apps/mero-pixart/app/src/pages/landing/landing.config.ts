@@ -22,6 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
+  tint: "#e879f9",
   trust: ["Non-destructive edits", "Real layer folders", "Pixels on your nodes"],
   explainer: [
     "A collaborative raster image editor with the depth of a desktop tool — layer folders, masks, blend modes, curves and a corner-pin warp — that several people can work in at the same time.",

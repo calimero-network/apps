@@ -11,7 +11,7 @@
  * the only hand-owned ones, which is what keeps "unified" true after the
  * fourteenth copy.
  */
-import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowUpRight,
   CheckSquare,
@@ -496,7 +496,12 @@ export default function LandingPage({
   );
 
   return (
-    <div className="cal-lp-root" data-cal-lp-theme={theme.attr} data-cal-lp-view={view}>
+    <div
+      className="cal-lp-root"
+      data-cal-lp-theme={theme.attr}
+      data-cal-lp-view={view}
+      style={CONFIG.tint ? ({ '--cal-lp-tint': CONFIG.tint } as CSSProperties) : undefined}
+    >
       <header className="cal-lp-header">
         <a
           className="cal-lp-brand"

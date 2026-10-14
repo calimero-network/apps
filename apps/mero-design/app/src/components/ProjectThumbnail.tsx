@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useBoardPreview } from "../hooks/useBoardPreview";
+import { BoardPlaceholder } from "./Artwork";
 
 /**
  * A project card's picture: a small, faithful render of what is on the board.
@@ -7,21 +8,24 @@ import { useBoardPreview } from "../hooks/useBoardPreview";
  * It used to be a gradient hashed from the context id — distinct per project,
  * but it said nothing about the work inside. Now it is the board itself, fitted
  * to the card (see `utils/boardPreview`). An empty board, or one this node cannot
- * read yet, is plain white.
+ * read yet, keeps the board's own colour and shows a generated tile for the
+ * project (its initials among a few loose shapes) instead of a blank.
  *
  * The SVG goes through `<img>` (a blob URL), never inlined: an image document
  * runs no script, so no label or text on the board can become markup here.
  */
 
-/** Card thumbnail proportions (ProjectsPage.module.css `.cardThumb`: ~240×110). */
-const FALLBACK_ASPECT = 240 / 110;
+/** Card thumbnail proportions (Home.module.css `.cardThumb`: ~240×150). */
+const FALLBACK_ASPECT = 240 / 150;
 
 interface Props {
   contextId: string;
+  /** The project's name, for the generated tile an empty board shows. */
+  name?: string;
   className?: string;
 }
 
-export default function ProjectThumbnail({ contextId, className }: Props) {
+export default function ProjectThumbnail({ contextId, name, className }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [aspect, setAspect] = useState(FALLBACK_ASPECT);
@@ -67,6 +71,7 @@ export default function ProjectThumbnail({ contextId, className }: Props) {
       data-state={state}
       aria-hidden="true"
     >
+      {state !== "ready" && <BoardPlaceholder id={contextId} name={name ?? contextId} />}
       {url && <img src={url} alt="" draggable={false} data-testid={`project-preview-${contextId}`} />}
     </div>
   );

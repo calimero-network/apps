@@ -46,7 +46,7 @@ const ActionsContainerMobile = styled.div<{ $addPadding: boolean }>`
 
 const MessageContainer = styled.div<{ $editmode: boolean; $focused?: boolean }>`
   width: 100%;
-  border-radius: 4px;
+  border-radius: 16px;
   box-sizing: border-box;
   padding: 6px 0;
   position: relative;
@@ -61,14 +61,14 @@ const MessageContainer = styled.div<{ $editmode: boolean; $focused?: boolean }>`
     padding-left: 14px;
     padding-right: 14px;
   }
-  ${({ $editmode }) => $editmode && "background-color: #0A131E;"}
+  ${({ $editmode }) => $editmode && "background-color: var(--glass-surface-solid);"}
   /* A message arrived at by link: marked so the reader can see WHICH message
      the link meant, rather than landing mid-conversation and guessing. Fades
      rather than latching, so it does not look like persistent state. */
   ${({ $focused }) =>
     $focused &&
-    `background-color: rgba(160, 255, 90, 0.10);
-     box-shadow: inset 2px 0 0 #A0FF5A;
+    `background-color: color-mix(in srgb, var(--glass-accent) 10%, transparent);
+     box-shadow: inset 2px 0 0 var(--glass-accent);
      transition: background-color 1.2s ease-out;`}
   @media (min-width: 1025px) {
     &:hover ${ActionsContainer} {
@@ -76,7 +76,7 @@ const MessageContainer = styled.div<{ $editmode: boolean; $focused?: boolean }>`
       ${({ $editmode }) => !$editmode && "opacity: 1;"}
     }
     &:hover {
-      ${({ $editmode }) => !$editmode && "background-color: #1e1e1e;"}
+      ${({ $editmode }) => !$editmode && "background-color: color-mix(in srgb, var(--glass-ink) 3%, transparent);"}
     }
   }
 `;
@@ -101,10 +101,10 @@ const ProfileIconContainerMsg = styled.div<ProfileIconContainerProps>`
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  ${({ id }: ProfileIconContainerProps) => id && `background-color: #111;`}
+  ${({ id }: ProfileIconContainerProps) => id && `background-color: var(--glass-surface-solid);`}
   text-align: center;
   /* Body/Small */
-  font-family: Helvetica Neue;
+  font-family: var(--glass-font);
   font-size: 12px;
   font-style: normal;
   font-weight: 400;
@@ -115,11 +115,11 @@ const NameContainerSender = styled.div`
   display: flex;
   justify-content: start;
   align-items: center;
-  width: 100%;
-  color: #6c757d;
-  font-size: 12px;
+  min-width: 0;
+  color: var(--glass-ink);
+  font-size: 13px;
   font-style: normal;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 100%;
 `;
 
@@ -129,15 +129,22 @@ export interface MessageTextProps {
 }
 
 export const MessageText = styled.div<MessageTextProps>`
-  flex-grow: 1;
+  /* The bubble: a solid card on the glass panel, squared off at the corner
+     nearest the sender, as in the fleet's chat mock. */
+  flex-grow: 0;
   flex-shrink: 1;
+  min-width: 0;
+  max-width: min(640px, calc(100% - 40px - 2rem));
   overflow: hidden;
   word-wrap: break-word;
-  padding-top: 0px;
-  padding-left: 2rem;
-  padding-right: 2rem;
-  color: #fff;
-  font-family: Helvetica Neue;
+  margin-left: 40px;
+  margin-top: 4px;
+  padding: 8px 14px;
+  border-radius: 4px 18px 18px 18px;
+  background-color: var(--chat-card);
+  box-shadow: var(--chat-card-shadow);
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
   font-size: 14px;
   font-style: normal;
   font-weight: 400;
@@ -145,31 +152,39 @@ export const MessageText = styled.div<MessageTextProps>`
   -webkit-font-smoothing: antialiased applied;
 
   @media (max-width: 1024px) {
-    font-size: 12px;
-    padding-right: 0;
+    font-size: 13px;
+    max-width: calc(100% - 40px - 3.25rem);
   }
 
-  background-color: ${(props) => props.$globalMention && "#ecfc910d"};
+  ${(props) =>
+    props.$globalMention &&
+    `background-image: linear-gradient(color-mix(in srgb, var(--glass-accent) 9%, transparent), color-mix(in srgb, var(--glass-accent) 9%, transparent));
+     box-shadow: 0 0 0 1px color-mix(in srgb, var(--glass-accent) 30%, transparent);`}
 
   .mention-everyone,
   .mention-here {
-    background-color: #ecfc910d !important;
-    color: #73b30c !important;
+    background-color: color-mix(in srgb, var(--glass-accent) 5%, transparent) !important;
+    color: var(--glass-accent) !important;
   }
 
   .mention-user-${(props: MessageTextProps) =>
     props.$accountId && `${props.$accountId}`} {
-    color: #73b30c !important;
-    background-color: #ecfc910d !important;
+    color: var(--glass-accent) !important;
+    background-color: color-mix(in srgb, var(--glass-accent) 5%, transparent) !important;
   }
 
   .mention {
-    background-color: #73b30c;
+    background-color: color-mix(in srgb, var(--glass-accent) 12%, transparent);
+    color: var(--glass-accent);
+    border-radius: 10px;
   }
 
   .msg-content p {
     margin: 0 0 6px 0;
     padding: 0;
+  }
+  .msg-content p:last-child {
+    margin-bottom: 0;
   }
   .msg-content ul,
   .msg-content ol {
@@ -181,21 +196,21 @@ export const MessageText = styled.div<MessageTextProps>`
     padding: 0;
   }
   .msg-content code {
-    background: #1e1e1e;
+    background: var(--glass-sunken);
     padding: 1px 4px;
-    border-radius: 4px;
+    border-radius: 8px;
   }
   .msg-content pre {
-    background: #111;
+    background: var(--glass-sunken);
     padding: 8px;
-    border-radius: 6px;
+    border-radius: 10px;
     overflow: auto;
   }
   .msg-content blockquote {
     margin: 6px 0;
     padding: 6px 10px 6px 10px;
-    border-left: 3px solid #a5ff11;
-    background: #111;
+    border-left: 3px solid var(--glass-accent);
+    background: var(--glass-sunken);
   }
 
   /* URL Link Styles */
@@ -204,29 +219,32 @@ export const MessageText = styled.div<MessageTextProps>`
   .rich-text-link {
     cursor: pointer;
     text-decoration: none;
-    color: #a5ff11;
+    color: var(--glass-accent);
     word-break: break-all;
   }
 
   a:hover,
   .url-link:hover,
   .rich-text-link:hover {
-    color: #c4ff66;
+    color: var(--glass-accent);
     text-decoration: underline;
   }
 
   a:visited,
   .url-link:visited,
   .rich-text-link:visited {
-    color: #8fd60e;
+    color: var(--glass-accent);
   }
   span {
-    color: #fff !important;
+    color: var(--glass-ink) !important;
   }
 `;
 
 const Tick = styled.div`
   padding-right: 2rem;
+  @media (max-width: 1024px) {
+    padding-right: 0;
+  }
   width: 24px;
   text-align: right;
   align-self: flex-end;
@@ -237,8 +255,8 @@ const Tick = styled.div`
   justify-content: flex-end;
   align-items: center;
   gap: 2px;
-  color: #777583;
-  font-family: Helvetica Neue;
+  color: var(--glass-muted);
+  font-family: var(--glass-font);
   font-size: 12px;
   font-style: normal;
   font-weight: 400;
@@ -250,7 +268,7 @@ const AttachmentsContainer = styled.div<{ $hasText: boolean }>`
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 0 2rem;
+  padding: 0 2rem 0 40px;
   /* Below text, a gap separates the two. With no text the attachment IS the
      message, and sits directly under the sender line like text would. */
   margin-top: ${({ $hasText }) => ($hasText ? "8px" : "4px")};
@@ -270,9 +288,9 @@ const MessageContentContainer = styled.div`
 `;
 
 const MessageTime = styled.div`
-  padding-right: 2rem;
-  color: #777583;
-  font-family: Helvetica Neue;
+  flex-shrink: 0;
+  color: var(--glass-muted);
+  font-family: var(--glass-font);
   font-size: 12px;
   font-style: normal;
   font-weight: 400;
