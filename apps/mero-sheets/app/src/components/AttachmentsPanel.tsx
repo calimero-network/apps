@@ -4,8 +4,9 @@
  * the cell keeps its name, size and who attached it.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { C } from '../theme';
+import { closeButton, overlay, sheetHeader, sideSheet } from './glass';
 import type { Attachment } from '../hooks/useSpreadsheet';
 import { ago, nsToMs } from '../lib/time';
 
@@ -111,27 +112,24 @@ export default function AttachmentsPanel({
   );
 }
 
-const slideIn = keyframes`from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; }`;
-const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 200; background: rgba(14, 20, 15, 0.3); backdrop-filter: blur(2px);
-  animation: ${fadeIn} 0.18s ease; display: flex; justify-content: flex-end;
+  ${overlay}
+  z-index: 200;
+  display: flex; justify-content: flex-end;
 `;
 const Panel = styled.div`
-  width: 420px; max-width: 100vw; height: 100%; background: ${C.paper}; border-left: 1px solid ${C.line};
-  display: flex; flex-direction: column; animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  ${sideSheet}
+  --sheet-w: 420px;
 `;
 const Header = styled.div`
-  display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid ${C.line};
-  .title { font-size: 15px; font-weight: 700; color: ${C.ink}; }
+  ${sheetHeader}
 `;
 const CloseBtn = styled.button`
-  width: 30px; height: 30px; font-size: 20px; color: ${C.mutedSoft}; background: transparent; border: none; border-radius: 8px; cursor: pointer;
-  &:hover { background: ${C.paper2}; color: ${C.ink}; }
+  ${closeButton}
 `;
 const Bar = styled.div`
   display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid ${C.line};
-  button { padding: 7px 14px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; color: ${C.onAccent}; background: ${C.green}; border: 1px solid #93e60c; }
+  button { padding: 7px 14px; font-size: 13px; font-weight: 600; border-radius: 999px; cursor: pointer; color: var(--glass-on-ink); background: var(--glass-ink); border: none; }
   button:disabled { opacity: 0.5; }
   span { font-size: 11.5px; color: ${C.mutedSoft}; }
 `;

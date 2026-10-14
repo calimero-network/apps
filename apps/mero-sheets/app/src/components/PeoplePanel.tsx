@@ -16,8 +16,9 @@
  * they also carry members' writes; as replicas, they only hold a copy.
  */
 import React, { useEffect, useState } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { C } from '../theme';
+import { closeButton, overlay, sheetHeader, sideSheet } from './glass';
 import type { Member } from '../hooks/useSpreadsheet';
 import { ROLE_HELP, ROLE_NOTE, WORKBOOK_ROLES } from '../spreadsheet/access';
 import { REPLICA_PROFILES, isReleaseVersion, isTeeRole, teeRoleLabel, type ReplicaPolicy, type TeeMode } from '../spreadsheet/replicas';
@@ -313,31 +314,20 @@ function AlwaysOn({ tees, policy, canEdit, onSave }: {
   );
 }
 
-const slideIn = keyframes`from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; }`;
-const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
-
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 200;
-  background: rgba(14, 20, 15, 0.3); backdrop-filter: blur(2px);
-  animation: ${fadeIn} 0.18s ease;
+  ${overlay}
+  z-index: 200;
   display: flex; justify-content: flex-end;
 `;
 const Panel = styled.div`
-  width: 460px; max-width: 100vw; height: 100%;
-  background: ${C.paper}; border-left: 1px solid ${C.line};
-  display: flex; flex-direction: column;
-  animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: -20px 0 60px -20px rgba(14, 20, 15, 0.25);
+  ${sideSheet}
+  --sheet-w: 460px;
 `;
 const Header = styled.div`
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 18px; border-bottom: 1px solid ${C.line};
-  .title { font-size: 15px; font-weight: 700; color: ${C.ink}; }
+  ${sheetHeader}
 `;
 const CloseBtn = styled.button`
-  width: 30px; height: 30px; font-size: 20px; color: ${C.mutedSoft};
-  background: transparent; border: none; border-radius: 8px; cursor: pointer;
-  &:hover { background: ${C.paper2}; color: ${C.ink}; }
+  ${closeButton}
 `;
 const Err = styled.p`margin: 0; padding: 8px 18px; font-size: 12.5px; color: ${C.danger}; border-bottom: 1px solid ${C.line};`;
 const Note = styled.p`margin: 0; padding: 8px 18px; font-size: 12px; color: ${C.muted}; border-bottom: 1px solid ${C.line};`;
@@ -350,7 +340,7 @@ const Item = styled.li`
   label { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: ${C.mutedSoft}; text-transform: uppercase; letter-spacing: 0.04em; }
   select {
     font-size: 12.5px; padding: 5px 8px; border-radius: 8px; text-transform: none; letter-spacing: 0;
-    color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line};
+    color: ${C.ink}; background: var(--glass-sunken); border: 1px solid var(--glass-line);
     &:disabled { opacity: 0.6; }
   }
 `;
@@ -376,7 +366,7 @@ const Section = styled.section`
   legend { font-size: 11.5px; color: ${C.muted}; padding: 0; margin-bottom: 2px; }
   label.check { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: ${C.ink}; line-height: 1.4; }
   label.check input { margin-top: 2px; flex: none; }
-  input[type='text'] { width: 100%; box-sizing: border-box; font: 12px ui-monospace, 'SF Mono', Menlo, monospace; color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 8px; padding: 6px 8px; }
+  input[type='text'] { width: 100%; box-sizing: border-box; font: 12px ui-monospace, 'SF Mono', Menlo, monospace; color: ${C.ink}; background: var(--glass-sunken); border: 1px solid var(--glass-line); border-radius: 8px; padding: 6px 8px; }
   .row { display: flex; gap: 8px; margin-top: 6px; }
   button { font-size: 12px; padding: 5px 10px; border-radius: 8px; cursor: pointer; background: none; border: 1px solid ${C.line}; color: ${C.ink}; }
   button:disabled { opacity: 0.5; }

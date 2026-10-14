@@ -1,3 +1,5 @@
+// The fleet's shared light-glass look, first, so the app's own tokens map onto it.
+import "@calimero-apps/glass/glass.css";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { AppMode, MeroProvider } from "@calimero-network/mero-react";

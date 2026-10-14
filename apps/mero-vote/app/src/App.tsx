@@ -5,17 +5,23 @@ import { InviteCard } from "./InviteCard";
 import { JoinCard } from "./JoinCard";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
 import { VotePanel } from "./VotePanel";
+import { ThemeToggle } from "./ThemeToggle";
+import { signOut } from "./signOut";
 import {
+  BarChartIcon,
   BoxIcon,
   ChevronRightIcon,
+  KeyIcon,
   LayersIcon,
+  LockIcon,
   LogOutIcon,
   ServerIcon,
+  ShieldCheckIcon,
   SwitchIcon,
   UserPlusIcon,
   VoteIcon,
 } from "./icons";
-import { IconTile, IdField, shortId } from "./ui";
+import { IdField, shortId } from "./ui";
 
 export function App() {
   const { isAuthenticated, isLoading, applicationId, contextId, nodeUrl, logout } = useMero();
@@ -38,13 +44,15 @@ export function App() {
     window.location.reload();
   }
 
+  const onLogout = () => signOut(logout);
+
   return (
     <>
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
             <span className="brand-mark">
-              <VoteIcon size={16} />
+              <VoteIcon size={17} />
             </span>
             <h1>Mero Vote</h1>
           </div>
@@ -62,7 +70,7 @@ export function App() {
                   <span className="sep">
                     <ChevronRightIcon size={14} />
                   </span>
-                  <span className="crumb" title={contextId}>
+                  <span className="crumb current" title={contextId}>
                     <BoxIcon size={14} />
                     <code className="mono">{shortId(contextId)}</code>
                   </span>
@@ -71,7 +79,7 @@ export function App() {
             </nav>
           )}
           <div className="topbar-right">
-            <span className="status-pill">
+            <span className="status-pill" title={isAuthenticated ? "Connected" : isLoading ? "Connecting" : "Not connected"}>
               <span className={`dot ${isAuthenticated ? "live" : isLoading ? "wait" : ""}`} />
               <span className="label">{isAuthenticated ? "Connected" : isLoading ? "Connecting" : "Not connected"}</span>
             </span>
@@ -84,18 +92,35 @@ export function App() {
                 contexts, and comparing two of them is the normal way to watch
                 a CRDT converge.
               */
-              <button className="ghost sm" onClick={switchContext}>
-                <SwitchIcon size={14} />
-                Change context
+              <button className="ghost sm collapse" onClick={switchContext} aria-label="Change context" title="Change context">
+                <SwitchIcon size={15} />
+                <span className="btn-label">Change context</span>
               </button>
             )}
+            <ThemeToggle />
             {isAuthenticated && (
               <SessionMenu
                 nodeUrl={nodeUrl}
                 applicationId={applicationId}
                 contextId={contextId}
-                onLogout={logout}
+                onLogout={onLogout}
               />
+            )}
+            {isAuthenticated && (
+              // Always on screen, not only in the session menu: ending a session
+              // should never take a hunt. The label folds to the icon on a phone;
+              // the accessible name stays "Log out".
+              <button
+                type="button"
+                className="ghost sm collapse logout"
+                onClick={onLogout}
+                aria-label="Log out"
+                title="Log out"
+                data-testid="logout-btn"
+              >
+                <LogOutIcon size={15} />
+                <span className="btn-label">Log out</span>
+              </button>
             )}
           </div>
         </div>
@@ -103,30 +128,57 @@ export function App() {
 
       <main className="wrap">
         {isLoading ? (
-          <div className="card center">
+          <div className="card center loading-card">
+            <span className="spinner" aria-hidden="true" />
             <p className="empty">Connecting…</p>
           </div>
         ) : !isAuthenticated ? (
-          <div className="card center">
-            <IconTile accent>
-              <ServerIcon size={20} />
-            </IconTile>
-            <h2>Connect a node</h2>
-            <p>
-              Private polls with verifiable tallies. Ballots are encrypted in your
-              browser and proven well-formed in zero knowledge; no node — yours
-              included — ever sees a vote.
-            </p>
-            <p className="empty" style={{ marginBottom: 18 }}>
-              The login modal discovers nodes on the usual local ports and accepts
-              a URL directly.
-            </p>
-            <ConnectButton />
-          </div>
+          <section className="welcome">
+            <div className="welcome-copy">
+              <span className="eyebrow pill">
+                <ShieldCheckIcon size={14} />
+                Secret ballot · public audit
+              </span>
+              <p className="welcome-title">
+                Private polls with <span className="glass-grad-text">verifiable tallies</span>.
+              </p>
+              <p className="welcome-lead">
+                Ballots are encrypted in your browser and proven well-formed in zero
+                knowledge; no node — yours included — ever sees a vote. Everyone can
+                re-run the count.
+              </p>
+              <ul className="welcome-points">
+                <li>
+                  <span className="icon-tile accent"><LockIcon size={18} /></span>
+                  <span><strong>Encrypted here</strong>Your choice leaves this tab as ciphertext and a proof.</span>
+                </li>
+                <li>
+                  <span className="icon-tile"><KeyIcon size={18} /></span>
+                  <span><strong>Shared key</strong>Trustees hold the decryption key together; no one holds all of it.</span>
+                </li>
+                <li>
+                  <span className="icon-tile"><BarChartIcon size={18} /></span>
+                  <span><strong>Audited by everyone</strong>Every member&apos;s node recomputes the tally from the frozen ballots.</span>
+                </li>
+              </ul>
+            </div>
+            <div className="card connect-card">
+              <span className="connect-mark">
+                <ServerIcon size={22} />
+              </span>
+              <h2>Connect a node</h2>
+              <p>
+                Sign in to your Calimero node to see your voting groups. The login
+                modal discovers nodes on the usual local ports and accepts a URL
+                directly.
+              </p>
+              <ConnectButton />
+            </div>
+          </section>
         ) : !contextId ? (
           <>
             <ContextPicker applicationId={applicationId} />
-            <div className="section-head">
+            <div className="section-head join-head">
               <h3>
                 <UserPlusIcon size={16} />
                 Have an invitation?
@@ -156,14 +208,7 @@ export function App() {
                 />
               </div>
             )}
-            <div className="ctx-layout">
-              <div className="ctx-main">
-                <VotePanel contextId={contextId} />
-              </div>
-              <aside className="ctx-side">
-                <InviteCard contextId={contextId} />
-              </aside>
-            </div>
+            <VotePanel contextId={contextId} side={<InviteCard contextId={contextId} />} />
           </>
         )}
       </main>
@@ -172,7 +217,8 @@ export function App() {
 }
 
 /**
- * Node, application and context ids, plus Log out — present but tucked away.
+ * Node, application and context ids, plus a second Log out next to the
+ * session it ends (the top bar carries the always-visible one).
  *
  * No inactivity logout anywhere in this app. A session ends when the user ends
  * it — being idle overnight is normal use, and it costs nothing in exposure
@@ -209,7 +255,7 @@ function SessionMenu({
   return (
     <div className="menu-wrap" ref={ref}>
       <button
-        className="icon-btn bordered"
+        className="icon-btn round"
         title="Session"
         aria-label="Session"
         aria-expanded={open}
@@ -219,7 +265,10 @@ function SessionMenu({
       </button>
       {open && (
         <div className="menu" role="menu">
-          <div className="menu-head">Session</div>
+          <div className="menu-head">
+            <span className="dot live" />
+            Session
+          </div>
           <dl className="kv">
             <dt>Node</dt>
             <dd>
@@ -231,7 +280,7 @@ function SessionMenu({
             <dd>{contextId ? <IdField value={contextId} label="context id" /> : <span className="empty">not selected</span>}</dd>
           </dl>
           <div className="menu-sep" />
-          <button className="menu-item" role="menuitem" onClick={onLogout}>
+          <button className="menu-item danger" role="menuitem" onClick={onLogout} data-testid="menu-logout-btn">
             <LogOutIcon size={16} />
             Log out
           </button>

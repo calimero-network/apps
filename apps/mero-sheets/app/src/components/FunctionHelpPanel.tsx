@@ -7,8 +7,9 @@
  * Pressing Escape or clicking the backdrop closes it.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { C } from '../theme';
+import { chip, closeButton, overlay, sheetHeader, sideSheet } from './glass';
 import { type FunctionDef } from '../hooks/useSpreadsheet';
 
 interface FunctionHelpPanelProps {
@@ -154,55 +155,20 @@ function FnCard({ fn }: { fn: FunctionDef }) {
 
 // ── Styled components ────────────────────────────────────────────────────────
 
-const slideIn = keyframes`
-  from { transform: translateX(100%); opacity: 0; }
-  to   { transform: none; opacity: 1; }
-`;
-const fadeIn = keyframes`
-  from { opacity: 0; }
-  to   { opacity: 1; }
-`;
-
 const Overlay = styled.div`
-  position: fixed;
-  inset: 0;
+  ${overlay}
   z-index: 200;
-  background: rgba(14, 20, 15, 0.3);
-  backdrop-filter: blur(2px);
-  animation: ${fadeIn} 0.18s ease;
-  display: flex;
-  justify-content: flex-end;
+  display: flex; justify-content: flex-end;
 `;
 
 const Panel = styled.div`
-  width: 420px;
-  max-width: 100vw;
-  height: 100%;
-  background: ${C.paper};
-  border-left: 1px solid ${C.line};
-  display: flex;
-  flex-direction: column;
-  animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: -20px 0 60px -20px rgba(14, 20, 15, 0.25);
+  ${sideSheet}
+  --sheet-w: 420px;
 `;
 
 const PanelHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 18px;
-  border-bottom: 1px solid ${C.line};
-  flex-shrink: 0;
-
-  .title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 15px;
-    font-weight: 700;
-    color: ${C.ink};
-    letter-spacing: -0.2px;
-  }
+  ${sheetHeader}
+  .title { display: flex; align-items: center; gap: 10px; }
 `;
 
 const FxBadge = styled.span`
@@ -212,8 +178,8 @@ const FxBadge = styled.span`
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: rgba(164, 255, 17, 0.16);
-  border: 1px solid rgba(164, 255, 17, 0.4);
+  background: color-mix(in srgb, var(--glass-accent-solid) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-accent-solid) 40%, transparent);
   font-size: 12px;
   font-style: italic;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
@@ -221,23 +187,7 @@ const FxBadge = styled.span`
 `;
 
 const CloseBtn = styled.button`
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  font-size: 20px;
-  line-height: 1;
-  color: ${C.mutedSoft};
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-
-  &:hover {
-    background: ${C.paper2};
-    color: ${C.ink};
-  }
+  ${closeButton}
 `;
 
 const SearchWrap = styled.div`
@@ -273,8 +223,8 @@ const SearchInput = styled.input`
   }
 
   &:focus {
-    border-color: ${C.green};
-    box-shadow: 0 0 0 3px rgba(164, 255, 17, 0.18);
+    border-color: var(--glass-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-accent-solid) 18%, transparent);
   }
 `;
 
@@ -305,20 +255,7 @@ const CategoryRow = styled.div`
 `;
 
 const Chip = styled.button`
-  font-size: 11px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid ${C.line};
-  background: ${C.paper};
-  color: ${C.muted};
-  cursor: pointer;
-
-  &:hover { color: ${C.ink}; }
-  &[aria-pressed='true'] {
-    border-color: ${C.green};
-    color: ${C.greenDeep};
-    background: ${C.paper2};
-  }
+  ${chip}
 `;
 
 const FnCategory = styled.span`
@@ -397,10 +334,10 @@ const FnExample = styled.div`
     font-size: 12.5px;
     font-family: ui-monospace, 'SF Mono', Menlo, monospace;
     color: ${C.greenDeep};
-    background: rgba(164, 255, 17, 0.1);
+    background: color-mix(in srgb, var(--glass-accent-solid) 10%, transparent);
     padding: 2px 8px;
     border-radius: 6px;
-    border: 1px solid rgba(164, 255, 17, 0.3);
+    border: 1px solid color-mix(in srgb, var(--glass-accent-solid) 30%, transparent);
   }
 `;
 

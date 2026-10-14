@@ -4,12 +4,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mero Sheets</title>
-    <meta name="theme-color" content="#0e140f" />
+    <meta name="theme-color" content="#f6f7fb" />
 
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- The theme, before the first paint: light unless dark was chosen in the
+         app. src/theme.ts owns the keys (and moves the old `app:theme` choice
+         over to `mero-sheets:theme`); keep the two in step. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('mero-sheets:theme');
+          if (t === null) t = localStorage.getItem('app:theme');
+          var dark = t === 'dark';
+          document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+          if (dark) {
+            var m = document.querySelector('meta[name="theme-color"]');
+            if (m) m.setAttribute('content', '#0b0e18');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
