@@ -20,14 +20,14 @@ const ErrorContainer = styled.div`
   justify-content: center;
   height: 100%;
   padding: 2rem;
-  background-color: #0e0e10;
-  color: #fff;
+  background-color: var(--glass-surface-solid);
+  color: var(--glass-ink);
 `;
 
 const ErrorTitle = styled.h1`
   font-size: 24px;
   margin-bottom: 1rem;
-  color: #ff4444;
+  color: var(--glass-bad-ink);
 `;
 
 const ErrorMessage = styled.p`
@@ -35,36 +35,36 @@ const ErrorMessage = styled.p`
   margin-bottom: 1.5rem;
   text-align: center;
   max-width: 600px;
-  color: #ccc;
+  color: var(--glass-ink-2);
 `;
 
 const ErrorDetails = styled.pre`
-  background-color: #1a1a1d;
+  background-color: var(--glass-surface-solid);
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: 12px;
   max-width: 800px;
   overflow-x: auto;
   font-size: 12px;
-  color: #ff6b6b;
+  color: var(--glass-bad-ink);
   margin-bottom: 1.5rem;
 `;
 
 const RetryButton = styled.button`
   padding: 0.75rem 1.5rem;
-  background-color: #7b68ee;
-  color: white;
+  background-color: var(--glass-ink);
+  color: var(--glass-on-ink);
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 16px;
   cursor: pointer;
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: #6a59d1;
+    background-color: var(--glass-ink-2);
   }
 
   &:focus {
-    outline: 2px solid #7b68ee;
+    outline: 2px solid var(--glass-accent);
     outline-offset: 2px;
   }
 `;

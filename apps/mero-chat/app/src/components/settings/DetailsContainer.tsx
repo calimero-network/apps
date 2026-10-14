@@ -19,24 +19,24 @@ const ChannelHeader = styled.div`
   gap: 0.5rem;
   margin-bottom: 1.25rem;
   padding-bottom: 0.875rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
 `;
 
 const ChannelIconWrap = styled.div`
   width: 28px;
   height: 28px;
-  border-radius: 7px;
-  background: rgba(165, 255, 17, 0.08);
-  border: 1px solid rgba(165, 255, 17, 0.18);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--glass-accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-accent) 18%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #a5ff11;
+  color: var(--glass-accent);
 `;
 
 const ChannelTitle = styled.h2`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 14px;
   font-weight: 600;
   margin: 0;

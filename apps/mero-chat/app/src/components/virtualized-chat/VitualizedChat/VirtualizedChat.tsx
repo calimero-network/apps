@@ -19,29 +19,29 @@ import {
 import { VIRTUOSO_CONFIGS } from "./utils/virtuosoConfig";
 
 const VirtuosoWrapper = styled.div`
-  scrollbar-color: black transparent;
+  scrollbar-color: var(--glass-line-strong) transparent;
   ::-webkit-scrollbar {
     width: 6px;
   }
   ::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
+    background-color: var(--glass-line-strong);
+    border-radius: 10px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background-color: black;
+    background-color: var(--glass-line-strong);
   }
   * {
-    scrollbar-color: black transparent;
+    scrollbar-color: var(--glass-line-strong) transparent;
   }
   html::-webkit-scrollbar {
     width: 12px;
   }
   html::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
+    background-color: var(--glass-line-strong);
+    border-radius: 10px;
   }
   html::-webkit-scrollbar-thumb:hover {
-    background-color: black;
+    background-color: var(--glass-line-strong);
   }
 `;
 

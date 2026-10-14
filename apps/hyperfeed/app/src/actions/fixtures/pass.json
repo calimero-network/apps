@@ -1,0 +1,97 @@
+[
+  {
+    "id": "read",
+    "label": "See the vault",
+    "description": "Members, devices, the audit trail and the vault's name. No secret values.",
+    "category": "",
+    "writes": false,
+    "methods": [
+      "get_audit_logs",
+      "key_wraps_for",
+      "list_devices",
+      "list_members",
+      "vault_info",
+      "vault_name",
+      "wrapped_pairs"
+    ]
+  },
+  {
+    "id": "secrets",
+    "label": "Read secrets",
+    "description": "Passwords and other secrets, and their past values.",
+    "category": "secret",
+    "writes": false,
+    "methods": [
+      "get_secret",
+      "secret_history",
+      "list_secrets"
+    ]
+  },
+  {
+    "id": "write",
+    "label": "Add and edit secrets",
+    "description": "Save a new secret, or change one.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "add_secret",
+      "update_secret"
+    ]
+  },
+  {
+    "id": "trash",
+    "label": "Trash and restore secrets",
+    "description": "Move a secret to the trash, or bring it back.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "trash_secret",
+      "restore_secret"
+    ]
+  },
+  {
+    "id": "purge",
+    "label": "Delete secrets for good",
+    "description": "Removes a trashed secret and its history. It can't be undone.",
+    "category": "delete",
+    "writes": true,
+    "methods": [
+      "purge_secret"
+    ]
+  },
+  {
+    "id": "devices",
+    "label": "Give devices access",
+    "description": "Register a device, hand it the vault key, or revoke one.",
+    "category": "invite",
+    "writes": true,
+    "methods": [
+      "register_device",
+      "add_key_wraps",
+      "revoke_device"
+    ]
+  },
+  {
+    "id": "members",
+    "label": "Change members and roles",
+    "description": "Give someone a role, remove a member, or set the role newcomers get.",
+    "category": "invite",
+    "writes": true,
+    "methods": [
+      "set_role",
+      "remove_member",
+      "set_default_role"
+    ]
+  },
+  {
+    "id": "vault",
+    "label": "Rename the vault and rotate its key",
+    "description": "The vault's name, and which key new writes use.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "rename_vault",
+      "rotate_key"
+    ]
+  }
+]

@@ -16,23 +16,23 @@ const UserListItem = styled.div<{
   display: flex;
   justify-content: ${(props) => (props.$isCollapsed ? "center" : "space-between")};
   align-items: center;
-  padding: 0.35rem ${(props) => (props.$isCollapsed ? "0" : "0.625rem")};
-  border-radius: 7px;
+  padding: 0.4rem ${(props) => (props.$isCollapsed ? "0" : "0.625rem")};
+  border-radius: 11px;
   cursor: pointer;
-  margin-bottom: 1px;
+  margin-bottom: 2px;
   transition: all 0.12s ease;
   position: relative;
-  border-left: 2px solid ${(props) => (props.$selected ? "#a5ff11" : "transparent")};
 
-  background: ${(props) => (props.$selected ? "rgba(165,255,17,0.07)" : "transparent")};
+  background: ${(props) => (props.$selected ? "var(--chat-card)" : "transparent")};
+  box-shadow: ${(props) => (props.$selected ? "var(--chat-card-shadow)" : "none")};
   color: ${(props) =>
-    props.$selected ? "#fff" : props.$hasUnread ? "#d8d8e0" : "#5e5e6e"};
-  font-weight: ${(props) => (props.$hasUnread && !props.$selected ? "600" : "400")};
+    props.$selected ? "var(--glass-ink)" : props.$hasUnread ? "var(--glass-ink)" : "var(--glass-ink-2)"};
+  font-weight: ${(props) => (props.$selected || props.$hasUnread ? "700" : "400")};
 
   &:hover {
-    background: rgba(255, 255, 255, 0.05) !important;
-    color: #d0d0d8 !important;
-    border-left-color: ${(props) => (props.$selected ? "#a5ff11" : "rgba(165,255,17,0.3)")} !important;
+    background: ${(props) =>
+      props.$selected ? "var(--chat-card)" : "color-mix(in srgb, var(--glass-ink) 5%, transparent)"} !important;
+    color: var(--glass-ink) !important;
   }
 `;
 
@@ -45,8 +45,8 @@ const UserInfoContainer = styled.div`
 `;
 
 const NameContainer = styled.div`
-  font-size: 13.5px;
-  font-weight: 400;
+  font-size: 14px;
+  font-weight: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -71,8 +71,8 @@ const OnlineDot = styled.span<{ $online: boolean }>`
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: ${({ $online }) => ($online ? "#a5ff11" : "rgba(255,255,255,0.22)")};
-  border: 1.5px solid #0e0e10;
+  background: ${({ $online }) => ($online ? "#22c55e" : "color-mix(in srgb, var(--glass-ink) 22%, transparent)")};
+  border: 1.5px solid var(--glass-surface-solid);
   pointer-events: none;
 `;
 
@@ -82,13 +82,13 @@ const UnreadBadge = styled.span<{ $isMention?: boolean }>`
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  font-size: 10px;
-  font-weight: 600;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
   flex-shrink: 0;
-  background: ${({ $isMention }) => ($isMention ? "#a5ff11" : "rgba(255,255,255,0.18)")};
-  color: ${({ $isMention }) => ($isMention ? "#0e0e10" : "#fff")};
+  background: ${({ $isMention }) => ($isMention ? "var(--glass-ink)" : "color-mix(in srgb, var(--glass-ink) 18%, transparent)")};
+  color: ${({ $isMention }) => ($isMention ? "var(--glass-on-ink)" : "var(--glass-ink)")};
 `;
 
 interface UserItemProps {

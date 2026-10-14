@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DemoBackend, NO_ASK } from "./demo";
+import { send } from "./useFeed";
 import { replySubject, subjectKey } from "./subject";
 import type { ActionInput, Ask, NotificationInput } from "./generated/HyperfeedClient";
 
@@ -30,6 +31,7 @@ function action(app: string, outcome: string, extra: Partial<ActionInput> = {}):
     ask: NO_ASK,
     grant: "",
     subject: "",
+    send_call: "",
     ...extra,
   };
 }
@@ -402,5 +404,138 @@ describe("one thread per task", () => {
     expect(replySubject("issue-tracker", "ctx", JSON.stringify({ method: "add_comment", args: { issue_id: "i-1" } }))).toBe("issue-tracker:ctx:i-1");
     expect(replySubject("chat", "ctx", JSON.stringify({ method: "send_message", args: { message: "=answer" } }))).toBe("chat:ctx");
     expect(replySubject("chat", "ctx", "")).toBe("");
+  });
+});
+
+describe("drafts you send, and agent accounts", () => {
+  const draft = (extra: Partial<ActionInput> = {}) =>
+    action("chat", "proposed", {
+      title: "Reply to Maya",
+      ask: { kind: "reply", prompt: "Send this?", options: [], draft: "Numbers are in the sheet." },
+      send_call: JSON.stringify({ method: "send_message", args: { message: "=answer" } }),
+      ...extra,
+    });
+
+  it("approving a draft sends it as you, with your edit, and reports it", async () => {
+    const b = fresh();
+    await b.setPolicy("chat", "read", "feed");
+    const item = await b.recordAction(draft());
+    expect(item.reply_call).toContain("send_message");
+    expect(item.undoable).toBe(false);
+    const approved = await b.resolveAction(item.id, "approve", "Sent you the numbers.");
+    await send(b, approved, "Sent you the numbers.");
+    expect(b.sent.at(-1)).toEqual({ contextId: "ctx", method: "send_message", args: { message: "Sent you the numbers." } });
+    expect((await b.chain(item.chain)).at(-1)?.status).toBe("done");
+  });
+
+  it("a refused send goes back to you as failed", async () => {
+    const b = fresh();
+    const item = await b.recordAction(draft());
+    const approved = await b.resolveAction(item.id, "approve", "Numbers are in the sheet.");
+    vi.spyOn(b, "callApp").mockRejectedValueOnce(new Error("you are not in this channel"));
+    await expect(send(b, approved, "Numbers are in the sheet.")).rejects.toThrow("not in this channel");
+    expect((await b.chain(item.chain)).at(-1)?.status).toBe("failed");
+  });
+
+  it("refuses a send call that is not a call, or not on a proposal", async () => {
+    const b = fresh();
+    await expect(b.recordAction(draft({ send_call: "not json" }))).rejects.toThrow("not JSON");
+    await expect(b.recordAction(draft({ send_call: '{"args":{}}' }))).rejects.toThrow("names no method");
+    await expect(b.recordAction(draft({ outcome: "done", ask: NO_ASK }))).rejects.toThrow("belongs on a proposal");
+  });
+
+  it("adds and removes agent accounts, one name each", async () => {
+    const b = fresh();
+    await b.addAgentAccount("acc-1", "cloud");
+    await expect(b.addAgentAccount("acc-2", "cloud")).rejects.toThrow("already the name");
+    expect((await b.settings()).agent_accounts).toEqual([expect.objectContaining({ account: "acc-1", name: "cloud" })]);
+    await b.removeAgentAccount("acc-1");
+    expect((await b.settings()).agent_accounts).toEqual([]);
+  });
+});
+
+describe("DemoBackend follows approved actions, as the contract does", () => {
+  const def = (id: string, label: string, category: string, writes: boolean, methods: string[]) => ({
+    id, label, description: "", category, writes, methods,
+  });
+  const chat = [
+    def("read", "Read messages", "", false, ["get_messages", "search"]),
+    def("send", "Send messages", "", true, ["send_message", "reply"]),
+    def("edit", "Edit your messages", "", true, ["edit_message"]),
+    def("delete", "Delete your messages", "delete", true, ["delete_message"]),
+  ];
+  const approved = async (b: DemoBackend, version = "app-1", actions = chat) => {
+    await b.proposeActions("chat", version, actions, "Chat");
+    await b.decideActions("chat", version, "approve");
+  };
+
+  it("lets approved actions decide what a call is", async () => {
+    const b = fresh();
+    await b.setPolicy("chat", "act", "feed");
+    expect(b.verdict("chat", "", true, "delete_message").decision).toBe("act");
+    await b.proposeActions("chat", "app-1", chat, "Chat");
+    expect(b.verdict("chat", "", true, "delete_message").decision).toBe("act");
+    await b.decideActions("chat", "app-1", "approve");
+    expect(b.verdict("chat", "", true, "delete_message").reason).toContain('"delete"');
+    expect(b.verdict("chat", "new_contact", true, "send_message").decision).toBe("ask");
+    expect(b.verdict("chat", "", true, "send_message").decision).toBe("act");
+    expect(b.verdict("chat", "", true, "search").decision).toBe("act");
+    expect(b.verdict("chat", "", false, "drop_channel").reason).toContain("isn't one of chat's actions");
+    expect(b.verdict("chat", "", true).decision).toBe("act");
+
+    const undescribed = await b.recordAction(action("chat", "done", { method: "drop_channel" }));
+    expect(undescribed.breach).toMatch(/^acted without asking/);
+    const deleted = await b.recordAction(action("chat", "done", { method: "delete_message" }));
+    expect(deleted.category).toBe("delete");
+  });
+
+  it("sets each action apart from its app, under the guards", async () => {
+    const b = fresh();
+    await approved(b);
+    await b.setActionMode("chat", "edit", "act");
+    expect(b.verdict("chat", "", true, "edit_message").reason).toContain("Edit your messages");
+    expect(b.verdict("chat", "", true, "send_message").decision).toBe("ask");
+    await b.setActionMode("chat", "delete", "act");
+    expect(b.verdict("chat", "", true, "delete_message").decision).toBe("ask");
+    await b.setActionMode("chat", "send", "off");
+    await expect(b.recordAction(action("chat", "proposed"))).rejects.toThrow(/you turned off/);
+    await b.setActionMode("chat", "send", "");
+    expect((await b.settings()).action_modes).toEqual([
+      { app: "chat", action: "delete", mode: "act" },
+      { app: "chat", action: "edit", mode: "act" },
+    ]);
+  });
+
+  it("keeps the newest approved actions in force while new ones wait", async () => {
+    const b = fresh();
+    await b.setPolicy("chat", "act", "feed");
+    await approved(b);
+    await b.proposeActions("chat", "app-2", chat.slice(0, 3), "v2");
+    expect(b.verdict("chat", "", true, "delete_message").reason).toContain('"delete"');
+    await b.decideActions("chat", "app-2", "approve");
+    expect(b.verdict("chat", "", true, "delete_message").reason).toContain("isn't one of chat's actions");
+    expect((await b.actionSets()).map((s) => s.application_id)).toEqual(["app-2", "app-1"]);
+  });
+
+  it("holds a session grant to one action", async () => {
+    const b = fresh();
+    await approved(b);
+    const proposal = await b.recordAction(action("chat", "proposed", { ask: ask("choose", ["Allow once", "Allow for this session"]) }));
+    await b.resolveAction(proposal.id, "approve", "Allow for this session");
+    const reply = await b.recordAction(action("chat", "done", { method: "reply", grant: proposal.id }));
+    expect(reply.breach).toBe("");
+    const edit = await b.recordAction(action("chat", "done", { method: "edit_message", grant: proposal.id }));
+    expect(edit.breach).not.toBe("");
+  });
+});
+
+describe("DemoBackend lets a guard cover reads, as the contract does", () => {
+  it("asks before reading a secret once that guard is on", async () => {
+    const b = fresh();
+    await b.setPolicy("pass", "act", "feed");
+    expect(b.verdict("pass", "secret", false).decision).toBe("act");
+    await b.setGuard("secret", true);
+    expect(b.verdict("pass", "secret", false).reason).toContain('"secret"');
+    expect(b.verdict("pass", "", false).decision).toBe("act");
   });
 });

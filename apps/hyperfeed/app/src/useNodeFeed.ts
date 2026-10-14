@@ -5,6 +5,7 @@ import { HyperfeedClient, type LensView } from "./generated/HyperfeedClient";
 import { nodeBackend, type FeedBackend } from "./backend";
 import type { BlobStore } from "./attachments";
 import { appKeyForPackage, REGISTRY } from "./apps";
+import { refusalMessage } from "./refused";
 import { BUILT_IN, decodePayload, toNotifications, type RawEvent, type SourceContext, type StateMutation } from "./collector";
 import { parseLens, type LensHost, type LensSpec } from "./lens/lens";
 import { nodeLensHosts, type NodeAdmin } from "./nodeHost";
@@ -191,7 +192,11 @@ export function useNodeFeed(contextId: string): NodeFeed {
       if (!admin) throw new Error("This session can't install apps.");
       const [version] = await admin.getRegistryVersions(REGISTRY, pkg);
       if (!version) throw new Error(`Nothing is published for ${pkg}.`);
-      await admin.installApplication({ package: pkg, version });
+      try {
+        await admin.installApplication({ package: pkg, version });
+      } catch (e) {
+        throw new Error(refusalMessage(e, "install apps"));
+      }
       setListed((n) => n + 1);
     },
     [admin],

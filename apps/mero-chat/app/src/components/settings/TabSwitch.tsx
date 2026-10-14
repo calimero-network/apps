@@ -10,7 +10,7 @@ interface TabSwitchProps {
 const TabBar = styled.div`
   display: flex;
   align-items: flex-end;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
   margin-bottom: 1rem;
   gap: 0.25rem;
 `;
@@ -22,7 +22,7 @@ const SwitchOption = styled.button<{ $selected?: boolean }>`
   cursor: pointer;
   font-size: 0.8rem;
   font-weight: ${({ $selected }) => ($selected ? "600" : "400")};
-  color: ${({ $selected }) => ($selected ? "#a5ff11" : "rgba(255,255,255,0.45)")};
+  color: ${({ $selected }) => ($selected ? "var(--glass-accent)" : "color-mix(in srgb, var(--glass-ink) 45%, transparent)")};
   position: relative;
   transition: color 0.15s ease;
   white-space: nowrap;
@@ -35,12 +35,12 @@ const SwitchOption = styled.button<{ $selected?: boolean }>`
     right: 0;
     height: 2px;
     border-radius: 1px 1px 0 0;
-    background: ${({ $selected }) => ($selected ? "#a5ff11" : "transparent")};
+    background: ${({ $selected }) => ($selected ? "var(--glass-ink)" : "transparent")};
     transition: background 0.15s ease;
   }
 
   &:hover {
-    color: ${({ $selected }) => ($selected ? "#a5ff11" : "rgba(255,255,255,0.7)")};
+    color: ${({ $selected }) => ($selected ? "var(--glass-accent)" : "color-mix(in srgb, var(--glass-ink) 70%, transparent)")};
   }
 `;
 

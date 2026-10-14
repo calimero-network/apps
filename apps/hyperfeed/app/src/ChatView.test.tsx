@@ -184,6 +184,7 @@ describe("chat with your agent", () => {
       ask: { kind: "choose", prompt: "Run it?", options: ["Allow once", "Allow for this session"], draft: "" },
       grant: "",
       subject: "",
+      send_call: "",
     });
     render(<Harness backend={backend} />);
     // The chat stays listed, and says it waits on you.
@@ -201,6 +202,71 @@ describe("chat with your agent", () => {
     const [after] = (await backend.chain(q.chain)).filter((i) => i.id === asked.id);
     expect(after!.status).toBe("approved");
     await waitFor(() => expect(within(thread()).queryByRole("group", { name: "Run it?" })).not.toBeInTheDocument());
+  });
+
+  it("shows the message a write would send on its approval card, before you approve it", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Tell Xabi about the startups");
+    backend.agentAck(q.id);
+    // As mero-bot proposes a write in an app: the call's arguments are the body.
+    await backend.recordAction({
+      app: "chat",
+      source_context: "ctx-xabi",
+      source_label: "ctx-xabi",
+      method: "send_message",
+      category: "",
+      writes: true,
+      undoable: false,
+      title: "Send a message in Chat",
+      body: "message: <p>Which of chutes, opengradient, venice, ironclaw is worth a closer look?</p>",
+      why: "Ask mode is on for Chat. Waiting in mero-bot to run it.",
+      outcome: "proposed",
+      intent_hash: "",
+      executor: "",
+      note: "",
+      chain: q.chain,
+      ask: { kind: "", prompt: "", options: [], draft: "" },
+      grant: "",
+      subject: "",
+      send_call: "",
+    });
+    render(<Harness backend={backend} start={q.chain} />);
+    const card = await within(await screen.findByRole("log")).findByRole("group", { name: "Waiting for you: Send a message in Chat" });
+    expect(within(card).getByLabelText("What it sends")).toHaveTextContent(/^Which of chutes, opengradient, venice, ironclaw is worth a closer look\?$/);
+    expect(within(card).getByText(/Ask mode is on for Chat/)).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Approve" })).toBeInTheDocument();
+  });
+
+  it("gives a message that reached you in this chat and needs you a card you answer here, not a one-line note", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Ask Xabi about the startups");
+    backend.agentAck(q.id);
+    await backend.recordNotification({
+      key: "ctx-xabi:reply:1",
+      app: "chat",
+      source_context: "ctx-xabi",
+      source_label: "Xabi",
+      from: "Xabi",
+      title: "Sent you a message",
+      body: "🙂",
+      event: "message",
+      needs_you: true,
+      chain: q.chain,
+      ask: { kind: "reply", prompt: "Reply to Xabi", options: [], draft: "" },
+      item_type: "",
+      fields: "",
+      reply_call: "",
+    });
+    render(<Harness backend={backend} start={q.chain} />);
+    const card = await within(await screen.findByRole("log")).findByRole("group", { name: /^Waiting for you: Xabi/ });
+    expect(within(card).getByLabelText("Message")).toHaveTextContent("🙂");
+    fireEvent.change(within(card).getByLabelText("Reply to Xabi"), { target: { value: "Why did the startup cross the road?" } });
+    await act(async () => {
+      fireEvent.click(within(card).getByRole("button", { name: "Send" }));
+    });
+    const [after] = (await backend.chain(q.chain)).filter((i) => i.kind === "notification");
+    expect(after!.status).toBe("answered");
+    await waitFor(() => expect(within(thread()).queryByRole("group", { name: /^Waiting for you: Xabi/ })).not.toBeInTheDocument());
   });
 
   it("retires an older question when your agent asks a newer one", async () => {
