@@ -3,23 +3,33 @@
 import { blockDef, HOTBAR } from "../engine/blocks";
 
 const css = `
-#mb-hud { position: fixed; inset: 0; pointer-events: none; color: #fff; z-index: 10; }
+/* DOM HUD over the world: small smoked-glass panels (dark --glass-* tokens, see
+   index.html). Sizes and positions are unchanged — only fills, edges, radii and
+   type moved. The crosshair and hint sit on the world itself and stay as they were. */
+#mb-hud { position: fixed; inset: 0; pointer-events: none; color: var(--glass-ink); z-index: 10;
+  font-family: var(--glass-font); }
 #mb-crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   font-size: 20px; opacity: 0.85; text-shadow: 0 0 3px #000; }
 #mb-hotbar { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
   display: flex; gap: 5px; }
-.mb-slot { width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.35);
-  border-radius: 6px; background: rgba(0,0,0,0.35); display: flex; align-items: center;
+.mb-slot { width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.22);
+  border-radius: 12px; background: var(--glass-surface); display: flex; align-items: center;
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
   justify-content: center; flex-direction: column; font-size: 9px; }
-.mb-slot.sel { border-color: #fff; background: rgba(255,255,255,0.18); }
-.mb-swatch { width: 22px; height: 22px; border-radius: 3px; margin-bottom: 2px; }
+.mb-slot.sel { border-color: var(--glass-tint); background: rgba(255,255,255,0.18); }
+.mb-swatch { width: 22px; height: 22px; border-radius: 5px; margin-bottom: 2px; }
 #mb-debug { position: absolute; top: 10px; left: 10px; font: 11px/1.5 monospace;
-  background: rgba(0,0,0,0.45); padding: 6px 10px; border-radius: 6px; white-space: pre; }
-#mb-players { position: absolute; top: 10px; right: 10px; font: 12px/1.6 system-ui;
-  background: rgba(0,0,0,0.45); padding: 6px 12px; border-radius: 6px; min-width: 120px; }
+  background: var(--glass-surface); padding: 6px 10px; border-radius: 12px; white-space: pre;
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong); }
+#mb-players { position: absolute; top: 10px; right: 10px; font: 12px/1.6 var(--glass-font);
+  background: var(--glass-surface); padding: 6px 12px; border-radius: 12px; min-width: 120px;
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong); }
 #mb-toasts { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column; gap: 4px; align-items: center; }
-.mb-toast { background: rgba(0,0,0,0.65); padding: 5px 14px; border-radius: 14px;
+.mb-toast { background: var(--glass-surface-solid); padding: 5px 14px; border-radius: 999px;
+  box-shadow: var(--glass-shadow-float);
   font-size: 13px; animation: mbfade 4s forwards; }
 @keyframes mbfade { 0%,80% { opacity: 1; } 100% { opacity: 0; } }
 #mb-hint { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);

@@ -6,31 +6,34 @@ import { AIR, blockDef, HOTBAR } from "../engine/blocks";
 import { WORLD_SX, WORLD_SY, WORLD_SZ, WorldStore } from "../engine/world";
 
 const css = `
+/* Smoked glass (dark --glass-* tokens, see index.html). The overlay dims the
+   game; the panel floating on it is a dialog, so it is SOLID, never frosted. */
 .mbo-overlay { position: fixed; inset: 0; z-index: 15; display: flex; align-items: center;
-  justify-content: center; background: rgba(5,8,12,0.62); color: #fff;
-  font-family: system-ui, -apple-system, sans-serif; }
-.mbo-panel { background: #131a26; border: 1px solid rgba(255,255,255,0.14); border-radius: 14px;
+  justify-content: center; background: rgba(5,7,14,0.6); color: var(--glass-ink);
+  font-family: var(--glass-font); -webkit-font-smoothing: antialiased; }
+.mbo-panel { background: var(--glass-surface-solid); border: 1px solid var(--glass-line-strong);
+  border-radius: var(--glass-radius-lg); box-shadow: var(--glass-shadow-float);
   padding: 22px 26px; min-width: 320px; max-width: 92vw; max-height: 88vh; overflow-y: auto; }
-.mbo-panel h3 { margin: 0 0 14px; font-size: 16px; }
+.mbo-panel h3 { margin: 0 0 14px; font-size: 16px; font-weight: 700; }
 .mbo-keys { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; font-size: 13px;
-  color: #b8c6d6; margin-bottom: 18px; align-items: center; }
-.mbo-keys kbd { background: rgba(255,255,255,0.12); border-radius: 4px; padding: 2px 8px;
-  font-size: 11px; font-family: monospace; justify-self: start; white-space: nowrap; }
+  color: var(--glass-ink-2); margin-bottom: 18px; align-items: center; }
+.mbo-keys kbd { background: var(--glass-sunken); border: 1px solid var(--glass-line); border-radius: 6px; padding: 2px 8px;
+  font-size: 11px; font-family: monospace; justify-self: start; white-space: nowrap; color: var(--glass-ink); }
 .mbo-row { display: flex; align-items: center; gap: 12px; margin: 14px 0; font-size: 13px;
-  color: #b8c6d6; }
-.mbo-row input[type=range] { flex: 1; }
-.mbo-btn { width: 100%; margin-top: 10px; padding: 11px; border-radius: 9px; border: none;
-  font-size: 14px; font-weight: 600; cursor: pointer; }
-.mbo-btn.primary { background: #4f8cff; color: #fff; }
-.mbo-btn.ghost { background: rgba(255,255,255,0.1); color: #fff; }
-.mbo-btn.danger { background: rgba(214,86,86,0.22); color: #ffb3b3; }
-.mbo-btn:hover { filter: brightness(1.15); }
+  color: var(--glass-ink-2); }
+.mbo-row input[type=range] { flex: 1; accent-color: var(--glass-tint); }
+.mbo-btn { width: 100%; margin-top: 10px; padding: 11px; border-radius: 999px; border: none;
+  font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.mbo-btn.primary { background: var(--glass-ink); color: var(--glass-on-ink); }
+.mbo-btn.ghost { background: var(--glass-sunken); color: var(--glass-ink); box-shadow: inset 0 0 0 1px var(--glass-line-strong); }
+.mbo-btn.danger { background: var(--glass-bad-bg); color: var(--glass-bad-ink); }
+.mbo-btn:hover { filter: brightness(1.12); }
 .mbo-title { text-align: center; }
-.mbo-map-wrap { position: relative; line-height: 0; border: 1px solid rgba(255,255,255,0.18);
-  border-radius: 8px; overflow: hidden; }
+.mbo-map-wrap { position: relative; line-height: 0; border: 1px solid var(--glass-line-strong);
+  border-radius: 12px; overflow: hidden; }
 .mbo-map-wrap canvas { display: block; }
 .mbo-map-wrap canvas + canvas { position: absolute; inset: 0; }
-.mbo-note { font-size: 11px; color: #8fa3ba; margin-top: 10px; }
+.mbo-note { font-size: 11px; color: var(--glass-muted); margin-top: 10px; }
 `;
 
 let styleInjected = false;

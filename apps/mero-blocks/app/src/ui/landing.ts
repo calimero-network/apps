@@ -63,8 +63,14 @@ export interface CloudReturn {
 export type ConnectTab = "node" | "cloud";
 
 const css = `
+/* Chrome in the fleet's glass, SMOKED: <html data-glass-theme="dark"> (index.html)
+   switches the --glass-* tokens to their dark values. The launcher floats over
+   a live panorama of the world, and the title, tagline and controls line sit on
+   it directly in white, so the frame stays dark. The panorama, the logo and the
+   world thumbnails are content and keep their own colours. */
 #mb-landing { position: fixed; inset: 0; overflow-y: auto; z-index: 20;
-  background: #0b0e14; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
+  background: var(--glass-ground); color: var(--glass-ink); font-family: var(--glass-font);
+  -webkit-font-smoothing: antialiased; }
 .mbl-shade { position: fixed; inset: 0; z-index: 1; pointer-events: none;
   background: radial-gradient(ellipse at 50% 42%, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.55) 100%); }
 .mbl-wrap { position: relative; z-index: 2; min-height: 100%; box-sizing: border-box;
@@ -75,13 +81,14 @@ const css = `
   letter-spacing: 4px; text-transform: uppercase; line-height: 1; text-align: center;
   color: #fff; text-shadow: 0 4px 0 rgba(0,0,0,0.45), 0 0 28px rgba(0,0,0,0.5); }
 .mbl-title em { font-style: normal; color: #58c56b; }
-.mbl-tag { margin: 0; font-size: 13px; color: #cfe3d6; letter-spacing: 1px;
+.mbl-tag { margin: 0; font-size: 13px; color: var(--glass-ink-2); letter-spacing: 1px;
   text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
 .mbl-card { width: min(380px, 94vw); box-sizing: border-box; margin-top: 10px;
-  background: rgba(8,10,14,0.78); border: 1px solid rgba(255,255,255,0.16);
-  border-radius: 10px; padding: 18px 20px 20px; backdrop-filter: blur(3px);
-  box-shadow: 0 12px 44px rgba(0,0,0,0.55); }
-.mbl-card h3 { margin: 0 0 10px; font-size: 15px; text-align: center; }
+  background: var(--glass-surface); border: 1px solid var(--glass-line-strong);
+  border-radius: var(--glass-radius-lg); padding: 18px 20px 20px;
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), var(--glass-shadow); }
+.mbl-card h3 { margin: 0 0 10px; font-size: 15px; font-weight: 700; text-align: center; }
 /* The way back out to the marketing page.
    ⚠️ Its own row BELOW the card, centred, and a bordered button rather than
    a link. The first version was an 11px grey link tucked inside the card next
@@ -93,34 +100,37 @@ const css = `
 .mbl-backrow { width: min(380px, 94vw); box-sizing: border-box; margin-top: 0;
   text-align: center; }
 .mbl-back { display: inline-flex; align-items: center; gap: 7px;
-  padding: 7px 13px 7px 11px; border-radius: 6px; cursor: pointer; font-family: inherit;
-  font-size: 12px; font-weight: 600; color: #dfe7ee;
-  background: rgba(8,10,14,0.72); border: 1px solid rgba(255,255,255,0.22);
-  backdrop-filter: blur(3px); box-shadow: 0 4px 16px rgba(0,0,0,0.45); }
-.mbl-back:hover { color: #fff; background: rgba(30,38,50,0.85); border-color: rgba(255,255,255,0.4); }
+  padding: 7px 13px 7px 11px; border-radius: 999px; cursor: pointer; font-family: inherit;
+  font-size: 12px; font-weight: 600; color: var(--glass-ink);
+  background: var(--glass-surface); border: 1px solid var(--glass-line-strong);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow); }
+.mbl-back:hover { color: var(--glass-ink); background: var(--glass-surface-solid); border-color: rgba(255,255,255,0.28); }
 .mbl-back span { font-size: 14px; line-height: 1; }
 .mbl-card label, .mbl-modal label { display: block; text-align: left; font-size: 11px;
-  color: #9fb0c3; margin: 10px 0 4px; }
+  color: var(--glass-muted); margin: 10px 0 4px; }
 .mbl-card input, .mbl-modal input { width: 100%; box-sizing: border-box; padding: 9px 11px;
-  border-radius: 6px; border: 1px solid rgba(255,255,255,0.22); background: rgba(0,0,0,0.45);
-  color: #fff; font-size: 14px; }
-.mbl-btn { width: 100%; margin-top: 12px; padding: 12px; border-radius: 5px;
-  border: 2px solid rgba(0,0,0,0.75); font-size: 14px; font-weight: 700; cursor: pointer;
-  color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.45);
-  box-shadow: inset 0 2px 0 rgba(255,255,255,0.22), inset 0 -3px 0 rgba(0,0,0,0.3); }
-.mbl-btn:hover { filter: brightness(1.12); }
-.mbl-btn.green { background: #3f9950; }
-.mbl-btn.primary { background: #4f8cff; }
-.mbl-btn.ghost { background: #6e6e6e; }
-.mbl-link { display: block; margin: 10px auto 0; background: none; border: none; color: #9fb0c3;
-  font-size: 11px; cursor: pointer; text-decoration: underline; }
-.mbl-divider { display: flex; align-items: center; gap: 10px; color: #8fa3ba; font-size: 10px;
+  border-radius: var(--glass-radius-sm); border: 1px solid var(--glass-line-strong); background: var(--glass-sunken);
+  color: var(--glass-ink); font-size: 14px; font-family: inherit; }
+.mbl-card input:focus, .mbl-modal input:focus { outline: none; border-color: var(--glass-accent-solid);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-accent-solid) 30%, transparent); }
+.mbl-btn { width: 100%; margin-top: 12px; padding: 12px; border-radius: 999px;
+  border: 2px solid transparent; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
+  color: var(--glass-on-ink); box-shadow: 0 10px 24px -12px rgba(0,0,0,0.7); }
+.mbl-btn:hover { filter: brightness(1.08); }
+.mbl-btn.green { background: var(--glass-ink); color: var(--glass-on-ink); }
+.mbl-btn.primary { background: var(--glass-accent-solid); color: #fff; }
+.mbl-btn.ghost { background: var(--glass-sunken); color: var(--glass-ink);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong); }
+.mbl-link { display: block; margin: 10px auto 0; background: none; border: none; color: var(--glass-muted);
+  font-size: 11px; cursor: pointer; text-decoration: underline; font-family: inherit; }
+.mbl-divider { display: flex; align-items: center; gap: 10px; color: var(--glass-muted); font-size: 10px;
   margin-top: 16px; text-transform: uppercase; letter-spacing: 1px; }
-.mbl-divider::before, .mbl-divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.16); }
+.mbl-divider::before, .mbl-divider::after { content: ""; flex: 1; height: 1px; background: var(--glass-line-strong); }
 .mbl-worlds { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 260px;
   overflow-y: auto; }
-.mbl-world-card { position: relative; height: 78px; border-radius: 8px; overflow: hidden; flex: none;
-  border: 1px solid rgba(255,255,255,0.16); background: #0d1117; }
+.mbl-world-card { position: relative; height: 78px; border-radius: var(--glass-radius); overflow: hidden; flex: none;
+  border: 1px solid var(--glass-line-strong); background: var(--glass-surface-solid); }
 .mbl-world-card > canvas { position: absolute; inset: 0; width: 100%; height: 100%;
   filter: blur(2.5px); transform: scale(1.12); image-rendering: pixelated; }
 .mbl-card-scrim { position: absolute; inset: 0;
@@ -128,66 +138,66 @@ const css = `
 .mbl-card-body { position: relative; z-index: 1; height: 100%; box-sizing: border-box;
   display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
 .mbl-card-info { min-width: 0; text-align: left; }
-.mbl-card-title { font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+.mbl-card-title { font-size: 13px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mbl-card-info code { display: block; font-size: 10px; color: #b9c6d4; margin-top: 3px;
+.mbl-card-info code { display: block; font-size: 10px; color: var(--glass-ink-2); margin-top: 3px;
   max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mbl-card-tag { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: #8fe0a0;
+.mbl-card-tag { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--glass-good-ink);
   margin-top: 3px; }
 .mbl-card-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; flex: none; }
-.mbl-card-actions .mbl-join { padding: 8px 16px; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
-  background: #3f9950; color: #fff; font-weight: 700; cursor: pointer; }
-.mbl-card-actions .mbl-join.enter { background: #4f8cff; }
-.mbl-card-actions .mbl-join:disabled { background: #4a4f57; cursor: default; opacity: 0.7; }
-.mbl-kebab { width: 30px; padding: 8px 0; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
-  background: rgba(0,0,0,0.55); color: #fff; font-weight: 700; cursor: pointer; line-height: 1; }
+.mbl-card-actions .mbl-join { padding: 8px 16px; border-radius: 999px; border: 2px solid transparent;
+  background: var(--glass-ink); color: var(--glass-on-ink); font-weight: 700; cursor: pointer; font-family: inherit; }
+.mbl-card-actions .mbl-join.enter { background: var(--glass-accent-solid); color: #fff; }
+.mbl-card-actions .mbl-join:disabled { background: var(--glass-surface-solid); color: var(--glass-muted); cursor: default; opacity: 0.7; }
+.mbl-kebab { width: 30px; padding: 8px 0; border-radius: 999px; border: 2px solid var(--glass-line-strong);
+  background: var(--glass-surface-solid); color: var(--glass-ink); font-weight: 700; cursor: pointer; line-height: 1; }
 .mbl-card-menu { position: absolute; right: 46px; top: 6px; z-index: 3; min-width: 150px;
-  background: #131a26; border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.6); display: flex; flex-direction: column; overflow: hidden; }
+  background: var(--glass-surface-solid); border: 1px solid var(--glass-line-strong); border-radius: 14px;
+  box-shadow: var(--glass-shadow-float); display: flex; flex-direction: column; overflow: hidden; }
 .mbl-card-menu[hidden] { display: none; }
-.mbl-card-menu button { background: none; border: none; color: #dfe7ee; padding: 9px 12px;
-  text-align: left; font-size: 12px; cursor: pointer; }
-.mbl-card-menu button:hover { background: rgba(255,255,255,0.08); }
+.mbl-card-menu button { background: none; border: none; color: var(--glass-ink-2); padding: 9px 12px;
+  text-align: left; font-size: 12px; cursor: pointer; font-family: inherit; }
+.mbl-card-menu button:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 .mbl-row2 { display: flex; gap: 8px; }
 .mbl-row2 .mbl-btn { flex: 1; }
-.mbl-world button { padding: 6px 14px; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
-  background: #4f8cff; color: #fff; font-weight: 700; cursor: pointer; }
+.mbl-world button { padding: 6px 14px; border-radius: 999px; border: 2px solid transparent;
+  background: var(--glass-accent-solid); color: #fff; font-weight: 700; cursor: pointer; font-family: inherit; }
 .mbl-nodes { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
-.mbl-node-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 6px;
-  background: rgba(0,0,0,0.4); border: 1px solid rgba(88,197,107,0.4); }
-.mbl-node-row code { font-size: 12px; color: #cdd9e5; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.mbl-node-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--glass-radius-sm);
+  background: var(--glass-sunken); border: 1px solid color-mix(in srgb, var(--glass-good-ink) 40%, transparent); }
+.mbl-node-row code { font-size: 12px; color: var(--glass-ink-2); flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .mbl-node-row .mbl-dot { width: 8px; height: 8px; border-radius: 50%; background: #58c56b;
   box-shadow: 0 0 6px #58c56b; flex: none; }
-.mbl-node-row button { padding: 6px 14px; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
-  background: #3f9950; color: #fff; font-weight: 700; cursor: pointer; }
-.mbl-modal-shade { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.6);
+.mbl-node-row button { padding: 6px 14px; border-radius: 999px; border: 2px solid transparent;
+  background: var(--glass-ink); color: var(--glass-on-ink); font-weight: 700; cursor: pointer; font-family: inherit; }
+.mbl-modal-shade { position: fixed; inset: 0; z-index: 30; background: rgba(5,7,14,0.6);
   display: flex; align-items: center; justify-content: center; padding: 16px; }
-.mbl-modal { width: min(420px, 94vw); box-sizing: border-box; background: rgba(10,13,18,0.97);
-  border: 1px solid rgba(255,255,255,0.18); border-radius: 10px; padding: 18px 20px 20px;
-  box-shadow: 0 16px 60px rgba(0,0,0,0.7); color: #fff; }
+.mbl-modal { width: min(420px, 94vw); box-sizing: border-box; background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong); border-radius: var(--glass-radius-lg); padding: 18px 20px 20px;
+  box-shadow: var(--glass-shadow-float); color: var(--glass-ink); }
 .mbl-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-.mbl-modal-head h3 { margin: 0; font-size: 15px; }
-.mbl-modal-close { background: none; border: none; color: #9fb0c3; font-size: 18px;
-  cursor: pointer; padding: 2px 6px; line-height: 1; }
-.mbl-modal-close:hover { color: #fff; }
-.mbl-scan { font-size: 12px; color: #9fb0c3; text-align: center; animation: mblpulse 1.2s ease-in-out infinite; }
+.mbl-modal-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.mbl-modal-close { background: none; border: none; color: var(--glass-muted); font-size: 18px;
+  cursor: pointer; padding: 2px 6px; line-height: 1; border-radius: 999px; }
+.mbl-modal-close:hover { color: var(--glass-ink); background: var(--glass-sunken); }
+.mbl-scan { font-size: 12px; color: var(--glass-muted); text-align: center; animation: mblpulse 1.2s ease-in-out infinite; }
 @keyframes mblpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-.mbl-note { font-size: 11px; color: #8fa3ba; margin-top: 10px; line-height: 1.5; text-align: center; }
+.mbl-note { font-size: 11px; color: var(--glass-muted); margin-top: 10px; line-height: 1.5; text-align: center; }
 .mbl-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
-.mbl-tab { flex: 1; padding: 8px 0; border-radius: 6px; cursor: pointer; font-family: inherit;
-  font-size: 12px; font-weight: 700; color: #9fb0c3; background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(255,255,255,0.16); }
-.mbl-tab[aria-selected="true"] { color: #fff; background: rgba(79,140,255,0.28); border-color: rgba(79,140,255,0.7); }
+.mbl-tab { flex: 1; padding: 8px 0; border-radius: 999px; cursor: pointer; font-family: inherit;
+  font-size: 12px; font-weight: 700; color: var(--glass-muted); background: var(--glass-sunken);
+  border: 1px solid var(--glass-line); }
+.mbl-tab[aria-selected="true"] { color: var(--glass-on-ink); background: var(--glass-ink); border-color: var(--glass-ink); }
 .mbl-tabpanel[hidden] { display: none; }
-.mbl-info { font-size: 12px; color: #cfd9e4; line-height: 1.55; margin: 8px 0 0; text-align: left; }
-.mbl-account-note { font-size: 12px; color: #ffd27a; line-height: 1.5; margin: 10px 0 0; text-align: center; }
+.mbl-info { font-size: 12px; color: var(--glass-ink-2); line-height: 1.55; margin: 8px 0 0; text-align: left; }
+.mbl-account-note { font-size: 12px; color: var(--glass-wait-ink); line-height: 1.5; margin: 10px 0 0; text-align: center; }
 .mbl-account-note:empty { display: none; }
-.mbl-error { color: #ff8686; font-size: 12px; margin-top: 8px; min-height: 14px; text-align: center; }
-.mbl-controls { margin-top: 14px; color: #cfd9e4; font-size: 12px; line-height: 2; text-align: center;
+.mbl-error { color: var(--glass-bad-ink); font-size: 12px; margin-top: 8px; min-height: 14px; text-align: center; }
+.mbl-controls { margin-top: 14px; color: var(--glass-ink-2); font-size: 12px; line-height: 2; text-align: center;
   text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
-.mbl-controls kbd { background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.25);
-  border-radius: 4px; padding: 1px 7px; font-size: 11px; font-family: monospace; }
-.mbl-foot { margin-top: 6px; color: #93a2b3; font-size: 10px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+.mbl-controls kbd { background: rgba(11,14,24,0.6); border: 1px solid var(--glass-line-strong);
+  border-radius: 6px; padding: 1px 7px; font-size: 11px; font-family: monospace; }
+.mbl-foot { margin-top: 6px; color: var(--glass-muted); font-size: 10px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
 
 /* Chromeless: the unified landing page (src/pages/landing) has already shown the
    logo, the name and the pitch, so when it hands off here the launcher must not
@@ -680,7 +690,7 @@ export class Landing {
       <div class="mbl-note">Mero Blocks runs on your Calimero node — connect one to play,
         or sign in with your Calimero account (the Cloud tab).
         No node yet? <a href="https://docs.calimero.network/getting-started/" target="_blank"
-        rel="noopener noreferrer" style="color:#8fa3ba">Run one</a>.</div>
+        rel="noopener noreferrer" style="color:var(--glass-ink-2)">Run one</a>.</div>
     `;
     // the anonymous card can never start the game (_done unused): the only
     // exits are the redirects (node auth page, or the wallet), which re-enter
