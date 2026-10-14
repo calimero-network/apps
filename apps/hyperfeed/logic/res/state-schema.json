@@ -167,6 +167,43 @@
         }
       ]
     },
+    "AgentRule": {
+      "kind": "record",
+      "doc": "A standing rule for one agent only (\"Reply in one paragraph\" for your\nphone's agent): it goes into that agent's turns after your general rules,\nwhich every agent keeps. Only you add or remove one; removing keeps the\nrow with `removed`, like [`Rule`].",
+      "fields": [
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The agent's name, as it reports in: \"mero-bot@studio\"."
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "removed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "AgentState": {
       "kind": "record",
       "doc": "The agent's global switch, stored under the single key `\"main\"`.",
@@ -934,6 +971,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Which agent works in each app, by app key. See [`Assignment`]."
+        },
+        {
+          "name": "agent_rules",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AgentRule"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your rules for one agent only, by id. See [`AgentRule`]."
         }
       ]
     },

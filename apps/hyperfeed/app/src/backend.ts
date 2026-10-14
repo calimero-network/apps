@@ -16,6 +16,7 @@ import type {
   PushKeyView,
   RuleProposalView,
   RuleView,
+  AgentRuleView,
   SettingsView,
   WatchView,
   Folder,
@@ -115,6 +116,12 @@ export interface FeedBackend {
   /** Add one of your standing rules: a short line your agent keeps to on every turn. */
   addRule(text: string): Promise<RuleView>;
   removeRule(id: string): Promise<void>;
+  /**
+   * Add a rule for one agent only (its name as it reports in): it keeps it
+   * after your general rules. Only a feed whose settings carry `agent_rules` has it.
+   */
+  addAgentRule?(agent: string, text: string): Promise<AgentRuleView>;
+  removeAgentRule?(id: string): Promise<void>;
   /** Approve a rule your agent suggested: it becomes your own rule. */
   approveRule(id: string): Promise<RuleView>;
   dismissRule(id: string): Promise<RuleProposalView>;
@@ -209,6 +216,8 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
     setAssignment: (app, agent) => client.setAssignment({ app_key: app, agent }),
     addRule: (text) => client.addRule({ text }),
     removeRule: (id) => client.removeRule({ id }),
+    addAgentRule: (agent, text) => client.addAgentRule({ agent, text }),
+    removeAgentRule: (id) => client.removeAgentRule({ id }),
     approveRule: (id) => client.approveRule({ id }),
     dismissRule: (id) => client.dismissRule({ id }),
     archive: (chains, until = 0) => client.archive({ chains, until }),
