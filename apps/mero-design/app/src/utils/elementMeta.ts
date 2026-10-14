@@ -43,6 +43,8 @@ export interface ElementMeta {
   shape?: ShapeKind;
   startBinding?: string;
   endBinding?: string;
+  locked?: boolean;
+  hidden?: boolean;
 }
 
 /** Short wire keys: a label is synced to every peer on every rename. */
@@ -53,6 +55,8 @@ const KEYS = {
   shape: "h",
   startBinding: "f",
   endBinding: "t",
+  locked: "l",
+  hidden: "i",
 } as const satisfies Record<keyof ElementMeta, string>;
 
 const oneOf = <T extends string>(allowed: readonly T[], v: string | null): T | undefined =>
@@ -79,6 +83,10 @@ export function unpackLabel(raw: string | null | undefined): { label: string | n
   if (startBinding) meta.startBinding = startBinding;
   const endBinding = params.get(KEYS.endBinding);
   if (endBinding) meta.endBinding = endBinding;
+  // Flags are written as "1" and read as exactly that: a label written before
+  // they existed, or carrying any other value, reads as unlocked and shown.
+  if (params.get(KEYS.locked) === "1") meta.locked = true;
+  if (params.get(KEYS.hidden) === "1") meta.hidden = true;
   // An element that only carries extras has no visible name — the groups code
   // treats that as null and derives one ("rect", the text, …).
   return { label: visible === "" ? null : visible, meta };
@@ -93,6 +101,8 @@ export function packLabel(label: string | null | undefined, meta: ElementMeta): 
   if (meta.shape) params.set(KEYS.shape, meta.shape);
   if (meta.startBinding) params.set(KEYS.startBinding, meta.startBinding);
   if (meta.endBinding) params.set(KEYS.endBinding, meta.endBinding);
+  if (meta.locked) params.set(KEYS.locked, "1");
+  if (meta.hidden) params.set(KEYS.hidden, "1");
   const packed = params.toString();
   // No extras: byte-for-byte what was stored before this existed, so boards
   // that never use a new feature never see a changed label.
@@ -109,6 +119,8 @@ export function metaOf(el: Partial<ElementMeta>): ElementMeta {
   if (el.shape) meta.shape = el.shape;
   if (el.startBinding) meta.startBinding = el.startBinding;
   if (el.endBinding) meta.endBinding = el.endBinding;
+  if (el.locked) meta.locked = true;
+  if (el.hidden) meta.hidden = true;
   return meta;
 }
 
@@ -124,12 +136,17 @@ export function fromWire<T extends Element>(el: T): T {
   delete out.shape;
   delete out.startBinding;
   delete out.endBinding;
+  delete out.locked;
+  delete out.hidden;
   return Object.assign(out, meta);
 }
 
 /** An app element → what the contract stores: extras folded into `label`. */
 export function toWire(el: Element): Element {
-  const { strokeStyle: _s, box: _b, textColor: _c, shape: _h, startBinding: _f, endBinding: _t, ...rest } = el;
+  const {
+    strokeStyle: _s, box: _b, textColor: _c, shape: _h, startBinding: _f, endBinding: _t,
+    locked: _l, hidden: _i, ...rest
+  } = el;
   const meta = metaOf(el);
   // Untouched when there is nothing to pack, `undefined` included.
   if (Object.keys(meta).length === 0) return rest;
