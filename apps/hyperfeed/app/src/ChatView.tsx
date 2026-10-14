@@ -14,6 +14,8 @@ import { WatchList } from "./WatchList";
 import { isActive } from "./watches";
 import { chainLink } from "./links";
 import { ModeChip } from "./modes";
+import { appLook } from "./apps";
+import { placeOf, sentenceOf, sentenceText } from "./people";
 
 /**
  * Chats with your agent.
@@ -467,7 +469,7 @@ function Thread({
             </div>
             <WorkBlock item={m} clock={clock} busy={busy} onStop={onStop} />
           </Fragment>
-        ) : m.kind === "action" && (resolvable(m) || choicesFor(m).approve || choicesFor(m).decline) ? (
+        ) : waitsOnYou(m) ? (
           <ActionCard item={m} feed={feed} />
         ) : (
           <div className="chat-event">
@@ -484,19 +486,47 @@ function Thread({
 }
 
 /**
+ * A row in this chat that waits on you: your agent's proposal, or a message
+ * that reached you here (a reply to one your agent sent) and asks for an answer.
+ * It gets a card, as the feed's Needs you strip gives it, not a one-line note.
+ */
+export function waitsOnYou(item: FeedItem): boolean {
+  if (item.kind === "action") return resolvable(item) || Boolean(choicesFor(item).approve) || choicesFor(item).decline;
+  if (item.kind === "notification") return resolvable(item) || (item.needs_you && item.status === "received" && !item.superseded_by);
+  return false;
+}
+
+const appName = (key: string) => appLook(key).name;
+
+/**
  * What your agent waits on you for in this chat (a command on your computer,
- * a write in an app), with the same buttons the feed gives it: answered here
- * or there, the first answer wins.
+ * a write in an app, a message to answer), with what it would send or what was
+ * said, and the same buttons the feed gives it: answered here or there, the
+ * first answer wins.
  */
 function ActionCard({ item, feed }: { item: FeedItem; feed: Feed }) {
   const command = localCommand(item);
+  const incoming = item.kind === "notification";
+  const heading = incoming ? sentenceText(sentenceOf(item, appName)) : item.title;
+  const where = incoming ? placeOf(item, appName) : item.app && item.app !== "mero-bot" ? appName(item.app) : "";
+  const body = command ? "" : item.body.trim();
   return (
-    <div className="chat-action" role="group" aria-label={`Waiting for you: ${item.title}`}>
+    <div className="chat-action" role="group" aria-label={`Waiting for you: ${heading}`}>
       <div className="chat-action-head">
-        <strong>{item.title}</strong>
+        <span className="chat-action-title">
+          <strong>{heading}</strong>
+          {where && <span className="chat-action-where">{where}</span>}
+        </span>
         <span className={`pill pill-${statusOf(item).tone}`}>{statusOf(item).label}</span>
       </div>
       {command && command !== item.title && <pre className="chat-action-command">{command}</pre>}
+      {/* What you are approving, or what was said to you: never a decision made blind. */}
+      {body && body !== item.title && (
+        <p className="chat-action-body" aria-label={incoming ? "Message" : "What it sends"}>
+          {body}
+        </p>
+      )}
+      {!incoming && item.why && <p className="chat-action-why">Why: {item.why}</p>}
       {resolvable(item) && <Resolver key={item.id} item={item} feed={feed} />}
       <div className="actions">
         <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
