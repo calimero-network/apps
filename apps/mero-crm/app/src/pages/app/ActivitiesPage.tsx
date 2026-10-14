@@ -167,6 +167,6 @@ const Items = styled.ul`
   li.done .subj { text-decoration: line-through; color: ${t.color.text3}; }
   .body { flex: 1; min-width: 0; }
   .subj { color: ${t.color.text}; font-weight: 500; }
-  .meta { font-size: 11.5px; color: ${t.color.text3}; a { color: ${t.color.text2}; &:hover { color: ${t.color.accent}; } } }
+  .meta { font-size: 11.5px; color: ${t.color.text3}; a { color: ${t.color.text2}; &:hover { color: ${t.color.accentText}; } } }
   input[type='checkbox'] { accent-color: ${t.color.accent}; width: 15px; height: 15px; cursor: pointer; }
 `;

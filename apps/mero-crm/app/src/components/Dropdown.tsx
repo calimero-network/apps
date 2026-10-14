@@ -172,7 +172,7 @@ export const Menu = styled.div`
   position: absolute; top: calc(100% + 5px); left: 0; z-index: 20;
   min-width: 172px; padding: 5px;
   background: ${t.color.raised}; border: 1px solid ${t.color.borderStrong};
-  border-radius: ${t.radius}; box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+  border-radius: 14px; box-shadow: ${t.shadowFloat};
   display: flex; flex-direction: column; gap: 1px;
   text-align: left;
 `;
@@ -180,7 +180,7 @@ export const MenuItem = styled.button`
   display: block; width: 100%; text-align: left;
   font-size: 12.5px; color: ${t.color.text2};
   background: none; border: none; border-radius: 4px; padding: 6px 8px; cursor: pointer;
-  &:hover, &:focus-visible { background: rgba(255,255,255,0.05); color: ${t.color.text}; outline: none; }
+  &:hover, &:focus-visible { background: ${t.color.hover}; color: ${t.color.text}; outline: none; }
 `;
 export const MenuInput = styled.input`
   margin-top: 2px; width: 100%;
@@ -210,6 +210,6 @@ const Option = styled.button<{ $selected?: boolean }>`
   font-size: 12.5px; color: ${({ $selected }) => ($selected ? t.color.text : t.color.text2)};
   background: none; border: none; border-radius: 4px; padding: 6px 8px; cursor: pointer;
   .ov { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 7px; }
-  .ck { color: ${t.color.accent}; display: inline-flex; flex: 0 0 auto; }
-  &:hover, &:focus-visible { background: rgba(255,255,255,0.05); color: ${t.color.text}; outline: none; }
+  .ck { color: ${t.color.accentText}; display: inline-flex; flex: 0 0 auto; }
+  &:hover, &:focus-visible { background: ${t.color.hover}; color: ${t.color.text}; outline: none; }
 `;

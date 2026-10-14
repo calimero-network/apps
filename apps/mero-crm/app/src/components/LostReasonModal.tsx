@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, Spin } from './modalKit';
 import { Chip } from './ui';
+import { tokens as t } from '../theme';
 
 const COMMON = ['Price', 'Chose a competitor', 'No budget', 'No decision', 'Timing', 'Bad fit', 'Went dark'];
 
@@ -48,7 +49,7 @@ export default function LostReasonModal({
               onClick={() => setReason(r)}
               style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
             >
-              <Chip $color={reason === r ? '#E5695F' : undefined}>{r}</Chip>
+              <Chip $color={reason === r ? t.color.urgent : undefined}>{r}</Chip>
             </button>
           ))}
         </div>
