@@ -1,0 +1,5 @@
+/* Figtree, self-hosted. Bundled with each app instead of fetched from
+   fonts.googleapis.com: a remote stylesheet breaks the app offline and sends
+   every viewer's IP address to a third party. glass.css imports this; the
+   generated landing pages import it on their own. */
+@import '@fontsource-variable/figtree';

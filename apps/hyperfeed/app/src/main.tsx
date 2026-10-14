@@ -4,6 +4,10 @@ import { AppMode, MeroProvider } from "@calimero-network/mero-react";
 import { App } from "./App";
 import { adoptDesktopSession } from "./utils/desktopSso";
 import { PACKAGE_NAME, REGISTRY_URL } from "./config";
+// Fonts are bundled, never fetched from Google: offline, and no viewer IPs to a third party.
+import "@calimero-apps/glass/fonts.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
 import "./index.css";
 
 const root = document.getElementById("root");

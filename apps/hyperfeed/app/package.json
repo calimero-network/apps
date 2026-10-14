@@ -17,10 +17,12 @@
     "icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
+    "@calimero-apps/glass": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-react": "catalog:",
+    "@fontsource/ibm-plex-mono": "^5",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router-dom": "catalog:"

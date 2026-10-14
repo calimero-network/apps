@@ -5,9 +5,13 @@
   "description": "The fleet's shared light-glass look: tokens, the tinted background, frosted surfaces and pill controls, as plain CSS any styling world can import.",
   "type": "module",
   "exports": {
-    "./glass.css": "./src/glass.css"
+    "./glass.css": "./src/glass.css",
+    "./fonts.css": "./src/fonts.css"
   },
   "sideEffects": [
     "*.css"
-  ]
+  ],
+  "dependencies": {
+    "@fontsource-variable/figtree": "^5.3.0"
+  }
 }

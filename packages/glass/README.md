@@ -5,7 +5,7 @@ landing pages (`scripts/landing/template`) use.
 
 - A cool off-white ground with soft colour fields behind everything, tinted per app.
 - Frosted, translucent surfaces for the frame: headers, sidebars, toolbars, panels, cards.
-- One near-black ink for primary controls, pill-shaped buttons, Figtree throughout.
+- One near-black ink for primary controls, pill-shaped buttons, Figtree throughout (self-hosted, never fetched from Google).
 - The blue, violet and pink brand gradient for marks and for anything an assistant prepared.
 
 It is plain CSS because the apps style four different ways (styled-components, CSS modules,

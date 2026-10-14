@@ -17,7 +17,7 @@
    switch, and is picked up from whichever marker that app already sets.
    ══════════════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap');
+@import './fonts.css';
 
 :root {
   --glass-tint: #3e63f5;
@@ -54,7 +54,7 @@
   --glass-radius-sm: 10px;
   --glass-radius: 16px;
   --glass-radius-lg: 22px;
-  --glass-font: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --glass-font: 'Figtree Variable', 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --glass-fields:
     radial-gradient(900px 700px at -5% -10%, color-mix(in srgb, var(--glass-tint) 26%, transparent) 0, transparent 62%),

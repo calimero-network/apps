@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap');
+@import '@calimero-apps/glass/fonts.css';
 
 /* ══════════════════════════════════════════════════════════════════════════
    Shared app landing page — styles
@@ -71,7 +71,7 @@
   --cal-lp-radius: 14px;
   --cal-lp-radius-sm: 10px;
   --cal-lp-radius-lg: 22px;
-  --cal-lp-font: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  --cal-lp-font: 'Figtree Variable', 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
   --cal-lp-shadow: 0 1px 1px rgba(14, 18, 34, 0.03), 0 18px 40px -26px rgba(40, 50, 110, 0.4), 0 0 0 1px rgba(14, 18, 34, 0.06);
   --cal-lp-shadow-sm: 0 1px 2px rgba(14, 18, 34, 0.05), 0 0 0 1px rgba(14, 18, 34, 0.06);
 
