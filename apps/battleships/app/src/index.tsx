@@ -1,3 +1,4 @@
+import '@calimero-apps/glass/glass.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import '@calimero-network/mero-ui/styles.css';

@@ -107,15 +107,19 @@ export default function Topbar({
 
 const Bar = styled.div`
   display: flex; align-items: center; gap: 14px;
-  padding: 0 16px; height: 48px; flex: 0 0 auto;
-  border-bottom: 1px solid ${t.color.border};
-  position: sticky; top: 0; background: ${t.color.bg}; z-index: 5;
+  padding: 0 10px 0 18px; height: 56px; flex: 0 0 auto;
+  /* Floating glass header (glass.css \`glass-header\`). */
+  margin: 12px 16px 0; border: 1px solid ${t.color.edge}; border-radius: 20px;
+  position: sticky; top: 12px; z-index: 5;
+  background: ${t.color.glass};
+  -webkit-backdrop-filter: ${t.blur}; backdrop-filter: ${t.blur};
+  box-shadow: ${t.shadow};
 `;
 const ViewTitle = styled.div`
-  font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em;
+  font-size: 15px; font-weight: 700; letter-spacing: -0.02em;
   display: flex; align-items: center; gap: 8px; white-space: nowrap;
   .sep { color: ${t.color.text3}; font-weight: 400; }
-  .crumb-link { color: inherit; text-decoration: none; &:hover { color: #fff; } }
+  .crumb-link { color: inherit; text-decoration: none; &:hover { color: ${t.color.accentText}; } }
   .crumb { color: ${t.color.text2}; font-weight: 500; font-size: 12px; }
 `;
 const PipelineName = styled.div`
@@ -128,15 +132,15 @@ const Right = styled.div`
   margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0;
   .owner-ctl { width: 170px; }
   .owner-ctl > button {
-    background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: ${t.radius};
-    padding: 5px 9px; font-size: 12.5px; color: ${t.color.text};
+    background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: ${t.radiusPill};
+    padding: 7px 12px; font-size: 12.5px; color: ${t.color.text};
   }
   @media (max-width: 720px) { .owner-ctl { display: none; } }
 `;
 const Search = styled.div`
   display: flex; align-items: center; gap: 8px;
   background: ${t.color.raised}; border: 1px solid ${t.color.border};
-  border-radius: ${t.radius}; padding: 5px 9px; width: 240px; color: ${t.color.text3};
+  border-radius: ${t.radiusPill}; padding: 7px 12px; width: 240px; color: ${t.color.text3};
   transition: border-color 150ms ease-out;
   &:focus-within { border-color: ${t.color.borderStrong}; }
   input {
@@ -153,9 +157,10 @@ const Search = styled.div`
 `;
 const NewBtn = styled.button`
   display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
-  border-radius: ${t.radius}; border: 1px solid transparent; cursor: pointer;
+  border-radius: ${t.radiusPill}; border: 1px solid transparent; cursor: pointer;
   background: ${t.color.accent}; color: ${t.color.onAccent};
-  font-size: 12.5px; font-weight: 600; padding: 6px 11px;
+  font-size: 13px; font-weight: 600; padding: 8px 15px;
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
   transition: background 150ms ease-out;
-  &:hover { background: #b6ff5e; }
+  &:hover { background: ${t.color.accentHover}; }
 `;

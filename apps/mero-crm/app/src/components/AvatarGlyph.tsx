@@ -56,7 +56,7 @@ const Box = styled.span<{ $dims: { box: number; font: number; radius: number }; 
   height: ${({ $dims }) => $dims.box}px;
   font-size: ${({ $dims }) => $dims.font}px;
   border-radius: ${({ $dims }) => $dims.radius}px;
-  color: ${({ $key }) => ($key ? t.color.text2 : t.color.bg)};
+  color: ${({ $key }) => ($key ? t.color.text2 : t.color.onSwatch)};
   background: ${({ $key }) => ($key ? t.color.raised2 : 'transparent')};
   ${({ $key }) => ($key ? `font-family: ${t.font.mono}; font-size: 9px;` : '')}
 `;

@@ -45,20 +45,20 @@ const viewport: CSSProperties = {
 const base: CSSProperties = {
   pointerEvents: "auto",
   padding: "11px 14px",
-  borderRadius: 8,
+  borderRadius: 14,
   fontSize: 13,
   lineHeight: 1.4,
-  color: "#0F1419",
+  color: "var(--glass-on-ink)",
   fontWeight: 600,
-  boxShadow: "0 6px 24px rgba(0,0,0,0.45)",
+  boxShadow: "var(--glass-shadow-float)",
   cursor: "pointer",
   animation: "mp-toast-in 0.18s ease",
 };
 
 const kindStyle: Record<ToastKind, CSSProperties> = {
   error: { background: "#ff5d6c", color: "#fff" },
-  success: { background: "#A5FF11" },
-  info: { background: "#2a3340", color: "#fff" },
+  success: { background: "var(--glass-ink)" },
+  info: { background: "var(--glass-surface-solid)", color: "var(--glass-ink)" },
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {

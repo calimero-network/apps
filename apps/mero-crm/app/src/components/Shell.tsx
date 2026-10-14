@@ -56,7 +56,10 @@ const Grid = styled.div`
   font-size: 13px;
   line-height: 1.45;
   color: ${t.color.text};
-  background: ${t.color.bg};
+  /* The page: glass ground with the tinted light behind everything. */
+  background-color: ${t.color.bg};
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   display: grid;
   grid-template-columns: 220px 1fr;
   min-height: 100vh;
@@ -71,6 +74,6 @@ const Main = styled.main`
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: ${t.color.bg};
+  background: transparent;
   height: 100vh;
 `;

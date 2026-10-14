@@ -9,8 +9,8 @@ import { KindIcon } from './icons';
 
 const btnBase = css`
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  border-radius: ${t.radius}; font-family: inherit; font-size: 12.5px; font-weight: 600;
-  padding: 6px 11px; cursor: pointer; white-space: nowrap;
+  border-radius: ${t.radiusPill}; font-family: inherit; font-size: 12.5px; font-weight: 600;
+  padding: 7px 13px; cursor: pointer; white-space: nowrap;
   transition: background 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out;
   &:disabled { opacity: 0.55; cursor: default; }
 `;
@@ -22,7 +22,7 @@ export const Button = styled.button<{ $variant?: 'primary' | 'ghost' | 'danger' 
     switch ($variant) {
       case 'primary':
         return `background: ${t.color.accent}; color: ${t.color.onAccent}; border: 1px solid transparent;
-          &:hover:not(:disabled) { background: #b6ff5e; }`;
+          &:hover:not(:disabled) { background: ${t.color.accentHover}; }`;
       case 'danger':
         return `background: transparent; color: ${t.color.danger}; border: 1px solid ${t.color.dangerBorder};
           &:hover:not(:disabled) { background: rgba(229,105,95,0.1); }`;
@@ -40,8 +40,10 @@ export const Button = styled.button<{ $variant?: 'primary' | 'ghost' | 'danger' 
 `;
 
 export const Panel = styled.section`
-  background: ${t.color.panel}; border: 1px solid ${t.color.border}; border-radius: 10px;
-  padding: 14px 16px;
+  /* Frosted frame panel; the tables and forms inside stay sharp. */
+  background: ${t.color.glass}; border: 1px solid ${t.color.edge}; border-radius: ${t.radiusLg};
+  -webkit-backdrop-filter: ${t.blur}; backdrop-filter: ${t.blur}; box-shadow: ${t.shadow};
+  padding: 16px 18px;
   > h3 {
     font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: ${t.color.text3};
     font-weight: 600; margin: 0 0 12px; display: flex; align-items: center; gap: 8px;
@@ -69,7 +71,6 @@ const control = css`
   &::placeholder { color: ${t.color.text3}; }
   &:focus { border-color: ${t.color.accentBorder}; }
   &:disabled { opacity: 0.6; }
-  color-scheme: dark;
 `;
 export const Input = styled.input`${control}`;
 export const TextArea = styled.textarea`${control} resize: vertical; min-height: 64px; line-height: 1.5;`;
@@ -133,20 +134,20 @@ export const Table = styled.table`
   }
   td { padding: 9px 10px; border-bottom: 1px solid ${t.color.border}; vertical-align: middle; }
   tbody tr { cursor: pointer; transition: background 120ms ease-out; }
-  tbody tr:hover { background: rgba(255,255,255,0.025); }
+  tbody tr:hover { background: ${t.color.hover}; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   .muted { color: ${t.color.text3}; }
   .title { font-weight: 600; color: ${t.color.text}; }
 `;
 
 export const Tabs = styled.div`
-  display: inline-flex; background: ${t.color.raised}; border: 1px solid ${t.color.border};
-  border-radius: ${t.radius}; padding: 2px; gap: 2px;
+  display: inline-flex; background: ${t.color.raised2}; border: 1px solid ${t.color.border};
+  border-radius: ${t.radiusPill}; padding: 3px; gap: 2px;
   button {
     font-family: inherit; font-size: 12px; font-weight: 600; color: ${t.color.text2};
-    background: transparent; border: none; border-radius: 4px; padding: 4px 10px; cursor: pointer;
+    background: transparent; border: none; border-radius: ${t.radiusPill}; padding: 4px 12px; cursor: pointer;
     &:hover { color: ${t.color.text}; }
-    &[aria-pressed='true'] { background: ${t.color.raised2}; color: ${t.color.text}; }
+    &[aria-pressed='true'] { background: ${t.color.panel}; color: ${t.color.text}; box-shadow: 0 1px 2px rgba(14, 18, 34, 0.08); }
   }
 `;
 

@@ -1,4 +1,6 @@
 // Screenshot harness entry. Renders the real pages against fixture hooks.
+// The shared glass sheet first, as in the app entry (src/main.tsx).
+import "@calimero-apps/glass/glass.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";

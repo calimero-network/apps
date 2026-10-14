@@ -214,72 +214,156 @@ describe("canvasStore", () => {
   });
 
   describe("snapshot / undo / redo", () => {
-    it("snapshot stores current elements in undoStack", () => {
-      useCanvasStore.getState().setElements([makeEl("a")]);
-      useCanvasStore.getState().snapshot();
-      expect(useCanvasStore.getState().undoStack).toHaveLength(1);
-      expect(useCanvasStore.getState().undoStack[0][0].id).toBe("a");
+    const store = () => useCanvasStore.getState();
+    const ids = () => store().elements.map((e) => e.id);
+    const byId = (id: string) => store().elements.find((e) => e.id === id);
+
+    beforeEach(() => {
+      useCanvasStore.setState({ undoStack: [], redoStack: [], historyOpen: false, elementLabels: {} });
     });
 
-    it("undo restores previous elements after snapshot", () => {
-      useCanvasStore.getState().setElements([makeEl("a")]);
-      useCanvasStore.getState().snapshot();
-      useCanvasStore.getState().upsertElement(makeEl("b"));
-      expect(useCanvasStore.getState().elements).toHaveLength(2);
-      useCanvasStore.getState().undo();
-      expect(useCanvasStore.getState().elements).toHaveLength(1);
-      expect(useCanvasStore.getState().elements[0].id).toBe("a");
+    it("records a local edit as one step, with the element before and after", () => {
+      store().setElements([makeEl("a")]);
+      store().snapshot();
+      store().upsertElement(makeEl("a", { x: 50 }));
+      expect(store().undoStack).toHaveLength(1);
+      const change = store().undoStack[0].changes.a;
+      expect(change.before?.x).toBe(10);
+      expect(change.after?.x).toBe(50);
     });
 
-    it("undo moves current state onto redoStack", () => {
-      useCanvasStore.getState().setElements([makeEl("a")]);
-      useCanvasStore.getState().snapshot();
-      useCanvasStore.getState().upsertElement(makeEl("b"));
-      useCanvasStore.getState().undo();
-      expect(useCanvasStore.getState().redoStack).toHaveLength(1);
+    it("a board load is not an edit and is not undoable", () => {
+      store().setElements([makeEl("a")]);
+      expect(store().undoStack).toHaveLength(0);
+      expect(store().undo()).toBeNull();
+      expect(ids()).toEqual(["a"]);
     });
 
-    it("redo re-applies undone changes", () => {
-      useCanvasStore.getState().setElements([makeEl("a")]);
-      useCanvasStore.getState().snapshot();
-      useCanvasStore.getState().setElements([makeEl("a"), makeEl("b")]);
-      useCanvasStore.getState().undo();
-      expect(useCanvasStore.getState().elements).toHaveLength(1);
-      useCanvasStore.getState().redo();
-      expect(useCanvasStore.getState().elements).toHaveLength(2);
+    it("undo of a create deletes it, and says so for the node", () => {
+      store().setElements([makeEl("a")]);
+      store().snapshot();
+      store().upsertElement(makeEl("b"));
+      const plan = store().undo();
+      expect(ids()).toEqual(["a"]);
+      expect(plan).toEqual({ upserts: [], deletes: ["b"] });
     });
 
-    it("undo is a no-op when stack is empty", () => {
-      useCanvasStore.getState().setElements([makeEl("a")]);
-      useCanvasStore.getState().undo(); // no snapshot, no-op
-      expect(useCanvasStore.getState().elements).toHaveLength(1);
+    it("undo of a delete puts the element back, and redo deletes it again", () => {
+      store().setElements([makeEl("a", { fill: "#123456" })]);
+      store().snapshot();
+      store().removeElements(["a"]);
+      const undo = store().undo();
+      expect(byId("a")?.fill).toBe("#123456");
+      expect(undo?.upserts.map((e) => e.id)).toEqual(["a"]);
+      const redo = store().redo();
+      expect(ids()).toEqual([]);
+      expect(redo).toEqual({ upserts: [], deletes: ["a"] });
     });
 
-    it("redo is a no-op when stack is empty", () => {
-      useCanvasStore.getState().setElements([makeEl("a")]);
-      useCanvasStore.getState().redo(); // no undone change, no-op
-      expect(useCanvasStore.getState().elements).toHaveLength(1);
+    it("undo writes the restored element with a fresh updatedAt, so it wins last-writer-wins", () => {
+      store().setElements([makeEl("a", { updatedAt: 1 })]);
+      store().snapshot();
+      store().upsertElement(makeEl("a", { x: 50, updatedAt: 2 }));
+      const plan = store().undo();
+      expect(plan?.upserts[0].x).toBe(10);
+      expect(plan?.upserts[0].updatedAt).toBeGreaterThan(2);
     });
 
-    it("snapshot clears redoStack", () => {
-      useCanvasStore.getState().setElements([makeEl("a")]);
-      useCanvasStore.getState().snapshot();
-      useCanvasStore.getState().setElements([makeEl("a"), makeEl("b")]);
-      useCanvasStore.getState().undo();
-      // Now redoStack has 1 entry. Taking a new snapshot should clear it.
-      useCanvasStore.getState().snapshot();
-      expect(useCanvasStore.getState().redoStack).toHaveLength(0);
+    // The bug: undo swapped in a copy of the whole board, so a teammate's work
+    // that arrived after the action was thrown away with it.
+    it("undoing my move keeps a teammate's shape that arrived after it", () => {
+      store().setElements([makeEl("mine", { x: 0 })]);
+      store().snapshot();
+      store().upsertElement(makeEl("mine", { x: 50 }));
+      store().applyRemoteElements([makeEl("theirs", { x: 99 })]);
+      store().undo();
+      expect(byId("mine")?.x).toBe(0);
+      expect(byId("theirs")?.x).toBe(99);
     });
 
-    it("undo / redo do not affect activeTool or selectedElementId", () => {
-      useCanvasStore.getState().setTool("rect");
-      useCanvasStore.getState().selectElement("el-1");
-      useCanvasStore.getState().setElements([makeEl("a")]);
-      useCanvasStore.getState().snapshot();
-      useCanvasStore.getState().setElements([]);
-      useCanvasStore.getState().undo();
-      expect(useCanvasStore.getState().activeTool).toBe("rect");
-      // selectedElementId is not touched by undo
+    it("undoing my move keeps a teammate's recolour of the same shape", () => {
+      store().setElements([makeEl("a")]);
+      store().snapshot();
+      store().upsertElement(makeEl("a", { x: 50 }));
+      store().applyRemoteElements([makeEl("a", { x: 50, fill: "#ff0000" })]);
+      const plan = store().undo();
+      expect(byId("a")?.x).toBe(10);
+      expect(byId("a")?.fill).toBe("#ff0000");
+      expect(plan?.upserts[0].fill).toBe("#ff0000");
+    });
+
+    it("does not resurrect a shape a teammate deleted since", () => {
+      store().setElements([makeEl("a")]);
+      store().snapshot();
+      store().upsertElement(makeEl("a", { x: 50 }));
+      store().removeRemoteElements(["a"]);
+      expect(store().undo()).toEqual({ upserts: [], deletes: [] });
+      expect(ids()).toEqual([]);
+    });
+
+    it("changes read back from the node are never recorded", () => {
+      store().applyRemoteElements([makeEl("a")]);
+      store().removeRemoteElements(["a"]);
+      expect(store().undoStack).toHaveLength(0);
+    });
+
+    it("snapshot separates actions; changes without one coalesce into one step", () => {
+      store().setElements([makeEl("a")]);
+      store().snapshot();
+      store().upsertElement(makeEl("a", { x: 1 }));
+      store().upsertElement(makeEl("a", { x: 2 })); // a slider tick
+      store().snapshot();
+      store().upsertElement(makeEl("a", { y: 99 }));
+      expect(store().undoStack).toHaveLength(2);
+      store().undo();
+      expect(byId("a")).toMatchObject({ x: 2, y: 20 });
+      store().undo();
+      expect(byId("a")).toMatchObject({ x: 10, y: 20 });
+    });
+
+    it("a step that came to nothing is not an undo", () => {
+      store().setElements([makeEl("a")]);
+      store().snapshot();
+      store().upsertElement(makeEl("b"));
+      store().removeElement("b");
+      expect(store().undo()).toBeNull();
+      expect(ids()).toEqual(["a"]);
+    });
+
+    it("undo moves the step onto redoStack, and a new edit clears it", () => {
+      store().setElements([makeEl("a")]);
+      store().snapshot();
+      store().upsertElement(makeEl("b"));
+      store().undo();
+      expect(store().redoStack).toHaveLength(1);
+      store().snapshot();
+      store().upsertElement(makeEl("c"));
+      expect(store().redoStack).toHaveLength(0);
+    });
+
+    it("undo puts back a renamed layer's label and drops the local override", () => {
+      store().setElements([makeEl("a", { label: "Old" })]);
+      store().snapshot();
+      store().setElementLabel("a", "New");
+      store().undo();
+      expect(byId("a")?.label).toBe("Old");
+      expect(store().elementLabels.a).toBeUndefined();
+    });
+
+    it("undo and redo are no-ops when there is nothing to replay", () => {
+      store().setElements([makeEl("a")]);
+      expect(store().undo()).toBeNull();
+      expect(store().redo()).toBeNull();
+      expect(ids()).toEqual(["a"]);
+    });
+
+    it("undo / redo do not affect activeTool", () => {
+      store().setTool("rect");
+      store().setElements([makeEl("a")]);
+      store().snapshot();
+      store().removeElement("a");
+      store().undo();
+      expect(store().activeTool).toBe("rect");
     });
   });
 

@@ -136,7 +136,8 @@ const Tiles = styled.div`
   display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px;
 `;
 const Tile = styled.div`
-  background: ${t.color.panel}; border: 1px solid ${t.color.border}; border-radius: 10px; padding: 14px 16px;
+  background: ${t.color.glass}; border: 1px solid ${t.color.edge}; border-radius: ${t.radiusLg}; padding: 14px 16px;
+  -webkit-backdrop-filter: ${t.blur}; backdrop-filter: ${t.blur}; box-shadow: ${t.shadow};
   display: flex; flex-direction: column; gap: 4px;
   .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: ${t.color.text3}; font-weight: 600; }
   .v { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
@@ -151,7 +152,7 @@ const Bars = styled.div`
   .row { display: grid; grid-template-columns: 110px 1fr 90px; align-items: center; gap: 10px; font-size: 12px; }
   .lbl { color: ${t.color.text2}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .track { height: 12px; }
-  .fill { display: block; height: 100%; min-width: 2px; background: ${t.color.accent}; border-radius: 0 4px 4px 0; }
+  .fill { display: block; height: 100%; min-width: 2px; background: ${t.color.accentText}; border-radius: 0 4px 4px 0; }
   .muted-fill { background: ${t.color.medium}; }
   .val { text-align: right; font-variant-numeric: tabular-nums; color: ${t.color.text}; }
   .muted { color: ${t.color.text3}; }
@@ -160,7 +161,7 @@ const Columns = styled.div`
   display: flex; align-items: flex-end; gap: 8px; height: 170px; padding-top: 6px;
   .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; min-width: 0; }
   .track { flex: 1; width: 100%; max-width: 38px; display: flex; align-items: flex-end; border-bottom: 1px solid ${t.color.border}; }
-  .fill { display: block; width: 100%; min-height: 2px; background: ${t.color.accent}; border-radius: 4px 4px 0 0; }
+  .fill { display: block; width: 100%; min-height: 2px; background: ${t.color.accentText}; border-radius: 4px 4px 0 0; }
   .val { font-size: 10.5px; color: ${t.color.text2}; font-variant-numeric: tabular-nums; white-space: nowrap; height: 14px; }
   .lbl { font-size: 11px; color: ${t.color.text3}; white-space: nowrap; }
 `;

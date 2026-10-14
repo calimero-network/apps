@@ -4,7 +4,8 @@
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background: var(--bg-0);
+  /* The shell shows the body's glass ground and tinted fields. */
+  background: transparent;
 }
 
 .body {
@@ -27,6 +28,7 @@
   grid-template-rows: var(--ruler) 1fr;
 }
 .rulerCorner {
+  /* Matches the rulers, which the canvas draws in its own dark. */
   background: #15191f;
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
@@ -47,7 +49,9 @@
   width: var(--panel-w);
   flex-shrink: 0;
   border-left: 1px solid var(--border);
-  background: var(--bg-1);
+  /* Glass surface, no blur: it is docked, so nothing passes under it, and a backdrop-filter would trap the fixed menus and popovers inside it. The width (--panel-w) is what the canvas is sized against. */
+  background: var(--glass-surface);
+  box-shadow: inset 1px 0 0 var(--glass-edge);
   min-height: 0;
   /* the whole dock scrolls when its panels don't fit (collapsed panels shrink
      to just their header so this rarely triggers, but it never clips) */
@@ -75,7 +79,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 14, 19, 0.85);
+  background: color-mix(in srgb, var(--glass-ground) 85%, transparent);
   color: var(--text-dim);
   font-size: 14px;
   z-index: 2000;
@@ -111,7 +115,7 @@
   z-index: 1500;
 }
 .maskBanner button {
-  background: rgba(10, 14, 19, 0.2);
+  background: rgba(255, 255, 255, 0.22);
   color: var(--accent-text);
   font-weight: 700;
   padding: 3px 10px;

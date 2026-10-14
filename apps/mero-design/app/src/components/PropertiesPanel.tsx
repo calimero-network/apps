@@ -4,6 +4,7 @@ import { deleteElements, updateElements } from "../api/elementBatch";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
+import { registerPendingWrite } from "../store/history";
 import { useToast } from "../contexts/ToastContext";
 import { savedMessage } from "../utils/saveFile";
 import { createMutationReporter } from "../utils/mutationErrors";
@@ -131,10 +132,31 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     row?.scrollIntoView({ block: "nearest" });
   }, [tab, selectionKey]);
 
+  /** The write `rpcDebounceRef` is holding, so an undo can send it first. */
+  const heldRpcRef = useRef<(() => void) | null>(null);
+
   function scheduleRpc(fn: () => void) {
     if (rpcDebounceRef.current) clearTimeout(rpcDebounceRef.current);
-    rpcDebounceRef.current = setTimeout(fn, 2000);
+    heldRpcRef.current = fn;
+    rpcDebounceRef.current = setTimeout(() => {
+      rpcDebounceRef.current = null;
+      heldRpcRef.current = null;
+      fn();
+    }, 2000);
   }
+
+  // An undo inside the debounce window would write the old value and then
+  // have this held edit land on top of it; undo sends it now, first.
+  const flushPendingRef = useRef(flushPending);
+  flushPendingRef.current = flushPending;
+  useEffect(() => registerPendingWrite(() => {
+    if (rpcDebounceRef.current) clearTimeout(rpcDebounceRef.current);
+    rpcDebounceRef.current = null;
+    const held = heldRpcRef.current;
+    heldRpcRef.current = null;
+    held?.();
+    flushPendingRef.current();
+  }), []);
 
   /**
    * Edits waiting on the debounce, merged. The timer used to be replaced with

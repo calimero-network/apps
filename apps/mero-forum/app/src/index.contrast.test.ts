@@ -89,10 +89,11 @@ describe("light theme inks", () => {
     ).toBeGreaterThanOrEqual(AA);
   });
 
-  it("--accent is a FILL, not an ink — text on it must be dark", () => {
-    // The whole point of --accent-ink existing. If someone ever "simplifies" it
-    // away to --accent, this is the check that objects.
-    expect(contrast(token(ROOT, "accent"), "#ffffff")).toBeLessThan(AA);
+  it("--accent is a FILL — text on it uses --accent-text", () => {
+    // Under the light-glass look the fill is the near-black ink (it was the
+    // lime, which measured ~1.5:1 on white and so could never be an ink).
+    // Accent TEXT still goes through --accent-ink, held above; what matters
+    // for the fill is that its own ink reads on it.
     expect(
       contrast(token(ROOT, "accent-text"), token(ROOT, "accent")),
     ).toBeGreaterThanOrEqual(AA);

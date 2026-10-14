@@ -8,8 +8,8 @@ type IconProps = { size?: number };
 export function LogoMark(): React.ReactElement {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-      <rect x="1" y="1" width="20" height="20" rx="5" fill="#A5FF3F" fillOpacity="0.12" stroke="#A5FF3F" strokeOpacity="0.4" />
-      <path d="M6 15V7l5 4 5-4v8" stroke="#A5FF3F" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="1" y="1" width="20" height="20" rx="5" fill="currentColor" fillOpacity="0.12" stroke="currentColor" strokeOpacity="0.4" />
+      <path d="M6 15V7l5 4 5-4v8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

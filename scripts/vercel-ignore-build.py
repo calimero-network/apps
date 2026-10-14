@@ -139,32 +139,17 @@ def ensure(rev: str) -> bool:
     return have(rev)
 
 
-def main() -> int:
-    app_dir = os.path.relpath(pathlib.Path.cwd().resolve(), ROOT)
-    base = os.environ.get("VERCEL_GIT_PREVIOUS_SHA", "").strip()
-    head = os.environ.get("VERCEL_GIT_COMMIT_SHA", "").strip() or "HEAD"
-
-    if not base:
-        # A branch's first push has no deploy of its own. Diffing against main's
-        # tip over-approximates (it also counts what landed on main since the
-        # branch forked) but never misses a change on the branch, and it saves
-        # every new PR from building all twenty apps once.
-        ref = os.environ.get("VERCEL_GIT_COMMIT_REF", "")
-        if ref and ref != PRODUCTION_BRANCH and ensure(f"origin/{PRODUCTION_BRANCH}"):
-            base = git("rev-parse", f"origin/{PRODUCTION_BRANCH}").strip()
-        else:
-            print(f"build: no previous deploy of {app_dir} on this branch to compare with")
-            return BUILD
+def changed_between(base: str, head: str) -> list[str] | None:
+    """Files that differ between two commits, or None when git cannot tell."""
     if not ensure(base):
-        print(f"build: cannot fetch the previous deploy's commit {base}")
-        return BUILD
-
+        return None
     try:
-        changed = git("diff", "--name-only", base, head).split()
-    except subprocess.CalledProcessError as e:
-        print(f"build: git diff {base}..{head} failed: {e.stderr.strip()}")
-        return BUILD
+        return git("diff", "--name-only", base, head).split()
+    except subprocess.CalledProcessError:
+        return None
 
+
+def why_rebuild(app_dir: str, base: str, head: str, changed: list[str]) -> str | None:
     def lock(kind: str, path: str) -> list[str]:
         if path not in changed:
             return []
@@ -173,13 +158,50 @@ def main() -> int:
             return [fanout.ALL]
         return {"pnpm": fanout.pnpm_fanout, "catalog": fanout.catalog_fanout}[kind](b, h)
 
-    why = reaches(app_dir, changed,
-                  lock("pnpm", "pnpm-lock.yaml"),
-                  lock("catalog", "pnpm-workspace.yaml"))
-    if why:
-        print(f"build: {why} since {base[:12]}")
+    return reaches(app_dir, changed,
+                   lock("pnpm", "pnpm-lock.yaml"),
+                   lock("catalog", "pnpm-workspace.yaml"))
+
+
+def main() -> int:
+    app_dir = os.path.relpath(pathlib.Path.cwd().resolve(), ROOT)
+    previous = os.environ.get("VERCEL_GIT_PREVIOUS_SHA", "").strip()
+    head = os.environ.get("VERCEL_GIT_COMMIT_SHA", "").strip() or "HEAD"
+    ref = os.environ.get("VERCEL_GIT_COMMIT_REF", "")
+
+    # A PR branch previews only the apps the PR itself changes. Compared with
+    # main's tip, a branch that has merged main differs only by its own work, so
+    # an app the PR leaves alone skips even when merging main moved it since the
+    # branch's last deploy. (A branch behind main also counts main's newer
+    # changes here: that over-builds, never under-builds.) If main cannot be
+    # read, fall through to the previous-deploy rule below.
+    if ref and ref != PRODUCTION_BRANCH and ensure(f"origin/{PRODUCTION_BRANCH}"):
+        main_tip = git("rev-parse", f"origin/{PRODUCTION_BRANCH}").strip()
+        vs_main = changed_between(main_tip, head)
+        if vs_main is not None and not why_rebuild(app_dir, main_tip, head, vs_main):
+            print(f"skip: this branch does not change {app_dir} relative to "
+                  f"{PRODUCTION_BRANCH} ({len(vs_main)} files changed elsewhere)")
+            return SKIP
+        if not previous:
+            # A branch's first push has no deploy of its own; the PR changes
+            # this app, so build it.
+            print(f"build: this branch changes {app_dir} relative to {PRODUCTION_BRANCH}")
+            return BUILD
+
+    if not previous:
+        print(f"build: no previous deploy of {app_dir} on this branch to compare with")
         return BUILD
-    print(f"skip: nothing {app_dir} ships changed since {base[:12]} "
+
+    changed = changed_between(previous, head)
+    if changed is None:
+        print(f"build: cannot diff against the previous deploy's commit {previous}")
+        return BUILD
+
+    why = why_rebuild(app_dir, previous, head, changed)
+    if why:
+        print(f"build: {why} since {previous[:12]}")
+        return BUILD
+    print(f"skip: nothing {app_dir} ships changed since {previous[:12]} "
           f"({len(changed)} files changed elsewhere)")
     return SKIP
 

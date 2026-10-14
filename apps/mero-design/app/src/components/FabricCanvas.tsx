@@ -26,6 +26,7 @@ import {
 import { v4 as uuid } from "uuid";
 import { rpcCall } from "../api/rpc";
 import { addElements, deleteElements, updateElements, type ElementPatch } from "../api/elementBatch";
+import { redoOnBoard, undoOnBoard } from "../api/history";
 import { applyTopLeftOrigin } from "../utils/fabricDefaults";
 import { isPaintable } from "../utils/color";
 import { createMutationReporter } from "../utils/mutationErrors";
@@ -212,8 +213,6 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       removeElement,
       cacheImage,
       snapshot,
-      undo,
-      redo,
       copyElements,
       getPasted,
       editingTextId,
@@ -235,8 +234,6 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         removeElement: s.removeElement,
         cacheImage: s.cacheImage,
         snapshot: s.snapshot,
-        undo: s.undo,
-        redo: s.redo,
         copyElements: s.copyElements,
         getPasted: s.getPasted,
         editingTextId: s.editingTextId,
@@ -1299,14 +1296,16 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
         const mod = e.metaKey || e.ctrlKey;
 
-        if (mod && e.key === "z" && !e.shiftKey) {
+        // Lower-cased: with Shift held, Ctrl+Shift+Z reports "Z" on Windows and Linux.
+        const key = e.key.toLowerCase();
+        if (mod && key === "z" && !e.shiftKey) {
           e.preventDefault();
-          if (!readOnlyRef.current) undo();
+          if (!readOnlyRef.current) void undoOnBoard(contextId, reportFailure.current);
           return;
         }
-        if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        if (mod && (key === "y" || (key === "z" && e.shiftKey))) {
           e.preventDefault();
-          if (!readOnlyRef.current) redo();
+          if (!readOnlyRef.current) void redoOnBoard(contextId, reportFailure.current);
           return;
         }
         if (mod && e.key === "c") {
@@ -1340,8 +1339,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
           // One store update for the whole paste, not one per element (each of
           // which rebuilt the element list and re-ran the canvas reconcile).
-          useCanvasStore.getState().upsertElements(pasted);
+          // The snapshot goes first: it opens the undo step the paste lands in.
           snapshot();
+          useCanvasStore.getState().upsertElements(pasted);
           // Select the copies, not the originals: a paste you cannot
           // immediately drag is a paste you have to go and find.
           selectElements(pasted.map((el) => el.id));
@@ -1449,7 +1449,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         window.removeEventListener("keyup", onKeyUp);
         if (previewObjRef.current) { fc.remove(previewObjRef.current); previewObjRef.current = null; }
       };
-    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, selectWithPointer, upsertElement, removeElement, snapshot, undo, redo, copyElements, getPasted, startTextEdit]);
+    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, selectWithPointer, upsertElement, removeElement, snapshot, copyElements, getPasted, startTextEdit]);
 
     useEffect(() => {
       (canvasElRef.current as (HTMLCanvasElement & { _cacheImage?: typeof cacheImage }) | null)!._cacheImage = cacheImage;
