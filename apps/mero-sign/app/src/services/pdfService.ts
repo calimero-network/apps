@@ -1,4 +1,4 @@
-import * as pdfjsLib from 'pdfjs-dist';
+import { pdfjsLib } from './pdfjs';
 
 import { configurePdfWorker } from './pdfWorker';
 import { jsPDF } from 'jspdf';

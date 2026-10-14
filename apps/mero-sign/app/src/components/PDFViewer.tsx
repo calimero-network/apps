@@ -39,7 +39,7 @@ import {
 } from '../services/pdfService';
 import SignatureOverlay from './SignatureOverlay';
 import SignaturePadComponent from './SignaturePad';
-import * as pdfjsLib from 'pdfjs-dist';
+import { pdfjsLib } from '../services/pdfjs';
 import './PDFViewer.css';
 import { useTheme } from '../contexts/ThemeContext';
 import { DocumentService } from '../api/documentService';
