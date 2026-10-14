@@ -11,7 +11,6 @@ import { currentEndpoint, deviceName, inputOf, pushSupported, subscribe, unsubsc
 import { AGENT_LIVE_MS } from "./theme";
 import { DEFAULT_LANGUAGE, LANGUAGES, languageOf, languageRule } from "./language";
 import { assignedAgent, CODE_APP, privateAgents } from "./assignments";
-import { DESKTOP_NOTE, HANDED_OFF, type HandedOff } from "./desktopHandoff";
 
 const AGENT_OPTIONS: { id: AgentMode; label: string }[] = [
   { id: "act", label: "Act" },
@@ -65,7 +64,7 @@ export function SettingsView({
   /** The apps installed on your node, by key; null in the demo, or until the node says. */
   installed?: string[] | null;
   /** Install a core app on your node by its package; null where it can't. */
-  install?: ((pkg: string) => Promise<HandedOff | void>) | null;
+  install?: ((pkg: string) => Promise<void>) | null;
   preview?: Preview;
   newFeed?: NewFeed;
   section: SettingsSection;
@@ -161,7 +160,7 @@ function ControlsSection({
 }: {
   feed: Feed;
   installed: string[] | null;
-  install: ((pkg: string) => Promise<HandedOff | void>) | null;
+  install: ((pkg: string) => Promise<void>) | null;
 }) {
   const { settings, page } = feed;
   const { pending, write } = usePending();
@@ -935,12 +934,11 @@ export function RuleSuggestion({ proposal, feed }: { proposal: RuleProposalView;
 }
 
 /** A core app not on your node: Install, in place of what the agent may do there. */
-function InstallRow({ pkg, install }: { pkg: string; install: ((pkg: string) => Promise<HandedOff | void>) | null }) {
+function InstallRow({ pkg, install }: { pkg: string; install: ((pkg: string) => Promise<void>) | null }) {
   const app = appKeyForPackage(pkg, "");
   const look = appLook(app);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
-  const [handedOff, setHandedOff] = useState(false);
   return (
     <tr className="not-installed">
       <th scope="row">
@@ -960,9 +958,8 @@ function InstallRow({ pkg, install }: { pkg: string; install: ((pkg: string) => 
               if (!install) return;
               setBusy(true);
               setFailed(null);
-              setHandedOff(false);
               try {
-                setHandedOff((await install(pkg)) === HANDED_OFF);
+                await install(pkg);
               } catch (e) {
                 setFailed(messageOf(e));
               } finally {
@@ -975,10 +972,6 @@ function InstallRow({ pkg, install }: { pkg: string; install: ((pkg: string) => 
           {failed ? (
             <span className="error-text" role="alert">
               {failed}
-            </span>
-          ) : handedOff ? (
-            <span className="muted small-text" role="status">
-              {DESKTOP_NOTE}
             </span>
           ) : (
             <span className="muted small-text">Not on your node</span>

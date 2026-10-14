@@ -131,11 +131,9 @@ describe("Switching feeds", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
-  it("asks Calimero Desktop to delete a feed when the node refuses this session", async () => {
+  it("says what to do when the node refuses this session the delete, not a bare 403", async () => {
     openFeed("feed-aaaa-1111");
     deleted.length = 0;
-    const invoke = vi.fn(async () => undefined);
-    (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = { invoke };
     const deleteContext = admin.deleteContext;
     admin.deleteContext = async () => {
       throw Object.assign(new Error("HTTP 403 Forbidden"), { status: 403 });
@@ -149,17 +147,13 @@ describe("Switching feeds", () => {
         fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
       });
 
-      expect(invoke).toHaveBeenCalledWith("plugin:event|emit", {
-        event: "app-deep-link",
-        payload: { slug: "com.calimero.hyperfeed", action: "delete-context", params: "context=feed-bbbb-2222" },
-      });
-      expect(screen.getByRole("status")).toHaveTextContent("Confirm in Calimero Desktop to finish.");
-      // Not an error: nothing failed, the desktop has it now.
+      expect(
+        screen.getByText("This session may not delete a feed. Open Hyperfeed from Calimero Desktop, which lets it."),
+      ).toBeInTheDocument();
       expect(screen.queryByText("HTTP 403 Forbidden")).toBeNull();
       expect(deleted).toEqual([]);
     } finally {
       admin.deleteContext = deleteContext;
-      delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
     }
   });
 

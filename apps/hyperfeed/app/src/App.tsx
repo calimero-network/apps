@@ -19,7 +19,6 @@ import { NeedsYou, opensIn, waitingCount } from "./NeedsYou";
 import type { NewFeed } from "./FeedView";
 import LandingPage from "./pages/landing/LandingPage";
 import DocsPage from "./pages/landing/DocsPage";
-import type { HandedOff } from "./desktopHandoff";
 
 /**
  * Two ways in, one set of screens.
@@ -217,7 +216,7 @@ function Screen({
   /** The apps installed on your node; null in the demo. */
   installed?: string[] | null;
   /** Install an app on your node by its package; null in the demo. */
-  install?: ((pkg: string) => Promise<HandedOff | void>) | null;
+  install?: ((pkg: string) => Promise<void>) | null;
 }) {
   const navigate = useNavigate();
   const { chain = "", section } = useParams();
