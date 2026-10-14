@@ -67,9 +67,9 @@ export const MessageJoinWrapper = styled.div`
   }
   .join-button {
     cursor: pointer;
-    background-color: #5765f2;
-    color: var(--glass-ink);
-    border-radius: 8px;
+    background-color: var(--glass-ink);
+    color: var(--glass-on-ink);
+    border-radius: 999px;
     font-family: var(--glass-font);
     font-size: 14px;
     font-style: normal;
@@ -82,7 +82,7 @@ export const MessageJoinWrapper = styled.div`
     width: 190px;
     height: 40px;
     &:hover {
-      background-color: #717cf0;
+      background-color: var(--glass-ink-2);
     }
   }
   .backButton {

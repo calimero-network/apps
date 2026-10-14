@@ -168,7 +168,7 @@ const SuggestionsDropdown = styled.div`
   top: calc(100% + 4px);
   width: 100%;
   z-index: 100;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--chat-pop-shadow);
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-track { background: transparent; }
   &::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--glass-ink) 10%, transparent); border-radius: 2px; }

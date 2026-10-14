@@ -20,7 +20,7 @@ const EditorWrapper = styled.div`
   border-top: 1px solid var(--glass-line);
   gap: 4px;
   width: 100% !important;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--chat-pop-shadow);
 
   .closeEdit {
     display: flex;

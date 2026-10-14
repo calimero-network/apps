@@ -76,8 +76,8 @@ const Dropdown = styled.div<{ $isCollapsed: boolean }>`
   ${({ $isCollapsed }) => ($isCollapsed ? "left: 48px; top: 0;" : "left: 0.75rem; right: 0.75rem;")}
   background: var(--glass-surface-solid);
   border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
-  border-radius: 9px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  border-radius: 14px;
+  box-shadow: var(--chat-pop-shadow);
   z-index: 200;
   overflow: hidden;
   min-width: 160px;

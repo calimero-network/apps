@@ -12,9 +12,12 @@ import "../../src/index.css";
 import "@calimero-network/mero-ui/styles.css";
 import "react-photo-view/dist/react-photo-view.css";
 import App from "../../src/App";
+import { applyTheme, readStoredTheme } from "../../src/theme/theme";
 import MeroJsBridge from "../../src/api/MeroJsBridge";
 import ErrorBoundary from "../../src/components/ErrorBoundary";
 import { WebSocketProvider } from "../../src/contexts/WebSocketContext";
+
+applyTheme(readStoredTheme());
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>

@@ -74,7 +74,7 @@ const ThreadBadge = styled.div`
   gap: 4px;
   padding: 2px 8px;
   border-radius: 8px;
-  background: rgba(87, 101, 242, 0.15);
+  background: color-mix(in srgb, var(--glass-accent) 15%, transparent);
   color: var(--glass-accent);
   font-size: 11px;
   font-weight: 500;

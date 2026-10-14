@@ -49,7 +49,7 @@ const HoverContainer = styled.div`
   position: absolute;
   top: 4px;
   right: 4px;
-  background-color: rgba(14, 18, 34, 0.32);
+  background-color: var(--chat-scrim);
   border-radius: 8px;
   padding: 4px;
 `;
@@ -58,7 +58,7 @@ const HoverContainerRemove = styled.div`
   position: absolute;
   top: 1px;
   right: 1px;
-  background-color: rgba(14, 18, 34, 0.32);
+  background-color: var(--chat-scrim);
   border-radius: 8px;
   padding: 1px;
 `;

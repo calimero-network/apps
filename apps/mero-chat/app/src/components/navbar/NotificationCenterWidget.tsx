@@ -59,7 +59,7 @@ const NotificationDropdown = styled.div<{ $isOpen: boolean }>`
   background-color: var(--glass-surface-solid);
   border: 1px solid var(--glass-line);
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--chat-pop-shadow);
   z-index: 1000;
   display: ${(props) => (props.$isOpen ? "block" : "none")};
 

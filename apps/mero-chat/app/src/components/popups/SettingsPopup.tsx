@@ -19,6 +19,7 @@ import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { downloadBlob, getMeroJs } from "../../api/meroJsClient";
 import { useToast } from "../../contexts/ToastContext";
 import { invalidateAvatarCache } from "../../hooks/useAvatarUrl";
+import { useTheme, type Theme } from "../../theme/theme";
 // ─── Animations ────────────────────────────────────────────────────────────────
 
 const fadeIn = keyframes`
@@ -164,12 +165,51 @@ const RoleBadge = styled.span<{ $admin: boolean; $mod?: boolean }>`
   border-radius: 5px;
   letter-spacing: 0.04em;
   background: ${({ $admin, $mod }) =>
-    $admin ? "color-mix(in srgb, var(--glass-accent) 12%, transparent)" : $mod ? "rgba(124, 58, 237, 0.12)" : "color-mix(in srgb, var(--glass-ink) 7%, transparent)"};
+    $admin ? "color-mix(in srgb, var(--glass-accent) 12%, transparent)" : $mod ? "var(--chat-violet-soft)" : "color-mix(in srgb, var(--glass-ink) 7%, transparent)"};
   border: 1px solid ${({ $admin, $mod }) =>
     $admin ? "color-mix(in srgb, var(--glass-accent) 30%, transparent)" : $mod ? "rgba(124, 58, 237, 0.35)" : "color-mix(in srgb, var(--glass-ink) 12%, transparent)"};
   color: ${({ $admin, $mod }) =>
-    $admin ? "var(--glass-accent)" : $mod ? "#7c3aed" : "color-mix(in srgb, var(--glass-ink) 55%, transparent)"};
+    $admin ? "var(--glass-accent)" : $mod ? "var(--chat-violet)" : "color-mix(in srgb, var(--glass-ink) 55%, transparent)"};
 `;
+
+// ─── Appearance ──────────────────────────────────────────────────────────────
+
+const AppearanceCard = styled(WorkspaceCard)``;
+
+const ThemeSwitch = styled.div`
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  background: var(--glass-sunken);
+  box-shadow: inset 0 0 0 1px var(--glass-line);
+  flex-shrink: 0;
+`;
+
+const ThemeOption = styled.button<{ $active: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3rem 0.8rem;
+  border: none;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: ${({ $active }) => ($active ? "var(--glass-surface-solid)" : "transparent")};
+  color: ${({ $active }) => ($active ? "var(--glass-ink)" : "var(--glass-muted)")};
+  box-shadow: ${({ $active }) => ($active ? "0 1px 2px rgba(14, 18, 34, 0.12), 0 0 0 1px var(--glass-line)" : "none")};
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: var(--glass-ink);
+  }
+`;
+
+const THEME_OPTIONS: { value: Theme; label: string }[] = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
 
 // ─── Profile section ────────────────────────────────────────────────────────
 
@@ -191,7 +231,7 @@ const ProfileAvatar = styled.div<{ $hasImage: boolean }>`
   background: ${({ $hasImage }) =>
     $hasImage
       ? "transparent"
-      : "linear-gradient(135deg, rgba(87, 101, 242, 0.5) 0%, color-mix(in srgb, var(--glass-accent) 20%, transparent) 100%)"};
+      : "linear-gradient(135deg, color-mix(in srgb, var(--glass-accent) 45%, transparent) 0%, color-mix(in srgb, var(--glass-accent) 20%, transparent) 100%)"};
   border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
   display: flex;
   align-items: center;
@@ -213,7 +253,7 @@ const ProfileAvatar = styled.div<{ $hasImage: boolean }>`
 const AvatarOverlay = styled.div`
   position: absolute;
   inset: 0;
-  background: rgba(14, 18, 34, 0.32);
+  background: var(--chat-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -308,7 +348,7 @@ const LeaveWorkspaceButton = styled.button`
   align-items: center;
   gap: 0.375rem;
   padding: 0.4rem 0.875rem;
-  border-radius: 10px;
+  border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
@@ -336,7 +376,7 @@ const ConfirmActions = styled.div`
 
 const CancelLeaveButton = styled.button`
   padding: 0.4rem 0.75rem;
-  border-radius: 10px;
+  border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
@@ -372,7 +412,7 @@ const SessionButton = styled.button`
   align-items: center;
   gap: 0.375rem;
   padding: 0.4rem 0.875rem;
-  border-radius: 10px;
+  border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
@@ -421,6 +461,7 @@ export default function SettingsPopup({
   const { logout } = useMero();
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const { theme, setTheme } = useTheme();
   const groupId = getGroupId();
   // The one resolver, shared with the workspace switcher. Reading the local
   // alias directly here is what let the two disagree: Settings showed the name
@@ -738,6 +779,27 @@ export default function SettingsPopup({
         </WorkspaceInfo>
         <RoleBadge $admin={isAdmin} $mod={isModerator}>{isAdmin ? "Admin" : isModerator ? "Moderator" : "Member"}</RoleBadge>
       </WorkspaceCard>
+
+      {/* Appearance */}
+      <AppearanceCard>
+        <WorkspaceInfo>
+          <WorkspaceLabel>Appearance</WorkspaceLabel>
+          <WorkspaceName>Theme</WorkspaceName>
+        </WorkspaceInfo>
+        <ThemeSwitch role="group" aria-label="Theme">
+          {THEME_OPTIONS.map((option) => (
+            <ThemeOption
+              key={option.value}
+              type="button"
+              $active={theme === option.value}
+              aria-pressed={theme === option.value}
+              onClick={() => setTheme(option.value)}
+            >
+              {option.label}
+            </ThemeOption>
+          ))}
+        </ThemeSwitch>
+      </AppearanceCard>
 
       {/* Leave workspace (danger). Hidden for admins — server-side leave
           would either fail (last-admin protection) or hand the workspace

@@ -11,6 +11,7 @@ const DropdownSelector = styled.div`
   align-items: center;
   column-gap: 0.375rem;
   cursor: pointer;
+  min-width: 0;
 
   @media (min-width: 1025px) {
     padding-left: 1rem;
@@ -25,7 +26,11 @@ const SelectedChannelName = styled.div`
   font-weight: 500;
   @media (max-width: 1024px) {
     font-size: 16px;
-    font-weight: 400;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
 
   &.desktop {

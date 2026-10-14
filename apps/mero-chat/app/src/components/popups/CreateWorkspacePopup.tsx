@@ -21,7 +21,8 @@ const Overlay = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--chat-scrim);
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -36,7 +37,7 @@ const PopupContainer = styled.div`
   padding: 2rem;
   width: 90%;
   max-width: 480px;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--chat-dialog-shadow);
 `;
 
 const Title = styled.h2`
@@ -67,7 +68,7 @@ const StepDot = styled.div<{ $active: boolean; $done: boolean }>`
   height: 8px;
   border-radius: 50%;
   background: ${({ $active, $done }) =>
-    $done ? "#27ae60" : $active ? "#7c3aed" : "color-mix(in srgb, var(--glass-ink) 15%, transparent)"};
+    $done ? "#27ae60" : $active ? "var(--chat-violet)" : "color-mix(in srgb, var(--glass-ink) 15%, transparent)"};
   transition: background 0.2s;
 `;
 

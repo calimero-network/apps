@@ -46,7 +46,7 @@ const MentionDropdown = styled.ul`
   z-index: 200;
   max-height: 200px;
   overflow-y: auto;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--chat-pop-shadow);
 `;
 
 const MentionItem = styled.li<{ $active: boolean }>`
@@ -161,7 +161,7 @@ const DropOverlay = styled.div`
   align-items: center;
   justify-content: center;
   border: 1px dashed var(--glass-accent);
-  border-radius: 8px;
+  border-radius: 20px;
   background-color: var(--glass-surface-solid);
   color: var(--glass-ink);
   font-size: 14px;
@@ -178,7 +178,7 @@ const Wrapper = styled.div`
   flex: 1;
   display: flex;
   align-items: start;
-  background-color: var(--glass-surface-solid);
+  background-color: transparent;
   min-width: 0;
 `;
 

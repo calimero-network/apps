@@ -9,16 +9,16 @@ const AdminIconWrapper = styled.div`
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  border-radius: 10px;
+  border-radius: 999px;
   padding: 0.375rem;
   width: 36px;
   height: 36px;
   justify-content: center;
   transition: all 0.15s ease;
   &:hover {
-    background-color: rgba(124, 58, 237, 0.12);
+    background-color: var(--chat-violet-soft);
     svg {
-      fill: #7c3aed;
+      fill: var(--chat-violet);
     }
   }
 `;

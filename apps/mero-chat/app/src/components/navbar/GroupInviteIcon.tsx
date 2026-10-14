@@ -9,7 +9,7 @@ const GroupInviteIconWrapper = styled.button`
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  border-radius: 10px;
+  border-radius: 999px;
   padding: 0.375rem;
   width: 36px;
   height: 36px;
@@ -20,8 +20,8 @@ const GroupInviteIconWrapper = styled.button`
   color: var(--glass-muted);
 
   &:hover {
-    background-color: rgba(124, 58, 237, 0.12);
-    color: #7c3aed;
+    background-color: var(--chat-violet-soft);
+    color: var(--chat-violet);
   }
 `;
 

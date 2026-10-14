@@ -61,7 +61,7 @@ const RoleBadge = styled.span<{ $admin: boolean }>`
   background: ${({ $admin }) =>
     $admin ? "rgba(124, 58, 237, 0.15)" : "color-mix(in srgb, var(--glass-ink) 6%, transparent)"};
   color: ${({ $admin }) =>
-    $admin ? "#7c3aed" : "color-mix(in srgb, var(--glass-ink) 40%, transparent)"};
+    $admin ? "var(--chat-violet)" : "color-mix(in srgb, var(--glass-ink) 40%, transparent)"};
 `;
 
 const Actions = styled.div`

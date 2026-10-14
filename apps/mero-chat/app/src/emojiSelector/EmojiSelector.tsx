@@ -29,7 +29,7 @@ const IconContainer = styled.div<{ selected: boolean }>`
   justify-content: center;
   align-items: center;
   cursor: pointer;
-  ${({ selected }) => selected && "border-bottom: 1px solid #009900;"}
+  ${({ selected }) => selected && "border-bottom: 1px solid var(--glass-accent);"}
   transition: background-color 500ms ease
 `;
 

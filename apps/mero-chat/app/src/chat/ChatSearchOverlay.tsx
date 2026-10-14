@@ -44,7 +44,7 @@ const SearchOverlayPanel = styled.div`
   background-color: var(--glass-surface-solid);
   border: 1px solid var(--glass-line);
   border-radius: 10px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.65);
+  box-shadow: var(--chat-dialog-shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -138,7 +138,7 @@ const CloseButton = styled.button`
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
   &:hover {
-    background: rgba(87, 101, 242, 0.2);
+    background: color-mix(in srgb, var(--glass-accent) 20%, transparent);
     color: var(--glass-ink);
   }
 `;

@@ -34,7 +34,7 @@ const Container = styled.div`
   border-radius: 12px;
   padding: 1rem;
   pointer-events: auto;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--chat-pop-shadow);
 
   @media (max-width: 1024px) {
     width: 90vw;
