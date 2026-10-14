@@ -21,7 +21,7 @@ import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
 import { mergeWatchInput, moveWatch, newWatch } from "./watches";
 import { replySubject, splitSubject } from "./subject";
-import type { AccessView, AssignmentView, Folder, LinkView, PrInput, PrView, ReachLine, ReachView, WatchInput, WatchView } from "./generated/HyperfeedClient";
+import type { AccessView, AgentRuleView, AssignmentView, Folder, LinkView, PrInput, PrView, ReachLine, ReachView, WatchInput, WatchView } from "./generated/HyperfeedClient";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 
@@ -92,6 +92,8 @@ export class DemoBackend implements FeedBackend {
   private paused = false;
   /** Your standing rules, oldest first, and the ones the pretend agent suggested. Nothing is seeded. */
   private rules: RuleView[] = [];
+  /** Your rules for one agent only, oldest first. */
+  private agentRules: AgentRuleView[] = [];
   /** What each agent may reach, and what each reported it can, by agent name. */
   private access = new Map<string, AccessView>();
   private reach = new Map<string, ReachView>();
@@ -317,6 +319,7 @@ export class DemoBackend implements FeedBackend {
       access: [...this.access.values()].map((a) => ({ ...a, folders: a.folders.map((f) => ({ ...f })) })).sort((a, b) => a.agent.localeCompare(b.agent)),
       reach: [...this.reach.values()].map((r) => ({ ...r, lines: r.lines.map((l) => ({ ...l })) })).sort((a, b) => a.agent.localeCompare(b.agent)),
       assignments: [...this.assignments.values()].filter((a) => a.agent).map((a) => ({ ...a })).sort((a, b) => a.app.localeCompare(b.app)),
+      agent_rules: this.agentRules.map((r) => ({ ...r })).sort((a, b) => a.agent.localeCompare(b.agent) || a.created_at - b.created_at),
     };
   }
 
@@ -346,6 +349,26 @@ export class DemoBackend implements FeedBackend {
   async removeRule(id: string): Promise<void> {
     if (!this.rules.some((r) => r.id === id)) throw new Error(`no rule ${id}`);
     this.rules = this.rules.filter((r) => r.id !== id);
+    this.changed();
+  }
+
+  async addAgentRule(agent: string, text: string): Promise<AgentRuleView> {
+    const name = agent.trim();
+    if (!name) throw new Error("agent must not be empty");
+    const t = DemoBackend.checkRule(text);
+    const mine = this.agentRules.filter((r) => r.agent === name);
+    const same = mine.find((r) => r.text.toLowerCase() === t.toLowerCase());
+    if (same) return { ...same };
+    if (mine.length >= 30) throw new Error(`${name} has 30 rules, the limit; remove one first`);
+    const rule = { id: `agent-rule-${this.nextId++}`, agent: name, text: t, created_at: this.tick() };
+    this.agentRules.push(rule);
+    this.changed();
+    return { ...rule };
+  }
+
+  async removeAgentRule(id: string): Promise<void> {
+    if (!this.agentRules.some((r) => r.id === id)) throw new Error(`no agent rule ${id}`);
+    this.agentRules = this.agentRules.filter((r) => r.id !== id);
     this.changed();
   }
 

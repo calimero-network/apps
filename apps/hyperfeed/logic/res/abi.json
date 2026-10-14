@@ -328,6 +328,73 @@
         }
       ]
     },
+    "AgentRule": {
+      "kind": "record",
+      "doc": "A standing rule for one agent only (\"Reply in one paragraph\" for your\nphone's agent): it goes into that agent's turns after your general rules,\nwhich every agent keeps. Only you add or remove one; removing keeps the\nrow with `removed`, like [`Rule`].",
+      "fields": [
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The agent's name, as it reports in: \"mero-bot@studio\"."
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "removed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AgentRuleView": {
+      "kind": "record",
+      "doc": "One of your rules for one agent, as settings shows it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "AgentState": {
       "kind": "record",
       "doc": "The agent's global switch, stored under the single key `\"main\"`.",
@@ -1917,6 +1984,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Which agent works in each app, by app key. See [`Assignment`]."
+        },
+        {
+          "name": "agent_rules",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AgentRule"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your rules for one agent only, by id. See [`AgentRule`]."
         }
       ]
     },
@@ -3470,6 +3551,16 @@
             }
           },
           "doc": "Which agent works in each app you assigned, by app. An app with none\nis your default agent's. Absent on a feed made before assignments."
+        },
+        {
+          "name": "agent_rules",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AgentRuleView"
+            }
+          },
+          "doc": "Your rules for one agent only, by agent then oldest first. Each agent\nkeeps `rules` and then its own. Absent on a feed made before them."
         }
       ]
     },
@@ -3940,6 +4031,28 @@
     }
   },
   "methods": [
+    {
+      "name": "add_agent_rule",
+      "doc": "Add a rule for one agent only: it keeps it after your general rules,\nwhich every agent keeps. Only you add rules; the same rule twice for\nthe same agent is kept once.",
+      "params": [
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "AgentRuleView"
+      },
+      "intent": "mutating"
+    },
     {
       "name": "add_link",
       "doc": "Link a thing in another app to the task in `chain`: `subject` as\n[`subject_key`] makes it, a `label` for its chip, `by` you or your\nagent. What teammates do there joins the task from now on. Adding one\nagain relabels it; you adding one you took off brings it back.",
@@ -4878,6 +4991,22 @@
       ],
       "returns": {
         "kind": "bool"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_agent_rule",
+      "doc": "Remove one of your rules for one agent.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       },
       "intent": "mutating"
     },
