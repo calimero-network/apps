@@ -8,7 +8,7 @@ const Wrapper = styled.div`
   display: flex;
   flex-direction: column;
   gap: 10px;
-  color: #ffffff;
+  color: var(--glass-ink);
 `;
 
 const Header = styled.div`
@@ -29,7 +29,7 @@ const SenderBlock = styled.div`
 `;
 
 const SenderName = styled.div`
-  color: #ffffff;
+  color: var(--glass-ink);
   font-weight: 600;
   font-size: 15px;
   line-height: 1.3;
@@ -39,7 +39,7 @@ const SenderName = styled.div`
 `;
 
 const SenderId = styled.div`
-  color: #777583;
+  color: var(--glass-muted);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -49,19 +49,19 @@ const SenderId = styled.div`
 
 const Timestamp = styled.div`
   margin-left: auto;
-  color: #b2b1bb;
+  color: var(--glass-ink-2);
   font-size: 12px;
   white-space: nowrap;
 `;
 
 const Snippet = styled.div`
-  color: #ffffff;
+  color: var(--glass-ink);
   font-size: 14px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 
   mark {
-    background: rgba(165, 255, 17, 0.25);
+    background: color-mix(in srgb, var(--glass-accent) 25%, transparent);
     color: inherit;
     border-radius: 2px;
     padding: 0 1px;
@@ -73,9 +73,9 @@ const ThreadBadge = styled.div`
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(87, 101, 242, 0.15);
-  color: #a8b7ff;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--glass-accent) 15%, transparent);
+  color: var(--glass-accent);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.02em;
@@ -87,9 +87,9 @@ const ContextLabel = styled.div`
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(165, 255, 17, 0.08);
-  color: rgba(165, 255, 17, 0.7);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--glass-accent) 8%, transparent);
+  color: color-mix(in srgb, var(--glass-accent) 70%, transparent);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.02em;

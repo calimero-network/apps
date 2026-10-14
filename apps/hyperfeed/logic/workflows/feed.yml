@@ -145,6 +145,68 @@ steps:
       - 'json_subset({{reach_1}}, {"agent": "mero-bot@laptop"})'
       - 'json_subset({{reach_line_1}}, {"serves": "default", "profile": "near", "attested": true, "folders": [], "shell": false, "web": false})'
 
+  - name: Owner adds a cloud agent's own account
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_agent_account
+    args: { account: "cloud-agent-account", name: "cloud" }
+
+  - name: A second account cannot take the same name
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_agent_account
+    args: { account: "another-account", name: "cloud" }
+    expected_failure: true
+    outputs:
+      agent_name_error: error
+
+  - name: Owner reads the agent accounts
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: settings
+    args: {}
+    outputs:
+      agent_account_1: result.output.agent_accounts.0
+
+  - name: Assert the cloud agent is listed under its name
+    type: json_assert
+    statements:
+      - 'json_subset({{agent_account_1}}, {"account": "cloud-agent-account", "name": "cloud"})'
+
+  - name: Assert the name stayed with its account
+    type: assert
+    statements:
+      - "is_set({{agent_name_error}})"
+
+  - name: Owner removes the cloud agent
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: remove_agent_account
+    args: { account: "cloud-agent-account" }
+
+  - name: Owner reads the agent accounts again
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: settings
+    args: {}
+    outputs:
+      settings_no_agents: result
+
+  - name: Assert no agent account is left
+    type: json_assert
+    statements:
+      - 'json_subset({{settings_no_agents}}, {"output": {"agent_accounts": []}})'
+
   - name: The agent checks before acting in chat
     type: call
     node: feed-node-1
@@ -170,6 +232,82 @@ steps:
     statements:
       - 'json_subset({{verdict_chat}}, {"output": {"decision": "act"}})'
       - 'json_subset({{verdict_sign}}, {"output": {"decision": "ask"}})'
+
+  # ─── actions: what the agent can do in an app, in your words ─────────────
+  # Issues has no policy, so it asks first; the actions then say what a call is.
+
+  - name: The agent proposes the actions it learned for Issues
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: propose_actions
+    args:
+      app_key: "issues"
+      application_id: "issues-app-1"
+      summary: "Reading and closing issues"
+      actions:
+        - { id: "read", label: "Read issues", description: "", category: "", writes: false, methods: ["get_issue"] }
+        - { id: "close", label: "Close issues", description: "", category: "", writes: true, methods: ["close_issue"] }
+    outputs:
+      actions_proposed: result
+
+  - name: Owner approves them
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: decide_actions
+    args: { app_key: "issues", application_id: "issues-app-1", decision: "approve" }
+    outputs:
+      actions_approved: result
+
+  - name: Owner lets the agent close issues without asking
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_action_mode
+    args: { app_key: "issues", action: "close", mode: "act" }
+
+  - name: The agent checks before closing an issue
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: check_action
+    args: { app_key: "issues", category: "", writes: true, method: "close_issue" }
+    outputs:
+      verdict_close: result
+
+  - name: The agent checks before a call no action names
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: check_action
+    args: { app_key: "issues", category: "", writes: false, method: "drop_board" }
+    outputs:
+      verdict_unnamed: result
+
+  - name: Owner lists the actions
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: action_sets
+    args: {}
+    outputs:
+      actions_1: result.output.0
+
+  - name: Assert the actions decide, and your setting for one applies
+    type: json_assert
+    statements:
+      - 'json_subset({{actions_proposed}}, {"output": {"app": "issues", "status": "proposed"}})'
+      - 'json_subset({{actions_approved}}, {"output": {"status": "approved"}})'
+      - 'json_subset({{verdict_close}}, {"output": {"decision": "act"}})'
+      - 'json_subset({{verdict_unnamed}}, {"output": {"decision": "ask"}})'
+      - 'json_subset({{actions_1}}, {"app": "issues", "application_id": "issues-app-1", "status": "approved"})'
 
   # ─── what the agent did ───────────────────────────────────────────────────
 

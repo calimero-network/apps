@@ -1,0 +1,159 @@
+[
+  {
+    "id": "read",
+    "label": "Read workbooks",
+    "description": "Cells, sheets, comments, charts, notes and activity.",
+    "category": "",
+    "writes": false,
+    "methods": [
+      "export_all",
+      "get_activity",
+      "get_all_cells",
+      "get_attachments",
+      "get_cells",
+      "get_charts",
+      "get_comments",
+      "get_functions",
+      "get_layouts",
+      "get_links",
+      "get_members",
+      "get_named_ranges",
+      "get_note",
+      "get_noted_cells",
+      "get_private_cells",
+      "get_private_sheets",
+      "get_project",
+      "get_protections",
+      "get_publications",
+      "get_rules",
+      "get_sheet_views",
+      "get_styles",
+      "list_sheets",
+      "search_functions",
+      "whoami"
+    ]
+  },
+  {
+    "id": "edit",
+    "label": "Edit cells",
+    "description": "Values, formulas, formatting, notes, rows and columns.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "apply_cell_ops",
+      "apply_private_cell_ops",
+      "apply_style_ops",
+      "apply_axis_ops",
+      "set_cell",
+      "set_cell_format",
+      "clear_cell",
+      "edit_note",
+      "set_sizes",
+      "set_frozen"
+    ]
+  },
+  {
+    "id": "sheets",
+    "label": "Add and rename sheets",
+    "description": "Add a sheet, shared or private, rename one, or name the workbook.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "create_sheet",
+      "create_private_sheet",
+      "rename_sheet",
+      "rename_private_sheet",
+      "init_project"
+    ]
+  },
+  {
+    "id": "build",
+    "label": "Add charts, rules and named ranges",
+    "description": "Charts, conditional formats, validations and named ranges.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "add_chart",
+      "update_chart",
+      "add_rule",
+      "update_rule",
+      "set_named_range"
+    ]
+  },
+  {
+    "id": "comment",
+    "label": "Comment",
+    "description": "Comment on a cell, reply, edit your comment or resolve a thread. An @mention notifies that person.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "add_comment",
+      "edit_comment",
+      "set_comment_resolved"
+    ]
+  },
+  {
+    "id": "attach",
+    "label": "Attach files",
+    "description": "Attach a file to a cell.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "add_attachment"
+    ]
+  },
+  {
+    "id": "link",
+    "label": "Link ranges to other workbooks",
+    "description": "Send a range's values to another workbook, keep it updated, or stop.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "publish_range",
+      "push_publication",
+      "unpublish",
+      "receive_link",
+      "drop_link",
+      "unlink"
+    ]
+  },
+  {
+    "id": "access",
+    "label": "Change roles and protected ranges",
+    "description": "Who may edit the workbook, and which ranges are locked.",
+    "category": "invite",
+    "writes": true,
+    "methods": [
+      "set_role",
+      "protect_range",
+      "update_protection",
+      "remove_protection"
+    ]
+  },
+  {
+    "id": "delete",
+    "label": "Delete sheets and content",
+    "description": "Sheets, comments, attachments, charts, rules and named ranges.",
+    "category": "delete",
+    "writes": true,
+    "methods": [
+      "delete_sheet",
+      "delete_private_sheet",
+      "delete_comment",
+      "remove_attachment",
+      "remove_chart",
+      "remove_rule",
+      "delete_named_range"
+    ]
+  },
+  {
+    "id": "profile",
+    "label": "Set your nickname",
+    "description": "The name others see in the workbook.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "join"
+    ]
+  }
+]
