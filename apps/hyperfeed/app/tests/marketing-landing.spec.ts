@@ -6,7 +6,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 
-const SECTIONS = ["lanes", "rules", "start"];
+const SECTIONS = ["why", "features", "rules", "private", "apps", "start"];
 const DOC_SECTIONS = ["concepts", "start", "using", "agent", "storage", "trouble"];
 
 async function noSideScroll(page: Page) {
@@ -15,17 +15,19 @@ async function noSideScroll(page: Page) {
 }
 
 test.describe("Hyperfeed landing page", () => {
-  test("pitches the feed and draws it", async ({ page }) => {
+  test("leads with why, and draws the app", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Everything your agent does. One feed.");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Get your attention back.");
     for (const id of SECTIONS) await expect(page.locator(`#${id}`)).toBeVisible();
-    // The hero is the app as drawn: the lanes, the agent, a permission waiting on you.
+    // The hero is the app as drawn: the lanes, the agent, what waits on you.
     const hero = page.getByRole("img", { name: /The Hyperfeed app/ });
     await expect(hero).toBeVisible();
     await expect(hero.getByText("Agent live")).toBeVisible();
-    await expect(hero.getByText("Bash: Render the album cover")).toBeVisible();
+    await expect(hero.getByText("Partner agreement is ready to sign")).toBeVisible();
+    // Every app shows its own icon, not a monogram.
+    await expect(page.locator("#apps img")).toHaveCount(12);
     expect(errors).toEqual([]);
   });
 
@@ -45,13 +47,22 @@ test.describe("Hyperfeed landing page", () => {
     await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible();
   });
 
+  test("starts light even when the system prefers dark", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(page.getByRole("button", { name: "Use dark theme" })).toBeVisible();
+    await page.goto("/demo");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  });
+
   test("the theme switch reaches the whole app", async ({ page }) => {
     await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/");
     await page.getByRole("button", { name: "Use dark theme" }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     const ground = await page.locator(".hl").evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(ground).toBe("rgb(0, 0, 0)");
+    expect(ground).toBe("rgb(11, 14, 24)");
   });
 
   test("docs explain every part, and /preview lands on the overview", async ({ page }) => {

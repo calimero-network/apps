@@ -19,6 +19,7 @@ import { NeedsYou, opensIn, waitingCount } from "./NeedsYou";
 import type { NewFeed } from "./FeedView";
 import LandingPage from "./pages/landing/LandingPage";
 import DocsPage from "./pages/landing/DocsPage";
+import { BrandLockup } from "./brand";
 
 /**
  * Two ways in, one set of screens.
@@ -318,8 +319,7 @@ function Shell({
     <div className="shell">
       <header className="topbar">
         <Link to={base || "/"} className="brand">
-          <img src="/favicon.svg" alt="" width={24} height={24} />
-          <span>hyperfeed</span>
+          <BrandLockup size={24} />
         </Link>
         {switcher}
         {feed && (

@@ -82,8 +82,8 @@ function resolve(c) {
 }
 
 // ---- shapes (design units) -------------------------------------------------
-// `rrect` for the tile and the rows, `circle` for the dot. Each
-// one is a PREDICATE over design-unit coordinates — the rasteriser above
+// `rrect` for the tile and the rows. Each one is a PREDICATE over
+// design-unit coordinates — the rasteriser above
 // supersamples it, so a shape needs no anti-aliasing of its own.
 
 const rrect = (x, y, w, h, r) => (u, v) => {
@@ -93,7 +93,6 @@ const rrect = (x, y, w, h, r) => (u, v) => {
   return dx * dx + dy * dy <= r * r;
 };
 
-const circle = (cx, cy, r) => (u, v) => (u - cx) ** 2 + (v - cy) ** 2 <= r * r;
 
 // ---- paints ----------------------------------------------------------------
 
@@ -176,19 +175,35 @@ function encodeICO(entries) {
 
 
 // ---- art -------------------------------------------------------------------
-// Three feed rows getting shorter and a dot for the item that needs you. Same
-// numbers as public/favicon.svg.
+// Three feed lines getting shorter, slanted forward (skewX -14°), in the brand
+// gradient on a white tile. Same numbers as public/favicon.svg.
 
-const BG = "#2f4be0";
-const ROW = "#ffffff";
-const DOT = "#fdba74";
+const BG = "#ffffff";
+const STOPS = ["#3e63f5", "#8b5cf6", "#ec4899"].map(rgb);
+const SKEW = Math.tan((14 * Math.PI) / 180);
+// The lines' top-left corner, the top line's x, and their heights and gaps.
+const X = 19.5;
+const Y = 13.8;
+const H = 8.4;
+const GAP = 14;
+
+// Undo the slant: a point is inside a slanted line if its unslanted twin is.
+const slanted = (x, y, w, h, r) => {
+  const inside = rrect(x, y, w, h, r);
+  return (u, v) => inside(u + SKEW * (v - Y), v);
+};
+
+// Blue to violet to pink along the diagonal, at the line's own opacity.
+const gradient = (alpha) => (u, v) => {
+  const t = Math.min(1, Math.max(0, (u + v - 2 * Y) / 64));
+  const [a, b, k] = t < 0.55 ? [STOPS[0], STOPS[1], t / 0.55] : [STOPS[1], STOPS[2], (t - 0.55) / 0.45];
+  return [0, 1, 2].map((i) => a[i] + (b[i] - a[i]) * k).concat(alpha);
+};
 
 function mark(c, fit) {
-  const ink = solid(ROW);
-  draw(c, rrect(12, 15, 40, 7, 3.5), ink, fit);
-  draw(c, rrect(12, 28.5, 28, 7, 3.5), ink, fit);
-  draw(c, rrect(12, 42, 16, 7, 3.5), ink, fit);
-  draw(c, circle(44, 45.5, 6.5), solid(DOT), fit);
+  draw(c, slanted(X, Y, 32.2, H, H / 2), gradient(1), fit);
+  draw(c, slanted(X, Y + GAP, 23.8, H, H / 2), gradient(0.75), fit);
+  draw(c, slanted(X, Y + 2 * GAP, 14, H, H / 2), gradient(0.5), fit);
 }
 
 // ---- variants --------------------------------------------------------------

@@ -4,7 +4,7 @@
   align-self: stretch;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .work-head {
@@ -12,11 +12,11 @@
   max-width: 85%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: 6px;
+  font-size: 12px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 4px 6px 4px 10px;
+  border-radius: 8px;
+  padding: 1px 6px 1px 8px;
   background: var(--surface);
 }
 
@@ -24,6 +24,7 @@
   display: flex;
   gap: 8px;
   min-width: 0;
+  min-height: 0;
   padding: 2px 0;
   border: 0;
   background: none;

@@ -11,6 +11,8 @@ export interface AppLook {
   name: string;
   letters: string;
   color: string;
+  /** The app's own icon, when Hyperfeed ships a copy of it (public/app-icons). */
+  icon?: string;
 }
 
 const KNOWN: Record<string, Omit<AppLook, "key">> = {
@@ -31,6 +33,35 @@ const KNOWN: Record<string, Omit<AppLook, "key">> = {
   // Not an app: the tools on a computer mero-bot runs on (shell, files, git), filed under its name.
   "mero-bot": { name: "Mero Bot", letters: "</>", color: "#475467" },
 };
+
+/**
+ * App keys whose own icon ships in public/app-icons, copied from each app's
+ * folder in this repo. Installed packages can file under their longer key
+ * (`drive-docs`, `issue-tracker`), so those point at the same icon.
+ */
+const ICONS: Record<string, string> = {
+  chat: "chat",
+  calendar: "calendar",
+  sheets: "sheets",
+  issues: "issues",
+  "issue-tracker": "issues",
+  crm: "crm",
+  sign: "sign",
+  docs: "docs",
+  "drive-docs": "docs",
+  updates: "updates",
+  vote: "vote",
+  pass: "pass",
+  forum: "forum",
+  design: "design",
+  stream: "stream",
+  chess: "chess",
+  standup: "standup",
+  pixart: "pixart",
+  models: "models",
+};
+
+const iconFor = (key: string): string | undefined => (ICONS[key] ? `/app-icons/${ICONS[key]}.png` : undefined);
 
 /** The apps the controls list even before anything has happened in them (the demo's keys). */
 export const DEFAULT_APPS = ["chat", "calendar", "sheets", "issues", "docs", "crm", "sign", "pass"];
@@ -58,7 +89,7 @@ const PALETTE = ["#2f4be0", "#067647", "#6e2c91", "#b54708", "#0e6a82", "#9e2a5c
 
 export function appLook(key: string): AppLook {
   const known = KNOWN[key];
-  if (known) return { key, ...known };
+  if (known) return { key, ...known, icon: iconFor(key) };
   const name = key
     .split(/[-.]/)
     .filter(Boolean)
@@ -71,6 +102,7 @@ export function appLook(key: string): AppLook {
     name: name || key,
     letters: (name.replace(/\s/g, "").slice(0, 2) || "??").replace(/^./, (c) => c.toUpperCase()),
     color: PALETTE[hash % PALETTE.length] ?? "#344054",
+    icon: iconFor(key),
   };
 }
 
