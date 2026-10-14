@@ -103,9 +103,9 @@ describe('every path the app can be opened at settles', () => {
   });
 
   it('a redirect is TERMINAL — its target is not itself a redirect', () => {
-    // Each hop below must land on a path that renders a page. `/teams` has no
-    // guard at all, which is what makes it a safe terminus for both the
-    // catch-all and the signed-in guard.
+    // Each hop below must land on a path that renders a page. `/teams`'s own
+    // guard lets a signed-in visitor through, which is what makes it a safe
+    // terminus for both the catch-all and the signed-in guard.
     session.isAuthenticated = true;
     for (const path of ['/', '/landing', '/home', '/space/ns-1', '/nope']) {
       expect(settleAt(path)).toMatch(/^\/teams/);
@@ -136,7 +136,52 @@ describe('every path the app can be opened at settles', () => {
     expect(settleAt('/')).toBe('/');
   });
 
+  // ⚠️ THE REGRESSION TEST FOR BACK-AFTER-LOG-OUT. The in-app routes had no
+  // sign-in guard, so Back after Log out rendered the app frame around no
+  // data. Signed out, every in-app path goes to the front door.
+  it.each(['/teams', '/teams/ns-1', '/vault/ctx-1', '/security'])(
+    'signed out, in-app %s lands on the front door',
+    (path) => {
+      expect(settleAt(path)).toBe('/');
+    },
+  );
+
+  it.each(['/teams', '/teams/ns-1', '/vault/ctx-1', '/security'])(
+    'while the session is restored, %s stays put and renders nothing',
+    (path) => {
+      // Bouncing here would throw a signed-in deep link onto the landing page
+      // before mero-react finished reading its stored session.
+      session.isLoading = true;
+      const { container, unmount } = render(
+        <MemoryRouter initialEntries={[path]}>
+          <App />
+          <Probe />
+        </MemoryRouter>,
+      );
+      expect(screen.getByTestId('settled').textContent).toBe(path);
+      expect(
+        container.querySelector('[data-testid="theme-toggle"]'),
+      ).toBeNull();
+      unmount();
+    },
+  );
+
+  it.each(['/teams/ns-1', '/vault/ctx-1', '/security'])(
+    'signed in, a deep link to %s stays there',
+    (path) => {
+      session.isAuthenticated = true;
+      expect(settleAt(path)).toBe(path);
+    },
+  );
+
+  it('/share and the reference pages stay public', () => {
+    for (const path of ['/share', '/docs', '/preview']) {
+      expect(settleAt(path)).toBe(path);
+    }
+  });
+
   it('a legacy /space link keeps its id on the way to /teams', () => {
+    session.isAuthenticated = true;
     expect(settleAt('/space/ns-abc')).toBe('/teams/ns-abc');
   });
 });

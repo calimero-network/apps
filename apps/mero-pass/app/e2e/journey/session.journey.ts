@@ -5,7 +5,7 @@ import { defaultLogin, readClipboard, rig, type Actor } from "@calimero-apps/e2e
 // generator, a masked password copied to the clipboard, and Log out — which
 // has to leave nothing behind that opens a vault: the session gone, the vault
 // keys locked, and the copied password off the clipboard at once rather than
-// 30 seconds later.
+// 30 seconds later — and the browser's Back button must not reopen the app.
 
 const SESSION_KEYS = () =>
   Object.keys(localStorage).filter((k) => k === "mero-tokens" || /^mero:.*token/.test(k));
@@ -87,6 +87,16 @@ test("mero-pass: theme, generator, copy, then Log out leaves nothing behind", as
       await page.reload();
       await expect(page.getByTestId("landing")).toBeVisible();
       expect(await page.evaluate(SESSION_KEYS)).toEqual([]);
+    });
+
+    await test.step("Back after Log out returns to the front door, not an empty app frame", async () => {
+      // The vault page Log out replaced is gone; the in-app page before it is
+      // still in history. Its route's sign-in guard sends it to `/`.
+      await page.goBack();
+      await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
+      await expect(page.getByTestId("landing")).toBeVisible();
+      await expect(page.getByTestId("theme-toggle")).toHaveCount(0);
+      await expect(page.getByTestId("logout")).toHaveCount(0);
     });
   } finally {
     await context.close();
