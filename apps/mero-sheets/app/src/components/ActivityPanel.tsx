@@ -6,8 +6,9 @@
  * to the selected cell's history. Clicking a cell reference jumps to it.
  */
 import React, { useEffect, useState } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { C } from '../theme';
+import { chip, closeButton, overlay, sheetHeader, sideSheet } from './glass';
 import type { ActivityEntry } from '../hooks/useSpreadsheet';
 import { ago, nsToMs } from '../lib/time';
 
@@ -110,35 +111,23 @@ export default function ActivityPanel({
   );
 }
 
-const slideIn = keyframes`from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; }`;
-const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
-
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 200;
-  background: rgba(14, 20, 15, 0.3); backdrop-filter: blur(2px);
-  animation: ${fadeIn} 0.18s ease;
+  ${overlay}
+  z-index: 200;
   display: flex; justify-content: flex-end;
 `;
 
 const Panel = styled.div`
-  width: 420px; max-width: 100vw; height: 100%;
-  background: ${C.paper}; border-left: 1px solid ${C.line};
-  display: flex; flex-direction: column;
-  animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: -20px 0 60px -20px rgba(14, 20, 15, 0.25);
+  ${sideSheet}
+  --sheet-w: 420px;
 `;
 
 const Header = styled.div`
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 18px; border-bottom: 1px solid ${C.line}; flex-shrink: 0;
-  .title { font-size: 15px; font-weight: 700; color: ${C.ink}; letter-spacing: -0.2px; }
+  ${sheetHeader}
 `;
 
 const CloseBtn = styled.button`
-  width: 30px; height: 30px; display: grid; place-items: center;
-  font-size: 20px; line-height: 1; color: ${C.mutedSoft};
-  background: transparent; border: none; border-radius: 8px; cursor: pointer;
-  &:hover { background: ${C.paper2}; color: ${C.ink}; }
+  ${closeButton}
 `;
 
 const Filters = styled.div`
@@ -146,11 +135,7 @@ const Filters = styled.div`
 `;
 
 const Chip = styled.button`
-  font-size: 11px; padding: 3px 9px; border-radius: 999px;
-  border: 1px solid ${C.line}; background: ${C.paper}; color: ${C.muted}; cursor: pointer;
-  &:hover:not(:disabled) { color: ${C.ink}; }
-  &:disabled { opacity: 0.45; cursor: default; }
-  &[aria-pressed='true'] { border-color: ${C.green}; color: ${C.greenDeep}; background: ${C.paper2}; }
+  ${chip}
 `;
 
 const List = styled.ol`

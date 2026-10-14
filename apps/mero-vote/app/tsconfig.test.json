@@ -16,6 +16,8 @@
     "src/JoinCard.tsx",
     "src/icons.tsx",
     "src/ui.tsx",
+    "src/theme.ts",
+    "src/signOut.ts",
     "src/utils",
     "src/crypto"
   ]

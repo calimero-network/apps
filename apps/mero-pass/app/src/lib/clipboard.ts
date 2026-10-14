@@ -10,6 +10,8 @@
 export const CLIPBOARD_CLEAR_MS = 30_000;
 
 let pending: ReturnType<typeof setTimeout> | null = null;
+/** The clear the pending timer will run, so it can be run early. */
+let pendingClear: (() => Promise<void>) | null = null;
 
 export async function copySecret(
   value: string,
@@ -17,16 +19,32 @@ export async function copySecret(
 ): Promise<void> {
   await navigator.clipboard.writeText(value);
   if (pending) clearTimeout(pending);
+  const clear = async () => {
+    try {
+      const now = await navigator.clipboard.readText();
+      if (now !== value) return;
+    } catch {
+      // Read refused (no permission, or the tab is not focused): clear anyway.
+    }
+    await navigator.clipboard.writeText('').catch(() => {});
+  };
+  pendingClear = clear;
   pending = setTimeout(() => {
     pending = null;
-    void (async () => {
-      try {
-        const now = await navigator.clipboard.readText();
-        if (now !== value) return;
-      } catch {
-        // Read refused (no permission, or the tab is not focused): clear anyway.
-      }
-      await navigator.clipboard.writeText('').catch(() => {});
-    })();
+    pendingClear = null;
+    void clear();
   }, clearAfterMs);
+}
+
+/**
+ * Run the scheduled clear now, if a copied secret is still waiting on one.
+ * Logging out calls this: a signed-out tab should not leave a password on the
+ * clipboard for the rest of its 30 seconds.
+ */
+export async function clearCopiedSecretNow(): Promise<void> {
+  if (pending) clearTimeout(pending);
+  pending = null;
+  const clear = pendingClear;
+  pendingClear = null;
+  if (clear) await clear();
 }

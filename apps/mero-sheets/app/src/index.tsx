@@ -1,3 +1,6 @@
+// The fleet's shared light-glass look. First, so this app's own stylesheet
+// (index.css maps its tokens onto these) overrides it, never the reverse.
+import '@calimero-apps/glass/glass.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import '@calimero-network/mero-ui/styles.css';

@@ -166,7 +166,7 @@ const Tip = styled.div`
   position: absolute; top: 0; transform: translateX(-50%); pointer-events: none;
   display: flex; flex-direction: column; gap: 2px; padding: 6px 9px; border-radius: 8px;
   font-size: 11.5px; color: ${C.ink}; background: ${C.paper}; border: 1px solid ${C.line};
-  box-shadow: 0 8px 24px -10px rgba(14, 20, 15, 0.4); white-space: nowrap;
+  box-shadow: 0 8px 24px -10px rgba(14, 18, 34, 0.4); white-space: nowrap;
   span { display: flex; align-items: center; gap: 5px; color: ${C.muted}; }
   i { width: 8px; height: 8px; border-radius: 2px; }
 `;

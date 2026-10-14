@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Member, PollSummary } from "./generated/MeroVoteClient";
 import { CreatePoll } from "./CreatePoll";
 import { PollDetail } from "./PollDetail";
 import { errText, short, useLiveRefresh, useMeroVote } from "./useMeroVote";
-import { BarChartIcon, ChevronRightIcon, PlusIcon, RefreshIcon, UserIcon, UsersIcon } from "./icons";
-import { IconTile } from "./ui";
+import { BarChartIcon, CheckIcon, ChevronRightIcon, ClockIcon, KeyIcon, PlusIcon, RefreshIcon, UserIcon, UsersIcon } from "./icons";
 
 const PHASE_LABEL: Record<PollSummary["phase"], string> = {
   KeyCeremony: "Key ceremony",
@@ -12,6 +11,8 @@ const PHASE_LABEL: Record<PollSummary["phase"], string> = {
   Closing: "Closing",
   Closed: "Closed",
 };
+
+const PHASES: PollSummary["phase"][] = ["KeyCeremony", "Voting", "Closing", "Closed"];
 
 export function PhaseBadge({ phase }: { phase: PollSummary["phase"] }) {
   return (
@@ -28,8 +29,11 @@ export function PhaseBadge({ phase }: { phase: PollSummary["phase"] }) {
  * The roster is how the app learns account ids. A creator names trustees and
  * voters by ACCOUNT, and the only place an account id appears is the member's
  * own signed slot — which `set_name` creates.
+ *
+ * It owns the two columns: the polls in the main one, and who you are, who
+ * else is here and `side` (the invite card) beside them.
  */
-export function VotePanel({ contextId }: { contextId: string }) {
+export function VotePanel({ contextId, side }: { contextId: string; side?: ReactNode }) {
   const client = useMeroVote(contextId);
   const [me, setMe] = useState<string | null>(null);
   const [roster, setRoster] = useState<Member[]>([]);
@@ -74,146 +78,210 @@ export function VotePanel({ contextId }: { contextId: string }) {
 
   if (selected) {
     return (
-      <PollDetail
-        key={selected}
-        contextId={contextId}
-        pollId={selected}
-        me={me}
-        label={label}
-        tick={tick}
-        onBack={() => setSelected(null)}
-      />
+      <div className="ctx-layout">
+        <div className="ctx-main">
+          <PollDetail
+            key={selected}
+            contextId={contextId}
+            pollId={selected}
+            me={me}
+            label={label}
+            tick={tick}
+            onBack={() => setSelected(null)}
+          />
+        </div>
+        <aside className="ctx-side">{side}</aside>
+      </div>
     );
   }
 
+  const count = (...phases: PollSummary["phase"][]) => polls.filter((p) => phases.includes(p.phase)).length;
+
   return (
-    <>
-      <div className="card">
-        <div className="card-head" style={{ marginBottom: me ? 14 : 0 }}>
-          <span className={`avatar ${myName ? "me" : ""}`}>{myName ? initial(myName) : <UserIcon size={14} />}</span>
-          <div className="grow">
-            <h2>You</h2>
-            {me && (
-              <div className="meta">
-                {myName ? (
-                  <>
-                    Signed in as <strong className="text">{myName}</strong>{" "}
-                  </>
-                ) : (
-                  <>Pick a name so others can add you as a voter or trustee. </>
-                )}
-                · account <code className="mono" title={me}>{short(me)}</code>
-              </div>
-            )}
-          </div>
-        </div>
-        {me ? (
-          <div className="row">
-            <input
-              aria-label="Your name"
-              placeholder={myName ? "Change your name" : "Your name"}
-              value={name}
-              maxLength={64}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void saveName()}
-            />
-            <button className={myName ? "ghost" : ""} onClick={() => void saveName()} disabled={!name.trim()}>
-              {myName ? "Rename" : "Join roster"}
-            </button>
-          </div>
-        ) : (
-          <p className="empty">Loading…</p>
-        )}
+    <div className="ctx-layout">
+      <div className="ctx-main">
         {err && <pre className="err">{err}</pre>}
+        {creating && me ? (
+          <CreatePoll
+            contextId={contextId}
+            me={me}
+            roster={roster}
+            onCancel={() => setCreating(false)}
+            onCreated={(id) => {
+              setCreating(false);
+              setSelected(id);
+              void refresh();
+            }}
+          />
+        ) : (
+          <section className="card polls-panel">
+            <div className="page-head">
+              <div>
+                <span className="eyebrow">Voting group</span>
+                <h2>Polls</h2>
+                <p>
+                  {polls.length} poll{polls.length === 1 ? "" : "s"} in this context. Ballots are encrypted in each
+                  voter&apos;s browser; every member can audit the count.
+                </p>
+              </div>
+              <div className="page-actions">
+                <button className="icon-btn round bordered" onClick={() => void refresh()} title="Refresh" aria-label="Refresh">
+                  <RefreshIcon size={16} />
+                </button>
+                <button onClick={() => setCreating(true)} disabled={!me}>
+                  <PlusIcon size={16} />
+                  New poll
+                </button>
+              </div>
+            </div>
+            <div className="stats">
+              <div className="stat">
+                <span className="stat-icon live">
+                  <BarChartIcon size={16} />
+                </span>
+                <span className="stat-num tnum">{count("Voting")}</span>
+                <span className="stat-label">Open for voting</span>
+              </div>
+              <div className="stat">
+                <span className="stat-icon wait">
+                  <KeyIcon size={16} />
+                </span>
+                <span className="stat-num tnum">{count("KeyCeremony")}</span>
+                <span className="stat-label">In key ceremony</span>
+              </div>
+              <div className="stat">
+                <span className="stat-icon">
+                  <CheckIcon size={16} />
+                </span>
+                <span className="stat-num tnum">{count("Closing", "Closed")}</span>
+                <span className="stat-label">Closed or counting</span>
+              </div>
+            </div>
+
+            {polls.length === 0 ? (
+              <div className="empty-state hero-empty">
+                <span className="empty-mark">
+                  <BarChartIcon size={24} />
+                </span>
+                <strong>No polls yet</strong>
+                <p>
+                  No polls in this context yet. Start one with <strong className="text">New poll</strong> — ballots are
+                  encrypted in each voter&apos;s browser.
+                </p>
+              </div>
+            ) : (
+              <ul className="poll-grid">
+                {polls.map((p) => {
+                  const at = PHASES.indexOf(p.phase);
+                  return (
+                    <li key={p.poll_id}>
+                      <button className={`poll-card phase-card-${p.phase}`} onClick={() => setSelected(p.poll_id)}>
+                        <span className="poll-card-top">
+                          <PhaseBadge phase={p.phase} />
+                          <ChevronRightIcon size={16} className="chev" />
+                        </span>
+                        <span className="poll-title">{p.title}</span>
+                        <span className="poll-meta">
+                          <span className="poll-meta-item">
+                            <UserIcon size={13} />
+                            {label(p.creator)}
+                          </span>
+                          <span className="poll-meta-item tnum">
+                            {p.phase === "KeyCeremony" ? <ClockIcon size={13} /> : <CheckIcon size={13} />}
+                            {p.ballots} ballot{p.ballots === 1 ? "" : "s"}
+                          </span>
+                        </span>
+                        <span className="poll-progress" aria-hidden="true">
+                          {PHASES.map((ph, i) => (
+                            <span key={ph} className={i < at ? "done" : i === at ? "now" : ""} />
+                          ))}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
       </div>
 
-      {creating && me ? (
-        <CreatePoll
-          contextId={contextId}
-          me={me}
-          roster={roster}
-          onCancel={() => setCreating(false)}
-          onCreated={(id) => {
-            setCreating(false);
-            setSelected(id);
-            void refresh();
-          }}
-        />
-      ) : (
-        <div className="card flush">
+      <aside className="ctx-side">
+        <div className="card you-card">
           <div className="card-head">
+            <span className={`avatar lg ${myName ? "me" : ""}`}>{myName ? initial(myName) : <UserIcon size={18} />}</span>
             <div className="grow">
-              <h2>Polls</h2>
-              <div className="meta">
-                {polls.length} poll{polls.length === 1 ? "" : "s"} in this context
-              </div>
-            </div>
-            <div className="actions">
-              <button className="icon-btn bordered" onClick={() => void refresh()} title="Refresh" aria-label="Refresh">
-                <RefreshIcon size={16} />
-              </button>
-              <button onClick={() => setCreating(true)} disabled={!me}>
-                <PlusIcon size={16} />
-                New poll
-              </button>
+              <h2>You</h2>
+              {me && (
+                <div className="meta">
+                  {myName ? (
+                    <>
+                      Signed in as <strong className="text">{myName}</strong>
+                    </>
+                  ) : (
+                    <>Pick a name so others can add you as a voter or trustee.</>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-          {polls.length === 0 ? (
-            <div style={{ padding: "0 20px 20px" }}>
-              <div className="empty-state">
-                <IconTile>
-                  <BarChartIcon size={20} />
-                </IconTile>
-                <strong>No polls yet</strong>
-                <p>No polls in this context yet. Start one — ballots are encrypted in each voter&apos;s browser.</p>
+          {me ? (
+            <>
+              <div className="account-line">
+                <span>Account</span>
+                <code className="mono" title={me}>
+                  {short(me)}
+                </code>
               </div>
-            </div>
+              <div className="row name-row">
+                <input
+                  aria-label="Your name"
+                  placeholder={myName ? "Change your name" : "Your name"}
+                  value={name}
+                  maxLength={64}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && void saveName()}
+                />
+                <button className={myName ? "ghost" : ""} onClick={() => void saveName()} disabled={!name.trim()}>
+                  {myName ? "Rename" : "Join roster"}
+                </button>
+              </div>
+            </>
           ) : (
-            <ul className="poll-list">
-              {polls.map((p) => (
-                <li key={p.poll_id}>
-                  <button className="poll-row" onClick={() => setSelected(p.poll_id)}>
-                    <IconTile accent={p.phase === "Voting"}>
-                      <BarChartIcon size={18} />
-                    </IconTile>
-                    <span className="poll-main">
-                      <span className="poll-title">{p.title}</span>
-                      <span className="poll-meta">
-                        by {label(p.creator)} · {p.ballots} ballot{p.ballots === 1 ? "" : "s"}
-                      </span>
-                    </span>
-                    <PhaseBadge phase={p.phase} />
-                    <ChevronRightIcon size={16} className="chev" />
-                  </button>
+            <p className="empty">Loading…</p>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-head">
+            <span className="icon-tile">
+              <UsersIcon size={18} />
+            </span>
+            <div className="grow">
+              <h2>Members ({roster.length})</h2>
+              <div className="meta">Everyone here can vote and audit</div>
+            </div>
+          </div>
+          {roster.length === 0 ? (
+            <p className="empty">Nobody has joined the roster yet.</p>
+          ) : (
+            <ul className="member-list">
+              {roster.map((m) => (
+                <li key={m.account} className="member" title={m.account} data-testid="member">
+                  <span className={`avatar ${m.account === me ? "me" : ""}`}>{initial(m.name)}</span>
+                  <span className="member-name">
+                    {m.name}
+                    {m.account === me && <span className="you"> (you)</span>}
+                  </span>
+                  <code className="mono member-id">{short(m.account)}</code>
                 </li>
               ))}
             </ul>
           )}
         </div>
-      )}
-
-      <div className="card">
-        <div className="card-head">
-          <div className="grow">
-            <h2>Members ({roster.length})</h2>
-          </div>
-          <UsersIcon size={16} className="muted" />
-        </div>
-        {roster.length === 0 ? (
-          <p className="empty">Nobody has joined the roster yet.</p>
-        ) : (
-          <div className="chips">
-            {roster.map((m) => (
-              <span key={m.account} className="chip" title={m.account} data-testid="member">
-                <span className={`avatar ${m.account === me ? "me" : ""}`}>{initial(m.name)}</span>
-                {m.name}
-                {m.account === me && <span className="you">(you)</span>}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-    </>
+        {side}
+      </aside>
+    </div>
   );
 }
 
