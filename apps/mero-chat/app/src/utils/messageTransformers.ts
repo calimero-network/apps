@@ -36,7 +36,8 @@ export function transformMessageToUI(
     mentions: [],
     files: (message.files ?? []).map(mapAttachmentToCurbFile),
     images: (message.images ?? []).map(mapAttachmentToCurbFile),
-    editMode: false,
+    // No editMode: it is this window's state, not the node's. A refresh merges
+    // this over the row on screen, and `editMode: false` closed an open editor.
     status: MessageStatus.sent,
     deleted: message.deleted,
     group: message.group,

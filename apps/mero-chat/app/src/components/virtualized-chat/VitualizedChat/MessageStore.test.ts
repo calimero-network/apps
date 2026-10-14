@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import MessageStore from "./MessageStore";
+import { transformMessageToUI } from "../../../utils/messageTransformers";
+import type { CurbMessage } from "../../../types/Common";
 
 interface Msg {
   id: string;
@@ -140,5 +142,52 @@ describe("MessageStore initial load", () => {
     const store = storeWith({ id: "old", timestamp: 1 });
     store.initial([{ id: "x", timestamp: 1 }]);
     expect(ids(store)).toEqual(["x"]);
+  });
+});
+
+describe("MessageStore refresh from the node", () => {
+  // The chat re-reads the newest page whenever the node reports a change, and
+  // merges each message it gets back over the row on screen. The node knows
+  // nothing about what this window is doing with a row, so a refresh must not
+  // undo it: clicking Edit just before a refresh landed closed the editor.
+  const fromNode = (text: string) =>
+    transformMessageToUI({
+      id: "m1",
+      index: 0,
+      sender: "alice",
+      text,
+      timestamp: 1,
+      reactions: {},
+      thread_count: 0,
+      thread_last_timestamp: 0,
+    });
+
+  it("keeps a message open for editing", () => {
+    const store = new MessageStore<CurbMessage>();
+    store.initial([fromNode("hi")]);
+    store.updateMultiple([{ id: "m1", descriptor: { updatedFields: { editMode: true } } }]);
+
+    store.append([fromNode("hi")]);
+
+    expect(store.messages[0].editMode).toBe(true);
+  });
+
+  it("keeps the row's React key, so an open editor is not remounted", () => {
+    const store = new MessageStore<CurbMessage>();
+    store.initial([fromNode("hi")]);
+    const key = store.computeKey(store.messages[0]);
+
+    store.append([fromNode("hi")]);
+
+    expect(store.computeKey(store.messages[0])).toBe(key);
+  });
+
+  it("still takes what the node changed", () => {
+    const store = new MessageStore<CurbMessage>();
+    store.initial([fromNode("hi")]);
+
+    store.append([fromNode("hi, edited")]);
+
+    expect(store.messages[0].text).toBe("hi, edited");
   });
 });
