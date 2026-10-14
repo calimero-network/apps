@@ -83,5 +83,5 @@ const List = styled.ul`
 `;
 const Apply = styled.button`
   width: 100%; margin-top: 12px; padding: 10px; font-size: 13px; font-weight: 600; border-radius: 10px; cursor: pointer;
-  color: ${C.onAccent}; background: ${C.green}; border: 1px solid #93e60c;
+  color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink);
 `;

@@ -167,7 +167,7 @@ const Overlay = styled.div`
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(14, 20, 15, 0.3);
+  background: rgba(14, 18, 34, 0.3);
   backdrop-filter: blur(2px);
   animation: ${fadeIn} 0.18s ease;
   display: flex;
@@ -183,7 +183,7 @@ const Panel = styled.div`
   display: flex;
   flex-direction: column;
   animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: -20px 0 60px -20px rgba(14, 20, 15, 0.25);
+  box-shadow: -20px 0 60px -20px rgba(14, 18, 34, 0.25);
 `;
 
 const PanelHeader = styled.div`
@@ -212,8 +212,8 @@ const FxBadge = styled.span`
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: rgba(164, 255, 17, 0.16);
-  border: 1px solid rgba(164, 255, 17, 0.4);
+  background: color-mix(in srgb, var(--glass-accent-solid) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-accent-solid) 40%, transparent);
   font-size: 12px;
   font-style: italic;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
@@ -274,7 +274,7 @@ const SearchInput = styled.input`
 
   &:focus {
     border-color: ${C.green};
-    box-shadow: 0 0 0 3px rgba(164, 255, 17, 0.18);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-accent-solid) 18%, transparent);
   }
 `;
 
@@ -397,10 +397,10 @@ const FnExample = styled.div`
     font-size: 12.5px;
     font-family: ui-monospace, 'SF Mono', Menlo, monospace;
     color: ${C.greenDeep};
-    background: rgba(164, 255, 17, 0.1);
+    background: color-mix(in srgb, var(--glass-accent-solid) 10%, transparent);
     padding: 2px 8px;
     border-radius: 6px;
-    border: 1px solid rgba(164, 255, 17, 0.3);
+    border: 1px solid color-mix(in srgb, var(--glass-accent-solid) 30%, transparent);
   }
 `;
 

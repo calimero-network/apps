@@ -41,14 +41,14 @@ const Bar = styled.footer`
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
 `;
 
-const TONE: Record<SyncTone, string> = { ok: C.green, busy: C.muted, warn: '#eda100', off: C.danger };
+const TONE: Record<SyncTone, string> = { ok: 'var(--glass-good-ink)', busy: C.muted, warn: '#eda100', off: C.danger };
 
 const Dot = styled.span<{ $tone: SyncTone }>`
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: ${(p) => TONE[p.$tone]};
-  box-shadow: ${(p) => (p.$tone === 'ok' ? `0 0 6px ${C.green}` : 'none')};
+  box-shadow: ${(p) => (p.$tone === 'ok' ? '0 0 6px var(--glass-good-ink)' : 'none')};
 `;
 
 const Sep = styled.span`

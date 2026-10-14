@@ -203,7 +203,7 @@ function spanNode(span: Span): HTMLElement {
   if (a.italic) el.style.fontStyle = 'italic';
   const deco = [a.underline && 'underline', a.strike && 'line-through'].filter(Boolean).join(' ');
   if (deco) el.style.textDecoration = deco;
-  if (a.highlight) el.style.background = 'rgba(164, 255, 17, 0.3)';
+  if (a.highlight) el.style.background = 'var(--glass-wait-bg)';
   return el;
 }
 
@@ -263,7 +263,7 @@ const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
 
 const Overlay = styled.div`
   position: fixed; inset: 0; z-index: 200;
-  background: rgba(14, 20, 15, 0.3); backdrop-filter: blur(2px);
+  background: rgba(14, 18, 34, 0.3); backdrop-filter: blur(2px);
   animation: ${fadeIn} 0.18s ease;
   display: flex; justify-content: flex-end;
 `;
@@ -272,7 +272,7 @@ const Panel = styled.div`
   background: ${C.paper}; border-left: 1px solid ${C.line};
   display: flex; flex-direction: column;
   animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: -20px 0 60px -20px rgba(14, 20, 15, 0.25);
+  box-shadow: -20px 0 60px -20px rgba(14, 18, 34, 0.25);
 `;
 const Header = styled.div`
   display: flex; align-items: center; justify-content: space-between;
@@ -293,7 +293,7 @@ const FmtBtn = styled.button<{ $mark: NoteMark }>`
   font-weight: ${(p) => (p.$mark === 'bold' ? 700 : 500)};
   font-style: ${(p) => (p.$mark === 'italic' ? 'italic' : 'normal')};
   text-decoration: ${(p) => (p.$mark === 'underline' ? 'underline' : p.$mark === 'strike' ? 'line-through' : 'none')};
-  ${(p) => p.$mark === 'highlight' && 'background: rgba(164, 255, 17, 0.3);'}
+  ${(p) => p.$mark === 'highlight' && 'background: var(--glass-wait-bg);'}
   &:hover { border-color: ${C.green}; }
 `;
 const Status = styled.span`margin-left: auto; font-size: 11.5px; color: ${C.mutedSoft};`;

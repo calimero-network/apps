@@ -177,7 +177,7 @@ const Sub = styled.span`font-size: 12.5px; color: ${C.muted};`;
 const Accept = styled.button`
   flex-shrink: 0; padding: 9px 18px;
   font-size: 13px; font-weight: 600; border-radius: 10px; cursor: pointer;
-  color: ${C.onAccent}; background: ${C.green}; border: 1px solid #93e60c;
+  color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink);
   &:hover:not(:disabled) { background: ${C.greenHover}; }
   &:disabled { opacity: 0.6; cursor: default; }
 `;

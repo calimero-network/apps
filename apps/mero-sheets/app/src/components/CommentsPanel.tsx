@@ -179,7 +179,7 @@ const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
 
 const Overlay = styled.div`
   position: fixed; inset: 0; z-index: 200;
-  background: rgba(14, 20, 15, 0.3); backdrop-filter: blur(2px);
+  background: rgba(14, 18, 34, 0.3); backdrop-filter: blur(2px);
   animation: ${fadeIn} 0.18s ease;
   display: flex; justify-content: flex-end;
 `;
@@ -188,7 +188,7 @@ const Panel = styled.div`
   background: ${C.paper}; border-left: 1px solid ${C.line};
   display: flex; flex-direction: column;
   animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: -20px 0 60px -20px rgba(14, 20, 15, 0.25);
+  box-shadow: -20px 0 60px -20px rgba(14, 18, 34, 0.25);
 `;
 const Header = styled.div`
   display: flex; align-items: center; justify-content: space-between;
@@ -227,7 +227,7 @@ const EntryBox = styled.div`
   .own button { font-size: 11px; color: ${C.mutedSoft}; background: none; border: none; cursor: pointer; padding: 0; }
   .own button:hover { color: ${C.ink}; }
   p { margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: ${C.ink}; white-space: pre-wrap; word-break: break-word; }
-  mark { background: rgba(164, 255, 17, 0.22); color: inherit; border-radius: 4px; padding: 0 2px; }
+  mark { background: color-mix(in srgb, var(--glass-accent-solid) 22%, transparent); color: inherit; border-radius: 4px; padding: 0 2px; }
 `;
 const Actions = styled.div`
   display: flex; gap: 12px; padding-top: 6px;
@@ -245,7 +245,7 @@ const ComposerBox = styled.div`
   .err { margin: 6px 0 0; font-size: 12px; color: ${C.danger}; }
   button {
     margin-top: 6px; padding: 7px 14px; font-size: 12.5px; font-weight: 600; border-radius: 9px; cursor: pointer;
-    color: ${C.onAccent}; background: ${C.green}; border: 1px solid #93e60c;
+    color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink);
     &:disabled { opacity: 0.5; cursor: default; }
   }
 `;

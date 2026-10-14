@@ -263,9 +263,9 @@ const Qr = styled.div`
 const PrimaryBtn = styled.button`
   display: inline-flex; align-items: center; justify-content: center; width: 100%;
   padding: 12px 18px; font-size: 13.5px; font-weight: 600; border-radius: 11px; cursor: pointer;
-  color: ${C.onAccent}; background: ${C.green}; border: 1px solid #93e60c;
+  color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink);
   transition: background 0.18s, box-shadow 0.2s, transform 0.15s;
-  &:hover:not(:disabled) { background: ${C.greenHover}; box-shadow: 0 10px 28px rgba(164,255,17,0.4); transform: translateY(-1px); }
+  &:hover:not(:disabled) { background: ${C.greenHover}; box-shadow: 0 10px 28px color-mix(in srgb, var(--glass-accent-solid) 40%, transparent); transform: translateY(-1px); }
   &:disabled { opacity: 0.6; cursor: default; }
 `;
 

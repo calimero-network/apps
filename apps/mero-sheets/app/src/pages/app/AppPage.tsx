@@ -2041,7 +2041,7 @@ const PickMenu = styled.ul`
   position: fixed; z-index: 150; margin: 2px 0 0; padding: 4px; list-style: none;
   min-width: 140px; max-height: 240px; overflow-y: auto;
   background: ${C.paper}; border: 1px solid ${C.line}; border-radius: 10px;
-  box-shadow: 0 12px 40px -12px rgba(14, 20, 15, 0.35);
+  box-shadow: 0 12px 40px -12px rgba(14, 18, 34, 0.35);
   li { padding: 6px 10px; font-size: 13px; color: ${C.ink}; border-radius: 6px; cursor: pointer; }
   li:hover { background: ${C.paper2}; }
 `;
@@ -2051,7 +2051,7 @@ const ErrorToast = styled.div`
   display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px));
   padding: 10px 14px; border-radius: 12px; font-size: 13px;
   color: ${C.ink}; background: ${C.paper}; border: 1px solid ${C.danger};
-  box-shadow: 0 12px 40px -12px rgba(14, 20, 15, 0.35);
+  box-shadow: 0 12px 40px -12px rgba(14, 18, 34, 0.35);
   button { font-size: 16px; color: ${C.mutedSoft}; background: none; border: none; cursor: pointer; padding: 0; }
 `;
 
@@ -2060,7 +2060,7 @@ const MentionToast = styled.div`
   display: flex; align-items: center; gap: 12px;
   padding: 10px 14px; border-radius: 12px; font-size: 13px;
   color: ${C.ink}; background: ${C.paper}; border: 1px solid ${C.line};
-  box-shadow: 0 12px 40px -12px rgba(14, 20, 15, 0.35);
+  box-shadow: 0 12px 40px -12px rgba(14, 18, 34, 0.35);
   button { font-size: 12.5px; font-weight: 600; color: ${C.greenDeep}; background: none; border: none; cursor: pointer; padding: 0; }
 `;
 
@@ -2070,20 +2070,31 @@ const AppShell = styled.div`
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: ${C.paper};
+  /* The page: the glass ground under this app's tinted colour fields. */
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: ${C.ink};
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--glass-font);
 `;
 
 const TitleBar = styled.header`
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 38px;
+  height: 44px;
   flex-shrink: 0;
-  padding: 0 12px;
+  padding: 0 14px;
+  /* The floating glass header (the glass-header look). */
+  margin: 10px 12px 0;
+  border-radius: 18px;
   background: ${C.chrome};
-  border-bottom: 1px solid ${C.line};
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
+  position: relative;
+  z-index: 20;
 `;
 
 const Lights = styled.div`
@@ -2096,7 +2107,7 @@ const Lights = styled.div`
   }
   i:nth-child(1) { background: #ff5f56; }
   i:nth-child(2) { background: #ffbd2e; }
-  i:nth-child(3) { background: ${C.green}; }
+  i:nth-child(3) { background: #28c840; }
 `;
 
 const TitleName = styled.span`
@@ -2120,7 +2131,7 @@ const LivePill = styled.span<{ $on: boolean }>`
   gap: 6px;
   font-size: 11px;
   font-weight: 600;
-  color: ${(p) => (p.$on ? C.green : C.muted)};
+  color: ${(p) => (p.$on ? 'var(--glass-good-ink)' : C.muted)};
   span { font-size: 8px; }
 `;
 
@@ -2128,11 +2139,11 @@ const CollabBar = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 46px;
+  height: 50px;
   flex-shrink: 0;
-  padding: 0 12px;
-  background: ${C.paper};
-  border-bottom: 1px solid ${C.line};
+  padding: 0 14px;
+  /* A toolbar on the glass ground, under the floating header. */
+  background: transparent;
 `;
 
 const Avatars = styled.div`
@@ -2175,8 +2186,9 @@ const PrimaryAction = styled.button`
   font-weight: 600;
   color: ${C.onAccent};
   background: ${C.green};
-  border: 1px solid ${C.greenHover};
-  border-radius: 8px;
+  border: 1px solid ${C.green};
+  border-radius: 999px;
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.14s, transform 0.12s;
@@ -2220,7 +2232,7 @@ const BackBtn = styled.button`
 const GridIcon = styled.div`
   display: flex;
   align-items: center;
-  color: ${C.green};
+  color: var(--glass-accent);
 `;
 
 const ToolBtn = styled.button`
@@ -2286,13 +2298,13 @@ const CommitBtn = styled.button`
   place-items: center;
   font-size: 14px;
   color: ${C.greenDeep};
-  background: rgba(164, 255, 17, 0.15);
-  border: 1px solid rgba(164, 255, 17, 0.4);
+  background: color-mix(in srgb, var(--glass-accent-solid) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-accent-solid) 40%, transparent);
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.14s;
 
-  &:hover { background: rgba(164, 255, 17, 0.3); }
+  &:hover { background: color-mix(in srgb, var(--glass-accent-solid) 30%, transparent); }
 `;
 
 const CancelCommitBtn = styled.button`
@@ -2320,7 +2332,8 @@ const FullCenter = styled.div`
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: ${C.paper};
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
 `;
 
 const WelcomeCard = styled.div`
@@ -2411,8 +2424,8 @@ const WelcomeIcon = styled.div`
   width: 60px;
   height: 60px;
   border-radius: 16px;
-  background: rgba(164, 255, 17, 0.14);
-  border: 1px solid rgba(164, 255, 17, 0.4);
+  background: color-mix(in srgb, var(--glass-accent-solid) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-accent-solid) 40%, transparent);
   display: grid;
   place-items: center;
   margin: 0 auto 20px;
@@ -2435,7 +2448,7 @@ const ProjectNameInput = styled.input`
   &::placeholder { color: ${C.mutedSoft}; }
   &:focus {
     border-color: ${C.green};
-    box-shadow: 0 0 0 3px rgba(164, 255, 17, 0.18);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-accent-solid) 18%, transparent);
   }
 `;
 
@@ -2457,7 +2470,7 @@ const PrimaryBtn = styled.button`
   cursor: pointer;
   color: ${C.onAccent};
   background: ${C.green};
-  border: 1px solid #93e60c;
+  border: 1px solid var(--glass-ink);
   transition: background 0.18s, transform 0.15s;
 
   &:hover:not(:disabled) {

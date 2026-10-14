@@ -115,7 +115,7 @@ const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
 
 const Overlay = styled.div`
   position: fixed; inset: 0; z-index: 200;
-  background: rgba(14, 20, 15, 0.3); backdrop-filter: blur(2px);
+  background: rgba(14, 18, 34, 0.3); backdrop-filter: blur(2px);
   animation: ${fadeIn} 0.18s ease;
   display: flex; justify-content: flex-end;
 `;
@@ -125,7 +125,7 @@ const Panel = styled.div`
   background: ${C.paper}; border-left: 1px solid ${C.line};
   display: flex; flex-direction: column;
   animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: -20px 0 60px -20px rgba(14, 20, 15, 0.25);
+  box-shadow: -20px 0 60px -20px rgba(14, 18, 34, 0.25);
 `;
 
 const Header = styled.div`

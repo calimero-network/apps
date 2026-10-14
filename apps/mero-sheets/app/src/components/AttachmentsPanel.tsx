@@ -114,7 +114,7 @@ export default function AttachmentsPanel({
 const slideIn = keyframes`from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; }`;
 const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 200; background: rgba(14, 20, 15, 0.3); backdrop-filter: blur(2px);
+  position: fixed; inset: 0; z-index: 200; background: rgba(14, 18, 34, 0.3); backdrop-filter: blur(2px);
   animation: ${fadeIn} 0.18s ease; display: flex; justify-content: flex-end;
 `;
 const Panel = styled.div`
@@ -131,7 +131,7 @@ const CloseBtn = styled.button`
 `;
 const Bar = styled.div`
   display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid ${C.line};
-  button { padding: 7px 14px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; color: ${C.onAccent}; background: ${C.green}; border: 1px solid #93e60c; }
+  button { padding: 7px 14px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink); }
   button:disabled { opacity: 0.5; }
   span { font-size: 11.5px; color: ${C.mutedSoft}; }
 `;

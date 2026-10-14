@@ -165,7 +165,7 @@ const Field = styled.div`
     width: 100%; box-sizing: border-box; padding: 11px 14px; font-size: 14px;
     color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line};
     border-radius: 11px; outline: none;
-    &:focus { border-color: ${C.green}; box-shadow: 0 0 0 3px rgba(164,255,17,0.18); }
+    &:focus { border-color: ${C.green}; box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-accent-solid) 18%, transparent); }
   }
 `;
 const Buttons = styled.div`
@@ -175,7 +175,7 @@ const Buttons = styled.div`
 const PrimaryBtn = styled.button`
   flex: 1; padding: 12px 18px;
   font-size: 13.5px; font-weight: 600; border-radius: 11px; cursor: pointer;
-  color: ${C.onAccent}; background: ${C.green}; border: 1px solid #93e60c;
+  color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink);
   &:hover:not(:disabled) { background: ${C.greenHover}; }
   &:disabled { opacity: 0.5; cursor: default; }
 `;

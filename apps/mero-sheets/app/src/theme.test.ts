@@ -12,14 +12,16 @@ function stubLocalStorage(value: string | null) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('getStoredTheme', () => {
-  it('defaults to dark when nothing is stored', () => {
+  // Light first (the glass migration): an unset or unreadable preference
+  // opens light; only a saved "dark" opens dark.
+  it('defaults to light when nothing is stored', () => {
     stubLocalStorage(null);
-    expect(getStoredTheme()).toBe('dark');
+    expect(getStoredTheme()).toBe('light');
   });
 
-  it('defaults to dark when localStorage is unavailable', () => {
+  it('defaults to light when localStorage is unavailable', () => {
     vi.stubGlobal('localStorage', undefined);
-    expect(getStoredTheme()).toBe('dark');
+    expect(getStoredTheme()).toBe('light');
   });
 
   it('honours a stored light preference', () => {

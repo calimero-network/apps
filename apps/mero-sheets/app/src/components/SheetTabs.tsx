@@ -176,7 +176,7 @@ const TabBar = styled.div`
   display: flex;
   align-items: stretch;
   height: 36px;
-  background: ${C.paper2};
+  background: var(--glass-surface);
   border-top: 1px solid ${C.line};
   flex-shrink: 0;
   overflow: hidden;
@@ -232,7 +232,7 @@ const RenameInput = styled.input<{ $invalid: boolean }>`
   width: 100px;
   outline: none;
   box-shadow: 0 0 0 3px
-    ${(p) => (p.$invalid ? 'rgba(220, 38, 38, 0.2)' : 'rgba(164, 255, 17, 0.2)')};
+    ${(p) => (p.$invalid ? 'rgba(220, 38, 38, 0.2)' : 'color-mix(in srgb, var(--glass-accent-solid) 20%, transparent)')};
 `;
 
 /* Floating message shown above the rename input when the engine rejects the

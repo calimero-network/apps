@@ -106,9 +106,9 @@ const Menu = styled.div`
   overflow-y: auto;
   padding: 4px;
   background: ${C.paper};
-  border: 1px solid ${C.line};
-  border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--glass-edge);
+  border-radius: 14px;
+  box-shadow: var(--glass-shadow-float);
 `;
 
 const Divider = styled.div`

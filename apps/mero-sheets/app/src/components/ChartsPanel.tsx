@@ -93,13 +93,13 @@ export default function ChartsPanel({
 const slideIn = keyframes`from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; }`;
 const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 200; background: rgba(14, 20, 15, 0.3); backdrop-filter: blur(2px);
+  position: fixed; inset: 0; z-index: 200; background: rgba(14, 18, 34, 0.3); backdrop-filter: blur(2px);
   animation: ${fadeIn} 0.18s ease; display: flex; justify-content: flex-end;
 `;
 const Panel = styled.div`
   width: 460px; max-width: 100vw; height: 100%; background: ${C.paper}; border-left: 1px solid ${C.line};
   display: flex; flex-direction: column; animation: ${slideIn} 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: -20px 0 60px -20px rgba(14, 20, 15, 0.25);
+  box-shadow: -20px 0 60px -20px rgba(14, 18, 34, 0.25);
 `;
 const Header = styled.div`
   display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid ${C.line};
@@ -116,7 +116,7 @@ const Form = styled.div`
   .row { display: flex; gap: 8px; }
   select, input { padding: 7px 9px; font-size: 13px; color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 8px; }
   input { flex: 1; min-width: 0; }
-  button { padding: 7px 14px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; color: ${C.onAccent}; background: ${C.green}; border: 1px solid #93e60c; }
+  button { padding: 7px 14px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink); }
   button:disabled { opacity: 0.5; cursor: default; }
   .err { margin: 8px 0 0; color: ${C.danger}; }
 `;

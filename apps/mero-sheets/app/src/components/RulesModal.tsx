@@ -249,7 +249,7 @@ const Preview = styled.span`
 const PrimaryBtn = styled.button`
   display: block; width: 100%; margin-top: 16px; padding: 12px 18px;
   font-size: 13.5px; font-weight: 600; border-radius: 11px; cursor: pointer;
-  color: ${C.onAccent}; background: ${C.green}; border: 1px solid #93e60c;
+  color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink);
   &:hover:not(:disabled) { background: ${C.greenHover}; }
   &:disabled { opacity: 0.5; cursor: default; }
 `;

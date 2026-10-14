@@ -114,7 +114,7 @@ export default function LinksPanel({
 const slideIn = keyframes`from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; }`;
 const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
 const Overlay = styled.div`
-  position: fixed; inset: 0; z-index: 200; background: rgba(14, 20, 15, 0.3); backdrop-filter: blur(2px);
+  position: fixed; inset: 0; z-index: 200; background: rgba(14, 18, 34, 0.3); backdrop-filter: blur(2px);
   animation: ${fadeIn} 0.18s ease; display: flex; justify-content: flex-end;
 `;
 const Panel = styled.div`
@@ -136,7 +136,7 @@ const Form = styled.div`
   code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; color: ${C.greenDeep}; }
   .row { display: flex; gap: 8px; margin-bottom: 8px; }
   select, input { flex: 1; min-width: 0; padding: 7px 9px; font-size: 13px; color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 8px; }
-  button { padding: 7px 16px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; color: ${C.onAccent}; background: ${C.green}; border: 1px solid #93e60c; }
+  button { padding: 7px 16px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; color: ${C.onAccent}; background: ${C.green}; border: 1px solid var(--glass-ink); }
   button:disabled { opacity: 0.5; cursor: default; }
 `;
 const Note = styled.p`margin: 0; padding: 8px 18px; font-size: 12.5px; color: ${C.muted}; border-bottom: 1px solid ${C.line};`;

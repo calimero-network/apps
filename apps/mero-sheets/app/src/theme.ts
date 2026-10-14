@@ -11,8 +11,8 @@ import React, { useCallback, useEffect, useState } from 'react';
  * NOTE: the landing page keeps its own hard-coded light palette and is NOT
  * themed (by product decision) — it never reads these vars.
  *
- * `onAccent` is the text/icon colour that sits ON the bright green accent
- * (buttons, avatars). Green is bright in both themes, so this stays dark.
+ * `onAccent` is the text/icon colour that sits ON the accent fill (buttons,
+ * avatars): the glass on-ink, which flips with the theme like the fill does.
  */
 export const C = {
   green: 'var(--c-green)',
@@ -25,7 +25,7 @@ export const C = {
   paper2: 'var(--c-paper2)',
   line: 'var(--c-line)',
   chrome: 'var(--c-chrome)',
-  lineDark: 'rgba(164,255,17,0.14)',
+  lineDark: 'var(--glass-line)',
   muted: 'var(--c-muted)',
   mutedSoft: 'var(--c-muted-soft)',
   off: 'var(--c-off)',
@@ -36,11 +36,13 @@ export const C = {
 export type ThemeMode = 'light' | 'dark';
 const STORAGE_KEY = 'app:theme';
 
+/** Light first: only a saved "dark" opens dark (the fleet's glass look opens
+ *  light for everyone; the toggle and a saved choice still win). */
 export function getStoredTheme(): ThemeMode {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'light' ? 'light' : 'dark';
+    return localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
   } catch {
-    return 'dark';
+    return 'light';
   }
 }
 

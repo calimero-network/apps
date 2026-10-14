@@ -240,7 +240,10 @@ const Bar = styled.div`
   display: flex;
   align-items: center;
   height: 40px;
-  background: ${C.paper};
+  /* Frame, not content: frosted like the toolbar (no backdrop blur here, so
+     its autocomplete dropdown stays a plain solid popover). */
+  background: var(--glass-surface);
+  border-top: 1px solid var(--glass-edge);
   border-bottom: 1px solid ${C.line};
   flex-shrink: 0;
   gap: 0;
@@ -300,7 +303,7 @@ const Input = styled.input`
   outline: none;
 
   &:focus {
-    background: rgba(164, 255, 17, 0.06);
+    background: color-mix(in srgb, var(--glass-accent-solid) 6%, transparent);
   }
 
   &::placeholder {
@@ -323,7 +326,7 @@ const Dropdown = styled.div`
   background: ${C.paper};
   border: 1px solid ${C.line};
   border-radius: 10px;
-  box-shadow: 0 12px 32px -12px rgba(14, 20, 15, 0.25);
+  box-shadow: 0 12px 32px -12px rgba(14, 18, 34, 0.25);
   z-index: 100;
   overflow: hidden;
   animation: ${dropIn} 0.15s cubic-bezier(0.22, 1, 0.36, 1);

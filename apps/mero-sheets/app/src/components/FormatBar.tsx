@@ -147,7 +147,7 @@ export default function FormatBar({ style, format, disabled, formatDisabled, onS
 
 const Bar = styled.div`
   display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
-  padding: 4px 12px; border-bottom: 1px solid ${C.line}; background: ${C.paper};
+  padding: 4px 12px; border-bottom: 1px solid ${C.line}; background: var(--glass-surface);
 `;
 const Btn = styled.button`
   min-width: 26px; height: 26px; padding: 0 5px; border-radius: 6px; cursor: pointer;

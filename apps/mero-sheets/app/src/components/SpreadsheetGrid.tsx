@@ -741,8 +741,8 @@ function cellTitle(ref: string, cell: Cell | undefined, editedBy: (cell: Cell) =
 
 // ── Styled components ────────────────────────────────────────────────────────
 
-const ACCENT = C.green; // green selection accent (matches landing mockup)
-const ACCENT_TEXT = C.greenDeep; // readable green for selected header labels
+const ACCENT = 'var(--glass-accent-solid)'; // selection accent: the glass accent blue
+const ACCENT_TEXT = C.greenDeep; // readable accent for selected header labels
 
 const GridContainer = styled.div`
   flex: 1;
@@ -782,7 +782,7 @@ const ColTh = styled.th<{ $selected: boolean }>`
   z-index: 2;
   /* Opaque, tint as an inset shadow: frozen headers sit over scrolled ones. */
   background: ${C.paper2};
-  box-shadow: ${(p) => (p.$selected ? 'inset 0 0 0 999px rgba(164,255,17,0.12)' : 'none')};
+  box-shadow: ${(p) => (p.$selected ? 'inset 0 0 0 999px color-mix(in srgb, var(--glass-accent-solid) 12%, transparent)' : 'none')};
   border-right: 1px solid ${C.line};
   border-bottom: 2px solid ${C.line};
   text-align: center;
@@ -795,7 +795,7 @@ const ColTh = styled.th<{ $selected: boolean }>`
   overflow: hidden;
   white-space: nowrap;
   transition: background 0.1s, color 0.1s;
-  &:hover { box-shadow: inset 0 0 0 999px rgba(164,255,17,0.10); }
+  &:hover { box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--glass-accent-solid) 10%, transparent); }
 `;
 
 /** The strip at a header's edge that resizes its row or column. */
@@ -805,7 +805,7 @@ const ResizeHandle = styled.span<{ $axis: 'row' | 'col' }>`
     ? 'top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize;'
     : 'left: 0; bottom: -3px; height: 7px; width: 100%; cursor: row-resize;')}
   z-index: 1;
-  &:hover { background: ${C.green}; opacity: 0.6; }
+  &:hover { background: ${ACCENT}; opacity: 0.6; }
 `;
 
 /** Header and body cells standing in for the columns scrolled out of view. */
@@ -823,7 +823,7 @@ const RowTh = styled.td<{ $selected: boolean }>`
   z-index: 2;
   /* Opaque, tint as an inset shadow: frozen headers sit over scrolled ones. */
   background: ${C.paper2};
-  box-shadow: ${(p) => (p.$selected ? 'inset 0 0 0 999px rgba(164,255,17,0.12)' : 'none')};
+  box-shadow: ${(p) => (p.$selected ? 'inset 0 0 0 999px color-mix(in srgb, var(--glass-accent-solid) 12%, transparent)' : 'none')};
   border-right: 2px solid ${C.line};
   border-bottom: 1px solid ${C.line};
   text-align: center;
@@ -834,7 +834,7 @@ const RowTh = styled.td<{ $selected: boolean }>`
   cursor: pointer;
   user-select: none;
   transition: background 0.1s, color 0.1s;
-  &:hover { box-shadow: inset 0 0 0 999px rgba(164,255,17,0.10); }
+  &:hover { box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--glass-accent-solid) 10%, transparent); }
 `;
 
 const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTint?: string; $inRange?: boolean; $inFillTarget?: boolean; $copied?: 'copy' | 'cut'; $locked?: 'blocked' | 'allowed' }>`
@@ -857,7 +857,7 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTin
     `
     outline: 2px solid ${ACCENT};
     outline-offset: -2px;
-    box-shadow: inset 0 0 0 999px rgba(164, 255, 17, 0.06);
+    box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--glass-accent-solid) 6%, transparent);
     z-index: 1;
   `}
 
@@ -878,12 +878,12 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTin
   ${(p) =>
     p.$inRange &&
     `
-    box-shadow: inset 0 0 0 999px rgba(164, 255, 17, 0.12);
+    box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--glass-accent-solid) 12%, transparent);
   `}
 
-  ${(p) => p.$locked && `background-image: repeating-linear-gradient(135deg, transparent 0 6px, ${p.$locked === 'blocked' ? 'rgba(128, 128, 128, 0.16)' : 'rgba(164, 255, 17, 0.08)'} 6px 7px);`}
+  ${(p) => p.$locked && `background-image: repeating-linear-gradient(135deg, transparent 0 6px, ${p.$locked === 'blocked' ? 'rgba(128, 128, 128, 0.16)' : 'color-mix(in srgb, var(--glass-accent-solid) 8%, transparent)'} 6px 7px);`}
 
-  ${(p) => p.$inFillTarget && `outline: 1px dashed ${C.green}; outline-offset: -1px;`}
+  ${(p) => p.$inFillTarget && `outline: 1px dashed ${ACCENT}; outline-offset: -1px;`}
 
   ${(p) => p.$copied === 'copy' && `outline: 1px dashed ${C.ink}; outline-offset: -1px;`}
   ${(p) => p.$copied === 'cut' && `outline: 1px dashed ${C.muted}; outline-offset: -1px;`}
@@ -935,7 +935,7 @@ const NoteMark = styled.span`
 const CommentMark = styled.span`
   position: absolute; top: 0; right: 0;
   border-style: solid; border-width: 0 7px 7px 0;
-  border-color: transparent ${C.green} transparent transparent;
+  border-color: transparent ${ACCENT} transparent transparent;
   pointer-events: none;
 `;
 
@@ -948,7 +948,7 @@ const FillHandle = styled.div`
   bottom: 0;
   width: 7px;
   height: 7px;
-  background: ${C.green};
+  background: ${ACCENT};
   border: 1px solid ${C.paper};
   border-radius: 1px;
   cursor: crosshair;
