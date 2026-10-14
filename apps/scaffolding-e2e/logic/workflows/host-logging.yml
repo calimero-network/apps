@@ -11,7 +11,9 @@ description: >
   The SDK's default level is WARN, so the default probe emits the warn line ONLY
   and both info and debug are filtered out inside the guest. Raising to DEBUG
   surfaces the app's debug line and `calimero_storage`'s own output. Same
-  expectations as core's `crates/runtime/tests/tracing_logs.rs`.
+  expectations as core's `crates/runtime/tests/tracing_logs.rs`.  Since core
+  0.11.0-rc.85 the node logs each guest line's length and not its text, so
+  the steps below tell the lines apart by length.
 
   Also covers `my_account`, which exists to be spelled the same as in core's
   copy of this scaffold (`apps/scaffolding-e2e`) so a scenario stays portable
@@ -51,7 +53,7 @@ nodes:
   # rc.25, matching the calimero-sdk tag in logic/Cargo.toml. The other
   # workflows in this directory still say rc.24 — they predate the SDK bump in
   # #21 and are being brought forward separately.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.83
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.85
   # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
   # so discovery changed at the image bump. Stated, not inherited.
   mdns: true
@@ -148,22 +150,30 @@ steps:
 
   # ─── the tracing subscriber ───────────────────────────────────────────────
   #
-  # Asserted against the NODE'S LOG, because that is the only place they exist.
+  # Asserted against the NODE'S LOG: the JSON-RPC reply carries the return value
+  # and nothing else (no `logs` field), so no RPC client can observe them.
   #
-  # `crates/server/src/execute.rs` collects the execution outcome's logs and
-  # writes them to the node's own log —
+  # Since core 0.11.0-rc.85 (core#4560) a node logs a guest line's SHAPE at
+  # info and never its text: guest output is written by app code over app
+  # state, and a node operator is not the audience for it. Each line becomes
   #
-  #     info!("execution log {i:>width$}| {}", log)
+  #     INFO runtime::guest::log: guest log interesting=false total_logs=1 message_len=47
   #
-  # — and then returns `ExecutionResponse::new(Some(returns))`: the value, and
-  # nothing else. There is no `logs` field on the JSON-RPC reply, which is why
-  # an earlier version of this file was rejected outright:
+  # and the text is only at `trace` under `runtime::guest::log`, which CI's
+  # `--log-level info` leaves off. So these steps tell the probe's lines apart
+  # by length, measured with core's `crates/runtime/tests/tracing_logs.rs`
+  # against this same probe:
   #
-  #     [OUTPUT_CAPTURE_FAILED] output 'default_logs' captures 'result.logs',
-  #     which the response does not have. Available: id, jsonrpc, result
+  #     47  " WARN scaffolding_e2e: tracing_probe: warn line"
+  #     58  " INFO scaffolding_e2e: tracing_probe: info line probe=true"
+  #     59  "DEBUG scaffolding_e2e: tracing_probe: debug line probe=true"
   #
-  # So no RPC client can observe these lines. `assert_log_present` /
-  # `assert_log_absent` grep the container log, which is the right layer.
+  # `init`'s own `app::log!` line is 25 bytes, and nothing else in this
+  # workflow logs before the probe, so no other line is 47, 58 or 59.
+  # Renaming the crate, or changing those messages, moves the lengths.
+  #
+  # Regex, because merod's log colours a field name: `message_len` and its `=`
+  # can each sit inside ANSI codes, and merobox matches the raw line.
 
   - name: Probe tracing at the default level
     type: call
@@ -184,30 +194,42 @@ steps:
     statements:
       - 'json_equal({{default_probe}}, {"output": null})'
 
-  # THIS is the assertion that the `tracing` feature is compiled in. Without it
-  # the subscriber is never installed and nothing forwards.
+  # THIS is the assertion that the `tracing` feature is compiled in: without it
+  # the subscriber is never installed, the probe logs nothing, and no 47-byte
+  # guest line exists.
   #
-  # WARN only. The SDK's default level is WARN, not INFO — `calimero_storage`
+  # WARN only. The SDK's default level is WARN, not INFO: `calimero_storage`
   # logs routine operations at INFO, so an INFO default would flood every
-  # execution. core's own `crates/runtime/tests/tracing_logs.rs` asserts exactly
-  # this: at the default, warn passes and info + debug are both filtered out.
+  # execution. core's own `tracing_logs.rs` asserts exactly this: at the
+  # default, warn passes and info + debug are both filtered out.
   - name: Assert the warn line reached the node log
     type: assert_log_present
     nodes:
       - e2e-node-1
+    regex: true
     patterns:
-      - "tracing_probe: warn line"
+      - 'guest log .*message_len(?:\x1b\[[0-9;]*m)*=(?:\x1b\[[0-9;]*m)*47(?![0-9])'
 
-  # The negative half, and it MUST come before the DEBUG probe below — once the
+  # The negative half, and it MUST come before the DEBUG probe below: once the
   # level is raised both lines appear, and these assertions would then be
   # checking the wrong execution.
   - name: Assert info and debug were filtered out at the default level
     type: assert_log_absent
     nodes:
       - e2e-node-1
+    regex: true
     patterns:
-      - "tracing_probe: info line"
-      - "tracing_probe: debug line"
+      - 'guest log .*message_len(?:\x1b\[[0-9;]*m)*=(?:\x1b\[[0-9;]*m)*58(?![0-9])'
+      - 'guest log .*message_len(?:\x1b\[[0-9;]*m)*=(?:\x1b\[[0-9;]*m)*59(?![0-9])'
+
+  # And the guarantee core#4560 added: the node logs that a guest line was
+  # written, never what it says.
+  - name: Assert the probe's text stayed out of the node log
+    type: assert_log_absent
+    nodes:
+      - e2e-node-1
+    patterns:
+      - "tracing_probe:"
 
   # Last, because `set_log_level` mutates a static that lives as long as the WASM
   # instance, and DEBUG on calimero-storage is loud.
@@ -224,18 +246,31 @@ steps:
     type: assert_log_present
     nodes:
       - e2e-node-1
+    regex: true
     patterns:
-      - "tracing_probe: debug line"
+      - 'guest log .*message_len(?:\x1b\[[0-9;]*m)*=(?:\x1b\[[0-9;]*m)*59(?![0-9])'
 
   # The imported-dependency case, and the reason the probe writes a KV entry at
   # all: `calimero_storage`'s OWN tracing only shows up if the subscriber is
-  # process-wide rather than scoped to the app crate.
+  # process-wide rather than scoped to the app crate. Its lines have no fixed
+  # length (they carry ids and hashes), so this counts them instead: the app's
+  # three lines alone are 3, and core measures 24 for this probe with
+  # storage's included. At least 10 cannot come from the app crate alone.
   - name: Assert the storage crate's own tracing came through too
     type: assert_log_present
     nodes:
       - e2e-node-1
+    regex: true
     patterns:
-      - "calimero_storage"
+      - 'execution logs .*lines(?:\x1b\[[0-9;]*m)*=(?:\x1b\[[0-9;]*m)*[1-9][0-9]+(?![0-9])'
+
+  # Raising the level reaches the guest, not the node: the text still stays out.
+  - name: Assert the raised level kept the text out of the node log
+    type: assert_log_absent
+    nodes:
+      - e2e-node-1
+    patterns:
+      - "tracing_probe:"
 
   # The probe writes a KV entry so calimero-storage's own instrumentation runs
   # through the same subscriber. Reading it back confirms the write happened

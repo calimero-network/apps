@@ -19,7 +19,7 @@ e2e_mode: true
 nodes:
   count: 2
   # Matched to the calimero-sdk tag in the root Cargo.toml.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.83
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.85
   prefix: kombat-node
   mdns: true
 
@@ -417,6 +417,18 @@ steps:
     statements:
       - 'json_subset({{n1_round}}, {"output": {"round": 1, "round_results": ["p1"], "status": "fighting", "p2": {"hp": 100, "rounds_won": 0}, "p1": {"rounds_won": 1}}})'
 
+  # Before the late blow, not after: node-2 refuses it only once it holds
+  # node-1's knock-out, so without this the step raced gossip.
+  - name: Wait for the knock-out to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kombat-node-1
+      - kombat-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
   - name: A late blow for the decided round is refused
     type: call
     node: kombat-node-2
@@ -434,16 +446,6 @@ steps:
     expected_failure: true
     outputs:
       late_error: error
-
-  - name: Wait for the knock-out to reach node-2
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes:
-      - kombat-node-1
-      - kombat-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
 
   - name: Assert the late blow really was refused
     type: assert
@@ -606,10 +608,14 @@ steps:
     outputs:
       n2_history: result
 
+  # The whole entry, not a few of its fields: merobox's `json_subset` matches
+  # an array element by equality, so a partial element never matches. Every
+  # input here is fixed, so so is the entry, and `actions` (22) also confirms
+  # the refused late blow was never stored.
   - name: Assert the record holds the finished match
     type: json_assert
     statements:
-      - 'json_subset({{n2_history}}, {"output": [{"index": 0, "winner": "p1"}]})'
+      - 'json_equal({{n2_history}}, {"output": [{"index": 0, "started_at": 1700000000000, "winner": "p1", "flawless": true, "rounds": ["p1", "p1"], "actions": 22}]})'
 
   # ─── the rematch ───────────────────────────────────────────────────────
 

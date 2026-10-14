@@ -690,6 +690,7 @@ fn nobody_can_fail_a_sealed_audit_by_rewriting_their_own_entries() {
             .entries()
             .unwrap()
             .find(|(k, _)| k.contains(&acct(BOB)))
+            .map(|(k, d)| (k, d.value().expect("Bob's dealing is not sealed")))
             .unwrap()
     });
     let mut other = bobs_dealing.clone();
@@ -706,9 +707,8 @@ fn nobody_can_fail_a_sealed_audit_by_rewriting_their_own_entries() {
     let k = bobs_key.clone();
     let held = p.app.view(|s| s.dealings.entries_at(&k).unwrap());
     assert_eq!(held.len(), 2, "Bob's and Mallory's, side by side");
-    assert!(held
-        .iter()
-        .any(|(owner, d)| *owner == AccountId::from(BOB) && *d == bobs_dealing));
+    assert!(held.iter().any(|(owner, d)| *owner == AccountId::from(BOB)
+        && d.clone().value().as_ref() == Some(&bobs_dealing)));
     // A second dealing from Bob, published after the fact, changes nothing.
     let k = format!("{pid}/{}/{}", acct(BOB), "ff".repeat(32));
     p.call(BOB, |s| s.dealings.insert(k, other)).unwrap();

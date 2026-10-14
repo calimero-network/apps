@@ -704,6 +704,10 @@ impl MeroStandup {
             .entries_with_owners()
             .map_err(store_err("decisions.entries_with_owners"))?
         {
+            // A decision its author signed twice is sealed and has no value.
+            let Some(decision) = decision.value() else {
+                continue;
+            };
             match all.get(&id) {
                 Some((holder, _)) if *holder <= author => {}
                 _ => {
