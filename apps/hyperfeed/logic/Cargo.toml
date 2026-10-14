@@ -36,9 +36,12 @@ github = "https://github.com/calimero-network/apps"
 min-runtime-version = "0.11.0-rc.83"
 # Doubles as the registered login callback origin, compared by exact origin:
 # without it a hosted login dies on "Login callback destination is not allowed".
-# The Vercel project's own domain (Root Directory `apps/hyperfeed/app`), not
-# `hyperfeed.vercel.app`, which is someone else's project.
-frontend = "https://hyperfeed-two.vercel.app"
+# Hyperfeed's own domain, served by the `hyperfeed` Vercel project (Root
+# Directory `apps/hyperfeed/app`); www.hyperfeed.me should redirect here, since
+# only this exact origin is a registered callback. Calimero Desktop and the
+# node's sign-in page trust Hyperfeed with full access at this origin
+# (`TRUSTED_APPS` in tauri-app and auth-frontend): change them together.
+frontend = "https://hyperfeed.me"
 # Shown to an agent by mero-mcp the first time it meets this app: how to report,
 # ask and carry out the user's decisions through the feed.
 guide = "GUIDE.md"
