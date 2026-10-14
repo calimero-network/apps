@@ -728,7 +728,8 @@ export const APPS = {
     e2eDir: 'e2e',
     // This app ships its own light/dark switch; the landing toggle writes the
     // same key so the choice carries through sign-in instead of resetting.
-    themeStorageKey: 'app:theme',
+    // The app's own key: it reads the old `app:theme` only while this is unset.
+    themeStorageKey: 'mero-sheets:theme',
     availability: 'web+desktop',
     trust: ['Live collaboration', 'Formulas recompute for all peers', 'Sheet on your node'],
     explainer: [
