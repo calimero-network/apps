@@ -212,7 +212,7 @@ export const ArrowRightIcon = (p: IconProps) => (
   </Base>
 );
 
-/** The brand tile: a small lime square with a dark play-and-waves glyph. */
+/** The brand tile: a small square in the app tint (cyan) with a dark play-and-waves glyph. */
 export function BrandMark({ size = 28 }: { size?: number }) {
   return (
     <svg
@@ -222,7 +222,7 @@ export function BrandMark({ size = 28 }: { size?: number }) {
       aria-hidden="true"
       focusable="false"
     >
-      <rect width="28" height="28" rx="7" fill="#a5ff11" />
+      <rect width="28" height="28" rx="7" fill="#22d3ee" />
       <path d="M8 9.5v9l7-4.5-7-4.5Z" fill="#131215" />
       <path
         d="M18 10.5a5 5 0 0 1 0 7M20.5 8.5a8 8 0 0 1 0 11"
