@@ -1038,6 +1038,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mero-standup-v1"
+version = "0.1.0"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
+]
+
+[[package]]
 name = "mero-stream"
 version = "0.0.2"
 dependencies = [

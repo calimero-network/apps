@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MemberView, UpdateView } from "../generated/StandupClient";
-import { displayName, notYetPosted, shortAccount } from "./people";
+import { avatarHue, displayName, initials, notYetPosted, shortAccount } from "./people";
 
 const A = "a".repeat(64);
 const B = "b".repeat(64);
@@ -20,6 +20,7 @@ const update = (author: string): UpdateView => ({
   blockers: "",
   created_at: 0,
   edited_at: 0,
+  helpers: [],
 });
 
 describe("people", () => {
@@ -33,5 +34,13 @@ describe("people", () => {
     const members = [member(C, "Carol"), member(A, "Ana"), member(B)];
     expect(notYetPosted(members, [update(A)]).map((m) => m.account)).toEqual([B, C]);
     expect(notYetPosted(members, [update(A), update(B), update(C)])).toEqual([]);
+  });
+
+  it("gives initials and a colour that follows the account, not the name", () => {
+    expect(initials(A, "Ana Lee")).toBe("AL");
+    expect(initials(A, "ana")).toBe("AN");
+    expect(initials(B, "")).toBe("BB");
+    expect(avatarHue(A)).toBe(avatarHue(A));
+    expect(avatarHue(A)).not.toBe(avatarHue(B));
   });
 });

@@ -14,6 +14,7 @@ const createNamespace = vi.fn();
 
 vi.mock("@calimero-network/mero-react", () => ({
   setContextId: vi.fn(),
+  useMero: () => ({ mero: null }),
   useApplicationContexts: () => ({
     contexts: [],
     loading: false,
@@ -48,6 +49,7 @@ describe("ContextPicker", () => {
     });
 
     render(<ContextPicker applicationId="app-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /advanced: namespaces/ }));
     fireEvent.click(screen.getByRole("button", { name: "Add team" }));
 
     await screen.findByText("bytecode blob not found");
@@ -73,6 +75,7 @@ describe("ContextPicker", () => {
     createContext.mockResolvedValue(null);
 
     render(<ContextPicker applicationId="app-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /advanced: namespaces/ }));
     fireEvent.click(screen.getByRole("button", { name: "Add team" }));
 
     await screen.findByText(/the context request failed, but the hook reported no error/);

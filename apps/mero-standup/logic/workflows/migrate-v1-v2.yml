@@ -1,0 +1,441 @@
+name: Mero Standup — upgrade a live v1 team to v2 (2-node migration)
+description: >
+  merobox E2E runs one build on fresh state, so it never tests what happens to
+  a team that already exists. This scenario does: two nodes build a v1 team
+  (crates/v1, the contract frozen as it shipped) with updates, a blocker, names
+  and a superseded decision, then the group is upgraded to the v2 bundle this
+  tree builds. `migrate_v1_to_v2` runs independently on each node.
+
+  It proves:
+    1. both members reach ABI state version 2, with no residue;
+    2. every v1 record reads the same on both nodes afterwards, supersession
+       included;
+    3. v1 entries stay editable by their owners;
+    4. the v2 features (team name, help on a blocker, decision tags) work on
+       top of v1 data and replicate.
+
+  The v1 bundle is res/mero-standup-v1.mpk, built by
+  build-multi-service-bundle.sh (CI runs it in the wasm job).
+
+force_pull_image: true
+e2e_mode: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  # Must match the `calimero-*` tag in the root Cargo.toml.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.83
+  prefix: calimero-node
+  mdns: true
+  base_port: 3160
+  base_rpc_port: 3260
+
+steps:
+  # ── A v1 team, on two nodes ─────────────────────────────────────────────────
+  - name: Install v1 on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: res/mero-standup-v1.mpk
+    dev: true
+    outputs:
+      app_v1: applicationId
+
+  - name: Install v1 on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: res/mero-standup-v1.mpk
+    dev: true
+
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - name: Create namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_v1}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Set default member capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  # The upgrade is per group, so the team lives in an Open subgroup of the
+  # namespace, as core's own migration scenarios do.
+  - name: Create the team's subgroup
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: "{{namespace_id}}"
+    group_name: "standup-team"
+    outputs:
+      group_id: groupId
+
+  - name: Mark the subgroup Open
+    type: set_subgroup_visibility
+    node: calimero-node-1
+    group_id: "{{group_id}}"
+    visibility: open
+
+  - name: Create the v1 team
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_v1}}"
+    group_id: "{{group_id}}"
+    params: '{}'
+    outputs:
+      team_id: contextId
+      alice_key: memberPublicKey
+
+  - name: Generate identity for Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      bob_identity: publicKey
+
+  - name: Node 1 invites Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invite_bob: invitation
+
+  - name: Settle before the namespace join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
+
+  - name: Node 2 joins namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invite_bob}}"
+
+  - name: Node 2 joins the subgroup by inheritance
+    type: join_subgroup_inheritance
+    node: calimero-node-2
+    group_id: "{{group_id}}"
+
+  - name: Settle after the joins
+    type: wait
+    seconds: 5
+
+  - name: Bob joins the team
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    outputs:
+      bob_key: memberPublicKey
+
+  - name: Wait for team sync
+    type: wait_for_sync
+    context_id: "{{team_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 90
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice learns her account
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: whoami
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_account: result.output
+
+  - name: Alice names herself (v1)
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: set_name
+    args:
+      name: "Alice"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice posts a blocked v1 update
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: post_update
+    args:
+      day: "2026-10-12"
+      done: "Written under v1"
+      next: "Ship it"
+      blockers: "Waiting on a v1 review"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice logs a v1 decision
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: log_decision
+    args:
+      title: "Deploy on Fridays"
+      decision: "We deploy on Fridays"
+      rationale: "v1 thinking"
+      supersedes: null
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      v1_decision: result.output
+
+  - name: Sync the v1 writes
+    type: wait_for_sync
+    context_id: "{{team_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 90
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob supersedes it under v1
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: log_decision
+    args:
+      title: "Never deploy on Fridays"
+      decision: "Deploys stop Thursday evening"
+      rationale: "Weekends"
+      supersedes: "{{v1_decision}}"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_v1_decision: result.output
+
+  - name: Sync Bob's v1 write
+    type: wait_for_sync
+    context_id: "{{team_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 90
+    check_interval: 2
+    trigger_sync: true
+
+  # A v2-only method does not exist yet.
+  - name: set_team_name is not exported by v1
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: set_team_name
+    args:
+      name: "too early"
+    executor_public_key: "{{alice_key}}"
+    expected_failure: true
+    outputs:
+      pre_upgrade_error: error
+
+  - name: Assert v1 refused the v2 method
+    type: assert
+    statements:
+      - "is_set({{pre_upgrade_error}})"
+
+  # ── Upgrade to v2 ───────────────────────────────────────────────────────────
+  - name: Install v2 on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: dist/com.calimero.mero-standup.mpk
+    dev: true
+    outputs:
+      app_v2: applicationId
+
+  - name: Install v2 on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: dist/com.calimero.mero-standup.mpk
+    dev: true
+
+  # Same package and signer, so the second install dedups onto the first id
+  # and the upgrade takes the same-id path, as a real release does.
+  - name: Assert v1 and v2 share one application id
+    type: json_assert
+    statements:
+      - 'equal("{{app_v1}}", "{{app_v2}}")'
+
+  - name: Upgrade the team's group to v2
+    type: upgrade_group
+    node: calimero-node-1
+    group_id: "{{group_id}}"
+    target_application_id: "{{app_v2}}"
+
+  # Fixed wait, not wait_for_sync: the upgrade target has to gossip to Node 2
+  # before its lazy migration can run.
+  - name: Wait for the upgrade to reach Node 2
+    type: wait
+    seconds: 15
+
+  # Reads trigger each node's lazy migration (migrate_v1_to_v2).
+  - name: Alice reads the v1 day under v2
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: get_day
+    args:
+      day: "2026-10-12"
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      day_node1: result
+
+  - name: Bob reads the v1 day under v2
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: get_day
+    args:
+      day: "2026-10-12"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      day_node2: result
+
+  - name: Wait for both members to report state version 2
+    type: assert_migration_complete
+    node: calimero-node-1
+    namespace_id: "{{namespace_id}}"
+    timeout_seconds: 90
+    poll_interval: 5
+
+  - name: Read the migration rollup
+    type: get_migration_status
+    node: calimero-node-1
+    namespace_id: "{{namespace_id}}"
+    outputs:
+      mig_target: target_version
+      mig_total: total
+      mig_migrated: migrated
+      mig_failed: failed
+      mig_residue: residue_total
+
+  - name: Assert both members migrated with no residue
+    type: json_assert
+    statements:
+      - "equal({{mig_target}}, 2)"
+      - "equal({{mig_total}}, 2)"
+      - "equal({{mig_migrated}}, 2)"
+      - "equal({{mig_failed}}, 0)"
+      - "equal({{mig_residue}}, 0)"
+
+  - name: Bob reads the v1 decision under v2
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: get_decision
+    args:
+      id: "{{v1_decision}}"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      v1_decision_view: result
+
+  - name: Assert every v1 record survived on both nodes
+    type: assert
+    statements:
+      - 'contains({{day_node1}}, "Written under v1")'
+      - 'contains({{day_node1}}, "Waiting on a v1 review")'
+      - 'contains({{day_node1}}, "Alice")'
+      - 'contains({{day_node2}}, "Written under v1")'
+      - 'contains({{day_node2}}, {{alice_account}})'
+      - 'contains({{v1_decision_view}}, "Deploy on Fridays")'
+      # The v1 supersession is derived on read, so it holds after the upgrade.
+      - 'contains({{v1_decision_view}}, {{bob_v1_decision}})'
+
+  # ── v2 on top of v1 data ────────────────────────────────────────────────────
+  - name: Alice edits her v1 update
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: post_update
+    args:
+      day: "2026-10-12"
+      done: "Edited after the upgrade"
+      next: "Ship it"
+      blockers: "Still waiting on review"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice names the team
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: set_team_name
+    args:
+      name: "Upgraded team"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the v2 writes
+    type: wait_for_sync
+    context_id: "{{team_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 90
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob offers help on Alice's (v1) blocker
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: offer_help
+    args:
+      day: "2026-10-12"
+      author: "{{alice_account}}"
+      note: "Reviewing now"
+    executor_public_key: "{{bob_key}}"
+
+  - name: Bob logs a tagged v2 decision
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: log_decision
+    args:
+      title: "Tag everything"
+      decision: "Decisions carry tags from v2 on"
+      rationale: ""
+      supersedes: null
+      tags: ["process"]
+      with: ["{{alice_account}}"]
+      from_day: "2026-10-12"
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync Bob's v2 writes
+    type: wait_for_sync
+    context_id: "{{team_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 90
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice reads the day after
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: get_day
+    args:
+      day: "2026-10-12"
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      day_after: result
+
+  - name: Alice reads the team name
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: team_name
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      team_after: result
+
+  - name: Alice filters the log by Bob's tag
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: list_decisions
+    args: { search: null, tag: "process", from_day: null, standing_only: false, cursor: null, limit: 20 }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      tagged_after: result
+
+  - name: Assert v2 works on top of the migrated team
+    type: assert
+    statements:
+      - 'contains({{day_after}}, "Edited after the upgrade")'
+      - 'contains({{day_after}}, "Reviewing now")'
+      - 'contains({{team_after}}, "Upgraded team")'
+      - 'contains({{tagged_after}}, "Tag everything")'
+      - 'not_contains({{tagged_after}}, "Deploy on Fridays")'

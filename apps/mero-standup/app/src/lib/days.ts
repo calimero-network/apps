@@ -68,3 +68,56 @@ export function describeTime(nanos: number, now: Date = new Date()): string {
     ? date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
     : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
+
+/**
+ * "just now", "5m ago", "3h ago", "yesterday", or a short date — for bylines,
+ * where an exact clock time is noise. `nanos` is a contract timestamp.
+ */
+export function relativeTime(nanos: number, now: Date = new Date()): string {
+  const then = new Date(Math.floor(nanos / 1e6));
+  if (Number.isNaN(then.getTime()) || nanos <= 0) return "";
+  const seconds = Math.round((now.getTime() - then.getTime()) / 1000);
+  if (seconds < 45) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (dayOf(then) === dayOf(now) && hours < 24) return `${hours}h ago`;
+  if (dayOf(then) === shiftDay(dayOf(now), -1)) return "yesterday";
+  return then.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: then.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
+}
+
+/** The Monday of `day`'s week. Standup weeks start on Monday. */
+export function weekStart(day: string): string {
+  const date = parseDay(day);
+  if (!date) return day;
+  const offset = (date.getDay() + 6) % 7; // Mon=0 … Sun=6
+  return shiftDay(day, -offset);
+}
+
+/** The seven days starting at `start`. */
+export function weekDays(start: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => shiftDay(start, i));
+}
+
+/** "Mon", "Tue", … for a day. */
+export function weekdayShort(day: string): string {
+  const date = parseDay(day);
+  return date ? date.toLocaleDateString(undefined, { weekday: "short" }) : day;
+}
+
+/** "Oct 12 – 18" (or across months, "Oct 27 – Nov 2") for a week. */
+export function describeWeek(start: string): string {
+  const a = parseDay(start);
+  const b = parseDay(shiftDay(start, 6));
+  if (!a || !b) return start;
+  const left = a.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const right =
+    a.getMonth() === b.getMonth()
+      ? String(b.getDate())
+      : b.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return `${left} – ${right}`;
+}

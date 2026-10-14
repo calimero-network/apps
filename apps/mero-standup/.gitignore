@@ -1,0 +1,3 @@
+# The v1 bundle fixture build-multi-service-bundle.sh writes for the upgrade
+# scenario. Build output, never committed.
+logic/res/*.mpk

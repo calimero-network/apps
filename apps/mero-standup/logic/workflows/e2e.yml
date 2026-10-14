@@ -335,6 +335,9 @@ steps:
       decision: "Cut a release every other Tuesday"
       rationale: "Weekly was too much overhead for a team of four"
       supersedes: null
+      tags: ["Release Process", "release process"]
+      with: ["{{alice_account}}"]
+      from_day: "2026-10-13"
     executor_public_key: "{{alice_key}}"
     outputs:
       first_decision: result.output
@@ -357,6 +360,9 @@ steps:
       decision: "Cut a release every Tuesday"
       rationale: "Two weeks let fixes sit too long"
       supersedes: "{{first_decision}}"
+      tags: ["release-process"]
+      with: []
+      from_day: null
     executor_public_key: "{{bob_key}}"
     outputs:
       second_decision: result.output
@@ -385,7 +391,7 @@ steps:
     node: calimero-node-1
     context_id: "{{team_id}}"
     method: list_decisions
-    args: { search: null, standing_only: true, cursor: null, limit: 20 }
+    args: { search: null, tag: null, from_day: null, standing_only: true, cursor: null, limit: 20 }
     executor_public_key: "{{alice_key}}"
     outputs:
       standing: result
@@ -395,7 +401,7 @@ steps:
     node: calimero-node-2
     context_id: "{{team_id}}"
     method: list_decisions
-    args: { search: "two weeks", standing_only: false, cursor: null, limit: 20 }
+    args: { search: "two weeks", tag: null, from_day: null, standing_only: false, cursor: null, limit: 20 }
     executor_public_key: "{{bob_key}}"
     outputs:
       search_hits: result
@@ -421,6 +427,9 @@ steps:
       decision: "Monthly releases"
       rationale: ""
       supersedes: "{{first_decision}}"
+      tags: []
+      with: []
+      from_day: null
     executor_public_key: "{{alice_key}}"
     expected_failure: true
     outputs:
@@ -447,3 +456,163 @@ steps:
     type: assert
     statements:
       - 'contains({{alice_name}}, "Alice")'
+
+  # ── 6. v2: the team's name, help on a blocker, tags, the week ───────────────
+  - name: Bob names the team
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: set_team_name
+    args:
+      name: "Platform"
+    executor_public_key: "{{bob_key}}"
+
+  - name: Bob learns his account
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: whoami
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_account: result.output
+
+  - name: Bob is blocked again
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: post_update
+    args:
+      day: "2026-10-14"
+      done: "Drafted the migration plan"
+      next: "Run it"
+      blockers: "Need prod read access"
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync the rename and the blocker
+    type: wait_for_sync
+    context_id: "{{team_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice offers help on Bob's blocker
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: offer_help
+    args:
+      day: "2026-10-14"
+      author: "{{bob_account}}"
+      note: "I can grant it after lunch"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Bob tries to offer help on his own blocker
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: offer_help
+    args:
+      day: "2026-10-14"
+      author: "{{bob_account}}"
+      note: ""
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      self_help_error: error
+
+  - name: Sync the offer
+    type: wait_for_sync
+    context_id: "{{team_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice reads the name Bob gave the team
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: team_name
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      team: result
+
+  - name: Bob reads his week
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: get_week
+    args:
+      start: "2026-10-12"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      week: result
+
+  - name: Bob reads the tags
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: tags
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      tag_counts: result
+
+  - name: Bob filters the log by tag
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: list_decisions
+    args: { search: null, tag: "release-process", from_day: "2026-10-13", standing_only: false, cursor: null, limit: 20 }
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      tagged: result
+
+  - name: Assert v2 state converged on both nodes
+    type: assert
+    statements:
+      - 'contains({{team}}, "Platform")'
+      - 'contains({{week}}, "I can grant it after lunch")'
+      - 'contains({{week}}, "Wrote the onboarding guide")'
+      - 'contains({{week}}, "2026-10-18")'
+      - 'contains({{tag_counts}}, "release-process")'
+      - 'contains({{tagged}}, "Release every two weeks")'
+      - 'not_contains({{tagged}}, "Release weekly again")'
+      - "is_set({{self_help_error}})"
+
+  - name: Alice withdraws her offer
+    type: call
+    node: calimero-node-1
+    context_id: "{{team_id}}"
+    method: withdraw_help
+    args:
+      day: "2026-10-14"
+      author: "{{bob_account}}"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the withdrawal
+    type: wait_for_sync
+    context_id: "{{team_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob re-reads the blocker
+    type: call
+    node: calimero-node-2
+    context_id: "{{team_id}}"
+    method: current_blockers
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      blockers_after: result
+
+  - name: Assert the withdrawal reached Node 2
+    type: assert
+    statements:
+      - 'contains({{blockers_after}}, "Need prod read access")'
+      - 'not_contains({{blockers_after}}, "I can grant it after lunch")'
