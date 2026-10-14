@@ -191,6 +191,40 @@ export function saysMore(item: FeedItem): boolean {
   return Boolean(body) && body !== headlineOfMessage(item).replace(/…$/, "").trim();
 }
 
+/** How much of a long message a row shows before "More": lines, and characters. */
+export const PREVIEW_LINES = 6;
+export const PREVIEW_CHARS = 600;
+
+/**
+ * The start of a message, as much as a row shows before "More": whole lines
+ * up to {@link PREVIEW_LINES} and {@link PREVIEW_CHARS}, never cut inside a
+ * code block. A line too long on its own is cut at a word, with "…". The
+ * whole text when it fits.
+ */
+export function previewOf(text: string, lines = PREVIEW_LINES, chars = PREVIEW_CHARS): string {
+  const body = text.trim();
+  const all = body.split("\n");
+  const kept: string[] = [];
+  let used = 0;
+  let fence = -1;
+  for (const line of all) {
+    if (kept.length >= lines || used + line.length > chars) break;
+    if (/^\s*(`{3,}|~{3,})/.test(line)) fence = fence < 0 ? kept.length : -1;
+    kept.push(line);
+    used += line.length + 1;
+  }
+  if (kept.length === all.length) return body;
+  // Cut before a code block the preview would leave open.
+  if (fence >= 0) kept.length = fence;
+  if (kept.length === 0) {
+    const first = all[0]!;
+    if (/^\s*(`{3,}|~{3,})/.test(first)) return "";
+    const at = first.lastIndexOf(" ", chars);
+    return `${first.slice(0, at > chars / 2 ? at : chars).trimEnd()}…`;
+  }
+  return kept.join("\n").trimEnd();
+}
+
 /**
  * A row's title. Your agent's older rows were titled with the bare method
  * ("set summary in issue-tracker"): those are said in plain words, "Set the

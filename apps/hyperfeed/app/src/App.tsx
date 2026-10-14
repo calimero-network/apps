@@ -226,12 +226,9 @@ function Screen({
   const { chain = "", section } = useParams();
   const openChat = (c: string) => navigate(c ? `${base}/chat/${encodeURIComponent(c)}` : `${base}/chat`);
   const [view, setView] = useFeedView();
-  // The bell opens a row in place: `?open=<chain>`, read once by the feed, in Lanes.
+  // The bell opens a row in place: `?open=<chain>`, read once by the feed, in Lanes or Team.
   const [params, setParams] = useSearchParams();
   const focus = page === "feed" ? (params.get("open") ?? "") : "";
-  useEffect(() => {
-    if (focus && view !== "lanes") setView("lanes");
-  }, [focus, view, setView]);
   const focused = useCallback(
     () =>
       setParams(
@@ -272,7 +269,7 @@ function Screen({
         ))}
       </div>
       {view === "team" ? (
-        <TeamView feed={feed} query={query} onChat={openChat} />
+        <TeamView feed={feed} query={query} onChat={openChat} focus={focus} onFocused={focused} />
       ) : (
         <FeedView feed={feed} query={query} newFeed={newFeed} onChat={openChat} openLink={openLink} focus={focus} onFocused={focused} />
       )}

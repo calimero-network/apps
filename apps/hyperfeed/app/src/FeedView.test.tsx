@@ -363,7 +363,7 @@ describe("FeedView", () => {
     }
   });
 
-  it("shows a long answer by its headline, with the whole body behind More", async () => {
+  it("shows a long answer's first lines on its row, and the rest behind More", async () => {
     const backend = new DemoBackend(false, 0);
     const n = await backend.recordNotification(mention("k-ideas"));
     const body = `Here they are.\n${Array.from({ length: 300 }, (_, i) => `${i + 1}. An idea worth trying, with its reasons.`).join("\n")}`;
@@ -373,6 +373,9 @@ describe("FeedView", () => {
     await showAgentRows();
     const row = await openRow(/Ten ideas for the feed/);
     expect(row.querySelector(".people-what")).toHaveTextContent(/^Ten ideas for the feed$/);
+    // Read without a click: the start of it.
+    expect(row.querySelector(".more-text")).toHaveTextContent(/^Here they are\./);
+    expect(row.querySelectorAll(".more-text li")).toHaveLength(5);
     expect(within(row).queryByText(/300\. An idea worth trying/)).not.toBeInTheDocument();
     const more = within(row).getByRole("button", { name: "More" });
     expect(more).toHaveAttribute("aria-expanded", "false");
@@ -394,11 +397,9 @@ describe("FeedView", () => {
     await showAgentRows();
     const row = await openRow(/The deploy is green and live on every node now\./);
     expect(row.querySelector(".people-what")).toHaveTextContent(/^The deploy is green and live on every node now\.$/);
-    expect(row.querySelector(".more-text")).toBeNull();
-    await act(async () => {
-      fireEvent.click(within(row).getByRole("button", { name: "More" }));
-    });
+    // Short enough to read whole on the row: no More.
     expect(row.querySelector(".more-text")).toHaveTextContent(/It took four minutes, and nothing failed\.$/);
+    expect(within(row).queryByRole("button", { name: "More" })).not.toBeInTheDocument();
   });
 
   it("puts your agent's question in the strip, and one tap on an option answers it, unopened", async () => {
@@ -1005,6 +1006,10 @@ describe("acting from the feed, with Chat for the history", () => {
     const row = await rowFor(/Refactor everything/);
     expect(await within(row).findByText("Working…")).toBeInTheDocument();
     expect(within(row).getByText(/Reading the repo/)).toBeInTheDocument();
+    // Its line does not say it twice: no "on it" pill, no "Working:" while the block shows.
+    const line = within(row).getAllByRole("button")[0]!;
+    expect(within(line).queryByText("Your agent is on it")).not.toBeInTheDocument();
+    expect(line).not.toHaveTextContent("Working:");
     await act(async () => {
       fireEvent.click(within(row).getByRole("button", { name: "Stop" }));
     });
