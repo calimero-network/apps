@@ -1370,17 +1370,17 @@ thead th {
 
 .chat {
   display: flex;
-  gap: 24px;
+  gap: 14px;
   align-items: stretch;
   height: calc(100vh - 120px);
   min-height: 420px;
 }
 
 .chat-list {
-  flex: 0 0 280px;
+  flex: 0 0 232px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
   overflow-y: auto;
 }
@@ -1392,12 +1392,18 @@ thead th {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+}
+
+/* New chat: a compact button, not a hero. */
+.chat-list > .button.primary {
+  min-height: 34px;
+  font-size: 14px;
 }
 
 .chat-hint {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .chat-item {
@@ -1405,11 +1411,12 @@ thead th {
   width: 100%;
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   text-align: left;
   cursor: pointer;
-  padding: 10px 12px;
-  border-radius: 10px;
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--ink);
@@ -1433,7 +1440,7 @@ thead th {
 
 .chat-item-meta {
   flex: none;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
 }
 
@@ -1442,11 +1449,11 @@ thead th {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 10px 12px;
 }
 
 .chat-back {
@@ -1460,6 +1467,11 @@ thead th {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  font-size: 13px;
+}
+
+.chat-head button {
+  min-height: 28px;
 }
 
 /* Only the back button, which shows on a phone only: no empty row above a new chat. */
@@ -1534,8 +1546,8 @@ thead th {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 4px;
+  gap: 6px;
+  padding: 2px;
 }
 
 .chat-empty {
@@ -1554,11 +1566,13 @@ thead th {
 
 .bubble {
   max-width: min(640px, 85%);
-  padding: 10px 14px;
-  border-radius: 16px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.4;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .bubble p {
@@ -1569,7 +1583,7 @@ thead th {
 .bubble-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -1741,7 +1755,7 @@ thead th {
 }
 
 .bubble-time {
-  font-size: 11px;
+  font-size: 10px;
   opacity: 0.75;
   align-self: flex-end;
 }
@@ -1778,16 +1792,16 @@ thead th {
 
 .chat-event {
   align-self: center;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
   background: var(--ground);
   border-radius: 999px;
-  padding: 4px 12px;
+  padding: 2px 10px;
 }
 
 .chat-status {
   align-self: flex-end;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -1812,19 +1826,23 @@ thead th {
 .chat-composer {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .composer-row {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: flex-end;
 }
 
 .composer-attach {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
-  padding: 10px;
+  padding: 6px 8px;
+}
+
+.composer-row button {
+  min-height: 34px;
 }
 
 .composer-attachments {
@@ -1906,7 +1924,8 @@ thead th {
   min-width: 0;
   font: inherit;
   resize: none;
-  padding: 10px 12px;
+  font-size: 14px;
+  padding: 7px 10px;
   border-radius: 10px;
   border: 1px solid var(--line-strong);
 }
@@ -3928,9 +3947,12 @@ body {
 }
 
 .panel,
-.center-card,
-.chat-main {
+.center-card {
   border-radius: 22px;
+}
+
+.chat-main {
+  border-radius: 16px;
 }
 
 .lane,
