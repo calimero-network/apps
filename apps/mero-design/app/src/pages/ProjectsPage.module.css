@@ -1,28 +1,39 @@
-.root { min-height: 100vh; background: #fafafa; }
+/* The shell shows the body's glass ground and tinted fields. */
+.root { min-height: 100vh; background: transparent; font-family: var(--glass-font); color: var(--glass-ink); }
 
 .header {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 14px 40px;
-  border-bottom: 1px solid #e8e8e8;
-  background: #fff;
+  /* The floating header every glass app shares. */
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  margin: 12px 16px 0;
+  border-radius: 20px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
 }
-.back { background: none; border: none; font-size: 13px; color: #555; cursor: pointer; }
-.back:hover { color: #111; }
+.back { background: none; border: none; font-size: 13px; color: var(--glass-ink-2); cursor: pointer; }
+.back:hover { color: var(--glass-ink); }
 .logo { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .headerRight { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 
 .logoutBtn {
   padding: 6px 14px;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  background: #fff;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
   font-size: 12px;
-  color: #555;
+  font-weight: 600;
+  color: var(--glass-ink-2);
   cursor: pointer;
 }
-.logoutBtn:hover { background: #f5f5f5; border-color: #bbb; }
+.logoutBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
 .main { padding: 32px 40px; max-width: 900px; margin: 0 auto; }
 
@@ -30,7 +41,7 @@
 .tabs {
   display: flex;
   gap: 0;
-  border-bottom: 2px solid #e8e8e8;
+  border-bottom: 2px solid var(--glass-line);
   margin-bottom: 28px;
 }
 
@@ -38,7 +49,7 @@
   padding: 10px 18px;
   font-size: 13px;
   font-weight: 500;
-  color: #888;
+  color: var(--glass-muted);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -46,37 +57,41 @@
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
-.tab:hover { color: #333; }
-.tabActive { color: #111; border-bottom-color: #111; }
+.tab:hover { color: var(--glass-ink); }
+.tabActive { color: var(--glass-ink); border-bottom-color: var(--glass-ink); }
 
 .createRow { display: flex; gap: 10px; margin-bottom: 28px; }
 
 .input {
   flex: 1;
   padding: 9px 12px;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
+  color: var(--glass-ink);
+  font-family: inherit;
   font-size: 13px;
   outline: none;
   max-width: 360px;
 }
-.input:focus { border-color: #111; }
+.input:focus { border-color: var(--glass-ink); box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-tint) 45%, transparent); }
 
 .btn {
   padding: 9px 18px;
-  background: #111;
-  color: #fff;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
   border: none;
-  border-radius: 6px;
+  border-radius: 999px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
   cursor: pointer;
   white-space: nowrap;
 }
-.btn:hover:not(:disabled) { background: #333; }
-.btn:disabled { opacity: 0.5; }
+.btn:hover:not(:disabled) { background: var(--glass-ink-2); }
+.btn:disabled { opacity: 0.45; box-shadow: none; }
 
-.empty { color: #888; font-size: 13px; }
+.empty { color: var(--glass-muted); font-size: 13px; }
 
 .grid {
   display: grid;
@@ -95,15 +110,19 @@
   flex-direction: column;
   align-items: flex-start;
   width: 100%;
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+  color: var(--glass-ink);
   overflow: hidden;
   cursor: pointer;
   text-align: left;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.card:hover { border-color: #111; box-shadow: 0 2px 10px rgba(0,0,0,0.07); }
+.card:hover { border-color: var(--glass-edge); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 0 0 1px var(--glass-line-strong), var(--glass-shadow-float); }
 
 .cardThumb {
   position: relative;
@@ -112,7 +131,7 @@
   overflow: hidden;
   /* The board's own white. An empty board is exactly this. */
   background: #ffffff;
-  border-bottom: 1px solid #ececef;
+  border-bottom: 1px solid var(--glass-line);
 }
 .cardThumb img {
   display: block;
@@ -144,11 +163,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 999px;
   font-size: 14px;
-  color: #555;
+  color: var(--glass-ink-2);
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s;
@@ -156,19 +175,21 @@
   line-height: 1;
   padding: 0;
 }
-.menuBtn:hover { background: #f0f0f0; color: #111; }
+.menuBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
 .dropdown {
   position: absolute;
   top: 36px;
   right: 0;
   min-width: 120px;
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  /* Floats over the page: solid, never frosted. */
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: 14px;
+  box-shadow: var(--glass-shadow-float);
   z-index: 100;
   overflow: hidden;
+  padding: 4px;
 }
 
 .dropdownItem {
@@ -179,14 +200,15 @@
   font-size: 13px;
   background: none;
   border: none;
+  border-radius: var(--glass-radius-sm);
   cursor: pointer;
-  color: #333;
+  color: var(--glass-ink);
   transition: background 0.1s;
 }
-.dropdownItem:hover { background: #f5f5f5; }
+.dropdownItem:hover { background: var(--glass-sunken); }
 
 .dropdownDanger { color: #c0392b; }
-.dropdownDanger:hover { background: #fdf3f2; }
+.dropdownDanger:hover { background: var(--glass-bad-bg); }
 
 /* Invitations tab */
 .inviteSection {
@@ -198,7 +220,7 @@
 
 .inviteDesc {
   font-size: 13px;
-  color: #666;
+  color: var(--glass-ink-2);
   line-height: 1.5;
 }
 
@@ -206,9 +228,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f5f5f5;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
+  background: var(--glass-sunken);
+  border: 1px solid var(--glass-line-strong);
+  border-radius: var(--glass-radius-sm);
   padding: 10px 12px;
 }
 
@@ -217,20 +239,21 @@
   font-size: 11px;
   font-family: monospace;
   word-break: break-all;
-  color: #333;
+  color: var(--glass-ink);
 }
 
 .copyBtn {
   flex-shrink: 0;
   padding: 5px 12px;
-  border: 1px solid #e0e0e0;
-  border-radius: 5px;
-  background: #fff;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 999px;
+  color: var(--glass-ink);
+  background: var(--glass-surface-solid);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
 }
-.copyBtn:hover { background: #f5f5f5; }
+.copyBtn:hover { background: var(--glass-sunken); }
 
 .inviteError { font-size: 12px; color: #c0392b; }
 
@@ -240,7 +263,7 @@
   flex-shrink: 0;
   width: 16px;
   height: 16px;
-  border: 2px solid #d7d7d7;
+  border: 2px solid var(--glass-line-strong);
   border-top-color: #15803d;
   border-radius: 50%;
   animation: inviteSpin 0.8s linear infinite;

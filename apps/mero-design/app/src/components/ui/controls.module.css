@@ -14,19 +14,19 @@
 
 .kit {
   /* Tokens live on the panel root so every control below matches. */
-  --c-bg: #ffffff;
-  --c-bg-sunken: #f4f4f6;
-  --c-border: #e3e3e8;
-  --c-border-strong: #c9c9d2;
-  --c-text: #1b1c20;
-  --c-text-dim: #7c7d88;
-  --c-accent: #2563eb;
-  --c-accent-soft: #e6eeff;
+  /* Glass values (@calimero-apps/glass): fields sit solid on the frosted panel. */
+  --c-bg: var(--glass-surface-solid);
+  --c-bg-sunken: var(--glass-sunken);
+  --c-border: var(--glass-line-strong);
+  --c-border-strong: color-mix(in srgb, var(--glass-ink) 28%, transparent);
+  --c-text: var(--glass-ink);
+  --c-text-dim: var(--glass-muted);
+  --c-accent: var(--glass-accent-solid);
+  --c-accent-soft: color-mix(in srgb, var(--glass-accent-solid) 18%, transparent);
   --c-danger: #dc2626;
-  --c-radius: 7px;
+  --c-radius: var(--glass-radius-sm);
   --c-height: 28px;
-  font-family: "Inter", "Inter var", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-feature-settings: "cv11", "ss01";
+  font-family: var(--glass-font);
   -webkit-font-smoothing: antialiased;
   letter-spacing: -0.005em;
 }
@@ -192,7 +192,8 @@
   background: var(--c-bg);
   border: 1px solid var(--c-border);
   border-radius: var(--c-radius);
-  box-shadow: 0 8px 24px rgba(16, 18, 27, 0.14);
+  /* Floats over the panel and the canvas: solid, never frosted. */
+  box-shadow: var(--glass-shadow-float);
 }
 /* Opens upward when there is no room below. */
 .selectMenuUp { top: auto; bottom: calc(100% + 4px); }
@@ -268,7 +269,7 @@
   width: 30px;
   height: 17px;
   border-radius: 999px;
-  background: #d3d3da;
+  background: var(--glass-line-strong);
   transition: background 0.15s;
   flex: 0 0 auto;
 }
@@ -341,14 +342,14 @@
     to right,
     var(--c-accent) 0%,
     var(--c-accent) var(--fill, 50%),
-    #dcdce2 var(--fill, 50%),
-    #dcdce2 100%
+    var(--glass-line-strong) var(--fill, 50%),
+    var(--glass-line-strong) 100%
   );
 }
 .slider::-moz-range-track {
   height: 4px;
   border-radius: 999px;
-  background: #dcdce2;
+  background: var(--glass-line-strong);
 }
 .slider::-moz-range-progress {
   height: 4px;
@@ -453,7 +454,7 @@
 .iconButton:disabled { opacity: 0.45; cursor: not-allowed; }
 .iconButtonActive { border-color: var(--c-accent); color: var(--c-accent); background: var(--c-accent-soft); }
 .iconButtonDanger { color: var(--c-danger); }
-.iconButtonDanger:hover:not(:disabled) { background: #fef2f2; border-color: #fca5a5; }
+.iconButtonDanger:hover:not(:disabled) { background: var(--glass-bad-bg); border-color: color-mix(in srgb, var(--c-danger) 45%, transparent); }
 
 /* ── Quick pickers (Pickers.tsx) ──────────────────────────────────── */
 .swatchRow {

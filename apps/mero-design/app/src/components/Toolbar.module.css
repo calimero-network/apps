@@ -2,8 +2,15 @@
   height: 48px;
   display: flex;
   align-items: center;
-  background: #f6f6f6;
-  border-bottom: 1px solid #e0e0e0;
+  /* Glass over the shell's tinted fields. Height and padding are what the
+     canvas below is sized against, so only the paint changed. No
+     backdrop-filter: it would make the bar the containing block for the
+     position: fixed import confirm it renders, shrinking that to the bar. */
+  background: var(--glass-surface);
+  border-bottom: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 var(--glass-edge);
+  font-family: var(--glass-font);
+  color: var(--glass-ink);
   padding: 0 12px;
   gap: 6px;
   flex-shrink: 0;
@@ -27,7 +34,7 @@
 .divider {
   width: 1px;
   height: 20px;
-  background: #e0e0e0;
+  background: var(--glass-line-strong);
   margin: 0 4px;
   flex-shrink: 0;
 }
@@ -44,7 +51,7 @@
   gap: 2px;
   padding: 0 4px;
 }
-.toolGroup + .toolGroup { border-left: 1px solid #e0e0e0; }
+.toolGroup + .toolGroup { border-left: 1px solid var(--glass-line-strong); }
 .toolGroup:first-child { padding-left: 0; }
 
 .tool {
@@ -54,16 +61,16 @@
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--glass-radius-sm);
   background: transparent;
   font-size: 12px;
   cursor: pointer;
-  color: #444;
+  color: var(--glass-ink-2);
   transition: background 0.1s;
 }
-.tool:hover { background: #ebebef; }
+.tool:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 .tool:disabled { opacity: 0.35; cursor: not-allowed; }
-.tool.active { background: #e8f0fe; color: #1a5fe4; box-shadow: inset 0 0 0 1px #c7d8fb; }
+.tool.active { background: var(--glass-ink); color: var(--glass-on-ink); box-shadow: 0 6px 14px -8px rgba(14, 18, 34, 0.6); }
 
 .section {
   display: flex;
@@ -73,7 +80,7 @@
 
 .sectionLabel {
   font-size: 10px;
-  color: #999;
+  color: var(--glass-muted);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   white-space: nowrap;
@@ -91,23 +98,23 @@
   border: 2px solid transparent;
   cursor: pointer;
   transition: border-color 0.1s, transform 0.1s;
-  box-shadow: 0 0 0 1px #ccc;
+  box-shadow: 0 0 0 1px var(--glass-line-strong);
 }
 .bgBtn:hover { transform: scale(1.15); }
-.bgBtn.bgActive { border-color: #1a5fe4; box-shadow: 0 0 0 1px #1a5fe4; }
+.bgBtn.bgActive { border-color: var(--glass-ink); box-shadow: 0 0 0 1px var(--glass-ink); }
 
 .exportBtn {
-  padding: 4px 9px;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  background: #fff;
+  padding: 4px 11px;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
   font-size: 11px;
-  font-weight: 500;
-  color: #444;
+  font-weight: 600;
+  color: var(--glass-ink);
   cursor: pointer;
   transition: background 0.1s, border-color 0.1s;
 }
-.exportBtn:hover { background: #f5f5f5; border-color: #bbb; }
+.exportBtn:hover { background: var(--glass-sunken); border-color: var(--glass-line-strong); }
 
 .importError {
   font-size: 11px;
@@ -123,51 +130,52 @@
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 5px;
+  border-radius: 999px;
   background: transparent;
   font-size: 14px;
-  color: #555;
+  color: var(--glass-ink-2);
   cursor: pointer;
   flex-shrink: 0;
 }
-.backBtn:hover { background: #f0f0f0; color: #111; }
+.backBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
 .spacer { flex: 1; }
 
 .logoutBtn {
   padding: 4px 12px;
-  border: 1px solid #e0e0e0;
-  border-radius: 5px;
-  background: #fff;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
   font-size: 11px;
-  color: #555;
+  font-weight: 600;
+  color: var(--glass-ink-2);
   cursor: pointer;
   flex-shrink: 0;
 }
-.logoutBtn:hover { background: #f5f5f5; border-color: #bbb; }
+.logoutBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
 .previewBtn {
   padding: 4px 12px;
-  border: 1.5px solid #2563eb;
-  border-radius: 5px;
-  background: #fff;
+  border: 1.5px solid var(--glass-line-strong);
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
   font-size: 11px;
   font-weight: 600;
-  color: #2563eb;
+  color: var(--glass-ink);
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.1s, color 0.1s;
 }
-.previewBtn:hover { background: #2563eb; color: #fff; }
-.previewBtnActive { background: #2563eb; color: #fff; }
-.presentBtn { margin-left: 6px; background: #2563eb; color: #fff; }
-.presentBtn:hover { background: #1d4ed8; border-color: #1d4ed8; }
+.previewBtn:hover { background: var(--glass-sunken); }
+.previewBtnActive { background: var(--glass-ink); border-color: var(--glass-ink); color: var(--glass-on-ink); }
+.presentBtn { margin-left: 6px; background: var(--glass-ink); border-color: var(--glass-ink); color: var(--glass-on-ink); box-shadow: 0 8px 18px -10px rgba(14, 18, 34, 0.6); }
+.presentBtn:hover { background: var(--glass-ink-2); border-color: var(--glass-ink-2); color: var(--glass-on-ink); }
 
 .exportSep {
   display: block;
   width: 1px;
   height: 14px;
-  background: #e0e0e0;
+  background: var(--glass-line-strong);
   margin: 0 2px;
   flex-shrink: 0;
 }
@@ -180,15 +188,15 @@
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--glass-radius-sm);
   background: transparent;
-  color: #555;
+  color: var(--glass-ink-2);
   cursor: pointer;
   transition: background 0.1s, color 0.1s, border-color 0.1s;
   flex-shrink: 0;
 }
-.iconBtn:hover { background: #f0f0f0; }
-.iconBtnActive { background: #dbeafe; color: #2563eb; border-color: #93c5fd; }
+.iconBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
+.iconBtnActive { background: var(--glass-ink); color: var(--glass-on-ink); border-color: var(--glass-ink); }
 
 /* Members */
 .membersWrap {
@@ -205,20 +213,20 @@
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--glass-radius-sm);
   background: transparent;
-  color: #555;
+  color: var(--glass-ink-2);
   cursor: pointer;
   transition: background 0.1s;
 }
-.membersBtn:hover { background: #f0f0f0; }
+.membersBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
 .membersBadge {
   position: absolute;
   top: 1px;
   right: 1px;
-  background: #2563eb;
-  color: #fff;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
   font-size: 8px;
   font-weight: 700;
   border-radius: 6px;
@@ -233,13 +241,14 @@
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  /* Floats over the canvas: solid, never frosted. */
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow-float);
   min-width: 180px;
   z-index: 200;
-  padding: 8px 0;
+  padding: 8px 6px;
 }
 
 .membersTitle {
@@ -247,13 +256,13 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: #999;
+  color: var(--glass-muted);
   padding: 2px 12px 6px;
 }
 
 .membersEmpty {
   font-size: 12px;
-  color: #aaa;
+  color: var(--glass-muted);
   padding: 2px 12px 4px;
 }
 
@@ -262,8 +271,9 @@
   align-items: center;
   gap: 8px;
   padding: 5px 12px;
+  border-radius: var(--glass-radius-sm);
 }
-.memberRow:hover { background: #f8f8f8; }
+.memberRow:hover { background: var(--glass-sunken); }
 
 .memberDot {
   width: 8px;
@@ -275,7 +285,7 @@
 .memberLabel {
   font-size: 12px;
   font-family: monospace;
-  color: #333;
+  color: var(--glass-ink);
 }
 
 /* Options dropdown */
@@ -285,21 +295,22 @@
 }
 
 .exportBtnActive {
-  background: #f0f0f0;
-  border-color: #bbb;
+  background: var(--glass-sunken);
+  border-color: var(--glass-line-strong);
 }
 
 .optionsDropdown {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  /* Floats over the canvas: solid, never frosted. */
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow-float);
   min-width: 200px;
   z-index: 200;
-  padding: 6px 0;
+  padding: 6px;
 }
 
 .optionsGroupLabel {
@@ -307,7 +318,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: #999;
+  color: var(--glass-muted);
   padding: 4px 12px 2px;
   margin: 0;
 }
@@ -320,7 +331,7 @@
 
 .optionsDivider {
   height: 1px;
-  background: #f0f0f0;
+  background: var(--glass-line);
   margin: 4px 0;
 }
 
@@ -330,18 +341,19 @@
   text-align: left;
   padding: 7px 12px;
   border: none;
+  border-radius: var(--glass-radius-sm);
   background: transparent;
   font-size: 12px;
-  color: #333;
+  color: var(--glass-ink);
   cursor: pointer;
   transition: background 0.1s;
 }
-.optionsItem:hover:not(:disabled) { background: #f5f5f5; }
-.optionsItem:disabled { color: #bbb; cursor: default; }
+.optionsItem:hover:not(:disabled) { background: var(--glass-sunken); }
+.optionsItem:disabled { color: var(--glass-muted); opacity: 0.6; cursor: default; }
 .optionsHint {
   display: block;
   margin-top: 1px;
   font-size: 10.5px;
-  color: #999;
+  color: var(--glass-muted);
 }
 
