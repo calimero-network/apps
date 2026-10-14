@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { PrView, WatchView } from "./generated/HyperfeedClient";
+import type { Feed } from "./useFeed";
 import { timeLabel } from "./format";
 import {
   findRefs,
@@ -54,6 +55,39 @@ export interface MergeContext {
   /** Merge, or Merge when green: a merge watch on this chain. Missing on a feed without watches. */
   onMerge?: (repo: string, pr: number) => void;
   onCancel?: (watchId: string) => void;
+}
+
+/**
+ * A chain's merge context, read again with the feed: its watches and the PRs
+ * your agent's runtime saw on GitHub. Chat's thread and the feed's rows give
+ * it to their PR cards; with no chain there is none.
+ */
+export function useMergeContext(feed: Feed, chain: string): { merge: MergeContext | undefined; watches: WatchView[] } {
+  const [watches, setWatches] = useState<WatchView[]>([]);
+  const [prs, setPrs] = useState<PrView[]>([]);
+  const { loadWatches, loadPrs, mergeWhenGreen, cancelWatch, page } = feed;
+  useEffect(() => {
+    let live = true;
+    if (!chain || !loadWatches) setWatches([]);
+    else void loadWatches(chain).then((w) => live && setWatches(w), () => live && setWatches([]));
+    if (!chain || !loadPrs) setPrs([]);
+    else void loadPrs("").then((p) => live && setPrs(p), () => live && setPrs([]));
+    return () => {
+      live = false;
+    };
+  }, [loadWatches, loadPrs, chain, page]);
+  const merge = useMemo<MergeContext | undefined>(() => {
+    if (!chain) return undefined;
+    const seen = new Map<string, PrView>();
+    for (const p of prs) seen.set(prKey(p.repo, p.pr), p);
+    return {
+      watches,
+      seen,
+      onMerge: mergeWhenGreen ? (repo, pr) => void mergeWhenGreen(chain, repo, pr) : undefined,
+      onCancel: cancelWatch ? (id) => void cancelWatch(id) : undefined,
+    };
+  }, [chain, prs, watches, mergeWhenGreen, cancelWatch]);
+  return { merge, watches };
 }
 
 /** How often an open PR is read again while its checks run, and once they have finished. */

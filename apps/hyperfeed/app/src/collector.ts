@@ -1,6 +1,12 @@
 import type { NotificationInput } from "./generated/HyperfeedClient";
 import { runLens, type LensHost, type LensSpec, type Outcome } from "./lens/lens";
+import calendarLens from "./lens/fixtures/calendar.json";
 import chatLens from "./lens/fixtures/chat.json";
+import crmLens from "./lens/fixtures/crm.json";
+import issuesLens from "./lens/fixtures/issues.json";
+import passLens from "./lens/fixtures/pass.json";
+import sheetsLens from "./lens/fixtures/sheets.json";
+import signLens from "./lens/fixtures/sign.json";
 
 /**
  * Turning another app's live events into Hyperfeed notifications.
@@ -16,9 +22,10 @@ import chatLens from "./lens/fixtures/chat.json";
  * lens reads what the event points at from the app, drops what you did
  * yourself, and keeps what concerns you, as one of the feed's item types.
  *
- * Until you approve one for Chat, Chat uses the lens this app ships
- * (`lens/fixtures/chat.json`): a DM, a mention of you or of everyone, and your
- * role changing.
+ * Until you approve one, each core app uses the lens this app ships
+ * (`lens/fixtures/<app>.json`, keyed in {@link BUILT_IN}): in Chat a DM, a
+ * mention of you or of everyone, and your role changing; in the others a
+ * mention, an invite, a request to sign, or a change to what is yours.
  *
  * The dedupe key is `<context>:<previous root>><new root>:<index>`: the state
  * TRANSITION, not just where it ended. Every device watching a context sees the
@@ -52,7 +59,15 @@ export interface SourceContext {
 }
 
 /** The lenses this app ships, used until you approve one for the same app. */
-export const BUILT_IN: Record<string, LensSpec> = { chat: chatLens as LensSpec };
+export const BUILT_IN: Record<string, LensSpec> = {
+  chat: chatLens as LensSpec,
+  calendar: calendarLens as LensSpec,
+  sheets: sheetsLens as LensSpec,
+  "issue-tracker": issuesLens as LensSpec,
+  crm: crmLens as LensSpec,
+  sign: signLens as LensSpec,
+  pass: passLens as LensSpec,
+};
 
 /** One event as it arrived, kept for a lens's preview. */
 export interface RawEvent {

@@ -186,13 +186,20 @@ export default function Sidebar({
 }
 
 const Aside = styled.aside`
-  background: ${t.color.panel};
-  border-right: 1px solid ${t.color.border};
+  /* Frosted frame rail, floating inside the page like the header. */
+  background: ${t.color.glass};
+  -webkit-backdrop-filter: ${t.blur};
+  backdrop-filter: ${t.blur};
+  border: 1px solid ${t.color.edge};
+  border-radius: 22px;
+  box-shadow: ${t.shadow};
+  margin: 12px 0 12px 12px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: calc(100vh - 24px);
   position: sticky;
-  top: 0;
+  top: 12px;
   @media (max-width: 940px) { display: none; }
 `;
 const Switcher = styled.div`
@@ -206,12 +213,12 @@ const Switcher = styled.div`
     background: transparent; border: none; padding: 6px 6px; border-radius: ${t.radius};
     color: ${t.color.text}; font-weight: 600; font-size: 13px; letter-spacing: -0.01em;
   }
-  .ns-ctl > button:hover { background: rgba(255,255,255,0.04); }
-  .ns-ctl > button:focus-visible { background: rgba(255,255,255,0.06); }
+  .ns-ctl > button:hover { background: ${t.color.hover}; }
+  .ns-ctl > button:focus-visible { background: ${t.color.hover}; }
   .ns-actions { display: flex; gap: 6px; padding: 6px 4px 0; }
   .ns-actions button {
     flex: 1 1 auto; font-size: 11.5px; font-weight: 600; color: ${t.color.text2};
-    background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: ${t.radiusSm};
+    background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: ${t.radiusPill};
     padding: 5px 8px; cursor: pointer;
     &:hover { color: ${t.color.text}; background: ${t.color.raised2}; }
   }
@@ -223,7 +230,7 @@ const Pipelines = styled.div`
   .pipeline-add {
     margin-left: auto; width: 20px; height: 20px; display: grid; place-items: center; line-height: 1;
     font-size: 15px; color: ${t.color.text3}; background: transparent; border: none; border-radius: 4px; cursor: pointer;
-    &:hover { background: rgba(255,255,255,0.05); color: ${t.color.text}; }
+    &:hover { background: ${t.color.hover}; color: ${t.color.text}; }
   }
   .pipelines-list { display: flex; flex-direction: column; gap: 1px; max-height: 168px; overflow-y: auto; }
   .pipelines-empty { padding: 4px 8px 8px; font-size: 12px; color: ${t.color.text3}; }
@@ -231,10 +238,10 @@ const Pipelines = styled.div`
     display: flex; align-items: center; gap: 8px; text-align: left; width: 100%;
     padding: 6px 8px; border: none; background: transparent; border-radius: ${t.radiusSm};
     color: ${t.color.text2}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
-    &:hover { background: rgba(255,255,255,0.04); color: ${t.color.text}; }
+    &:hover { background: ${t.color.hover}; color: ${t.color.text}; }
   }
   .pipeline-item.active { background: ${t.color.accentDim}; color: ${t.color.text}; }
-  .pipeline-item.active .pipeline-dot { background: ${t.color.accent}; }
+  .pipeline-item.active .pipeline-dot { background: ${t.color.accentText}; }
   .pipeline-dot { width: 6px; height: 6px; border-radius: 50%; background: ${t.color.text3}; flex: 0 0 auto; }
   .pipeline-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 `;
@@ -250,10 +257,10 @@ const Item = styled(NavLink)<{ $active?: boolean }>`
     color: ${t.color.onAccent}; background: ${t.color.urgent}; border-radius: 999px;
     padding: 0 6px; font-weight: 700; line-height: 16px;
   }
-  &:hover { background: rgba(255,255,255,0.04); color: ${t.color.text}; }
+  &:hover { background: ${t.color.hover}; color: ${t.color.text}; }
   ${({ $active }) => $active && `
     background: ${t.color.accentDim}; color: ${t.color.text};
-    .ico { color: ${t.color.accent}; }
+    .ico { color: ${t.color.accentText}; }
   `}
 `;
 const Spacer = styled.div`flex: 1 1 auto;`;
@@ -263,11 +270,11 @@ const Footer = styled.div`
   .peer-sync { display: flex; align-items: center; gap: 8px; font-size: 12px; color: ${t.color.text2}; }
   .peer-sync .mid { color: ${t.color.text3}; }
   .pulse-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: ${t.color.accent};
+    width: 7px; height: 7px; border-radius: 50%; background: ${t.color.done};
     position: relative; flex: 0 0 auto;
     &::after {
       content: ""; position: absolute; inset: -3px; border-radius: 50%;
-      background: ${t.color.accent}; opacity: 0.35; animation: pulse 2.4s ease-out infinite;
+      background: ${t.color.done}; opacity: 0.35; animation: pulse 2.4s ease-out infinite;
     }
   }
   @keyframes pulse {

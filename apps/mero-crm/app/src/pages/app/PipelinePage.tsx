@@ -204,9 +204,11 @@ const Board = styled.div`
 `;
 const Col = styled.div<{ $over: boolean }>`
   flex: 1 0 216px; max-width: 320px; display: flex; flex-direction: column; min-height: 0;
-  background: ${({ $over }) => ($over ? t.color.accentDim : 'rgba(255,255,255,0.015)')};
+  background: ${({ $over }) => ($over ? t.color.accentDim : t.color.glass)};
   border: 1px solid ${({ $over }) => ($over ? t.color.accentBorder : t.color.border)};
-  border-radius: 10px; transition: background 120ms ease-out, border-color 120ms ease-out;
+  border-color: ${({ $over }) => ($over ? t.color.accentBorder : t.color.edge)};
+  -webkit-backdrop-filter: ${t.blur}; backdrop-filter: ${t.blur}; box-shadow: ${t.shadow};
+  border-radius: ${t.radiusLg}; transition: background 120ms ease-out, border-color 120ms ease-out;
   .cards { display: flex; flex-direction: column; gap: 8px; padding: 8px; overflow-y: auto; flex: 1; }
   .empty {
     border: 1px dashed ${t.color.border}; border-radius: ${t.radius}; background: none; cursor: pointer;
@@ -222,19 +224,21 @@ const ColHead = styled.div`
   .add {
     margin-left: auto; width: 22px; height: 22px; border-radius: 5px; border: none; background: transparent;
     color: ${t.color.text3}; font-size: 16px; line-height: 1; cursor: pointer;
-    &:hover { background: rgba(255,255,255,0.06); color: ${t.color.text}; }
+    &:hover { background: ${t.color.hover}; color: ${t.color.text}; }
   }
   .meta { font-size: 11.5px; color: ${t.color.text2}; margin-top: 3px; }
   .bar { height: 3px; border-radius: 2px; background: ${t.color.raised2}; margin-top: 8px; overflow: hidden; }
-  .bar span { display: block; height: 100%; background: ${t.color.accent}; opacity: 0.6; }
+  .bar span { display: block; height: 100%; background: ${t.color.accentText}; opacity: 0.6; }
 `;
 const Card = styled.div<{ $rotting: boolean; $dragging: boolean }>`
   background: ${t.color.panel}; border: 1px solid ${({ $rotting }) => ($rotting ? 'rgba(229,105,95,0.35)' : t.color.border)};
-  border-radius: 8px; padding: 10px 11px; cursor: grab; user-select: none;
+  border-radius: 12px; padding: 10px 11px; cursor: grab; user-select: none;
+  /* Content: solid and sharp on the frosted column. */
+  box-shadow: 0 1px 2px rgba(14, 18, 34, 0.05);
   display: flex; flex-direction: column; gap: 6px;
   opacity: ${({ $dragging }) => ($dragging ? 0.4 : 1)};
   transition: background 120ms ease-out, border-color 120ms ease-out;
-  &:hover { background: ${t.color.raised}; border-color: ${t.color.borderStrong}; }
+  &:hover { background: ${t.color.panel}; border-color: ${t.color.borderStrong}; }
   .top { display: flex; align-items: flex-start; gap: 8px; }
   .title { font-size: 12.5px; font-weight: 600; line-height: 1.35; flex: 1; min-width: 0; }
   .top > span:last-child { margin-top: 4px; }
@@ -247,12 +251,12 @@ const Card = styled.div<{ $rotting: boolean; $dragging: boolean }>`
 const CloseBar = styled.div`
   position: absolute; left: 16px; right: 16px; bottom: 16px; display: flex; gap: 12px; z-index: 6;
   .zone {
-    flex: 1; text-align: center; padding: 18px; border-radius: 10px; font-weight: 700; font-size: 13px;
+    flex: 1; text-align: center; padding: 18px; border-radius: ${t.radiusLg}; font-weight: 700; font-size: 13px;
     border: 2px dashed; backdrop-filter: blur(6px); transition: background 120ms ease-out;
   }
-  .won { color: ${t.color.done}; border-color: rgba(127,201,107,0.5); background: rgba(20,32,18,0.85); }
+  .won { color: ${t.color.done}; border-color: rgba(127,201,107,0.5); background: ${t.color.goodBg}; }
   .won.over { background: rgba(127,201,107,0.3); }
-  .lost { color: ${t.color.urgent}; border-color: rgba(229,105,95,0.5); background: rgba(34,18,17,0.85); }
+  .lost { color: ${t.color.urgent}; border-color: rgba(229,105,95,0.5); background: ${t.color.badBg}; }
   .lost.over { background: rgba(229,105,95,0.3); }
 `;
 const Hint = styled.div`

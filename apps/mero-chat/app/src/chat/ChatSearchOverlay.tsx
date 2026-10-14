@@ -91,6 +91,11 @@ const SearchForm = styled.form`
 const SearchInputWrapper = styled.div`
   flex: 1;
   min-width: 240px;
+  /* mero-ui's SearchInput paints its label and typed text white inline. */
+  label,
+  input {
+    color: var(--glass-ink) !important;
+  }
 `;
 
 const SearchMeta = styled.div`

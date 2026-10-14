@@ -24,11 +24,23 @@ export default function NavBar({
       size="md"
       /* mero-ui hardcodes a dark bar INLINE (`backgroundColor: "#1A1A1A"`),
          and exposes no CSS variable for it — but it spreads `style` AFTER its
-         own base styles, so this wins without `!important`. */
+         own base styles, so this wins without `!important`. The values are
+         the fleet's floating glass header (`glass-header` in the glass
+         package): a frosted, rounded bar inset from the edges. */
       style={{
-        backgroundColor: 'var(--bg-surface)',
-        borderBottom: '1px solid var(--border-subtle)',
-        boxShadow: 'var(--shadow-card)',
+        position: 'sticky',
+        top: 12,
+        zIndex: 30,
+        width: 'calc(100% - 32px)',
+        margin: '12px 16px 0',
+        borderRadius: 20,
+        backgroundColor: 'var(--glass-surface)',
+        WebkitBackdropFilter: 'var(--glass-blur)',
+        backdropFilter: 'var(--glass-blur)',
+        border: '1px solid var(--glass-edge)',
+        borderBottom: '1px solid var(--glass-edge)',
+        boxShadow:
+          'inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow)',
         color: 'var(--text-primary)',
       }}
     >

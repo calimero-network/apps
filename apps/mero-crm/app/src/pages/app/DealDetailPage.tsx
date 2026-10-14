@@ -92,7 +92,7 @@ export default function DealDetailPage(): React.ReactElement {
     return (
       <Empty>
         <strong>This deal no longer exists</strong>
-        It may have been deleted by its creator. <a href={APP_ROUTE} onClick={(e) => { e.preventDefault(); navigate(APP_ROUTE); }} style={{ color: t.color.accent }}>Back to the pipeline</a>
+        It may have been deleted by its creator. <a href={APP_ROUTE} onClick={(e) => { e.preventDefault(); navigate(APP_ROUTE); }} style={{ color: t.color.accentText }}>Back to the pipeline</a>
       </Empty>
     );
   }
@@ -467,7 +467,7 @@ const Stepper = styled.div`
     &:first-child { clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%); border-radius: 5px 0 0 5px; }
     &:hover:not(:disabled) { background: ${t.color.raised2}; color: ${t.color.text}; }
     &:disabled { cursor: default; }
-    &.past { background: rgba(165,255,63,0.22); color: ${t.color.text}; }
+    &.past { background: ${t.color.accentDim}; color: ${t.color.text}; }
     &.current { background: ${t.color.accent}; color: ${t.color.onAccent}; }
   }
 `;
@@ -478,7 +478,7 @@ const Grid = styled.div`
   .form { display: flex; flex-direction: column; gap: 10px; }
   .facts { font-size: 11.5px; color: ${t.color.text3}; margin-top: 12px; }
   .muted { font-size: 12px; color: ${t.color.text3}; }
-  .link { color: ${t.color.text2}; font-size: 12.5px; &:hover { color: ${t.color.accent}; } }
+  .link { color: ${t.color.text2}; font-size: 12.5px; &:hover { color: ${t.color.accentText}; } }
   .actions { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
   .actions .label { font-size: 11px; color: ${t.color.text3}; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 `;
@@ -506,7 +506,7 @@ const EmailBox = styled.div`
   display: flex; flex-direction: column; gap: 10px;
   .subj { font-size: 12.5px; font-weight: 600; span { color: ${t.color.text3}; font-weight: 500; margin-right: 6px; } }
   pre { font-family: inherit; font-size: 12.5px; white-space: pre-wrap; margin: 0; color: ${t.color.text2}; line-height: 1.55; }
-  .mail { font-size: 11.5px; font-weight: 600; color: ${t.color.accent}; align-self: center; }
+  .mail { font-size: 11.5px; font-weight: 600; color: ${t.color.accentText}; align-self: center; }
 `;
 const List = styled.ul`
   list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column;

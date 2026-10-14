@@ -54,19 +54,19 @@
 .titleText {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-muted, #9aa4b2);
+  color: var(--text-faint);
   letter-spacing: 0.02em;
 }
 .closeX {
   background: none;
   border: none;
-  color: var(--text-muted, #9aa4b2);
+  color: var(--text-faint);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
   padding: 0 2px;
 }
-.closeX:hover { color: #fff; }
+.closeX:hover { color: var(--text); }
 
 .sliders {
   display: flex;
@@ -82,7 +82,7 @@
   width: 14px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-muted, #9aa4b2);
+  color: var(--text-faint);
   flex-shrink: 0;
 }
 .sliderRange {
@@ -93,10 +93,10 @@
 .sliderNum {
   width: 46px;
   flex-shrink: 0;
-  background: var(--bg-input, #0a0e13);
+  background: var(--bg-0);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: #fff;
+  color: var(--text);
   font-size: 11px;
   padding: 2px 4px;
   text-align: right;
@@ -248,7 +248,7 @@
 .swatchTitle {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-muted, #9aa4b2);
+  color: var(--text-faint);
 }
 .addSwatch {
   width: 20px;

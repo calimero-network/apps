@@ -41,15 +41,15 @@ export default function CanvasPage() {
   // re-render CanvasPage and, through it, the canvas, the toolbar and the whole
   // layers tree. Measured at 300 elements: 309ms p95 for a click. See e2e/perf/.
   const {
-    setElements, upsertElement, upsertElements, removeElements, cacheImage, selectWithPointer, elements, imageCache,
+    setElements, upsertElement, applyRemoteElements, removeRemoteElements, cacheImage, selectWithPointer, elements, imageCache,
     previewMode, setPreviewMode, presenting, startPresentation,
   } =
     useCanvasStore(
       useShallow((s) => ({
         setElements: s.setElements,
         upsertElement: s.upsertElement,
-        upsertElements: s.upsertElements,
-        removeElements: s.removeElements,
+        applyRemoteElements: s.applyRemoteElements,
+        removeRemoteElements: s.removeRemoteElements,
         cacheImage: s.cacheImage,
         selectWithPointer: s.selectWithPointer,
         elements: s.elements,
@@ -444,7 +444,7 @@ export default function CanvasPage() {
       if (!projectId) return;
       const changes = collectBoardChanges(raw);
 
-      if (changes.remove.length > 0) removeElements(changes.remove);
+      if (changes.remove.length > 0) removeRemoteElements(changes.remove);
       if (changes.layers) {
         // A reorder renumbers everything; the full list covers any fetch too.
         rpcCall<Element[]>(projectId, "get_elements", {})
@@ -452,7 +452,7 @@ export default function CanvasPage() {
           .catch(() => {});
       } else if (changes.fetch.length > 0) {
         getElementsByIds(projectId, changes.fetch)
-          .then((els) => upsertElements(els))
+          .then((els) => applyRemoteElements(els))
           .catch(() => {});
       }
       if (changes.comments) {
@@ -484,7 +484,7 @@ export default function CanvasPage() {
           .catch(() => {});
       }
     },
-    [projectId, upsertElements, removeElements, setElements],
+    [projectId, applyRemoteElements, removeRemoteElements, setElements],
   );
 
   // The stream dropped and came back (the node was restarted, the machine

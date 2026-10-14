@@ -80,7 +80,7 @@ const Badge = styled.span`
   border-radius: 5px; border: 1px solid ${t.color.border};
   background: ${t.color.raised}; color: ${t.color.text2};
   &.admin {
-    color: ${t.color.accent};
+    color: ${t.color.accentText};
     border-color: ${t.color.accentBorder};
     background: ${t.color.accentDim};
   }

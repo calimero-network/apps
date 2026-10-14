@@ -20,7 +20,7 @@
   border: 0;
   border-left: 1px solid var(--border);
   border-radius: var(--radius-xl) 0 0 var(--radius-xl);
-  background: var(--surface);
+  background: var(--glass-surface-solid);
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
@@ -53,7 +53,6 @@
 
 .dialog::backdrop {
   background: var(--overlay);
-  backdrop-filter: blur(2px);
 }
 
 .head {

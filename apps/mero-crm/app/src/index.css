@@ -4,49 +4,89 @@
   box-sizing: border-box;
 }
 
-/* ── App theme tokens (light default). The landing page does NOT use these. ──
-   `--c-on-accent` is text on the bright green accent — stays dark in both
-   themes. `--c-green-ink`/`--c-green-deep` are accent TEXT, so they lighten in
-   dark mode for contrast on dark surfaces. */
+/* ── App theme tokens: the fleet's light glass (@calimero-apps/glass). ──────
+   index.tsx imports glass.css first; everything here maps this app's own names
+   onto its `--glass-*` values, so components keep their names and only the
+   values move. Light is the default; `<html data-theme="dark">` (theme.ts)
+   switches glass.css to smoked glass and the dark block below follows it.
+   The landing page does NOT use these. */
 :root {
-  --c-green: #a4ff11;
-  --c-green-hover: #93e60c;
-  --c-green-deep: #4e7a06;
-  --c-green-ink: #37610a;
-  --c-on-accent: #0e140f;
-  --c-ink: #0e140f;
-  --c-paper: #ffffff;
-  --c-paper2: #f5f8f1;
-  --c-line: #e7ece2;
-  --c-muted: #5d6b60;
-  --c-muted-soft: #93a394;
-  --c-off: #c4ccbf;
-  --c-disabled: #e2e8da;
-  --c-danger: #d23b2f;
+  --glass-tint: #2dd4bf;
+
+  /* `C` palette (theme.ts). */
+  --c-green: var(--glass-ink);
+  --c-green-hover: #262b3d;
+  --c-green-deep: var(--glass-accent);
+  --c-green-ink: var(--glass-accent);
+  --c-on-accent: var(--glass-on-ink);
+  --c-ink: var(--glass-ink);
+  --c-paper: var(--glass-ground);
+  --c-paper2: var(--glass-surface-solid);
+  --c-line: var(--glass-line);
+  --c-muted: var(--glass-ink-2);
+  --c-muted-soft: var(--glass-muted);
+  --c-off: var(--glass-line-strong);
+  --c-disabled: var(--glass-sunken);
+  --c-danger: var(--glass-bad-ink);
+
+  /* CRM view tokens (`tokens` in theme.ts). */
+  --crm-bg: var(--glass-ground);
+  --crm-panel: var(--glass-surface-solid);
+  --crm-glass: var(--glass-surface);
+  --crm-raised: var(--glass-surface-solid);
+  --crm-raised2: var(--glass-sunken);
+  --crm-hover: var(--glass-sunken);
+  --crm-border: var(--glass-line);
+  --crm-border-strong: var(--glass-line-strong);
+  --crm-edge: var(--glass-edge);
+  --crm-text: var(--glass-ink);
+  --crm-text2: var(--glass-ink-2);
+  --crm-text3: var(--glass-muted);
+  --crm-accent: var(--glass-ink);
+  --crm-accent-hover: #262b3d;
+  --crm-accent-text: var(--glass-accent);
+  --crm-accent-dim: rgba(52, 81, 209, 0.09);
+  --crm-accent-border: rgba(52, 81, 209, 0.32);
+  --crm-on-accent: var(--glass-on-ink);
+  --crm-scrim: rgba(14, 18, 34, 0.28);
+  --crm-urgent: #d0384d;
+  --crm-high: #b86e0f;
+  --crm-medium: #4f6fa3;
+  --crm-low: var(--glass-muted);
+  --crm-done: #1f9a5b;
+  --crm-good-bg: var(--glass-good-bg);
+  --crm-bad-bg: var(--glass-bad-bg);
+  --crm-log-bg: var(--glass-sunken);
+  --crm-danger: var(--glass-bad-ink);
+  --crm-danger-border: rgba(162, 25, 75, 0.28);
+  --crm-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+  --crm-shadow-float: var(--glass-shadow-float);
+  color-scheme: light;
 }
 
 :root[data-theme='dark'] {
-  --c-green: #a4ff11;
-  --c-green-hover: #b4ff3d;
-  --c-green-deep: #bdf76a;
-  --c-green-ink: #cdf78a;
-  --c-on-accent: #0e140f;
-  --c-ink: #e7edf2;
-  --c-paper: #14181d;
-  --c-paper2: #1b2027;
-  --c-line: #2b313a;
-  --c-muted: #9aa6ad;
-  --c-muted-soft: #6d7884;
-  --c-off: #3a414b;
-  --c-disabled: #2a2f37;
-  --c-danger: #ff6b6b;
+  --c-green-hover: #ffffff;
+  --crm-accent-hover: #ffffff;
+  --crm-accent-dim: rgba(154, 175, 255, 0.14);
+  --crm-accent-border: rgba(154, 175, 255, 0.36);
+  --crm-scrim: rgba(4, 6, 12, 0.6);
+  --crm-urgent: #f07a86;
+  --crm-high: #e8a64e;
+  --crm-medium: #8fa8d6;
+  --crm-done: #7fe0b0;
+  --crm-danger-border: rgba(247, 139, 176, 0.32);
+  --crm-shadow: var(--glass-shadow);
+  color-scheme: dark;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--c-paper);
+  font-family: var(--glass-font);
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: var(--c-ink);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {

@@ -79,43 +79,63 @@ export function MoonIcon({ filled, size = 17 }: { filled: boolean; size?: number
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * CRM design tokens (dark-only).
+ * CRM design tokens: the fleet's light glass (@calimero-apps/glass).
  *
- * These are the exact values from docs/superpowers/design/mockup.html and are
- * hard-coded dark: the app views do NOT follow the light/dark toggle above
- * (which only the landing/login surfaces use via the `C` CSS-var palette).
+ * Every colour is a `var(--crm-*)` reference. index.css maps those onto the
+ * shared `--glass-*` values, light by default, and onto smoked glass when
+ * `<html data-theme="dark">` is set (see `applyTheme` above), so the app views
+ * now follow the same light/dark switch as everything else.
+ *
+ * `accent` is the primary-control fill (the glass ink) with `onAccent` text on
+ * it; `accentText` is accent-coloured TEXT and marks (links, checks, bars).
  * ════════════════════════════════════════════════════════════════════════ */
 export const tokens = {
   color: {
-    bg: '#0E0F12',
-    panel: '#16181D',
-    raised: '#1C1F26',
-    raised2: '#23262F',
-    border: 'rgba(255,255,255,0.07)',
-    borderStrong: 'rgba(255,255,255,0.12)',
-    text: '#E6E8EC',
-    text2: '#9BA1AD',
-    text3: '#6B707B',
-    accent: '#A5FF3F',
-    accentDim: 'rgba(165,255,63,0.14)',
-    accentBorder: 'rgba(165,255,63,0.35)',
-    onAccent: '#0C1005',
-    urgent: '#E5695F',
-    high: '#E0A04B',
-    medium: '#6E8BB5',
-    low: '#6B707B',
-    done: '#7FC96B',
-    logBg: '#0A0B0D',
+    bg: 'var(--crm-bg)',
+    panel: 'var(--crm-panel)',
+    /** Frosted frame surface (sidebar, columns, panels). Never for content. */
+    glass: 'var(--crm-glass)',
+    raised: 'var(--crm-raised)',
+    raised2: 'var(--crm-raised2)',
+    hover: 'var(--crm-hover)',
+    border: 'var(--crm-border)',
+    borderStrong: 'var(--crm-border-strong)',
+    edge: 'var(--crm-edge)',
+    text: 'var(--crm-text)',
+    text2: 'var(--crm-text2)',
+    text3: 'var(--crm-text3)',
+    accent: 'var(--crm-accent)',
+    accentHover: 'var(--crm-accent-hover)',
+    accentText: 'var(--crm-accent-text)',
+    accentDim: 'var(--crm-accent-dim)',
+    accentBorder: 'var(--crm-accent-border)',
+    onAccent: 'var(--crm-on-accent)',
+    /** Dark text on the bright avatar swatches, in both themes. */
+    onSwatch: '#0e1222',
+    scrim: 'var(--crm-scrim)',
+    urgent: 'var(--crm-urgent)',
+    high: 'var(--crm-high)',
+    medium: 'var(--crm-medium)',
+    low: 'var(--crm-low)',
+    done: 'var(--crm-done)',
+    goodBg: 'var(--crm-good-bg)',
+    badBg: 'var(--crm-bad-bg)',
+    logBg: 'var(--crm-log-bg)',
     // Semantic destructive colour (delete/remove). A muted red, distinct from
-    // the green accent; `dangerBorder` is its translucent hairline variant.
-    danger: '#E5695F',
-    dangerBorder: 'rgba(229,105,95,0.32)',
+    // the accent; `dangerBorder` is its translucent hairline variant.
+    danger: 'var(--crm-danger)',
+    dangerBorder: 'var(--crm-danger-border)',
   },
-  radius: '6px',
-  radiusSm: '4px',
-  radiusModal: '10px',
+  shadow: 'var(--crm-shadow)',
+  shadowFloat: 'var(--crm-shadow-float)',
+  blur: 'var(--glass-blur)',
+  radius: '10px',
+  radiusSm: '8px',
+  radiusModal: '20px',
+  radiusLg: '16px',
+  radiusPill: '999px',
   font: {
-    sans: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif',
+    sans: 'var(--glass-font)',
     mono: 'ui-monospace, "SF Mono", "Menlo", "Cascadia Code", monospace',
   },
 } as const;
@@ -137,7 +157,7 @@ export const DUE_COLOR: Record<string, string> = {
   later: tokens.color.text3,
 };
 
-/** Wraps the app in the dark token theme (brief: ThemeProvider in App.tsx). */
+/** Wraps the app in the glass token theme (brief: ThemeProvider in App.tsx). */
 export function AppThemeProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   return React.createElement(ThemeProvider, { theme: tokens }, children);
 }
