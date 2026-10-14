@@ -329,15 +329,20 @@ describe("Settings → Agents: who works in each app", () => {
     const chat = within(panel).getByRole("combobox", { name: "Agent for Chat" }) as HTMLSelectElement;
     expect(code.value).toBe("");
     expect(within(panel).getByLabelText("The default agent")).toHaveTextContent(`DefaultPrivate${TEE}`);
-    expect(within(code).getByRole("option", { name: "Default" })).toBeInTheDocument();
-    expect(within(code).getByRole("option", { name: `${TEE} · private` })).toBeInTheDocument();
+    // Code has no default, and never goes to the private agent: it has no computer of yours.
+    expect(within(code).getByRole("option", { name: "Off" })).toBeInTheDocument();
+    expect(within(code).queryByRole("option", { name: `${TEE} · private` })).toBeNull();
     expect(within(code).getByRole("option", { name: LAPTOP })).toBeInTheDocument();
+    expect(within(panel).getByText(/Off: no agent runs shell, files or git/)).toBeInTheDocument();
+    expect(within(chat).getByRole("option", { name: "Default" })).toBeInTheDocument();
+    expect(within(chat).getByRole("option", { name: `${TEE} · private` })).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.change(code, { target: { value: LAPTOP } });
     });
     expect((await backend.settings()).assignments).toMatchObject([{ app: "mero-bot", agent: LAPTOP }]);
     expect(code.value).toBe(LAPTOP);
+    expect(within(panel).getByText("Shell, files and git on a computer")).toBeInTheDocument();
     // Chat stays with the private agent.
     expect(chat.value).toBe("");
 

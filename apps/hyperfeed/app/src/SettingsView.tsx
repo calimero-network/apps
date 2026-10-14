@@ -501,8 +501,9 @@ function AgentAssignments({ feed }: { feed: Feed }) {
     <section className="panel wide" aria-labelledby="h-assign">
       <h2 id="h-assign">Who works in each app</h2>
       <p className="muted">
-        Only the agent you pick takes an app's work and may call it. When an agent meets work that needs code, it asks you
-        before handing it to the agent you gave Code.
+        Only the agent you pick takes an app's work and may call it. Code has no default: add your local mero-bot and give
+        it Code to let your agent work with shell, files and git. When an agent meets work that needs code, it asks you
+        before handing it over.
       </p>
       <p className="assign-default" aria-label="The default agent">
         <span className="muted">Default</span>
@@ -517,15 +518,22 @@ function AgentAssignments({ feed }: { feed: Feed }) {
       </p>
       <ul className="assign-list">
         {apps.map((app) => {
-          const name = app === CODE_APP ? "Code" : appLook(app).name;
+          const code = app === CODE_APP;
+          const name = code ? "Code" : appLook(app).name;
           const value = String(pending[`assign:${app}`] ?? assignedAgent(settings, app));
+          // A private agent has no computer of yours: Code goes to an agent you run, like your laptop's mero-bot.
+          const choices = code ? agents.filter((a) => !privates.includes(a) || a === value) : agents;
           return (
             <li key={app}>
               <span className="app-cell">
                 <Badge app={app} size="sm" />
                 <span className="assign-name">
                   {name}
-                  {app === CODE_APP && <small className="muted">Shell, files and git on a computer</small>}
+                  {code && (
+                    <small className={value ? "muted" : "assign-off"}>
+                      {value ? "Shell, files and git on a computer" : "Off: no agent runs shell, files or git until you pick one"}
+                    </small>
+                  )}
                 </span>
               </span>
               <select
@@ -535,8 +543,8 @@ function AgentAssignments({ feed }: { feed: Feed }) {
                 disabled={feed.busy}
                 onChange={(e) => void write(`assign:${app}`, e.target.value, () => feed.setAssignment!(app, e.target.value))}
               >
-                <option value="">Default</option>
-                {agents.map((a) => (
+                <option value="">{code ? "Off" : "Default"}</option>
+                {choices.map((a) => (
                   <option key={a} value={a}>
                     {privates.includes(a) ? `${a} · private` : a}
                   </option>

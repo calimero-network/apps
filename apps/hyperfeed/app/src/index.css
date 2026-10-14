@@ -1114,6 +1114,10 @@ input:focus-visible {
   font-size: 12px;
 }
 
+.assign-name .assign-off {
+  color: var(--wait-ink);
+}
+
 .assign-select {
   flex: none;
   width: min(240px, 50%);
