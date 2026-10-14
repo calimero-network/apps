@@ -2,9 +2,9 @@ import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, typ
 import type { Attachment, FeedItem, LinkView, PrView, WatchView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
-import { NewFeedButton, type NewFeed } from "./FeedView";
+import { Choices, NewFeedButton, Resolver, type NewFeed } from "./FeedView";
 import { RuleSuggestion } from "./SettingsView";
-import { heldLine, laneOf, REPLACED, statusOf, timeLabel } from "./format";
+import { choicesFor, heldLine, laneOf, localCommand, REPLACED, resolvable, statusOf, timeLabel } from "./format";
 import { Markdown } from "./markdown";
 import { RefCards, type MergeContext } from "./RefCards";
 import { prKey } from "./github";
@@ -176,6 +176,8 @@ export function ChatView({
         {c.headline || c.body || c.title}
       </span>
       <span className="chat-item-meta">{timeLabel(c.chain_at)}</span>
+      {/* Your agent waits on you here: an approval, or its question. */}
+      {c.needs_you && <span className="chat-item-needs">Needs you</span>}
       {/* Which agent session is on this chat now, maybe on another machine. */}
       {heldLine(c, clock()) && <span className="chat-item-held">{heldLine(c, clock())}</span>}
       {/* What it still waits for, so a chat with watches doesn't look finished. */}
@@ -292,6 +294,7 @@ export function ChatView({
           </div>
         )}
         <Thread
+          feed={feed}
           items={thread}
           clock={clock}
           live={agentLive(feed.settings?.agents, clock())}
@@ -374,6 +377,7 @@ function ChatList({
 }
 
 function Thread({
+  feed,
   items,
   clock,
   live,
@@ -386,6 +390,7 @@ function Thread({
   pointers = [],
   onOpenChat,
 }: {
+  feed: Feed;
   items: FeedItem[];
   clock: () => number;
   live: boolean;
@@ -462,6 +467,8 @@ function Thread({
             </div>
             <WorkBlock item={m} clock={clock} busy={busy} onStop={onStop} />
           </Fragment>
+        ) : m.kind === "action" && (resolvable(m) || choicesFor(m).approve || choicesFor(m).decline) ? (
+          <ActionCard item={m} feed={feed} />
         ) : (
           <div className="chat-event">
             {m.title} · {statusOf(m).label}
@@ -472,6 +479,28 @@ function Thread({
       ))}
       {last && <Waiting last={last} clock={clock} live={live} />}
       <div ref={end} />
+    </div>
+  );
+}
+
+/**
+ * What your agent waits on you for in this chat (a command on your computer,
+ * a write in an app), with the same buttons the feed gives it: answered here
+ * or there, the first answer wins.
+ */
+function ActionCard({ item, feed }: { item: FeedItem; feed: Feed }) {
+  const command = localCommand(item);
+  return (
+    <div className="chat-action" role="group" aria-label={`Waiting for you: ${item.title}`}>
+      <div className="chat-action-head">
+        <strong>{item.title}</strong>
+        <span className={`pill pill-${statusOf(item).tone}`}>{statusOf(item).label}</span>
+      </div>
+      {command && command !== item.title && <pre className="chat-action-command">{command}</pre>}
+      {resolvable(item) && <Resolver key={item.id} item={item} feed={feed} />}
+      <div className="actions">
+        <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
+      </div>
     </div>
   );
 }

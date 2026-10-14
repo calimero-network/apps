@@ -43,7 +43,9 @@ export function alertOf(item: FeedItem, appName: (key: string) => string): Alert
     return { chain: item.chain, title: "Your agent asks you", body: prompt || what, opens: "chat" };
   }
   if (item.kind === "action") {
-    return { chain: item.chain, title: "Approve?", body: line(item.title, 140) || what, opens: "feed" };
+    // Done without asking: yours to keep or undo, not to approve.
+    const title = item.breach ? "Your agent acted without asking" : "Approve?";
+    return { chain: item.chain, title, body: line(item.title, 140) || what, opens: "feed" };
   }
   const sentence = `${h.who} ${h.verb}`.trim();
   return { chain: item.chain, title: `${appName(item.app)}: needs you`, body: what ? `${sentence} · ${what}` : sentence, opens: "feed" };

@@ -57,10 +57,13 @@ export interface Feed {
   /** Ask your agent to stop working on one of your messages: it ends the turn, "Stopped by you". */
   stop: (id: string) => Promise<void>;
   /**
-   * Your chats with your agent, newest first: the chains whose latest row is a
-   * message. Each comes as that latest message. A read, like `loadChain`.
+   * Your chats with your agent, newest first: the chains the feed leads with a
+   * message, and those waiting on (or running) an approval in a chat. Each
+   * comes as its latest message. A read, like `loadChain`.
    */
   chats: () => Promise<FeedItem[]>;
+  /** Everything that waits on you, one row per chain, newest first, whatever the feed's filter. A read. */
+  needsYou: () => Promise<FeedItem[]>;
   /** The chats you archived, newest first, as `chats` gives them. A read. */
   archivedChats: () => Promise<FeedItem[]>;
   /** Every row in a chain, oldest first. A read: no busy state, no refresh. */
@@ -287,12 +290,10 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     answerAsk: useCallback((item, text) => run((b) => b.answerAsk(item.id, item.chain, text)), [run]),
     images: backend?.images ?? null,
     stop: useCallback((id) => run((b) => b.stop(id)), [run]),
-    chats: useCallback(
-      async () => (backend ? (await backend.feed("agent", "")).items.filter((i) => i.kind === "message") : []),
-      [backend],
-    ),
-    archivedChats: useCallback(
-      async () => (backend ? (await backend.feed("archived", "")).items.filter((i) => i.kind === "message") : []),
+    chats: useCallback(async () => (backend ? chatsOf(backend, "agent") : []), [backend]),
+    archivedChats: useCallback(async () => (backend ? chatsOf(backend, "archived") : []), [backend]),
+    needsYou: useCallback(
+      async () => (backend ? (await backend.feed("needs_you", "")).items.filter((i) => i.needs_you) : []),
       [backend],
     ),
     loadChain: useCallback(async (chain) => (backend ? backend.chain(chain) : []), [backend]),
@@ -404,3 +405,26 @@ export function messageOf(e: unknown): string {
   if (typeof e === "string") return e;
   return "Something went wrong talking to the node.";
 }
+
+/**
+ * Your chats, newest first, each as its latest message. The feed leads a chain
+ * with what needs you, then with what is underway, so a chat waiting on your
+ * approval (or running what you approved) leads with that action: its thread
+ * is read to find the chat, which stays listed, marked as needing you.
+ */
+async function chatsOf(backend: FeedBackend, filter: Filter): Promise<FeedItem[]> {
+  const leads = (await backend.feed(filter, "")).items;
+  const chats = await Promise.all(
+    leads.map(async (lead) => {
+      if (lead.kind === "message") return lead;
+      if (lead.kind !== "action" || !(lead.needs_you || ACTION_UNDERWAY.includes(lead.status))) return null;
+      const said = (await backend.chain(lead.chain).catch(() => [])).filter((i) => i.kind === "message");
+      const last = said[said.length - 1];
+      return last ? { ...last, chain_len: lead.chain_len, chain_at: lead.chain_at, needs_you: lead.needs_you } : null;
+    }),
+  );
+  return chats.filter((c): c is FeedItem => c !== null);
+}
+
+/** An action's statuses while it runs, as the contract's `underway` counts them. */
+const ACTION_UNDERWAY = ["approved", "retrying", "undo_requested"];
