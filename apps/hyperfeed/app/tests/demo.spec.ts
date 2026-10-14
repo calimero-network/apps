@@ -126,6 +126,9 @@ for (const [device, size] of [
     await page.getByLabel("Message your agent").fill("Throwaway question");
     await page.getByLabel("Message your agent").press("Enter");
     await expect(page.getByRole("log").getByText("Throwaway question", { exact: true })).toBeVisible();
+    // Wait out the pretend agent's answer: anything newer in a chat brings it back
+    // out of the archive, so an answer landing after Archive would undo it.
+    await expect(page.getByRole("log").getByText(/pretend agent/)).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole("button", { name: "Archive chat" }).click();
     const ask = page.getByRole("group", { name: "Archive this chat?" });
@@ -136,18 +139,20 @@ for (const [device, size] of [
     const chats = page.getByRole("navigation", { name: "Chats" });
     await expect(page.getByRole("status").filter({ hasText: "Chat archived" })).toBeVisible();
     await expect(chats).toBeVisible();
-    await explain(expect(chats.getByRole("button", { name: /Throwaway question/ })).toHaveCount(0));
+    await explain(expect(chats.getByRole("button", { name: /pretend agent/ })).toHaveCount(0));
     await page.getByRole("button", { name: "Undo" }).click();
-    await expect(chats.getByRole("button", { name: /Throwaway question/ })).toBeVisible();
+    // Answered, the chat is done, so it comes back under the done chats, listed by its answer.
+    await chats.getByRole("button", { name: /Show done chats/ }).click();
+    await expect(chats.getByRole("button", { name: /pretend agent/ })).toBeVisible();
 
     // Archived again, it waits under Archived chats, and Restore brings it back.
-    await chats.getByRole("button", { name: /Throwaway question/ }).click();
+    await chats.getByRole("button", { name: /pretend agent/ }).click();
     await page.getByRole("button", { name: "Archive chat" }).click();
     await page.getByRole("group", { name: "Archive this chat?" }).getByRole("button", { name: "Archive" }).click();
     await chats.getByRole("button", { name: /Show archived chats/ }).click();
     const shelf = chats.getByRole("list", { name: "Archived chats" });
     await shelf.getByRole("button", { name: "Restore" }).first().click();
-    await expect(chats.getByRole("button", { name: /Throwaway question/ })).toHaveCount(1);
+    await expect(chats.getByRole("button", { name: /pretend agent/ })).toHaveCount(1);
   });
 }
 
