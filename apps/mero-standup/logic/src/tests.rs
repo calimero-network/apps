@@ -51,6 +51,9 @@ fn log(app: &mut TestHost<MeroStandup>, title: &str, supersedes: Option<&str>) -
             "we do it".to_owned(),
             "because".to_owned(),
             supersedes.map(str::to_owned),
+            vec![],
+            vec![],
+            None,
         )
     })
     .unwrap()
@@ -314,7 +317,15 @@ fn a_decision_round_trips_and_needs_a_title_and_a_decision() {
 
     for (title, decision) in [("", "x"), ("x", "  ")] {
         assert!(app
-            .call(|s| s.log_decision(title.to_owned(), decision.to_owned(), String::new(), None))
+            .call(|s| s.log_decision(
+                title.to_owned(),
+                decision.to_owned(),
+                String::new(),
+                None,
+                vec![],
+                vec![],
+                None
+            ))
             .is_err());
     }
     assert!(app.view(|s| s.get_decision("nope".to_owned())).is_err());
@@ -333,7 +344,7 @@ fn superseding_is_derived_and_shows_on_both_ends() {
 
     // Standing-only leaves out the replaced one.
     let standing = app
-        .view(|s| s.list_decisions(None, true, None, 10))
+        .view(|s| s.list_decisions(None, None, None, true, None, 10))
         .unwrap();
     let ids: Vec<&str> = standing.items.iter().map(|d| d.id.as_str()).collect();
     assert_eq!(ids, vec![new.as_str()]);
@@ -347,7 +358,10 @@ fn superseding_needs_a_real_standing_decision() {
             "t".to_owned(),
             "d".to_owned(),
             String::new(),
-            Some("does-not-exist".to_owned())
+            Some("does-not-exist".to_owned()),
+            vec![],
+            vec![],
+            None
         ))
         .is_err());
 
@@ -358,7 +372,10 @@ fn superseding_needs_a_real_standing_decision() {
             "C".to_owned(),
             "d".to_owned(),
             String::new(),
-            Some(old.clone())
+            Some(old.clone()),
+            vec![],
+            vec![],
+            None
         ))
         .is_err());
 }
@@ -377,6 +394,9 @@ fn a_teammate_supersedes_my_decision_without_rewriting_it() {
                 "changed".to_owned(),
                 String::new(),
                 Some(mine.clone()),
+                vec![],
+                vec![],
+                None,
             )
         })
         .unwrap();
@@ -458,12 +478,15 @@ fn the_log_lists_newest_first_searches_and_pages() {
                 "GitHub Actions".to_owned(),
                 "It is where the code is".to_owned(),
                 None,
+                vec![],
+                vec![],
+                None,
             )
         })
         .unwrap();
 
     let hits = app
-        .view(|s| s.list_decisions(Some("github".to_owned()), false, None, 10))
+        .view(|s| s.list_decisions(Some("github".to_owned()), None, None, false, None, 10))
         .unwrap();
     assert_eq!(hits.items.len(), 1);
     assert_eq!(hits.items[0].title, "Pick a CI provider");
@@ -472,7 +495,7 @@ fn the_log_lists_newest_first_searches_and_pages() {
     let mut cursor = None;
     loop {
         let page = app
-            .view(|s| s.list_decisions(None, false, cursor.clone(), 4))
+            .view(|s| s.list_decisions(None, None, None, false, cursor.clone(), 4))
             .unwrap();
         seen.extend(page.items.iter().map(|d| d.id.clone()));
         match page.next_cursor {
@@ -492,4 +515,441 @@ fn page_sizes_are_defaulted_and_capped() {
     assert_eq!(page_size(0), DEFAULT_PAGE);
     assert_eq!(page_size(7), 7);
     assert_eq!(page_size(u32::MAX), MAX_PAGE);
+}
+
+// ── v2: the team's name ──────────────────────────────────────────────────────
+
+#[test]
+fn any_member_names_the_team_and_an_empty_name_clears_it() {
+    let mut app = team();
+    assert_eq!(app.view(|s| s.team_name()).unwrap(), "");
+    app.call(|s| s.set_team_name("  Platform  ".to_owned()))
+        .unwrap();
+    assert_eq!(app.view(|s| s.team_name()).unwrap(), "Platform");
+    app.call_as_account(BOB, BOB_DEVICE, |s| s.set_team_name("Infra".to_owned()))
+        .unwrap();
+    assert_eq!(app.view(|s| s.team_name()).unwrap(), "Infra");
+    assert!(app
+        .call(|s| s.set_team_name("x".repeat(MAX_TEAM_NAME + 1)))
+        .is_err());
+    app.call(|s| s.set_team_name(String::new())).unwrap();
+    assert_eq!(app.view(|s| s.team_name()).unwrap(), "");
+}
+
+// ── v2: helping with blockers ────────────────────────────────────────────────
+
+fn bob_is_blocked(app: &mut TestHost<MeroStandup>) -> String {
+    post_as(app, (BOB, BOB_DEVICE), "2026-10-13", "need prod access");
+    app.call_as_account(BOB, BOB_DEVICE, |s| s.whoami())
+        .unwrap()
+}
+
+#[test]
+fn an_offer_to_help_shows_on_the_blocker_everywhere() {
+    let mut app = team();
+    let bob = bob_is_blocked(&mut app);
+    app.call(|s| s.set_name("Ana".to_owned())).unwrap();
+    app.call(|s| s.offer_help("2026-10-13".to_owned(), bob.clone(), "I have it".to_owned()))
+        .unwrap();
+    let me = app.view(|s| s.whoami()).unwrap();
+
+    let day = app.view(|s| s.get_day("2026-10-13".to_owned())).unwrap();
+    let helpers = &day.updates[0].helpers;
+    assert_eq!(helpers.len(), 1);
+    assert_eq!(helpers[0].account, me);
+    assert_eq!(helpers[0].name, "Ana");
+    assert_eq!(helpers[0].note, "I have it");
+
+    let blockers = app.view(|s| s.current_blockers()).unwrap();
+    assert_eq!(blockers[0].helpers.len(), 1);
+
+    // Offering again rewrites the note rather than adding a second offer.
+    app.call(|s| s.offer_help("2026-10-13".to_owned(), bob.clone(), "on it".to_owned()))
+        .unwrap();
+    let day = app.view(|s| s.get_day("2026-10-13".to_owned())).unwrap();
+    assert_eq!(day.updates[0].helpers.len(), 1);
+    assert_eq!(day.updates[0].helpers[0].note, "on it");
+}
+
+#[test]
+fn help_needs_a_real_blocker_by_someone_else() {
+    let mut app = team();
+    let bob = bob_is_blocked(&mut app);
+    // No update that day.
+    assert!(app
+        .call(|s| s.offer_help("2026-10-12".to_owned(), bob.clone(), String::new()))
+        .is_err());
+    // Not an account.
+    assert!(app
+        .call(|s| s.offer_help("2026-10-13".to_owned(), "bob".to_owned(), String::new()))
+        .is_err());
+    // An update with no blocker.
+    post(&mut app, "2026-10-13", "fine", "");
+    let me = app.view(|s| s.whoami()).unwrap();
+    assert!(app
+        .call_as_account(BOB, BOB_DEVICE, |s| s.offer_help(
+            "2026-10-13".to_owned(),
+            me.clone(),
+            String::new()
+        ))
+        .is_err());
+    // Yourself.
+    assert!(app
+        .call_as_account(BOB, BOB_DEVICE, |s| s.offer_help(
+            "2026-10-13".to_owned(),
+            bob.clone(),
+            String::new()
+        ))
+        .is_err());
+}
+
+#[test]
+fn offers_are_per_helper_and_only_the_helper_withdraws_theirs() {
+    let mut app = team();
+    let bob = bob_is_blocked(&mut app);
+    app.call(|s| s.offer_help("2026-10-13".to_owned(), bob.clone(), String::new()))
+        .unwrap();
+    app.call_as_account(CAROL, CAROL_DEVICE, |s| {
+        s.offer_help("2026-10-13".to_owned(), bob.clone(), "me too".to_owned())
+    })
+    .unwrap();
+    let day = app.view(|s| s.get_day("2026-10-13".to_owned())).unwrap();
+    assert_eq!(day.updates[0].helpers.len(), 2);
+
+    // Carol withdrawing removes hers, never mine.
+    app.call_as_account(CAROL, CAROL_DEVICE, |s| {
+        s.withdraw_help("2026-10-13".to_owned(), bob.clone())
+    })
+    .unwrap();
+    let day = app.view(|s| s.get_day("2026-10-13".to_owned())).unwrap();
+    assert_eq!(day.updates[0].helpers.len(), 1);
+    assert_eq!(day.updates[0].helpers[0].note, "");
+    // Nothing left of hers to withdraw.
+    assert!(app
+        .call_as_account(CAROL, CAROL_DEVICE, |s| s
+            .withdraw_help("2026-10-13".to_owned(), bob.clone()))
+        .is_err());
+}
+
+/// Once the blocker is gone the offers stop showing: help is about a blocker,
+/// not about the person.
+#[test]
+fn offers_disappear_with_the_blocker() {
+    let mut app = team();
+    let bob = bob_is_blocked(&mut app);
+    app.call(|s| s.offer_help("2026-10-13".to_owned(), bob.clone(), String::new()))
+        .unwrap();
+    post_as(&mut app, (BOB, BOB_DEVICE), "2026-10-13", "");
+    let day = app.view(|s| s.get_day("2026-10-13".to_owned())).unwrap();
+    assert!(day.updates[0].helpers.is_empty());
+}
+
+/// A patched node can write a help row under its own stamp at its OWN
+/// update's key — offering itself help. The read drops it.
+#[test]
+fn a_forged_offer_of_help_to_yourself_is_inert() {
+    let mut app = team();
+    let bob = bob_is_blocked(&mut app);
+    app.call_as_account(BOB, BOB_DEVICE, |s| {
+        s.helps.insert(
+            help_key("2026-10-13", &bob),
+            Help {
+                note: "self-help".to_owned(),
+                at: 0,
+            },
+        )
+    })
+    .unwrap();
+    let day = app.view(|s| s.get_day("2026-10-13".to_owned())).unwrap();
+    assert!(day.updates[0].helpers.is_empty());
+}
+
+// ── v2: decision notes ───────────────────────────────────────────────────────
+
+fn log_with(
+    app: &mut TestHost<MeroStandup>,
+    title: &str,
+    tags: &[&str],
+    with: Vec<String>,
+    from_day: Option<&str>,
+) -> app::Result<String> {
+    app.call(|s| {
+        s.log_decision(
+            title.to_owned(),
+            "d".to_owned(),
+            String::new(),
+            None,
+            tags.iter().map(|t| (*t).to_owned()).collect(),
+            with,
+            from_day.map(str::to_owned),
+        )
+    })
+}
+
+#[test]
+fn tags_are_normalized_and_counted() {
+    let mut app = team();
+    let id = log_with(
+        &mut app,
+        "A",
+        &["Infra", " infra ", "Release Process"],
+        vec![],
+        None,
+    )
+    .unwrap();
+    let _ = log_with(&mut app, "B", &["infra"], vec![], None).unwrap();
+    let _ = log_with(&mut app, "C", &[], vec![], None).unwrap();
+
+    let d = app.view(|s| s.get_decision(id)).unwrap();
+    assert_eq!(d.tags, vec!["infra", "release-process"]);
+    assert_eq!(
+        app.view(|s| s.tags()).unwrap(),
+        vec![
+            TagCount {
+                tag: "infra".to_owned(),
+                count: 2
+            },
+            TagCount {
+                tag: "release-process".to_owned(),
+                count: 1
+            },
+        ]
+    );
+
+    let infra = app
+        .view(|s| s.list_decisions(None, Some("INFRA".to_owned()), None, false, None, 10))
+        .unwrap();
+    assert_eq!(infra.items.len(), 2);
+    // Free-text search reaches tags too.
+    let hits = app
+        .view(|s| s.list_decisions(Some("release".to_owned()), None, None, false, None, 10))
+        .unwrap();
+    assert_eq!(hits.items.len(), 1);
+
+    let too_many: Vec<String> = (0..=MAX_TAGS).map(|i| format!("t{i}")).collect();
+    let refs: Vec<&str> = too_many.iter().map(String::as_str).collect();
+    assert!(log_with(&mut app, "D", &refs, vec![], None).is_err());
+    assert!(log_with(&mut app, "E", &[&"x".repeat(MAX_TAG + 1)], vec![], None).is_err());
+}
+
+#[test]
+fn with_and_from_day_are_recorded_and_checked() {
+    let mut app = team();
+    app.call_as_account(BOB, BOB_DEVICE, |s| s.set_name("Bob".to_owned()))
+        .unwrap();
+    let bob = app
+        .call_as_account(BOB, BOB_DEVICE, |s| s.whoami())
+        .unwrap();
+    let id = log_with(
+        &mut app,
+        "A",
+        &[],
+        vec![bob.clone(), bob.clone()],
+        Some("2026-10-13"),
+    )
+    .unwrap();
+    let d = app.view(|s| s.get_decision(id.clone())).unwrap();
+    assert_eq!(
+        d.with,
+        vec![PersonView {
+            account: bob,
+            name: "Bob".to_owned()
+        }]
+    );
+    assert_eq!(d.from_day, "2026-10-13");
+
+    let from = app
+        .view(|s| s.list_decisions(None, None, Some("2026-10-13".to_owned()), false, None, 10))
+        .unwrap();
+    assert_eq!(from.items.len(), 1);
+    let other = app
+        .view(|s| s.list_decisions(None, None, Some("2026-10-12".to_owned()), false, None, 10))
+        .unwrap();
+    assert!(other.items.is_empty());
+
+    assert!(log_with(&mut app, "B", &[], vec!["not-an-account".to_owned()], None).is_err());
+    assert!(log_with(&mut app, "C", &[], vec![], Some("someday")).is_err());
+}
+
+/// Notes count only when the decision's author wrote them. Bob writing notes
+/// at my decision's id puts them in his own entry, which is never read.
+#[test]
+fn someone_else_cannot_retag_my_decision() {
+    let mut app = team();
+    let id = log_with(&mut app, "Mine", &["keep"], vec![], None).unwrap();
+    app.call_as_account(BOB, BOB_DEVICE, |s| {
+        s.decision_notes.insert(
+            id.clone(),
+            DecisionNotes {
+                tags: vec!["hijacked".to_owned()],
+                with: vec![],
+                from_day: None,
+            },
+        )
+    })
+    .unwrap();
+    let d = app.view(|s| s.get_decision(id)).unwrap();
+    assert_eq!(d.tags, vec!["keep"]);
+}
+
+// ── v2: the week ─────────────────────────────────────────────────────────────
+
+#[test]
+fn a_week_is_seven_days_across_a_month_boundary() {
+    assert_eq!(next_day((2026, 10, 31)), (2026, 11, 1));
+    assert_eq!(next_day((2026, 12, 31)), (2027, 1, 1));
+    assert_eq!(next_day((2028, 2, 28)), (2028, 2, 29));
+
+    let mut app = team();
+    post(&mut app, "2026-10-30", "fri", "");
+    post(&mut app, "2026-11-02", "mon", "");
+    let week = app.view(|s| s.get_week("2026-10-28".to_owned())).unwrap();
+    let days: Vec<&str> = week.iter().map(|d| d.day.as_str()).collect();
+    assert_eq!(
+        days,
+        vec![
+            "2026-10-28",
+            "2026-10-29",
+            "2026-10-30",
+            "2026-10-31",
+            "2026-11-01",
+            "2026-11-02",
+            "2026-11-03"
+        ]
+    );
+    assert_eq!(week[2].updates[0].done, "fri");
+    assert_eq!(week[5].updates[0].done, "mon");
+    assert!(app.view(|s| s.get_week("next week".to_owned())).is_err());
+}
+
+// ── v1 -> v2 ─────────────────────────────────────────────────────────────────
+
+/// The frozen v1 contract, compiled into this test module from the same file
+/// `crates/v1` builds the v1 bundle from. In-module rather than a
+/// dev-dependency because `#[app::state]` only implements TestHost's bridge
+/// under `cfg(test)` of the crate that defines the state.
+#[path = "../crates/v1/src/lib.rs"]
+#[allow(dead_code)]
+mod v1;
+
+type V1 = v1::MeroStandup;
+
+/// What a v1 team looks like after a few days of use: two people's updates,
+/// a blocker, names, and a decision that superseded another.
+fn v1_team() -> (TestHost<V1>, String) {
+    let mut app = TestHost::new(V1::init);
+    app.call(|s| s.set_name("Ana".to_owned())).unwrap();
+    app.call(|s| {
+        s.post_update(
+            "2026-10-12".to_owned(),
+            "v1 work".to_owned(),
+            "more".to_owned(),
+            "waiting on review".to_owned(),
+        )
+    })
+    .unwrap();
+    app.call_as_account(BOB, BOB_DEVICE, |s| {
+        s.post_update(
+            "2026-10-12".to_owned(),
+            "bob v1".to_owned(),
+            String::new(),
+            String::new(),
+        )
+    })
+    .unwrap();
+    let old = app
+        .call(|s| s.log_decision("Old".to_owned(), "x".to_owned(), String::new(), None))
+        .unwrap();
+    let _ = app
+        .call_as_account(BOB, BOB_DEVICE, |s| {
+            s.log_decision(
+                "New".to_owned(),
+                "y".to_owned(),
+                String::new(),
+                Some(old.clone()),
+            )
+        })
+        .unwrap();
+    (app, old)
+}
+
+#[test]
+fn the_migration_keeps_every_v1_record_readable() {
+    let (v1, old) = v1_team();
+    let app = v1.migrate(migrate_v1_to_v2);
+
+    let day = app.view(|s| s.get_day("2026-10-12".to_owned())).unwrap();
+    assert_eq!(day.updates.len(), 2);
+    let mine = day.updates.iter().find(|u| u.done == "v1 work").unwrap();
+    assert_eq!(mine.author_name, "Ana");
+    assert_eq!(mine.blockers, "waiting on review");
+    assert!(mine.helpers.is_empty());
+
+    let original = app.view(|s| s.get_decision(old)).unwrap();
+    assert_eq!(original.title, "Old");
+    assert!(
+        !original.superseded_by.is_empty(),
+        "the v1 supersession still holds"
+    );
+    assert!(original.tags.is_empty());
+    assert_eq!(app.view(|s| s.team_name()).unwrap(), "");
+    assert_eq!(app.view(|s| s.list_days(None, 10)).unwrap().days.len(), 1);
+}
+
+/// After the upgrade the v1 entries are not frozen relics: their owners still
+/// edit them, and v2 features work on top of them.
+#[test]
+fn v1_entries_stay_editable_and_v2_features_work_on_them() {
+    let (v1, _) = v1_team();
+    let mut app = v1.migrate(migrate_v1_to_v2);
+    let me = app.view(|s| s.whoami()).unwrap();
+
+    app.call(|s| {
+        s.post_update(
+            "2026-10-12".to_owned(),
+            "edited after the upgrade".to_owned(),
+            String::new(),
+            "still waiting".to_owned(),
+        )
+    })
+    .unwrap();
+    app.call_as_account(BOB, BOB_DEVICE, |s| {
+        s.offer_help(
+            "2026-10-12".to_owned(),
+            me.clone(),
+            "I'll review".to_owned(),
+        )
+    })
+    .unwrap();
+    app.call(|s| s.set_team_name("Platform".to_owned()))
+        .unwrap();
+    let id = log_with(&mut app, "Tagged", &["v2"], vec![], Some("2026-10-12")).unwrap();
+
+    let day = app.view(|s| s.get_day("2026-10-12".to_owned())).unwrap();
+    let mine = day.updates.iter().find(|u| u.author == me).unwrap();
+    assert_eq!(mine.done, "edited after the upgrade");
+    assert_eq!(mine.helpers.len(), 1);
+    assert_eq!(app.view(|s| s.team_name()).unwrap(), "Platform");
+    assert_eq!(app.view(|s| s.get_decision(id)).unwrap().tags, vec!["v2"]);
+}
+
+/// Every node runs the migration on its own, so it must produce the same v2
+/// root whichever node runs it.
+///
+/// Over the EMPTY v1 state, on purpose. The harness compares two separately
+/// installed v1 states, and every v1 write stamps `env::time_now()` (the wall
+/// clock), so two installs with data differ before the migration even runs —
+/// the same node migrating twice "diverges" (checked while writing this). What
+/// the migration itself does is the same either way: it carries the three v1
+/// collections through as handles and creates the three v2 ones, and the
+/// latter is what this proves deterministic. Convergence over real v1 data is
+/// what `workflows/migrate-v1-v2.yml` checks, on two nodes.
+#[test]
+fn the_migration_converges_across_nodes() {
+    calimero_sdk::testing::assert_migrate_converges::<V1, MeroStandup>(
+        V1::init,
+        migrate_v1_to_v2,
+        [1u8; 32],
+        [2u8; 32],
+    );
 }

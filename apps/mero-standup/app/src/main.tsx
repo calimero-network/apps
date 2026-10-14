@@ -8,6 +8,7 @@ import {
 } from "@calimero-network/mero-platform";
 import { __setDeepLinkController } from "@calimero-network/mero-platform-react";
 import { App } from "./App";
+import { applyStoredTheme } from "./ui";
 import { adoptDesktopSession } from "./utils/desktopSso";
 import { APP_SLUG } from "./utils/invitation";
 import "./index.css";
@@ -69,6 +70,10 @@ if (!root) throw new Error("#root is missing from index.html");
 // be in storage by then. Launcher-only, and it seeds the node URL and nothing
 // else — see utils/desktopSso.ts.
 adoptDesktopSession();
+
+// The stored theme on <html> before first paint, so a light-mode user never
+// sees a dark flash.
+applyStoredTheme();
 
 // StrictMode in dev only. Double-invoking effects is useful for catching
 // missing cleanup and actively misleading when you are reading a call log.

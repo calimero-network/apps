@@ -112,6 +112,40 @@
         }
       ]
     },
+    "DecisionNotes": {
+      "kind": "record",
+      "doc": "What v2 records about a decision beyond v1's `Decision`. Kept in its own\ncollection so every v1 decision keeps its exact bytes; a decision logged\nbefore v2 simply has none.",
+      "fields": [
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Lower-case, de-duplicated, sorted."
+        },
+        {
+          "name": "with",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Accounts the author names as part of the decision. A claim by the\nauthor, shown as such: it does not mean those people signed anything."
+        },
+        {
+          "name": "from_day",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "The standup day the decision came out of, if it was logged from one."
+        }
+      ]
+    },
     "DecisionPage": {
       "kind": "record",
       "fields": [
@@ -192,6 +226,32 @@
           "type": {
             "kind": "u64"
           }
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "v2 notes; empty for a decision logged before v2."
+        },
+        {
+          "name": "with",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "PersonView"
+            }
+          }
+        },
+        {
+          "name": "from_day",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The standup day it came out of, or \"\"."
         }
       ]
     },
@@ -206,11 +266,73 @@
         }
       ]
     },
+    "Event_HelpOffered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "day",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_HelpWithdrawn": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "day",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Migrated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "from_version",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "to_version",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
     "Event_ProfileSet": {
       "kind": "record",
       "fields": [
         {
           "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_TeamRenamed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
           "type": {
             "kind": "string"
           }
@@ -251,6 +373,55 @@
         }
       ]
     },
+    "Help": {
+      "kind": "record",
+      "doc": "One member's offer to help with someone's blocker. The helper is the\nowner stamp; the blocked update is named by the entry's key.",
+      "fields": [
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Optional: how they can help. Empty means just \"I can help\"."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "HelpView": {
+      "kind": "record",
+      "doc": "An offer to help with a blocker.",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "MemberView": {
       "kind": "record",
       "doc": "Someone who has taken part: posted an update or named themselves.",
@@ -278,6 +449,7 @@
     },
     "MeroStandup": {
       "kind": "record",
+      "doc": "v2. The three v1 collections are carried by name; the rest start empty.",
       "fields": [
         {
           "name": "updates",
@@ -319,6 +491,64 @@
             }
           },
           "doc": "The display name each account chose, in that account's own slot."
+        },
+        {
+          "name": "team",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The team's display name. \"\" until someone names it."
+        },
+        {
+          "name": "helps",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Help"
+            },
+            "crdt_type": "authored_sorted_map"
+          },
+          "doc": "`\"<day>|<author account>\"` → one helper's offer on that update."
+        },
+        {
+          "name": "decision_notes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DecisionNotes"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Decision id → its v2 notes, written once by the decision's author."
+        }
+      ]
+    },
+    "PersonView": {
+      "kind": "record",
+      "doc": "Someone named in a view, with the name they chose (\"\" if none).",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
         }
       ]
     },
@@ -336,6 +566,24 @@
           "name": "updated_at",
           "type": {
             "kind": "u64"
+          }
+        }
+      ]
+    },
+    "TagCount": {
+      "kind": "record",
+      "doc": "A tag and how many decisions carry it.",
+      "fields": [
+        {
+          "name": "tag",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
           }
         }
       ]
@@ -437,6 +685,16 @@
           "type": {
             "kind": "u64"
           }
+        },
+        {
+          "name": "helpers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "HelpView"
+            }
+          },
+          "doc": "Teammates who offered to help with the blocker, oldest offer first.\nEmpty when there is no blocker."
         }
       ]
     }
@@ -519,6 +777,25 @@
       "intent": "read_only"
     },
     {
+      "name": "get_week",
+      "doc": "Seven days of standups starting at `start`, oldest first: the weekly\ndigest in one call instead of seven.",
+      "params": [
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "DayView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "init",
       "params": [],
       "returns": {
@@ -550,10 +827,24 @@
     },
     {
       "name": "list_decisions",
-      "doc": "The log, newest first. `search` keeps decisions whose title, text or\nrationale contains it (case-insensitive); `standing_only` drops the\nsuperseded ones. `cursor` is the previous page's `next_cursor`.",
+      "doc": "The log, newest first. `search` keeps decisions whose title, text,\nrationale or tags contain it (case-insensitive); `tag` keeps those\ncarrying exactly that tag; `from_day` those logged from that standup\nday; `standing_only` drops the superseded ones. `cursor` is the\nprevious page's `next_cursor`.",
       "params": [
         {
           "name": "search",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "tag",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "from_day",
           "type": {
             "kind": "string"
           },
@@ -586,7 +877,7 @@
     },
     {
       "name": "log_decision",
-      "doc": "Record a decision. Returns its id.\n\n`supersedes` names the decision this one replaces. It must exist and\nstill stand when this is written; on read the link only counts if the\nreplaced decision is older (see `superseded_by`).",
+      "doc": "Record a decision. Returns its id.\n\n`supersedes` names the decision this one replaces. It must exist and\nstill stand when this is written; on read the link only counts if the\nreplaced decision is older (see `superseded_by`).\n\n`tags`, `with` (accounts involved) and `from_day` (the standup day it\ncame out of) are the v2 notes, written beside the decision.",
       "params": [
         {
           "name": "title",
@@ -612,6 +903,31 @@
             "kind": "string"
           },
           "nullable": true
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "with",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "from_day",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
         }
       ],
       "returns": {
@@ -630,6 +946,34 @@
         }
       },
       "intent": "read_only"
+    },
+    {
+      "name": "offer_help",
+      "doc": "Offer to help with `author`'s blocker on `day`, or change your note.\nThe update has to exist and name a blocker, and you cannot offer\nyourself help.",
+      "params": [
+        {
+          "name": "day",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
     },
     {
       "name": "post_update",
@@ -682,6 +1026,43 @@
       "intent": "mutating"
     },
     {
+      "name": "set_team_name",
+      "doc": "Name the team. Any member may; an empty name clears it.",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "tags",
+      "doc": "Every tag in the log with how many decisions carry it, most used first.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "TagCount"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "team_name",
+      "doc": "The team's name, or \"\" if nobody has named it.",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "whoami",
       "doc": "The calling account, as the views render it. The frontend uses it to\nfind \"my\" update in a day without a second identity lookup.",
       "params": [],
@@ -689,6 +1070,28 @@
         "kind": "string"
       },
       "intent": "read_only"
+    },
+    {
+      "name": "withdraw_help",
+      "doc": "Take back your offer on `author`'s update for `day`.",
+      "params": [
+        {
+          "name": "day",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
     }
   ],
   "events": [
@@ -699,9 +1102,33 @@
       }
     },
     {
+      "name": "HelpOffered",
+      "payload": {
+        "$ref": "Event_HelpOffered"
+      }
+    },
+    {
+      "name": "HelpWithdrawn",
+      "payload": {
+        "$ref": "Event_HelpWithdrawn"
+      }
+    },
+    {
+      "name": "Migrated",
+      "payload": {
+        "$ref": "Event_Migrated"
+      }
+    },
+    {
       "name": "ProfileSet",
       "payload": {
         "$ref": "Event_ProfileSet"
+      }
+    },
+    {
+      "name": "TeamRenamed",
+      "payload": {
+        "$ref": "Event_TeamRenamed"
       }
     },
     {
@@ -718,5 +1145,11 @@
     }
   ],
   "state_root": "MeroStandup",
-  "state_version": 1
+  "state_version": 2,
+  "migrations": [
+    {
+      "method": "migrate_v1_to_v2",
+      "fromVersion": 1
+    }
+  ]
 }

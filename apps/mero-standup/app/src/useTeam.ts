@@ -67,6 +67,8 @@ export function useTeam(contextId: string) {
   return { client, version, act };
 }
 
+export type Team = ReturnType<typeof useTeam>;
+
 /**
  * Read `load` whenever `version` (or anything in `deps`) moves. Keeps the last
  * good value while re-reading, so a sync never blanks the screen, and reports

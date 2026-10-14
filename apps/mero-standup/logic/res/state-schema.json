@@ -42,8 +42,62 @@
         }
       ]
     },
+    "DecisionNotes": {
+      "kind": "record",
+      "doc": "What v2 records about a decision beyond v1's `Decision`. Kept in its own\ncollection so every v1 decision keeps its exact bytes; a decision logged\nbefore v2 simply has none.",
+      "fields": [
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Lower-case, de-duplicated, sorted."
+        },
+        {
+          "name": "with",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Accounts the author names as part of the decision. A claim by the\nauthor, shown as such: it does not mean those people signed anything."
+        },
+        {
+          "name": "from_day",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "The standup day the decision came out of, if it was logged from one."
+        }
+      ]
+    },
+    "Help": {
+      "kind": "record",
+      "doc": "One member's offer to help with someone's blocker. The helper is the\nowner stamp; the blocked update is named by the entry's key.",
+      "fields": [
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Optional: how they can help. Empty means just \"I can help\"."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "MeroStandup": {
       "kind": "record",
+      "doc": "v2. The three v1 collections are carried by name; the rest start empty.",
       "fields": [
         {
           "name": "updates",
@@ -85,6 +139,46 @@
             }
           },
           "doc": "The display name each account chose, in that account's own slot."
+        },
+        {
+          "name": "team",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The team's display name. \"\" until someone names it."
+        },
+        {
+          "name": "helps",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Help"
+            },
+            "crdt_type": "authored_sorted_map"
+          },
+          "doc": "`\"<day>|<author account>\"` → one helper's offer on that update."
+        },
+        {
+          "name": "decision_notes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DecisionNotes"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Decision id → its v2 notes, written once by the decision's author."
         }
       ]
     },
@@ -156,5 +250,11 @@
   "methods": [],
   "events": [],
   "state_root": "MeroStandup",
-  "state_version": 1
+  "state_version": 2,
+  "migrations": [
+    {
+      "method": "migrate_v1_to_v2",
+      "fromVersion": 1
+    }
+  ]
 }
