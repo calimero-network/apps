@@ -1,0 +1,8 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mero Models logo">
+  <rect width="64" height="64" rx="14" fill="#17181c"/>
+  <path d="M32 11 L51 22 L32 33 L13 22 Z" fill="#ffb347"/>
+  <path d="M13 22 L32 33 L32 55 L13 44 Z" fill="#e07a1f"/>
+  <path d="M32 33 L51 22 L51 44 L32 55 Z" fill="#9c4c10"/>
+  <circle cx="32" cy="11" r="4.2" fill="#17181c"/>
+  <circle cx="32" cy="11" r="3" fill="#ffffff"/>
+</svg>

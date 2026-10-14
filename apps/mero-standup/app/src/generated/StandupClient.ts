@@ -63,6 +63,27 @@ export interface Decision {
   created_at: number;
 }
 
+/**
+ * What v2 records about a decision beyond v1's `Decision`. Kept in its own
+ * collection so every v1 decision keeps its exact bytes; a decision logged
+ * before v2 simply has none.
+ */
+export interface DecisionNotes {
+  /**
+   * Lower-case, de-duplicated, sorted.
+   */
+  tags: string[];
+  /**
+   * Accounts the author names as part of the decision. A claim by the
+   * author, shown as such: it does not mean those people signed anything.
+   */
+  with: string[];
+  /**
+   * The standup day the decision came out of, if it was logged from one.
+   */
+  from_day: string | null;
+}
+
 export interface DecisionPage {
   items: DecisionView[];
   /**
@@ -87,14 +108,42 @@ export interface DecisionView {
    */
   superseded_by: string;
   created_at: number;
+  /**
+   * v2 notes; empty for a decision logged before v2.
+   */
+  tags: string[];
+  with: PersonView[];
+  /**
+   * The standup day it came out of, or "".
+   */
+  from_day: string;
 }
 
 export interface Event_DecisionLogged {
   id: string;
 }
 
+export interface Event_HelpOffered {
+  day: string;
+  author: string;
+}
+
+export interface Event_HelpWithdrawn {
+  day: string;
+  author: string;
+}
+
+export interface Event_Migrated {
+  from_version: number;
+  to_version: number;
+}
+
 export interface Event_ProfileSet {
   account: string;
+}
+
+export interface Event_TeamRenamed {
+  name: string;
 }
 
 export interface Event_UpdateCleared {
@@ -105,6 +154,28 @@ export interface Event_UpdateCleared {
 export interface Event_UpdatePosted {
   day: string;
   account: string;
+}
+
+/**
+ * One member's offer to help with someone's blocker. The helper is the
+ * owner stamp; the blocked update is named by the entry's key.
+ */
+export interface Help {
+  /**
+   * Optional: how they can help. Empty means just "I can help".
+   */
+  note: string;
+  at: number;
+}
+
+/**
+ * An offer to help with a blocker.
+ */
+export interface HelpView {
+  account: string;
+  name: string;
+  note: string;
+  at: number;
 }
 
 /**
@@ -119,6 +190,9 @@ export interface MemberView {
   last_day: string;
 }
 
+/**
+ * v2. The three v1 collections are carried by name; the rest start empty.
+ */
 export interface MeroStandup {
   /**
    * Day (`YYYY-MM-DD`) → update, one entry per account per day.
@@ -132,6 +206,26 @@ export interface MeroStandup {
    * The display name each account chose, in that account's own slot.
    */
   profiles: Record<string, Profile>;
+  /**
+   * The team's display name. "" until someone names it.
+   */
+  team: string;
+  /**
+   * `"<day>|<author account>"` → one helper's offer on that update.
+   */
+  helps: Record<string, Help>;
+  /**
+   * Decision id → its v2 notes, written once by the decision's author.
+   */
+  decision_notes: Record<string, DecisionNotes>;
+}
+
+/**
+ * Someone named in a view, with the name they chose ("" if none).
+ */
+export interface PersonView {
+  account: string;
+  name: string;
 }
 
 /**
@@ -144,6 +238,14 @@ export interface MeroStandup {
 export interface Profile {
   name: string;
   updated_at: number;
+}
+
+/**
+ * A tag and how many decisions carry it.
+ */
+export interface TagCount {
+  tag: string;
+  count: number;
 }
 
 /**
@@ -186,7 +288,16 @@ export interface UpdateView {
   blockers: string;
   created_at: number;
   edited_at: number;
+  /**
+   * Teammates who offered to help with the blocker, oldest offer first.
+   * Empty when there is no blocker.
+   */
+  helpers: HelpView[];
 }
+
+
+
+
 
 
 
@@ -194,7 +305,11 @@ export interface UpdateView {
 
 export type AbiEvent =
   | { name: "DecisionLogged"; payload: Event_DecisionLogged }
+  | { name: "HelpOffered"; payload: Event_HelpOffered }
+  | { name: "HelpWithdrawn"; payload: Event_HelpWithdrawn }
+  | { name: "Migrated"; payload: Event_Migrated }
   | { name: "ProfileSet"; payload: Event_ProfileSet }
+  | { name: "TeamRenamed"; payload: Event_TeamRenamed }
   | { name: "UpdateCleared"; payload: Event_UpdateCleared }
   | { name: "UpdatePosted"; payload: Event_UpdatePosted }
 ;
@@ -276,6 +391,19 @@ export class StandupClient {
   }
 
   /**
+   * get_week
+   *
+   * Seven days of standups starting at `start`, oldest first: the weekly
+   * digest in one call instead of seven.
+   *
+   * @intent read_only
+   */
+  public async getWeek(params: { start: string }): Promise<DayView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'get_week', argsJson: params });
+    return response as DayView[];
+  }
+
+  /**
    * init
    */
   public async init(): Promise<void> {
@@ -299,13 +427,15 @@ export class StandupClient {
   /**
    * list_decisions
    *
-   * The log, newest first. `search` keeps decisions whose title, text or
-   * rationale contains it (case-insensitive); `standing_only` drops the
-   * superseded ones. `cursor` is the previous page's `next_cursor`.
+   * The log, newest first. `search` keeps decisions whose title, text,
+   * rationale or tags contain it (case-insensitive); `tag` keeps those
+   * carrying exactly that tag; `from_day` those logged from that standup
+   * day; `standing_only` drops the superseded ones. `cursor` is the
+   * previous page's `next_cursor`.
    *
    * @intent read_only
    */
-  public async listDecisions(params: { search: string | null; standing_only: boolean; cursor: string | null; limit: number }): Promise<DecisionPage> {
+  public async listDecisions(params: { search: string | null; tag: string | null; from_day: string | null; standing_only: boolean; cursor: string | null; limit: number }): Promise<DecisionPage> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'list_decisions', argsJson: params });
     return response as DecisionPage;
   }
@@ -319,9 +449,12 @@ export class StandupClient {
    * still stand when this is written; on read the link only counts if the
    * replaced decision is older (see `superseded_by`).
    *
+   * `tags`, `with` (accounts involved) and `from_day` (the standup day it
+   * came out of) are the v2 notes, written beside the decision.
+   *
    * @intent mutating
    */
-  public async logDecision(params: { title: string; decision: string; rationale: string; supersedes: string | null }): Promise<string> {
+  public async logDecision(params: { title: string; decision: string; rationale: string; supersedes: string | null; tags: string[]; with: string[]; from_day: string | null }): Promise<string> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'log_decision', argsJson: params });
     return response as string;
   }
@@ -340,6 +473,20 @@ export class StandupClient {
   public async members(): Promise<MemberView[]> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'members', argsJson: {} });
     return response as MemberView[];
+  }
+
+  /**
+   * offer_help
+   *
+   * Offer to help with `author`'s blocker on `day`, or change your note.
+   * The update has to exist and name a blocker, and you cannot offer
+   * yourself help.
+   *
+   * @intent mutating
+   */
+  public async offerHelp(params: { day: string; author: string; note: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'offer_help', argsJson: params });
+    return response as void;
   }
 
   /**
@@ -374,6 +521,42 @@ export class StandupClient {
   }
 
   /**
+   * set_team_name
+   *
+   * Name the team. Any member may; an empty name clears it.
+   *
+   * @intent mutating
+   */
+  public async setTeamName(params: { name: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_team_name', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * tags
+   *
+   * Every tag in the log with how many decisions carry it, most used first.
+   *
+   * @intent read_only
+   */
+  public async tags(): Promise<TagCount[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'tags', argsJson: {} });
+    return response as TagCount[];
+  }
+
+  /**
+   * team_name
+   *
+   * The team's name, or "" if nobody has named it.
+   *
+   * @intent read_only
+   */
+  public async teamName(): Promise<string> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'team_name', argsJson: {} });
+    return response as string;
+  }
+
+  /**
    * whoami
    *
    * The calling account, as the views render it. The frontend uses it to
@@ -384,6 +567,18 @@ export class StandupClient {
   public async whoami(): Promise<string> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'whoami', argsJson: {} });
     return response as string;
+  }
+
+  /**
+   * withdraw_help
+   *
+   * Take back your offer on `author`'s update for `day`.
+   *
+   * @intent mutating
+   */
+  public async withdrawHelp(params: { day: string; author: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'withdraw_help', argsJson: params });
+    return response as void;
   }
 
 }

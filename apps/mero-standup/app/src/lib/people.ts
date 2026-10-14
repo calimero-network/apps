@@ -14,6 +14,25 @@ export function displayName(account: string, name: string | null | undefined): s
   return trimmed ? trimmed : shortAccount(account);
 }
 
+/** Up to two letters for an avatar: "Ana Lee" -> "AL", unnamed -> from the id. */
+export function initials(account: string, name: string | null | undefined): string {
+  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0]![0]! + words[1]![0]!).toUpperCase();
+  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
+  return account.slice(0, 2).toUpperCase();
+}
+
+/**
+ * A hue for someone's avatar, from their ACCOUNT, not their name: renaming
+ * yourself must not change your colour, and two people who pick the same name
+ * still look different.
+ */
+export function avatarHue(account: string): number {
+  let h = 0;
+  for (let i = 0; i < account.length; i++) h = (h * 31 + account.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
 /**
  * Who has taken part but has not posted among `posted`.
  *

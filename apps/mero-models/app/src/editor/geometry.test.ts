@@ -1,0 +1,167 @@
+import * as THREE from "three";
+import { describe, expect, it } from "vitest";
+import {
+  colocated,
+  decimate,
+  fitsLimits,
+  flipNormals,
+  makeShape,
+  joinShapes,
+  mergeByDistance,
+  primitiveGeometry,
+  shapeCenter,
+  shapeFromGeometry,
+  smooth,
+  subdivide,
+  transformShape,
+  triangleCount,
+  vertexCount,
+  type MeshShape,
+} from "./geometry";
+
+const cube = () => shapeFromGeometry(primitiveGeometry("cube", 32)!);
+
+/** Every edge shared by exactly two triangles, in opposite directions: a closed, consistently wound surface. */
+function isClosed(shape: MeshShape): boolean {
+  const edges = new Map<string, number>();
+  for (let t = 0; t < shape.indices.length; t += 3) {
+    for (let k = 0; k < 3; k += 1) {
+      const a = shape.indices[t + k]!;
+      const b = shape.indices[t + ((k + 1) % 3)]!;
+      edges.set(`${a}_${b}`, (edges.get(`${a}_${b}`) ?? 0) + 1);
+    }
+  }
+  for (const [key, n] of edges) {
+    const [a, b] = key.split("_");
+    if (n !== 1 || edges.get(`${b}_${a}`) !== 1) return false;
+  }
+  return true;
+}
+
+function volume(shape: MeshShape): number {
+  let v = 0;
+  const p = (i: number) => new THREE.Vector3(shape.positions[i * 3], shape.positions[i * 3 + 1], shape.positions[i * 3 + 2]);
+  for (let t = 0; t < shape.indices.length; t += 3) {
+    v += p(shape.indices[t]!).dot(p(shape.indices[t + 1]!).cross(p(shape.indices[t + 2]!))) / 6;
+  }
+  return v;
+}
+
+describe("primitives become welded meshes", () => {
+  it("a cube is 8 vertices and 12 triangles, closed, with unit volume", () => {
+    const s = cube();
+    expect(vertexCount(s)).toBe(8);
+    expect(triangleCount(s)).toBe(12);
+    expect(isClosed(s)).toBe(true);
+    expect(volume(s)).toBeCloseTo(1, 5);
+  });
+
+  it("a sphere's seam is welded, so it stays closed", () => {
+    const s = shapeFromGeometry(primitiveGeometry("sphere", 16)!);
+    expect(isClosed(s)).toBe(true);
+    expect(volume(s)).toBeGreaterThan(0.45);
+  });
+
+  it("every curved primitive at the top segment count still fits one mesh", () => {
+    for (const kind of ["sphere", "icosphere", "cylinder", "cone", "torus", "capsule"]) {
+      expect(fitsLimits(shapeFromGeometry(primitiveGeometry(kind, 128)!)), kind).toBe(true);
+    }
+  });
+
+  it("groups, lights and meshes have no primitive", () => {
+    for (const kind of ["group", "mesh", "point_light"]) expect(primitiveGeometry(kind, 32)).toBeNull();
+  });
+});
+
+describe("mesh operations", () => {
+  it("subdivide quadruples the triangles and keeps the surface closed", () => {
+    const s = subdivide(cube());
+    expect(triangleCount(s)).toBe(48);
+    expect(vertexCount(s)).toBe(8 + 18); // one new vertex per edge
+    expect(isClosed(s)).toBe(true);
+    expect(volume(s)).toBeCloseTo(1, 5);
+  });
+
+  it("smooth shrinks a cube toward a ball without opening it", () => {
+    const s = smooth(subdivide(cube()), 0.5, 3);
+    expect(isClosed(s)).toBe(true);
+    expect(volume(s)).toBeLessThan(1);
+    expect(volume(s)).toBeGreaterThan(0.2);
+  });
+
+  it("flip turns the surface inside out", () => {
+    expect(volume(flipNormals(cube()))).toBeCloseTo(-1, 5);
+  });
+
+  it("a mirroring transform keeps the winding outward", () => {
+    const mirrored = transformShape(cube(), new THREE.Matrix4().makeScale(-1, 1, 1));
+    expect(volume(mirrored)).toBeCloseTo(1, 5);
+  });
+
+  it("merge by distance welds a duplicated cube back into one", () => {
+    const doubled = joinShapes([cube(), cube()]);
+    expect(vertexCount(doubled)).toBe(16);
+    const merged = mergeByDistance(doubled, 1e-4);
+    expect(vertexCount(merged)).toBe(8);
+  });
+
+  it("the centre of an offset shape is found", () => {
+    const moved = transformShape(cube(), new THREE.Matrix4().makeTranslation(2, 3, 4));
+    expect(shapeCenter(moved).toArray()).toEqual([2, 3, 4]);
+  });
+
+  it("decimate collapses a dense mesh to the vertex budget it is given", () => {
+    const dense = shapeFromGeometry(new THREE.SphereGeometry(1, 64, 32));
+    const target = Math.floor(vertexCount(dense) / 2);
+    const out = decimate(dense, target);
+    expect(vertexCount(out)).toBeLessThanOrEqual(target);
+    expect(vertexCount(out)).toBeGreaterThan(target * 0.8);
+  }, 60_000);
+});
+
+describe("UVs survive editing", () => {
+  const plane = () => shapeFromGeometry(primitiveGeometry("cube", 32)!, undefined, true);
+
+  it("an imported cube keeps its UV seams: split vertices, not 8 welded corners", () => {
+    const s = plane();
+    expect(vertexCount(s)).toBeGreaterThan(8);
+    expect(s.uvs?.length).toBe(vertexCount(s) * 2);
+    // …and edit mode can still find the 8 corners.
+    expect(new Set(colocated(s)).size).toBe(8);
+  });
+
+  it("subdivide interpolates UVs, transform and flip keep them", () => {
+    const s = plane();
+    const sub = subdivide(s);
+    expect(sub.uvs?.length).toBe(vertexCount(sub) * 2);
+    for (const v of sub.uvs!) expect(v).toBeGreaterThanOrEqual(0);
+    expect(transformShape(s, new THREE.Matrix4().makeScale(2, 2, 2)).uvs).toEqual(s.uvs);
+    expect(flipNormals(s).uvs).toEqual(s.uvs);
+  });
+
+  it("merge by distance never welds across a UV seam", () => {
+    const s = plane();
+    expect(vertexCount(mergeByDistance(s, 1e-3))).toBe(vertexCount(s));
+  });
+
+  it("smoothing moves both sides of a seam together, so the surface stays closed", () => {
+    const s = smooth(subdivide(plane()), 0.5, 2);
+    const roots = colocated(s);
+    // Every vertex still sits exactly on its seam partner.
+    roots.forEach((r, i) => {
+      for (let k = 0; k < 3; k += 1) expect(s.positions[i * 3 + k]).toBeCloseTo(s.positions[r * 3 + k]!, 6);
+    });
+  });
+
+  it("joining keeps UVs only when every part has them", () => {
+    expect(joinShapes([plane(), plane()]).uvs).toBeDefined();
+    expect(joinShapes([plane(), cube()]).uvs).toBeUndefined();
+  });
+
+  it("makeShape accepts plain arrays", () => {
+    const s = makeShape([0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 1, 2], [0, 0, 1, 0, 0, 1]);
+    expect(s.positions).toBeInstanceOf(Float32Array);
+    expect(s.indices).toBeInstanceOf(Uint32Array);
+    expect(s.uvs).toBeInstanceOf(Float32Array);
+  });
+});

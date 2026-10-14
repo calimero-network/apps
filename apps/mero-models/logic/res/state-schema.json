@@ -1,0 +1,703 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Environment": {
+      "kind": "record",
+      "doc": "What surrounds the scene: its name, the background and the ambient light.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The scene's name; `\"\"` shows the name it was created with."
+        },
+        {
+          "name": "background",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Viewport background, `#rrggbb`."
+        },
+        {
+          "name": "ambient_color",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Ambient light colour, `#rrggbb`."
+        },
+        {
+          "name": "ambient_intensity",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "Ambient light strength, 0 to 10."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Set by the contract."
+        }
+      ]
+    },
+    "Lock": {
+      "kind": "record",
+      "doc": "A check-out: one editor holding an asset until they check it in or it lapses.",
+      "fields": [
+        {
+          "name": "asset_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "holder",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Set by the contract."
+        },
+        {
+          "name": "since",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "expires_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "After this (the holder's clock, unix milliseconds) the lock no longer holds."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Material": {
+      "kind": "record",
+      "doc": "How an object's surface looks. A light reads `color` as its light colour.",
+      "fields": [
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Base colour, `#rrggbb`."
+        },
+        {
+          "name": "metalness",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "0 (dielectric) to 1 (metal)."
+        },
+        {
+          "name": "roughness",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "0 (mirror) to 1 (matte)."
+        },
+        {
+          "name": "opacity",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "0 (invisible) to 1 (opaque)."
+        },
+        {
+          "name": "emissive",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Emitted colour, `#rrggbb`; `#000000` for none."
+        },
+        {
+          "name": "wireframe",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Draw the edges only."
+        },
+        {
+          "name": "flat_shading",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Faceted normals instead of smooth ones."
+        },
+        {
+          "name": "base_color_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id for the base colour (sRGB), or `\"\"`."
+        },
+        {
+          "name": "normal_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id for the tangent-space normal map (OpenGL, +Y up), or `\"\"`."
+        },
+        {
+          "name": "normal_scale",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "Strength of the normal map, 0 to 10."
+        },
+        {
+          "name": "orm_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id packing occlusion (R), roughness (G) and metalness (B) — glTF's and\nUnreal's layout — or `\"\"`."
+        },
+        {
+          "name": "emissive_map",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Texture id for emission, or `\"\"`."
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "doc": "Someone who has opened the scene, as they describe themselves.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member's account id. Filled in from the slot on read; never trusted from storage."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroModels": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "initial_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "What `init` was given. `Frozen`: nobody rewrites it. The environment's `name`\noverrides it once an editor sets one."
+        },
+        {
+          "name": "objects",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "SceneObject"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Every object, keyed by id. Writable only by accounts the editor role is\nprojected onto, on every node."
+        },
+        {
+          "name": "meshes",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "MeshRef"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "The current blob of every `mesh` object, keyed by the object's id. Guarded like\n`objects`."
+        },
+        {
+          "name": "textures",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "TextureRef"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Every texture, keyed by id. Guarded like `objects`."
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "VersionRecord"
+              },
+              "crdt_type": "sorted_map"
+            }
+          },
+          "doc": "Every version of every mesh and texture, keyed\n`\"<asset>/<stamp:020>/<author>/<blob>\"` so one asset's history is a prefix scan\nin order. Guarded like `objects`."
+        },
+        {
+          "name": "locks",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Lock"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Live and lapsed check-outs, keyed by asset id. Guarded like `objects`."
+        },
+        {
+          "name": "environment",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Environment"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "One entry, under [`ENVIRONMENT_KEY`]. Guarded like `objects`."
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            }
+          },
+          "doc": "One profile per account, written only by that account."
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          },
+          "doc": "Admins (the creator) and editors."
+        }
+      ]
+    },
+    "MeshRef": {
+      "kind": "record",
+      "doc": "The shape of a `mesh` object: a reference to the blob holding its vertices.\n\nThe blob is the app's binary mesh format (see the frontend's `meshcodec.ts`).\nThe contract cannot read it; `vertex_count` and friends are what the writer\nsays is inside, and a reader checks them against what it decodes.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The object this is the shape of."
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The blob, as the 64-character hex id the node returned from the upload."
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "The blob's length in bytes."
+        },
+        {
+          "name": "vertex_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "triangle_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "has_uvs",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether the mesh carries texture coordinates."
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Who wrote this version. Set by the contract."
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A note for the history (\"retopo pass\", \"Restored v3\"); may be empty."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Set by the contract; only ever grows."
+        }
+      ]
+    },
+    "SceneObject": {
+      "kind": "record",
+      "doc": "One object in the scene.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Chosen by the caller; use a fresh UUID. Writing an existing id replaces that object."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Shown in the outliner."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`OBJECT_KINDS`]. A `mesh` takes its shape from `put_mesh` under the same id."
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The parent object's id, or `\"\"` for a root object. A parent that does not exist, or\na chain that loops, reads as `\"\"`."
+        },
+        {
+          "name": "position",
+          "type": {
+            "$ref": "Vec3"
+          },
+          "doc": "Position relative to the parent, scene units."
+        },
+        {
+          "name": "rotation",
+          "type": {
+            "$ref": "Vec3"
+          },
+          "doc": "Euler rotation (XYZ order) relative to the parent, radians."
+        },
+        {
+          "name": "scale",
+          "type": {
+            "$ref": "Vec3"
+          },
+          "doc": "Scale relative to the parent. Primitives are unit-sized, so this is their size."
+        },
+        {
+          "name": "visible",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Hidden objects (and their children) are not drawn."
+        },
+        {
+          "name": "material",
+          "type": {
+            "$ref": "Material"
+          },
+          "doc": "Surface, or light colour for a light."
+        },
+        {
+          "name": "segments",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How finely a curved primitive is tessellated, 3 to 128. Ignored by other kinds."
+        },
+        {
+          "name": "intensity",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "A light's strength; ignored by other kinds."
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Who first created it. Set by the contract; the value sent is ignored."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Creation time, unix milliseconds. Kept from the first write."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Last change, unix milliseconds. The contract moves it past the stored value, so it\nonly ever grows; the value sent is a hint."
+        }
+      ]
+    },
+    "TextureRef": {
+      "kind": "record",
+      "doc": "An image a material can use, held in a blob.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Chosen by the caller; use a fresh UUID."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The blob, as a 64-character hex id."
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "mime",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`image/png`, `image/jpeg` or `image/webp`."
+        },
+        {
+          "name": "color_space",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`srgb` for colour, `linear` for data (normal, ORM)."
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Set by the contract."
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Set by the contract; only ever grows."
+        }
+      ]
+    },
+    "Vec3": {
+      "kind": "record",
+      "doc": "A point or a direction in scene units, or Euler angles in radians.",
+      "fields": [
+        {
+          "name": "x",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "z",
+          "type": {
+            "kind": "f64"
+          }
+        }
+      ]
+    },
+    "VersionRecord": {
+      "kind": "record",
+      "doc": "One saved version of a mesh or a texture. Written once per write and never\nchanged; restoring writes a new one.",
+      "fields": [
+        {
+          "name": "asset_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The mesh's object id or the texture's id."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`mesh` or `texture`."
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "a",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Vertices and triangles for a mesh; width and height for a texture."
+        },
+        {
+          "name": "b",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "MeroModels",
+  "state_version": 1
+}

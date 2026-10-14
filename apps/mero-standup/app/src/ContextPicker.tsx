@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   setContextId,
   useApplicationContexts,
   useCreateContext,
   useCreateNamespace,
+  useMero,
   useNamespacesForApplication,
 } from "@calimero-network/mero-react";
+import { StandupClient } from "./generated/StandupClient";
 
 /**
  * Choose which context this session talks to, or make one.
@@ -87,6 +89,10 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
   const { createContext, error: contextError } = useCreateContext();
 
   const [busy, setBusy] = useState<string | null>(null);
+  const [teamName, setTeamName] = useState("");
+  const [advanced, setAdvanced] = useState(false);
+  const names = useTeamNames(contexts.map((c) => c.contextId));
+  const { mero } = useMero();
   const [failed, setFailed] = useState<Failure | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
@@ -177,6 +183,13 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
       const ctx = await createContext({ applicationId, groupId: namespaceId });
       const newContextId = (ctx as { contextId?: string } | null)?.contextId;
       if (!newContextId) throw new HookFailed("context");
+      // Name it right away. Best effort: an unnamed team still works, and
+      // anyone in it can name it later from the top bar.
+      if (teamName.trim() && mero) {
+        await new StandupClient(mero, newContextId)
+          .setTeamName({ name: teamName })
+          .catch(() => undefined);
+      }
       select(newContextId);
     } catch (e) {
       setFailed(
@@ -193,15 +206,14 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
 
   return (
     <>
-      <div className="card">
-        <h2>Choose a team</h2>
+      <section className="card">
+        <h2>Your teams</h2>
         <p className="empty" style={{ marginBottom: 14 }}>
-          A team is one Calimero context: its standups and decisions replicate
-          between its members&apos; nodes and nowhere else. Start one, or join one
-          with an invitation below.
+          A team&apos;s standups and decisions live on its members&apos; nodes and
+          nowhere else.
         </p>
 
-        {loading && <p className="empty">Loading contexts…</p>}
+        {loading && <p className="empty">Loading teams…</p>}
         {error && <pre className="err">{error.message}</pre>}
 
         {!loading && !applicationId && (
@@ -213,117 +225,156 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
         )}
 
         {!loading && applicationId && contexts.length === 0 && (
-          <p className="empty">No teams on this node yet.</p>
+          <p className="empty">No teams on this node yet. Start one, or join with an invitation.</p>
         )}
 
         {contexts.length > 0 && (
-          <table>
-            <thead>
-              <tr>
-                <th>team</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {contexts.map((c) => (
-                <tr key={c.contextId}>
-                  <td className="mono">{c.contextId}</td>
-                  <td style={{ textAlign: "right" }}>
-                    <button onClick={() => select(c.contextId)}>Open</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul className="team-list">
+            {contexts.map((c) => (
+              <li key={c.contextId}>
+                <button className="team-row" onClick={() => select(c.contextId)}>
+                  <span className="team-row-name">
+                    {names[c.contextId] || <span className="dim">Unnamed team</span>}
+                  </span>
+                  <span className="mono dim">{shortId(c.contextId)}</span>
+                  <span className="team-row-open">Open →</span>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
+      </section>
 
-        <div className="row" style={{ marginTop: 16 }}>
+      <form
+        className="card"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void makeBoth();
+        }}
+      >
+        <h2>Start a team</h2>
+        <div className="row">
           {/*
-            Kept as the one-click path, and kept FIRST, because on a fresh node
-            it is the only one that can succeed — there is no namespace to add a
-            context to yet. The two-step controls below are for everything after
-            that.
+            Kept as the one-click path: on a fresh node it is the only one
+            that can succeed — there is no namespace to add a team to yet.
           */}
-          <button onClick={makeBoth} disabled={busy !== null || !applicationId}>
+          <input
+            aria-label="new team name"
+            placeholder="Team name, e.g. Platform"
+            maxLength={80}
+            value={teamName}
+            onChange={(e) => setTeamName(e.target.value)}
+          />
+          <button type="submit" disabled={busy !== null || !applicationId}>
             {busy === "both" ? "Creating…" : "Start a new team"}
           </button>
-          <button
-            className="ghost"
-            onClick={() => {
-              void refetch();
-              void refetchNamespaces();
-            }}
-            disabled={loading || nsLoading}
-          >
-            Refresh
-          </button>
         </div>
-
-        {!applicationId && (
-          <p className="empty" style={{ marginTop: 12 }}>
-            No application id in this session — install the app on the node first.
-          </p>
-        )}
         {note && <p className="empty" style={{ marginTop: 12 }}>{note}</p>}
         {failureText && <pre className="err">{failureText}</pre>}
-      </div>
+      </form>
 
-      <div className="card">
-        <h2>Namespaces</h2>
-        <p className="empty" style={{ marginBottom: 14 }}>
-          Advanced. A team (context) lives in a namespace, and a namespace can
-          hold several. Members are invited to the <em>namespace</em>, so one
-          invitation reaches every team in it.
-        </p>
+      <section className="card advanced">
+        <button
+          type="button"
+          className="link quiet"
+          aria-expanded={advanced}
+          onClick={() => setAdvanced((a) => !a)}
+        >
+          {advanced ? "Hide" : "Show"} advanced: namespaces
+        </button>
+        {advanced && (
+          <>
+            <p className="empty" style={{ margin: "10px 0 14px" }}>
+              A team (context) lives in a namespace, and a namespace can hold
+              several. Members are invited to the <em>namespace</em>, so one
+              invitation reaches every team in it.
+            </p>
 
-        {nsLoading && <p className="empty">Loading namespaces…</p>}
-        {nsError && <pre className="err">{nsError.message}</pre>}
+            {nsLoading && <p className="empty">Loading namespaces…</p>}
+            {nsError && <pre className="err">{nsError.message}</pre>}
 
-        {!nsLoading && nsList.length === 0 && (
-          <p className="empty">No namespaces yet — create one below, or use the one-click button above.</p>
-        )}
-
-        {nsList.length > 0 && (
-          <table>
-            <thead>
-              <tr>
-                <th>namespace</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {nsList.map((ns, i) => {
-                const id = namespaceIdOf(ns);
-                if (!id) return null;
-                return (
-                  <tr key={id ?? i}>
-                    <td className="mono">{id}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <button
-                        className="ghost"
-                        disabled={busy !== null}
-                        onClick={() => void makeContextIn(id)}
-                      >
-                        {busy === id ? "Creating…" : "Add team"}
-                      </button>
-                    </td>
+            {nsList.length > 0 && (
+              <table>
+                <thead>
+                  <tr>
+                    <th>namespace</th>
+                    <th />
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+                </thead>
+                <tbody>
+                  {nsList.map((ns, i) => {
+                    const id = namespaceIdOf(ns);
+                    if (!id) return null;
+                    return (
+                      <tr key={id ?? i}>
+                        <td className="mono">{id}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <button
+                            className="ghost"
+                            disabled={busy !== null}
+                            onClick={() => void makeContextIn(id)}
+                          >
+                            {busy === id ? "Creating…" : "Add team"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
 
-        <div className="row" style={{ marginTop: 16 }}>
-          <button
-            className="ghost"
-            onClick={makeNamespace}
-            disabled={busy !== null || !applicationId}
-          >
-            {busy === "namespace" ? "Creating…" : "Create namespace"}
-          </button>
-        </div>
-      </div>
+            <div className="row" style={{ marginTop: 16 }}>
+              <button
+                className="ghost"
+                onClick={makeNamespace}
+                disabled={busy !== null || !applicationId}
+              >
+                {busy === "namespace" ? "Creating…" : "Create namespace"}
+              </button>
+              <button
+                className="ghost"
+                onClick={() => {
+                  void refetch();
+                  void refetchNamespaces();
+                }}
+                disabled={loading || nsLoading}
+              >
+                Refresh
+              </button>
+            </div>
+          </>
+        )}
+      </section>
     </>
   );
+}
+
+/**
+ * Each listed team's name, read from its own context. Best effort and in
+ * parallel: a team whose read fails just shows as unnamed.
+ */
+function useTeamNames(contextIds: string[]): Record<string, string> {
+  const { mero } = useMero();
+  const [names, setNames] = useState<Record<string, string>>({});
+  const key = contextIds.join(",");
+  useEffect(() => {
+    if (!mero || !key) return;
+    let live = true;
+    void Promise.all(
+      key.split(",").map(async (id) => {
+        try {
+          return [id, await new StandupClient(mero, id).teamName()] as const;
+        } catch {
+          return [id, ""] as const;
+        }
+      }),
+    ).then((pairs) => {
+      if (live) setNames(Object.fromEntries(pairs));
+    });
+    return () => {
+      live = false;
+    };
+  }, [mero, key]);
+  return names;
 }

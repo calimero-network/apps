@@ -28,7 +28,7 @@ export async function login(page: Page, opts: { withContext?: boolean } = {}) {
   if (opts.withContext !== false) params.set("context_id", s.contextId);
 
   await page.goto(`/#${params.toString()}`);
-  await expect(page.getByRole("heading", { name: "Mero Standup" })).toBeVisible();
+  await expect(page.locator(".brand-name")).toBeVisible();
 }
 
 /** Wait until the team view is up and knows who we are. */

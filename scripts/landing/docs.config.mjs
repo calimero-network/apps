@@ -91,6 +91,73 @@ export const DOCS = {
       { title: 'The result is derived', body: 'Nobody writes down "checkmate": both nodes replay the same moves and reach the same verdict, which is what makes it trustworthy without a referee.' },
     ],
   },
+  'mero-models': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'A 3D scene is a Calimero context. There is no server keeping the model: every member’s own node runs the contract, holds every object and every vertex, and replicates changes to the others.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'A studio. You create one, invite the people you build with, and every scene inside it is open to them without another invitation.' },
+          { term: 'Context', def: 'A scene. It holds the objects, their meshes, the world settings and who may edit.' },
+          { term: 'Object', def: 'One thing in the outliner: a primitive, a mesh, a light or an empty, with a transform, a material and a parent.' },
+          { term: 'Mesh', def: 'The polygon cage of an edited or imported shape — quads and n-gons, UVs, hard edges and its modifiers — stored as a versioned blob apart from the object, so moving it never rewrites them.' },
+          { term: 'Editor', def: 'Someone the scene’s admin has allowed to change it. Everyone else in the namespace can open the scene and watch.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
+          { title: 'Start a scene', body: 'Name it and press New scene. That creates a namespace you own and a scene inside it, with you as its admin.' },
+          { title: 'Build', body: 'Shift+A adds a primitive. Drag the gizmo to move it; G, R and S switch between move, rotate and scale, Tab models the mesh — 1, 2 and 3 pick vertices, edges or faces; E, I, Ctrl+B and Ctrl+R extrude, inset, bevel and loop-cut — and Ctrl+Z undoes. Mark seams and press U to unwrap, then Bake & texture paints a smart material onto it. Add → Examples loads finished assets built the same way.' },
+          { title: 'Invite', body: 'Share mints a link. Whoever opens it can watch at once; tick Can edit beside their name to let them build too.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Building with someone else',
+        paragraphs: [
+          'Invitations are links. There is no account and no sign-up: opening the link and connecting a node is the whole of joining.',
+          'The others in the scene appear as coloured avatars. Their selections are outlined in their colour, their camera is a small marker in the viewport, and clicking an avatar takes you to their view.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'One record per object: its name, kind, parent, position, rotation, scale, visibility, material and light settings. Two people changing the same object resolve to one of their writes, whole.',
+          'Meshes and textures as content-addressed blobs on the members’ nodes — up to 4 million vertices a mesh, 16,384 pixels a side a texture. State holds only a reference to each: the blob id, its size and what is in it.',
+          'Every version of every mesh and texture, in order, with who saved it and an optional note. Restoring writes the old blob again as a new version, so nothing is ever copied.',
+          'Check-outs: who holds which asset, and until when. While one is live, every honest node refuses anyone else’s change to that asset.',
+          'The scene’s name, background and ambient light, and each member’s display name.',
+          'Who may edit, as a role the admin grants. The scene’s collections enforce it on every node, so a viewer’s write is refused everywhere, not just in their app.',
+          'Not stored: cameras and selections. They stream over ephemeral presence and vanish when you leave.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'Your edit is refused', def: 'You are a viewer. The admin can tick Can edit beside your name in Share.' },
+          { term: 'An object jumped back', def: 'Someone else moved it at the same moment, and their write is the one every node kept. Move it again.' },
+          { term: 'An object is read-only', def: 'Someone else has it checked out — the outliner shows a lock and Properties says who. It frees itself when they check it in or the check-out lapses; an admin can release it.' },
+          { term: 'A mesh shows as a grey box', def: 'Its blob is still downloading from the other members’ nodes. Big meshes take a moment the first time; after that they are cached by your browser.' },
+          { term: 'The invite link does nothing', def: 'An invitation is tied to the namespace that minted it. Ask for a fresh one rather than reusing an old link.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'A scene that is a context', body: 'Objects, meshes and materials replicated between members’ own nodes. Nothing in the middle, and nothing to host.' },
+      { title: 'Edit like a modeller', body: 'Primitives, a gizmo, edit mode with extrude, and the shortcuts you already know.' },
+      { title: 'Together, live', body: 'Every change lands on every node as it is made, and you can see where the others are looking.' },
+      { title: 'Out in standard formats', body: 'glTF, OBJ and STL, whenever you want them.' },
+    ],
+  },
   'mero-kombat': {
     docs: [
       {
