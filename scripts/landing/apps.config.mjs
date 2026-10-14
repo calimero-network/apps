@@ -532,6 +532,9 @@ export const APPS = {
 
   'mero-updates': {
     e2eDir: 'tests',
+    // Same light/dark key as the app shell (src/theme.ts), so the landing
+    // choice carries through sign-in.
+    themeStorageKey: 'mero-updates:theme',
     availability: 'web+desktop',
     trust: ['Investors are the membership', 'Drafts never leave your node', 'No send list to leak'],
     explainer: [

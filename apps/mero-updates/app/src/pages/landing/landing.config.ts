@@ -23,6 +23,7 @@ export const CONFIG: LandingConfig = {
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   tint: "#3b82f6",
+  themeStorageKey: "mero-updates:theme",
   trust: ["Investors are the membership", "Drafts never leave your node", "No send list to leak"],
   explainer: [
     "Investor updates the way Visible, Cabal and Paperstreet do them — categories, KPIs, asks — but the update is not emailed from a SaaS database. It lives in a Calimero context the company and its investors share, replicated between their own nodes.",

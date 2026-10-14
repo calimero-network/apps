@@ -1,6 +1,18 @@
 import { Fragment, type ReactNode } from "react";
 
+import ThemeToggle from "./ThemeToggle";
 import { ChevronRightIcon } from "./icons";
+
+/** The app's mark: the "M" on the app tint, as on the icon and landing page. */
+export function BrandMark() {
+  return (
+    <span className="brandMark" aria-hidden>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 18V6l8 7 8-7v12" />
+      </svg>
+    </span>
+  );
+}
 
 export interface Crumb {
   label: string;
@@ -11,9 +23,10 @@ export interface Crumb {
 }
 
 /**
- * The sticky top bar every signed-in screen shares: brand, breadcrumb, and a
- * right-hand slot for status and session controls. Presentation only — each
- * page passes its own crumbs and actions.
+ * The floating top bar of the company and audience pickers: brand, breadcrumb,
+ * the light/dark switch, and a right-hand slot for status and session
+ * controls. Presentation only — each page passes its own crumbs and actions.
+ * Inside an audience the shell draws its own sidebar and top bar instead.
  *
  * The brand is deliberately NOT a link: its text contains "Updates", and the
  * section nav's "Updates" link is found by name in the e2e suites.
@@ -23,11 +36,7 @@ export default function AppHeader({ crumbs, right }: { crumbs: Crumb[]; right?: 
     <header className="appHeader">
       <div className="appHeaderInner">
         <span className="brand">
-          <span className="brandMark" aria-hidden>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 18V6l8 7 8-7v12" />
-            </svg>
-          </span>
+          <BrandMark />
           <span className="brandName">Mero Updates</span>
         </span>
         {crumbs.length > 0 && (
@@ -51,7 +60,10 @@ export default function AppHeader({ crumbs, right }: { crumbs: Crumb[]; right?: 
           </nav>
         )}
         <div className="grow" />
-        {right && <div className="appHeaderRight">{right}</div>}
+        <div className="appHeaderRight">
+          <ThemeToggle />
+          {right}
+        </div>
       </div>
     </header>
   );
