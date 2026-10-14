@@ -68,6 +68,14 @@ writes and, when it names one, its guard, whatever the agent says. A method no a
 asks you every time. With no approved actions, or an agent that names no method, the agent's
 `category` and `writes` stand. You can set each action to act, ask first or off, apart from its app.
 
+Your **node** is managed the same way, under the app key `node` ("Node management"). Your agent
+reaches it through mero-mcp's node tools (installing apps, making and joining spaces, inviting
+people, leaving and deleting), which are not an app's methods and have no ABI, so their actions ship
+with Hyperfeed and mero-bot ([`node.json`](app/src/actions/fixtures/node.json)), checked against
+mero-mcp's tool list: seeing what's on the node only reads; uninstalling, leaving and deleting are
+covered by "Deleting anything"; inviting people and opening a group to a whole space by "Inviting
+people or changing roles".
+
 | Situation | Verdict |
 | --- | --- |
 | app mode `off` | refuse |
@@ -570,10 +578,10 @@ says the feed is too old.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
   Phone alerts (Settings → Alerts) keep your devices' push subscriptions and the runtime's VAPID
   public key in the feed; mero-bot's sender, which pushes what newly needs you, is a separate change.
-- Actions ship for the core apps (Chat, Docs, Calendar, Sheets, Issues, CRM, Sign and Pass) as fixtures
-  in `app/src/actions/fixtures/`, each checked against its app's ABI and covering every method; the demo uses them;
-  on your node they are learned and proposed by your agent. mero-bot does not propose them or pass
-  `method` to `check_action` yet; until it does, its own word decides, as before.
+- Actions ship for the core apps (Chat, Docs, Calendar, Sheets, Issues, CRM, Sign and Pass) and for node
+  management as fixtures in `app/src/actions/fixtures/`, each checked against its app's ABI (the node's against
+  mero-mcp's tools) and covering every method; the demo uses them, and mero-bot proposes its copy of them on your
+  node. Any other app's actions are learned by your agent.
 - Lenses for apps other than the core ones are learned on your node; none ships for them. A lens is tried on
   recent events only when there are some, so a quiet app's lens is checked against its ABI alone.
 - An answer the feed sends itself has no retry if the tab closes between the two calls; the row
