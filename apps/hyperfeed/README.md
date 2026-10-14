@@ -16,7 +16,7 @@ each app, and talk to it about any of it.
 | Package | `com.calimero.hyperfeed` |
 | Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 50 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/feed.yml`](logic/workflows/feed.yml): every contract method on real nodes, the feed converging on a second node, and that node refused every write |
-| Frontend | [`app/`](app): Vite, React and mero-react. `/` (feed), `/chat` and `/settings` run against your node; `/demo` runs the same pages in memory. Settings has a section per path: `/settings/controls`, `/settings/rules` (the language your agents answer in, English by default, your general rules, which every agent keeps, and rules for one agent only), `/settings/agents`, `/settings/lenses`, `/settings/alerts` (`/controls` lands on the first). Controls lists the core apps (Chat, Calendar, Sheets, Issues, Docs, CRM, Sign, Pass): those installed on your node are set app by app, the others offer Install, from the marketplace. Opened from Calimero Desktop, Hyperfeed acts with full access, as the admin dashboard does, so Install and deleting a feed work; signed in from a browser it holds an app's grant set, which may do neither, and says so. The bell in the top bar counts what needs you, whatever the feed shows, with the lenses and rules your agent proposed in Settings, and lists it one line each: a click opens it where it is answered; a chat waiting on your approval stays in Chat with the approval in its thread |
+| Frontend | [`app/`](app): Vite, React and mero-react. `/` (feed), `/chat` and `/settings` run against your node; `/demo` runs the same pages in memory. Settings has a section per path: `/settings/controls`, `/settings/rules` (the language your agents answer in, English by default, your general rules, which every agent keeps, and rules for one agent only), `/settings/agents`, `/settings/lenses`, `/settings/alerts` (`/controls` lands on the first). Controls lists the core apps (Chat, Calendar, Sheets, Issues, Docs, CRM, Sign, Pass): those installed on your node are set app by app, the others offer Install, from the marketplace. Opened from Calimero Desktop, Hyperfeed acts with full access, as the admin dashboard does, so Install and deleting a feed work; signed in from a browser it holds an app's grant set, which may do neither, and says so. The bell in the top bar counts what needs you, whatever the feed shows, with the lenses and rules your agent proposed in Settings, and lists it one line each: a click opens it in place on the feed, with its buttons, a question or approval from a chat included. **The feed is where you act; Chat is the history.** What you ask your agent, from the top of the feed or on a row (with images, picked, pasted or dropped, as in Chat), opens in place: your agent's steps as it works, with Stop, then its answer as markdown, with cards for the PRs and runs it links to and Merge on them. A task post opens its chain in place too, and Team does the same under its ask box: what you ask, a card you Discuss, your agent's chains and the bell's row. A long answer shows its first lines on the row, the rest behind More. Every conversation offers Open chat, or Continue in chat once it runs long, for its whole thread |
 
 ## Why it needs a contract of its own
 
@@ -67,6 +67,14 @@ you approve them (**Settings → Actions**), the action that names the method de
 writes and, when it names one, its guard, whatever the agent says. A method no approved action names
 asks you every time. With no approved actions, or an agent that names no method, the agent's
 `category` and `writes` stand. You can set each action to act, ask first or off, apart from its app.
+
+Your **node** is managed the same way, under the app key `node` ("Node management"). Your agent
+reaches it through mero-mcp's node tools (installing apps, making and joining spaces, inviting
+people, leaving and deleting), which are not an app's methods and have no ABI, so their actions ship
+with Hyperfeed and mero-bot ([`node.json`](app/src/actions/fixtures/node.json)), checked against
+mero-mcp's tool list: seeing what's on the node only reads; uninstalling, leaving and deleting are
+covered by "Deleting anything"; inviting people and opening a group to a whole space by "Inviting
+people or changing roles".
 
 | Situation | Verdict |
 | --- | --- |
@@ -141,6 +149,17 @@ app.
 ([`lens/fixtures/chat.json`](app/src/lens/fixtures/chat.json)). It records a DM, a mention of you,
 `@everyone` or `@here`, and your own role changing. It drops the rest of a channel, your own
 messages, edits and reactions.
+
+The other core apps ship one too, each in `app/src/lens/fixtures/`:
+
+| App | Records |
+| --- | --- |
+| Calendar | an event you're invited to that someone else made |
+| Sheets | a comment mentioning you (reply adds a comment), an alert sent to you, your role changing |
+| Issues | a comment on an issue you report or are assigned (reply adds a comment), an issue assigned to you |
+| CRM | a note someone else adds to a deal you created (reply adds a note) |
+| Sign | a new document you can sign, your permission changing, being removed |
+| Pass | someone else editing, trashing or restoring a secret you made (never its value), your vault role changing |
 
 "You" is your node's account id, which is what apps stamp on what you do (`env::account_id()`),
 plus this device's key. The app key comes from the installed package (`com.calimero.mero-chat`
@@ -559,11 +578,11 @@ says the feed is too old.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
   Phone alerts (Settings → Alerts) keep your devices' push subscriptions and the runtime's VAPID
   public key in the feed; mero-bot's sender, which pushes what newly needs you, is a separate change.
-- Actions ship for the core apps (Chat, Docs, Calendar, Sheets, Issues, CRM, Sign and Pass) as fixtures
-  in `app/src/actions/fixtures/`, each checked against its app's ABI and covering every method; the demo uses them;
-  on your node they are learned and proposed by your agent. mero-bot does not propose them or pass
-  `method` to `check_action` yet; until it does, its own word decides, as before.
-- Lenses for apps other than Chat are learned on your node; none ships for them. A lens is tried on
+- Actions ship for the core apps (Chat, Docs, Calendar, Sheets, Issues, CRM, Sign and Pass) and for node
+  management as fixtures in `app/src/actions/fixtures/`, each checked against its app's ABI (the node's against
+  mero-mcp's tools) and covering every method; the demo uses them, and mero-bot proposes its copy of them on your
+  node. Any other app's actions are learned by your agent.
+- Lenses for apps other than the core ones are learned on your node; none ships for them. A lens is tried on
   recent events only when there are some, so a quiet app's lens is checked against its ABI alone.
 - An answer the feed sends itself has no retry if the tab closes between the two calls; the row
   stays "Sending…".

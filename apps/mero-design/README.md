@@ -102,6 +102,37 @@ every member sees the same screens and the same order, and the web design
 starter (whose five screens were already labelled this way) presents out of the
 box.
 
+## Undo and redo
+
+Undo (Ctrl/⌘+Z) and redo (Ctrl/⌘+Shift+Z or Ctrl+Y) take back **your own**
+steps, and write the result to the node, so every member sees it. A step records
+only the elements you changed (as they were before, and as you left them), and
+undoing it writes back only the fields you changed: a teammate's shape, or their
+recolour of a shape you then moved, survives your undo. A shape a teammate has
+deleted since stays deleted. See `app/src/store/history.ts`.
+
+## Lock and hide
+
+Each row in the **Layers** tab has a padlock and an eye; on a group row they
+act on every layer in it. **Shift+⌘/Ctrl+L** locks and **Shift+⌘/Ctrl+H**
+hides the selection, and pressing again reverses it.
+
+- **Hidden** layers are not painted, cannot be clicked, and are left out of
+  every export (PNG, SVG, a group's export, a merge into one image, the HTML
+  code export, project thumbnails) and of presenting. A hidden screen is not
+  presented.
+- **Locked** layers are painted and exported, but the canvas will not select,
+  move, resize or delete them (a marquee skips them too). Select one in the
+  Layers tab to unlock it. A lock is a convenience, not a permission: any
+  editor can unlock.
+
+Both are synced to every member and are undoable. Like stroke style, groups and
+screens, they ride the element's `label` (`app/src/utils/elementMeta.ts`)
+rather than contract fields: adding a field to the Borsh-stored `Element` would
+need a migration of every element on every board. So there is no contract
+change, and a board saved before this feature loads with everything unlocked
+and shown.
+
 ## Starter projects
 
 **Options → Starter projects** loads one into the board (an admin action; an

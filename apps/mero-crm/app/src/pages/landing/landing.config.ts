@@ -23,7 +23,7 @@ export const CONFIG: LandingConfig = {
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   tint: "#2dd4bf",
-  themeStorageKey: "app:theme",
+  themeStorageKey: "mero-crm:theme",
   trust: ["Pipeline on your nodes", "Built-in deal assistant", "No per-seat vendor"],
   explainer: [
     "A sales CRM with only the parts that close deals: a visual pipeline, deals with a value and a next step, the people behind them, and a to-do list that puts overdue follow-ups first. Everything a tool like Pipedrive is used for day to day, without the forty menus around it.",

@@ -1,5 +1,6 @@
 import type { Element } from "../types";
 import { boundsOf, elementsToSvg, type Bounds } from "./svgExport";
+import { visibleOnly } from "./layerFlags";
 
 /**
  * The small picture of a board on its project card.
@@ -39,8 +40,10 @@ export function previewBounds(elements: Element[], aspect: number): Bounds {
  * The board as SVG markup at the card's aspect ratio, or `null` for a board with
  * nothing on it — the card then shows plain white.
  */
-export function buildBoardPreviewSvg(elements: Element[], aspect: number): string | null {
-  if (!Array.isArray(elements) || elements.length === 0) return null;
+export function buildBoardPreviewSvg(all: Element[], aspect: number): string | null {
+  if (!Array.isArray(all)) return null;
+  const elements = visibleOnly(all);
+  if (elements.length === 0) return null;
   return elementsToSvg(elements, {
     bounds: previewBounds(elements, aspect),
     background: PREVIEW_BACKGROUND,

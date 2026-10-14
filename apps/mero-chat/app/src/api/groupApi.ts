@@ -1,7 +1,19 @@
 import type { ApiResponse } from "./types";
 
 export type VisibilityMode = "open" | "restricted";
-export type GroupMemberRole = "Admin" | "Member";
+export type GroupMemberRole =
+  | "Admin"
+  | "Member"
+  | "ReadOnly"
+  // A TEE fleet node admitted by hardware attestation (core's
+  // `GroupMemberRole::ReadOnlyTee` / `RelayTee`). It is infrastructure, not a
+  // person: the UI never lists it as a member, it shows that the namespace has
+  // TEE enabled instead.
+  | "ReadOnlyTee"
+  | "RelayTee";
+
+export const isTeeRole = (role: string | undefined): boolean =>
+  role === "ReadOnlyTee" || role === "RelayTee";
 export type UpgradePolicy =
   | "Automatic"
   | "LazyOnAccess"
@@ -237,7 +249,7 @@ export interface GroupApi {
   joinGroup(
     request: JoinGroupRequest,
   ): ApiResponse<JoinGroupResponse>;
-  listMembers(groupId: string): ApiResponse<{ members: GroupMember[]; selfIdentity?: string }>;
+  listMembers(groupId: string): ApiResponse<{ members: GroupMember[]; teeMembers: GroupMember[]; selfIdentity?: string }>;
   addGroupMember(groupId: string, identity: string): ApiResponse<void>;
   removeMember(
     groupId: string,

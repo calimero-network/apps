@@ -34,6 +34,7 @@ import issuesActions from "./actions/fixtures/issues.json";
 import crmActions from "./actions/fixtures/crm.json";
 import signActions from "./actions/fixtures/sign.json";
 import passActions from "./actions/fixtures/pass.json";
+import nodeActions from "./actions/fixtures/node.json";
 
 /**
  * The Hyperfeed contract's rules, in memory, so the app can be tried without a
@@ -649,7 +650,7 @@ export class DemoBackend implements FeedBackend {
     this.changed();
   }
 
-  /** What the pretend agent learned: Chat's actions in force (editing your messages set to act), the other core apps' waiting for you. */
+  /** What the pretend agent learned: Chat's actions in force (editing your messages set to act), the other core apps' and node management's waiting for you. */
   private seedActions() {
     const at = this.now();
     this.actionRows.set("chat@demo-chat", {
@@ -677,6 +678,7 @@ export class DemoBackend implements FeedBackend {
       ["crm", crmActions, "Reading the pipeline; contacts, deals, activities and stages; deleting."],
       ["sign", signActions, "Reading, uploading and signing documents; signers, shared spaces and deleting."],
       ["pass", passActions, "Reading the vault and its secrets; adding, trashing and purging secrets; devices and members."],
+      ["node", nodeActions, "Seeing what's on your node; installing apps, making and joining spaces, inviting people, leaving and deleting."],
     ];
     waiting.forEach(([app, actions, summary], i) => {
       this.actionRows.set(`${app}@demo-${app}`, {

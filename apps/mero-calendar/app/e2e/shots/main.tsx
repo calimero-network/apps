@@ -13,6 +13,9 @@ import { Provider } from "react-redux";
 import { store } from "../../src/store/store";
 import ModalFormEvent from "../../src/components/common/modals/modal-form-event/ModalFormEvent";
 import type { IModalValues } from "../../src/components/common/modals/modal-form-event/types";
+// The glass look first, exactly as src/index.tsx loads it: theme.css maps the
+// app's tokens onto its --glass-* values.
+import "@calimero-apps/glass/glass.css";
 import "../../src/index.module.scss";
 import "../../src/styles/theme.css";
 

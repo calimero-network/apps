@@ -256,3 +256,11 @@ describe("changing the order", () => {
     expect(screenLabel("Home @7", 2)).toBe("screen/Home @2");
   });
 });
+
+describe("hidden screens", () => {
+  it("are not listed, so they are not presented", () => {
+    const shown = screen("s1", "Sign in", 0, 0);
+    const hidden = screen("s2", "Pricing", 500, 0, 400, 300, { hidden: true });
+    expect(listScreens([shown, hidden]).map((s) => s.id)).toEqual(["s1"]);
+  });
+});

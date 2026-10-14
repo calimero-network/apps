@@ -71,7 +71,7 @@ export function WorkspaceSidebar({
   return (
     <aside
       style={{ width: `${width}px` }}
-      className="relative shrink-0 border-r border-border bg-muted/20"
+      className="relative shrink-0 border-r border-border/70 bg-card/65 backdrop-blur-xl backdrop-saturate-150"
     >
       {children}
       <div

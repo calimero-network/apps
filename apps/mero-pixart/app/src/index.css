@@ -5,43 +5,65 @@
 }
 
 :root {
-  /* ── Calimero dark palette ── */
-  --bg-0:        #0A0E13;   /* deepest — canvas pit, app behind everything */
-  --bg-1:        #0F1419;   /* primary surface — panels */
-  --bg-2:        #141A21;   /* raised surface — toolbar, headers */
-  --bg-3:        #1B232C;   /* hover / inset */
-  --bg-4:        #232E39;   /* active / selected row */
-  --border:      #232b34;
-  --border-strong: #303a45;
+  /* ── The fleet's light glass (@calimero-apps/glass) ──
+     The app's own tokens keep their names and take glass values, so every
+     component restyles without a class or markup change. Light by default; the
+     glass dark markers (`:root[data-theme='dark']`, `:root.dark`) switch the
+     glass tokens underneath, so these same mappings become smoked glass.
+     The canvas — the stage pit, its checkerboard, rulers, guides and gizmos —
+     is the user's content and keeps its own colours (see CanvasStage). */
+  --glass-tint: #e879f9;
 
-  --text:        #E6EAEF;
-  --text-dim:    #9aa6b2;
-  --text-faint:  #5c6772;
+  --bg-0:        var(--glass-surface-solid);   /* inset fields (inputs, number boxes) */
+  --bg-1:        var(--glass-surface-solid);   /* solid surfaces: menus, popovers, modals */
+  --bg-2:        color-mix(in srgb, var(--glass-surface-solid) 62%, transparent);   /* raised rows and controls */
+  --bg-3:        var(--glass-sunken);          /* hover / inset */
+  --bg-4:        color-mix(in srgb, var(--glass-ink) 9%, transparent);   /* active / selected row */
+  --border:      var(--glass-line);
+  --border-strong: var(--glass-line-strong);
 
-  /* signature lime accent */
-  --accent:      #A5FF11;
-  --accent-dim:  #84cc0e;
-  --accent-soft: rgba(165, 255, 17, 0.14);
-  --accent-text: #0A0E13;   /* text on accent fills */
+  --text:        var(--glass-ink);
+  --text-dim:    var(--glass-ink-2);
+  --text-faint:  var(--glass-muted);
 
-  --blue:        #3aa0ff;
-  --danger:      #ff5d6c;
-  --warn:        #ffb02e;
-  --ok:          #43d17a;
+  /* The chrome accent was Calimero lime; it is the glass accent now. Primary
+     buttons take the near-black ink (see .mp-btn--primary). */
+  --accent:      var(--glass-accent-solid);
+  --accent-dim:  color-mix(in srgb, var(--glass-accent-solid) 82%, var(--glass-ink));
+  --accent-soft: color-mix(in srgb, var(--glass-accent-solid) 14%, transparent);
+  --accent-text: #ffffff;   /* text on accent fills */
 
-  --radius:      8px;
-  --radius-sm:   6px;
-  --radius-lg:   12px;
+  --blue:        var(--glass-accent);
+  --danger:      #e5484d;
+  --warn:        #c4841d;
+  --ok:          #12a150;
 
-  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --radius:      12px;
+  --radius-sm:   9px;
+  --radius-lg:   20px;
+
+  --font: var(--glass-font);
   --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
 
-  --shadow:    0 8px 30px rgba(0, 0, 0, 0.5);
-  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
+  --shadow:    var(--glass-shadow-float);
+  --shadow-sm: 0 12px 28px -16px rgba(20, 26, 60, 0.45), 0 0 0 1px var(--glass-line);
 
   --topbar-h:  44px;
   --tool-w:    52px;
   --panel-w:   268px;
+
+  color-scheme: light;
+}
+
+/* Smoked glass: the glass tokens switch under the same markers; only the
+   status colours, which are not glass tokens, need their dark values back. */
+:root[data-theme='dark'],
+:root.dark {
+  --danger:      #ff5d6c;
+  --warn:        #ffb02e;
+  --ok:          #43d17a;
+  --shadow-sm:   0 12px 28px -16px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--glass-line);
+  color-scheme: dark;
 }
 
 html, body, #root {
@@ -49,7 +71,10 @@ html, body, #root {
   font-family: var(--font);
   font-size: 13px;
   color: var(--text);
-  background: var(--bg-0);
+  /* The app shell: glass ground under the tinted fields. */
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   /* Stop the trackpad two-finger horizontal swipe from triggering browser
@@ -98,45 +123,46 @@ a { color: inherit; text-decoration: none; }
   gap: 6px;
   height: 32px;
   padding: 0 14px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-3);
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
   color: var(--text);
   font-size: 13px;
-  font-weight: 500;
-  border: 1px solid var(--border);
+  font-weight: 600;
+  border: 1px solid var(--border-strong);
   transition: background 0.12s, border-color 0.12s, transform 0.06s;
 }
-.mp-btn:hover { background: var(--bg-4); border-color: var(--border-strong); }
+.mp-btn:hover { background: var(--bg-3); border-color: var(--border-strong); }
 .mp-btn:active { transform: translateY(1px); }
 .mp-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .mp-btn--primary {
-  background: var(--accent);
-  color: var(--accent-text);
-  border-color: var(--accent);
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
+  border-color: var(--glass-ink);
   font-weight: 600;
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
 }
-.mp-btn--primary:hover { background: var(--accent-dim); border-color: var(--accent-dim); }
+.mp-btn--primary:hover { background: var(--glass-ink-2); border-color: var(--glass-ink-2); }
 
 .mp-btn--ghost { background: transparent; border-color: transparent; }
 .mp-btn--ghost:hover { background: var(--bg-3); }
 
 .mp-btn--danger { color: var(--danger); border-color: transparent; background: transparent; }
-.mp-btn--danger:hover { background: rgba(255, 93, 108, 0.12); }
+.mp-btn--danger:hover { background: var(--glass-bad-bg); }
 
 .mp-input {
   width: 100%;
   height: 32px;
   padding: 0 10px;
   background: var(--bg-0);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   color: var(--text);
   font-size: 13px;
   outline: none;
   transition: border-color 0.12s;
 }
-.mp-input:focus { border-color: var(--accent); }
+.mp-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 .mp-label {
   font-size: 11px;
@@ -175,7 +201,7 @@ input[type="range"].mp-range {
   width: 100%;
   height: 4px;
   border-radius: 3px;
-  background: var(--bg-4);
+  background: var(--border-strong);
   outline: none;
 }
 input[type="range"].mp-range::-webkit-slider-thumb {
@@ -197,8 +223,7 @@ input[type="range"].mp-range::-moz-range-thumb {
 .mp-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(5, 8, 11, 0.7);
-  backdrop-filter: blur(3px);
+  background: rgba(14, 18, 34, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -207,8 +232,9 @@ input[type="range"].mp-range::-moz-range-thumb {
 }
 .mp-modal {
   width: min(440px, 92vw);
-  background: var(--bg-1);
-  border: 1px solid var(--border-strong);
+  /* Floats over everything: solid, never frosted. */
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
   padding: 22px;

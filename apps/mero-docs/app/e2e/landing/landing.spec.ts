@@ -39,9 +39,10 @@ test.describe('Landing (unauthenticated)', () => {
     await page.reload();
     await expect(page.locator('html')).toHaveClass(/\bdark\b/);
     const app = page.locator('.cal-lp-a > div').first();
-    await expect(app).toHaveCSS('background-color', 'rgb(250, 250, 250)');
+    // The app's light glass ground (#f6f7fb) and its smoked-glass dark (#0b0e18).
+    await expect(app).toHaveCSS('background-color', 'rgb(246, 247, 251)');
     await page.getByTestId('theme-toggle').click();
-    await expect(app).toHaveCSS('background-color', 'rgb(14, 14, 16)');
+    await expect(app).toHaveCSS('background-color', 'rgb(11, 14, 24)');
   });
 
   test('unknown routes redirect to /', async ({ page }) => {

@@ -123,6 +123,8 @@ export function listScreens(
 ): Screen[] {
   const out: Screen[] = [];
   for (const el of elements) {
+    // A hidden screen is not presented, like a hidden frame in Figma.
+    if (el.hidden) continue;
     const label = labelOverrides[el.id] ?? el.label ?? "";
     if (isScreen(el, label)) out.push(toScreen(el, label));
   }

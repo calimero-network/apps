@@ -1,5 +1,5 @@
 import { useLongPress } from "@uidotdev/usehooks";
-import { useEffect, useState, useMemo, memo, useCallback } from "react";
+import { useEffect, useLayoutEffect, useState, useMemo, memo, useCallback } from "react";
 import styled from "styled-components";
 
 import { MessageActions } from "..";
@@ -557,7 +557,11 @@ const Message = (props: MessageProps) => {
     };
   }, []); // Empty deps - only run once on mount
 
-  useEffect(() => {
+  // Which way the menu opens depends on where the row is when it opens, not
+  // where it was when it mounted: a row that has since scrolled to the top
+  // opened upward and the list clipped its first items.
+  useLayoutEffect(() => {
+    if (!isMoreActionVisible) return;
     const container = document.getElementById(
       `actions-container-${props.message.id}`,
     );
@@ -569,7 +573,7 @@ const Message = (props: MessageProps) => {
         setPopupPosition(ElementPosition.TOP);
       }
     }
-  }, []);
+  }, [isMoreActionVisible, props.message.id]);
 
   if (
     (props.message.files.length === 0 &&

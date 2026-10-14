@@ -27,9 +27,9 @@
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  background: var(--glass-surface-solid);
   color: var(--text);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-shadow-float);
   font-size: 14px;
 }
 
@@ -76,7 +76,7 @@
   padding: 0 18px;
   background: var(--accent);
   border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 8px;
+  border-radius: 999px;
   color: var(--accent-text);
   font-size: 14px;
   font-weight: 500;

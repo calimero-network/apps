@@ -26,6 +26,42 @@ describe("the shipped actions", () => {
   });
 });
 
+/**
+ * mero-mcp's node tools (2.9.1), as your agent sees your node: what each one
+ * does to it. mero-bot keeps the same two lists (NODE_READS and NODE_WRITES in
+ * src/hyperfeed/tools.ts) and judges these calls under the app key "node".
+ * `call` and `call_many` reach apps, so each app's own actions judge them.
+ */
+const NODE_TOOLS: Abi = {
+  methods: [
+    ...["node_status", "list_nodes", "list_applications", "list_namespaces", "list_contexts", "lookup_alias", "list_blobs",
+      "list_group_members", "describe_app", "select_app", "search_registry", "list_registry_versions"].map((name) => ({ name, params: [], intent: "read_only" as const })),
+    ...["create_context", "join_context", "delete_context", "create_alias", "install_application", "uninstall_application",
+      "upload_blob", "delete_blob", "create_namespace", "delete_namespace", "invite_to_namespace", "join_namespace",
+      "leave_namespace", "add_group_members", "create_group", "set_group_visibility", "set_group_metadata",
+      "join_open_group"].map((name) => ({ name, params: [] })),
+  ],
+  events: [],
+};
+
+describe("node management", () => {
+  const node = fixture("node");
+
+  it("fits mero-mcp's node tools and covers every one", () => {
+    expect(validateActions(node, NODE_TOOLS)).toEqual([]);
+    expect(uncovered(node, NODE_TOOLS)).toEqual([]);
+  });
+
+  it("keeps the switches on what they always covered", () => {
+    const guardOf = (method: string) => node.find((a) => a.methods.includes(method))?.category;
+    for (const m of ["uninstall_application", "leave_namespace", "delete_namespace", "delete_context", "delete_blob"]) {
+      expect(guardOf(m), m).toBe("delete");
+    }
+    // Opening a group lets a whole space in: that is inviting people too.
+    for (const m of ["invite_to_namespace", "add_group_members", "set_group_visibility"]) expect(guardOf(m), m).toBe("invite");
+  });
+});
+
 describe("validateActions", () => {
   const abi: Abi = {
     methods: [
