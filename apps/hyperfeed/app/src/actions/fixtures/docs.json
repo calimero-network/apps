@@ -1,0 +1,67 @@
+[
+  {
+    "id": "read",
+    "label": "Read documents",
+    "description": "Open, list and search your documents and their comments.",
+    "category": "",
+    "writes": false,
+    "methods": [
+      "anchor_at", "comment_count", "comment_schema_version", "get_block", "get_block_delta",
+      "get_comment", "get_doc", "get_document", "get_state_digest", "get_text", "get_title",
+      "get_title_state", "list_blocks", "list_comments", "list_docs", "passage_count",
+      "resolve_ids", "search_docs", "title_anchor_at", "title_resolve"
+    ]
+  },
+  {
+    "id": "create",
+    "label": "Create documents",
+    "description": "Start a new document.",
+    "category": "",
+    "writes": true,
+    "methods": ["create_doc"]
+  },
+  {
+    "id": "edit",
+    "label": "Edit documents",
+    "description": "Write, rewrite, format, reorder and remove text, and rename. Every edit can be undone.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "apply_delta", "apply_delta_on", "delete_block", "edit_doc", "insert_block", "mark",
+      "merge_blocks", "move_block", "set_attr", "set_depth", "set_kind", "split_block",
+      "title_apply_delta", "title_apply_delta_on", "title_undo", "undo"
+    ]
+  },
+  {
+    "id": "comment",
+    "label": "Comment",
+    "description": "Add a comment, or change one of yours.",
+    "category": "",
+    "writes": true,
+    "methods": ["add_comment", "edit_comment"]
+  },
+  {
+    "id": "organize",
+    "label": "Tag and archive documents",
+    "description": "Add or remove tags, archive a document or bring it back.",
+    "category": "",
+    "writes": true,
+    "methods": ["add_tag", "remove_tag", "archive_doc", "unarchive_doc"]
+  },
+  {
+    "id": "delete_comment",
+    "label": "Delete comments",
+    "description": "Removes a comment for everyone.",
+    "category": "delete",
+    "writes": true,
+    "methods": ["delete_comment"]
+  },
+  {
+    "id": "delete",
+    "label": "Delete documents",
+    "description": "Removes a document for everyone it's shared with.",
+    "category": "delete",
+    "writes": true,
+    "methods": ["delete_doc"]
+  }
+]

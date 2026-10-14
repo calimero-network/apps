@@ -9,35 +9,35 @@ const Section = styled.div`
 const SectionTitle = styled.div`
   font-size: 0.78rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
+  color: color-mix(in srgb, var(--glass-ink) 70%, transparent);
   margin-bottom: 0.5rem;
 `;
 
 const Label = styled.span`
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--glass-ink) 50%, transparent);
   min-width: 120px;
 `;
 
 const Value = styled.span`
   font-size: 0.78rem;
-  color: #fff;
+  color: var(--glass-ink);
 `;
 
 const InfoGrid = styled.div`
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.375rem 0.75rem;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
+  background: color-mix(in srgb, var(--glass-ink) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 5%, transparent);
+  border-radius: 10px;
   padding: 0.625rem;
 `;
 
 const EmptyState = styled.div`
   text-align: center;
   padding: 1.5rem;
-  color: rgba(255, 255, 255, 0.3);
+  color: color-mix(in srgb, var(--glass-ink) 30%, transparent);
   font-size: 0.82rem;
 `;
 

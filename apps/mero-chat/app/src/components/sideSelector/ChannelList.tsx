@@ -6,7 +6,7 @@ import { getContextVisibilityLabel } from "../../utils/channelVisibility";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";
 
 const ChannelListContainer = styled.div`
-  background-color: #0e0e10;
+  background-color: transparent;
   padding: 0 0.375rem;
   @media (max-width: 1024px) {
     width: 100%;
@@ -17,7 +17,7 @@ const ScrollableChannelList = styled.div`
   max-height: 240px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.08) transparent;
+  scrollbar-color: var(--glass-line-strong) transparent;
 
   &::-webkit-scrollbar {
     width: 3px;
@@ -26,13 +26,13 @@ const ScrollableChannelList = styled.div`
     background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background-color: rgba(255,255,255,0.1);
+    background-color: color-mix(in srgb, var(--glass-ink) 10%, transparent);
     border-radius: 2px;
   }
 `;
 
 const EmptyChannelState = styled.div`
-  color: #7c7c88;
+  color: var(--glass-muted);
   font-size: 12px;
   line-height: 1.5;
   padding: 0.5rem 0.625rem 0.75rem;
@@ -46,41 +46,41 @@ const ChannelListItem = styled.div<{
   display: flex;
   justify-content: ${(props) => (props.$isCollapsed ? "center" : "space-between")};
   align-items: center;
-  padding: 0.35rem ${(props) => (props.$isCollapsed ? "0" : "0.625rem")};
-  border-radius: 7px;
+  padding: 0.45rem ${(props) => (props.$isCollapsed ? "0" : "0.625rem")};
+  border-radius: 11px;
   cursor: pointer;
-  margin-bottom: 1px;
+  margin-bottom: 2px;
   position: relative;
   transition: all 0.12s ease;
-  border-left: 2px solid ${(props) => (props.selected ? "#a5ff11" : "transparent")};
 
-  background: ${(props) =>
-    props.selected ? "rgba(165,255,17,0.07)" : "transparent"};
+  /* Selected: a solid card lifted off the glass, as in the fleet mock. */
+  background: ${(props) => (props.selected ? "var(--chat-card)" : "transparent")};
+  box-shadow: ${(props) => (props.selected ? "var(--chat-card-shadow)" : "none")};
   color: ${(props) =>
-    props.selected ? "#fff" : props.$hasUnread ? "#d8d8e0" : "#5e5e6e"};
+    props.selected ? "var(--glass-ink)" : props.$hasUnread ? "var(--glass-ink)" : "var(--glass-ink-2)"};
   fill: ${(props) =>
-    props.selected ? "rgba(165,255,17,0.8)" : props.$hasUnread ? "#d8d8e0" : "#5e5e6e"};
-  font-weight: ${(props) => (props.$hasUnread && !props.selected ? "600" : "400")};
+    props.selected || props.$hasUnread ? "var(--glass-ink)" : "var(--glass-muted)"};
+  font-weight: ${(props) => (props.selected || props.$hasUnread ? "700" : "400")};
 
   @media (min-width: 1025px) {
     &:hover {
-      background: rgba(255, 255, 255, 0.05) !important;
-      color: #d0d0d8 !important;
-      fill: #d0d0d8 !important;
-      border-left-color: ${(props) => (props.selected ? "#a5ff11" : "rgba(165,255,17,0.3)")} !important;
+      background: ${(props) =>
+        props.selected ? "var(--chat-card)" : "color-mix(in srgb, var(--glass-ink) 5%, transparent)"} !important;
+      color: var(--glass-ink) !important;
+      fill: var(--glass-ink) !important;
     }
   }
   @media (max-width: 1024px) {
     &:active {
-      background: rgba(165,255,17,0.07) !important;
-      color: #fff !important;
+      background: var(--chat-card) !important;
+      color: var(--glass-ink) !important;
     }
   }
 `;
 
 const TextMedium = styled.div`
-  font-size: 13.5px;
-  font-weight: 400;
+  font-size: 14px;
+  font-weight: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -110,13 +110,13 @@ const UnreadBadge = styled.span<{ $isMention?: boolean }>`
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  font-size: 10px;
-  font-weight: 600;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
   flex-shrink: 0;
-  background: ${({ $isMention }) => ($isMention ? "#a5ff11" : "rgba(255,255,255,0.18)")};
-  color: ${({ $isMention }) => ($isMention ? "#0e0e10" : "#fff")};
+  background: ${({ $isMention }) => ($isMention ? "var(--glass-ink)" : "color-mix(in srgb, var(--glass-ink) 18%, transparent)")};
+  color: ${({ $isMention }) => ($isMention ? "var(--glass-on-ink)" : "var(--glass-ink)")};
 `;
 
 interface ChannelListProps {

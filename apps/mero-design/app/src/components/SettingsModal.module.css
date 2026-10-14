@@ -1,7 +1,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  background: rgba(14, 18, 34, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -9,12 +9,15 @@
 }
 
 .modal {
-  background: #fff;
-  border-radius: 10px;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
   padding: 28px;
   width: 440px;
   max-width: 95vw;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.16);
+  box-shadow: var(--glass-shadow-float);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -35,11 +38,11 @@
   background: none;
   border: none;
   font-size: 14px;
-  color: #999;
+  color: var(--glass-muted);
   cursor: pointer;
   padding: 4px;
 }
-.close:hover { color: #333; }
+.close:hover { color: var(--glass-ink); }
 
 .row {
   display: flex;
@@ -52,16 +55,16 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #888;
+  color: var(--glass-muted);
 }
 
 .copyRow {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f5f5f5;
-  border: 1px solid #e8e8e8;
-  border-radius: 6px;
+  background: var(--glass-sunken);
+  border: 1px solid var(--glass-line-strong);
+  border-radius: var(--glass-radius-sm);
   padding: 8px 10px;
 }
 
@@ -70,27 +73,28 @@
   font-size: 11px;
   font-family: monospace;
   word-break: break-all;
-  color: #333;
+  color: var(--glass-ink);
 }
 
 .copyBtn {
   flex-shrink: 0;
   padding: 4px 10px;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  background: #fff;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 999px;
+  color: var(--glass-ink);
+  background: var(--glass-surface-solid);
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
 }
-.copyBtn:hover { background: #f0f0f0; }
+.copyBtn:hover { background: var(--glass-sunken); }
 
 .badge {
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;
-  background: #dcfce7;
-  color: #166534;
+  background: var(--glass-good-bg);
+  color: var(--glass-good-ink);
   border-radius: 20px;
   font-size: 12px;
   font-weight: 500;
@@ -99,12 +103,12 @@
 
 .divider {
   height: 1px;
-  background: #f0f0f0;
+  background: var(--glass-sunken);
 }
 
 .muted {
   font-size: 12px;
-  color: #999;
+  color: var(--glass-muted);
 }
 
 .memberList {
@@ -125,8 +129,8 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #e8f0fe;
-  color: #2563eb;
+  background: color-mix(in srgb, var(--glass-tint) 40%, var(--glass-surface-solid));
+  color: var(--glass-ink);
   font-size: 12px;
   font-weight: 600;
   display: flex;
@@ -146,7 +150,7 @@
 .memberLabel {
   font-size: 12px;
   font-weight: 500;
-  color: #222;
+  color: var(--glass-ink);
 }
 
 .memberIdRow {
@@ -157,7 +161,7 @@
 
 .memberId {
   font-size: 11px;
-  color: #777;
+  color: var(--glass-muted);
   font-family: monospace;
 }
 
@@ -169,19 +173,19 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  background: #fff;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 6px;
+  background: var(--glass-surface-solid);
   font-size: 11px;
-  color: #666;
+  color: var(--glass-ink-2);
   cursor: pointer;
   line-height: 1;
 }
-.copyIcon:hover { background: #f0f0f0; color: #111; }
+.copyIcon:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
 .youTag {
   font-size: 10px;
-  color: #999;
+  color: var(--glass-muted);
 }
 
 .roleBadge {
@@ -191,19 +195,20 @@
   font-size: 11px;
   font-weight: 600;
 }
-.roleAdmin { background: #fef3c7; color: #92400e; }
-.roleMember { background: #e5e7eb; color: #4b5563; }
+.roleAdmin { background: var(--glass-wait-bg); color: var(--glass-wait-ink); }
+.roleMember { background: var(--glass-sunken); color: var(--glass-ink-2); }
 
 .roleBtn {
   flex-shrink: 0;
   padding: 4px 10px;
-  border: 1px solid #e0e0e0;
-  border-radius: 5px;
-  background: #fff;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 999px;
+  color: var(--glass-ink);
+  background: var(--glass-surface-solid);
   font-size: 11px;
   font-weight: 500;
-  color: #333;
+  color: var(--glass-ink);
   cursor: pointer;
 }
-.roleBtn:hover:not(:disabled) { background: #f0f0f0; border-color: #bbb; }
+.roleBtn:hover:not(:disabled) { background: var(--glass-sunken); border-color: var(--glass-muted); }
 .roleBtn:disabled { opacity: 0.5; cursor: default; }

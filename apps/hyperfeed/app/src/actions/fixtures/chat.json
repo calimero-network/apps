@@ -1,0 +1,86 @@
+[
+  {
+    "id": "read",
+    "label": "Read and search messages",
+    "description": "Open channels and threads, search their history, see who is in them.",
+    "category": "",
+    "writes": false,
+    "methods": [
+      "get_channel_info", "get_draft", "get_info", "get_member_role", "get_message_count",
+      "get_messages", "get_messages_from", "get_profiles", "get_unread_count",
+      "get_unread_mentions", "list_roles", "message_position", "search_messages", "search_messages_scan"
+    ]
+  },
+  {
+    "id": "mark_read",
+    "label": "Mark messages as read",
+    "description": "Clears your unread counts. Nobody else sees it.",
+    "category": "",
+    "writes": true,
+    "methods": ["mark_as_read", "mark_messages_as_read"]
+  },
+  {
+    "id": "send",
+    "label": "Send messages",
+    "description": "Post and reply in channels. Asks first for someone new, under your guard.",
+    "category": "",
+    "writes": true,
+    "methods": ["send_message"]
+  },
+  {
+    "id": "edit",
+    "label": "Edit your messages",
+    "description": "Change the text of something you sent.",
+    "category": "",
+    "writes": true,
+    "methods": ["edit_message"]
+  },
+  {
+    "id": "react",
+    "label": "React to messages",
+    "description": "Add or take back a reaction.",
+    "category": "",
+    "writes": true,
+    "methods": ["update_reaction"]
+  },
+  {
+    "id": "drafts",
+    "label": "Keep drafts",
+    "description": "Save or throw away a message you haven't sent.",
+    "category": "",
+    "writes": true,
+    "methods": ["save_draft", "delete_draft"]
+  },
+  {
+    "id": "delete",
+    "label": "Delete your messages",
+    "description": "Removes them for everyone in the channel.",
+    "category": "delete",
+    "writes": true,
+    "methods": ["delete_message"]
+  },
+  {
+    "id": "profile",
+    "label": "Update your profile",
+    "description": "Your name and picture, as everyone in the chat sees them.",
+    "category": "",
+    "writes": true,
+    "methods": ["set_profile"]
+  },
+  {
+    "id": "channel",
+    "label": "Change channel details",
+    "description": "A channel's name, topic and description.",
+    "category": "",
+    "writes": true,
+    "methods": ["update_info"]
+  },
+  {
+    "id": "roles",
+    "label": "Change someone's role",
+    "description": "Make someone an admin or a member.",
+    "category": "invite",
+    "writes": true,
+    "methods": ["set_member_role"]
+  }
+]

@@ -5,9 +5,9 @@ import { sanitizeHtml } from '../virtualized-chat/utils';
 // ── Design tokens (aligned with BaseModal: #111113 surface, 0.08 border,
 //    mero-green accent #a5ff11) ───────────────────────────────────────────
 
-const ACCENT_GREEN = '#a5ff11';
-const ACCENT_GREEN_TINT_BG = 'rgba(165, 255, 17, 0.1)';
-const ACCENT_GREEN_TINT_BORDER = 'rgba(165, 255, 17, 0.22)';
+const ACCENT_GREEN = 'var(--glass-accent)';
+const ACCENT_GREEN_TINT_BG = 'color-mix(in srgb, var(--glass-accent) 10%, transparent)';
+const ACCENT_GREEN_TINT_BORDER = 'color-mix(in srgb, var(--glass-accent) 22%, transparent)';
 
 // ── Animation ──────────────────────────────────────────────────────────────
 
@@ -22,10 +22,10 @@ const ToastContainer = styled.div<{ $isVisible: boolean }>`
   position: relative;
   width: 360px;
   max-width: calc(100vw - 2rem);
-  background: #111113;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--glass-surface-solid);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
   border-radius: 14px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--chat-pop-shadow);
   backdrop-filter: blur(10px);
   overflow: hidden;
   transform: translateX(${(p) => (p.$isVisible ? '0' : '110%')});
@@ -52,7 +52,7 @@ const TitleGroup = styled.div`
 const TitleIcon = styled.div`
   width: 26px;
   height: 26px;
-  border-radius: 7px;
+  border-radius: 10px;
   background: ${ACCENT_GREEN_TINT_BG};
   border: 1px solid ${ACCENT_GREEN_TINT_BORDER};
   display: flex;
@@ -65,7 +65,7 @@ const TitleIcon = styled.div`
 `;
 
 const Title = styled.div`
-  color: #fff;
+  color: var(--glass-ink);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -78,27 +78,27 @@ const Title = styled.div`
 const CloseButton = styled.button`
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--glass-ink) 35%, transparent);
   width: 24px;
   height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 10px;
   transition: all 0.15s ease;
   flex-shrink: 0;
   padding: 0;
 
   &:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--glass-ink);
+    background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
   }
 `;
 
 const Body = styled.div`
   padding: 0 0.875rem 0.875rem calc(0.875rem + 26px + 0.625rem);
-  color: rgba(255, 255, 255, 0.7);
+  color: color-mix(in srgb, var(--glass-ink) 70%, transparent);
   font-size: 12.5px;
   font-weight: 400;
   line-height: 1.5;
@@ -109,17 +109,17 @@ const Body = styled.div`
   a { color: ${ACCENT_GREEN}; text-decoration: none; }
   a:hover { text-decoration: underline; }
   .mention {
-    background: rgba(165, 255, 17, 0.12);
+    background: color-mix(in srgb, var(--glass-accent) 12%, transparent);
     color: ${ACCENT_GREEN};
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: 8px;
     font-weight: 500;
   }
   code {
-    background: rgba(255, 255, 255, 0.06);
-    color: #fff;
+    background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+    color: var(--glass-ink);
     padding: 1px 5px;
-    border-radius: 4px;
+    border-radius: 8px;
     font-family: 'Monaco', 'Menlo', monospace;
     font-size: 11.5px;
   }
@@ -131,15 +131,15 @@ const ProgressTrack = styled.div`
   left: 0;
   right: 0;
   height: 2px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--glass-ink) 4%, transparent);
 `;
 
 const progressBarStyle = css<{ $duration: number; $running: boolean }>`
   height: 100%;
   background: linear-gradient(
     90deg,
-    rgba(165, 255, 17, 0.55),
-    rgba(165, 255, 17, 0.9)
+    color-mix(in srgb, var(--glass-accent) 55%, transparent),
+    color-mix(in srgb, var(--glass-accent) 90%, transparent)
   );
   transform-origin: left center;
   animation: ${shrink} ${(p) => p.$duration}ms linear forwards;

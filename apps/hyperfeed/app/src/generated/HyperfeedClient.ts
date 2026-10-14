@@ -74,6 +74,37 @@ export interface Action {
 }
 
 /**
+ * One action, as your agent proposes it and settings shows it.
+ */
+export interface ActionDef {
+  /**
+   * Stable within the app, e.g. `edit`; your setting for it is kept by it.
+   */
+  id: string;
+  /**
+   * What it is, for you: "Edit documents".
+   */
+  label: string;
+  /**
+   * One line on what it covers: "Write, format and reorder text".
+   */
+  description: string;
+  /**
+   * The guard that always covers it, or empty when that depends on the
+   * call (sending to someone new): then the category the agent names stands.
+   */
+  category: string;
+  /**
+   * Whether it changes anything. An action that only reads always may run.
+   */
+  writes: boolean;
+  /**
+   * The app's methods it covers, by name.
+   */
+  methods: string[];
+}
+
+/**
  * What the agent reports for one action.
  */
 export interface ActionInput {
@@ -127,6 +158,88 @@ export interface ActionInput {
    * chain of its own, joins this action's chain. Older agents omit it.
    */
   subject: string;
+  /**
+   * For a draft you send yourself: the call that sends it in its app,
+   * `{"method": ..., "args": {...}}`, where `"=answer"` in an arg is your
+   * edit of the draft. Your client makes it as you when you approve; the
+   * agent never does. Only on a proposal. See `members.rs`.
+   */
+  send_call: string;
+}
+
+/**
+ * One action you set apart from its app's mode.
+ */
+export interface ActionModeView {
+  app: string;
+  action: string;
+  mode: string;
+}
+
+/**
+ * Your setting for one action, kept by `<app>/<action id>`. It outlives the
+ * set it was made under: a new version's action with the same id keeps it.
+ */
+export interface ActionRule {
+  /**
+   * One of [`ACTION_MODES`], or empty to follow the app again.
+   */
+  mode: string;
+  updated_at: number;
+}
+
+/**
+ * An app version's actions, as your agent learned them from its ABI.
+ */
+export interface ActionSet {
+  app: string;
+  application_id: string;
+  actions: ActionDef[];
+  /**
+   * One line for you: what changed, or what the set covers.
+   */
+  summary: string;
+  /**
+   * [`LENS_PROPOSED`], [`LENS_APPROVED`] or [`LENS_REJECTED`].
+   */
+  status: string;
+  updated_at: number;
+}
+
+export interface ActionSetView {
+  app: string;
+  application_id: string;
+  actions: ActionDef[];
+  summary: string;
+  status: string;
+  updated_at: number;
+}
+
+/**
+ * An agent's own account you added to the feed, by account.
+ */
+export interface AgentAccount {
+  /**
+   * The name it reports in with, and the only one it may speak as.
+   */
+  name: string;
+  /**
+   * When you added it, or removed it; the later write wins.
+   */
+  at: number;
+  /**
+   * Removed rows stay, so a removal is not undone by an older add merging in.
+   */
+  removed: boolean;
+}
+
+/**
+ * An agent account, as settings shows it.
+ */
+export interface AgentAccountView {
+  account: string;
+  name: string;
+  added_at: number;
 }
 
 /**
@@ -357,6 +470,11 @@ export interface Event_ActionChanged {
 
 export interface Event_ActionRecorded {
   id: string;
+  status: string;
+}
+
+export interface Event_ActionsChanged {
+  app: string;
   status: string;
 }
 
@@ -613,7 +731,8 @@ export interface Headline {
 
 export interface Hyperfeed {
   /**
-   * The account that created the feed; the only one that writes to it.
+   * The account that created the feed. Only it decides; agents it adds
+   * (see `agent_accounts`) write the agent's side.
    */
   owner: string;
   actions: Record<string, Action>;
@@ -630,6 +749,15 @@ export interface Hyperfeed {
    * How each app version's events become feed items, by `<app>@<application id>`.
    */
   lenses: Record<string, Lens>;
+  /**
+   * What your agent can do in each app version, by `<app>@<application id>`.
+   * See [`actions`].
+   */
+  action_sets: Record<string, ActionSet>;
+  /**
+   * Your setting for each action apart from its app, by `<app>/<action id>`.
+   */
+  action_rules: Record<string, ActionRule>;
   /**
    * Chains you put away, by chain id.
    */
@@ -736,6 +864,14 @@ export interface Hyperfeed {
    * Your rules for one agent only, by id. See [`AgentRule`].
    */
   agent_rules: Record<string, AgentRule>;
+  /**
+   * Agents with accounts of their own that you added, by account. See [`members`].
+   */
+  agent_accounts: Record<string, AgentAccount>;
+  /**
+   * The call that sends each draft for you to send, by the action's id.
+   */
+  sends: Record<string, SendCall>;
 }
 
 /**
@@ -1277,6 +1413,16 @@ export interface RuleView {
   created_at: number;
 }
 
+/**
+ * The call that sends a draft in its app, kept beside the action it belongs to.
+ */
+export interface SendCall {
+  /**
+   * `{"method": ..., "args": {...}}`, as a lens's `reply_call` is.
+   */
+  call: string;
+}
+
 export interface SettingsView {
   owner: string;
   paused: boolean;
@@ -1319,6 +1465,16 @@ export interface SettingsView {
    * keeps `rules` and then its own. Absent on a feed made before them.
    */
   agent_rules: AgentRuleView[];
+  /**
+   * Actions you set apart from their app's mode, by app then action.
+   * Absent on a feed made before actions.
+   */
+  action_modes: ActionModeView[];
+  /**
+   * Agents with accounts of their own you added, by name. Absent on a feed
+   * made before them.
+   */
+  agent_accounts: AgentAccountView[];
 }
 
 /**
@@ -1558,9 +1714,18 @@ export interface Work {
 
 
 
+
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }
   | { name: "ActionRecorded"; payload: Event_ActionRecorded }
+  | {
+    /**
+     * An app's actions were proposed, approved or turned down: re-read
+     * `action_sets`.
+     */
+    name: "ActionsChanged";
+    payload: Event_ActionsChanged;
+  }
   | {
     /**
      * Chains were put away or brought back: re-read the feed.
@@ -1651,6 +1816,36 @@ export class HyperfeedClient {
   constructor(client: ExecuteTransport | { readonly rpc: ExecuteTransport }, contextId: string) {
     this._transport = 'execute' in client ? client : client.rpc;
     this._contextId = contextId;
+  }
+
+  /**
+   * action_sets
+   *
+   * Every app's actions, newest first: what your agent learned for each
+   * app version, and whether you approved it. An app's newest approved set
+   * is the one in force.
+   *
+   * @intent read_only
+   */
+  public async actionSets(): Promise<ActionSetView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'action_sets', argsJson: {} });
+    return response as ActionSetView[];
+  }
+
+  /**
+   * add_agent_account
+   *
+   * Add an agent with an account of its own (a cloud agent, say) under
+   * `name`, the name it reports in with. From then on it works your feed as
+   * your agent does, speaking only as `name`; what decides for you stays
+   * yours. Adding it again renames it. It must also be a member of this
+   * feed's context: invite it there as you would anyone.
+   *
+   * @intent mutating
+   */
+  public async addAgentAccount(params: { account: string; name: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add_agent_account', argsJson: params });
+    return response as void;
   }
 
   /**
@@ -1936,11 +2131,14 @@ export class HyperfeedClient {
   /**
    * check_action
    *
-   * What your rules say about an action before the agent takes it.
+   * What your rules say about an action before the agent takes it. Name
+   * the app `method` it calls: once you approved the app's actions, they
+   * decide what the call is, not `category` and `writes`. Older agents omit
+   * it and are judged by what they say.
    *
    * @intent read_only
    */
-  public async checkAction(params: { app_key: string; category: string; writes: boolean }): Promise<Verdict> {
+  public async checkAction(params: { app_key: string; category: string; writes: boolean; method: string | null }): Promise<Verdict> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'check_action', argsJson: params });
     return response as Verdict;
   }
@@ -1978,7 +2176,8 @@ export class HyperfeedClient {
    * complete_action
    *
    * The agent reports what happened after you approved, asked for a retry,
-   * or asked for an undo.
+   * or asked for an undo. For a draft you send (one with a `reply_call`),
+   * your client reports instead, once it sent it or the app refused.
    *
    * @intent mutating
    */
@@ -1998,6 +2197,20 @@ export class HyperfeedClient {
   public async completeAnswer(params: { id: string; outcome: string; note: string }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'complete_answer', argsJson: params });
     return response as FeedItem;
+  }
+
+  /**
+   * decide_actions
+   *
+   * Approve or turn down the actions your agent proposed for an app
+   * version. Once approved they decide what each call in the app is, and
+   * a method none of them names asks you every time.
+   *
+   * @intent mutating
+   */
+  public async decideActions(params: { app_key: string; application_id: string; decision: string }): Promise<ActionSetView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'decide_actions', argsJson: params });
+    return response as ActionSetView;
   }
 
   /**
@@ -2165,6 +2378,22 @@ export class HyperfeedClient {
   }
 
   /**
+   * propose_actions
+   *
+   * The agent proposes an app version's actions, learned from its ABI:
+   * which methods make up each thing you would recognise ("Edit
+   * documents"), whether it writes, and the guard that covers it. It waits
+   * for you; the app's newest approved set stays in force meanwhile. The
+   * same actions proposed again change nothing.
+   *
+   * @intent mutating
+   */
+  public async proposeActions(params: { app_key: string; application_id: string; actions: ActionDef[]; summary: string }): Promise<ActionSetView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'propose_actions', argsJson: params });
+    return response as ActionSetView;
+  }
+
+  /**
    * propose_lens
    *
    * The agent proposes a lens for one app version, learned from its ABI.
@@ -2295,6 +2524,19 @@ export class HyperfeedClient {
   }
 
   /**
+   * remove_agent_account
+   *
+   * Stop an agent account working your feed. Remove it from the context
+   * too, so it no longer reads it.
+   *
+   * @intent mutating
+   */
+  public async removeAgentAccount(params: { account: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'remove_agent_account', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * remove_agent_rule
    *
    * Remove one of your rules for one agent.
@@ -2422,6 +2664,20 @@ export class HyperfeedClient {
    */
   public async setAccess(params: { agent: string; folders: Folder[]; shell: boolean; web: boolean }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'set_access', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_action_mode
+   *
+   * Set one action apart from its app's mode: `act` without asking, `ask`
+   * first, `off`, or empty to follow the app again. Your guards and the
+   * pause still apply.
+   *
+   * @intent mutating
+   */
+  public async setActionMode(params: { app_key: string; action: string; mode: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_action_mode', argsJson: params });
     return response as void;
   }
 

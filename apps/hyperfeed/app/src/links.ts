@@ -1,4 +1,5 @@
 import type { FeedItem, LinkView } from "./generated/HyperfeedClient";
+import type { LensHost } from "./lens/lens";
 
 /**
  * Where each first-party app lives on the web, by app key: the `frontend` its
@@ -103,4 +104,48 @@ export function subjectFromLink(text: string): string {
   if (!app || !context) return "";
   const item = url.searchParams.get("issue") ?? url.searchParams.get("doc") ?? "";
   return item ? `${app}:${decodeURIComponent(context)}:${item}` : `${app}:${decodeURIComponent(context)}`;
+}
+
+/**
+ * What a link's chip is called, read from the thing itself ("#launch", "DM
+ * with Ronit"); `""` when it cannot say, and the chip names itself as before.
+ * A link the agent made is unlabelled: without this, every chat it touched
+ * read "Chat".
+ */
+export type NameLink = (link: Pick<LinkView, "app" | "context" | "item">) => Promise<string>;
+
+/**
+ * What a whole chat is called: a channel by its name; a DM, whose own name is
+ * the frontend's "private_dm", by the people in it besides you.
+ */
+export async function chatName(host: LensHost): Promise<string> {
+  const info = await host.call<{ name?: string; context_type?: string }>("get_info", {});
+  if (info?.context_type !== "Dm") return info?.name ? `#${info.name}` : "";
+  const [mine, profiles] = await Promise.all([host.me(), host.call<{ identity: string; username?: string }[]>("get_profiles", {})]);
+  const others = (Array.isArray(profiles) ? profiles : []).filter((p) => !mine.has(p.identity));
+  const names = (await Promise.all(others.map(async (p) => (await host.name(p.identity)) || p.username?.trim() || ""))).filter(Boolean);
+  return names.length > 0 ? `DM with ${names.join(", ")}` : "DM";
+}
+
+/**
+ * Names whole-chat links from the chat, each context read once; a failed read
+ * is asked again next time. A thread, another app, or a context no host
+ * reaches: `""`.
+ */
+export function linkNamer(hostFor: (contextId: string) => LensHost | null): NameLink {
+  const named = new Map<string, Promise<string>>();
+  return (link) => {
+    if (link.app !== "chat" || link.item || !link.context) return Promise.resolve("");
+    let name = named.get(link.context);
+    if (!name) {
+      const host = hostFor(link.context);
+      if (!host) return Promise.resolve("");
+      name = chatName(host).catch(() => {
+        named.delete(link.context);
+        return "";
+      });
+      named.set(link.context, name);
+    }
+    return name;
+  };
 }
