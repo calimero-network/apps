@@ -41,8 +41,8 @@ same warrant path it uses everywhere else.
 | **Pause** | you | while paused, every write the agent wants to make becomes a proposal |
 | **Archived** | you | per chain: put away, with the chain's latest activity then and an optional return time ("later"). It is out of the feed until something new happens in it or that time passes |
 | **Presence** | your agent | per agent name: when it last reported in. The app shows "Agent live" for 90 seconds after a report |
-| **Access** | you | per agent name: what it may reach on its computer besides your Calimero apps: folders (each read only, or read and write), a shell, the web. Last-writer-wins. The agent's runtime enforces it before every tool call and refuses `set_access` to the agent |
-| **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (what it serves, model, attested or not, folders, shell, web). Settings → Agents shows it beside your Access. An agent whose every line is attested is a **private** agent |
+| **Access** | you | per agent name: what it may reach on its computer besides your Calimero apps: folders (each read only, or read and write; up to 20, each absolute or under `~`, no `..`), a shell, the web. Last-writer-wins. The agent's runtime enforces it before every tool call and refuses `set_access` to the agent. An Access you saved with no folders and shell and web off means your Calimero apps only. **Until you save one, the agent uses its own default:** for mero-bot, the folder it runs in, read and write, with shell and web on |
+| **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (what it serves, model, attested or not, folders, shell, web), written with `agent_reach` (see [the loop](#api-for-agents)). Settings → Agents shows it beside your Access. An agent whose every line is attested is a **private** agent |
 | **Assignment** | you | per app: which of your agents works in it, by the name it reports in with. Last-writer-wins; an empty agent gives the app back. Only that agent takes the app's work (new items, your decisions on its rows, your messages in a chat about it) and calls the app. An app with none is your private agents', or any agent's while none reports in. Code is the app `mero-bot` (the tools on a computer), and it has no default: nothing runs on a computer until you give Code to an agent that has one, such as your local mero-bot. The agent's runtime enforces it and refuses `set_assignment` to the agent |
 | **Link** | your agent, or you | per task: a subject it works on (`<app>:<context>[:<id>]`) with a label, shown as a chip on the task's post. Your agent's writes add them; you add one from its address or take one off, and a link you took off stays off. The chip counts and groups what teammates did there, and opens it in its app beside the feed |
 | **Subject** | your agent | what an action touched in another app, as `<app>:<context>[:<id>]` (the id from its `issue_id`, `doc_id` or `thread_id` arg), kept beside the action by id, and the chain that last touched each subject. A typed notification whose reply call goes to the same subject, recorded with no chain of its own, joins that chain unless you put it away: one thread per task, teammates' comments included |
@@ -180,6 +180,76 @@ So the agent learns what is happening from the node's live event stream, and it 
 proposals you settle here, or where your rules let it act. See mero-bot's README for the flags
 (`--autopilot off`, `--no-hyperfeed`).
 
+### Running mero-bot on NEAR, on Claude, or both
+
+Which model answers is set by the agents in `~/.mero/agents.json` (or `./mero.json` in the folder
+you start it from). Each one reports what it can reach, and Settings → Agents shows it under
+`mero-bot@<host>`, beside the Access you set.
+
+**On Claude** (the default, no config needed). Every turn runs on Claude through your Claude Code
+login, with files, a shell and the web, limited by the Access you set for it:
+
+```sh
+calimero-agent                      # or: calimero-agent -m claude-sonnet-5-5
+```
+
+**On NEAR only** (private). Every turn runs on a model in NEAR AI Cloud's TEEs, which mero-bot
+attests before sending anything. A NEAR profile has your Calimero apps only: no files, shell or web.
+Name no Claude agent as `delegate` or `fallback`, so nothing leaves the TEE:
+
+```json
+{
+  "agents": {
+    "near": { "runtime": "openai", "attest": "near", "model": "<id from NEAR's model list>" }
+  },
+  "default": "near"
+}
+```
+
+```sh
+export NEAR_AI_API_KEY=…
+calimero-agent                              # with the terminal UI
+calimero-agent --headless --attested-only   # no terminal; refuses to start if any turn could reach an unattested model
+```
+
+It finds the node on this machine, or the one in `CALIMERO_NODE_URL`.
+
+Its reach line reads `Default · near (<model>), attested: Calimero apps only`, and an agent whose
+every line is attested is your **private** agent: it takes every app you did not assign.
+
+**Both, in one mero-bot.** Route talking to you and triage to NEAR, and everything else (carrying
+out what you approved, watches, learning lenses, what you type at the terminal) to Claude. NEAR
+hands work that needs code to Claude with `delegate`, as a proposal you approve, and Claude takes a
+turn when NEAR is down or fails attestation (`fallback`):
+
+```json
+{
+  "agents": {
+    "near":  { "runtime": "openai", "attest": "near", "model": "<id from NEAR's model list>",
+               "delegate": "coder", "fallback": "coder" },
+    "coder": { "runtime": "claude" }
+  },
+  "routes": { "converse": "near", "triage": "near" }
+}
+```
+
+```sh
+NEAR_AI_API_KEY=… calimero-agent
+```
+
+Settings → Agents then shows one reach line per profile a turn can reach: Claude for the default,
+NEAR for `converse` and `triage` (attested, Calimero apps only), and Claude again as NEAR's hand-off.
+The Claude lines carry your folders, shell and web. Since not every line is attested, this agent is
+not private. Don't add `--attested-only` here: it
+refuses this config.
+
+**Both, as two agents.** Run a private NEAR mero-bot (as above, for example in
+[mero-tee](https://github.com/calimero-network/mero-tee)'s agent image) and a Claude mero-bot on your
+laptop. They report in under their own names, so they must run on different hosts: two on one
+machine share `mero-bot@<host>`. In Settings → Agents, the NEAR one takes every app you did not
+assign; give **Code** (and any app you want Claude on) to the laptop. Until you do, no feed turn runs
+a tool on your computer. Set each one's Access separately.
+
 The bundle also ships [`logic/GUIDE.md`](logic/GUIDE.md), which mero-mcp shows to any agent the
 first time it meets this app. An agent without mero-bot's bridge still learns the loop from it.
 
@@ -213,7 +283,7 @@ account (your node's own identity, or your account through a warrant); anything 
 | `item` | `id: string` | `FeedItem` or `null` |
 | `chain` | `chain: string` | `FeedItem[]`, every row in the chain, oldest first |
 | `feed` | `filter: "all" \| "agent" \| "notifications" \| "needs_you", app_key: string, limit: u32, before: u64` | `FeedPage { items, counts, apps, next_before }`: one row per chain |
-| `settings` | none | `SettingsView { owner, paused, policies, guards }` |
+| `settings` | none | `SettingsView { owner, paused, policies, guards, agents, access, reach, assignments, … }` |
 | `set_checkpoint` | `chain: string, input: CheckpointInput { done, next, branches, worktrees, prs, questions, author }` | `CheckpointView`, now the chain's latest; it replaces the last one |
 | `checkpoint` | `chain: string` | `CheckpointView { chain, done, next, branches, worktrees, prs, questions, author, updated_at }` or `null` |
 
@@ -357,7 +427,12 @@ stays in "Needs you" until you keep it or undo it. Events the contract emits: `A
 `WatchChanged`, `PrChanged`.
 
 7. Report in while you run: `agent_seen(name)`, about every 30 seconds (mero-bot sends
-   `mero-bot@<host>`). `settings().agents` lists who reported and when.
+   `mero-bot@<host>`). `settings().agents` lists who reported and when. Report what you can reach with
+   `agent_reach(name, lines)`, one `ReachLine { serves, profile, model, attested, folders, shell, web }`
+   per profile you run (`serves` is `default` or the kind of work routed to it; up to 16 lines), and
+   again when it changes; the latest report replaces the last. Read the owner's Access for your name
+   from `settings().access` and enforce it before every tool call; with none saved, apply your own default and
+   report it here, so Settings → Agents shows the owner what you actually reach.
 
 **The owner's methods**, which the app calls: `resolve_action(id, decision, answer)` with
 `approve`, `decline`, `undo` or `keep` (`answer` is `""` except for approving a proposal with an
