@@ -1959,16 +1959,28 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .needs-panel-row {
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px;
+  align-items: stretch;
+  gap: 2px;
+  padding: 8px 10px;
+  min-height: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
   border: 1px solid var(--wait-line);
   border-radius: 10px;
+  cursor: pointer;
+}
+
+.needs-panel-row:hover {
+  background: var(--sunken);
 }
 
 .needs-panel-what {
@@ -1985,10 +1997,11 @@ body {
 }
 
 .needs-panel-body {
-  margin: 0;
   font-size: 13px;
   color: var(--ink-2);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 640px) {

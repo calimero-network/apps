@@ -4,9 +4,7 @@ import type { Feed } from "./useFeed";
 import type { Attention } from "./useAttention";
 import { appLook } from "./apps";
 import { alertOf } from "./attention";
-import { choicesFor, resolvable, timeLabel } from "./format";
-import { Choices, Resolver } from "./FeedView";
-import { RuleSuggestion } from "./SettingsView";
+import { localCommand, timeLabel } from "./format";
 
 const appName = (key: string) => appLook(key).name;
 
@@ -25,8 +23,8 @@ export function waitingCount(feed: Feed | null): number {
 /**
  * What needs you, behind the bell: every chain waiting on you (your agent's
  * question, an approval, an app flagging you), whatever the feed shows, and
- * what waits in Settings (a lens or a rule your agent proposed), each with
- * its buttons so it is settled from here, and Open for the rest of it.
+ * what waits in Settings (a lens or a rule your agent proposed). Each is one
+ * line; a click opens it where it is answered.
  * Whether a banner says so when you look elsewhere is switched here too.
  */
 export function NeedsYou({
@@ -97,7 +95,7 @@ export function NeedsYou({
             {(lenses.length > 0 || proposals.length > 0) && <h3 className="needs-panel-sub">In your feed</h3>}
             <ul className="needs-panel-list" aria-label="In your feed">
               {items.map((i) => (
-                <NeedsRow key={i.chain} item={i} feed={feed} onOpen={() => onOpen(i)} />
+                <SummaryRow key={i.chain} {...summaryOf(i)} at={i.chain_at || i.at} onOpen={() => onOpen(i)} />
               ))}
             </ul>
           </>
@@ -108,10 +106,16 @@ export function NeedsYou({
           <h3 className="needs-panel-sub">In Settings</h3>
           <ul className="needs-panel-list" aria-label="In Settings">
             {lenses.map((l) => (
-              <LensRow key={`${l.app}:${l.application_id}`} lens={l} feed={feed} onOpen={() => onSettings("lenses")} />
+              <SummaryRow
+                key={`${l.app}:${l.application_id}`}
+                title={`${appName(l.app)}: a lens to approve`}
+                body={l.summary}
+                at={l.updated_at}
+                onOpen={() => onSettings("lenses")}
+              />
             ))}
             {proposals.map((p) => (
-              <RuleSuggestion key={p.id} proposal={p} feed={feed} />
+              <SummaryRow key={p.id} title="A rule your agent suggests" body={p.text} at={p.created_at} onOpen={() => onSettings("rules")} />
             ))}
           </ul>
         </>
@@ -120,54 +124,31 @@ export function NeedsYou({
   );
 }
 
-function NeedsRow({ item, feed, onOpen }: { item: FeedItem; feed: Feed; onOpen: () => void }) {
+function summaryOf(item: FeedItem): { title: string; body: string } {
   const a = alertOf(item, appName);
-  const c = choicesFor(item);
+  return { title: a.title, body: a.body };
+}
+
+/** One thing waiting on you, as a line: what it is, a word on it, and when. A click opens it where its buttons are. */
+function SummaryRow({ title, body, at, onOpen }: { title: string; body: string; at: number; onOpen: () => void }) {
   return (
-    <li className="needs-panel-row">
-      <div className="needs-panel-what">
-        <strong>{a.title}</strong>
-        <span className="needs-panel-time">{timeLabel(item.chain_at || item.at)}</span>
-      </div>
-      {a.body && <p className="needs-panel-body">{a.body}</p>}
-      {resolvable(item) && <Resolver key={item.id} item={item} feed={feed} />}
-      <div className="actions">
-        {(c.approve || c.decline || c.keep || c.undo) && (
-          <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
-        )}
-        <button type="button" className="ghost small" onClick={onOpen}>
-          Open
-        </button>
-      </div>
+    <li>
+      <button type="button" className="needs-panel-row" onClick={onOpen}>
+        <span className="needs-panel-what">
+          <strong>{title}</strong>
+          <span className="needs-panel-time">{timeLabel(at)}</span>
+        </span>
+        {body && <span className="needs-panel-body">{body}</span>}
+      </button>
     </li>
   );
 }
 
-/** A lens your agent proposed for an app: what your feed would read from it, yours to approve. */
-function LensRow({ lens, feed, onOpen }: { lens: LensView; feed: Feed; onOpen: () => void }) {
-  return (
-    <li className="needs-panel-row" aria-label={`Lens for ${appName(lens.app)}`}>
-      <div className="needs-panel-what">
-        <strong>{appName(lens.app)}: approve what your feed reads?</strong>
-        <span className="needs-panel-time">{timeLabel(lens.updated_at)}</span>
-      </div>
-      {lens.summary && <p className="needs-panel-body">{lens.summary}</p>}
-      <div className="actions">
-        <button type="button" className="primary small" disabled={feed.busy} onClick={() => void feed.decideLens(lens.app, lens.application_id, "approve")}>
-          Approve
-        </button>
-        <button type="button" className="ghost small" disabled={feed.busy} onClick={() => void feed.decideLens(lens.app, lens.application_id, "reject")}>
-          Turn down
-        </button>
-        <button type="button" className="ghost small" onClick={onOpen}>
-          Open
-        </button>
-      </div>
-    </li>
-  );
-}
-
-/** Where Open takes a row: an app's notification to the feed; your agent's question or action to its chat. */
+/**
+ * Where a row opens: your agent's question, and a command on your computer it
+ * asked about in a chat, in that chat; anything else in the feed, whose
+ * "Needs you" strip carries its buttons.
+ */
 export function opensIn(item: FeedItem): "chat" | "feed" {
-  return item.kind === "notification" ? "feed" : "chat";
+  return item.kind === "message" || localCommand(item) ? "chat" : "feed";
 }

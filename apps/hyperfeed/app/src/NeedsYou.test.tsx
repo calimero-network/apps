@@ -3,16 +3,24 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { useEffect, useState } from "react";
 import { DemoBackend } from "./demo";
 import { useFeed } from "./useFeed";
-import { NeedsYou } from "./NeedsYou";
+import { NeedsYou, opensIn } from "./NeedsYou";
 import type { Attention } from "./useAttention";
 
 const attention: Attention = { supported: true, on: false, blocked: false, toggle: async () => undefined };
 
-function Harness({ backend, onOpen = () => undefined }: { backend: DemoBackend; onOpen?: (chain: string) => void }) {
+function Harness({
+  backend,
+  onOpen = () => undefined,
+  onSettings = () => undefined,
+}: {
+  backend: DemoBackend;
+  onOpen?: (chain: string) => void;
+  onSettings?: (section: string) => void;
+}) {
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
   const feed = useFeed(backend, nudge);
-  return <NeedsYou feed={feed} attention={attention} onOpen={(i) => onOpen(i.chain)} onSettings={() => undefined} onClose={() => undefined} />;
+  return <NeedsYou feed={feed} attention={attention} onOpen={(i) => onOpen(i.chain)} onSettings={onSettings} onClose={() => undefined} />;
 }
 
 async function approvalInChat(backend: DemoBackend) {
@@ -42,7 +50,7 @@ async function approvalInChat(backend: DemoBackend) {
 }
 
 describe("Needs you, behind the bell", () => {
-  it("lists every chain waiting on you, and approves one in place", async () => {
+  it("lists every chain waiting on you as one line each, and a click opens it", async () => {
     const backend = new DemoBackend(false, 0);
     const chain = await approvalInChat(backend);
     const q = await backend.say("", "Clean up #calimero");
@@ -51,43 +59,51 @@ describe("Needs you, behind the bell", () => {
     render(<Harness backend={backend} onOpen={opened} />);
 
     const panel = await screen.findByRole("dialog", { name: "Needs you" });
-    const rows = await within(panel).findAllByRole("listitem");
-    expect(rows).toHaveLength(2);
-    expect(within(panel).getByText("Run npm test")).toBeInTheDocument();
-    expect(within(panel).getByText("Your agent asks you")).toBeInTheDocument();
+    expect(await within(panel).findAllByRole("listitem")).toHaveLength(2);
+    // A summary only: the answers are where the thing is.
+    expect(within(panel).queryByRole("button", { name: "Allow once" })).toBeNull();
+    expect(within(panel).queryByRole("button", { name: "Delete it" })).toBeNull();
 
-    const approval = rows.find((r) => within(r).queryByText("Run npm test"))!;
-    fireEvent.click(within(approval).getByRole("button", { name: "Open" }));
+    fireEvent.click(within(panel).getByRole("button", { name: /Run npm test/ }));
     expect(opened).toHaveBeenCalledWith(chain);
+    fireEvent.click(within(panel).getByRole("button", { name: /Your agent asks you/ }));
+    expect(opened).toHaveBeenCalledWith(q.chain);
 
-    await act(async () => {
-      fireEvent.click(within(approval).getByRole("button", { name: "Allow once" }));
-    });
-    expect((await backend.chain(chain)).find((i) => i.kind === "action")!.status).toBe("approved");
-    expect(await within(panel).findAllByRole("listitem")).toHaveLength(1);
+    // Settled elsewhere, it leaves the list.
+    const action = (await backend.chain(chain)).find((i) => i.kind === "action")!;
+    await act(async () => void (await backend.resolveAction(action.id, "approve", "Allow once")));
+    await waitFor(() => expect(within(panel).getAllByRole("listitem")).toHaveLength(1));
   });
 
-  it("lists the lenses and rules waiting in Settings, and approves a lens in place", async () => {
+  it("lists the lenses and rules waiting in Settings, each opening its section", async () => {
     const backend = new DemoBackend(false, 0);
     // The pretend agent's lenses: Chat approved, Vote proposed.
     (backend as unknown as { seedLenses(): void }).seedLenses();
     backend.proposeRule("Never post in #general without asking");
-    render(<Harness backend={backend} />);
+    const sections = vi.fn();
+    render(<Harness backend={backend} onSettings={sections} />);
 
     const settings = await screen.findByRole("list", { name: "In Settings" });
-    const lens = await within(settings).findByRole("listitem", { name: "Lens for Vote" });
-    expect(within(settings).queryByRole("listitem", { name: "Lens for Chat" })).toBeNull();
-    expect(within(settings).getByText("Never post in #general without asking")).toBeInTheDocument();
-
-    await act(async () => {
-      fireEvent.click(within(lens).getByRole("button", { name: "Approve" }));
-    });
-    expect((await backend.lenses()).find((l) => l.app === "vote")!.status).toBe("approved");
-    await waitFor(() => expect(within(settings).queryByRole("listitem", { name: "Lens for Vote" })).toBeNull());
+    expect(within(settings).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(settings).queryByText(/Chat: a lens/)).toBeNull();
+    fireEvent.click(await within(settings).findByRole("button", { name: /Vote: a lens to approve/ }));
+    expect(sections).toHaveBeenLastCalledWith("lenses");
+    fireEvent.click(within(settings).getByRole("button", { name: /Never post in #general without asking/ }));
+    expect(sections).toHaveBeenLastCalledWith("rules");
   });
 
   it("says so when nothing needs you", async () => {
     render(<Harness backend={new DemoBackend(false, 0)} />);
     expect(await screen.findByText("Nothing needs you.")).toBeInTheDocument();
+  });
+});
+
+describe("where a row opens", () => {
+  it("opens your agent's question and a command it asked about in their chat, anything else in the feed", async () => {
+    const backend = new DemoBackend(true, 0);
+    const waiting = (await backend.feed("needs_you", "")).items;
+    for (const i of waiting) expect(opensIn(i)).toBe(i.kind === "message" ? "chat" : "feed");
+    const chain = await approvalInChat(backend);
+    expect(opensIn((await backend.chain(chain)).find((i) => i.kind === "action")!)).toBe("chat");
   });
 });
