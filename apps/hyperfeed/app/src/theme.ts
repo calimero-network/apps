@@ -4,15 +4,15 @@ export type Theme = "light" | "dark";
 
 const KEY = "hyperfeed:theme";
 
-/** The theme you picked, else your system's. */
+/** The theme you picked, else light: the glass look starts light, whatever the system prefers. */
 function initial(): Theme {
   try {
     const saved = window.localStorage.getItem(KEY);
     if (saved === "light" || saved === "dark") return saved;
   } catch {
-    // Storage can be off (private windows); the system's choice still applies.
+    // Storage can be off (private windows); light still applies.
   }
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return "light";
 }
 
 /** Light or dark, on `<html data-theme>`, remembered on this device. */

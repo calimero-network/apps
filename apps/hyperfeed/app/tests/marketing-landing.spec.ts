@@ -47,6 +47,15 @@ test.describe("Hyperfeed landing page", () => {
     await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible();
   });
 
+  test("starts light even when the system prefers dark", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(page.getByRole("button", { name: "Use dark theme" })).toBeVisible();
+    await page.goto("/demo");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  });
+
   test("the theme switch reaches the whole app", async ({ page }) => {
     await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/");
