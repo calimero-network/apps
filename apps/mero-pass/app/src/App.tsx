@@ -41,6 +41,35 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
 }
 
 /**
+ * The app itself is for a signed-in visitor only.
+ *
+ * ── THE BUG THIS FIXES ──────────────────────────────────────────────────────
+ *
+ * The in-app routes had no guard. Log out replaces the page it was pressed on
+ * with `/`, but the in-app page BEFORE it stays in history, so the browser's
+ * Back button returned to it and rendered the whole frame — rail, top bar,
+ * "Signed in", Log out — around no data, for nobody.
+ *
+ * "Signed in" is mero-react's own `isAuthenticated`, the same answer the
+ * landing redirect and the catch-all use; there is no second flag to drift.
+ *
+ * ⚠️ `isLoading` FIRST. On a cold load mero-react starts signed out and
+ * loading, then validates the stored token with the node. Redirecting before
+ * that settles would throw a signed-in visitor opening `/vault/<id>` (or
+ * reloading it) onto the landing page — and from there, signed in, to
+ * `/teams`, losing the deep link. So: nothing until it is known.
+ *
+ * `replace`, for the reason `RedirectIfAuthed` gives: a pushed redirect leaves
+ * the guarded path in history and Back walks straight into it again.
+ */
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading } = useMero();
+  if (isLoading) return null; // restoring a stored session; don't bounce it
+  if (!isAuthenticated) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+/**
  * Anything that matched no route.
  *
  * ── THE BUG THIS FIXES ──────────────────────────────────────────────────────
@@ -67,9 +96,10 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
  *
  * So the catch-all is TERMINAL by construction: it renders no UI of its own and
  * navigates exactly once, with `replace`, to a path that has a real route and
- * whose own guard cannot send it back here. `/teams` has no guard at all; `/`
- * renders the landing page for a signed-out visitor. Neither can return to a
- * `*` match, so there is no cycle to enter.
+ * whose own guard cannot send it back here: `/teams` for a signed-in visitor
+ * (its guard lets them through), `/` for a signed-out one (the landing page).
+ * Neither can return to a `*` match, and `/` ↔ `/teams` only redirect on
+ * OPPOSITE answers to the same question, so there is no cycle to enter.
  */
 function CatchAll() {
   const { isAuthenticated, isLoading } = useMero();
@@ -121,12 +151,41 @@ export default function App() {
             bookmark lands on the front door instead of a blank route. */}
         <Route path="/login" element={<Navigate to="/" replace />} />
 
+        {/* The app proper: signed in only, see `RequireAuth`. */}
         {/* A TEAM is a namespace: the people, and the vaults they share. */}
-        <Route path="/teams" element={<TeamsPage />} />
-        <Route path="/teams/:teamId" element={<TeamPage />} />
+        <Route
+          path="/teams"
+          element={
+            <RequireAuth>
+              <TeamsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/teams/:teamId"
+          element={
+            <RequireAuth>
+              <TeamPage />
+            </RequireAuth>
+          }
+        />
         {/* A VAULT is a context, so the param is a context id. */}
-        <Route path="/vault/:vaultId" element={<VaultPage />} />
-        <Route path="/security" element={<SecurityPage />} />
+        <Route
+          path="/vault/:vaultId"
+          element={
+            <RequireAuth>
+              <VaultPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/security"
+          element={
+            <RequireAuth>
+              <SecurityPage />
+            </RequireAuth>
+          }
+        />
         {/* PUBLIC: a share link carries its secret in the fragment, so the
             recipient needs no node and no login to open it. */}
         <Route path="/share" element={<SharePage />} />

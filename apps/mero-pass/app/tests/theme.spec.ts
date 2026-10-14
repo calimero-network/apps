@@ -1,12 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { signIn } from './session';
+
 // Light / dark inside the app. Light is the default; the sun/moon button in
 // the top bar flips it, the choice is remembered under `mero-pass:theme` (this
 // app's own key, not one shared with the fleet), and index.html puts it on
 // <html> before the first paint, so a reload never flashes light first.
 //
-// No node needed: `/teams` mounts the app frame (rail, top bar, toggle) for
-// anyone, and the theme is entirely the browser's.
+// No node needed: tests/session.ts signs in without one, which is all the app
+// frame (rail, top bar, toggle) asks for; the theme is entirely the browser's.
 
 const KEY = 'mero-pass:theme';
 
@@ -36,8 +38,7 @@ test.describe('theme', () => {
   test('the app opens light, and opening it saves nothing', async ({
     page,
   }) => {
-    await page.goto('/teams');
-    await expect(page.getByTestId('theme-toggle')).toBeVisible();
+    await signIn(page);
     await expect(page.locator('html')).not.toHaveAttribute(
       'data-theme',
       'dark',
@@ -52,7 +53,7 @@ test.describe('theme', () => {
   test('the top-bar switch flips the app to dark and back, and the choice survives a reload', async ({
     page,
   }) => {
-    await page.goto('/teams');
+    await signIn(page);
     const html = page.locator('html');
     const toggle = page.getByTestId('theme-toggle');
     await expect(toggle).toBeVisible();
@@ -86,7 +87,7 @@ test.describe('theme', () => {
   test('Security → Appearance and the top-bar switch are one setting', async ({
     page,
   }) => {
-    await page.goto('/security');
+    await signIn(page, '/security');
     await page.getByTestId('appearance-dark').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect(page.getByTestId('theme-toggle')).toHaveAttribute(
@@ -104,7 +105,7 @@ test.describe('theme', () => {
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/teams');
+    await signIn(page);
     await page.getByTestId('theme-toggle').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     expect(

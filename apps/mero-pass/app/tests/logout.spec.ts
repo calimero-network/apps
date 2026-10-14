@@ -1,38 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { sessionKeys, signIn } from './session';
+
 // Log out, from the rail's identity block, the phone drawer, or Security →
 // Your account. Each ends the session (mero-react's token store and `mero:*`
 // keys), lands on the front door with no way Back into the app, and keeps the
 // browser's own light/dark choice.
 //
-// No node needed: a session arrives the way the desktop hands one over, in
-// the URL fragment, which mero-react adopts and stores before any request is
-// made. What happens to the VAULT keys on log out (locked, and a copied
+// No node needed: tests/session.ts signs in the way the desktop hands a
+// session over, in the URL fragment, and stubs the node's token check. What
+// happens to the VAULT keys on log out (locked, and a copied
 // password wiped from the clipboard) is asserted against a real node in
 // e2e/journey/session.journey.ts, and in src/auth/signOut.test.ts.
-
-const NODE = 'http://127.0.0.1:9';
-
-async function signIn(page: Page) {
-  const expires = Date.now() + 60 * 60 * 1000;
-  await page.goto(
-    `/teams#node_url=${encodeURIComponent(NODE)}&access_token=test-access&refresh_token=test-refresh&expires_at=${expires}`,
-  );
-  await expect(page.getByTestId('theme-toggle')).toBeVisible();
-  // mero-react took the session out of the fragment and stored it.
-  await expect
-    .poll(() => sessionKeys(page).then((k) => k.length))
-    .toBeGreaterThan(0);
-}
-
-/** Every key mero-react keeps a session under. */
-function sessionKeys(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
-    Object.keys(localStorage).filter(
-      (k) => k === 'mero-tokens' || k.startsWith('mero:'),
-    ),
-  );
-}
 
 async function expectSignedOut(page: Page) {
   await expect(page).toHaveURL(/\/$/);
@@ -107,5 +86,53 @@ test.describe('log out', () => {
       await page.evaluate(() => localStorage.getItem('mero-pass:theme')),
     ).toBe('dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  });
+});
+
+// ── Back after Log out ──────────────────────────────────────────────────────
+//
+// ⚠️ THE BUG THIS CATCHES. The in-app routes had no sign-in guard, so after
+// Log out the browser's Back button returned to the previous in-app page and
+// rendered the app frame — rail, top bar, Log out — around no data, for nobody.
+// Every in-app route now waits for mero-react to know whether there is a
+// session, and sends a signed-out visitor to the front door.
+test.describe('signed out, the app frame is unreachable', () => {
+  test('Back after Log out lands on the front door, not an empty app', async ({
+    page,
+  }) => {
+    await signIn(page);
+    // Somewhere else in the app first, so there is an in-app page behind the
+    // one Log out replaces.
+    await page.getByTestId('security').click();
+    await expect(page).toHaveURL(/\/security$/);
+    await page.getByTestId('logout').click();
+    await expect(page.getByTestId('landing')).toBeVisible();
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByTestId('landing')).toBeVisible();
+    await expect(page.getByTestId('theme-toggle')).toHaveCount(0);
+    await expect(page.getByTestId('logout')).toHaveCount(0);
+  });
+
+  for (const path of ['/teams', '/teams/ns-1', '/vault/ctx-1', '/security']) {
+    test(`opening ${path} with no session lands on the front door`, async ({
+      page,
+    }) => {
+      await page.goto(path);
+      await expect(page).toHaveURL(/\/$/);
+      await expect(page.getByTestId('landing')).toBeVisible();
+      await expect(page.getByTestId('theme-toggle')).toHaveCount(0);
+    });
+  }
+
+  test('signed in, a reload on a deep route stays there', async ({ page }) => {
+    await signIn(page, '/vault/ctx-1');
+    await expect(page).toHaveURL(/\/vault\/ctx-1$/);
+    await page.reload();
+    // The guard waits out mero-react's session restore instead of bouncing.
+    await expect(page.getByTestId('theme-toggle')).toBeVisible();
+    await expect(page).toHaveURL(/\/vault\/ctx-1$/);
+    await expect(page.getByTestId('landing')).toHaveCount(0);
   });
 });
