@@ -11,23 +11,27 @@ const spin = keyframes`to{transform:rotate(360deg);}`;
 export const Overlay = styled.div`
   position: fixed; inset: 0; z-index: 100;
   display: flex; align-items: center; justify-content: center; padding: 20px;
-  background: rgba(6,7,9,0.6);
+  background: ${t.color.scrim};
+  /* The overlay is fixed itself and holds only its dialog, so this blur
+     cannot trap anything. */
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   animation: ${fadeIn} 0.15s ease both;
 `;
 export const Dialog = styled.div`
   position: relative; width: 100%; max-width: 420px;
-  background: ${t.color.panel}; border: 1px solid ${t.color.borderStrong}; border-radius: ${t.radiusModal};
-  padding: 28px 26px 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+  background: ${t.color.panel}; border: 1px solid ${t.color.edge}; border-radius: ${t.radiusModal};
+  padding: 30px 28px 26px; box-shadow: ${t.shadowFloat};
+  max-height: calc(100dvh - 40px); overflow-y: auto;
   font-family: ${t.font.sans}; color: ${t.color.text};
   animation: ${pop} 0.18s ease both;
-  h3 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 8px; }
+  h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 8px; padding-right: 28px; }
   .sub { font-size: 13px; line-height: 1.55; color: ${t.color.text2}; margin: 0; }
 `;
 export const Close = styled.button`
-  position: absolute; top: 14px; right: 14px; width: 30px; height: 30px;
+  position: absolute; top: 16px; right: 16px; width: 32px; height: 32px;
   display: grid; place-items: center; font-size: 20px; line-height: 1;
-  color: ${t.color.text3}; background: transparent; border: none; border-radius: 6px; cursor: pointer;
-  &:hover { background: rgba(255,255,255,0.05); color: ${t.color.text}; }
+  color: ${t.color.text3}; background: transparent; border: none; border-radius: 999px; cursor: pointer;
+  &:hover { background: ${t.color.hover}; color: ${t.color.text}; }
 `;
 export const Field = styled.div`
   margin: 20px 0 4px;
@@ -35,16 +39,16 @@ export const Field = styled.div`
   input {
     width: 100%; box-sizing: border-box;
     font-size: 13px; color: ${t.color.text}; background: ${t.color.raised};
-    border: 1px solid ${t.color.border}; border-radius: ${t.radius}; padding: 10px 12px;
-    outline: none; font-family: inherit;
+    border: 1px solid ${t.color.borderStrong}; border-radius: ${t.radius}; padding: 11px 14px;
+    outline: none; font-family: inherit; transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
     &::placeholder { color: ${t.color.text3}; }
-    &:focus { border-color: ${t.color.accentBorder}; }
+    &:focus { border-color: ${t.color.accentBorder}; box-shadow: 0 0 0 3px ${t.focus}; }
     &:disabled { opacity: 0.6; }
   }
 `;
 export const Actions = styled.div`display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px;`;
 const btn = `
-  padding: 10px 18px; font-size: 13px; font-weight: 600; border-radius: ${t.radius}; cursor: pointer;
+  padding: 10px 18px; font-size: 13px; font-weight: 600; border-radius: ${t.radiusPill}; cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
   &:disabled { opacity: 0.6; cursor: default; }
 `;
@@ -57,10 +61,10 @@ export const PrimaryBtn = styled.button`
   ${btn}
   min-width: 120px; display: inline-flex; align-items: center; justify-content: center;
   color: ${t.color.onAccent}; background: ${t.color.accent}; border: 1px solid transparent;
-  &:hover:not(:disabled) { background: #b6ff5e; }
+  &:hover:not(:disabled) { background: ${t.color.accentHover}; }
 `;
 export const ErrorLine = styled.p`margin: 12px 0 0; font-size: 12.5px; color: ${t.color.urgent};`;
 export const Spin = styled.span`
-  width: 15px; height: 15px; border: 2px solid rgba(12,16,5,0.3); border-top-color: ${t.color.onAccent};
+  width: 15px; height: 15px; border: 2px solid color-mix(in srgb, ${t.color.onAccent} 30%, transparent); border-top-color: ${t.color.onAccent};
   border-radius: 50%; animation: ${spin} 0.6s linear infinite; display: inline-block;
 `;

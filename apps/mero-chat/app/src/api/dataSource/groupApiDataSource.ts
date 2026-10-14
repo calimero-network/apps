@@ -47,6 +47,7 @@ import type {
   UpgradeGroupResponse,
   VisibilityMode,
 } from "../groupApi";
+import { isTeeRole } from "../groupApi";
 import {
   APP_SLUG,
   parseGroupInvitationPayload,
@@ -514,7 +515,13 @@ export class GroupApiDataSource implements GroupApi {
 
   async listMembers(
     groupId: string,
-  ): ApiResponse<{ members: GroupMember[]; selfIdentity?: string }> {
+  ): ApiResponse<{
+    /** People only; TEE nodes are split out into `teeMembers`. */
+    members: GroupMember[];
+    /** TEE nodes (`ReadOnlyTee` / `RelayTee`) admitted to this group. */
+    teeMembers: GroupMember[];
+    selfIdentity?: string;
+  }> {
     return cachedRequest(`listMembers:${groupId}`, async () => {
       try {
         // mero-js unwraps the `{ data: ... }` envelope, but the shape below
@@ -530,16 +537,21 @@ export class GroupApiDataSource implements GroupApi {
         // frontend's `alias` field — keeps every display-chain callsite
         // (`useChannelMembers`, MembersTab, AddMember dropdown, DM picker)
         // working without touching them.
-        const members: GroupMember[] = rawMembers.map((m) => ({
+        const allMembers: GroupMember[] = rawMembers.map((m) => ({
           identity: m.identity,
           role: m.role as GroupMember["role"],
           alias: m.name ?? m.alias,
         }));
+        // A TEE node is a member row on the node, but not a person: kept out
+        // of `members` so no member list, count, DM lookup or name map ever
+        // shows it as a user.
+        const members = allMembers.filter((m) => !isTeeRole(m.role));
+        const teeMembers = allMembers.filter((m) => isTeeRole(m.role));
         const selfIdentity: string | undefined =
           raw && typeof raw === "object" && "selfIdentity" in raw
             ? String((raw as { selfIdentity: unknown }).selfIdentity)
             : undefined;
-        return ok({ members, selfIdentity });
+        return ok({ members, teeMembers, selfIdentity });
       } catch (error) {
         return catchError("listMembers", error);
       }

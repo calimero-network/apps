@@ -564,8 +564,9 @@ export const APPS = {
   'mero-crm': {
     displayName: 'Mero CRM',
     e2eDir: 'e2e',
-    // Same light/dark key as the app shell, so the landing choice carries through sign-in.
-    themeStorageKey: 'app:theme',
+    // Same light/dark key as the app shell (src/theme.ts), so the landing
+    // choice carries through sign-in.
+    themeStorageKey: 'mero-crm:theme',
     availability: 'web+desktop',
     trust: ['Pipeline on your nodes', 'Built-in deal assistant', 'No per-seat vendor'],
     explainer: [

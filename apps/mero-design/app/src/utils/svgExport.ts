@@ -2,6 +2,7 @@ import type { Element } from "../types";
 import { escapeHtml } from "./sanitize";
 import { dashArray, isShapeKind, shapePath, strokeCap } from "./shapes";
 import { fontOf, inkOf, isBoxText, layoutBox, measurerFor } from "./boxText";
+import { visibleOnly } from "./layerFlags";
 
 /**
  * Elements → standalone SVG markup.
@@ -277,7 +278,9 @@ function boxToSvg(el: Element, common: Record<string, string | undefined>): stri
 
 /** Elements → a complete `<svg>` document, sorted back-to-front. */
 export function elementsToSvg(elements: Element[], options: SvgOptions = {}): string {
-  const sorted = [...elements].sort((a, b) => a.layerIndex - b.layerIndex);
+  // Hidden layers are in no export: every file, thumbnail, slide and flatten
+  // is built here.
+  const sorted = visibleOnly(elements).sort((a, b) => a.layerIndex - b.layerIndex);
   const box = options.bounds ?? boundsOf(sorted, options.padding ?? 0);
   const defs = sorted.filter((el) => (el.shadowBlur ?? 0) > 0).map(shadowFilter).join("");
   const background = options.background

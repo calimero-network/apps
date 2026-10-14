@@ -4,6 +4,10 @@ import { deleteElements, updateElements } from "../api/elementBatch";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
+import { registerPendingWrite } from "../store/history";
+import { toggleLayerFlag } from "../api/layerFlags";
+import { visibleOnly, type LayerFlag } from "../utils/layerFlags";
+import { Eye, EyeOff, Lock, LockUnlock } from "@calimero-network/mero-icons";
 import { useToast } from "../contexts/ToastContext";
 import { savedMessage } from "../utils/saveFile";
 import { createMutationReporter } from "../utils/mutationErrors";
@@ -131,10 +135,31 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     row?.scrollIntoView({ block: "nearest" });
   }, [tab, selectionKey]);
 
+  /** The write `rpcDebounceRef` is holding, so an undo can send it first. */
+  const heldRpcRef = useRef<(() => void) | null>(null);
+
   function scheduleRpc(fn: () => void) {
     if (rpcDebounceRef.current) clearTimeout(rpcDebounceRef.current);
-    rpcDebounceRef.current = setTimeout(fn, 2000);
+    heldRpcRef.current = fn;
+    rpcDebounceRef.current = setTimeout(() => {
+      rpcDebounceRef.current = null;
+      heldRpcRef.current = null;
+      fn();
+    }, 2000);
   }
+
+  // An undo inside the debounce window would write the old value and then
+  // have this held edit land on top of it; undo sends it now, first.
+  const flushPendingRef = useRef(flushPending);
+  flushPendingRef.current = flushPending;
+  useEffect(() => registerPendingWrite(() => {
+    if (rpcDebounceRef.current) clearTimeout(rpcDebounceRef.current);
+    rpcDebounceRef.current = null;
+    const held = heldRpcRef.current;
+    heldRpcRef.current = null;
+    held?.();
+    flushPendingRef.current();
+  }), []);
 
   /**
    * Edits waiting on the debounce, merged. The timer used to be replaced with
@@ -544,7 +569,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
   }
 
   function buildAllHtml(): string {
-    const sorted = [...elements].sort((a, b) => a.layerIndex - b.layerIndex);
+    const sorted = visibleOnly(elements).sort((a, b) => a.layerIndex - b.layerIndex);
     if (!sorted.length) return `<div style="position: relative; width: 0; height: 0;"></div>`;
     // A `position: relative` wrapper with no size collapses to nothing, and
     // negative coordinates then render above the page. Shift to the origin and
@@ -590,6 +615,53 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     }
   }
 
+  // One lookup for every row's lock/eye state: a row scanning the whole board
+  // made the tree quadratic in its size.
+  const elementById = useMemo(() => new Map(elements.map((e) => [e.id, e] as const)), [elements]);
+  const allHave = (ids: readonly string[], flag: LayerFlag) =>
+    ids.length > 0 && ids.every((id) => elementById.get(id)?.[flag]);
+
+  /** Toggle lock or hide on these layers; a whole group toggles as one. */
+  function toggleFlagOn(ids: readonly string[], flag: LayerFlag) {
+    if (readOnly || ids.length === 0) return;
+    void toggleLayerFlag(contextId, ids, flag, reportFailure.current);
+  }
+
+  /**
+   * The lock and eye buttons for a row. On a group they read ON only when
+   * every member is, which is also what one click will undo.
+   */
+  function renderFlagButtons(ids: readonly string[], testKey: string) {
+    const locked = allHave(ids, "locked");
+    const hidden = allHave(ids, "hidden");
+    return (
+      <>
+        <button
+          className={`${styles.flagBtn} ${locked ? styles.flagOn : ""}`}
+          title={locked ? "Unlock (⇧⌘L)" : "Lock (⇧⌘L)"}
+          aria-label={locked ? "Unlock" : "Lock"}
+          aria-pressed={locked}
+          data-testid={`${testKey}-lock`}
+          disabled={readOnly}
+          onClick={(ev) => { ev.stopPropagation(); toggleFlagOn(ids, "locked"); }}
+        >
+          {locked ? <Lock size={12} /> : <LockUnlock size={12} />}
+        </button>
+        <button
+          className={`${styles.flagBtn} ${hidden ? styles.flagOn : ""}`}
+          title={hidden ? "Show (⇧⌘H)" : "Hide (⇧⌘H)"}
+          aria-label={hidden ? "Show" : "Hide"}
+          aria-pressed={hidden}
+          data-testid={`${testKey}-hide`}
+          disabled={readOnly}
+          onClick={(ev) => { ev.stopPropagation(); toggleFlagOn(ids, "hidden"); }}
+        >
+          {hidden ? <EyeOff size={12} /> : <Eye size={12} />}
+        </button>
+      </>
+    );
+  }
+
   function renderNode(node: LayerNode, depth: number): React.ReactNode {
     const indent = { paddingLeft: 6 + depth * 12 };
 
@@ -598,6 +670,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       const allSelected = node.elementIds.length > 0
         && node.elementIds.every((id) => selectedElementIds.includes(id));
       const someSelected = !allSelected && node.elementIds.some((id) => selectedElementIds.includes(id));
+      const groupHidden = allHave(node.elementIds, "hidden");
       return (
         <div key={`g:${node.path}`}>
           <div
@@ -606,6 +679,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
               styles.groupItem,
               allSelected ? styles.layerItemActive : "",
               someSelected ? styles.layerItemPartial : "",
+              groupHidden ? styles.layerItemHidden : "",
             ].filter(Boolean).join(" ")}
             style={indent}
             data-testid={`layer-group-${node.path}`}
@@ -642,6 +716,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
               </span>
             )}
             <span className={styles.groupCount}>{node.elementIds.length}</span>
+            {renderFlagButtons(node.elementIds, `group-${node.path}`)}
             <LayerRowMenu
               testId={`group-menu-${node.path}`}
               actions={[
@@ -672,7 +747,11 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     return (
       <div
         key={node.id}
-        className={`${styles.layerItem} ${selectedElementIds.includes(node.id) ? styles.layerItemActive : ""}`}
+        className={[
+          styles.layerItem,
+          selectedElementIds.includes(node.id) ? styles.layerItemActive : "",
+          element.hidden ? styles.layerItemHidden : "",
+        ].filter(Boolean).join(" ")}
         style={indent}
         data-testid={`layer-item-${node.id}`}
         onClick={(e) => selectNode(node, e)}
@@ -696,6 +775,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
             {node.name}
           </span>
         )}
+        {renderFlagButtons([node.id], `layer-${node.id}`)}
         <div className={styles.layerActions}>
           <button
             className={styles.layerOrderBtn}

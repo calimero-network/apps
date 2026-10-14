@@ -1,29 +1,41 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    Mero Chess — the app behind the landing page.
 
-   One dark theme, the way chess apps are played: a quiet charcoal chrome that
-   recedes, a classic green-and-cream board that is the brightest thing on the
-   screen, and Calimero lime for the one action that matters on each screen.
+   The fleet's light glass (@calimero-apps/glass, imported first in main.tsx):
+   a cool off-white ground under soft violet-tinted colour fields, frosted
+   panels around the board, near-black ink for the one action that matters on
+   each screen, Figtree throughout. The app's own token NAMES are kept and
+   mapped onto glass values, so no class or component changed.
+
+   The board is content, not chrome: the classic green-and-cream squares and
+   their overlays (--sq-*) are untouched, and stay the brightest, sharpest
+   thing on the screen.
    ───────────────────────────────────────────────────────────────────────────── */
 :root {
-  --bg: #0f1013;
-  --bg-glow: #151a12;
-  --surface: #181a1f;
-  --surface-2: #20232a;
-  --surface-3: #2a2e36;
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.13);
-  --text: #eef0f3;
-  --text-dim: #a0a6b1;
-  --text-faint: #6c727d;
-  --accent: #a5ff11;
-  --accent-hover: #bbff4d;
-  --accent-ink: #102000;
-  --accent-soft: rgba(165, 255, 17, 0.12);
-  --danger: #f26d6d;
-  --danger-soft: rgba(242, 109, 109, 0.12);
-  --online: #3ddc84;
-  --warn: #f5b84a;
+  --glass-tint: #a78bfa;
+
+  --bg: var(--glass-ground);
+  --bg-glow: transparent;
+  --surface: var(--glass-surface);
+  /* Solid: fields, ghost buttons and list rows sit on this. */
+  --surface-2: var(--glass-surface-solid);
+  --surface-3: #eceef4;
+  --border: var(--glass-line);
+  --border-strong: var(--glass-line-strong);
+  --text: var(--glass-ink);
+  --text-dim: var(--glass-ink-2);
+  --text-faint: var(--glass-muted);
+  /* The primary fill is the glass ink; --accent-ink is the text ON it. */
+  --accent: var(--glass-ink);
+  --accent-hover: #262b3d;
+  --accent-ink: var(--glass-on-ink);
+  --accent-soft: color-mix(in srgb, var(--glass-accent-solid) 12%, transparent);
+  --danger: #c62828;
+  --danger-hover: #a51d1d;
+  --on-danger: #ffffff;
+  --danger-soft: var(--glass-bad-bg);
+  --online: #22c55e;
+  --warn: #b7791f;
 
   /* The board. Classic tournament green: high contrast for both piece colours,
      and the overlays below are tuned against exactly these two values. */
@@ -33,11 +45,24 @@
   --sq-select: rgba(255, 245, 70, 0.62);
   --sq-hint: rgba(18, 28, 10, 0.2);
 
-  --radius: 14px;
-  --radius-sm: 9px;
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px -12px rgba(0, 0, 0, 0.6);
-  --font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius: var(--glass-radius-lg);
+  --radius-sm: 12px;
+  --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+  --font: var(--glass-font);
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+/* Dark: smoked glass, for anything that sets `data-theme="dark"` on <html>.
+   The glass tokens switch on the same marker; only the literals move here. */
+:root[data-theme="dark"] {
+  --surface-3: #232838;
+  --accent-hover: #ffffff;
+  --danger: #f26d6d;
+  --danger-hover: #ff8585;
+  --on-danger: #2a0b0b;
+  --online: #3ddc84;
+  --warn: #f5b84a;
   color-scheme: dark;
 }
 
@@ -46,9 +71,9 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(1200px 600px at 15% -10%, var(--bg-glow), transparent 60%),
-    var(--bg);
+  /* The glass ground with the tinted colour fields over it (glass-fields). */
+  background-color: var(--bg);
+  background-image: var(--glass-fields);
   background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
@@ -62,13 +87,18 @@ body {
 :where(.shell) em { font-style: normal; color: var(--text); }
 
 /* ── shell ──────────────────────────────────────────────────────────────── */
+/* The floating glass header every app shares (glass-header). */
 .topbar {
   position: sticky;
-  top: 0;
+  top: 12px;
   z-index: 10;
-  background: rgba(15, 16, 19, 0.78);
-  backdrop-filter: saturate(140%) blur(14px);
-  border-bottom: 1px solid var(--border);
+  margin: 12px 16px 0;
+  border-radius: 20px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
 }
 .topbar-inner {
   max-width: 1240px;
@@ -119,7 +149,7 @@ body {
 .lede { color: var(--text-dim); font-size: 1.02rem; margin: 0 0 22px; max-width: 52ch; }
 .eyebrow {
   margin: 0 0 10px;
-  color: var(--accent);
+  color: var(--glass-accent);
   font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -134,7 +164,9 @@ body {
 /* ── cards ──────────────────────────────────────────────────────────────── */
 .card {
   background: var(--surface);
-  border: 1px solid var(--border);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius);
   padding: 18px;
   margin-bottom: 14px;
@@ -180,7 +212,7 @@ body {
   background: var(--accent);
   color: var(--accent-ink);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   padding: 9px 16px;
   font: inherit;
   font-size: 0.88rem;
@@ -196,20 +228,20 @@ body {
   border-color: var(--border-strong);
 }
 :where(.shell) button.ghost:hover:not(:disabled) { background: var(--surface-3); }
-:where(.shell) button.small { padding: 6px 12px; font-size: 0.8rem; border-radius: 8px; }
-:where(.shell) button.large { padding: 12px 22px; font-size: 0.95rem; border-radius: 11px; }
+:where(.shell) button.small { padding: 6px 12px; font-size: 0.8rem; border-radius: 999px; }
+:where(.shell) button.large { padding: 12px 22px; font-size: 0.95rem; border-radius: 999px; }
 :where(.shell) button:disabled { opacity: 0.45; cursor: default; }
 :where(.shell) button:focus-visible, :where(.shell) input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn-icon { font-size: 1rem; line-height: 1; opacity: 0.85; }
 
 /* Destructive: the armed state is filled; the resting state is only tinted. */
-:where(.shell) button.danger { background: var(--danger); color: #2a0b0b; }
-:where(.shell) button.danger:hover:not(:disabled) { background: #ff8585; }
+:where(.shell) button.danger { background: var(--danger); color: var(--on-danger); }
+:where(.shell) button.danger:hover:not(:disabled) { background: var(--danger-hover); }
 :where(.shell) button.ghost.danger-text { color: var(--danger); }
 :where(.shell) button.ghost.danger-text:hover:not(:disabled) { border-color: var(--danger); background: var(--danger-soft); }
 
 :where(.shell) pre {
-  background: #0c0d10;
+  background: var(--glass-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 11px 13px;
@@ -220,7 +252,7 @@ body {
   font-size: 0.8rem;
   font-family: var(--mono);
 }
-:where(.shell) pre.err { border-color: rgba(242, 109, 109, 0.4); background: var(--danger-soft); color: #ffb3b3; }
+:where(.shell) pre.err { border-color: rgba(242, 109, 109, 0.4); background: var(--danger-soft); color: var(--glass-bad-ink); }
 
 :where(.shell) table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
 :where(.shell) th, :where(.shell) td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
@@ -265,9 +297,11 @@ body {
   width: min(520px, 100%);
   text-align: center;
   padding: 40px 32px;
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
-  border: 1px solid var(--border);
-  border-radius: 22px;
+  background: var(--surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-radius: 26px;
   box-shadow: var(--shadow);
 }
 .connect-card .lede { margin-left: auto; margin-right: auto; }
@@ -305,7 +339,7 @@ body {
   aspect-ratio: 1;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--border);
+  box-shadow: 0 30px 60px -24px rgba(20, 26, 60, 0.45), 0 0 0 1px var(--border);
   transform: rotate(-4deg);
 }
 @media (min-width: 860px) { .mini-board { display: grid; } }
@@ -335,6 +369,7 @@ body {
   color: var(--text);
   text-align: left;
   font-weight: 500;
+  border-radius: 14px;
 }
 .table-item:hover:not(:disabled) { background: var(--surface-3); border-color: var(--border-strong); }
 .table-item:hover .open { color: var(--accent-ink); background: var(--accent); }
@@ -380,7 +415,7 @@ body {
   gap: 10px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: var(--surface-2);
+  background: var(--glass-sunken);
 }
 .ns-id {
   flex: 1;
@@ -397,7 +432,7 @@ body {
   margin-top: 16px;
   padding: 14px;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(165, 255, 17, 0.35);
+  border: 1px solid color-mix(in srgb, var(--glass-accent-solid) 30%, transparent);
   background: var(--accent-soft);
 }
 .confirm-title { margin: 0 0 8px; font-size: 0.9rem; }
@@ -425,13 +460,16 @@ body {
   gap: 12px;
   min-height: 58px;
   padding: 8px 10px;
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-.player-bar.to-move { border-color: rgba(165, 255, 17, 0.45); box-shadow: 0 0 0 3px var(--accent-soft); }
-.player-bar.vacant { border-style: dashed; background: transparent; }
+.player-bar.to-move { border-color: color-mix(in srgb, var(--glass-accent-solid) 45%, transparent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
+.player-bar.vacant { border-style: dashed; border-color: var(--border-strong); background: transparent; box-shadow: none; }
 .avatar {
   position: relative;
   flex: none;
@@ -462,7 +500,7 @@ body {
   bottom: -3px;
   width: 12px;
   height: 12px;
-  border: 2px solid var(--surface);
+  border: 2px solid var(--glass-surface-solid);
   box-shadow: none;
 }
 .player-main { flex: 1; min-width: 0; }
@@ -501,7 +539,7 @@ body {
 .board-wrap {
   position: relative;
   border-radius: 10px;
-  box-shadow: 0 24px 50px -24px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 24px 50px -24px rgba(20, 26, 60, 0.5), 0 0 0 1px rgba(14, 18, 34, 0.14);
   container-type: inline-size;
 }
 .board {
@@ -608,8 +646,7 @@ body {
   display: grid;
   place-items: center;
   border-radius: 10px;
-  background: rgba(8, 9, 11, 0.62);
-  backdrop-filter: blur(3px);
+  background: rgba(14, 18, 34, 0.5);
 }
 .promotion-card {
   display: flex;
@@ -617,10 +654,10 @@ body {
   align-items: center;
   gap: 14px;
   padding: 20px;
-  background: var(--surface);
+  background: var(--glass-surface-solid);
   border: 1px solid var(--border-strong);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow-float);
 }
 .promotion-title { margin: 0; font-weight: 650; }
 .promotion-choices { display: flex; gap: 10px; }
@@ -632,6 +669,7 @@ body {
   background: var(--sq-light);
   color: #2b2f37;
   font-size: 0.74rem;
+  border-radius: 12px;
 }
 .promotion-choice:hover:not(:disabled) { background: #fffff0; box-shadow: 0 0 0 3px var(--accent); }
 .promotion-choice .piece { position: static; width: 60px; height: 60px; }
@@ -645,8 +683,8 @@ body {
   margin: 2px 0 14px;
   padding: 14px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(165, 255, 17, 0.14), rgba(165, 255, 17, 0.03));
-  border: 1px solid rgba(165, 255, 17, 0.25);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--glass-tint) 22%, transparent), color-mix(in srgb, var(--glass-accent-solid) 6%, transparent));
+  border: 1px solid color-mix(in srgb, var(--glass-tint) 35%, transparent);
 }
 .result .score { font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .status-row { display: flex; align-items: center; gap: 10px; }
@@ -672,7 +710,7 @@ body {
   margin-top: 16px;
   padding: 14px;
   border-radius: 12px;
-  border: 1px solid rgba(165, 255, 17, 0.4);
+  border: 1px solid color-mix(in srgb, var(--glass-accent-solid) 35%, transparent);
   background: var(--accent-soft);
 }
 .offer p { margin: 0 0 10px; font-size: 0.92rem; font-weight: 600; }
@@ -698,10 +736,10 @@ body {
   grid-template-columns: 2.4rem 1fr 1fr;
   align-items: center;
 }
-.scoresheet li:nth-child(odd) { background: rgba(255, 255, 255, 0.025); }
+.scoresheet li:nth-child(odd) { background: var(--glass-sunken); }
 .scoresheet .num { color: var(--text-faint); padding: 5px 0 5px 10px; font-size: 0.78rem; }
 .scoresheet .san { padding: 5px 10px; margin: 1px 2px; border-radius: 6px; font-weight: 550; }
-.scoresheet .san.current { background: var(--accent-soft); color: var(--accent); }
+.scoresheet .san.current { background: var(--accent-soft); color: var(--glass-accent); }
 
 /* ── invite ─────────────────────────────────────────────────────────────── */
 .invite-card .row { margin-top: 2px; }
@@ -714,9 +752,9 @@ body {
   display: block;
   flex: 1;
   padding: 8px 11px;
-  background: #0c0d10;
+  background: var(--glass-sunken);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--text-dim);
   font-size: 0.78rem;
   white-space: nowrap;
@@ -731,7 +769,7 @@ body {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 6px;
-  background: var(--surface-2);
+  background: var(--glass-sunken);
   font-family: var(--mono);
   font-size: 0.78rem;
 }
@@ -739,6 +777,7 @@ body {
 /* ── small screens ──────────────────────────────────────────────────────── */
 @media (max-width: 560px) {
   .wrap { padding: 16px 12px 64px; }
+  .topbar { margin: 8px 8px 0; top: 8px; }
   .topbar-inner { padding: 0 12px; }
   .node-pill { display: none; }
   .card { padding: 15px; }

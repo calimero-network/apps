@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "events": {
+    "NoteChanged": {
+      "type": "message",
+      "read": [{ "as": "d", "call": "get_deal", "args": { "deal_id": "=event.deal_id" } }],
+      "let": {
+        "at": "=d.notes[0].id == event.id ? 0 : d.notes[1].id == event.id ? 1 : d.notes[2].id == event.id ? 2 : d.notes[3].id == event.id ? 3 : d.notes[4].id == event.id ? 4 : d.notes[5].id == event.id ? 5 : d.notes[6].id == event.id ? 6 : d.notes[7].id == event.id ? 7 : 9999",
+        "note": "=d.notes[at]"
+      },
+      "show_if": "=note.id == event.id && note.deal_id == event.deal_id && mine(d.deal.created_by) && !mine(note.author)",
+      "fields": {
+        "from": "=note.author",
+        "text": "=note.body",
+        "where": "=d.deal.title",
+        "is_dm": false
+      },
+      "title": "='Added a note to your deal ' + d.deal.title",
+      "needs_you": false,
+      "ask": { "kind": "reply", "prompt": "Add a note to this deal" },
+      "reply": {
+        "method": "add_note",
+        "args": { "deal_id": "=event.deal_id", "body": "=answer" }
+      }
+    },
+    "ActivityChanged": "ignore",
+    "AutomationFired": "ignore",
+    "AutomationsChanged": "ignore",
+    "ContactChanged": "ignore",
+    "DealCreated": "ignore",
+    "DealDeleted": "ignore",
+    "DealMoved": "ignore",
+    "DealStatusChanged": "ignore",
+    "DealUpdated": "ignore",
+    "SettingsChanged": "ignore",
+    "StagesChanged": "ignore"
+  }
+}

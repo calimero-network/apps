@@ -397,7 +397,7 @@ function LensesSection({ feed, preview, newFeed }: { feed: Feed; preview?: Previ
             {newFeed && <NewFeedButton newFeed={newFeed} />}
           </p>
         ) : feed.lenses.length === 0 ? (
-          <p className="muted">Nothing learned yet. Chat uses the lens this app ships.</p>
+          <p className="muted">Nothing learned yet. Chat, Calendar, Sheets, Issues, CRM, Sign and Pass use the lenses this app ships.</p>
         ) : (
           <ul className="lenses">
             {feed.lenses.map((l) => (

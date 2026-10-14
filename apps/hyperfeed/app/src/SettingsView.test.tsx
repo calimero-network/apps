@@ -166,12 +166,20 @@ describe("Settings → Actions: what your agent can do in each app", () => {
     const backend = new DemoBackend(true, 0);
     render(<Harness backend={backend} section="actions" />);
     const link = within(await screen.findByRole("navigation", { name: "Settings" })).getByRole("link", { name: /Actions/ });
-    expect(await within(link).findByLabelText("7 waiting for you")).toBeInTheDocument();
+    expect(await within(link).findByLabelText("8 waiting for you")).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Actions in Docs" })).toBeNull();
     const docs = await screen.findByRole("listitem", { name: "Docs" });
     fireEvent.click(within(docs).getByRole("button", { name: "Approve" }));
     expect(await screen.findByRole("list", { name: "Actions in Docs" })).toBeInTheDocument();
     expect(backend.verdict("docs", "", true, "delete_doc").reason).toContain('"delete"');
+
+    // Your node is managed action by action too, under its own name.
+    const node = await screen.findByRole("listitem", { name: "Node management" });
+    fireEvent.click(within(node).getByRole("button", { name: "Approve" }));
+    const nodeActions = await screen.findByRole("list", { name: "Actions in Node management" });
+    expect(nodeActions).toHaveTextContent("Install and update apps");
+    expect(backend.verdict("node", "", false, "list_contexts").decision).toBe("act");
+    expect(backend.verdict("node", "", true, "leave_namespace").reason).toContain('"delete"');
   });
 
   it("says what to do on a feed made before actions", async () => {

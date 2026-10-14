@@ -1,29 +1,66 @@
 /*
- * Mero Models — one dark theme, the way a modeller is: the viewport is the
- * brightest thing on screen and the chrome around it stays out of the way.
+ * Mero Models — the fleet's light glass (@calimero-apps/glass) around a 3D
+ * viewport. The viewport is the content: its scene background, grid, gizmos,
+ * peer labels and the box-select marquee keep their own colours in every
+ * theme. Everything around it — menus, tool rail, outliner, properties, status
+ * bar, dialogs — is glass. Light by default; the glass dark markers
+ * (`:root[data-theme='dark']`, `:root.dark`) switch the glass tokens these map
+ * onto, which turns the same chrome into smoked glass.
  */
 :root {
-  --bg: #1b1c1f;
-  --bg-2: #232428;
-  --panel: #2a2b30;
-  --panel-2: #303137;
-  --field: #1f2024;
-  --line: #3a3b42;
-  --line-2: #46474f;
-  --text: #e3e4e8;
-  --muted: #9a9ca5;
-  --faint: #6e707a;
-  --accent: #ff9a1f;
-  --accent-2: #4f9dff;
+  --glass-tint: #818cf8;
+
+  --bg: var(--glass-ground);
+  --bg-2: color-mix(in srgb, var(--glass-surface-solid) 62%, transparent);
+  --panel: var(--glass-surface-solid);
+  --panel-2: color-mix(in srgb, var(--glass-ink) 7%, var(--glass-surface-solid));
+  --field: var(--glass-surface-solid);
+  --line: var(--glass-line);
+  --line-2: var(--glass-line-strong);
+  --text: var(--glass-ink);
+  --muted: var(--glass-ink-2);
+  --faint: var(--glass-muted);
+  --accent: var(--glass-accent-solid);
+  --accent-2: var(--glass-accent-solid);
   --danger: #e5484d;
-  --ok: #4cc38a;
+  --ok: #12a150;
   --x: #e5484d;
+  --y: #4f9a2f;
+  --z: #3b74e6;
+  --radius: 9px;
+  --font: var(--glass-font);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* A selected or active control: the glass ink, as every glass app uses it. */
+  --on-bg: var(--glass-ink);
+  --on-text: var(--glass-on-ink);
+  color-scheme: light;
+}
+
+/* Smoked glass: the glass tokens switch under the same markers; only the
+   colours here that are not glass tokens need their dark values back. */
+:root[data-theme='dark'],
+:root.dark {
+  --ok: #4cc38a;
   --y: #6cc04a;
   --z: #4f8dff;
-  --radius: 6px;
-  --font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: dark;
+}
+
+/* mero-react's connect button and its menu, on glass instead of Calimero lime.
+   `:root:root` because mero-react injects its own `:root` defaults at runtime,
+   after this stylesheet in a production build. */
+:root:root {
+  --mero-bg: var(--glass-surface-solid);
+  --mero-bg-secondary: var(--glass-surface-solid);
+  --mero-bg-tertiary: var(--glass-sunken);
+  --mero-text: var(--glass-ink);
+  --mero-text-secondary: var(--glass-muted);
+  --mero-accent: var(--glass-ink);
+  --mero-accent-hover: var(--glass-ink-2);
+  --mero-on-primary: var(--glass-on-ink);
+  --mero-border: var(--glass-line);
+  --mero-shadow: rgba(20, 26, 60, 0.18);
+  --mero-overlay: rgba(14, 18, 34, 0.32);
 }
 
 * {
@@ -38,7 +75,10 @@ body,
 }
 
 body {
-  background: var(--bg);
+  /* The app shell: glass ground under the tinted fields. */
+  background-color: var(--bg);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
   color: var(--text);
   font: 13px/1.45 var(--font);
   -webkit-font-smoothing: antialiased;
@@ -53,7 +93,7 @@ select {
 
 button {
   cursor: pointer;
-  background: var(--panel-2);
+  background: var(--glass-surface-solid);
   border: 1px solid var(--line-2);
   border-radius: var(--radius);
   padding: 6px 12px;
@@ -61,7 +101,7 @@ button {
 }
 
 button:hover:not(:disabled) {
-  background: #3a3b42;
+  background: var(--panel-2);
 }
 
 button:disabled {
@@ -73,16 +113,18 @@ button.large {
   padding: 10px 18px;
   font-size: 14px;
   font-weight: 600;
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #1b1208;
+  background: var(--on-bg);
+  border-color: var(--on-bg);
+  color: var(--on-text);
+  border-radius: 999px;
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
 button.large:hover:not(:disabled) {
-  background: #ffad4a;
+  background: var(--glass-ink-2);
 }
 
 button.ghost {
@@ -95,7 +137,7 @@ button.small {
 }
 
 button.danger {
-  color: #ff8a8d;
+  color: var(--glass-bad-ink);
 }
 
 input,
@@ -110,6 +152,7 @@ select {
 input:focus,
 select:focus {
   border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 18%, transparent);
 }
 
 .mono {
@@ -130,9 +173,9 @@ select:focus {
 .err {
   white-space: pre-wrap;
   word-break: break-word;
-  background: rgba(229, 72, 77, 0.12);
-  border: 1px solid rgba(229, 72, 77, 0.4);
-  color: #ffb3b5;
+  background: var(--glass-bad-bg);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--glass-bad-ink);
   border-radius: var(--radius);
   padding: 8px 10px;
   font: 12px/1.4 var(--mono);
@@ -155,8 +198,17 @@ select:focus {
 }
 
 .topbar {
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-2);
+  /* The floating header every glass app shares. */
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  margin: 12px 16px 0;
+  border: 1px solid var(--glass-edge);
+  border-radius: 20px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
 }
 
 .topbar-inner {
@@ -257,9 +309,12 @@ select:focus {
 .connect-card {
   max-width: 440px;
   text-align: center;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
   padding: 36px 32px;
 }
 
@@ -351,9 +406,12 @@ select:focus {
 }
 
 .card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
   padding: 18px;
 }
 
@@ -397,8 +455,8 @@ select:focus {
   place-items: center;
   width: 38px;
   height: 38px;
-  border-radius: 8px;
-  background: rgba(255, 154, 31, 0.1);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   flex: none;
 }
 
@@ -489,8 +547,8 @@ select:focus {
   right: 16px;
   bottom: 40px;
   width: min(420px, calc(100vw - 32px));
-  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.5);
-  border-radius: 12px;
+  box-shadow: var(--glass-shadow-float);
+  border-radius: var(--glass-radius-lg);
 }
 
 @media (max-width: 820px) {
@@ -518,8 +576,14 @@ select:focus {
   align-items: center;
   gap: 12px;
   padding: 0 8px;
-  background: var(--bg-2);
+  /* Frosted glass; its 38px row is what the viewport is sized against. */
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 var(--glass-edge);
+  position: relative;
+  z-index: 5;
   min-width: 0;
 }
 
@@ -535,6 +599,7 @@ select:focus {
 .menu-title {
   background: none;
   border: 1px solid transparent;
+  border-radius: 999px;
   padding: 4px 10px;
 }
 
@@ -549,11 +614,12 @@ select:focus {
   top: calc(100% + 4px);
   left: 0;
   min-width: 230px;
-  background: #26272c;
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  padding: 4px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  /* Floats over the viewport: solid, never frosted. */
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: 14px;
+  padding: 5px;
+  box-shadow: var(--glass-shadow-float);
 }
 
 .menu-item-wrap {
@@ -567,13 +633,13 @@ select:focus {
   gap: 8px;
   background: none;
   border: none;
-  border-radius: 5px;
+  border-radius: 8px;
   padding: 5px 8px;
   text-align: left;
 }
 
 .menu-item:hover:not(:disabled) {
-  background: #3d5a85;
+  background: var(--glass-sunken);
 }
 
 .menu-check {
@@ -652,7 +718,7 @@ select:focus {
   font-size: 11px;
   font-weight: 700;
   color: #111;
-  border: 2px solid var(--bg-2);
+  border: 2px solid var(--glass-surface-solid);
   padding: 0;
   flex: none;
 }
@@ -666,14 +732,15 @@ select:focus {
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  background: var(--accent-2);
-  border-color: var(--accent-2);
-  color: #fff;
+  background: var(--on-bg);
+  border-color: var(--on-bg);
+  color: var(--on-text);
+  border-radius: 999px;
   font-weight: 600;
 }
 
 .share-btn:hover:not(:disabled) {
-  background: #6aadff;
+  background: var(--glass-ink-2);
 }
 
 .role-badge {
@@ -687,17 +754,17 @@ select:focus {
 
 .role-badge.admin {
   color: var(--accent);
-  border-color: rgba(255, 154, 31, 0.5);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .role-badge.editor {
   color: var(--ok);
-  border-color: rgba(76, 195, 138, 0.5);
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
 }
 
 .role-badge.viewer {
-  color: #ffb3b5;
-  border-color: rgba(229, 72, 77, 0.5);
+  color: var(--glass-bad-ink);
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
 }
 
 .studio-body {
@@ -708,7 +775,10 @@ select:focus {
 }
 
 .toolbar {
-  background: var(--bg-2);
+  /* Frosted glass; its 44px column is what the viewport is sized against. */
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
@@ -729,8 +799,9 @@ select:focus {
 }
 
 .tool.on {
-  background: #3d5a85;
-  border-color: #5277ad;
+  background: var(--on-bg);
+  border-color: var(--on-bg);
+  color: var(--on-text);
 }
 
 .tool-sep {
@@ -744,6 +815,7 @@ select:focus {
   position: relative;
   min-width: 0;
   min-height: 0;
+  /* Behind the 3D canvas: part of the viewport, kept as it was. */
   background: #24262b;
 }
 
@@ -807,9 +879,13 @@ select:focus {
 
 .seg {
   display: inline-flex;
-  background: rgba(27, 28, 31, 0.85);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius);
+  /* Chrome floating over the viewport: near-opaque glass, so it reads over any scene. */
+  background: color-mix(in srgb, var(--glass-surface-solid) 88%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-radius: 999px;
+  box-shadow: var(--glass-shadow);
   overflow: hidden;
 }
 
@@ -829,19 +905,25 @@ select:focus {
 }
 
 .seg button.on {
-  background: #3d5a85;
+  background: var(--on-bg);
+  color: var(--on-text);
 }
 
 .vp-btn {
-  background: rgba(27, 28, 31, 0.85);
+  background: color-mix(in srgb, var(--glass-surface-solid) 88%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-shadow);
   padding: 5px 7px;
   display: inline-grid;
   place-items: center;
 }
 
 .vp-btn.on {
-  background: #3d5a85;
-  border-color: #5277ad;
+  background: var(--on-bg);
+  border-color: var(--on-bg);
+  color: var(--on-text);
 }
 
 .vp-empty {
@@ -850,9 +932,12 @@ select:focus {
   top: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
-  background: rgba(27, 28, 31, 0.8);
-  border: 1px solid var(--line-2);
-  border-radius: 12px;
+  background: color-mix(in srgb, var(--glass-surface-solid) 88%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius-lg);
+  box-shadow: var(--glass-shadow-float);
   padding: 20px 26px;
   pointer-events: auto;
 }
@@ -862,9 +947,10 @@ select:focus {
 }
 
 .vp-empty button {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #1b1208;
+  background: var(--on-bg);
+  border-color: var(--on-bg);
+  color: var(--on-text);
+  border-radius: 999px;
   font-weight: 600;
 }
 
@@ -872,7 +958,10 @@ select:focus {
   display: grid;
   grid-template-rows: minmax(140px, 38%) 1fr;
   border-left: 1px solid var(--line);
-  background: var(--panel);
+  /* Frosted glass; its 300px column is what the viewport is sized against. */
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   min-height: 0;
 }
 
@@ -925,15 +1014,15 @@ select:focus {
 }
 
 .ol-row:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--glass-sunken);
 }
 
 .ol-row.selected {
-  background: rgba(79, 157, 255, 0.18);
+  background: color-mix(in srgb, var(--accent-2) 14%, transparent);
 }
 
 .ol-row.active {
-  background: rgba(79, 157, 255, 0.3);
+  background: color-mix(in srgb, var(--accent-2) 24%, transparent);
   border-left-color: var(--accent);
 }
 
@@ -968,7 +1057,7 @@ select:focus {
 }
 
 .ol-icon {
-  color: #f0a65a;
+  color: var(--accent);
   flex: none;
 }
 
@@ -1287,7 +1376,10 @@ select:focus {
   align-items: center;
   gap: 16px;
   padding: 0 10px;
-  background: var(--bg-2);
+  /* Frosted glass; its 26px row is what the viewport is sized against. */
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border-top: 1px solid var(--line);
   color: var(--faint);
   font-size: 11.5px;
@@ -1311,7 +1403,7 @@ select:focus {
 }
 
 .status-notice.error {
-  color: #ff8a8d;
+  color: var(--glass-bad-ink);
 }
 
 .status-count {
@@ -1326,11 +1418,12 @@ select:focus {
   width: 380px;
   max-height: calc(100% - 16px);
   overflow: auto;
+  /* Floats over the viewport: solid, never frosted. */
   background: var(--panel);
-  border: 1px solid var(--line-2);
-  border-radius: 12px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 18px;
   padding: 14px 16px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--glass-shadow-float);
   user-select: text;
 }
 
@@ -1447,11 +1540,12 @@ select:focus {
   left: 50%;
   top: 70px;
   transform: translateX(-50%);
+  /* Floats over the viewport: solid, never frosted. */
   background: var(--panel);
-  border: 1px solid var(--line-2);
-  border-radius: 12px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 18px;
   padding: 16px 18px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--glass-shadow-float);
   display: grid;
   gap: 10px;
   min-width: 320px;
@@ -1532,15 +1626,15 @@ select:focus {
 }
 
 .lock-note.theirs {
-  background: rgba(229, 72, 77, 0.12);
-  border: 1px solid rgba(229, 72, 77, 0.4);
-  color: #ffc2c4;
+  background: var(--glass-bad-bg);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--glass-bad-ink);
 }
 
 .lock-note.mine {
-  background: rgba(255, 154, 31, 0.1);
-  border: 1px solid rgba(255, 154, 31, 0.35);
-  color: #ffd39e;
+  background: var(--glass-wait-bg);
+  border: 1px solid color-mix(in srgb, var(--glass-wait-ink) 30%, transparent);
+  color: var(--glass-wait-ink);
 }
 
 .mesh-status {
@@ -1548,7 +1642,7 @@ select:focus {
 }
 
 .mesh-status.error {
-  color: #ff8a8d;
+  color: var(--glass-bad-ink);
 }
 
 .button-row select {
@@ -1591,7 +1685,7 @@ select:focus {
 }
 
 .history-list li.current {
-  background: rgba(76, 195, 138, 0.08);
+  background: var(--glass-good-bg);
 }
 
 .v-num {
@@ -1693,7 +1787,7 @@ select:focus {
 
 .tex-name:hover:not(:disabled) {
   background: none;
-  color: #fff;
+  color: var(--text);
 }
 
 .tex-detail {
@@ -1757,10 +1851,11 @@ select:focus {
   display: grid;
   gap: 6px;
   padding: 10px 12px;
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
-  border: 1px solid var(--line-2);
-  border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  /* Floats over the viewport: solid, never frosted. */
+  background: var(--panel);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow-float);
 }
 
 .op-title {
@@ -1837,11 +1932,12 @@ select:focus {
   z-index: 35;
   display: grid;
   grid-template-rows: auto auto 1fr auto;
+  /* Floats over the viewport: solid, never frosted. */
   background: var(--panel);
-  border: 1px solid var(--line-2);
-  border-radius: 10px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--glass-radius);
   overflow: hidden;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--glass-shadow-float);
 }
 
 .uv-head,
@@ -1870,8 +1966,9 @@ select:focus {
 
 .uv-tools button.on,
 .button-grid button.on {
-  background: #3d5a85;
-  border-color: #5277ad;
+  background: var(--on-bg);
+  border-color: var(--on-bg);
+  color: var(--on-text);
 }
 
 .tool-gap {
@@ -1999,9 +2096,9 @@ select:focus {
 }
 
 .button-row button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #1b1208;
+  background: var(--on-bg);
+  border-color: var(--on-bg);
+  color: var(--on-text);
   font-weight: 600;
 }
 
@@ -2079,12 +2176,12 @@ select:focus {
 }
 
 .ge-checks li.error {
-  color: #ffb3b5;
+  color: var(--glass-bad-ink);
   background: color-mix(in srgb, var(--danger) 18%, transparent);
 }
 
 .ge-checks li.warning {
-  color: #ffd59a;
+  color: var(--glass-wait-ink);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
@@ -2097,5 +2194,5 @@ select:focus {
   border-radius: 50%;
   font-size: 10px;
   font-weight: 700;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--glass-sunken);
 }

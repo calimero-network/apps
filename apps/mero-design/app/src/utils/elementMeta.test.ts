@@ -63,3 +63,51 @@ describe("toWire / fromWire", () => {
     expect(fromWire(once)).toBe(once);
   });
 });
+
+// Locked and hidden ride the label like every other extra, so the contract and
+// the stored element layout are unchanged. What must hold is that a label
+// written before the flags existed reads as unlocked and shown.
+describe("locked / hidden flags", () => {
+  const SEP = "\u001F";
+
+  it("a label from before the flags existed reads as unlocked and shown", () => {
+    for (const stored of [null, undefined, "", "Logo", "screen/01 Sign in", `Card${SEP}s=dashed&b=box`, `${SEP}h=star`]) {
+      const { meta } = unpackLabel(stored);
+      expect(meta.locked).toBeUndefined();
+      expect(meta.hidden).toBeUndefined();
+    }
+  });
+
+  it("an element read from an old board carries neither flag", () => {
+    const el = fromWire({ ...base, id: "old", label: `Card${SEP}s=dashed` });
+    expect(el.locked).toBeUndefined();
+    expect(el.hidden).toBeUndefined();
+    expect(el.strokeStyle).toBe("dashed");
+    expect(el.label).toBe("Card");
+  });
+
+  it("round-trips both flags next to the other extras and a group path", () => {
+    const packed = packLabel("hero/Logo", { strokeStyle: "dotted", locked: true, hidden: true });
+    expect(packed?.startsWith(`hero/Logo${SEP}`)).toBe(true);
+    expect(unpackLabel(packed)).toEqual({
+      label: "hero/Logo",
+      meta: { strokeStyle: "dotted", locked: true, hidden: true },
+    });
+  });
+
+  it("only '1' sets a flag; any other value reads as off", () => {
+    expect(unpackLabel(`x${SEP}l=0&i=true`).meta).toEqual({});
+  });
+
+  it("clearing both flags puts back the label exactly as it was", () => {
+    const el = { ...base, id: "a", label: "Logo", locked: true, hidden: true };
+    expect(toWire(el).label).toBe(`Logo${SEP}l=1&i=1`);
+    expect(toWire({ ...el, locked: false, hidden: false }).label).toBe("Logo");
+  });
+
+  it("toWire / fromWire round-trip the flags and strip them from the stored element", () => {
+    const wire = toWire({ ...base, id: "a", label: null, locked: true });
+    expect(wire).not.toHaveProperty("locked");
+    expect(fromWire(wire)).toMatchObject({ id: "a", label: null, locked: true });
+  });
+});
