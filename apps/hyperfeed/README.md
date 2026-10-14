@@ -46,7 +46,7 @@ same warrant path it uses everywhere else.
 | **Access** | you | per agent name: what it may reach on its computer besides your Calimero apps: folders (each read only, or read and write; up to 20, each absolute or under `~`, no `..`), a shell, the web. Last-writer-wins. The agent's runtime enforces it before every tool call and refuses `set_access` to the agent. An Access you saved with no folders and shell and web off means your Calimero apps only. **Until you save one, the agent uses its own default:** for mero-bot, the folder it runs in, read and write, with shell and web on |
 | **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (what it serves, model, attested or not, folders, shell, web), written with `agent_reach` (see [the loop](#api-for-agents)). Settings → Agents shows it beside your Access. An agent whose every line is attested is a **private** agent |
 | **Assignment** | you | per app: which of your agents works in it, by the name it reports in with. Last-writer-wins; an empty agent gives the app back. Only that agent takes the app's work (new items, your decisions on its rows, your messages in a chat about it) and calls the app. An app with none is your private agents', or any agent's while none reports in. Code is the app `mero-bot` (the tools on a computer), and it has no default: nothing runs on a computer until you give Code to an agent that has one, such as your local mero-bot. The agent's runtime enforces it and refuses `set_assignment` to the agent |
-| **Link** | your agent, or you | per task: a subject it works on (`<app>:<context>[:<id>]`) with a label, shown as a chip on the task's post. Your agent's writes add them; you add one from its address or take one off, and a link you took off stays off. The chip counts and groups what teammates did there, and opens it in its app beside the feed |
+| **Link** | your agent, or you | per task: a subject it works on (`<app>:<context>[:<id>]`) with a label, shown as a chip on the task's post. Your agent's writes add them; you add one from its address or take one off, and a link you took off stays off. A chip with no label is named from the thing itself where the app says: a chat link reads `#launch`, or `DM with Ronit` for a DM, read from the chat in its own context. The chip counts and groups what teammates did there, and opens it in its app beside the feed |
 | **Subject** | your agent | what an action touched in another app, as `<app>:<context>[:<id>]` (the id from its `issue_id`, `doc_id` or `thread_id` arg), kept beside the action by id, and the chain that last touched each subject. A typed notification whose reply call goes to the same subject, recorded with no chain of its own, joins that chain unless you put it away: one thread per task, teammates' comments included |
 
 Every record merges deterministically:
@@ -72,6 +72,7 @@ asks you every time. With no approved actions, or an agent that names no method,
 | --- | --- |
 | app mode `off` | refuse |
 | the action is set to `off` | refuse |
+| a read whose category's guard is on ("Reading a secret") | ask |
 | a read (`writes: false`) | act |
 | app mode `read`, and the action writes | refuse |
 | agent paused | ask |
@@ -431,7 +432,12 @@ in the row's `note` while it is current.
    is set per app in Settings → Agents (`set_assignment`): a chat about an app goes to the agent
    that works in it, and a new chat to your private agent. When that agent meets work that needs
    code, it proposes a hand-off (an action in the app `mero-bot`, method `hand_off`) and the agent
-   you gave code to takes the chat up only once you approve it. `settings().message_modes` is empty:
+   you gave code to takes the chat up only once you approve it. What waits on you in a chat is a
+   card in its thread, not a one-line note: a proposal shows what it would send and why,
+   its body (the call's arguments, `message: <p>Hi</p>`, as mero-bot keeps them to tell a write that
+   already landed) read as text: one argument as its text alone, several one per line, HTML as the
+   text it shows. A message that reached you in the chain (a reply to one your agent sent) shows what was said
+   with its reply box, answered there or in the feed. `settings().message_modes` is empty:
    no client offers a mode any more. A message nobody
    has taken up after 30 seconds asks whether your agent (mero-bot) is running.
 
@@ -467,13 +473,24 @@ words, and an agent should never call them for itself. The agent's side of lense
 ## Trust model, honestly
 
 - **Owner-only writes bind honest nodes only.** `require_owner` runs inside the contract, and a
-  peer's node folds deltas without executing it. A feed is meant to have one member, you on your
-  devices, so there is no other writer to defend against. Merge-time enforcement (a writer set of
-  one) is the step to take before a feed is ever shared.
-- **The contract cannot tell your agent from you.** Both act as your account. Approvals therefore
-  record *your decision*; the hard boundary is the agent itself, which must not sign a warrant for
-  something waiting on you. Telling them apart needs either a separate agent account or core
-  exposing the delegating device to the contract.
+  peer's node folds deltas without executing it. A feed's members are you, on your devices, and the
+  cloud agents you add; a cloud agent is attested code, which is why it is trusted with the agent's
+  side. Merge-time enforcement (a writer set) is the step to take before a feed is shared with
+  anyone else.
+- **An agent on your own computer cannot be told from you.** It acts as your account, so approvals
+  record *your decision* and the hard boundary is the agent itself, which must not sign a warrant
+  for something waiting on you.
+- **A cloud agent can.** It has an account of its own, which you add with
+  `add_agent_account(account, name)` (and take off with `remove_agent_account(account)`); it must
+  also be invited to the feed's context. It may make only the agent's side of the feed (record
+  actions and notifications, take up and answer your messages, report progress, suggest rules and
+  lenses, claim chains, keep watches and PRs, report what it reaches), and only as the name you
+  added it under. Approving, answering, `say`, rules, modes, guards, access, assignments, push
+  devices and agent accounts stay yours, enforced by the contract.
+- **Drafts you send.** An action proposed with a `send_call` (`{"method", "args"}`, `"=answer"`
+  for your edit of its draft) is sent by your client, as you, when you approve it, and reported by
+  your client with `complete_action`; the agent can neither send nor report one. Since the write
+  is yours, an app where your agent may only read still takes drafts.
 - **Notifications are best-effort.** Core events carry no author and no "concerns you" bit, so the
   "needs you" flag is a guess for every kind outside the known list.
 
@@ -542,7 +559,8 @@ says the feed is too old.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
   Phone alerts (Settings → Alerts) keep your devices' push subscriptions and the runtime's VAPID
   public key in the feed; mero-bot's sender, which pushes what newly needs you, is a separate change.
-- Actions ship for Chat and Docs as checked fixtures (`app/src/actions/fixtures/`), used by the demo;
+- Actions ship for the core apps (Chat, Docs, Calendar, Sheets, Issues, CRM, Sign and Pass) as fixtures
+  in `app/src/actions/fixtures/`, each checked against its app's ABI and covering every method; the demo uses them;
   on your node they are learned and proposed by your agent. mero-bot does not propose them or pass
   `method` to `check_action` yet; until it does, its own word decides, as before.
 - Lenses for apps other than Chat are learned on your node; none ships for them. A lens is tried on

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DemoBackend, NO_ASK } from "./demo";
+import { send } from "./useFeed";
 import { replySubject, subjectKey } from "./subject";
 import type { ActionInput, Ask, NotificationInput } from "./generated/HyperfeedClient";
 
@@ -30,6 +31,7 @@ function action(app: string, outcome: string, extra: Partial<ActionInput> = {}):
     ask: NO_ASK,
     grant: "",
     subject: "",
+    send_call: "",
     ...extra,
   };
 }
@@ -405,6 +407,53 @@ describe("one thread per task", () => {
   });
 });
 
+describe("drafts you send, and agent accounts", () => {
+  const draft = (extra: Partial<ActionInput> = {}) =>
+    action("chat", "proposed", {
+      title: "Reply to Maya",
+      ask: { kind: "reply", prompt: "Send this?", options: [], draft: "Numbers are in the sheet." },
+      send_call: JSON.stringify({ method: "send_message", args: { message: "=answer" } }),
+      ...extra,
+    });
+
+  it("approving a draft sends it as you, with your edit, and reports it", async () => {
+    const b = fresh();
+    await b.setPolicy("chat", "read", "feed");
+    const item = await b.recordAction(draft());
+    expect(item.reply_call).toContain("send_message");
+    expect(item.undoable).toBe(false);
+    const approved = await b.resolveAction(item.id, "approve", "Sent you the numbers.");
+    await send(b, approved, "Sent you the numbers.");
+    expect(b.sent.at(-1)).toEqual({ contextId: "ctx", method: "send_message", args: { message: "Sent you the numbers." } });
+    expect((await b.chain(item.chain)).at(-1)?.status).toBe("done");
+  });
+
+  it("a refused send goes back to you as failed", async () => {
+    const b = fresh();
+    const item = await b.recordAction(draft());
+    const approved = await b.resolveAction(item.id, "approve", "Numbers are in the sheet.");
+    vi.spyOn(b, "callApp").mockRejectedValueOnce(new Error("you are not in this channel"));
+    await expect(send(b, approved, "Numbers are in the sheet.")).rejects.toThrow("not in this channel");
+    expect((await b.chain(item.chain)).at(-1)?.status).toBe("failed");
+  });
+
+  it("refuses a send call that is not a call, or not on a proposal", async () => {
+    const b = fresh();
+    await expect(b.recordAction(draft({ send_call: "not json" }))).rejects.toThrow("not JSON");
+    await expect(b.recordAction(draft({ send_call: '{"args":{}}' }))).rejects.toThrow("names no method");
+    await expect(b.recordAction(draft({ outcome: "done", ask: NO_ASK }))).rejects.toThrow("belongs on a proposal");
+  });
+
+  it("adds and removes agent accounts, one name each", async () => {
+    const b = fresh();
+    await b.addAgentAccount("acc-1", "cloud");
+    await expect(b.addAgentAccount("acc-2", "cloud")).rejects.toThrow("already the name");
+    expect((await b.settings()).agent_accounts).toEqual([expect.objectContaining({ account: "acc-1", name: "cloud" })]);
+    await b.removeAgentAccount("acc-1");
+    expect((await b.settings()).agent_accounts).toEqual([]);
+  });
+});
+
 describe("DemoBackend follows approved actions, as the contract does", () => {
   const def = (id: string, label: string, category: string, writes: boolean, methods: string[]) => ({
     id, label, description: "", category, writes, methods,
@@ -477,5 +526,16 @@ describe("DemoBackend follows approved actions, as the contract does", () => {
     expect(reply.breach).toBe("");
     const edit = await b.recordAction(action("chat", "done", { method: "edit_message", grant: proposal.id }));
     expect(edit.breach).not.toBe("");
+  });
+});
+
+describe("DemoBackend lets a guard cover reads, as the contract does", () => {
+  it("asks before reading a secret once that guard is on", async () => {
+    const b = fresh();
+    await b.setPolicy("pass", "act", "feed");
+    expect(b.verdict("pass", "secret", false).decision).toBe("act");
+    await b.setGuard("secret", true);
+    expect(b.verdict("pass", "secret", false).reason).toContain('"secret"');
+    expect(b.verdict("pass", "", false).decision).toBe("act");
   });
 });

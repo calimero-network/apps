@@ -27,6 +27,7 @@ fn action(app: &str, outcome: &str) -> ActionInput {
         ask: Ask::default(),
         grant: String::new(),
         subject: String::new(),
+        send_call: String::new(),
     }
 }
 
@@ -3456,6 +3457,189 @@ fn at_most_ten_devices_the_oldest_makes_room() {
     assert!(!list.iter().any(|d| d.endpoint == "https://push.example/0"));
 }
 
+// ── agents with accounts of their own, and drafts you send ──────────────────
+
+const CLOUD: [u8; 32] = [0xC1; 32];
+const CLOUD_DEVICE: [u8; 32] = [0xC2; 32];
+
+fn account(bytes: [u8; 32]) -> String {
+    AccountId::from(bytes).to_string()
+}
+
+fn with_cloud_agent() -> TestHost<Hyperfeed> {
+    let mut app = acting_in("chat");
+    app.call(|s| s.add_agent_account(account(CLOUD), "cloud".to_owned()))
+        .expect("add the agent");
+    app
+}
+
+#[test]
+fn an_agent_you_did_not_add_cannot_write_to_your_feed() {
+    let mut app = acting_in("chat");
+    let r = app.call_as_account(CLOUD, CLOUD_DEVICE, |s| {
+        s.record_action(action("chat", "done"))
+    });
+    assert!(
+        r.is_err(),
+        "a member of the context is not an agent of the feed"
+    );
+    let r = app.call_as_account(CLOUD, CLOUD_DEVICE, |s| s.agent_seen("cloud".to_owned()));
+    assert!(r.is_err());
+}
+
+#[test]
+fn an_agent_you_added_works_the_agents_side_as_itself() {
+    let mut app = with_cloud_agent();
+    let item = app
+        .call_as_account(CLOUD, CLOUD_DEVICE, |s| {
+            s.record_action(action("chat", "done"))
+        })
+        .expect("record");
+    assert_eq!(item.status, STATUS_DONE);
+    app.call_as_account(CLOUD, CLOUD_DEVICE, |s| s.agent_seen("cloud".to_owned()))
+        .expect("report in under its own name");
+    let r = app.call_as_account(CLOUD, CLOUD_DEVICE, |s| {
+        s.agent_seen("mero-bot@laptop".to_owned())
+    });
+    assert!(r.is_err(), "it speaks only as the name you added it under");
+
+    let settings = app.view(|s| s.settings()).unwrap();
+    assert_eq!(settings.agent_accounts.len(), 1);
+    assert_eq!(settings.agent_accounts[0].account, account(CLOUD));
+    assert_eq!(settings.agent_accounts[0].name, "cloud");
+}
+
+#[test]
+fn what_decides_for_you_stays_yours() {
+    let mut app = with_cloud_agent();
+    let proposal = app
+        .call_as_account(CLOUD, CLOUD_DEVICE, |s| {
+            s.record_action(action("chat", "proposed"))
+        })
+        .expect("propose");
+    let r = app.call_as_account(CLOUD, CLOUD_DEVICE, |s| {
+        s.resolve_action(proposal.id.clone(), "approve".to_owned(), String::new())
+    });
+    assert!(r.is_err(), "it cannot approve its own proposal");
+    let r = app.call_as_account(CLOUD, CLOUD_DEVICE, |s| {
+        s.set_policy("chat".to_owned(), "act".to_owned(), "feed".to_owned())
+    });
+    assert!(r.is_err(), "it cannot set its own mode");
+    let r = app.call_as_account(CLOUD, CLOUD_DEVICE, |s| {
+        s.add_agent_account(account(STRANGER), "friend".to_owned())
+    });
+    assert!(r.is_err(), "it cannot add agents");
+    let r = app.call_as_account(CLOUD, CLOUD_DEVICE, |s| {
+        s.say(String::new(), "hi".to_owned(), None, None)
+    });
+    assert!(r.is_err(), "it cannot write as you");
+}
+
+#[test]
+fn a_removed_agent_is_refused_and_its_name_is_free_again() {
+    let mut app = with_cloud_agent();
+    app.call(|s| s.remove_agent_account(account(CLOUD)))
+        .unwrap();
+    let r = app.call_as_account(CLOUD, CLOUD_DEVICE, |s| {
+        s.record_action(action("chat", "done"))
+    });
+    assert!(r.is_err());
+    assert!(app
+        .view(|s| s.settings())
+        .unwrap()
+        .agent_accounts
+        .is_empty());
+    app.call(|s| s.add_agent_account(account(STRANGER), "cloud".to_owned()))
+        .expect("the name is free");
+}
+
+#[test]
+fn two_agent_accounts_cannot_share_a_name() {
+    let mut app = with_cloud_agent();
+    let r = app.call(|s| s.add_agent_account(account(STRANGER), "cloud".to_owned()));
+    assert!(r.is_err());
+    let owner = AccountId::from(app.account_id()).to_string();
+    let r = app.call(|s| s.add_agent_account(owner, "me".to_owned()));
+    assert!(r.is_err(), "your own account is not an agent account");
+}
+
+fn draft(app: &str) -> ActionInput {
+    ActionInput {
+        title: "Reply to Maya".to_owned(),
+        ask: Ask {
+            kind: "reply".to_owned(),
+            prompt: "Send this?".to_owned(),
+            options: Vec::new(),
+            draft: "Numbers are in the sheet.".to_owned(),
+        },
+        send_call: r#"{"method":"send_message","args":{"message":"=answer"}}"#.to_owned(),
+        ..action(app, "proposed")
+    }
+}
+
+#[test]
+fn a_draft_you_send_is_yours_to_send_and_report() {
+    let mut app = with_cloud_agent();
+    // Read only: the agent may not write in chat, and may still draft for you.
+    app.call(|s| s.set_policy("chat".to_owned(), "read".to_owned(), "feed".to_owned()))
+        .unwrap();
+    let item = app
+        .call_as_account(CLOUD, CLOUD_DEVICE, |s| s.record_action(draft("chat")))
+        .expect("draft");
+    assert_eq!(item.status, STATUS_PENDING);
+    assert!(item.reply_call.contains("send_message"));
+    assert!(
+        !item.undoable,
+        "the agent undoes what it did, and it did not send this"
+    );
+    let row = app.view(|s| s.item(item.id.clone())).unwrap().unwrap();
+    assert_eq!(
+        row.reply_call, item.reply_call,
+        "the row carries the call your client makes"
+    );
+
+    app.call(|s| {
+        s.resolve_action(
+            item.id.clone(),
+            "approve".to_owned(),
+            "Sent you the numbers.".to_owned(),
+        )
+    })
+    .expect("approve");
+    let r = app.call_as_account(CLOUD, CLOUD_DEVICE, |s| {
+        s.complete_action(item.id.clone(), "done".to_owned(), String::new())
+    });
+    assert!(r.is_err(), "the agent never reports a send it did not make");
+    let done = app
+        .call(|s| {
+            s.complete_action(
+                item.id.clone(),
+                "done".to_owned(),
+                "Sent in #launch".to_owned(),
+            )
+        })
+        .expect("your client reports it");
+    assert_eq!(done.status, STATUS_DONE);
+}
+
+#[test]
+fn a_send_call_must_be_a_call_on_a_proposal() {
+    let mut app = with_cloud_agent();
+    let mut done = draft("chat");
+    done.outcome = "done".to_owned();
+    done.ask = Ask::default();
+    assert!(app.call(|s| s.record_action(done)).is_err());
+    for bad in [
+        "not json",
+        r#"{"args":{}}"#,
+        r#"{"method":"send_message","args":[]}"#,
+    ] {
+        let mut d = draft("chat");
+        d.send_call = bad.to_owned();
+        assert!(app.call(|s| s.record_action(d)).is_err(), "{bad}");
+    }
+}
+
 // ── Actions ──────────────────────────────────────────────────────────────────
 
 fn act_def(id: &str, label: &str, category: &str, writes: bool, methods: &[&str]) -> ActionDef {
@@ -3763,4 +3947,57 @@ fn a_session_grant_covers_one_action() {
         .unwrap()
         .breach
         .is_empty());
+}
+
+#[test]
+fn a_guard_covers_reads_too() {
+    let mut app = acting_in("pass");
+    let read_secret = |app: &TestHost<Hyperfeed>| {
+        app.view(|s| s.check_action("pass".to_owned(), "secret".to_owned(), false, None))
+            .unwrap()
+    };
+    // Off by default: reading a secret is a read like any other.
+    assert_eq!(read_secret(&app).decision, "act");
+
+    app.call(|s| s.set_guard("secret".to_owned(), true))
+        .unwrap();
+    let v = read_secret(&app);
+    assert_eq!(v.decision, "ask");
+    assert!(v.reason.contains("\"secret\""), "{}", v.reason);
+
+    // The same through an action that only reads but names the guard.
+    app.call(|s| {
+        s.propose_actions(
+            "pass".to_owned(),
+            "pass-1".to_owned(),
+            vec![act_def(
+                "secrets",
+                "Read secrets",
+                "secret",
+                false,
+                &["get_secret"],
+            )],
+            "Pass".to_owned(),
+        )
+    })
+    .unwrap();
+    app.call(|s| s.decide_actions("pass".to_owned(), "pass-1".to_owned(), "approve".to_owned()))
+        .unwrap();
+    let v = app
+        .view(|s| {
+            s.check_action(
+                "pass".to_owned(),
+                String::new(),
+                false,
+                Some("get_secret".to_owned()),
+            )
+        })
+        .unwrap();
+    assert_eq!(v.decision, "ask");
+
+    // Other reads still run.
+    let v = app
+        .view(|s| s.check_action("pass".to_owned(), String::new(), false, None))
+        .unwrap();
+    assert_eq!(v.decision, "act");
 }

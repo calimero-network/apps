@@ -72,6 +72,20 @@ describe("Settings: one section at a time", () => {
     expect(screen.queryByRole("region", { name: "General rules" })).toBeNull();
   });
 
+  it("adds a cloud agent by its account id, and removes it", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} section="agents" />);
+    const panel = await screen.findByRole("region", { name: "Cloud agents" });
+    expect(within(panel).getByText("No cloud agent yet.")).toBeInTheDocument();
+    fireEvent.change(within(panel).getByLabelText("Agent account id"), { target: { value: "a1b2c3d4e5f6a7b8c9d0" } });
+    fireEvent.change(within(panel).getByLabelText("Name it reports in with"), { target: { value: "cloud" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Add" }));
+    expect(await within(panel).findByText("cloud")).toBeInTheDocument();
+    expect((await backend.settings()).agent_accounts).toEqual([expect.objectContaining({ account: "a1b2c3d4e5f6a7b8c9d0", name: "cloud" })]);
+    fireEvent.click(within(panel).getByRole("button", { name: "Remove cloud" }));
+    await waitFor(() => expect(within(panel).getByText("No cloud agent yet.")).toBeInTheDocument());
+  });
+
   it("says no agent has reported in yet", async () => {
     render(<Harness backend={new DemoBackend(true, 0)} section="agents" />);
     const agents = await screen.findByRole("region", { name: "Your agents" });
@@ -152,9 +166,10 @@ describe("Settings → Actions: what your agent can do in each app", () => {
     const backend = new DemoBackend(true, 0);
     render(<Harness backend={backend} section="actions" />);
     const link = within(await screen.findByRole("navigation", { name: "Settings" })).getByRole("link", { name: /Actions/ });
-    expect(await within(link).findByLabelText("1 waiting for you")).toBeInTheDocument();
+    expect(await within(link).findByLabelText("7 waiting for you")).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Actions in Docs" })).toBeNull();
-    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    const docs = await screen.findByRole("listitem", { name: "Docs" });
+    fireEvent.click(within(docs).getByRole("button", { name: "Approve" }));
     expect(await screen.findByRole("list", { name: "Actions in Docs" })).toBeInTheDocument();
     expect(backend.verdict("docs", "", true, "delete_doc").reason).toContain('"delete"');
   });

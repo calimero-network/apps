@@ -11,7 +11,7 @@ import { useFeed, type Feed } from "./useFeed";
 import { useNodeFeed } from "./useNodeFeed";
 import { demoPreview, nodePreview, type Preview } from "./preview";
 import { useNewFeed, useOpenFeed } from "./newFeed";
-import { appLink } from "./links";
+import { appLink, linkNamer } from "./links";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { AGENT_LIVE_MS, useTheme } from "./theme";
 import { useAttention } from "./useAttention";
@@ -93,7 +93,10 @@ function NodeFeedApp({
 }) {
   const node = useNodeFeed(contextId);
   const newFeed = useNewFeed(applicationId);
-  const feed = useFeed(node.backend, node.nudge);
+  const base = useFeed(node.backend, node.nudge);
+  // Each chat a task touched, named from the chat ("#launch", "DM with Ronit"), read in its own context.
+  const nameLink = useMemo(() => linkNamer(node.hostFor), [node.hostFor]);
+  const feed = useMemo(() => ({ ...base, nameLink }), [base, nameLink]);
   const [query, setQuery] = useState("");
   const { mero, admin } = useMero();
   // A row's app, signed in to this node, at the row's context.

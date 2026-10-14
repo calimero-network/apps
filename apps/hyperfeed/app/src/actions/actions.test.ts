@@ -13,6 +13,12 @@ describe("the shipped actions", () => {
   it.each([
     ["chat", "mero-chat"],
     ["docs", "mero-docs"],
+    ["calendar", "mero-calendar"],
+    ["sheets", "mero-sheets"],
+    ["issues", "mero-issue-tracker"],
+    ["crm", "mero-crm"],
+    ["sign", "mero-sign"],
+    ["pass", "mero-pass"],
   ])("%s fits %s's ABI and covers every method", (name, app) => {
     const abi = abiOf(app);
     expect(validateActions(fixture(name), abi)).toEqual([]);
