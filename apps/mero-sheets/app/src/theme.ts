@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useSyncExternalStore } from 'react';
 
 /**
  * App theme — light / dark.
@@ -34,13 +34,31 @@ export const C = {
 } as const;
 
 export type ThemeMode = 'light' | 'dark';
-const STORAGE_KEY = 'app:theme';
+
+/** Where the choice is kept. index.html reads the same keys before the first
+ *  paint (so a dark user never sees a light flash); keep the two in step. */
+export const THEME_STORAGE_KEY = 'mero-sheets:theme';
+/** The generic key this app used before it had its own. Read once, moved over. */
+export const LEGACY_THEME_KEY = 'app:theme';
+
+/** The browser chrome colour (PWA title bar, mobile address bar) per theme:
+ *  the glass ground. */
+const THEME_COLOR: Record<ThemeMode, string> = { light: '#f6f7fb', dark: '#0b0e18' };
 
 /** Light first: only a saved "dark" opens dark (the fleet's glass look opens
- *  light for everyone; the toggle and a saved choice still win). */
+ *  light for everyone; the toggle and a saved choice still win). A choice made
+ *  under the old key is honoured and moved to the new one. */
 export function getStoredTheme(): ThemeMode {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+    let saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === null) {
+      saved = localStorage.getItem(LEGACY_THEME_KEY);
+      if (saved !== null) {
+        localStorage.setItem(THEME_STORAGE_KEY, saved);
+        localStorage.removeItem(LEGACY_THEME_KEY);
+      }
+    }
+    return saved === 'dark' ? 'dark' : 'light';
   } catch {
     return 'light';
   }
@@ -48,20 +66,59 @@ export function getStoredTheme(): ThemeMode {
 
 /** Apply the theme to <html> so the CSS vars resolve. Call once before render. */
 export function applyTheme(mode: ThemeMode): void {
-  if (typeof document !== 'undefined') document.documentElement.dataset.theme = mode;
+  if (typeof document === 'undefined') return;
+  document.documentElement.dataset.theme = mode;
+  document
+    .querySelectorAll('meta[name="theme-color"]')
+    .forEach((meta) => meta.setAttribute('content', THEME_COLOR[mode]));
 }
 
-/** React state + persistence for the active theme. */
+const listeners = new Set<() => void>();
+let current: ThemeMode | null = null;
+
+function snapshot(): ThemeMode {
+  if (current === null) current = getStoredTheme();
+  return current;
+}
+
+/** Switch, remember and apply; every `useTheme` caller re-renders. */
+export function setTheme(mode: ThemeMode): void {
+  current = mode;
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, mode);
+  } catch {
+    /* storage unavailable: the choice lasts for this page only */
+  }
+  applyTheme(mode);
+  listeners.forEach((l) => l());
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  // Another tab switching keeps this one in step.
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== THEME_STORAGE_KEY) return;
+    current = getStoredTheme();
+    applyTheme(current);
+    listener();
+  };
+  window.addEventListener('storage', onStorage);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener('storage', onStorage);
+  };
+}
+
+/** The active theme and a toggle. Every caller stays in step. */
 export function useTheme(): { theme: ThemeMode; toggle: () => void } {
-  const [theme, setTheme] = useState<ThemeMode>(getStoredTheme);
-
-  useEffect(() => {
-    applyTheme(theme);
-    try { localStorage.setItem(STORAGE_KEY, theme); } catch { /* ignore */ }
-  }, [theme]);
-
-  const toggle = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), []);
+  const theme = useSyncExternalStore(subscribe, snapshot, () => 'light' as ThemeMode);
+  const toggle = useCallback(() => setTheme(snapshot() === 'dark' ? 'light' : 'dark'), []);
   return { theme, toggle };
+}
+
+/** Test-only: forget the cached choice so the next read goes to storage. */
+export function resetThemeForTests(): void {
+  current = null;
 }
 
 /**
