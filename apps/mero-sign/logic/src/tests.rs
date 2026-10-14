@@ -928,3 +928,38 @@ fn list_documents_leaves_out_the_search_content() {
         .unwrap();
     assert!(found.contains("the whole text"), "{found}");
 }
+
+// ── signatures in the private context ────────────────────────────────────
+
+fn private_context() -> TestHost<MeroSignState> {
+    let mut app = TestHost::new(|| {
+        with_identity(ALICE_DEVICE, ALICE_ACCOUNT, || {
+            let mut state = None;
+            MeroSignState::__test_with_account(ALICE_ACCOUNT, &mut || {
+                state = Some(MeroSignState::init(true, "private".to_owned()));
+            });
+            state.expect("init ran")
+        })
+    });
+    app.set_account(ALICE_ACCOUNT);
+    app.set_device(ALICE_DEVICE);
+    app
+}
+
+/// The browser reads a signature id as a JSON number, an f64. A random 64-bit
+/// id is past 2^53 with near certainty and comes back with its low digits
+/// rounded off, so `delete_signature` answered "Signature not found" for every
+/// signature the app had made.
+#[test]
+fn a_signature_id_survives_the_round_trip_through_a_js_number() {
+    let mut app = private_context();
+    for n in 0..32 {
+        let id = app
+            .call(|s| s.create_signature(format!("sig {n}"), hexed([0x22; 32]), 4))
+            .unwrap();
+        assert!(id < 1u64 << 53, "past Number.MAX_SAFE_INTEGER: {id}");
+        let as_js = id as f64 as u64;
+        app.call(|s| s.delete_signature(as_js)).unwrap();
+    }
+    assert!(app.view(|s| s.list_signatures()).unwrap().is_empty());
+}

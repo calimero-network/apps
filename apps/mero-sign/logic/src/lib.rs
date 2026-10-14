@@ -401,6 +401,10 @@ pub enum MeroSignEvent {
     },
 }
 
+/// The largest integer a JS number holds exactly (`Number.MAX_SAFE_INTEGER`),
+/// and so the widest id the app can send back intact.
+const MAX_SAFE_ID: u64 = (1 << 53) - 1;
+
 /// Helper to decode base58 blob_id from API input
 /// Ids are HEX, not base58.
 ///
@@ -568,9 +572,14 @@ impl MeroSignState {
 
         // Random, not a counter: two devices of the owner creating a signature
         // at once read the same count and one overwrote the other.
+        //
+        // 53 bits, not 64: the app reads this id as a JSON number, an f64. A
+        // full 64-bit id is past 2^53 with near certainty and comes back with
+        // its low digits rounded off, so `delete_signature` was asked for an id
+        // that does not exist and every delete answered "Signature not found".
         let mut id_bytes = [0u8; 8];
         env::random_bytes(&mut id_bytes);
-        let signature_id = u64::from_le_bytes(id_bytes);
+        let signature_id = u64::from_le_bytes(id_bytes) & MAX_SAFE_ID;
 
         let blob_id = parse_blob_id_hex(&blob_id_str)?;
 
