@@ -142,6 +142,17 @@ app.
 `@everyone` or `@here`, and your own role changing. It drops the rest of a channel, your own
 messages, edits and reactions.
 
+The other core apps ship one too, each in `app/src/lens/fixtures/`:
+
+| App | Records |
+| --- | --- |
+| Calendar | an event you're invited to that someone else made |
+| Sheets | a comment mentioning you (reply adds a comment), an alert sent to you, your role changing |
+| Issues | a comment on an issue you report or are assigned (reply adds a comment), an issue assigned to you |
+| CRM | a note someone else adds to a deal you created (reply adds a note) |
+| Sign | a new document you can sign, your permission changing, being removed |
+| Pass | someone else editing, trashing or restoring a secret you made (never its value), your vault role changing |
+
 "You" is your node's account id, which is what apps stamp on what you do (`env::account_id()`),
 plus this device's key. The app key comes from the installed package (`com.calimero.mero-chat`
 becomes `chat`). mero-bot runs the same lenses with the same keys.
@@ -563,7 +574,7 @@ says the feed is too old.
   in `app/src/actions/fixtures/`, each checked against its app's ABI and covering every method; the demo uses them;
   on your node they are learned and proposed by your agent. mero-bot does not propose them or pass
   `method` to `check_action` yet; until it does, its own word decides, as before.
-- Lenses for apps other than Chat are learned on your node; none ships for them. A lens is tried on
+- Lenses for apps other than the core ones are learned on your node; none ships for them. A lens is tried on
   recent events only when there are some, so a quiet app's lens is checked against its ABI alone.
 - An answer the feed sends itself has no retry if the tab closes between the two calls; the row
   stays "Sending…".
