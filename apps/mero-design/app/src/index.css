@@ -22,6 +22,30 @@
   --color-danger: #e03e3e;
   --radius: 999px;
   --font: var(--glass-font);
+
+  /* What the board (and a project card's picture of it) sits on. The Fabric
+     canvas paints the same colours itself; see FabricCanvas `boardDisplayColor`. */
+  --md-board: #ffffff;
+  /* The illustrations' fills (components/Artwork). */
+  --md-art-a: #d9f99d;
+  --md-art-b: #c7d2fe;
+  --md-art-c: #fbcfe8;
+  --md-art-d: #a5b4fc;
+  /* The lime that tints this app's glass, deep enough to read as a mark. */
+  --md-lime-ink: #3f6212;
+  --md-lift: 0 28px 50px -28px rgba(30, 40, 90, 0.45), 0 0 0 1px var(--glass-line);
+}
+
+/* Dark: smoked glass (the glass tokens switch themselves on the same marker). */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --md-board: #141925;
+  --md-art-a: #4d7c0f;
+  --md-art-b: #4338ca;
+  --md-art-c: #9d174d;
+  --md-art-d: #6366f1;
+  --md-lime-ink: #bef264;
+  --md-lift: 0 30px 60px -28px rgba(0, 0, 0, 0.85), 0 0 0 1px var(--glass-line-strong);
 }
 
 html, body, #root {
@@ -30,6 +54,9 @@ html, body, #root {
   font-size: 13px;
   color: var(--color-text);
 }
+
+/* The ground under everything, so nothing past the body's box shows white. */
+html { background-color: var(--glass-ground); }
 
 /* The app shell: the glass ground and its tinted fields, behind every frosted panel. */
 body {
