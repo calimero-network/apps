@@ -14,6 +14,7 @@ import { edgeEnds, edgeList, faceCenter, vertsOfFaces, type Poly } from "./poly"
 import { cageTriangles, movedShape, polyOf, withCage } from "./polymesh";
 import { selectLoop } from "./commands";
 import type { TextureCache } from "./textures";
+import { checkerCanvas } from "./checker";
 import { childrenIndex, isLight, topmost, type SceneObject } from "./model";
 import { activeObject, useEditor, type EditorState, type SelectMode } from "./store";
 import { withMatrix } from "./transform";
@@ -52,6 +53,7 @@ const VERTEX_COLOR = new THREE.Color("#101010");
 const VERTEX_SELECTED = new THREE.Color("#ff9a1f");
 const EDGE_COLOR = new THREE.Color("#1a1a1a");
 const EDGE_SHARP = new THREE.Color("#22c7e6");
+const EDGE_SEAM = new THREE.Color("#ff3b4e");
 
 /** The edited mesh's cage drawn over it: vertices, edges, the selected faces, and an invisible surface to pick faces on. */
 interface EditOverlay {
@@ -239,6 +241,7 @@ export class Viewport {
 
   dispose(): void {
     this.disposed = true;
+    this.checker?.dispose();
     this.unsubscribeTextures?.();
     this.renderer.setAnimationLoop(null);
     this.unsubscribe();
@@ -392,7 +395,9 @@ export class Viewport {
       this.ambient.color.set(state.environment.ambient_color);
       this.ambient.intensity = state.environment.ambient_intensity;
     }
-    if (!prev || state.shading !== prev.shading || state.objects !== prev.objects) this.applyShading(state);
+    if (!prev || state.shading !== prev.shading || state.objects !== prev.objects || state.meshes !== prev.meshes || state.uvChecker !== prev.uvChecker) {
+      this.applyShading(state);
+    }
     if (!prev || state.showGrid !== prev.showGrid) this.grid.visible = state.showGrid;
     if (!prev || state.ortho !== prev.ortho) this.setOrtho(state.ortho);
     if (
@@ -506,10 +511,30 @@ export class Viewport {
       }
       const mesh = body as THREE.Mesh;
       const material = mesh.material as THREE.MeshStandardMaterial;
+      // The checker swaps in for the colour and base map; the originals are kept to swap back.
+      const own = (material.userData.own ??= { map: material.map, color: material.color.clone() }) as { map: THREE.Texture | null; color: THREE.Color };
+      if (state.uvChecker) {
+        material.map = this.checkerTexture();
+        material.color.set("#ffffff");
+      } else {
+        material.map = own.map;
+        material.color.copy(own.color);
+      }
       material.wireframe = shading === "wireframe" || node.obj.material.wireframe;
       material.envMapIntensity = rendered ? 1 : 0;
       material.needsUpdate = true;
     }
+  }
+
+  private checker: THREE.Texture | null = null;
+
+  private checkerTexture(): THREE.Texture {
+    if (!this.checker) {
+      this.checker = new THREE.CanvasTexture(checkerCanvas());
+      this.checker.colorSpace = THREE.SRGBColorSpace;
+      this.checker.anisotropy = 8;
+    }
+    return this.checker;
   }
 
   // ── selection, gizmo, edit overlay ────────────────────────────────────────
@@ -674,7 +699,14 @@ export class Viewport {
     const lineColors = edit.lines.geometry.getAttribute("color") as THREE.BufferAttribute;
     edit.edgeKeys.forEach((key, i) => {
       const [a, b] = edgeEnds(key);
-      const c = state.vertexSelection.has(a) && state.vertexSelection.has(b) ? VERTEX_SELECTED : poly.sharp.has(key) ? EDGE_SHARP : EDGE_COLOR;
+      const c =
+        state.vertexSelection.has(a) && state.vertexSelection.has(b)
+          ? VERTEX_SELECTED
+          : poly.seams.has(key)
+            ? EDGE_SEAM
+            : poly.sharp.has(key)
+              ? EDGE_SHARP
+              : EDGE_COLOR;
       lineColors.setXYZ(i * 2, c.r, c.g, c.b);
       lineColors.setXYZ(i * 2 + 1, c.r, c.g, c.b);
     });

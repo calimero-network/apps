@@ -84,6 +84,23 @@ export function EditModeSection({ canEdit }: { canEdit: boolean }) {
           {tool("Delete", cmd.deleteSelectedVertices, "X", true)}
         </div>
       </Section>
+      <Section title="UVs">
+        <p className="hint">Mark seams where the surface may be cut open (they draw in red), then unwrap. Smart project needs no seams.</p>
+        <div className="button-grid">
+          {tool("Mark seam", () => cmd.markSeamSelected(true))}
+          {tool("Clear seam", () => cmd.markSeamSelected(false))}
+          {tool("Unwrap", cmd.unwrapSelected, "U")}
+          {tool("Smart project", cmd.smartProjectSelected)}
+          {tool("Pack islands", cmd.packSelected)}
+          {tool("Seams from islands", cmd.seamsFromIslands)}
+          <button onClick={() => state.set({ uvEditor: !state.uvEditor })} data-testid="open-uv-editor">
+            {state.uvEditor ? "Close UV editor" : "UV editor"}
+          </button>
+          <button className={state.uvChecker ? "on" : ""} onClick={() => state.set({ uvChecker: !state.uvChecker })}>
+            Checker
+          </button>
+        </div>
+      </Section>
       <Section title="Edges">
         <p className="hint">Hard edges split the shading and hold their crease under subdivision. They draw in cyan.</p>
         <div className="button-grid">

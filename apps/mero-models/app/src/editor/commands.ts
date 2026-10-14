@@ -33,6 +33,7 @@ import {
   type SceneObject,
 } from "./model";
 import { EXAMPLES, exampleChange } from "./examples";
+import { packIslands, smartProject, transformUvs, unwrap, uvCenter, uvIslands } from "./uv";
 import { MAX_EVALUATED_CORNERS, catmullClark, evaluate } from "./modifiers";
 import {
   edgeEnds,
@@ -42,6 +43,7 @@ import {
   vertsOfEdges,
   vertsOfFaces,
   withModifiers,
+  uvSeams,
   type Axis,
   type Modifier,
   type Poly,
@@ -945,6 +947,100 @@ export function selectLinked(): void {
   const verts = linked(target.poly, s.vertexSelection);
   if (s.selectMode === "face") s.setFaceSelection(facesOfVerts(target.poly, verts), verts);
   else s.setVertexSelection(verts);
+}
+
+// ── UVs ─────────────────────────────────────────────────────────────────────
+
+/** The faces a UV tool works on: the selected ones, or all when none are. */
+const uvFaces = (sel: CageSelection): Set<number> | null => (sel.faces.size ? sel.faces : null);
+
+/** Mark or clear the selected edges as UV seams. */
+export function markSeamSelected(seam: boolean): void {
+  cageOp(seam ? "Mark seam" : "Clear seam", (poly, sel) => {
+    if (!sel.edges.size) throw new MeshOpError("Select the edges to mark (edge mode, 2).");
+    const seams = new Set(poly.seams);
+    for (const k of sel.edges) {
+      if (seam) seams.add(k);
+      else seams.delete(k);
+    }
+    return { poly: { ...poly, seams }, verts: sel.verts };
+  });
+}
+
+/** Seams wherever the UVs already split: what the current layout implies. */
+export function seamsFromIslands(): void {
+  cageOp("Seams from islands", (poly, sel) => ({ poly: { ...poly, seams: uvSeams(poly) }, verts: sel.verts }));
+}
+
+/** U: unwrap the selected faces (or everything) along the seams. */
+export function unwrapSelected(): void {
+  let projected = 0;
+  const ok = cageOp(
+    "Unwrap",
+    (poly, sel, v) => {
+      const out = unwrap(poly, uvFaces(sel), v.margin as number);
+      projected = out.projected;
+      return { poly: out.poly, faces: sel.faces };
+    },
+    [{ key: "margin", label: "Margin", kind: "number", min: 0, max: 0.2, step: 0.001 }],
+    { margin: 0.01 },
+  );
+  if (ok && projected) {
+    editor().notify(`${projected} faces form closed pieces with no seam to open them, so they were projected flat. Mark seams and unwrap again for a better fit.`);
+  }
+}
+
+export function smartProjectSelected(): void {
+  cageOp(
+    "Smart UV project",
+    (poly, sel, v) => ({ poly: smartProject(poly, uvFaces(sel), v.angle as number, v.margin as number), faces: sel.faces }),
+    [
+      { key: "angle", label: "Angle limit °", kind: "number", min: 1, max: 89, step: 1 },
+      { key: "margin", label: "Margin", kind: "number", min: 0, max: 0.2, step: 0.001 },
+    ],
+    { angle: 66, margin: 0.01 },
+  );
+}
+
+export function packSelected(): void {
+  cageOp(
+    "Pack islands",
+    (poly, sel, v) => ({
+      poly: packIslands(poly, sel.faces.size ? uvIslands(poly, sel.faces) : undefined, v.margin as number, v.rotate as boolean),
+      faces: sel.faces,
+    }),
+    [
+      { key: "margin", label: "Margin", kind: "number", min: 0, max: 0.2, step: 0.001 },
+      { key: "rotate", label: "Rotate to fit", kind: "toggle" },
+    ],
+    { margin: 0.01, rotate: true },
+  );
+}
+
+/** Turn, flip or scale the selected faces' UVs about their centre. */
+export function transformSelectedUvs(kind: "rotate" | "flipU" | "flipV" | "grow" | "shrink"): void {
+  const labels = { rotate: "Rotate UVs 90°", flipU: "Flip UVs horizontally", flipV: "Flip UVs vertically", grow: "Scale UVs up", shrink: "Scale UVs down" };
+  cageOp(labels[kind], (poly, sel) => {
+    if (!sel.faces.size) throw new MeshOpError("Select faces (in the 3D view or the UV editor) to transform their UVs.");
+    const [cu, cv] = uvCenter(poly, sel.faces);
+    const fn = (u: number, v: number): [number, number] => {
+      const x = u - cu;
+      const y = v - cv;
+      switch (kind) {
+        case "rotate":
+          return [cu - y, cv + x];
+        case "flipU":
+          return [cu - x, v];
+        case "flipV":
+          return [u, cv - y];
+        case "grow":
+          return [cu + x * 1.25, cv + y * 1.25];
+        case "shrink":
+          return [cu + x * 0.8, cv + y * 0.8];
+      }
+    };
+    return { poly: transformUvs(poly, sel.faces, fn), faces: sel.faces };
+  });
 }
 
 // ── Modifiers ───────────────────────────────────────────────────────────────

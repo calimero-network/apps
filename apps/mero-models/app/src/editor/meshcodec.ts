@@ -19,20 +19,22 @@ import { shapeFromPoly } from "./polymesh";
  * and the node's blob id is the hash of the bytes, so re-saving an unchanged
  * mesh (an undo, a restore) uploads nothing new.
  *
- * Format 2 holds a polygon cage instead (see `poly.ts`), and the triangles
- * are derived from it on read:
+ * Formats 2 and 3 hold a polygon cage instead (see `poly.ts`), and the
+ * triangles are derived from it on read:
  *
  *   offset  size  field
  *   0       4     magic "MMSH"
- *   4       4     format version (2), u32 LE
+ *   4       4     format version (3; 2 has no seams), u32 LE
  *   8       4     flags, u32 LE — bit 0: has UVs
  *   12      4     vertex count
  *   16      4     face count
  *   20      4     corner count (the sum of the face sizes)
  *   24      4     sharp edge count
  *   28      4     modifier stack length in bytes
- *   32      …     deflate( positions f32[v*3] ‖ face sizes u32[f] ‖ corners u32[c]
- *                          ‖ uvs f32[c*2] ‖ sharp edges u32[s*2] ‖ modifiers JSON )
+ *   32      4     UV seam count (format 3 only; the header is 32 bytes in format 2)
+ *   36      …     deflate( positions f32[v*3] ‖ face sizes u32[f] ‖ corners u32[c]
+ *                          ‖ uvs f32[c*2] ‖ sharp edges u32[s*2] ‖ modifiers JSON
+ *                          ‖ seams u32[n*2] )
  *
  * A mesh without a cage is still written as format 1, so a triangle mesh
  * imported from a DCC is byte-for-byte what it was. For a format-2 blob the
@@ -46,9 +48,12 @@ import { shapeFromPoly } from "./polymesh";
  */
 export const MESH_MAGIC = "MMSH";
 export const MESH_FORMAT = 1;
-export const POLY_FORMAT = 2;
+/** Cages are written as format 3; format 2 (no seams) is still read. */
+export const POLY_FORMAT = 3;
+const POLY_FORMAT_NO_SEAMS = 2;
 const HEADER = 20;
-const POLY_HEADER = 32;
+const POLY_HEADER = 36;
+const POLY_HEADER_NO_SEAMS = 32;
 const FLAG_UVS = 1;
 
 /** What a mesh's reference says it holds. */
@@ -94,7 +99,7 @@ export function decodeMesh(
   if (magic !== MESH_MAGIC) throw new MeshDecodeError("not a mesh blob: wrong magic");
   const head = new DataView(data.buffer, data.byteOffset, HEADER);
   const format = head.getUint32(4, true);
-  if (format === POLY_FORMAT) return shapeFromPoly(decodePoly(data, expect));
+  if (format === POLY_FORMAT || format === POLY_FORMAT_NO_SEAMS) return shapeFromPoly(decodePoly(data, format, expect));
   if (format !== MESH_FORMAT) throw new MeshDecodeError(`mesh format ${format} is newer than this app`);
   const hasUvs = (head.getUint32(8, true) & FLAG_UVS) !== 0;
   const v = head.getUint32(12, true);
@@ -139,9 +144,10 @@ function encodePoly(p: Poly): Uint8Array {
   const c = p.faces.reduce((n, face) => n + face.length, 0);
   // Sorted, so the same cage always makes the same bytes.
   const sharp = [...p.sharp].sort((a, b) => a - b);
+  const seams = [...p.seams].sort((a, b) => a - b);
   const mods = strToU8(JSON.stringify(p.modifiers.map(canonicalModifier)));
   const uvs = !!p.uvs;
-  const body = new Uint8Array(v * 12 + f * 4 + c * 4 + (uvs ? c * 8 : 0) + sharp.length * 8 + mods.length);
+  const body = new Uint8Array(v * 12 + f * 4 + c * 4 + (uvs ? c * 8 : 0) + sharp.length * 8 + mods.length + seams.length * 8);
   const view = new DataView(body.buffer);
   let o = 0;
   for (const x of p.positions) (view.setFloat32(o, x, true), (o += 4));
@@ -155,6 +161,13 @@ function encodePoly(p: Poly): Uint8Array {
     o += 8;
   }
   body.set(mods, o);
+  o += mods.length;
+  for (const key of seams) {
+    const [a, b] = edgeEnds(key);
+    view.setUint32(o, a, true);
+    view.setUint32(o + 4, b, true);
+    o += 8;
+  }
   const packed = deflateSync(body, { level: 6 });
   const out = new Uint8Array(POLY_HEADER + packed.length);
   const head = new DataView(out.buffer);
@@ -166,19 +179,22 @@ function encodePoly(p: Poly): Uint8Array {
   head.setUint32(20, c, true);
   head.setUint32(24, sharp.length, true);
   head.setUint32(28, mods.length, true);
+  head.setUint32(32, seams.length, true);
   out.set(packed, POLY_HEADER);
   return out;
 }
 
-function decodePoly(data: Uint8Array, expect?: { vertex_count: number; triangle_count: number }): Poly {
-  if (data.length < POLY_HEADER) throw new MeshDecodeError("the mesh blob is truncated");
-  const head = new DataView(data.buffer, data.byteOffset, POLY_HEADER);
+function decodePoly(data: Uint8Array, format: number, expect?: { vertex_count: number; triangle_count: number }): Poly {
+  const headerSize = format === POLY_FORMAT ? POLY_HEADER : POLY_HEADER_NO_SEAMS;
+  if (data.length < headerSize) throw new MeshDecodeError("the mesh blob is truncated");
+  const head = new DataView(data.buffer, data.byteOffset, headerSize);
   const hasUvs = (head.getUint32(8, true) & FLAG_UVS) !== 0;
   const v = head.getUint32(12, true);
   const f = head.getUint32(16, true);
   const c = head.getUint32(20, true);
   const s = head.getUint32(24, true);
   const m = head.getUint32(28, true);
+  const n = format === POLY_FORMAT ? head.getUint32(32, true) : 0;
   if (c < f * 3) throw new MeshDecodeError("a face has fewer than three corners");
   if (expect && (expect.vertex_count !== v || expect.triangle_count !== c - 2 * f)) {
     throw new MeshDecodeError(
@@ -186,10 +202,10 @@ function decodePoly(data: Uint8Array, expect?: { vertex_count: number; triangle_
     );
   }
   if (m > 1 << 16) throw new MeshDecodeError("the modifier stack is implausibly large");
-  const want = v * 12 + f * 4 + c * 4 + (hasUvs ? c * 8 : 0) + s * 8 + m;
+  const want = v * 12 + f * 4 + c * 4 + (hasUvs ? c * 8 : 0) + s * 8 + m + n * 8;
   let body: Uint8Array;
   try {
-    body = inflateSync(data.subarray(POLY_HEADER), { out: new Uint8Array(want) });
+    body = inflateSync(data.subarray(headerSize), { out: new Uint8Array(want) });
   } catch {
     throw new MeshDecodeError("the mesh blob is corrupt");
   }
@@ -229,16 +245,21 @@ function decodePoly(data: Uint8Array, expect?: { vertex_count: number; triangle_
       return uv;
     });
   }
-  const sharp = new Set<number>();
-  for (let i = 0; i < s; i += 1, o += 8) {
-    const a = view.getUint32(o, true);
-    const b = view.getUint32(o + 4, true);
-    if (a >= v || b >= v || a === b) throw new MeshDecodeError("a sharp edge refers to a vertex the mesh does not have");
-    sharp.add(edgeKey(a, b));
-  }
+  const marks = (count: number, what: string) => {
+    const out = new Set<number>();
+    for (let i = 0; i < count; i += 1, o += 8) {
+      const a = view.getUint32(o, true);
+      const b = view.getUint32(o + 4, true);
+      if (a >= v || b >= v || a === b) throw new MeshDecodeError(`a ${what} refers to a vertex the mesh does not have`);
+      out.add(edgeKey(a, b));
+    }
+    return out;
+  };
+  const sharp = marks(s, "sharp edge");
   let raw: unknown;
   try {
     raw = JSON.parse(strFromU8(body.subarray(o, o + m)));
+    o += m;
   } catch {
     throw new MeshDecodeError("the modifier stack is not valid JSON");
   }
@@ -248,5 +269,6 @@ function decodePoly(data: Uint8Array, expect?: { vertex_count: number; triangle_
     if (!mod) throw new MeshDecodeError("the modifier stack holds a modifier this app does not know, or one out of range");
     return mod;
   });
-  return { positions, faces, uvs, sharp, modifiers };
+  const seams = marks(n, "seam");
+  return { positions, faces, uvs, sharp, seams, modifiers };
 }

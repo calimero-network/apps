@@ -99,6 +99,14 @@ export interface EditorState {
   selectMode: SelectMode;
   /** Edit-mode moves also move each vertex's mirror image across X. */
   xMirror: boolean;
+  /** The 2D UV editor is open beside the 3D view. */
+  uvEditor: boolean;
+  /** Every mesh shows a UV checker instead of its colour, to judge stretch and seams. */
+  uvChecker: boolean;
+  /** The UV editor colours faces by how stretched their UVs are. */
+  uvStretch: boolean;
+  /** The texture size texel density is reported for. */
+  uvTextureSize: number;
   lastOp: LastOp | null;
   tool: Tool;
   space: "world" | "local";
@@ -207,6 +215,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   faceSelection: new Set(),
   selectMode: "vertex",
   xMirror: false,
+  uvEditor: false,
+  uvChecker: false,
+  uvStretch: false,
+  uvTextureSize: 2048,
   lastOp: null,
   tool: "translate",
   space: "world",

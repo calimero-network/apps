@@ -34,6 +34,7 @@ import { Outliner } from "./Outliner";
 import { Properties } from "./Properties";
 import { SharePanel } from "./SharePanel";
 import { OperatorPanel, SelectModeSwitch } from "./MeshPanels";
+import { UvEditor } from "./UvEditor";
 
 /**
  * The modeller: menu bar across the top, tools down the left, the 3D view in
@@ -227,6 +228,21 @@ export function Studio({ contextId }: { contextId: string }) {
               ],
             },
             {
+              label: "UV",
+              disabled: !canEdit,
+              items: [
+                { label: "Unwrap", shortcut: "U", onSelect: cmd.unwrapSelected },
+                { label: "Smart UV project", onSelect: cmd.smartProjectSelected },
+                { label: "Pack islands", onSelect: cmd.packSelected },
+                "separator",
+                { label: "Mark seam", onSelect: () => cmd.markSeamSelected(true) },
+                { label: "Clear seam", onSelect: () => cmd.markSeamSelected(false) },
+                { label: "Seams from islands", onSelect: cmd.seamsFromIslands },
+                "separator",
+                { label: state.uvEditor ? "Close UV editor" : "Open UV editor", onSelect: () => state.set({ uvEditor: !state.uvEditor }) },
+              ],
+            },
+            {
               label: "Edges",
               disabled: !canEdit,
               items: [
@@ -349,6 +365,7 @@ export function Studio({ contextId }: { contextId: string }) {
         if (key === "j") return handled(), cmd.connectSelected();
         if (key === "f") return handled(), cmd.fillSelected();
         if (key === "m") return handled(), cmd.mergeSelectedVertices();
+        if (key === "u") return handled(), cmd.unwrapSelected();
       }
       if (key === "f" || e.code === "NumpadDecimal") return handled(), v?.frameSelection(true);
       if (key === "z") {
@@ -470,6 +487,24 @@ export function Studio({ contextId }: { contextId: string }) {
               </>
             )}
             <span className="vp-flex" />
+            <button
+              type="button"
+              className={`vp-btn text ${state.uvEditor ? "on" : ""}`}
+              title="UV editor"
+              onClick={() => state.set({ uvEditor: !state.uvEditor })}
+              data-testid="toggle-uv-editor"
+            >
+              UV
+            </button>
+            <button
+              type="button"
+              className={`vp-btn text ${state.uvChecker ? "on" : ""}`}
+              title="Show a UV checker on every mesh"
+              onClick={() => state.set({ uvChecker: !state.uvChecker })}
+              data-testid="toggle-checker"
+            >
+              Checker
+            </button>
             <button type="button" className={`vp-btn ${state.showGrid ? "on" : ""}`} title="Grid" onClick={() => state.set({ showGrid: !state.showGrid })}>
               <IconGrid size={14} />
             </button>
@@ -508,6 +543,7 @@ export function Studio({ contextId }: { contextId: string }) {
           )}
           {arrayOpen && <ArrayDialog onClose={() => setArrayOpen(false)} />}
           <OperatorPanel />
+          <UvEditor />
         </main>
 
         <aside className="sidebar">
@@ -653,7 +689,7 @@ function StatusBar() {
   const fresh = notice && Date.now() - notice.at < 6_000;
   const hint =
     mode === "edit"
-      ? "Edit mode · 1 2 3 vertex/edge/face · Alt-click loop · E extrude · I inset · Ctrl B bevel · Ctrl R loop cut · Tab back"
+      ? "Edit mode · 1 2 3 vertex/edge/face · Alt-click loop · E extrude · I inset · Ctrl B bevel · Ctrl R loop cut · U unwrap · Tab back"
       : tool === "select"
         ? "Drag to box-select · Shift-click adds · middle-drag orbits · right-drag pans · scroll zooms"
         : "Click to select · drag the gizmo · left-drag orbits · right-drag pans · Ctrl snaps · Shift+A adds";

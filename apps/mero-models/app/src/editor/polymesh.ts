@@ -12,6 +12,7 @@ import {
   topology,
   unionFind,
   withPositions,
+  uvSeams,
   type Poly,
   type V3,
 } from "./poly";
@@ -273,7 +274,7 @@ export function polyFromTriangles(shape: MeshShape, sharpDegrees = AUTO_SHARP_DE
     const uv = shape.uvs ? r.flatMap((i) => [shape.uvs![i * 2]!, shape.uvs![i * 2 + 1]!]) : undefined;
     tris.push({ v, uv });
   }
-  const base: Poly = { positions, faces: [], uvs: shape.uvs ? [] : null, sharp: new Set(), modifiers: [] };
+  const base: Poly = { positions, faces: [], uvs: shape.uvs ? [] : null, sharp: new Set(), seams: new Set(), modifiers: [] };
   const vec = (i: number): V3 => [positions[i * 3]!, positions[i * 3 + 1]!, positions[i * 3 + 2]!];
   const cosLimit = Math.cos((sharpDegrees * Math.PI) / 180);
 
@@ -323,7 +324,8 @@ export function polyFromTriangles(shape: MeshShape, sharpDegrees = AUTO_SHARP_DE
   }
   let p: Poly = { ...base, faces, uvs: base.uvs ? uvs : null };
   p = compactPoly(p).poly;
-  return { ...p, sharp: sharpByAngle(p, sharpDegrees) };
+  // The UV seams the mesh already has become marked seams, so unwrapping it keeps them.
+  return { ...p, sharp: sharpByAngle(p, sharpDegrees), seams: uvSeams(p) };
 }
 
 function pairToQuad(

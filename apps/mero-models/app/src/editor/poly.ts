@@ -34,6 +34,8 @@ export interface Poly {
   uvs: number[][] | null;
   /** Hard edges, as `edgeKey`s. */
   sharp: Set<number>;
+  /** UV seams: where unwrapping may cut the surface open, as `edgeKey`s. */
+  seams: Set<number>;
   modifiers: Modifier[];
 }
 
@@ -51,7 +53,7 @@ export const cornerTotal = (p: Poly): number => p.faces.reduce((n, f) => n + f.l
 export const triangleTotal = (p: Poly): number => p.faces.reduce((n, f) => n + f.length - 2, 0);
 
 export function emptyPoly(): Poly {
-  return { positions: [], faces: [], uvs: null, sharp: new Set(), modifiers: [] };
+  return { positions: [], faces: [], uvs: null, sharp: new Set(), seams: new Set(), modifiers: [] };
 }
 
 // ── vectors on the flat position array ─────────────────────────────────────
@@ -163,11 +165,13 @@ export class Build {
   faces: number[][] = [];
   uvs: number[][] | null;
   sharp: Set<number>;
+  seams: Set<number>;
 
   constructor(src: Poly, keepSharp = true) {
     this.positions = src.positions.slice();
     this.uvs = src.uvs ? [] : null;
     this.sharp = keepSharp ? new Set(src.sharp) : new Set();
+    this.seams = keepSharp ? new Set(src.seams) : new Set();
   }
 
   vert(v: V3): number {
@@ -211,6 +215,7 @@ export class Build {
       faces: this.faces,
       uvs: this.uvs,
       sharp: this.sharp,
+      seams: this.seams,
       modifiers: modifiers.map((m) => ({ ...m })) as Modifier[],
     };
   }
@@ -236,14 +241,17 @@ export function compactPoly(p: Poly): { poly: Poly; remap: Int32Array } {
   const faces = p.faces.map((f) => f.map((v) => remap[v]!));
   const edges = new Set<number>();
   for (const f of faces) for (let c = 0; c < f.length; c += 1) edges.add(edgeKey(f[c]!, f[(c + 1) % f.length]!));
-  const sharp = new Set<number>();
-  for (const key of p.sharp) {
-    const [a, b] = edgeEnds(key);
-    if (a >= n || b >= n) continue;
-    const k = edgeKey(remap[a]!, remap[b]!);
-    if (remap[a]! >= 0 && remap[b]! >= 0 && edges.has(k)) sharp.add(k);
-  }
-  return { poly: { positions, faces, uvs: p.uvs, sharp, modifiers: p.modifiers }, remap };
+  const keep = (marks: Set<number>) => {
+    const out = new Set<number>();
+    for (const key of marks) {
+      const [a, b] = edgeEnds(key);
+      if (a >= n || b >= n) continue;
+      const k = edgeKey(remap[a]!, remap[b]!);
+      if (remap[a]! >= 0 && remap[b]! >= 0 && edges.has(k)) out.add(k);
+    }
+    return out;
+  };
+  return { poly: { positions, faces, uvs: p.uvs, sharp: keep(p.sharp), seams: keep(p.seams), modifiers: p.modifiers }, remap };
 }
 
 /** The same cage with other vertex positions (a drag). Topology, and so its cache, is shared. */
@@ -293,6 +301,54 @@ export function vertsOfEdges(edges: Iterable<number>): Set<number> {
   for (const key of edges) {
     const [a, b] = edgeEnds(key);
     out.add(a).add(b);
+  }
+  return out;
+}
+
+/**
+ * Edges where the UVs of the two faces on either side disagree: the seams a
+ * mesh's UV layout already has. Disagreement at a pole — a vertex ringed by
+ * triangles that each give it their own UV, as a UV sphere's poles are — is a
+ * point collapsed in the texture, not a cut, and does not count.
+ */
+export function uvSeams(p: Poly): Set<number> {
+  const out = new Set<number>();
+  if (!p.uvs) return out;
+  const t = topology(p);
+  const uvAt = (f: number, v: number) => cornerUv(p, f, p.faces[f]!.indexOf(v))!;
+  const poles = new Map<number, boolean>();
+  const isPole = (v: number) => {
+    let hit = poles.get(v);
+    if (hit === undefined) {
+      const around = [...new Set(t.vertexFaces[v]!)];
+      const keys = new Set(around.map((f) => uvAt(f, v).map((x) => x.toFixed(6)).join(",")));
+      hit = around.length >= 3 && around.every((f) => p.faces[f]!.length === 3) && keys.size === around.length;
+      poles.set(v, hit);
+    }
+    return hit;
+  };
+  for (const [key, faces] of t.edgeFaces) {
+    if (faces.length !== 2) continue;
+    const [a, b] = edgeEnds(key);
+    const [f, g] = faces as [number, number];
+    const differs = (v: number) => {
+      const u1 = uvAt(f, v);
+      const u2 = uvAt(g, v);
+      return Math.abs(u1[0] - u2[0]) > 1e-6 || Math.abs(u1[1] - u2[1]) > 1e-6;
+    };
+    if ((differs(a) && !isPole(a)) || (differs(b) && !isPole(b))) out.add(key);
+  }
+  return out;
+}
+
+/** An edge-mark set carried through a vertex renumbering (`map[old]` → new). */
+export function remapMarks(marks: Set<number>, map: (v: number) => number): Set<number> {
+  const out = new Set<number>();
+  for (const k of marks) {
+    const [a, b] = edgeEnds(k);
+    const x = map(a);
+    const y = map(b);
+    if (x !== y) out.add(edgeKey(x, y));
   }
   return out;
 }

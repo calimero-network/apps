@@ -5,6 +5,7 @@ import { at, edgeEnds, faceCenter, faceNormal, topology, vertexTotal, type Modif
 import { bevelEdges, bisect, deleteFacesPoly, extrudeFaces, insetFaces, joinPolys, mergeAtCenter, transformPoly } from "./polyops";
 import { primitivePoly, shapeFromPoly, sharpByAngle } from "./polymesh";
 import { emptyChange, type Change } from "./store";
+import { smartProject } from "./uv";
 
 /**
  * Example assets, each built step by step with the same tools a person uses
@@ -296,7 +297,9 @@ export function exampleChange(key: string, takenNames: string[], at: Vec3 = vec(
     for (const part of example.build()) {
       const o = partObject(part, group.id, taken);
       change.puts.push(o);
-      change.meshes.push({ id: o.id, shape: shapeFromPoly(part.poly), message: `Example: ${example.name}` });
+      // Every example ships laid out for texturing: projected by facing and packed.
+      const laidOut = smartProject(part.poly, null, 66, 0.01);
+      change.meshes.push({ id: o.id, shape: shapeFromPoly(laidOut), message: `Example: ${example.name}` });
     }
   }
   if (key === "showcase") {

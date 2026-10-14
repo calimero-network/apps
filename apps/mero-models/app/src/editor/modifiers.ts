@@ -227,14 +227,18 @@ export function catmullClark(p: Poly, smooth = true): Poly {
       }
     }
   });
-  const sharp = new Set<number>();
-  for (const k of p.sharp) {
-    const e = edgeIndex.get(k);
-    if (e === undefined) continue;
-    const [a, b] = edgeEnds(k);
-    sharp.add(edgeKey(a, e)).add(edgeKey(e, b));
-  }
-  return { positions, faces, uvs, sharp, modifiers: p.modifiers };
+  // A marked edge is two edges now, both marked.
+  const halves = (marks: Set<number>) => {
+    const out = new Set<number>();
+    for (const k of marks) {
+      const e = edgeIndex.get(k);
+      if (e === undefined) continue;
+      const [a, b] = edgeEnds(k);
+      out.add(edgeKey(a, e)).add(edgeKey(e, b));
+    }
+    return out;
+  };
+  return { positions, faces, uvs, sharp: halves(p.sharp), seams: halves(p.seams), modifiers: p.modifiers };
 }
 
 // ── Mirror ──────────────────────────────────────────────────────────────────
@@ -273,6 +277,10 @@ export function mirrorPoly(p: Poly, axis: Axis, weld: number, keep = true): Poly
     const [x, y] = edgeEnds(k);
     if (x < V && y < V) b.sharp.add(edgeKey(partner[x]!, partner[y]!));
   }
+  for (const k of p.seams) {
+    const [x, y] = edgeEnds(k);
+    if (x < V && y < V) b.seams.add(edgeKey(partner[x]!, partner[y]!));
+  }
   return b.done(p.modifiers);
 }
 
@@ -285,6 +293,7 @@ export function arrayPoly(p: Poly, count: number, offset: [number, number, numbe
   const faces: number[][] = [];
   const uvs: number[][] | null = p.uvs ? [] : null;
   const sharp = new Set<number>();
+  const seams = new Set<number>();
   for (let i = 0; i < count; i += 1) {
     for (let v = 0; v < V; v += 1) {
       positions.push(
@@ -302,8 +311,12 @@ export function arrayPoly(p: Poly, count: number, offset: [number, number, numbe
       const [a, b] = edgeEnds(k);
       sharp.add(edgeKey(a + base, b + base));
     }
+    for (const k of p.seams) {
+      const [a, b] = edgeEnds(k);
+      seams.add(edgeKey(a + base, b + base));
+    }
   }
-  return { positions, faces, uvs, sharp, modifiers: p.modifiers };
+  return { positions, faces, uvs, sharp, seams, modifiers: p.modifiers };
 }
 
 // ── Solidify ────────────────────────────────────────────────────────────────
@@ -335,6 +348,10 @@ export function solidifyPoly(p: Poly, thickness: number): Poly {
   for (const k of p.sharp) {
     const [x, y] = edgeEnds(k);
     b.sharp.add(edgeKey(inner[x]!, inner[y]!));
+  }
+  for (const k of p.seams) {
+    const [x, y] = edgeEnds(k);
+    b.seams.add(edgeKey(inner[x]!, inner[y]!));
   }
   // Every directed edge whose face is the only one on that edge is a border.
   for (const [key, faces] of t.edgeFaces) {

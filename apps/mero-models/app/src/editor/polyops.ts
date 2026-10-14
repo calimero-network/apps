@@ -15,6 +15,7 @@ import {
   len,
   lerp3,
   norm,
+  remapMarks,
   scale,
   sub,
   topology,
@@ -206,9 +207,10 @@ export function loopCut(p: Poly, a: number, b: number, cuts = 1): OpResult {
     for (let i = 1; i <= k; i += 1) list.push(bld.vert(lerp3(at(p, x), at(p, y), i / (k + 1))));
     list.forEach((v) => fresh.add(v));
     cutsOf.set(key, list);
-    if (p.sharp.has(key)) {
+    for (const [marks, out] of [[p.sharp, bld.sharp], [p.seams, bld.seams]] as const) {
+      if (!marks.has(key)) continue;
       const chain = [x, ...list, y];
-      for (let i = 0; i + 1 < chain.length; i += 1) bld.sharp.add(edgeKey(chain[i]!, chain[i + 1]!));
+      for (let i = 0; i + 1 < chain.length; i += 1) out.add(edgeKey(chain[i]!, chain[i + 1]!));
     }
   }
   const pts = (from: number, to: number): number[] => {
@@ -641,6 +643,10 @@ export function bisect(p: Poly, axis: Axis, offset: number): OpResult {
       m = bld.vert(lerp3(at(p, x), at(p, y), d(x) / (d(x) - d(y))));
       cut.set(key, m);
       onPlane.add(m);
+      // A marked edge cut in two is two marked edges.
+      for (const [marks, out] of [[p.sharp, bld.sharp], [p.seams, bld.seams]] as const) {
+        if (marks.has(key)) out.add(edgeKey(x, m)).add(edgeKey(m, y));
+      }
     }
     return m;
   };
@@ -678,11 +684,8 @@ export function bisect(p: Poly, axis: Axis, offset: number): OpResult {
 export function weld(p: Poly, remap: Int32Array, positions?: number[]): Poly {
   const bld = new Build(p);
   if (positions) bld.positions = positions.slice();
-  bld.sharp = new Set();
-  for (const k of p.sharp) {
-    const [a, b] = edgeEnds(k);
-    if (remap[a] !== remap[b]) bld.sharp.add(edgeKey(remap[a]!, remap[b]!));
-  }
+  bld.sharp = remapMarks(p.sharp, (v) => remap[v]!);
+  bld.seams = remapMarks(p.seams, (v) => remap[v]!);
   p.faces.forEach((face, f) => {
     const uv = p.uvs?.[f];
     const vs: number[] = [];
@@ -967,7 +970,7 @@ export function transformPoly(p: Poly, e: ArrayLike<number>): Poly {
 /** Several cages as one; UVs survive only if every part has them, modifiers come from the first. */
 export function joinPolys(parts: Poly[]): Poly {
   const all = parts.length > 0 && parts.every((q) => q.uvs);
-  const out: Poly = { positions: [], faces: [], uvs: all ? [] : null, sharp: new Set(), modifiers: parts[0]?.modifiers ?? [] };
+  const out: Poly = { positions: [], faces: [], uvs: all ? [] : null, sharp: new Set(), seams: new Set(), modifiers: parts[0]?.modifiers ?? [] };
   for (const q of parts) {
     const base = out.positions.length / 3;
     out.positions.push(...q.positions);
@@ -978,6 +981,10 @@ export function joinPolys(parts: Poly[]): Poly {
     for (const k of q.sharp) {
       const [a, b] = edgeEnds(k);
       out.sharp.add(edgeKey(a + base, b + base));
+    }
+    for (const k of q.seams) {
+      const [a, b] = edgeEnds(k);
+      out.seams.add(edgeKey(a + base, b + base));
     }
   }
   return out;

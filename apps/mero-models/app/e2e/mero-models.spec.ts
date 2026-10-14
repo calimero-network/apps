@@ -122,6 +122,42 @@ test.describe("Mero Models", () => {
     errors.assertClean();
   });
 
+  test("unwraps a mesh along its seams, and the node keeps the layout", async ({ page, browser }) => {
+    const errors = watchForErrors(page);
+    await login(page);
+    await waitForStudio(page);
+
+    await page.getByTestId("add-cylinder").click();
+    const name = "Unwrapped pipe";
+    await page.getByLabel("Object name").fill(name);
+    await page.getByLabel("Object name").press("Enter");
+    await expect(outlinerRow(page, name)).toHaveCount(1);
+    await page.locator("canvas.viewport-canvas").focus();
+    // A primitive's cage keeps its UV seams as marked seams: down the side, round the caps.
+    await page.keyboard.press("Tab");
+    await page.getByTestId("toggle-uv-editor").click();
+    await expect(page.getByTestId("uv-editor")).toBeVisible();
+    await page.keyboard.press("u");
+    await expect(page.getByTestId("uv-stats")).toContainText("3 islands");
+    await expect(page.getByTestId("op-panel")).toContainText("Unwrap");
+    await page.getByTestId("toggle-checker").click();
+
+    // Smart project needs no seams: it splits the side by facing.
+    await page.getByRole("button", { name: "Smart project" }).first().click();
+    await expect(page.getByTestId("uv-stats")).not.toContainText("3 islands");
+    await page.keyboard.press("Control+z");
+    await expect(page.getByTestId("uv-stats")).toContainText("3 islands");
+    await expect(page.locator(".save-state")).toHaveText("Saved to your node", { timeout: 20_000 });
+
+    // A fresh page reads the same layout back from the node.
+    const other = await freshView(browser);
+    await outlinerRow(other, name).click();
+    await other.getByTestId("toggle-uv-editor").click();
+    await expect(other.getByTestId("uv-stats")).toContainText("3 islands", { timeout: 30_000 });
+
+    errors.assertClean();
+  });
+
   test("loads the example assets, built from the modelling tools", async ({ page, browser }) => {
     const errors = watchForErrors(page);
     await login(page);

@@ -123,7 +123,7 @@ describe("the modelling tools", () => {
   });
 
   it("refuses a loop cut where there is no ring of quads", () => {
-    const tri: Poly = { positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], faces: [[0, 1, 2]], uvs: null, sharp: new Set(), modifiers: [] };
+    const tri: Poly = { positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], faces: [[0, 1, 2]], uvs: null, sharp: new Set(), seams: new Set(), modifiers: [] };
     expect(() => loopCut(tri, 0, 1)).toThrow(MeshOpError);
   });
 
@@ -273,7 +273,7 @@ describe("the cage blob format", () => {
     const p = { ...cylinder(6), modifiers: [{ type: "subdivision" as const, levels: 1, on: true }] };
     const shape = shapeFromPoly(p);
     const bytes = encodeMesh(shape);
-    expect(bytes[4]).toBe(2);
+    expect(bytes[4]).toBe(3);
     const back = decodeMesh(bytes, meshCounts(shape));
     expect(back.poly!.faces).toEqual(p.faces);
     expect([...back.poly!.sharp].sort()).toEqual([...p.sharp].sort());

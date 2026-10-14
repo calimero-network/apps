@@ -3,6 +3,7 @@ import { EXAMPLES, exampleChange } from "./examples";
 import { decodeMesh, encodeMesh, meshCounts } from "./meshcodec";
 import { evaluate } from "./modifiers";
 import { topology, type Poly } from "./poly";
+import { uvStats } from "./uv";
 
 /** Edges with other than two faces, and directed edges used twice (faces wound against their neighbours). */
 function defects(p: Poly): { open: number; nonManifold: number; flipped: number } {
@@ -34,6 +35,9 @@ describe("the example assets", () => {
     expect(change.puts.filter((o) => o.kind === "group")).toHaveLength(EXAMPLES.length);
     for (const m of change.meshes) {
       expect(m.shape.poly).toBeDefined();
+      // Laid out for texturing: inside the square, nothing mirrored.
+      expect(uvStats(m.shape.poly!).flipped).toBe(0);
+      for (const uv of m.shape.poly!.uvs!) for (const x of uv) expect(x >= -1e-9 && x <= 1 + 1e-9).toBe(true);
       const back = decodeMesh(encodeMesh(m.shape), meshCounts(m.shape));
       expect(back.poly!.faces).toEqual(m.shape.poly!.faces);
     }

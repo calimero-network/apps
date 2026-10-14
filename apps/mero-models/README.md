@@ -23,6 +23,7 @@ apps/mero-models/
     │   ├── polyops.ts         the modelling tools: loop cut, bevel, inset, extrude, bridge, knife…
     │   ├── modifiers.ts       the modifier stack: mirror, subdivision surface, array, solidify
     │   ├── polymesh.ts        cage ⇄ triangles: triangulate, split hard edges, recover quads
+    │   ├── uv.ts              UV seams, conformal (LSCM) unwrap, smart project, island packing
     │   ├── examples.ts        example assets, each built step by step with those tools
     │   ├── meshcodec.ts       the mesh blob format: compressed, deterministic, validated on read
     │   ├── blobs.ts           upload/download with the context id, IndexedDB-cached by blob id
@@ -63,6 +64,7 @@ invite link; tick **Can edit** beside someone to let them build.
 | **Object** | subdivide, smooth, decimate, flip normals, `Ctrl+J` join, `Ctrl+A` apply transforms, origin to geometry, mirror; a **modifier stack** per mesh in Properties (mirror, subdivision surface, array, solidify), saved with the mesh |
 | **Edit mode** | `Tab` (converts a primitive to a cage of quads) · `1`/`2`/`3` vertex/edge/face select · `Alt`-click an edge for its loop, `Ctrl+Alt`-click for its ring (a face loop in face mode) · `Ctrl+L` linked · X-mirror moves |
 | **Modelling** | `E` extrude (faces along normals, or an open border outward) · `I` inset · `Ctrl+B` bevel · `Ctrl+R` loop cut · `K` knife plane · `J` connect · bridge edge loops · `F` fill · `M` merge · `Ctrl+X` dissolve · smooth, subdivide, symmetrize · mark/clear sharp, sharp by angle · `X` delete. The panel bottom-left adjusts the last tool (width, cuts, thickness…) after the fact |
+| **UVs** | Mark seams on edges (they draw red) and `U` unwrap — each piece is flattened conformally and the islands are packed into the 0–1 square at one texel density; or Smart project, which needs no seams. The **UV** button opens the UV editor: click an island to select it (Ctrl for one face), drag to move, box-select on empty space, rotate/flip/scale, Stretch colours faces by distortion, and the footer gives islands, px/m for a 512–4096 texture and coverage. **Checker** puts a numbered UV grid on every mesh |
 | **Examples** | Add → Examples: a sci-fi crate, a fuel drum, a sword, a modular corridor kit, a rock and tree — or all of them on one floor. Each is an ordinary editable cage, built by the same tools (`examples.ts` reads as the recipe) |
 | **View** | `F` frame selected · `Home` frame all · `1`/`3`/`7` front/right/top (`Shift` for the opposite) · `5` ortho · `Z` cycles wireframe/solid/material |
 | **Files** | import OBJ, STL, glTF/GLB, or a scene `.json`; export GLB, OBJ, STL or scene `.json`; `F12` renders a PNG |
@@ -100,8 +102,9 @@ Three decisions carry the design:
   the same asset offline resolve to one holder when they meet. Check-outs lapse
   (1 hour to 1 week), and an admin can release one.
 - **Meshes are cages.** A mesh that has been modelled is stored as its
-  polygon cage — faces of any size, a UV per face corner, its hard edges and
-  its modifier stack (mesh blob format 2) — and the triangles are derived on
+  polygon cage — faces of any size, a UV per face corner, its hard edges, its
+  UV seams and its modifier stack (mesh blob format 3; format 2, without
+  seams, is still read) — and the triangles are derived on
   every node that reads it. A triangle mesh imported from a DCC stays format 1,
   byte for byte, until someone edits it; then its triangles are paired back
   into the quads they came from. Edges steeper than 60° always draw hard;
@@ -131,6 +134,11 @@ Edit-mode selection is by vertex: an edge is selected when both ends are, and
 switching to face mode selects every face whose corners are all selected (as
 in Blender). Bevel makes one segment; the knife cuts along a plane, not a
 drawn line.
+
+Unwrapping a closed piece with no seam through it projects it instead (the
+status bar says how many faces); the UV editor moves the selected faces' UVs
+without dragging their neighbours along, and packing works in one square, not
+in UDIM tiles.
 
 ## Tests
 

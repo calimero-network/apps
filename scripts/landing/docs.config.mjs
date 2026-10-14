@@ -113,7 +113,7 @@ export const DOCS = {
         steps: [
           { title: 'Connect a node', body: 'Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
           { title: 'Start a scene', body: 'Name it and press New scene. That creates a namespace you own and a scene inside it, with you as its admin.' },
-          { title: 'Build', body: 'Shift+A adds a primitive. Drag the gizmo to move it; G, R and S switch between move, rotate and scale, Tab models the mesh — 1, 2 and 3 pick vertices, edges or faces; E, I, Ctrl+B and Ctrl+R extrude, inset, bevel and loop-cut — and Ctrl+Z undoes. Add → Examples loads finished assets built the same way.' },
+          { title: 'Build', body: 'Shift+A adds a primitive. Drag the gizmo to move it; G, R and S switch between move, rotate and scale, Tab models the mesh — 1, 2 and 3 pick vertices, edges or faces; E, I, Ctrl+B and Ctrl+R extrude, inset, bevel and loop-cut — and Ctrl+Z undoes. Mark seams and press U to unwrap for texturing, and Add → Examples loads finished assets built the same way.' },
           { title: 'Invite', body: 'Share mints a link. Whoever opens it can watch at once; tick Can edit beside their name to let them build too.' },
         ],
       },
