@@ -120,15 +120,23 @@ for (const [device, size] of [
 ] as const) {
   test(`on ${device}, you archive a chat after confirming, restore it from Archived chats, and Undo brings it back`, async ({ page }) => {
     const explain = watch(page);
+    // The pretend agent takes your message up after 0.7 s and answers after
+    // 2.8 s, and anything new brings an archived chat back: on a slow runner the
+    // answer landed between Archive and Restore and took the chat off the shelf
+    // mid-click. The page's clock is held, and moved on only far enough for the
+    // agent to take the message up, so it is working on it and never answers.
+    await page.clock.install();
     await page.setViewportSize(size);
     await page.goto("/demo/chat");
+    await page.clock.pauseAt(Date.now() + 1_000);
     await page.getByRole("button", { name: "New chat" }).click();
     await page.getByLabel("Message your agent").fill("Throwaway question");
     await page.getByLabel("Message your agent").press("Enter");
     await expect(page.getByRole("log").getByText("Throwaway question", { exact: true })).toBeVisible();
+    await page.clock.runFor(1_000);
 
     await page.getByRole("button", { name: "Archive chat" }).click();
-    const ask = page.getByRole("group", { name: "Archive this chat?" });
+    const ask =page.getByRole("group", { name: "Archive this chat?" });
     await expect(ask).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await ask.getByRole("button", { name: "Archive" }).click();
