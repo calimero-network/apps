@@ -465,6 +465,20 @@ describe("Settings → Agents: who works in each app", () => {
     expect((await backend.settings()).assignments).toEqual([]);
   });
 
+  it("offers Install, not an agent, for the core apps not on your node", async () => {
+    const install = vi.fn(async () => undefined);
+    render(<Harness backend={new DemoBackend(true, 0)} section="agents" installed={["chat", "drive-docs"]} install={install} />);
+    const panel = await section();
+    expect(within(panel).getByRole("combobox", { name: "Agent for Code" })).toBeInTheDocument();
+    expect(within(panel).getByRole("combobox", { name: "Agent for Chat" })).toBeInTheDocument();
+    expect(within(panel).getByRole("combobox", { name: "Agent for Drive Docs" })).toBeInTheDocument();
+    expect(within(panel).queryByRole("combobox", { name: "Agent for Calendar" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Install Calendar" }));
+    });
+    expect(install).toHaveBeenCalledWith("com.calimero.mero-calendar");
+  });
+
   it("says any agent takes an app while no private agent reports in", async () => {
     const backend = new DemoBackend(true, 0);
     backend.agentReach(LAPTOP, [line(false)]);
