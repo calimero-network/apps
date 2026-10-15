@@ -1,25 +1,24 @@
-import React, { type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { AppMode, MeroProvider, useMero } from '@calimero-network/mero-react';
-import { ToastProvider } from '@calimero-network/mero-ui';
+import React, { type ReactNode } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AppMode, MeroProvider, useMero } from "@calimero-network/mero-react";
+import { ToastProvider } from "@calimero-network/mero-ui";
 
-import LandingPage from './pages/landing/LandingPage';
-import AppPage from './pages/app/AppPage';
-import PipelinePage from './pages/app/PipelinePage';
-import DealsPage from './pages/app/DealsPage';
-import DealDetailPage from './pages/app/DealDetailPage';
-import ActivitiesPage from './pages/app/ActivitiesPage';
-import ContactsPage from './pages/app/ContactsPage';
-import InsightsPage from './pages/app/InsightsPage';
-import SettingsPage from './pages/app/SettingsPage';
-import MembersPage from './pages/app/MembersPage';
-import InvitationRouteGate from './components/InvitationRouteGate';
-import { AppThemeProvider } from './theme';
-import { APP_PACKAGE, APP_ROUTE } from './config';
+import LandingPage from "./pages/landing/LandingPage";
+import AppPage from "./pages/app/AppPage";
+import PipelinePage from "./pages/app/PipelinePage";
+import DealsPage from "./pages/app/DealsPage";
+import DealDetailPage from "./pages/app/DealDetailPage";
+import ActivitiesPage from "./pages/app/ActivitiesPage";
+import ContactsPage from "./pages/app/ContactsPage";
+import InsightsPage from "./pages/app/InsightsPage";
+import SettingsPage from "./pages/app/SettingsPage";
+import MembersPage from "./pages/app/MembersPage";
+import InvitationHost from "./components/InvitationHost";
+import { AppThemeProvider } from "./theme";
+import { APP_PACKAGE, APP_ROUTE } from "./config";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
-const LANDING_PATHS = ['/', '/docs', '/preview'];
-
+const LANDING_PATHS = ["/", "/docs", "/preview"];
 
 /**
  * Auth route guards. The MeroProvider resolves auth ASYNCHRONOUSLY — on first
@@ -47,14 +46,14 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
 
 export default function App() {
   const registryUrl =
-    import.meta.env.VITE_REGISTRY_URL?.trim() || 'https://apps.calimero.network';
+    import.meta.env.VITE_REGISTRY_URL?.trim() ||
+    "https://apps.calimero.network";
   // P4 RUNTIME defense against package shadowing: APP_PACKAGE (from
   // studio.config via ./config) takes precedence over a stale
   // VITE_PACKAGE_NAME left in app/.env. The canonical strip lives in
   // configTools.propagateSpecToConfig; this precedence flip survives any
   // out-of-band .env write at any time — keep BOTH.
-  const packageName =
-    APP_PACKAGE || import.meta.env.VITE_PACKAGE_NAME?.trim();
+  const packageName = APP_PACKAGE || import.meta.env.VITE_PACKAGE_NAME?.trim();
 
   return (
     <MeroProvider
@@ -65,10 +64,9 @@ export default function App() {
       <ToastProvider>
         <AppThemeProvider>
           <BrowserRouter basename="/">
-            {/* An invitation link can land on ANY route, so the thing that knows
-                one is waiting has to live above the router's outlet. It only
-                routes; AppPage does the joining. */}
-            <InvitationRouteGate />
+            {/* An invitation link can land on ANY route, so the prompt that
+                offers it lives above the router's outlet. */}
+            <InvitationHost />
             <Routes>
               {/* Landing is the front door; authenticated users (incl. desktop
                   SSO skip) are redirected straight into the app. */}
@@ -84,7 +82,7 @@ export default function App() {
                   // `/preview` are reference pages, and somebody already signed in is
                   // exactly the person most likely to want to read them.
                   element={
-                    landingPath === '/' ? (
+                    landingPath === "/" ? (
                       <RedirectIfAuthed>
                         <LandingPage />
                       </RedirectIfAuthed>
@@ -101,7 +99,14 @@ export default function App() {
               <Route path="/login" element={<Navigate to="/" replace />} />
               {/* CRM shell + routed views. The pipeline board is the index, so
                   the post-auth resting URL is the board itself. */}
-              <Route path={APP_ROUTE} element={<RequireAuth><AppPage /></RequireAuth>}>
+              <Route
+                path={APP_ROUTE}
+                element={
+                  <RequireAuth>
+                    <AppPage />
+                  </RequireAuth>
+                }
+              >
                 <Route index element={<PipelinePage />} />
                 <Route path="deals" element={<DealsPage />} />
                 <Route path="deals/:id" element={<DealDetailPage />} />
