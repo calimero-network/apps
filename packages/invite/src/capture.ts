@@ -30,6 +30,7 @@
 import {
   DeepLinkController,
   PendingIntentStore,
+  createLink,
   getBridge,
 } from "@calimero-network/mero-platform";
 
@@ -38,10 +39,36 @@ export const JOIN_ACTION = "join";
 /** The query parameter every app's invite builder emits. */
 export const INVITATION_PARAM = "invitation";
 
+/**
+ * The link an inviter shares, for every app: `https://links.calimero.network/<slug>/join?invitation=…`.
+ *
+ * One shape, so one path gets it into the app. The links page opens the app's
+ * frontend with the query appended (web, PWA, a cold desktop start), and a
+ * desktop that is already running hands it over as a `deep-link` bridge event;
+ * `primeInvitationCapture` listens to both. Nobody pastes it anywhere.
+ *
+ * `slug` is the app's deep-link handler, which in this repo is its package id.
+ * `extra` rides along beside the token, for an app whose link carries more
+ * than the token (a display name, a target id).
+ */
+export function buildInviteLink(
+  slug: string,
+  token: string,
+  extra: Record<string, string | undefined> = {},
+): string {
+  const params: Record<string, string> = { [INVITATION_PARAM]: token };
+  for (const [key, value] of Object.entries(extra)) {
+    if (value !== undefined && value !== "") params[key] = value;
+  }
+  return createLink(slug, JOIN_ACTION, params);
+}
+
 /** One captured invitation, with the ack the app owes the store. */
 export interface CapturedInvitation {
   /** The raw invitation token, ready to parse. */
   token: string;
+  /** Every query parameter the link carried, the token included. */
+  params: Record<string, string>;
   /** Ack it so the store stops replaying it. Call once handled OR declined. */
   resolve: () => void;
   /**
@@ -80,6 +107,8 @@ let current: CapturedInvitation | null = null;
 let controller: DeepLinkController | null = null;
 /** Namespaced per app so two apps on one origin cannot spend each other's budget. */
 let attemptsKey = "calimero:invitation-attempts";
+/** The deep-link slugs that name this app; a `join` for any other slug is not ours. */
+let ownSlugs: ReadonlySet<string> = new Set();
 
 /**
  * An in-memory Storage, for when the real one throws.
@@ -209,6 +238,20 @@ function ensureController(): void {
     // params intact. Anything else is somebody else's intent.
     if (intent.action !== null && intent.action !== JOIN_ACTION) return;
 
+    // A join addressed to another app. The launcher routes by slug, so this
+    // takes a misrouted event or a link for app A opened inside app B — and
+    // joining it would put this app's node into a namespace of an app it
+    // cannot run. Acked so it does not replay; never offered.
+    if (
+      intent.action === JOIN_ACTION &&
+      intent.slug !== null &&
+      ownSlugs.size > 0 &&
+      !ownSlugs.has(intent.slug)
+    ) {
+      intent.resolve();
+      return;
+    }
+
     const token = invitationFromRaw(intent.raw);
     if (!token) {
       // Nothing for us in it, but it is still ours to ack or it replays forever.
@@ -229,6 +272,7 @@ function ensureController(): void {
 
     deliver({
       token,
+      params: { ...intent.params, [INVITATION_PARAM]: token },
       resolve: () => {
         forgetAttempts(token);
         if (current?.token === token) current = null;
@@ -248,9 +292,17 @@ function ensureController(): void {
  *
  * `appKey` namespaces the attempt ledger. Two apps served from one origin (the
  * dev server, a preview deployment) would otherwise share it.
+ *
+ * `slug` is this app's deep-link slug (its package id). Given it, a `join` link
+ * addressed to a different app is dropped instead of being offered here.
  */
-export function primeInvitationCapture(appKey?: string): void {
+export function primeInvitationCapture(
+  appKey?: string,
+  options: { slug?: string | readonly string[] } = {},
+): void {
   if (appKey) attemptsKey = `${appKey}:invitation-attempts`;
+  const { slug } = options;
+  if (slug) ownSlugs = new Set(typeof slug === "string" ? [slug] : slug);
   ensureController();
 }
 
@@ -291,4 +343,5 @@ export function resetInvitationCaptureForTests(): void {
   buffered = null;
   current = null;
   attemptsKey = "calimero:invitation-attempts";
+  ownSlugs = new Set();
 }

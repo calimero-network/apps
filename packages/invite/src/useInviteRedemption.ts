@@ -46,7 +46,7 @@ export interface UseInviteRedemptionOptions {
    * Read a raw token into its parts. Return `null` (or throw) if it is not a
    * usable invitation — the app owns this because the codecs differ slightly.
    */
-  parse: (token: string) => ParsedInvitation | null;
+  parse: (token: string, params: Record<string, string>) => ParsedInvitation | null;
   /** The two calls that differ between apps. */
   redeemer: InviteRedeemer;
   /**
@@ -61,6 +61,10 @@ export interface UseInviteRedemptionOptions {
    *
    * With this set the state goes `awaiting-confirmation` and waits for
    * `accept()`; `decline()` acks the invitation so it stops coming back.
+   *
+   * On by default: an invitation reaches an app only by a link being opened,
+   * and every app asks before it joins. Off only for a caller that has already
+   * asked in its own words.
    */
   confirm?: boolean;
   /**
@@ -103,7 +107,7 @@ export interface InviteRedemption {
 export function useInviteRedemption({
   parse,
   redeemer,
-  confirm = false,
+  confirm = true,
   onJoined,
   enabled = true,
 }: UseInviteRedemptionOptions): InviteRedemption {
@@ -179,7 +183,7 @@ export function useInviteRedemption({
     (captured: CapturedInvitation) => {
       let invitation: ParsedInvitation | null = null;
       try {
-        invitation = parseRef.current(captured.token);
+        invitation = parseRef.current(captured.token, captured.params);
       } catch {
         invitation = null;
       }
@@ -220,7 +224,11 @@ export function useInviteRedemption({
     return onInvitation((captured) => {
       pending.current = captured;
       setToken(captured.token);
-      if (!captured.autoJoin || attempted.current.has(captured.token)) return;
+      if (attempted.current.has(captured.token)) return;
+      // The attempt cap stops a link that cannot join from re-firing a join on
+      // every load. Asking is not joining: a prompt is still owed, because a
+      // link is the only way an invitation reaches the app.
+      if (!captured.autoJoin && !confirmRef.current) return;
       attempted.current.add(captured.token);
       begin(captured);
     });

@@ -43,7 +43,7 @@ describe("useInviteRedemption", () => {
     openWith("TOK");
     const onJoined = vi.fn();
     const { result } = renderHook(() =>
-      useInviteRedemption({ parse, redeemer: redeemer(), onJoined }),
+      useInviteRedemption({ confirm: false, parse, redeemer: redeemer(), onJoined }),
     );
 
     await waitFor(() => expect(result.current.state.stage).toBe("joined"));
@@ -55,7 +55,7 @@ describe("useInviteRedemption", () => {
   it("marks the namespace as just-joined for the sync gate", async () => {
     openWith("TOK");
     const { result } = renderHook(() =>
-      useInviteRedemption({ parse, redeemer: redeemer() }),
+      useInviteRedemption({ confirm: false, parse, redeemer: redeemer() }),
     );
 
     await waitFor(() => expect(result.current.state.stage).toBe("joined"));
@@ -67,7 +67,7 @@ describe("useInviteRedemption", () => {
   it("reports already-member when the request failed but the node joined", async () => {
     openWith("TOK");
     const { result } = renderHook(() =>
-      useInviteRedemption({
+      useInviteRedemption({ confirm: false,
         parse,
         redeemer: redeemer({
           join: vi.fn().mockRejectedValue(new Error("timed out")),
@@ -83,7 +83,7 @@ describe("useInviteRedemption", () => {
   it("surfaces a real failure with the node's reason, and keeps the token", async () => {
     openWith("TOK");
     const { result } = renderHook(() =>
-      useInviteRedemption({
+      useInviteRedemption({ confirm: false,
         parse,
         redeemer: redeemer({
           join: vi
@@ -106,7 +106,7 @@ describe("useInviteRedemption", () => {
     openWith("BAD");
     const join = vi.fn();
     const { result } = renderHook(() =>
-      useInviteRedemption({ parse, redeemer: redeemer({ join }) }),
+      useInviteRedemption({ confirm: false, parse, redeemer: redeemer({ join }) }),
     );
 
     await waitFor(() => expect(result.current.state.stage).toBe("failed"));
@@ -119,7 +119,7 @@ describe("useInviteRedemption", () => {
     const join = vi.fn().mockResolvedValue(undefined);
     const { result, rerender } = renderHook(
       ({ enabled }) =>
-        useInviteRedemption({ parse, redeemer: redeemer({ join }), enabled }),
+        useInviteRedemption({ confirm: false, parse, redeemer: redeemer({ join }), enabled }),
       { initialProps: { enabled: false } },
     );
 
@@ -137,7 +137,7 @@ describe("useInviteRedemption", () => {
     openWith("TOK");
     const join = vi.fn().mockResolvedValue(undefined);
     const { result, rerender } = renderHook(() =>
-      useInviteRedemption({
+      useInviteRedemption({ confirm: false,
         parse: (t) => parse(t),
         redeemer: { join, memberships: () => Promise.resolve([NS]) },
       }),
@@ -160,7 +160,7 @@ describe("useInviteRedemption", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValue([NS]);
     const { result } = renderHook(() =>
-      useInviteRedemption({ parse, redeemer: { join, memberships } }),
+      useInviteRedemption({ confirm: false, parse, redeemer: { join, memberships } }),
     );
 
     await waitFor(() => expect(result.current.state.stage).toBe("failed"));
@@ -171,6 +171,29 @@ describe("useInviteRedemption", () => {
   // Not a stylistic choice: joining puts you in someone else's namespace and
   // gives them a peer that syncs their data. mero-pass, mero-sign, mero-forum,
   // mero-sheets and mero-stream all require a click, and must keep doing so.
+
+  it("asks first by default, even once the automatic attempts are spent", async () => {
+    localStorage.setItem("calimero:invitation-attempts", JSON.stringify({ TOK: 99 }));
+    openWith("TOK");
+    const join = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useInviteRedemption({ parse, redeemer: redeemer({ join }) }));
+
+    await waitFor(() => expect(result.current.state.stage).toBe("awaiting-confirmation"));
+    expect(join).not.toHaveBeenCalled();
+    act(() => result.current.accept());
+    await waitFor(() => expect(result.current.state.stage).toBe("joined"));
+  });
+
+  it("hands the codec every parameter the link carried", async () => {
+    resetInvitationCaptureForTests();
+    window.history.replaceState(null, "", "/?invitation=TOK&kind=group&name=Ops");
+    const seen = vi.fn((token: string, _params: Record<string, string>) => parse(token));
+    renderHook(() => useInviteRedemption({ parse: seen, redeemer: redeemer() }));
+
+    await waitFor(() => expect(seen).toHaveBeenCalled());
+    expect(seen.mock.calls[0]?.[1]).toMatchObject({ invitation: "TOK", kind: "group", name: "Ops" });
+  });
+
   describe("confirm mode", () => {
     it("asks before joining, and joins on accept", async () => {
       openWith("TOK");
@@ -179,7 +202,7 @@ describe("useInviteRedemption", () => {
         useInviteRedemption({
           parse,
           redeemer: redeemer({ join }),
-          confirm: true,
+          
         }),
       );
 
@@ -202,7 +225,7 @@ describe("useInviteRedemption", () => {
         useInviteRedemption({
           parse,
           redeemer: redeemer({ join }),
-          confirm: true,
+          
         }),
       );
 
@@ -225,7 +248,7 @@ describe("useInviteRedemption", () => {
     it("still refuses an unreadable invitation without asking", async () => {
       openWith("BAD");
       const { result } = renderHook(() =>
-        useInviteRedemption({ parse, redeemer: redeemer(), confirm: true }),
+        useInviteRedemption({ parse, redeemer: redeemer() }),
       );
 
       await waitFor(() => expect(result.current.state.stage).toBe("failed"));
