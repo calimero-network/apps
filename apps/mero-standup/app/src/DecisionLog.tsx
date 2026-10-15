@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { DecisionView, MemberView } from "./generated/StandupClient";
 import { describeDay, relativeTime } from "./lib/days";
-import { displayName } from "./lib/people";
+import { PersonName } from "./names";
 import { parseTags } from "./lib/tags";
 import { Avatar, isSubmitShortcut, RichText, SUBMIT_HINT } from "./ui";
 import { useRead, type Team } from "./useTeam";
@@ -212,7 +212,7 @@ function Timeline({ items }: { items: DecisionView[] }) {
                       month: "short",
                       day: "numeric",
                     })}{" "}
-                    · {displayName(d.author, d.author_name)}
+                    · <PersonName account={d.author} name={d.author_name} />
                   </span>
                   {d.superseded_by && <span className="badge muted">Superseded</span>}
                   <p className="dim small">{d.decision}</p>
@@ -271,7 +271,7 @@ function DecisionItem({
               {d.with.map((p) => (
                 <span key={p.account} className="with-person">
                   <Avatar account={p.account} name={p.name} size={18} />
-                  {displayName(p.account, p.name)}
+                  <PersonName account={p.account} name={p.name} />
                 </span>
               ))}
             </span>
@@ -280,7 +280,7 @@ function DecisionItem({
       )}
       <div className="meta">
         <span className="dim">
-          {displayName(d.author, d.author_name)} · {relativeTime(d.created_at)}
+          <PersonName account={d.author} name={d.author_name} /> · {relativeTime(d.created_at)}
           {d.from_day && ` · from the ${describeDay(d.from_day).toLowerCase()} standup`}
         </span>
         {d.supersedes && (
@@ -485,7 +485,7 @@ function DecisionForm({
                   }}
                 >
                   <Avatar account={m.account} name={m.name} size={18} />
-                  {displayName(m.account, m.name)}
+                  <PersonName account={m.account} name={m.name} />
                 </button>
               );
             })}

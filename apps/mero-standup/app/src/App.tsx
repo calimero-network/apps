@@ -7,7 +7,7 @@ import { JoinCard } from "./JoinCard";
 import { StandupBoard } from "./StandupBoard";
 import { WeekDigest } from "./WeekDigest";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
-import { displayName } from "./lib/people";
+import { PersonName, TeamNamespace, useSpaceNames } from "./names";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
 import { useRead, useTeam, type Team } from "./useTeam";
 
@@ -69,13 +69,15 @@ export function App() {
   }
 
   return (
-    <TeamView
-      contextId={contextId}
-      join={joinState.status !== "idle" ? join : null}
-      theme={theme}
-      setTheme={setTheme}
-      onLogout={logout}
-    />
+    <TeamNamespace contextId={contextId}>
+      <TeamView
+        contextId={contextId}
+        join={joinState.status !== "idle" ? join : null}
+        theme={theme}
+        setTheme={setTheme}
+        onLogout={logout}
+      />
+    </TeamNamespace>
   );
 }
 
@@ -153,7 +155,7 @@ function TeamView({
     >
       {join}
       {me.error && <pre className="err">{me.error}</pre>}
-      {me.data && myName.data === "" && <Welcome team={team} contextId={contextId} />}
+      {me.data && myName.data === "" && <Welcome team={team} contextId={contextId} me={me.data} />}
 
       <nav className="tabs" role="tablist">
         {(
@@ -252,7 +254,7 @@ function TeamName({ team }: { team: Team }) {
  * seeing `4845d7…c6b1` on your updates. Skippable, and the skip is
  * remembered per team on this browser.
  */
-function Welcome({ team, contextId }: { team: Team; contextId: string }) {
+function Welcome({ team, contextId, me }: { team: Team; contextId: string; me: string }) {
   const key = `mero-standup:welcomed:${contextId}`;
   const [dismissed, setDismissed] = useState(() => {
     try {
@@ -264,6 +266,12 @@ function Welcome({ team, contextId }: { team: Team; contextId: string }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { nameOf, publish } = useSpaceNames();
+  // Offer the name already set for the namespace, so joining is one click.
+  const spaceName = nameOf(me);
+  useEffect(() => {
+    if (spaceName) setName((n) => n || spaceName);
+  }, [spaceName]);
   if (dismissed) return null;
 
   function dismiss() {
@@ -282,6 +290,7 @@ function Welcome({ team, contextId }: { team: Team; contextId: string }) {
         e.preventDefault();
         setBusy(true);
         setError(null);
+        publish(me, name);
         team
           .act((c) => c.setName({ name }))
           .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
@@ -332,6 +341,7 @@ function Menu({
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const { publish } = useSpaceNames();
 
   useEffect(() => {
     if (!open) return;
@@ -358,7 +368,7 @@ function Menu({
         {me ? <Avatar account={me} name={myName} size={30} /> : <Icon name="menu" />}
         {me && (
           <span className="menu-name" data-testid="my-name">
-            {displayName(me, myName)}
+            <PersonName account={me} name={myName} />
           </span>
         )}
       </button>
@@ -375,6 +385,7 @@ function Menu({
                   className="row"
                   onSubmit={(e) => {
                     e.preventDefault();
+                    publish(me, renaming);
                     void team.act((c) => c.setName({ name: renaming })).then(() => setRenaming(null));
                   }}
                 >

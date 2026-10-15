@@ -6,17 +6,26 @@ export function shortAccount(account: string): string {
 }
 
 /**
- * What to call someone. Their chosen name if they set one, else a short id —
- * never a blank byline, because posting before naming yourself is normal.
+ * What to call someone. Their chosen name on this team if they set one, else
+ * the name they set for the whole namespace (`spaceName`, shared by every app
+ * on it), else a short id — never a blank byline, because posting before
+ * naming yourself is normal.
  */
-export function displayName(account: string, name: string | null | undefined): string {
-  const trimmed = name?.trim();
-  return trimmed ? trimmed : shortAccount(account);
+export function displayName(
+  account: string,
+  name: string | null | undefined,
+  spaceName?: string | null,
+): string {
+  return name?.trim() || spaceName?.trim() || shortAccount(account);
 }
 
 /** Up to two letters for an avatar: "Ana Lee" -> "AL", unnamed -> from the id. */
-export function initials(account: string, name: string | null | undefined): string {
-  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
+export function initials(
+  account: string,
+  name: string | null | undefined,
+  spaceName?: string | null,
+): string {
+  const words = (name?.trim() || spaceName || "").trim().split(/\s+/).filter(Boolean);
   if (words.length >= 2) return (words[0]![0]! + words[1]![0]!).toUpperCase();
   if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
   return account.slice(0, 2).toUpperCase();

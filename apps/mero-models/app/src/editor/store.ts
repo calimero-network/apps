@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { shortAccount } from "@calimero-apps/names";
 import type { MeshShape } from "./geometry";
 import type { LockView, MeshRef, TextureRef } from "../generated/MeroModelsClient";
 import {
@@ -83,6 +84,11 @@ export interface EditorState {
   locks: Map<string, LockView>;
   /** Display names by member id, for check-outs and history. */
   memberNames: Map<string, string>;
+  /**
+   * The name a member set for the whole namespace, shared by every app on it:
+   * the fallback for anyone who has not named themselves in this scene.
+   */
+  spaceNameOf: (id: string) => string | undefined;
   environment: Environment;
   sceneName: string;
   /** Selected object ids, in the order they were picked; the last is active. */
@@ -207,6 +213,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   textures: new Map(),
   locks: new Map(),
   memberNames: new Map(),
+  spaceNameOf: () => undefined,
   environment: defaultEnvironment(),
   sceneName: "",
   selection: [],
@@ -443,8 +450,21 @@ export function activeObject(state: Pick<EditorState, "objects" | "selection">):
   return id ? state.objects.get(id) : undefined;
 }
 
-/** A member's display name, or a short form of their id. */
-export function nameOf(state: Pick<EditorState, "memberNames" | "me">, id: string): string {
+/** What `useJoin` joins a member as when they have not named themselves. */
+export const GUEST = "Guest";
+
+/**
+ * The name a member chose for this scene. `useJoin` joins an unnamed member as
+ * "Guest", so that placeholder is no name: the namespace name is a better one.
+ */
+export function chosenName(name: string | null | undefined): string {
+  const trimmed = (name ?? "").trim();
+  return trimmed === GUEST ? "" : trimmed;
+}
+
+/** A member's scene name, else their namespace name, else a short form of their id. */
+export function nameOf(state: Pick<EditorState, "memberNames" | "me" | "spaceNameOf">, id: string): string {
   if (id && id === state.me) return "you";
-  return state.memberNames.get(id) || (id ? `${id.slice(0, 6)}…` : "someone");
+  if (!id) return "someone";
+  return chosenName(state.memberNames.get(id)) || state.spaceNameOf(id) || shortAccount(id);
 }

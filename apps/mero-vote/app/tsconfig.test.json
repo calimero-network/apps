@@ -18,6 +18,12 @@
     "src/ui.tsx",
     "src/theme.ts",
     "src/signOut.ts",
+    "src/VotePanel.tsx",
+    "src/CreatePoll.tsx",
+    "src/PollDetail.tsx",
+    "src/AuditPanel.tsx",
+    "src/TrusteePanel.tsx",
+    "src/useMeroVote.ts",
     "src/utils",
     "src/crypto"
   ]
