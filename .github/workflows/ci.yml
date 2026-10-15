@@ -127,6 +127,7 @@ jobs:
             # Runs only in the frontend job, over every app's build output.
             frontend_tooling:
               - 'scripts/check-vercel-output.sh'
+              - 'scripts/check-service-workers.py'
             # JS-only: a catalog bump or a tsconfig change cannot alter a
             # contract, so it must not start merod containers.
             #
@@ -465,6 +466,11 @@ jobs:
       - name: Assert Vercel skips only the apps a change does not reach
         run: python3 scripts/tests/vercel-ignore-build-test.py
 
+      # Its fixtures are real builds: mero-chat's worker before and after it
+      # stopped precaching its page, and hyperfeed's push-only worker.
+      - name: Assert the service-worker check still catches a precached page
+        run: python3 scripts/tests/service-workers-test.py
+
       # A consumer job cannot run where its artifact's producer is gated off —
       # GitHub skips a job whose `needs:` was skipped, whatever its own `if:`
       # says. That failure is silent, so the gates are asserted here.
@@ -796,6 +802,15 @@ jobs:
       - name: Assert vercel.json matches the real build output
         # shellcheck disable=SC2086 — word-splitting the list is the point
         run: scripts/check-vercel-output.sh $VERCEL_APPS
+
+      # Every app's HTML is served `no-cache`, but a service worker answers
+      # before that header is read. mero-chat's precached index.html, so the
+      # first open after a deploy ran the previous build and an invite opened
+      # from the desktop landed on a screen the release had removed. This fails
+      # a build whose worker could serve a page older than the deploy.
+      - name: Assert no service worker serves a stale page
+        # shellcheck disable=SC2086 — word-splitting the list is the point
+        run: python3 scripts/check-service-workers.py $VERCEL_APPS
 
   browser:
     name: Browser E2E (${{ matrix.app }}${{ matrix.shard != '1/1' && format(' {0}', matrix.shard) || '' }})
