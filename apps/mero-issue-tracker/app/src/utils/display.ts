@@ -41,6 +41,16 @@ export function truncateKey(key: string): string {
   return `${key.slice(0, 4)}…${key.slice(-4)}`;
 }
 
+/** Short handle for an issue id. The contract mints `issue-<ms>-<nonce>`, so
+ *  the first 8 characters (what the list used to show) are `issue-17` for
+ *  every issue this decade; the nonce is what tells them apart. Anything not
+ *  in that shape is cut to its first 8 characters. */
+export function shortIssueId(id: string): string {
+  const m = /^issue-\d+-([0-9a-z]+)$/i.exec(id);
+  if (m) return m[1].slice(0, 6);
+  return id.length > 8 ? id.slice(0, 8) : id;
+}
+
 /** Compact relative time (`2h`, `3d`, `now`) from an epoch value in s or ms. */
 export function relativeTime(value: number, now: number = Date.now()): string {
   if (!value) return '';

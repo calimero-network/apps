@@ -30,7 +30,7 @@ export default function PriorityGlyph({
   return (
     <Bars title={label}>
       {[0, 1, 2].map((i) => (
-        <i key={i} style={{ background: i < filled ? color : t.color.text3 }} />
+        <i key={i} style={{ background: i < filled ? color : t.color.borderStrong }} />
       ))}
     </Bars>
   );
@@ -43,7 +43,7 @@ const Bars = styled.span`
   height: 12px;
   i {
     width: 3px;
-    border-radius: 1px;
+    border-radius: 1.5px;
     display: inline-block;
   }
   i:nth-child(1) { height: 5px; }
@@ -53,7 +53,7 @@ const Bars = styled.span`
 
 const UrgentBox = styled.span`
   border-radius: 4px;
-  background: rgba(229, 105, 95, 0.16);
+  background: ${t.color.badBg};
   display: inline-flex;
   align-items: center;
   justify-content: center;

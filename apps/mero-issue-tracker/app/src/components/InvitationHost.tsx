@@ -78,12 +78,12 @@ const Float = styled.div`
   width: min(520px, calc(100vw - 32px));
   font-family: ${t.font.sans};
   --color-surface-2: ${t.color.panel};
-  --color-border: ${t.color.borderStrong};
+  --color-border: ${t.color.edge};
   --color-text: ${t.color.text};
   --color-danger-surface: ${t.color.panel};
   --color-danger-border: ${t.color.dangerBorder};
   --color-danger-ink: ${t.color.urgent};
   & > [data-testid="invite-status"] {
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+    box-shadow: ${t.shadowFloat};
   }
 `;

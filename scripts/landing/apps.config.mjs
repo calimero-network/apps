@@ -588,9 +588,9 @@ export const APPS = {
 
   'mero-issue-tracker': {
     e2eDir: 'e2e',
-    // This app ships its own light/dark switch; the landing toggle writes the
-    // same key so the choice carries through sign-in instead of resetting.
-    themeStorageKey: 'app:theme',
+    // Same light/dark key as the app shell (src/theme.ts), so the landing
+    // choice carries through sign-in instead of resetting.
+    themeStorageKey: 'mero-issue-tracker:theme',
     availability: 'web+desktop',
     trust: ['Structured issues', 'MCP server included', 'Private to your team'],
     explainer: [

@@ -131,6 +131,16 @@ async function onIssue(actor: Actor, title: string): Promise<boolean> {
   return true;
 }
 
+/** Whether `target` appears soon. The issue page draws its header from the
+ *  board at once but fetches the comment thread after, so a check made the
+ *  moment the header shows can miss a comment that is already there. */
+async function shows(target: Locator): Promise<boolean> {
+  return target.first().waitFor({ state: "attached", timeout: 5_000 }).then(
+    () => true,
+    () => false,
+  );
+}
+
 /** The workspace this test created; `joined()` waits to be inside it. Re-set per test. */
 let workspace = "";
 
@@ -230,10 +240,7 @@ const addComment: Feature = {
       actor,
       async () =>
         (await onIssue(actor, c.title)) &&
-        (await actor.page
-          .getByTestId("item-comment")
-          .filter({ hasText: c.body })
-          .count()) > 0,
+        (await shows(actor.page.getByTestId("item-comment").filter({ hasText: c.body }))),
       `${actor.name} sees ${by.name}'s comment`,
     );
   },
@@ -262,9 +269,7 @@ const addLabel: Feature = {
       actor,
       async () =>
         (await onIssue(actor, l.title)) &&
-        (await actor.page
-          .getByLabel(`Remove ${l.label}`, { exact: true })
-          .count()) > 0,
+        (await shows(actor.page.getByLabel(`Remove ${l.label}`, { exact: true }))),
       `${actor.name} sees ${by.name}'s label`,
     );
   },

@@ -6,13 +6,13 @@ import { avatarColor, initial, truncateKey } from '../utils/display';
 type Size = 'sm' | 'md' | 'lg';
 
 const DIMS: Record<Size, { box: number; font: number; radius: number }> = {
-  sm: { box: 18, font: 10, radius: 4 },
-  md: { box: 20, font: 11, radius: 5 },
-  lg: { box: 26, font: 12, radius: 6 },
+  sm: { box: 22, font: 10.5, radius: 11 },
+  md: { box: 26, font: 11.5, radius: 13 },
+  lg: { box: 34, font: 13.5, radius: 17 },
 };
 
 /**
- * Deterministic colored rounded-square avatar built from a seed string (alias or
+ * Deterministic colored round avatar built from a seed string (alias or
  * public key). When there is no alias, `keyFallback` renders the leading key
  * chars in mono on a neutral chip. `null`/empty seed renders an unassigned dash.
  */
@@ -56,7 +56,9 @@ const Box = styled.span<{ $dims: { box: number; font: number; radius: number }; 
   height: ${({ $dims }) => $dims.box}px;
   font-size: ${({ $dims }) => $dims.font}px;
   border-radius: ${({ $dims }) => $dims.radius}px;
-  color: ${({ $key }) => ($key ? t.color.text2 : t.color.bg)};
+  color: ${({ $key }) => ($key ? t.color.text2 : t.color.onSwatch)};
   background: ${({ $key }) => ($key ? t.color.raised2 : 'transparent')};
-  ${({ $key }) => ($key ? `font-family: ${t.font.mono}; font-size: 9px;` : '')}
+  box-shadow: inset 0 0 0 1px rgba(14, 18, 34, 0.06);
+  text-transform: ${({ $key }) => ($key ? 'none' : 'uppercase')};
+  ${({ $key }) => ($key ? `font-family: ${t.font.mono}; font-size: 9.5px; letter-spacing: -0.02em;` : '')}
 `;
