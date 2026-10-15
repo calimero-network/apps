@@ -39,7 +39,9 @@ import { DM_CONTEXT_ALIAS_PREFIX } from "../../utils/dmContext";
 // user already has a display name, else into the picker's name step. Entering
 // is a full page load (see `enterWorkspace`), which would take the dialog down
 // mid-sync, so it waits for the dialog to close: once the workspace's channel
-// list has been read here (`synced`), or the person chose to carry on.
+// list has been read here (`synced`). A person who carries on ("Continue in
+// background") before that stays where they are: going in once the read
+// finishes, up to a minute later, would reload the page under them.
 
 /** How long to keep asking for the joined workspace's channels. */
 const CHANNELS_READ_MS = 60_000;
@@ -58,6 +60,9 @@ export default function InvitationPrompt({ enabled }: Props) {
   const [readFor, setReadFor] = useState<string | null>(null);
   /** Going in, held until the dialog has closed. */
   const [pendingEnter, setPendingEnter] = useState<(() => void) | null>(null);
+  /** The namespace the dialog is waiting on, and whether it was left early. */
+  const waitingFor = useRef<string | null>(null);
+  const carriedOn = useRef<string | null>(null);
 
   const redemption = useInviteRedemption({
     enabled,
@@ -74,13 +79,27 @@ export default function InvitationPrompt({ enabled }: Props) {
     onJoined: (namespaceId, teamName) => {
       setReadFor(null);
       setPendingEnter(null);
+      carriedOn.current = null;
       void prepareJoined(api.current, namespaceId, teamName, joinedAs.current, () =>
         setReadFor(namespaceId),
-      ).then((go) => setPendingEnter(() => go));
+      ).then((go) => {
+        if (carriedOn.current === namespaceId) return;
+        setPendingEnter(() => go);
+      });
     },
   });
 
   const { state } = redemption;
+  // The dialog closing on a join whose channels have not been read is the
+  // person carrying on: remember it, so the read finishing does not go in.
+  useEffect(() => {
+    if (state.stage === "joined") {
+      waitingFor.current = readFor === state.namespaceId ? null : state.namespaceId;
+    } else if (state.stage === "idle" && waitingFor.current && !pendingEnter) {
+      carriedOn.current = waitingFor.current;
+      waitingFor.current = null;
+    }
+  }, [state, readFor, pendingEnter]);
   useEffect(() => {
     if (state.stage !== "idle" || !pendingEnter) return;
     setPendingEnter(null);
