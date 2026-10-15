@@ -176,6 +176,7 @@ export default function AppPage(): React.ReactElement | null {
   const sidebar = {
     totalIssues,
     membersCount,
+    teeMode: ws.teeMode,
     currentUser,
     currentUserLabel: selfMember ? aliases.resolve(selfMember) : '',
     currentUserHasAlias: selfMember ? aliases.hasAlias(selfMember) : false,
