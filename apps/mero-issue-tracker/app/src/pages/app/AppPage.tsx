@@ -1,26 +1,34 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Outlet, useSearchParams } from 'react-router-dom';
-import styled from 'styled-components';
-import { useMero } from '@calimero-network/mero-react';
-import { useToast } from '@calimero-network/mero-ui';
-import { shouldRetain } from '@calimero-apps/invite';
-import { tokens as t } from '../../theme';
-import { useWorkspace } from '../../hooks/useWorkspace';
-import { useIssues } from '../../hooks/useItems';
-import { makeAliases } from '../../hooks/useAliases';
-import { describeError } from '../../utils/errors';
-import Shell from '../../components/Shell';
-import NewIssueModal from '../../components/NewIssueModal';
-import InviteModal from '../../components/InviteModal';
-import JoinModal from '../../components/JoinModal';
-import NamespaceCreateDialog from '../../components/NamespaceCreateDialog';
-import AddRepoDialog from '../../components/AddRepoDialog';
-import NsEmptyState from '../../components/NsEmptyState';
-import AliasGate from '../../components/AliasGate';
-import { usePendingInvitation } from '../../hooks/usePendingInvitation';
-import type { AppCtx, Filters } from './appContext';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Outlet, useSearchParams } from "react-router-dom";
+import styled from "styled-components";
+import { useMero } from "@calimero-network/mero-react";
+import { useToast } from "@calimero-network/mero-ui";
+import { tokens as t } from "../../theme";
+import { useWorkspace } from "../../hooks/useWorkspace";
+import { useIssues } from "../../hooks/useItems";
+import { makeAliases } from "../../hooks/useAliases";
+import { describeError } from "../../utils/errors";
+import Shell from "../../components/Shell";
+import NewIssueModal from "../../components/NewIssueModal";
+import InviteModal from "../../components/InviteModal";
+import NamespaceCreateDialog from "../../components/NamespaceCreateDialog";
+import AddRepoDialog from "../../components/AddRepoDialog";
+import NsEmptyState from "../../components/NsEmptyState";
+import AliasGate from "../../components/AliasGate";
+import type { AppCtx, Filters } from "./appContext";
 
-const EMPTY_FILTERS: Filters = { status: '', priority: '', assignee: '', label: '' };
+const EMPTY_FILTERS: Filters = {
+  status: "",
+  priority: "",
+  assignee: "",
+  label: "",
+};
 
 /**
  * Tracker root: owns workspace resolution (namespace + repo), the issue data
@@ -41,19 +49,32 @@ export default function AppPage(): React.ReactElement | null {
   // created_by/author as the ACCOUNT on the entry's owner stamp (one person,
   // any device) and every node enforces edit/delete against it, so every
   // "is this mine" gate must compare against the account, never the executor key.
-  const currentUser = ws.selfIdentity ?? contextIdentity ?? '';
+  const currentUser = ws.selfIdentity ?? contextIdentity ?? "";
   // `selfMember` is the namespace-member id, which is an ACCOUNT. Member
   // metadata - the display names behind `aliases` - is stored and keyed by it,
   // so every name lookup must use this one. It used to be safe to resolve a
   // name from the executor key because the two coincided; rc.21 rekeyed group
   // members from a signing PublicKey to an AccountId and they no longer do, so
   // resolving the executor key just returns a truncated key forever.
-  const selfMember = ws.selfIdentity ?? '';
-  const myIssues = searchParams.get('assignee') === 'me';
+  const selfMember = ws.selfIdentity ?? "";
+  const myIssues = searchParams.get("assignee") === "me";
 
   const aliases = useMemo(
-    () => makeAliases(ws.memberNames, ws.setMemberName, ws.refetchMembers, ws.membersLoading, ws.membersLoaded),
-    [ws.memberNames, ws.setMemberName, ws.refetchMembers, ws.membersLoading, ws.membersLoaded],
+    () =>
+      makeAliases(
+        ws.memberNames,
+        ws.setMemberName,
+        ws.refetchMembers,
+        ws.membersLoading,
+        ws.membersLoaded,
+      ),
+    [
+      ws.memberNames,
+      ws.setMemberName,
+      ws.refetchMembers,
+      ws.membersLoading,
+      ws.membersLoaded,
+    ],
   );
 
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -62,28 +83,20 @@ export default function AppPage(): React.ReactElement | null {
   }, []);
   const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), []);
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // An invitation captured from a link — however it arrived (cold-open URL, the
-  // launcher's warm `deep-link` event, the PWA launch queue). Capture happens
-  // before React mounts; it is REDEEMED here, because joining needs an
-  // authenticated session and the workspace hook.
-  //
-  // The capture is sticky until acked, so this sees it whenever AppPage mounts,
-  // including long after the link was opened. `resolve()` is the ack, called on
-  // a join (or finding we are already a member), a failure no retry can fix, or
-  // an explicit cancel — never on a transient failure, so that one stays
-  // retryable across a reload.
-  const pendingInvitation = usePendingInvitation();
-  const pendingInvite = pendingInvitation?.token ?? null;
-  const forgetPendingInvite = useCallback(() => {
-    pendingInvitation?.resolve();
-  }, [pendingInvitation]);
-
-  const effectiveAssignee = myIssues ? (selfMember ? aliases.resolve(selfMember) : '') : filters.assignee;
+  const effectiveAssignee = myIssues
+    ? selfMember
+      ? aliases.resolve(selfMember)
+      : ""
+    : filters.assignee;
   const hookFilters = useMemo(
-    () => ({ status: filters.status, assignee: effectiveAssignee, label: filters.label }),
+    () => ({
+      status: filters.status,
+      assignee: effectiveAssignee,
+      label: filters.label,
+    }),
     [filters.status, effectiveAssignee, filters.label],
   );
 
@@ -107,16 +120,18 @@ export default function AppPage(): React.ReactElement | null {
   // does, so the same failure recurring after a recovery is reported again.
   const lastToastRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!data.error) { lastToastRef.current = null; return; }
+    if (!data.error) {
+      lastToastRef.current = null;
+      return;
+    }
     const description = describeError(data.error);
     if (description === lastToastRef.current) return;
     lastToastRef.current = description;
-    toast.show({ variant: 'error', description });
+    toast.show({ variant: "error", description });
   }, [data.error, toast]);
 
   const [showNew, setShowNew] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
-  const [showJoin, setShowJoin] = useState(false);
   const [showCreateNs, setShowCreateNs] = useState(false);
   const [showAddRepo, setShowAddRepo] = useState(false);
 
@@ -127,22 +142,25 @@ export default function AppPage(): React.ReactElement | null {
   // modal. Ignore while typing or when any other modal/gate is open.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const anyModal = showNew || showInvite || showJoin || showCreateNs || showAddRepo;
-      if (e.key === 'Escape' && showNew) { setShowNew(false); return; }
+      const anyModal = showNew || showInvite || showCreateNs || showAddRepo;
+      if (e.key === "Escape" && showNew) {
+        setShowNew(false);
+        return;
+      }
       const tag = (e.target as HTMLElement)?.tagName;
-      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-      if ((e.key === 'c' || e.key === 'C') && !anyModal && !typing) {
+      const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      if ((e.key === "c" || e.key === "C") && !anyModal && !typing) {
         e.preventDefault();
         setShowNew(true);
       }
-      if (e.key === '/' && !anyModal && !typing) {
+      if (e.key === "/" && !anyModal && !typing) {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [showNew, showInvite, showJoin, showCreateNs, showAddRepo]);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showNew, showInvite, showCreateNs, showAddRepo]);
 
   const createIssue = useCallback(
     async (
@@ -155,9 +173,17 @@ export default function AppPage(): React.ReactElement | null {
       labels: string[],
     ) => {
       try {
-        await data.createIssue(title, summary, impact, repro, resolutionCriteria, priority, labels);
+        await data.createIssue(
+          title,
+          summary,
+          impact,
+          repro,
+          resolutionCriteria,
+          priority,
+          labels,
+        );
       } catch (err) {
-        toast.show({ variant: 'error', description: describeError(err) });
+        toast.show({ variant: "error", description: describeError(err) });
         throw err;
       }
     },
@@ -166,24 +192,36 @@ export default function AppPage(): React.ReactElement | null {
 
   const totalIssues = Object.values(data.counts).reduce((a, b) => a + b, 0);
   const membersCount = Math.max(ws.members.length, 1);
-  const activeRepoName = ws.repos.find((r) => r.contextId === ws.activeRepo)?.name ?? null;
+  const activeRepoName =
+    ws.repos.find((r) => r.contextId === ws.activeRepo)?.name ?? null;
 
   const ctx: AppCtx = {
-    data, currentUser, members: ws.members, aliases, filters, myIssues, repoUrl: ws.repoUrl,
-    searchQuery, setSearchQuery, setFilter, clearFilters, openNewIssue, openInvite, ws,
+    data,
+    currentUser,
+    members: ws.members,
+    aliases,
+    filters,
+    myIssues,
+    repoUrl: ws.repoUrl,
+    searchQuery,
+    setSearchQuery,
+    setFilter,
+    clearFilters,
+    openNewIssue,
+    openInvite,
+    ws,
   };
 
   const sidebar = {
     totalIssues,
     membersCount,
     currentUser,
-    currentUserLabel: selfMember ? aliases.resolve(selfMember) : '',
+    currentUserLabel: selfMember ? aliases.resolve(selfMember) : "",
     currentUserHasAlias: selfMember ? aliases.hasAlias(selfMember) : false,
     namespaces: ws.namespaces,
     activeNs: ws.activeNs,
     onSelectNamespace: ws.selectNamespace,
     onNewNamespace: () => setShowCreateNs(true),
-    onJoinNamespace: () => setShowJoin(true),
     repos: ws.repos,
     reposSyncing: ws.isSyncing,
     onDismissReposSyncing: ws.dismissSyncing,
@@ -198,30 +236,16 @@ export default function AppPage(): React.ReactElement | null {
   const dialogs = (
     <>
       {showCreateNs && (
-        <NamespaceCreateDialog onCreate={ws.createNamespace} onClose={() => setShowCreateNs(false)} />
-      )}
-      {(showJoin || pendingInvite) && (
-        <JoinModal
-          initialCode={pendingInvite ?? ''}
-          autoSubmit={!!pendingInvite}
-          onJoin={async (code) => {
-            const outcome = await ws.join(code);
-            // Joined, already in it, or a failure no retry can fix: the invitation
-            // is finished with. A transient failure keeps it for the next load.
-            if (!shouldRetain(outcome)) {
-              // The ack clears the captured link this dialog was open for; keep
-              // it open to say why a final failure failed.
-              if (outcome.status === 'failed') setShowJoin(true);
-              forgetPendingInvite();
-            }
-            if (outcome.status !== 'failed') setShowJoin(false);
-            return outcome;
-          }}
-          onClose={() => { forgetPendingInvite(); setShowJoin(false); }}
+        <NamespaceCreateDialog
+          onCreate={ws.createNamespace}
+          onClose={() => setShowCreateNs(false)}
         />
       )}
       {showAddRepo && (
-        <AddRepoDialog onAdd={ws.addRepo} onClose={() => setShowAddRepo(false)} />
+        <AddRepoDialog
+          onAdd={ws.addRepo}
+          onClose={() => setShowAddRepo(false)}
+        />
       )}
     </>
   );
@@ -232,7 +256,8 @@ export default function AppPage(): React.ReactElement | null {
   //    looked up, right before the desktop handoff lands;
   //  - `resolvingApplicationId`: the node has not yet said which installed
   //    application this app is, and the namespace list is scoped by it.
-  if (!ws.activeNs && (ws.resolvingCallback || ws.resolvingApplicationId)) return null;
+  if (!ws.activeNs && (ws.resolvingCallback || ws.resolvingApplicationId))
+    return null;
 
   // No active namespace (none yet, or a stale/invalid prior choice): never
   // silently enter one, and never fall through to the Shell either - that
@@ -245,7 +270,6 @@ export default function AppPage(): React.ReactElement | null {
           namespaces={ws.namespaces}
           onSelect={ws.selectNamespace}
           onCreate={() => setShowCreateNs(true)}
-          onJoin={() => setShowJoin(true)}
         />
         {dialogs}
       </>
@@ -280,15 +304,23 @@ export default function AppPage(): React.ReactElement | null {
         <RepoGate>
           <div className="panel">
             <h2>No repository yet</h2>
-            <p>Add a repository to this workspace to start tracking its issues.</p>
+            <p>
+              Add a repository to this workspace to start tracking its issues.
+            </p>
             {ws.roles.canAddRepo ? (
-              <button className="primary" data-testid="repo-add-cta" onClick={() => setShowAddRepo(true)}>Add a repository</button>
+              <button
+                className="primary"
+                data-testid="repo-add-cta"
+                onClick={() => setShowAddRepo(true)}
+              >
+                Add a repository
+              </button>
             ) : (
               // Honest dead end rather than a button that 403s: the person
               // cannot fix this themselves, so say who can.
               <p className="gated" data-testid="repo-add-denied">
-                Ask a workspace admin to add one, or to give you permission to add
-                repositories.
+                Ask a workspace admin to add one, or to give you permission to
+                add repositories.
               </p>
             )}
           </div>
@@ -297,8 +329,18 @@ export default function AppPage(): React.ReactElement | null {
 
       {aliasGate}
       {dialogs}
-      {showNew && <NewIssueModal onCreate={createIssue} onClose={() => setShowNew(false)} />}
-      {showInvite && <InviteModal onInvite={ws.invite} onClose={() => setShowInvite(false)} />}
+      {showNew && (
+        <NewIssueModal
+          onCreate={createIssue}
+          onClose={() => setShowNew(false)}
+        />
+      )}
+      {showInvite && (
+        <InviteModal
+          onInvite={ws.invite}
+          onClose={() => setShowInvite(false)}
+        />
+      )}
     </Shell>
   );
 }
@@ -306,20 +348,52 @@ export default function AppPage(): React.ReactElement | null {
 // Fills the main column and carries the workspace-ready marker the e2e harness
 // waits on.
 const Ready = styled.div`
-  display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 `;
 const RepoGate = styled.div`
-  flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
   .panel {
-    max-width: 400px; text-align: center; padding: 32px 28px;
-    background: ${t.color.panel}; border: 1px solid ${t.color.border}; border-radius: 12px;
-    h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 8px; }
-    p { font-size: 13.5px; color: ${t.color.text2}; margin: 0 0 22px; line-height: 1.55; }
-    p.gated { margin: 0; font-style: italic; }
+    max-width: 400px;
+    text-align: center;
+    padding: 32px 28px;
+    background: ${t.color.panel};
+    border: 1px solid ${t.color.border};
+    border-radius: 12px;
+    h2 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0 0 8px;
+    }
+    p {
+      font-size: 13.5px;
+      color: ${t.color.text2};
+      margin: 0 0 22px;
+      line-height: 1.55;
+    }
+    p.gated {
+      margin: 0;
+      font-style: italic;
+    }
     .primary {
-      background: ${t.color.accent}; color: ${t.color.onAccent}; border: 1px solid transparent;
-      border-radius: ${t.radius}; font-size: 13px; font-weight: 600; padding: 10px 16px; cursor: pointer;
-      &:hover { background: #b6ff5e; }
+      background: ${t.color.accent};
+      color: ${t.color.onAccent};
+      border: 1px solid transparent;
+      border-radius: ${t.radius};
+      font-size: 13px;
+      font-weight: 600;
+      padding: 10px 16px;
+      cursor: pointer;
+      &:hover {
+        background: #b6ff5e;
+      }
     }
   }
 `;
