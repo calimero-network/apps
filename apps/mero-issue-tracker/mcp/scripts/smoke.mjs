@@ -12,7 +12,6 @@
 //   CALIMERO_NODE_URL   base URL of the node (default http://localhost:2428)
 //   TRACKER_CONTEXT     context id or alias  (required)
 //   CALIMERO_AUTH_TOKEN bearer token         (if the node enforces auth)
-//   TRACKER_EXECUTOR    executor public key  (else the node's first owned id)
 //
 // Usage: node mcp/scripts/smoke.mjs
 

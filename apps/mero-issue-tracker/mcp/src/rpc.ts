@@ -15,7 +15,6 @@ export class RpcError extends Error {
 
 export interface ResolvedTarget {
   contextId: string;
-  executorPublicKey: string;
 }
 
 /** A repo (an aliased context) inside a namespace. */
@@ -214,30 +213,9 @@ export async function createContextAlias(cfg: Config, alias: string, contextId: 
   }
 }
 
-/** Resolves the executor identity: TRACKER_EXECUTOR if set, else the node's first owned identity for the context. */
-export async function resolveExecutor(cfg: Config, contextId: string): Promise<string> {
-  if (cfg.executorOverride) return cfg.executorOverride;
-
-  const res = await fetch(
-    `${cfg.nodeUrl}/admin-api/contexts/${encodeURIComponent(contextId)}/identities-owned`,
-    { method: 'GET', headers: headers(cfg) },
-  );
-  if (!res.ok) {
-    throw new Error(`Failed to resolve executor identity: admin API returned ${res.status}`);
-  }
-  const json = (await res.json()) as { data?: { identities?: string[] } };
-  const identities = json?.data?.identities ?? [];
-  if (identities.length === 0) {
-    throw new Error(`No owned identity found for context ${contextId}. Set TRACKER_EXECUTOR to override.`);
-  }
-  return identities[0];
-}
-
-/** Resolves both the context id and executor identity for the TRACKER_CONTEXT direct pin. Not cached. */
+/** Resolves the context id for the TRACKER_CONTEXT direct pin. Not cached. */
 export async function resolveTarget(cfg: Config): Promise<ResolvedTarget> {
-  const contextId = await resolveContextId(cfg);
-  const executorPublicKey = await resolveExecutor(cfg, contextId);
-  return { contextId, executorPublicKey };
+  return { contextId: await resolveContextId(cfg) };
 }
 
 /**
@@ -297,8 +275,7 @@ export function createTargetResolver(cfg: Config): (repoParam?: string) => Promi
       cached = (async () => {
         const repos = await listRepos();
         const repo = pickRepo(repos, repoParam?.trim() || cfg.repoDefault);
-        const executorPublicKey = await resolveExecutor(cfg, repo.contextId);
-        return { contextId: repo.contextId, executorPublicKey };
+        return { contextId: repo.contextId };
       })().catch((err) => {
         targetCache.delete(key);
         throw err;
@@ -366,7 +343,6 @@ export async function callMethod<T = unknown>(
         contextId: target.contextId,
         method,
         argsJson,
-        executorPublicKey: target.executorPublicKey,
       },
     }),
   });
@@ -378,8 +354,14 @@ export async function callMethod<T = unknown>(
 
   const body = (await res.json()) as JsonRpcResponse;
   if (body.error) {
-    const decoded = body.error.type === 'FunctionCallError' ? decodeFunctionCallErrorData(body.error.data) : undefined;
-    throw new RpcError(decoded ?? body.error.message ?? body.error.type ?? 'RPC error', body.error.code, body.error.data);
+    const { type, data, message } = body.error;
+    if (type === 'FunctionCallError') {
+      throw new RpcError(decodeFunctionCallErrorData(data) ?? message ?? type, body.error.code, data);
+    }
+    // Any other type (ParseError, ...): the node's detail lives in `data`, not `message`.
+    const detail = typeof data === 'string' ? data : data === undefined || data === null ? undefined : JSON.stringify(data);
+    const text = detail ? (type ? `${type}: ${detail}` : detail) : (message ?? type ?? 'RPC error');
+    throw new RpcError(text, body.error.code, data);
   }
   const result = body.result;
   return (result && 'output' in result ? result.output : result) as T;
