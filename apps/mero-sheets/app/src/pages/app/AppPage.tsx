@@ -301,8 +301,18 @@ export default function AppPage() {
       !selfCreatedRef.current.has(ws.contextId) &&
       ensuredDefaultSheetRef.current !== ws.contextId
     ) {
-      ensuredDefaultSheetRef.current = ws.contextId;
-      void ss.createSheet('Sheet 1');
+      const contextId = ws.contextId;
+      ensuredDefaultSheetRef.current = contextId;
+      // A joiner can land here before the shared state has replicated: the
+      // node answers `Uninitialized`, and the inviter's sheets are on their
+      // way. Nothing to create yet — free the guard so a later change retries —
+      // and never let it escape as an unhandled rejection.
+      ss.createSheet('Sheet 1').catch((err: unknown) => {
+        if (ensuredDefaultSheetRef.current === contextId) ensuredDefaultSheetRef.current = null;
+        if (!/uninitiali[sz]ed/i.test(String((err as { message?: string })?.message ?? err))) {
+          console.warn('[mero-sheets] could not create the default sheet', err);
+        }
+      });
     }
   }, [ss.ready, ss.loaded, ss.sheets.length, ss.cells.length, ss, ws.contextId]);
 
