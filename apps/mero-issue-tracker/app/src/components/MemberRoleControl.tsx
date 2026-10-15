@@ -76,20 +76,16 @@ export default function MemberRoleControl({
 }
 
 const Badge = styled.span`
-  display: inline-block; font-size: 11.5px; font-weight: 600; padding: 3px 9px;
-  border-radius: 5px; border: 1px solid ${t.color.border};
-  background: ${t.color.raised}; color: ${t.color.text2};
-  &.admin {
-    color: ${t.color.accent};
-    border-color: ${t.color.accentBorder};
-    background: ${t.color.accentDim};
-  }
+  display: inline-block; font-size: 12px; font-weight: 650; padding: 3px 11px;
+  border-radius: 999px; background: ${t.color.raised2}; color: ${t.color.text2};
+  &.admin { color: ${t.color.accentText}; background: ${t.color.accentDim}; }
 `;
 const Select = styled.select`
-  font-family: inherit; font-size: 12px; font-weight: 500; padding: 4px 8px;
-  border-radius: ${t.radius}; cursor: pointer;
+  font-family: inherit; font-size: 12.5px; font-weight: 600; min-height: 32px; padding: 0 10px;
+  border-radius: 999px; cursor: pointer;
   background: ${t.color.raised}; color: ${t.color.text};
-  border: 1px solid ${t.color.border};
-  &:hover:not(:disabled) { background: ${t.color.raised2}; }
+  border: 1px solid ${t.color.borderStrong};
+  &:hover:not(:disabled) { background: ${t.color.hover}; }
+  &:focus-visible { outline: none; border-color: ${t.color.accentBorder}; box-shadow: 0 0 0 3px ${t.focus}; }
   &:disabled { opacity: 0.55; cursor: default; }
 `;

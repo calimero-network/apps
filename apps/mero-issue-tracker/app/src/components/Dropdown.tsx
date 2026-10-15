@@ -169,26 +169,28 @@ export function SelectMenu({
 const Root = styled.div`position: relative; display: inline-flex; min-width: 0;`;
 
 export const Menu = styled.div`
-  position: absolute; top: calc(100% + 5px); left: 0; z-index: 20;
-  min-width: 172px; padding: 5px;
-  background: ${t.color.raised}; border: 1px solid ${t.color.borderStrong};
-  border-radius: ${t.radius}; box-shadow: 0 12px 30px rgba(0,0,0,0.5);
-  display: flex; flex-direction: column; gap: 1px;
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+  min-width: 190px; max-height: min(320px, 60vh); overflow-y: auto; padding: 6px;
+  /* Floats over content, so solid (glass.css \`glass-float\`). */
+  background: ${t.color.panel}; border: 1px solid ${t.color.edge};
+  border-radius: 16px; box-shadow: ${t.shadowFloat};
+  display: flex; flex-direction: column; gap: 2px;
   text-align: left;
 `;
 export const MenuItem = styled.button`
   display: block; width: 100%; text-align: left;
-  font-size: 12.5px; color: ${t.color.text2};
-  background: none; border: none; border-radius: 4px; padding: 6px 8px; cursor: pointer;
-  &:hover, &:focus-visible { background: rgba(255,255,255,0.05); color: ${t.color.text}; outline: none; }
+  font-family: inherit; font-size: 13px; font-weight: 500; color: ${t.color.text2};
+  background: none; border: none; border-radius: 10px; padding: 8px 10px; cursor: pointer;
+  &:hover, &:focus-visible { background: ${t.color.hover}; color: ${t.color.text}; outline: none; }
 `;
 export const MenuInput = styled.input`
-  margin-top: 2px; width: 100%;
-  background: ${t.color.bg}; border: 1px solid ${t.color.border};
-  border-radius: 4px; padding: 6px 8px; color: ${t.color.text};
-  font-family: inherit; font-size: 12.5px; outline: none;
+  margin-top: 2px; width: 100%; min-height: 36px;
+  background: ${t.color.raised}; border: 1px solid ${t.color.borderStrong};
+  border-radius: 10px; padding: 0 10px; color: ${t.color.text};
+  font-family: inherit; font-size: 13px; outline: none;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
   &::placeholder { color: ${t.color.text3}; }
-  &:focus { border-color: ${t.color.borderStrong}; }
+  &:focus { border-color: ${t.color.accentBorder}; box-shadow: 0 0 0 3px ${t.focus}; }
 `;
 
 const Trigger = styled.button`
@@ -203,13 +205,14 @@ const Trigger = styled.button`
   .tv .ph { color: ${t.color.text3}; }
   .chev { color: ${t.color.text3}; display: inline-flex; flex: 0 0 auto; }
   &:hover { border-color: ${t.color.borderStrong}; }
-  &:focus-visible { outline: none; border-color: ${t.color.accentBorder}; }
+  &:focus-visible { outline: none; border-color: ${t.color.accentBorder}; box-shadow: 0 0 0 3px ${t.focus}; }
 `;
 const Option = styled.button<{ $selected?: boolean }>`
-  display: flex; align-items: center; gap: 7px; width: 100%; text-align: left;
-  font-size: 12.5px; color: ${({ $selected }) => ($selected ? t.color.text : t.color.text2)};
-  background: none; border: none; border-radius: 4px; padding: 6px 8px; cursor: pointer;
-  .ov { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 7px; }
-  .ck { color: ${t.color.accent}; display: inline-flex; flex: 0 0 auto; }
-  &:hover, &:focus-visible { background: rgba(255,255,255,0.05); color: ${t.color.text}; outline: none; }
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  font-family: inherit; font-size: 13px; font-weight: ${({ $selected }) => ($selected ? 600 : 500)};
+  color: ${({ $selected }) => ($selected ? t.color.text : t.color.text2)};
+  background: none; border: none; border-radius: 10px; padding: 8px 10px; cursor: pointer;
+  .ov { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 8px; }
+  .ck { color: ${t.color.accentText}; display: inline-flex; flex: 0 0 auto; }
+  &:hover, &:focus-visible { background: ${t.color.hover}; color: ${t.color.text}; outline: none; }
 `;

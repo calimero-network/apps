@@ -63,7 +63,7 @@ tool and env reference is under [MCP setup](#mcp-setup) below and in
 | Path   | What |
 | ------ | ---- |
 | `logic/` | Rust WASM backend: the issue schema, statuses, priorities, labels, comments, and `list_issues` filters. Built into a signed `.mpk` bundle. |
-| `app/`   | React (Vite) frontend: a fast dark-themed board with list, board, filters, routed issue detail, members, and aliases. |
+| `app/`   | React (Vite) frontend in the fleet's light glass look (with a light/dark switch in the top bar): list, board, filters, routed issue detail, members, aliases, and Log out. On a phone the nav opens as a drawer from the top bar. |
 | `mcp/`   | The stdio MCP server (see `mcp/README.md`). |
 
 ## Prerequisites

@@ -12,8 +12,8 @@ export default function LabelChip({
   onRemove?: () => void;
 }): React.ReactElement {
   return (
-    <Chip>
-      <span className="ld" style={{ background: labelColor(label) }} />
+    <Chip style={{ '--label': labelColor(label) } as React.CSSProperties}>
+      <span className="ld" />
       {label}
       {onRemove && (
         <button
@@ -28,19 +28,21 @@ export default function LabelChip({
 }
 
 const Chip = styled.span`
-  font-size: 11px;
+  font-size: 11.5px;
+  font-weight: 600;
   color: ${t.color.text2};
-  border: 1px solid ${t.color.borderStrong};
-  border-radius: 20px;
-  padding: 1px 8px;
+  background: color-mix(in srgb, var(--label) 16%, transparent);
+  border-radius: 999px;
+  padding: 2px 9px;
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  .ld { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  gap: 6px;
+  line-height: 1.4;
+  .ld { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: var(--label); }
   button {
-    background: none; border: none; cursor: pointer; padding: 0;
-    color: ${t.color.text3}; font-size: 13px; line-height: 1;
+    background: none; border: none; cursor: pointer; padding: 0 0 0 1px;
+    color: ${t.color.text3}; font-size: 14px; line-height: 1;
     &:hover { color: ${t.color.text}; }
   }
 `;

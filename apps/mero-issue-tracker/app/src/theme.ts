@@ -1,121 +1,168 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useSyncExternalStore } from 'react';
 import { ThemeProvider } from 'styled-components';
 
-/**
- * App theme — light / dark.
+/* ══════════════════════════════════════════════════════════════════════════
+ * Light / dark, chosen by the person.
  *
- * The palette is exposed as CSS custom properties (defined in index.css under
- * `:root` and `:root[data-theme="dark"]`), so `C.*` are `var(--c-*)` references
- * that flip automatically when the `data-theme` attribute changes. Every app
- * surface imports `C` from here.
+ * Light is the default for everyone; dark is the glass "smoked glass" look,
+ * switched by `data-theme="dark"` on <html> (glass.css and index.css both key
+ * their dark values off it). The choice is remembered under THEME_STORAGE_KEY.
+ * It used to live under `app:theme`, a key every app served from the same
+ * origin shared, so one app's choice leaked into the next; that key is no
+ * longer read.
  *
- * NOTE: the landing page keeps its own hard-coded light palette and is NOT
- * themed (by product decision) — it never reads these vars.
- *
- * `onAccent` is the text/icon colour that sits ON the bright green accent
- * (buttons, avatars). Green is bright in both themes, so this stays dark.
- */
-export const C = {
-  green: 'var(--c-green)',
-  greenHover: 'var(--c-green-hover)',
-  greenDeep: 'var(--c-green-deep)',
-  greenInk: 'var(--c-green-ink)',
-  onAccent: 'var(--c-on-accent)',
-  ink: 'var(--c-ink)',
-  paper: 'var(--c-paper)',
-  paper2: 'var(--c-paper2)',
-  line: 'var(--c-line)',
-  lineDark: 'rgba(164,255,17,0.14)',
-  muted: 'var(--c-muted)',
-  mutedSoft: 'var(--c-muted-soft)',
-  off: 'var(--c-off)',
-  disabled: 'var(--c-disabled)',
-  danger: 'var(--c-danger)',
-} as const;
+ * index.html carries an inline copy of `readStoredTheme` + `applyTheme` so the
+ * saved theme is on <html> before the first paint and a reload never flashes
+ * light; keep the key and the colours in step with it. The landing page's own
+ * toggle writes the same key (scripts/landing/apps.config.mjs), so a choice
+ * made there carries through sign-in.
+ * ════════════════════════════════════════════════════════════════════════ */
 
-export type ThemeMode = 'light' | 'dark';
-const STORAGE_KEY = 'app:theme';
+export type Theme = 'light' | 'dark';
 
-export function getStoredTheme(): ThemeMode {
+export const THEME_STORAGE_KEY = 'mero-issue-tracker:theme';
+
+const THEME_EVENT = 'mero-issue-tracker:theme-change';
+
+/** Browser chrome colour (PWA title bar, mobile address bar): the glass ground. */
+export const THEME_COLOR: Record<Theme, string> = {
+  light: '#f6f7fb',
+  dark: '#0b0e18',
+};
+
+export function readStoredTheme(): Theme {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+    return localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
   } catch {
     return 'light';
   }
 }
 
-/** Apply the theme to <html> so the CSS vars resolve. Call once before render. */
-export function applyTheme(mode: ThemeMode): void {
-  if (typeof document !== 'undefined') document.documentElement.dataset.theme = mode;
+/** The theme <html> is in right now. */
+export function currentTheme(): Theme {
+  if (typeof document === 'undefined') return 'light';
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
 }
 
-/** React state + persistence for the active theme. */
-export function useTheme(): { theme: ThemeMode; toggle: () => void } {
-  const [theme, setTheme] = useState<ThemeMode>(getStoredTheme);
-
-  useEffect(() => {
-    applyTheme(theme);
-    try { localStorage.setItem(STORAGE_KEY, theme); } catch { /* ignore */ }
-  }, [theme]);
-
-  const toggle = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), []);
-  return { theme, toggle };
+/** Put a theme on <html> (and the browser chrome) without remembering it. */
+export function applyTheme(theme: Theme): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  if (theme === 'dark') root.setAttribute('data-theme', 'dark');
+  else root.removeAttribute('data-theme');
+  document
+    .querySelectorAll('meta[name="theme-color"]')
+    .forEach((meta) => meta.setAttribute('content', THEME_COLOR[theme]));
 }
 
-/**
- * Moon icon for the theme toggle: OUTLINE in light mode, FILLED in dark mode.
- */
-export function MoonIcon({ filled, size = 17 }: { filled: boolean; size?: number }): React.ReactElement {
-  return React.createElement(
-    'svg',
-    {
-      width: size, height: size, viewBox: '0 0 24 24',
-      fill: filled ? 'currentColor' : 'none',
-      stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round',
-      'aria-hidden': true,
-    },
-    React.createElement('path', { d: 'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' }),
-  );
+/** Remember a theme and apply it; every `useTheme` caller follows. */
+export function setTheme(theme: Theme): void {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    /* storage unavailable: the choice lasts for this page only */
+  }
+  applyTheme(theme);
+  window.dispatchEvent(new Event(THEME_EVENT));
+}
+
+function subscribe(onChange: () => void): () => void {
+  window.addEventListener(THEME_EVENT, onChange);
+  // Another tab changed it: follow along.
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== THEME_STORAGE_KEY) return;
+    applyTheme(readStoredTheme());
+    onChange();
+  };
+  window.addEventListener('storage', onStorage);
+  return () => {
+    window.removeEventListener(THEME_EVENT, onChange);
+    window.removeEventListener('storage', onStorage);
+  };
+}
+
+/** The active theme plus setters. Every caller stays in step. */
+export function useTheme(): { theme: Theme; setTheme: (theme: Theme) => void; toggleTheme: () => void } {
+  const theme = useSyncExternalStore(subscribe, currentTheme, () => 'light' as Theme);
+  const toggleTheme = useCallback(() => setTheme(currentTheme() === 'dark' ? 'light' : 'dark'), []);
+  return { theme, setTheme, toggleTheme };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * Issue-tracker design tokens (dark-only).
+ * Issue-tracker design tokens: the fleet's light glass (@calimero-apps/glass).
  *
- * These are the exact values from docs/superpowers/design/mockup.html and are
- * hard-coded dark: the tracker views do NOT follow the light/dark toggle above
- * (which only the landing/login surfaces use via the `C` CSS-var palette).
+ * Every colour is a `var(--it-*)` reference. index.css maps those onto the
+ * shared `--glass-*` values, light by default, and onto smoked glass when
+ * `<html data-theme="dark">` is set (see `applyTheme` above), so every view
+ * follows the same light/dark switch.
+ *
+ * `accent` is the primary-control fill (the glass near-black ink) with
+ * `onAccent` text on it; `accentText` is accent-coloured TEXT and marks
+ * (links, checks, the active nav icon). `glass` is the frosted frame surface
+ * (rail, header, panels, board lanes); content that floats or holds dense
+ * text (cards, menus, dialogs) is the solid `panel`.
+ *
+ * ⚠️ `backdrop-filter` (what makes `glass` frosted) turns an element into the
+ * containing block of every `position: fixed` descendant. A dialog, menu or
+ * drawer rendered INSIDE a frosted surface is trapped in it, so render them as
+ * siblings of the frosted panels, or portal them to <body>.
  * ════════════════════════════════════════════════════════════════════════ */
 export const tokens = {
   color: {
-    bg: '#0E0F12',
-    panel: '#16181D',
-    raised: '#1C1F26',
-    raised2: '#23262F',
-    border: 'rgba(255,255,255,0.07)',
-    borderStrong: 'rgba(255,255,255,0.12)',
-    text: '#E6E8EC',
-    text2: '#9BA1AD',
-    text3: '#6B707B',
-    accent: '#A5FF3F',
-    accentDim: 'rgba(165,255,63,0.14)',
-    accentBorder: 'rgba(165,255,63,0.35)',
-    onAccent: '#0C1005',
-    urgent: '#E5695F',
-    high: '#E0A04B',
-    medium: '#6E8BB5',
-    low: '#6B707B',
-    done: '#7FC96B',
-    logBg: '#0A0B0D',
+    bg: 'var(--it-bg)',
+    panel: 'var(--it-panel)',
+    /** Frosted frame surface (rail, header, panels). Never for floating layers. */
+    glass: 'var(--it-glass)',
+    /** Board lane: a lighter frost than a panel, so the cards on it lead. */
+    lane: 'var(--it-lane)',
+    raised: 'var(--it-raised)',
+    raised2: 'var(--it-raised2)',
+    hover: 'var(--it-hover)',
+    border: 'var(--it-border)',
+    borderStrong: 'var(--it-border-strong)',
+    edge: 'var(--it-edge)',
+    text: 'var(--it-text)',
+    text2: 'var(--it-text2)',
+    text3: 'var(--it-text3)',
+    accent: 'var(--it-accent)',
+    accentHover: 'var(--it-accent-hover)',
+    accentText: 'var(--it-accent-text)',
+    accentDim: 'var(--it-accent-dim)',
+    accentBorder: 'var(--it-accent-border)',
+    onAccent: 'var(--it-on-accent)',
+    /** Dark text on the bright avatar swatches, in both themes. */
+    onSwatch: '#0e1222',
+    scrim: 'var(--it-scrim)',
+    open: 'var(--it-open)',
+    urgent: 'var(--it-urgent)',
+    high: 'var(--it-high)',
+    medium: 'var(--it-medium)',
+    low: 'var(--it-low)',
+    done: 'var(--it-done)',
+    goodBg: 'var(--it-good-bg)',
+    badBg: 'var(--it-bad-bg)',
+    logBg: 'var(--it-log-bg)',
     // Semantic destructive colour (delete/remove). A muted red, distinct from
-    // the green accent; `dangerBorder` is its translucent hairline variant.
-    danger: '#E5695F',
-    dangerBorder: 'rgba(229,105,95,0.32)',
+    // the accent; `dangerBorder` is its translucent hairline variant.
+    danger: 'var(--it-danger)',
+    dangerBorder: 'var(--it-danger-border)',
   },
-  radius: '6px',
-  radiusSm: '4px',
-  radiusModal: '10px',
+  shadow: 'var(--it-shadow)',
+  shadowFloat: 'var(--it-shadow-float)',
+  /** Solid content card on glass; `shadowLift` is its hover. */
+  shadowCard: 'var(--it-shadow-card)',
+  shadowLift: 'var(--it-shadow-lift)',
+  /** Soft focus halo for inputs and buttons. */
+  focus: 'var(--it-focus)',
+  blur: 'var(--glass-blur)',
+  radius: '12px',
+  radiusSm: '10px',
+  radiusCard: '16px',
+  radiusLg: '20px',
+  radiusModal: '22px',
+  radiusPill: '999px',
   font: {
-    sans: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif',
+    sans: 'var(--glass-font)',
     mono: 'ui-monospace, "SF Mono", "Menlo", "Cascadia Code", monospace',
   },
 } as const;
@@ -129,7 +176,7 @@ export const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
 
 /** Status-dot colour per status. */
 export const STATUS_COLOR: Record<string, string> = {
-  Open: '#8A909C',
+  Open: tokens.color.open,
   'In progress': tokens.color.high,
   Blocked: tokens.color.urgent,
   Done: tokens.color.done,
@@ -143,7 +190,7 @@ export const PRIORITY_COLOR: Record<string, string> = {
   urgent: tokens.color.urgent,
 };
 
-/** Wraps the tracker in the dark token theme (brief: ThemeProvider in App.tsx). */
+/** Wraps the tracker in the glass token theme (brief: ThemeProvider in App.tsx). */
 export function AppThemeProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   return React.createElement(ThemeProvider, { theme: tokens }, children);
 }
