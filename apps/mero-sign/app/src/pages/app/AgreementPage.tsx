@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 import {
   apiClient,
-  getContextId,
   getExecutorPublicKey,
   setContextId,
   setExecutorPublicKey,
