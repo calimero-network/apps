@@ -15,13 +15,11 @@
 //
 // The SDK is HTTPS-ONLY by design. An HTTPS link works everywhere: it opens the
 // web/PWA app directly, and on a device with the desktop app installed and
-// associated, the launcher takes it. `calimero://` is a device-local transport,
-// not something to paste into a chat — it is offered separately, as a secondary
-// "copy desktop link" affordance.
+// associated, the launcher takes it. It is the one thing this app offers to
+// share: no `calimero://` link, no raw code, and nowhere to paste either — an
+// invitation reaches the app only by its link being opened.
 //
-// The `<code>` is the base58(deflate(JSON)) payload from `lib/inviteCodec`, so a
-// link degrades to a code if someone strips the URL, and a code pasted from any
-// other mero app still works.
+// The `<code>` is the base58(deflate(JSON)) payload from `lib/inviteCodec`.
 //
 // ── Why a QUERY parameter and not the hash ───────────────────────────────────
 //
@@ -31,10 +29,10 @@
 // invitation MUST do, since it is a signed capability that should not sit in the
 // address bar — would sign the user out to accept an invitation.
 //
-// Pure functions only — no DOM, no session. See `lib/invitationIntents.ts` for
-// the capture side, which does touch the platform.
+// Pure functions only — no DOM, no session. The capture side is
+// `primeInvitationCapture` in `@calimero-apps/invite`, primed in `index.tsx`.
 
-import { createLink, parseIntent } from '@calimero-network/mero-platform';
+import { createLink } from '@calimero-network/mero-platform';
 
 /**
  * This app's slug, which IS its package id.
@@ -69,54 +67,6 @@ export function invitationUrl(code: string, host?: string): string {
 }
 
 /**
- * Device-local deep link, for the "copy desktop link" affordance.
- *
- * Kept out of the SDK's remit on purpose — it is HTTPS-only by design, because
- * `calimero://` is a transport between the launcher and an app rather than
- * something that survives being pasted into a chat window.
- */
-export function invitationDeepLink(code: string): string {
-  const trimmed = code.trim();
-  if (!trimmed) {
-    throw new Error('cannot build a deep link for an empty code');
-  }
-  return `calimero://${APP_SLUG}/${JOIN_ACTION}?${INVITATION_PARAM}=${encodeURIComponent(trimmed)}`;
-}
-
-/**
- * Pull an invitation payload out of anything a person might hand us: a platform
- * link, a `calimero://` deep link, a bare query string, or the code itself.
- *
- * Parsing goes through the SDK's `parseIntent`, which matters for one specific
- * reason: `calimero://<slug>/<action>` is split by hand there rather than with
- * `new URL().hostname`, because non-special-scheme host parsing mangles a dotted
- * slug like `com.calimero.mero-sheets`.
- *
- * Returns null when there is no invitation in it — including for a URL that
- * carries some other app's slug, which is not ours to redeem.
- */
-export function invitationFromRaw(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-
-  const intent = parseIntent(trimmed);
-
-  // Reject another app's invitation — but only when this really is a platform
-  // intent, which means BOTH a slug and an action.
-  //
-  // `parseIntent` reports the first path segment as the slug whatever it is, so
-  // this app's own URL (`/mero-sheets?invitation=…`) comes back as
-  // `{slug: "mero-sheets", action: null}` — a route misread as a slug, which it
-  // has no way to know. Rejecting on the slug alone would therefore throw away
-  // exactly the links the launcher produces.
-  const isPlatformIntent = intent.slug !== null && intent.action !== null;
-  if (isPlatformIntent && intent.slug !== APP_SLUG) return null;
-
-  const code = intent.params[INVITATION_PARAM]?.trim();
-  return code ? code : null;
-}
-
-/**
  * Strip the invitation parameter from a URL, preserving everything else.
  *
  * The platform store is what makes redemption durable, so this is not how the
@@ -138,24 +88,4 @@ export function urlWithoutInvitation(url: string): string {
   params.delete(INVITATION_PARAM);
   const rest = params.toString();
   return `${base}${rest ? `?${rest}` : ''}${hash}`;
-}
-
-/**
- * What to offer as the shareable thing.
- *
- * Always a link: the platform host is a constant, so unlike an origin-derived
- * link there is no environment in which one cannot be built — the desktop shell
- * included, where `tauri://` is not an origin worth sharing. The raw code
- * remains available behind a disclosure, for cross-app pasting.
- */
-export function shareableInvitation(code: string): {
-  link: string;
-  deepLink: string;
-  code: string;
-} {
-  return {
-    link: invitationUrl(code),
-    deepLink: invitationDeepLink(code),
-    code: code.trim(),
-  };
 }

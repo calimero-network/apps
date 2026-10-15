@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { buildInviteLink, invitationFromRaw } from '@calimero-apps/invite';
 import {
   APP_SLUG,
   INVITATION_PARAM,
   JOIN_ACTION,
-  invitationDeepLink,
-  invitationFromRaw,
   invitationUrl,
-  shareableInvitation,
   urlWithoutInvitation,
 } from './inviteLink';
 
@@ -29,7 +27,11 @@ describe('invitationUrl', () => {
     );
   });
 
-  it('round-trips back to the code', () => {
+  it('is the link every app shares', () => {
+    expect(invitationUrl(CODE)).toBe(buildInviteLink(APP_SLUG, CODE));
+  });
+
+  it('round-trips back to the code through the shared capture', () => {
     expect(invitationFromRaw(invitationUrl(CODE))).toBe(CODE);
   });
 
@@ -68,81 +70,6 @@ describe('invitationUrl', () => {
   });
 });
 
-describe('invitationDeepLink', () => {
-  it('addresses the app by slug on the custom scheme', () => {
-    expect(invitationDeepLink(CODE)).toBe(
-      `calimero://${APP_SLUG}/${JOIN_ACTION}?${INVITATION_PARAM}=${CODE}`,
-    );
-  });
-
-  it('round-trips, and a DOTTED slug survives parsing', () => {
-    // Parsing goes through the SDK because `new URL().hostname` mangles a dotted
-    // host on a non-special scheme, so `com.calimero.mero-sheets` would come back
-    // reshaped or empty.
-    expect(invitationFromRaw(invitationDeepLink(CODE))).toBe(CODE);
-  });
-
-  it('refuses an empty code', () => {
-    expect(() => invitationDeepLink('')).toThrow();
-  });
-});
-
-describe('invitationFromRaw', () => {
-  it('reads a platform link, a deep link, a bare query, and a bare code', () => {
-    expect(invitationFromRaw(invitationUrl(CODE))).toBe(CODE);
-    expect(invitationFromRaw(invitationDeepLink(CODE))).toBe(CODE);
-    expect(invitationFromRaw(`?${INVITATION_PARAM}=${CODE}`)).toBe(CODE);
-  });
-
-  it('reads an invitation appended to the app’s own URL', () => {
-    // What the launcher does: append `?invitation=…` to the app's frontend URL,
-    // which parses to a null slug and action with the params intact.
-    expect(invitationFromRaw(`/?${INVITATION_PARAM}=${CODE}`)).toBe(CODE);
-    expect(
-      invitationFromRaw(
-        `https://mero-sheets.vercel.app/mero-sheets?${INVITATION_PARAM}=${CODE}`,
-      ),
-    ).toBe(CODE);
-  });
-
-  it('REFUSES another app’s invitation', () => {
-    // Not ours to redeem. Accepting it would push a mero-chat invitation into
-    // this app's join flow, to fail somewhere much less obvious.
-    expect(
-      invitationFromRaw(
-        `https://links.calimero.network/com.calimero.chat/join?${INVITATION_PARAM}=${CODE}`,
-      ),
-    ).toBeNull();
-    expect(
-      invitationFromRaw(
-        `calimero://com.calimero.chat/join?${INVITATION_PARAM}=${CODE}`,
-      ),
-    ).toBeNull();
-  });
-
-  it('does not mistake a PATH SEGMENT for another app’s slug', () => {
-    // `parseIntent` reports the first path segment as the slug whatever it is,
-    // so this app's own `/mero-sheets?invitation=…` arrives as
-    // `{slug: "mero-sheets", action: null}`. Rejecting on the slug alone would
-    // throw away exactly the links the launcher produces.
-    expect(
-      invitationFromRaw(`https://x.dev/mero-sheets?${INVITATION_PARAM}=${CODE}`),
-    ).toBe(CODE);
-  });
-
-  it('returns null when there is no invitation in it', () => {
-    expect(invitationFromRaw('')).toBeNull();
-    expect(invitationFromRaw('   ')).toBeNull();
-    expect(invitationFromRaw('https://x.dev/mero-sheets')).toBeNull();
-    expect(invitationFromRaw('https://x.dev/?other=1')).toBeNull();
-  });
-
-  it('treats a blank value as absent', () => {
-    expect(invitationFromRaw(`?${INVITATION_PARAM}=`)).toBeNull();
-    expect(invitationFromRaw(`?${INVITATION_PARAM}=%20%20`)).toBeNull();
-  });
-});
-
 describe('urlWithoutInvitation', () => {
   it('removes the invitation parameter', () => {
     expect(urlWithoutInvitation(`https://x.dev/?${INVITATION_PARAM}=${CODE}`)).toBe(
@@ -175,16 +102,5 @@ describe('urlWithoutInvitation', () => {
     expect(urlWithoutInvitation('https://x.dev/mero-sheets#tok')).toBe(
       'https://x.dev/mero-sheets#tok',
     );
-  });
-});
-
-describe('shareableInvitation', () => {
-  it('always offers a link — there is no origin left to fail on', () => {
-    // An origin-derived link has nothing usable to offer inside the desktop
-    // shell, where the origin is `tauri://`. The platform host is a constant.
-    const s = shareableInvitation(CODE);
-    expect(s.link.startsWith('https://')).toBe(true);
-    expect(s.deepLink.startsWith('calimero://')).toBe(true);
-    expect(s.code).toBe(CODE);
   });
 });

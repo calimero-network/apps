@@ -4,8 +4,8 @@ import { useMero } from '@calimero-network/mero-react';
 import { C } from '../theme';
 import { primaryPill, secondaryPill } from './glass';
 import { decodeInvite, type SheetsInvitePayload } from '../lib/inviteCodec';
-import { onInvitation, type CapturedInvitation } from "@calimero-apps/invite";
-import { acceptInvite, keepsInvitation } from '../lib/workspaces';
+import { onInvitation, type CapturedInvitation } from '@calimero-apps/invite';
+import { acceptInvite, keepsInvitation, type AcceptedInvite } from '../lib/workspaces';
 
 /**
  * "You have been invited to X" — for an invitation that arrived as a link.
@@ -40,7 +40,7 @@ export default function InvitationPrompt({
    * workspace state lives in `useWorkspace` on the app page, so the prompt
    * reports rather than navigates.
    */
-  onJoined: (landed: { namespaceId: string | null; contextId: string | null }) => void;
+  onJoined: (landed: Pick<AcceptedInvite, 'namespaceId' | 'contextId'>) => void;
 }) {
   const { mero } = useMero();
   const [pending, setPending] = useState<{
@@ -107,7 +107,7 @@ export default function InvitationPrompt({
     // is nothing to accept.
     return error ? (
       <Wrap>
-        <Prompt $bad>
+        <Prompt $bad data-testid="invite-error">
           <Text>{error}</Text>
           <Ghost onClick={() => setError(null)} aria-label="Dismiss">
             ✕
@@ -118,13 +118,16 @@ export default function InvitationPrompt({
   }
 
   const name = pending.payload.groupAlias ?? 'a mero-sheets workspace';
+  // A failure worth retrying keeps the prompt up, with its reason in place of
+  // the description; `invite-error` marks it either way.
+  const failed = !status && !!error;
 
   return (
     <Wrap>
       <Prompt data-testid="invite-prompt">
         <Text>
           <strong>You have been invited to {name}</strong>
-          <Sub>
+          <Sub data-testid={failed ? 'invite-error' : undefined}>
             {status ??
               error ??
               (pending.payload.projectName

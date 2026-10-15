@@ -36,12 +36,6 @@ test.describe('Glass layout', () => {
     await clearAuth(page);
   });
 
-  test('the join dialog on the spreadsheet list covers the whole viewport', async ({ page }) => {
-    await loginViaHash(page, 0);
-    await page.getByRole('button', { name: 'Join with invitation' }).click();
-    await expectCoversViewport(page, page.getByTestId('field-invitation'));
-  });
-
   test('dialogs and side sheets over a spreadsheet cover the whole viewport', async ({ page }) => {
     await openNewWorkbook(page, { name: 'Layout check' });
 
