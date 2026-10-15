@@ -393,6 +393,29 @@ async function connectedClient(serverCfg: Config = cfg) {
   return client;
 }
 
+test('add_folder refreshes list_folders in pinned (BOARD_CONTEXT + BOARD_NAMESPACE) mode', async () => {
+  const contexts: Array<{ contextId: string; name?: string }> = [{ contextId: 'ctx-old', name: 'old' }];
+  let listings = 0;
+  const base = addFolderFetch(contexts).impl;
+  const impl = (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    if (u.includes('/admin-api/groups/') && u.includes('/contexts')) listings++;
+    if (u.endsWith('/admin-api/contexts') && init?.method === 'POST') contexts.push({ contextId: 'ctx-new', name: 'fresh' });
+    return base(url, init);
+  }) as typeof fetch;
+  const client = await connectedClient({ ...nsCfg, contextRaw: 'ctx-pin' });
+  await withFetch(impl, async () => {
+    await client.callTool({ name: 'list_folders', arguments: {} });
+    await client.callTool({ name: 'list_folders', arguments: {} });
+    assert.equal(listings, 1, 'second list_folders is served from cache');
+    await client.callTool({ name: 'add_folder', arguments: { name: 'fresh' } });
+    const before = listings;
+    const res = await client.callTool({ name: 'list_folders', arguments: {} });
+    assert.equal(listings, before + 1, 'list_folders re-fetches after add_folder');
+    assert.match(JSON.stringify(res), /fresh/);
+  });
+});
+
 test('createServer builds without resolving context (no network call)', () => {
   let fetchCalled = false;
   const original = globalThis.fetch;

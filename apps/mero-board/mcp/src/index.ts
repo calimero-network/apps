@@ -307,6 +307,8 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
       const created = await addFolder(cfg, args);
       // The new folder must show in list_folders and resolve as folder=<name> now.
       target.invalidate();
+      // Pinned mode's resolver does not touch the folder lister, so clear it too.
+      listFoldersCache.invalidate();
       return created;
     },
   );
