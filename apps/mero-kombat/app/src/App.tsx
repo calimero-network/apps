@@ -1,5 +1,12 @@
 import type { ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { ConnectButton, useMero } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { JoinCard } from "./JoinCard";
@@ -22,7 +29,12 @@ const LANDING_PATHS = ["/", "/docs", "/preview"];
 function AppLandingPage() {
   const { isAuthenticated } = useMero();
   const navigate = useNavigate();
-  return <LandingPage isAuthenticated={isAuthenticated} onOpenApp={() => navigate("/play")} />;
+  return (
+    <LandingPage
+      isAuthenticated={isAuthenticated}
+      onOpenApp={() => navigate("/play")}
+    />
+  );
 }
 
 /**
@@ -45,7 +57,8 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   // history entry and never survives a fresh document load, so the SSO callback
   // — which arrives as a cold navigation to `/` — cannot carry it even if the
   // URL it returns to was captured from a page that had it.
-  const deliberate = (location.state as { fromApp?: boolean } | null)?.fromApp === true;
+  const deliberate =
+    (location.state as { fromApp?: boolean } | null)?.fromApp === true;
   if (isLoading) return null; // the auth probe is still in flight
   if (isAuthenticated && !deliberate) return <Navigate to="/play" replace />;
   return <>{children}</>;
@@ -59,10 +72,6 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
  */
 function PlayPage() {
   const { isAuthenticated, isLoading, applicationId, contextId } = useMero();
-  // Mounted unconditionally: an invitation captured before login has to be
-  // redeemed as soon as the session exists, which means it cannot live inside a
-  // branch that only renders once a table is open.
-  const { state: joinState, redeemPasted, confirmJoin, declineJoin } = useJoinFromInvitation();
 
   if (isLoading) {
     return (
@@ -101,33 +110,31 @@ function PlayPage() {
   }
 
   if (!contextId) {
-    return (
-      <ContextPicker applicationId={applicationId}>
-        <JoinCard
-          state={joinState}
-          onSubmit={redeemPasted}
-          onConfirm={confirmJoin}
-          onDecline={declineJoin}
-        />
-      </ContextPicker>
-    );
+    return <ContextPicker applicationId={applicationId} />;
   }
 
+  return <ArenaPage contextId={contextId} />;
+}
+
+/**
+ * The invitation prompt, above every route.
+ *
+ * Mounted once, outside `<Routes>`, so it is never unmounted by navigation and
+ * a link opened on any page — the landing page, practice, mid-fight — reaches
+ * it. Shown only once there is a session to join with; until then the captured
+ * invitation waits (it survives the login round-trip). Joining lands on
+ * `/play`, where the joined arena opens.
+ */
+function InvitationPrompt() {
+  const { isAuthenticated } = useMero();
+  const join = useJoinFromInvitation({ landingPath: "/play" });
+  if (!isAuthenticated || join.state.stage === "idle") return null;
   return (
-    <>
-      {/* A link can arrive while a table is already open, and the prompt has to
-          be reachable then too — otherwise an invitation received mid-game
-          waits silently until the player happens to log out. */}
-      {joinState.status !== "idle" && (
-        <JoinCard
-          state={joinState}
-          onSubmit={redeemPasted}
-          onConfirm={confirmJoin}
-          onDecline={declineJoin}
-        />
-      )}
-      <ArenaPage contextId={contextId} />
-    </>
+    // `shell` for the app's control styles, which are scoped to it so they
+    // stay off the landing page; the prompt can float over either.
+    <div className="shell join-float">
+      <JoinCard join={join} />
+    </div>
   );
 }
 
@@ -162,9 +169,7 @@ function AppShell({ children }: { children?: ReactNode }) {
           )}
         </div>
       </header>
-      <main className="wrap">
-        {children ?? <PlayPage />}
-      </main>
+      <main className="wrap">{children ?? <PlayPage />}</main>
     </div>
   );
 }
@@ -172,6 +177,7 @@ function AppShell({ children }: { children?: ReactNode }) {
 export function App() {
   return (
     <BrowserRouter basename="/">
+      <InvitationPrompt />
       <Routes>
         {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
             are real URLs so they can be shared and opened cold, which needs a
