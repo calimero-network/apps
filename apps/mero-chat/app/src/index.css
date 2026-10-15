@@ -1301,6 +1301,15 @@ select {
   color-scheme: inherit;
 }
 
+/* mero-ui's Input (and SearchInput, which renders it) sets `color: #FFFFFF`
+   inline, written for its dark theme: on these light surfaces typed text is
+   white on white. Only !important beats an inline style. Every input the app
+   styles itself already uses the ink colour, so this changes none of them. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+textarea {
+  color: var(--glass-ink) !important;
+}
+
 ::placeholder {
   color: var(--glass-muted);
 }

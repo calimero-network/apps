@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { useMero } from "@calimero-network/mero-react";
+import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 
 import type { ForumClient } from "../generated/ForumClient";
-import { getUsername, setUsername } from "./session";
+import { getActiveNamespaceId, getUsername, setUsername } from "./session";
 
 /**
  * The name you post under.
@@ -36,8 +38,33 @@ export interface Nickname {
   rename: (next: string) => Promise<void>;
 }
 
-export function useNickname(client: ForumClient | null): Nickname {
+export function useNickname(client: ForumClient | null, selfAccount?: string | null): Nickname {
+  const { admin } = useMero();
+  const namespaceId = getActiveNamespaceId();
+  const { nameOf } = useMemberNames(admin, namespaceId);
   const [name, setName] = useState(getUsername);
+
+  /**
+   * Adopt the name this person already set for the space.
+   *
+   * A forum nickname is per forum; the space name is per person, shared by
+   * every app on the space. Someone who named themselves anywhere on it should
+   * not post here as an account id, so a blank local name takes it — and the
+   * publish below then puts it on this forum's posts too.
+   */
+  const spaceName = selfAccount ? nameOf(selfAccount) : undefined;
+  useEffect(() => {
+    if (!spaceName) return;
+    // Another instance may have adopted it already: still fill this one.
+    const stored = getUsername();
+    if (stored) {
+      setName((current) => current || stored);
+      return;
+    }
+    setUsername(spaceName);
+    setName(spaceName);
+    void client?.setNickname({ name: spaceName }).catch(() => undefined);
+  }, [spaceName, client]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,6 +97,12 @@ export function useNickname(client: ForumClient | null): Nickname {
       if (!client) return;
       setSaving(true);
       setError(null);
+      // The space-wide name too, so the rename reaches every forum and every
+      // other app on the space. Best-effort: this forum's nickname is the one
+      // that was asked for, and a refusal here must not report it as failed.
+      if (admin && namespaceId && selfAccount && trimmed) {
+        void publishMemberName(admin, namespaceId, selfAccount, trimmed).catch(() => undefined);
+      }
       try {
         await client.setNickname({ name: trimmed });
       } catch (e) {
@@ -78,7 +111,7 @@ export function useNickname(client: ForumClient | null): Nickname {
         setSaving(false);
       }
     },
-    [client],
+    [client, admin, namespaceId, selfAccount],
   );
 
   return { name, saving, error, rename };
@@ -97,6 +130,20 @@ export interface AuthorLabel {
   /** True when `label` is an id fallback, not a chosen name. */
   anonymous: boolean;
   isSelf: boolean;
+}
+
+/**
+ * The name to byline `account` with: the nickname on this forum, else the name
+ * they set for the whole space, else "" (the id fallback in `authorLabel`).
+ *
+ * The space name answers for authors who never picked a nickname here but did
+ * name themselves elsewhere on the space — the common case once a person uses
+ * more than one forum or app.
+ */
+export function useAuthorName(account: string, authorName: string): string {
+  const { admin } = useMero();
+  const { nameOf } = useMemberNames(admin, getActiveNamespaceId());
+  return (authorName ?? "").trim() || nameOf(account) || "";
 }
 
 export function authorLabel(

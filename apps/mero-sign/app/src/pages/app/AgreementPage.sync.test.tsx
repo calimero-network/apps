@@ -49,6 +49,11 @@ vi.mock('../../components/shell/AppShell', () => ({
   AppShell: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 vi.mock('../../components/PDFViewer', () => ({ default: () => null }));
+// No node session: the page's names fall back to ids.
+vi.mock('@calimero-network/mero-react', async (orig) => ({
+  ...(await orig<typeof import('@calimero-network/mero-react')>()),
+  useMero: () => ({ admin: null, mero: null }),
+}));
 
 const { isNamespaceJustJoined, markNamespaceJustJoined } = await import(
   '@calimero-network/mero-react'

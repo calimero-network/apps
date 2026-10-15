@@ -5,6 +5,7 @@
  * `makeAliases` adapts it into the small `UseAliasesReturn` surface the
  * members list, issue detail, and sidebar already consume.
  */
+import { canonicalAccount } from '@calimero-apps/names';
 import { truncateKey } from '../utils/display';
 
 export interface UseAliasesReturn {
@@ -22,15 +23,23 @@ export interface UseAliasesReturn {
   loaded: boolean;
 }
 
-/** publicKey -> name, given the raw {name, value} entries. */
+/** The map key for an identity: canonical hex for an account (the admin API
+ *  lists members in hex, the contract stamps `created_by`/`author` in base58),
+ *  the raw string for anything else. */
+function aliasKey(publicKey: string): string {
+  return canonicalAccount(publicKey) ?? publicKey;
+}
+
+/** publicKey -> name, given the raw {name, value} entries. Keyed canonically,
+ *  so a hex and a base58 spelling of one account find the same name. */
 export function buildAliasMap(entries: { name: string; value: string }[]): Map<string, string> {
-  return new Map(entries.map((e) => [e.value, e.name]));
+  return new Map(entries.map((e) => [aliasKey(e.value), e.name]));
 }
 
 /** The actual `resolve()` logic: name if known, else a truncated key. Exported so
  *  tests exercise this directly instead of a parallel re-implementation. */
 export function resolveFromMap(map: Map<string, string>, publicKey: string): string {
-  return map.get(publicKey) ?? truncateKey(publicKey);
+  return map.get(aliasKey(publicKey)) ?? truncateKey(publicKey);
 }
 
 /** Adapt the namespace member-name map into the `UseAliasesReturn` surface. */
@@ -43,7 +52,7 @@ export function makeAliases(
 ): UseAliasesReturn {
   return {
     resolve: (publicKey: string) => resolveFromMap(memberNames, publicKey),
-    hasAlias: (publicKey: string) => memberNames.has(publicKey),
+    hasAlias: (publicKey: string) => memberNames.has(aliasKey(publicKey)),
     refresh,
     setAlias: (alias: string) => setMemberName(alias),
     loading,

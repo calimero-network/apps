@@ -24,6 +24,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGroupMembers, useMero } from '@calimero-network/mero-react';
+import { useMemberNames, useMyName } from '@calimero-apps/names';
 import { C } from '../../theme';
 import ThemeToggle from '../../components/ThemeToggle';
 import { field, primaryPill, secondaryPill } from '../../components/glass';
@@ -76,12 +77,12 @@ import { idsToNames, namesToIds } from '../../spreadsheet/sheetref';
 import StatusBar from '../../components/StatusBar';
 import { avatarLabel, distinctCollaborators, peerCount } from '../../spreadsheet/presence';
 import { useSheetPresence } from '../../hooks/useSheetPresence';
-import { labelMembers, labelsById } from '../../lib/people';
-import { rememberName, rememberedName } from '../../lib/displayName';
+import { labelMembers, labelsById, withNamespaceNames } from '../../lib/people';
+import { isUsableName, normaliseName, rememberName, rememberedName } from '../../lib/displayName';
 
 
 export default function AppPage() {
-  const { logout, mero } = useMero();
+  const { logout, mero, admin } = useMero();
   const ws = useWorkspace();
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const ss = useSpreadsheet({
@@ -175,6 +176,15 @@ export default function AppPage() {
     ss.selfId !== null &&
     !ss.members.some((m) => m.id === ss.selfId && m.nickname.trim());
 
+  // The name each person set for the whole workspace (namespace member
+  // metadata), shared by every app on it. It names people who have not picked
+  // a nickname in this workbook, or have not opened it at all.
+  const { nameOf: namespaceNameOf, displayName: namespaceDisplayName } = useMemberNames(admin, ws.namespaceId);
+  // Your own name is the workspace's, one per workspace: a workbook asks only
+  // when the workspace has none for you, and only once its names have loaded.
+  const myName = useMyName(admin, ws.namespaceId, ss.selfId);
+  const selfNamespaceName = normaliseName(myName.name);
+
   const submitNickname = useCallback(
     async (name: string) => {
       setSavingNickname(true);
@@ -182,14 +192,28 @@ export default function AppPage() {
       try {
         await ss.joinAs(name);
         rememberName(name);
+        // The workspace-wide name too, so every other app on it says the same.
+        // Best-effort: the workbook nickname is what was asked for.
+        if (name !== selfNamespaceName) void myName.setName(name).catch(() => undefined);
       } catch (err) {
         setNicknameError(describeError(err));
       } finally {
         setSavingNickname(false);
       }
     },
-    [ss],
+    [ss, myName, selfNamespaceName],
   );
+
+  // Someone who already named themselves for the workspace is not asked again:
+  // the workbook adopts that name. Once per spreadsheet; if the write fails,
+  // the modal opens with the name filled in and the error shown.
+  const adoptedFor = useRef<string | null>(null);
+  const adoptNamespaceName = needsNickname && isUsableName(selfNamespaceName) && !nicknameError;
+  useEffect(() => {
+    if (!adoptNamespaceName || adoptedFor.current === ws.contextId) return;
+    adoptedFor.current = ws.contextId;
+    void submitNickname(selfNamespaceName);
+  }, [adoptNamespaceName, ws.contextId, selfNamespaceName, submitNickname]);
 
   // ── New-workspace bootstrap ─────────────────────────────────────
   const [projectName, setProjectName] = useState('Untitled Spreadsheet');
@@ -1440,7 +1464,7 @@ export default function AppPage() {
   // name (from the replicated context metadata) covers the window before
   // `init_project` lands, and only then a placeholder.
   const activeWorkspaceName = ss.project?.name?.trim() || ws.activeName;
-  const roster = labelsById(labelMembers(ss.members, ss.selfId));
+  const roster = labelsById(labelMembers(withNamespaceNames(ss.members, namespaceNameOf), ss.selfId));
   // `ss.selfId` — the id the CONTRACT writes under — and NOT
   // `ws.executorPublicKey`, which is a context identity. Both are 64 hex, so the
   // old comparison type-checked, never matched, and rendered the local user as a
@@ -1449,7 +1473,7 @@ export default function AppPage() {
   const peers = peerCount(presence.cursors, ss.selfId);
   const cursorLabel = (author: string) => avatarLabel(roster.get(author)?.label ?? author);
   const personName = (memberId: string) =>
-    memberId === ss.selfId ? 'You' : roster.get(memberId)?.label ?? `${memberId.slice(0, 8)}…`;
+    memberId === ss.selfId ? 'You' : roster.get(memberId)?.label ?? namespaceDisplayName(memberId);
   const editedBy = (c: { last_editor: string; last_edited_at: number }) =>
     c.last_editor ? `Edited by ${personName(c.last_editor)}, ${ago(nsToMs(c.last_edited_at))}` : null;
   const connected = ss.ready && ss.loaded;
@@ -1535,7 +1559,7 @@ export default function AppPage() {
                 c.isSelf
                   ? `You · ${c.name}`
                   : c.anonymous
-                    ? `Has not chosen a name yet (${c.author.slice(0, 12)}…)`
+                    ? namespaceNameOf(c.author) ?? `Has not chosen a name yet (${c.author.slice(0, 12)}…)`
                     : c.name
               }
               data-testid="collaborator-avatar"
@@ -1811,10 +1835,10 @@ export default function AppPage() {
           onClose={() => setShowInvite(false)}
         />
       )}
-      {needsNickname && (
+      {needsNickname && myName.ready && !adoptNamespaceName && (
         <NicknameModal
           projectName={activeWorkspaceName}
-          initialName={rememberedName()}
+          initialName={selfNamespaceName || rememberedName()}
           saving={savingNickname}
           error={nicknameError}
           onSubmit={(name) => void submitNickname(name)}

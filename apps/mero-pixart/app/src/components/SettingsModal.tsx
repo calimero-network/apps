@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
 import { ShieldCheck } from "@calimero-network/mero-icons";
+import { useMemberNames } from "@calimero-apps/names";
 import { useApi } from "../api/useApi";
 import { listTeamContexts } from "../api/teamContexts";
 import { useToast } from "../contexts/ToastContext";
@@ -37,11 +38,17 @@ interface Props {
    * with "Invalid group id format: expected hex-encoded 32 bytes".
    */
   groupId?: string;
+  /**
+   * The team (namespace) this belongs to. People's names live on the namespace
+   * — the one group everyone is in — so a project's member rows read them from
+   * here. Defaults to `id` for a team.
+   */
+  namespaceId?: string;
   name: string;
   onClose: () => void;
 }
 
-export default function SettingsModal({ type, id, groupId, name, onClose }: Props) {
+export default function SettingsModal({ type, id, groupId, name, namespaceId, onClose }: Props) {
   const { applicationId } = useMero();
   // Session-aware: contract calls over the session's transport, governance
   // through `useMero().admin` (the account admin on a delegated session).
@@ -49,6 +56,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
   const { admin } = api;
   const rpcCall = api.call;
   const { showToast } = useToast();
+  const { nameOf } = useMemberNames(admin, namespaceId ?? (type === "team" ? id : undefined));
   const membersGroupId = groupId || id;
   const [members, setMembers] = useState<MemberEntry[]>([]);
   // TEE nodes admitted to the group: not people, so never in `members`.
@@ -412,7 +420,11 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
               {members.map((m) => {
                 const isAdmin = m.role === "Admin";
                 const isSelf = m.identity === selfIdentity;
-                const initial = (m.name?.[0] ?? m.identity[0] ?? "?").toUpperCase();
+                // The listing's name, then the one the person set on the team,
+                // which every app shares. The id row below stays for copying.
+                // The team name first: one name per person across every project.
+                const shownName = nameOf(m.identity) || m.name;
+                const initial = (shownName?.[0] ?? m.identity[0] ?? "?").toUpperCase();
                 const canModerate = type === "team" && selfIsAdmin && !isSelf;
                 const busy = pendingRole === m.identity;
                 // Document role. `list_roles` only enumerates members who have
@@ -441,7 +453,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                   <div key={m.identity} className={styles.member}>
                     <span className={styles.memberAvatar}>{initial}</span>
                     <div className={styles.memberInfo}>
-                      {m.name && <span className={styles.memberLabel}>{m.name}{isSelf ? " (you)" : ""}</span>}
+                      {shownName && <span className={styles.memberLabel}>{shownName}{isSelf ? " (you)" : ""}</span>}
                       <div className={styles.memberIdRow}>
                         <code className={styles.memberId} title={m.identity}>
                           {truncateMiddle(m.identity, 10, 6)}
@@ -454,7 +466,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                         >
                           {copied === m.identity ? "✓" : "⧉"}
                         </button>
-                        {!m.name && isSelf && <span className={styles.youTag}>you</span>}
+                        {!shownName && isSelf && <span className={styles.youTag}>you</span>}
                       </div>
                     </div>
                     {/* Team role, shown in BOTH scopes. In project settings the

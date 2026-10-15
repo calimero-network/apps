@@ -4,7 +4,14 @@ import { useAudience } from "../components/AudienceShell";
 import { Avatar, CategoryChip } from "../components/bits";
 import { CheckCircleIcon, ChevronDownIcon, CircleIcon, EditIcon } from "../components/icons";
 import type { EngagementRow, PersonView } from "../generated/UpdatesClient";
-import { formatDate, personLabel, timeAgo, useLive, useUpdatesClient } from "../lib/updates";
+import {
+  formatDate,
+  usePersonLabel,
+  usePublishSpaceName,
+  timeAgo,
+  useLive,
+  useUpdatesClient,
+} from "../lib/updates";
 
 /**
  * Who is here, and — for the team — who is engaged.
@@ -93,6 +100,7 @@ function PersonRow({
   showEngagement?: boolean;
   onChanged: () => void;
 }) {
+  const personLabel = usePersonLabel();
   const client = useUpdatesClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -154,6 +162,7 @@ function plural(n: number, one: string, many = `${one}s`): string {
 }
 
 function EngagementCard({ row }: { row: EngagementRow }) {
+  const personLabel = usePersonLabel();
   const total = row.readers.length + row.not_read.length;
   return (
     <details className="engagement">
@@ -200,6 +209,8 @@ function EngagementCard({ row }: { row: EngagementRow }) {
 }
 
 function MyProfile({ onSaved }: { onSaved: () => void }) {
+  const personLabel = usePersonLabel();
+  const publishSpaceName = usePublishSpaceName();
   const client = useUpdatesClient();
   const { me, categories } = useAudience();
   const [editing, setEditing] = useState(false);
@@ -216,6 +227,7 @@ function MyProfile({ onSaved }: { onSaved: () => void }) {
             className="primary small"
             onClick={async () => {
               await client?.setProfile({ name, firm });
+              publishSpaceName(me.account, name);
               setEditing(false);
               onSaved();
             }}

@@ -12,7 +12,7 @@ type SortKey = 'value' | 'close' | 'health' | 'created';
 
 /** Every deal as a sortable table — for when the board is too visual. */
 export default function DealsPage(): React.ReactElement {
-  const { data, ownerFilter, searchQuery } = useAppCtx();
+  const { data, ownerFilter, searchQuery, aliases } = useAppCtx();
   const navigate = useNavigate();
   const [tab, setTab] = useState<StatusTab>('open');
   const [sort, setSort] = useState<SortKey>('created');
@@ -23,8 +23,8 @@ export default function DealsPage(): React.ReactElement {
   const rows = useMemo(() => {
     const list = data.deals
       .filter((d) => tab === 'all' || d.status === tab)
-      .filter((d) => !ownerFilter || d.owner === ownerFilter)
-      .filter((d) => dealMatches(d, searchQuery))
+      .filter((d) => !ownerFilter || aliases.ownerName(d.owner) === ownerFilter)
+      .filter((d) => dealMatches(d, searchQuery, aliases.ownerName))
       .map((d) => ({ deal: d, health: dealHealth(d, rottingDays, now) }));
     const by: Record<SortKey, (a: typeof list[number], b: typeof list[number]) => number> = {
       value: (a, b) => b.deal.value - a.deal.value,
@@ -33,7 +33,7 @@ export default function DealsPage(): React.ReactElement {
       created: (a, b) => b.deal.created_at - a.deal.created_at,
     };
     return list.sort(by[sort]);
-  }, [data.deals, tab, ownerFilter, searchQuery, rottingDays, now, sort]);
+  }, [data.deals, tab, ownerFilter, searchQuery, rottingDays, now, sort, aliases]);
 
   const counts = useMemo(() => {
     const c = { open: 0, won: 0, lost: 0, all: data.deals.length };
@@ -101,7 +101,7 @@ export default function DealsPage(): React.ReactElement {
                 <td className="hide-sm">
                   {deal.status === 'open' ? (stageName.get(deal.stage_id) ?? '—') : <StatusBadge status={deal.status} />}
                 </td>
-                <td className="hide-sm">{deal.owner ?? <span className="muted">Unassigned</span>}</td>
+                <td className="hide-sm">{aliases.ownerName(deal.owner) || <span className="muted">Unassigned</span>}</td>
                 <td>
                   {deal.status !== 'open' ? <span className="muted">{deal.lost_reason || '—'}</span>
                     : deal.next_activity ? <DueChip kind={deal.next_activity.kind} dueAt={deal.next_activity.due_at} subject={deal.next_activity.subject} now={now} />

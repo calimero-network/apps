@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useContextGroup, useJoinSync } from "@calimero-network/mero-react";
+import { useContextGroup, useJoinSync, useMero } from "@calimero-network/mero-react";
+import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import type { Member, PollSummary } from "./generated/MeroVoteClient";
 import { CreatePoll } from "./CreatePoll";
 import { PollDetail } from "./PollDetail";
@@ -45,6 +46,12 @@ export function VotePanel({
   side?: ReactNode;
 }) {
   const client = useMeroVote(contextId);
+  const { admin } = useMero();
+  // `ContextPicker` creates contexts directly in the namespace, so the
+  // context's group IS the namespace (see `InviteCard`) — where the name a
+  // person set for every app on it lives.
+  const { groupId: namespaceId } = useContextGroup(contextId);
+  const { nameOf } = useMemberNames(admin, namespaceId);
   const [me, setMe] = useState<string | null>(null);
   const [roster, setRoster] = useState<Member[]>([]);
   const [polls, setPolls] = useState<PollSummary[]>([]);
@@ -76,15 +83,28 @@ export function VotePanel({
   // context whose state has not arrived yet fails the read, and every event
   // re-reads it. This app's contexts live directly in the namespace (see
   // ContextPicker), so the context's group is the namespace that was joined.
-  const { groupId } = useContextGroup(joinedNamespace ? null : contextId);
-  useJoinSync({ namespaceId: joinedNamespace ?? groupId, settled: tick > 0 });
+  useJoinSync({ namespaceId: joinedNamespace ?? namespaceId, settled: tick > 0 });
 
   const names = new Map(roster.map((m) => [m.account, m.name]));
   const myName = me ? names.get(me) : undefined;
-  const label = (account: string) => names.get(account) ?? short(account);
+  // The roster name, else the name this person set for the namespace, else the
+  // short id: someone who never joined this roster is still not a key.
+  const label = (account: string) => names.get(account) || nameOf(account) || short(account);
+  const spaceName = me ? nameOf(me) : undefined;
+
+  // Offer the namespace name as the roster name, so joining is one click.
+  useEffect(() => {
+    if (me && !myName && spaceName) setName((n) => n || spaceName);
+  }, [me, myName, spaceName]);
 
   async function saveName() {
     if (!client || !name.trim()) return;
+    // The namespace-wide name too, so every app on it shows this name.
+    // Best-effort: the roster name is what was asked for, and a refusal here
+    // must not report it as failed.
+    if (admin && namespaceId && me) {
+      void publishMemberName(admin, namespaceId, me, name.trim()).catch(() => undefined);
+    }
     try {
       await client.setName({ name: name.trim() });
       setName("");
@@ -123,6 +143,7 @@ export function VotePanel({
           <CreatePoll
             contextId={contextId}
             me={me}
+            selfName={spaceName}
             roster={roster}
             onCancel={() => setCreating(false)}
             onCreated={(id) => {
@@ -292,9 +313,9 @@ export function VotePanel({
             <ul className="member-list">
               {roster.map((m) => (
                 <li key={m.account} className="member" title={m.account} data-testid="member">
-                  <span className={`avatar ${m.account === me ? "me" : ""}`}>{initial(m.name)}</span>
+                  <span className={`avatar ${m.account === me ? "me" : ""}`}>{initial(label(m.account))}</span>
                   <span className="member-name">
-                    {m.name}
+                    {label(m.account)}
                     {m.account === me && <span className="you"> (you)</span>}
                   </span>
                   <code className="mono member-id">{short(m.account)}</code>

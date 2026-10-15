@@ -31,8 +31,15 @@ export interface RoomMemberLabel {
  * rather than rendering an empty chip. The fallback is flagged so the UI can
  * style it as the placeholder it is instead of passing it off as a name.
  */
-export function memberLabel(member: Member, selfId: string): RoomMemberLabel {
-  const name = (member.username ?? "").trim();
+export function memberLabel(
+  member: Member,
+  selfId: string,
+  nameOf?: (memberId: string) => string | undefined,
+): RoomMemberLabel {
+  // The room nickname first, then the name they set for the whole stream
+  // (namespace member metadata), and only then an id.
+  const name =
+    (member.username ?? "").trim() || (nameOf?.(member.memberId) ?? "").trim();
   return {
     memberId: member.memberId,
     label: name || shortId(member.memberId),
@@ -51,9 +58,10 @@ export function memberLabel(member: Member, selfId: string): RoomMemberLabel {
 export function labelMembers(
   members: readonly Member[],
   selfId: string,
+  nameOf?: (memberId: string) => string | undefined,
 ): RoomMemberLabel[] {
   return members
-    .map((m) => memberLabel(m, selfId))
+    .map((m) => memberLabel(m, selfId, nameOf))
     .sort((a, b) => {
       if (a.isSelf !== b.isSelf) return a.isSelf ? -1 : 1;
       // Named members before anonymous ones: a name is information, an id is

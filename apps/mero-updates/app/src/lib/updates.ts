@@ -8,8 +8,9 @@ import {
   useState,
 } from "react";
 import { useMero, useNodeIdentity } from "@calimero-network/mero-react";
+import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 
-import { getContextId } from "./session";
+import { getActiveNamespaceId, getContextId } from "./session";
 import { UpdatesClient } from "../generated/UpdatesClient";
 
 /**
@@ -178,9 +179,54 @@ export function shortAccount(account: string): string {
     : account;
 }
 
-/** A person's label: their chosen name, else a short id. */
-export function personLabel(name: string, account: string): string {
-  return name.trim() || shortAccount(account);
+/**
+ * A person's label: their profile name here, else the name they set for the
+ * whole company (`spaceName`), else a short id.
+ */
+export function personLabel(name: string, account: string, spaceName?: string): string {
+  return name.trim() || (spaceName ?? "").trim() || shortAccount(account);
+}
+
+/**
+ * {@link personLabel} with the company-wide name filled in.
+ *
+ * A profile name is per audience; the namespace member name is per person and
+ * shared by every audience and app in the company. Someone who never set a
+ * profile in this audience — but named themselves anywhere else — should not
+ * byline as an account id. See `@calimero-apps/names`.
+ */
+export function usePersonLabel(): (name: string, account: string) => string {
+  const { admin } = useMero();
+  const { nameOf } = useMemberNames(admin, getActiveNamespaceId());
+  return useCallback(
+    (name: string, account: string) => personLabel(name, account, nameOf(account)),
+    [nameOf],
+  );
+}
+
+/**
+ * Publish a profile name company-wide too, so every audience and every other
+ * app on the namespace shows it. Best-effort: the profile is what was asked
+ * for, and a refusal here must not report it as failed.
+ */
+export function usePublishSpaceName(): (account: string, name: string) => void {
+  const { admin } = useMero();
+  return useCallback(
+    (account: string, name: string) => {
+      const namespaceId = getActiveNamespaceId();
+      const trimmed = name.trim();
+      if (!admin || !namespaceId || !account || !trimmed) return;
+      void publishMemberName(admin, namespaceId, account, trimmed).catch(() => {});
+    },
+    [admin],
+  );
+}
+
+/** The name `account` set for the whole company, or "" when none is known. */
+export function useSpaceName(account: string | null | undefined): string {
+  const { admin } = useMero();
+  const { nameOf } = useMemberNames(admin, getActiveNamespaceId());
+  return nameOf(account) ?? "";
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────────────

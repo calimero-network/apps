@@ -5,7 +5,7 @@ import { Avatar, CategoryChip } from "../components/bits";
 import LogoutButton from "../components/LogoutButton";
 import { CheckIcon, MoonIcon, PlusIcon, SunIcon } from "../components/icons";
 import type { CategoryView } from "../generated/UpdatesClient";
-import { CATEGORY_COLORS, personLabel, useLive, useUpdatesClient } from "../lib/updates";
+import { CATEGORY_COLORS, usePersonLabel, useLive, useUpdatesClient } from "../lib/updates";
 import { useTheme } from "../theme";
 
 /** One click to a sensible taxonomy; every one of them editable after. */
@@ -148,6 +148,7 @@ export default function SettingsPage() {
  * "account settings" ends up.
  */
 function AccountCard() {
+  const personLabel = usePersonLabel();
   const { me } = useAudience();
   const { theme, setTheme } = useTheme();
   return (

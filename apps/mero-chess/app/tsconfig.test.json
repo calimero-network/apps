@@ -14,6 +14,8 @@
     "src/test",
     "src/generated",
     "src/useJoinFromInvitation.ts",
+    "src/useSeatNames.ts",
+    "src/useChess.ts",
     "src/utils"
   ]
 }

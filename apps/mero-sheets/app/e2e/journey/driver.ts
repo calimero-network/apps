@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, type Locator, type Page } from "@playwright/test";
-import type { Actor, AppDriver, Feature } from "@calimero-apps/e2e-node/journey";
+import { answeredNamePrompt, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
 
 const SYNC = 90_000;
 
@@ -30,6 +30,7 @@ async function settleNickname(actor: Actor, timeout = 20_000): Promise<void> {
     .then(() => true)
     .catch(() => false);
   if (!shown) return;
+  answeredNamePrompt(actor, new URL(page.url()).pathname);
   await page.getByTestId("field-nickname").fill(`${actor.name}-${actor.run}`);
   await page.getByTestId("action-join").click();
   const gone = await modal

@@ -41,7 +41,7 @@ export default function FeedPage() {
   const navigate = useNavigate();
   const client = useForumClient();
   const selfAccount = useSelfAccount();
-  const nickname = useNickname(client);
+  const nickname = useNickname(client, selfAccount);
   const [sort, setSort] = useState<Sort>("new");
   const { items, loadMore, hasMore, loading, error, reset, reload, setItems } =
     useFeed(client, sort);

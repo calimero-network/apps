@@ -6,6 +6,7 @@ import {
   useJoinSync,
   useMero,
 } from '@calimero-network/mero-react';
+import { publishMemberName, useMemberNames } from '@calimero-apps/names';
 import { createLobbyClient, createGameClient, LobbyClient, GameClient } from '../../features/kv/api';
 import type { ContextRole } from '../../features/kv/api';
 import { CalimeroBytes } from '../../generated/game/GameClient';
@@ -36,6 +37,7 @@ import { EMBEDDED_NAME_KEY, getStoredLobbyName, setStoredLobbyName } from '../..
 import { INVITER_KEY } from '../../utils/knownPlayers';
 import type { JoinedLobbyState } from '../../components/InvitationPrompt';
 import LobbyView from '../../components/LobbyView';
+import { playerName } from '../../utils/playerName';
 import GameBoard from '../../components/GameBoard';
 import ShotGrid from '../../components/ShotGrid';
 import PlacementGrid from '../../components/PlacementGrid';
@@ -91,6 +93,17 @@ export default function MatchPage() {
   const { show } = useToast();
 
   const lobby = useBattleshipsLobby();
+  // People by the name they set for the namespace, not by key.
+  const { nameOf } = useMemberNames(admin, lobby.namespaceId);
+  const saveName = useCallback(
+    (name: string) => {
+      if (!admin || !lobby.namespaceId || !lobby.selfIdentity || !name) return;
+      publishMemberName(admin, lobby.namespaceId, lobby.selfIdentity, name)
+        .then(() => show({ title: 'Name saved', variant: 'success' }))
+        .catch(() => show({ title: 'Could not save your name', variant: 'error' }));
+    },
+    [admin, lobby.namespaceId, lobby.selfIdentity, show],
+  );
 
   // View state
   const [view, setView] = useState<'lobby-select' | 'lobby' | 'game'>('lobby-select');
@@ -1186,6 +1199,8 @@ export default function MatchPage() {
               playerStats={playerStats}
               history={history}
               currentUser={currentUser}
+              nameOf={nameOf}
+              onSaveName={saveName}
             />
           </div>
         </div>
@@ -1375,7 +1390,12 @@ export default function MatchPage() {
                       )}
                       {matchWinner && (
                         <div className="mono-sm" style={{ opacity: 0.75, wordBreak: 'break-all' }}>
-                          Winner: {matchWinner}
+                          Winner: {playerName(matchWinner, {
+                            playerByAccount: lobby.playerByAccount,
+                            selfIdentity: lobby.selfIdentity,
+                            executorPublicKey: lobby.executorPublicKey,
+                            nameOf,
+                          })}
                         </div>
                       )}
                       <button

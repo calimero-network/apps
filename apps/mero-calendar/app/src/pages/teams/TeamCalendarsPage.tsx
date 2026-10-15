@@ -23,7 +23,7 @@ import {
   clearStoredCalendarName,
   getStoredCalendarName,
   setStoredCalendarName,
-  teamLabel,
+  useTeamName,
 } from "../../utils/teamName";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import styles from "./teams.module.scss";
@@ -45,6 +45,7 @@ export default function TeamCalendarsPage() {
   // account, `createGroupInNamespace`/`createContext` are delegated creation
   // through the relay; the raw client's node routes answer 403 there.
   const { admin, isDelegated } = useMero();
+  const teamName = useTeamName(teamId);
 
   const [calendars, setCalendars] = useState<string[]>([]);
   /**
@@ -202,7 +203,7 @@ export default function TeamCalendarsPage() {
   }, [admin, load]);
 
   async function createCalendar() {
-    const name = newName.trim() || teamLabel(teamId, "");
+    const name = newName.trim() || teamName;
     setCreating(true);
     try {
       const appId = await ensureAppId();
@@ -337,7 +338,7 @@ export default function TeamCalendarsPage() {
         </button>
 
         <div className={styles.titleRow}>
-          <h1 className={styles.title}>{teamLabel(teamId, "")}</h1>
+          <h1 className={styles.title}>{teamName}</h1>
           <button
             className="mc-btn"
             onClick={() => setMembersOpen(true)}

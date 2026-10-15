@@ -18,14 +18,13 @@ import type { Button } from "./game/input";
 import type { ArenaView, FighterView, MatchSummary } from "./generated/MeroKombatClient";
 import {
   rememberFighter,
-  rememberName,
   storedFighter,
-  storedName,
   toArenaState,
   useAnnounce,
   useArena,
   usePastMatches,
 } from "./useArena";
+import { useCornerNames } from "./useCornerNames";
 
 /**
  * One arena: the cabinet, the two corners, the chain meter, and the link that
@@ -34,12 +33,14 @@ import {
 export function ArenaPage({ contextId }: { contextId: string }) {
   const arena = useArena(contextId);
   const navigate = useNavigate();
-  const [name, setName] = useState(storedName);
+  // Corners named from the namespace when the arena has no name for them.
+  const names = useCornerNames(contextId, arena.view);
+  const name = names.name;
   const [fighter, setFighter] = useState<FighterId>(storedFighter);
   const [press, setPress] = useState<((b: Button, down: boolean) => void) | null>(null);
   useAnnounce(contextId, name, fighter);
 
-  const view = arena.view;
+  const view = names.view;
 
   // After a join, the invitation dialog waits on this: the first `arena()`
   // read that comes back, an empty arena with nobody in either corner
@@ -47,7 +48,7 @@ export function ArenaPage({ contextId }: { contextId: string }) {
   // `useArena`'s own poll. Arenas live directly in their namespace (see
   // `ContextPicker`), so the context's group is the namespace that was joined.
   const { groupId: namespaceId } = useContextGroup(contextId);
-  useJoinSync({ namespaceId, settled: view !== null });
+  useJoinSync({ namespaceId, settled: arena.view !== null });
   const past = usePastMatches(contextId, `${view?.match_index ?? 0}:${view?.winner ?? ""}`);
   const state = useMemo(() => (view ? toArenaState(view) : null), [view]);
   const mySeat = view?.my_seat ?? "";
@@ -171,12 +172,12 @@ export function ArenaPage({ contextId }: { contextId: string }) {
               name={name}
               fighter={fighter}
               busy={arena.busy}
-              onName={(n) => {
-                setName(n);
-                rememberName(n);
-              }}
+              onName={names.changeName}
               onChoose={choose}
-              onSit={(seat) => void arena.sit(seat, name, fighter)}
+              onSit={(seat) => {
+                names.publish(name);
+                void arena.sit(seat, name, fighter);
+              }}
               onStand={() => void arena.stand()}
               onRematch={() => void arena.rematch()}
             />
@@ -191,12 +192,12 @@ export function ArenaPage({ contextId }: { contextId: string }) {
               name={name}
               fighter={fighter}
               busy={arena.busy}
-              onName={(n) => {
-                setName(n);
-                rememberName(n);
-              }}
+              onName={names.changeName}
               onChoose={choose}
-              onSit={(seat) => void arena.sit(seat, name, fighter)}
+              onSit={(seat) => {
+                names.publish(name);
+                void arena.sit(seat, name, fighter);
+              }}
               onStand={() => void arena.stand()}
               onRematch={() => void arena.rematch()}
             />

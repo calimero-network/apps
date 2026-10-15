@@ -9,7 +9,7 @@ import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage, humanizeError } from "../utils/errorMessage";
 import { encodeInvitationObject, invitationLink } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
-import { getStoredTeamName, teamLabel } from "../utils/teamName";
+import { getStoredTeamName, useTeamName } from "../utils/teamName";
 import { splitTeeMembers } from "../utils/teeMembers";
 import { SHOWCASE_PROJECTS } from "../showcase";
 import type { Project, DocumentInfo } from "../types";
@@ -46,6 +46,7 @@ export default function ProjectsPage() {
   // admin on a delegated session, where the raw node routes are a 403.
   const api = useApi();
   const { admin, isDelegated } = api;
+  const teamTitle = useTeamName(teamId);
 
   const [tab, setTab] = useState<Tab>("projects");
   const [projects, setProjects] = useState<ProjectCard[]>([]);
@@ -332,8 +333,6 @@ export default function ProjectsPage() {
     }, 5000);
   }
 
-  const teamTitle = teamId ? teamLabel(teamId, "") : "Team";
-
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -593,6 +592,7 @@ export default function ProjectsPage() {
           type="project"
           id={settingsProject.contextId}
           groupId={settingsProject.groupId}
+          namespaceId={teamId}
           name={settingsProject.name || settingsProject.contextId.slice(0, 8)}
           onClose={() => setSettingsProject(null)}
         />

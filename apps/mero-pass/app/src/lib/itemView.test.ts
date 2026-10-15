@@ -7,6 +7,7 @@ import {
   monogramOf,
   openableUrl,
   subtitleOf,
+  who,
 } from './itemView';
 import type { Secret } from './vaultSession';
 
@@ -73,5 +74,13 @@ describe('itemView', () => {
       expect(hueOf(n)).toBeGreaterThanOrEqual(0);
       expect(hueOf(n)).toBeLessThan(360);
     }
+  });
+
+  it('says who changed an item by name, else a short id, never a raw slice', () => {
+    const acct =
+      '5926f2d2a4940fa2a62edd2cd7d833897c2c1596c697ea674dd0f49b89d11334';
+    expect(who(acct, acct)).toBe('you');
+    expect(who(acct, undefined, () => 'Sandi')).toBe('Sandi');
+    expect(who(acct, undefined, () => undefined)).toBe('5926f2…1334');
   });
 });

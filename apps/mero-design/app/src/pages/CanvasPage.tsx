@@ -7,6 +7,8 @@ import { getElementsByIds } from "../api/elementBatch";
 import { collectBoardChanges } from "../utils/boardEvents";
 import { useGroupActions } from "../hooks/useGroupActions";
 import { useMero } from "@calimero-network/mero-react";
+import { useMemberNames, useMyName } from "@calimero-apps/names";
+import { decideBoardName } from "../utils/boardName";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
@@ -35,7 +37,9 @@ export default function CanvasPage() {
   countRender("CanvasPage");
   const { teamId, projectId } = useParams<{ teamId: string; projectId: string }>();
   const navigate = useNavigate();
-  const { logout } = useMero();
+  const { logout, admin } = useMero();
+  // The name each person set once for the whole team, shared by every app on it.
+  const teamNames = useMemberNames(admin, teamId);
   // Selector, not the bare store. `useCanvasStore()` subscribes to every field,
   // so selecting a shape — which touches nothing this page renders — used to
   // re-render CanvasPage and, through it, the canvas, the toolbar and the whole
@@ -70,6 +74,9 @@ export default function CanvasPage() {
   const [cursors, setCursors] = useState<CursorState[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
+  // This account's username on THIS board's contract: "" for none, null until
+  // `get_members` has answered (or when it could not).
+  const [boardName, setBoardName] = useState<string | null>(null);
   const [addingComment, setAddingComment] = useState(false);
   const [myIdentity, setMyIdentity] = useState("");
   // Who this node's user IS: the account. The board keys members, comment
@@ -334,10 +341,9 @@ export default function CanvasPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elements]);
 
-  // Check WASM members — WASM is the source of truth for username existence.
-  // Show modal if this identity has no username registered in the contract.
-  // usernameStore is only used to pre-fill the modal input.
+  // This board's roster, and whether this account is on it under a name.
   useEffect(() => {
+    setBoardName(null);
     if (!projectId || !myIdentity || !myAccount) return;
     // Guard against a slow get_members from the previous project repopulating the
     // roster (and mislabeling cursors) after the user switched canvases.
@@ -348,36 +354,60 @@ export default function CanvasPage() {
         const list = Array.isArray(ms) ? ms : [];
         setMembers(list);
         const member = list.find((m) => m.id === myAccount);
-        const hasUsername = member?.username && member.username.trim().length > 0;
-        if (!hasUsername) {
-          setShowUsernameModal(true);
-        }
+        setBoardName(member?.username?.trim() ?? "");
       })
       .catch(() => {
-        if (cancelled) return;
-        // Can't verify — show modal to be safe
-        setShowUsernameModal(true);
+        // Unknown, not "unnamed": the decision below falls back to the team.
+        if (!cancelled) setBoardName("");
       });
     return () => { cancelled = true; };
   }, [projectId, myIdentity, myAccount]);
 
-  async function handleUsernameSubmit(username: string) {
+  // ── Your name: one per TEAM, never per board ──────────────────────────────
+  //
+  // A name used to be asked for on every board, because each board's contract
+  // keeps its own roster and a new board's roster has never heard of you. The
+  // name belongs to the person in the team (namespace member metadata), so it
+  // is asked for once there and every board is joined under it silently. The
+  // board roster still gets the name (`join`), because the contract's own
+  // views read it; it is just never the thing that decides whether to ask.
+  const myName = useMyName(admin, teamId, myAccount);
+
+  async function joinBoardAs(username: string) {
     if (!projectId || !myIdentity) return;
-    // Register in WASM — this is the authoritative store. The member id is
-    // derived server-side from the real signer (env::executor_id); we no longer
-    // pass a spoofable member_id.
+    // The member id is derived server-side from the real signer
+    // (env::executor_id); we no longer pass a spoofable member_id.
     await rpcCall(projectId, "join", {
       username,
       avatar: null,
       timestamp: Date.now(),
     }).catch(() => {});
-    // Cache locally for convenience (pre-fill on future sessions)
-    setUsername(myIdentity, username);
-    setShowUsernameModal(false);
+    setBoardName(username);
     rpcCall<Member[]>(projectId, "get_members", {})
       .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
       .catch(() => {});
   }
+
+  async function handleUsernameSubmit(username: string) {
+    // Kept for pre-fill only; the team record is the name.
+    if (myIdentity) setUsername(myIdentity, username);
+    setShowUsernameModal(false);
+    // Best-effort: this browser keeps the name and republishes it if the
+    // team write is refused, so the board is joined either way.
+    await myName.setName(username).catch(() => {});
+    await joinBoardAs(username);
+  }
+
+  // Decide once both answers are in: the team's (is there a name for you at
+  // all?) and this board's (is it already on the roster?). Asking before the
+  // team's names have loaded is what made people re-enter their name.
+  useEffect(() => {
+    const action = decideBoardName({ teamReady: myName.ready, teamName: myName.name, boardName });
+    if (action.kind === "join") void joinBoardAs(action.name);
+    else if (action.kind === "adopt") void myName.setName(action.name).catch(() => {});
+    else if (action.kind === "ask") setShowUsernameModal(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myName.ready, myName.name, boardName]);
 
   // Resolve this identity's role. Viewers get a read-only canvas; only the
   // admin/owner may run board-replace ops (import). Re-checked when the roster
@@ -675,7 +705,7 @@ export default function CanvasPage() {
       {showUsernameModal && (
         <UsernameModal
           onSubmit={handleUsernameSubmit}
-          initialValue={getUsername(myIdentity)}
+          initialValue={getUsername(myIdentity) || ""}
         />
       )}
       <Toolbar
@@ -695,6 +725,7 @@ export default function CanvasPage() {
         readOnly={!canEdit}
         canImport={isAdmin}
         memberList={members}
+        teamName={teamNames.nameOf}
         onOpenStarter={handleOpenStarter}
         boardHasContent={elements.length > 0}
       />
@@ -707,9 +738,16 @@ export default function CanvasPage() {
             readOnly={!canEdit}
             onViewportChange={(z, px, py) => setViewport({ zoom: z, panX: px, panY: py })}
           />
-          <CursorsOverlay cursors={cursors} myIdentity={myIdentity} members={members} viewport={viewport} />
+          <CursorsOverlay
+            cursors={cursors}
+            myIdentity={myIdentity}
+            members={members}
+            teamName={teamNames.nameOf}
+            viewport={viewport}
+          />
           <CommentsOverlay
             members={members}
+            teamName={teamNames.nameOf}
             contextId={projectId ?? ""}
             comments={comments}
             myIdentity={myAccount}

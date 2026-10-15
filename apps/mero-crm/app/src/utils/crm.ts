@@ -505,10 +505,14 @@ export function bucketActivities(list: ActivityView[], now: number = Date.now())
 
 // ── Search ─────────────────────────────────────────────────────────────────
 
-export function dealMatches(deal: DealView, query: string): boolean {
+export function dealMatches(
+  deal: DealView,
+  query: string,
+  ownerName: (owner: string | null | undefined) => string = (o) => o ?? '',
+): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return [deal.title, deal.organization, deal.contact_name ?? '', deal.owner ?? '', deal.source]
+  return [deal.title, deal.organization, deal.contact_name ?? '', ownerName(deal.owner), deal.source]
     .some((f) => f.toLowerCase().includes(q));
 }
 

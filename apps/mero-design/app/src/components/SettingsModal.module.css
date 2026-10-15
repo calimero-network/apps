@@ -109,6 +109,18 @@
   cursor: pointer;
 }
 .copyBtn:hover { background: var(--glass-sunken); }
+.copyBtn:disabled { opacity: 0.5; cursor: default; }
+
+.nameInput {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--glass-ink);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
 
 .badge {
   display: inline-flex;

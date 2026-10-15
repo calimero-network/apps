@@ -21,6 +21,7 @@
 
 import type { ParticipantInfo, UserId } from '../api/clientApi';
 import { PermissionLevel } from '../api/clientApi';
+import { initials } from './monogram';
 
 /**
  * Normalise an id the contract handed back into the hex string the contract
@@ -42,6 +43,23 @@ export function isHexId(value: string): boolean {
 export function shortId(value: string): string {
   const id = toHexId(value);
   return id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
+}
+
+/**
+ * What a participant is called on screen: the name they set for the workspace
+ * (namespace member metadata, via `useMemberNames().nameOf`), else a short id.
+ * The full hex id stays in the row's tooltip, for pasting.
+ */
+export function participantName(
+  id: string,
+  nameOf?: (id: string) => string | undefined,
+): string {
+  return nameOf?.(id) || shortId(id);
+}
+
+/** A row's avatar letters: the name's initials, else the id's first two. */
+export function participantInitials(id: string, name?: string): string {
+  return name ? initials(name) : toHexId(id).slice(0, 2).toUpperCase();
 }
 
 /** Rank, matching `rank` in the contract. Admin > Sign > Read. */
@@ -71,9 +89,11 @@ export const LEVEL_DESCRIPTIONS: Record<PermissionLevel, string> = {
  * contract refuses to demote the last admin.
  */
 export function levelChangesFor(current: PermissionLevel): PermissionLevel[] {
-  return [PermissionLevel.Read, PermissionLevel.Sign, PermissionLevel.Admin].filter(
-    (level) => level !== current,
-  );
+  return [
+    PermissionLevel.Read,
+    PermissionLevel.Sign,
+    PermissionLevel.Admin,
+  ].filter((level) => level !== current);
 }
 
 /**

@@ -14,6 +14,8 @@
     "src/generated",
     "src/useJoinFromInvitation.ts",
     "src/ContextPicker.tsx",
+    "src/names.tsx",
+    "src/ui.tsx",
     "src/utils",
     "src/lib"
   ]

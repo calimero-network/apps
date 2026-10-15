@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useEphemeral, useMero, useSubscription } from "@calimero-network/mero-react";
+import { useContextGroup, useEphemeral, useMero, useSubscription } from "@calimero-network/mero-react";
+import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import type { SubscriptionEventData } from "@calimero-network/mero-react";
 import { MeroModelsClient } from "../generated/MeroModelsClient";
 import { memberColor } from "./model";
-import { useEditor } from "./store";
+import { GUEST, useEditor } from "./store";
 import { BlobStore, adminTransport, type AdminBlobApi } from "./blobs";
 import { SceneSync, messageOf } from "./sync";
 import type { Peer } from "./viewport";
@@ -27,6 +28,31 @@ export function rememberName(name: string): void {
   } catch {
     /* private mode: the name is only forgotten */
   }
+}
+
+/**
+ * Names members set for the whole namespace, and publishing one.
+ *
+ * `ScenePicker` creates scenes directly in the namespace, so the context's
+ * group IS the namespace (see `InviteCard`) — the one group everyone is in,
+ * where a person's name for every app is kept.
+ */
+export function useSpaceNames(contextId: string): {
+  nameOf: (account: string | null | undefined) => string | undefined;
+  publish: (account: string, name: string) => void;
+} {
+  const { admin } = useMero();
+  const { groupId: namespaceId } = useContextGroup(contextId);
+  const { nameOf } = useMemberNames(admin, namespaceId);
+  // Best-effort: the scene name is what was asked for, so a refusal is quiet.
+  const publish = useCallback(
+    (account: string, name: string) => {
+      if (!admin || !namespaceId || !account || !name.trim()) return;
+      void publishMemberName(admin, namespaceId, account, name.trim()).catch(() => undefined);
+    },
+    [admin, namespaceId],
+  );
+  return { nameOf, publish };
 }
 
 /** The generated client, bound to this session and context. */
@@ -106,7 +132,7 @@ export function useJoin(contextId: string, name: string): void {
   useEffect(() => {
     if (!client) return;
     const t = window.setTimeout(() => {
-      void client.join({ name: name || "Guest", now: Date.now() }).catch((e) => {
+      void client.join({ name: name || GUEST, now: Date.now() }).catch((e) => {
         // Presence in the members list is a nicety; editing works without it.
         console.warn("[mero-models] join failed:", messageOf(e));
       });

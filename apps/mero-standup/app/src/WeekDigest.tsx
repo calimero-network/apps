@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { byPerson, digestMarkdown } from "./lib/digest";
 import { describeWeek, shiftDay, today, weekStart, weekdayShort } from "./lib/days";
-import { displayName } from "./lib/people";
+import { PersonName } from "./names";
 import { Avatar, Icon, RichText } from "./ui";
 import { useRead, type Team } from "./useTeam";
 
@@ -61,7 +61,7 @@ export function WeekDigest({ team }: { team: Team }) {
           <article key={p.account} className="digest-person">
             <header className="byline">
               <Avatar account={p.account} name={p.name} />
-              <strong>{displayName(p.account, p.name)}</strong>
+              <strong><PersonName account={p.account} name={p.name} /></strong>
               <span className="dim">
                 {p.updates.length} day{p.updates.length === 1 ? "" : "s"}
               </span>

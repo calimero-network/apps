@@ -2,6 +2,8 @@
 // the letter on its tile, and whether a search matches it. Pure, so the list
 // and its tests agree without rendering anything.
 
+import { shortAccount } from '@calimero-apps/names';
+
 import { KINDS, type Kind } from './secretKinds';
 import type { Secret } from './vaultSession';
 
@@ -121,6 +123,15 @@ export function asDate(stamp: number): Date {
   return new Date(stamp > 1e12 ? Math.floor(stamp / 1e6) : stamp);
 }
 
-export function who(account: string, me?: string): string {
-  return account && account === me ? 'you' : `${account.slice(0, 10)}…`;
+/**
+ * Who stamped a change: "you", else the name they set for the team (looked up
+ * with `nameOf`, from `useMemberNames`), else a short account id.
+ */
+export function who(
+  account: string,
+  me?: string,
+  nameOf?: (account: string) => string | undefined,
+): string {
+  if (account && account === me) return 'you';
+  return nameOf?.(account) || shortAccount(account);
 }

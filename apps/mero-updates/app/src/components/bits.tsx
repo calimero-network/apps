@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import type { CategoryView, ReactionCount } from "../generated/UpdatesClient";
 import { initials } from "../lib/people";
-import { REACTIONS, parseMetric, personLabel } from "../lib/updates";
+import { REACTIONS, parseMetric, usePersonLabel } from "../lib/updates";
 import { deltaDir } from "./delta";
 import { InboxIcon, MinusIcon, SmilePlusIcon, TrendDownIcon, TrendUpIcon } from "./icons";
 
@@ -39,6 +39,7 @@ export function CategoryChip({
 }
 
 export function Avatar({ name, account, team }: { name: string; account: string; team?: boolean }) {
+  const personLabel = usePersonLabel();
   return (
     <span className="avatar" data-team={team} aria-hidden>
       {initials(personLabel(name, account))}

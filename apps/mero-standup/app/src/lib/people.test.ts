@@ -30,6 +30,12 @@ describe("people", () => {
     expect(displayName(A, null)).toBe("aaaaaa…aaaa");
   });
 
+  it("falls back to the namespace name before the id", () => {
+    expect(displayName(A, "", "Ana Lee")).toBe("Ana Lee");
+    expect(displayName(A, "Ana", "Ana Lee")).toBe("Ana");
+    expect(initials(A, "", "Ana Lee")).toBe("AL");
+  });
+
   it("lists who has not posted, by name", () => {
     const members = [member(C, "Carol"), member(A, "Ana"), member(B)];
     expect(notYetPosted(members, [update(A)]).map((m) => m.account)).toEqual([B, C]);

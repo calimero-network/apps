@@ -11,7 +11,8 @@ import {
   weekStart,
   weekdayShort,
 } from "./lib/days";
-import { displayName, notYetPosted } from "./lib/people";
+import { notYetPosted } from "./lib/people";
+import { PersonName } from "./names";
 import type { DecisionDraft } from "./DecisionLog";
 import { Avatar, Icon, isSubmitShortcut, RichText, SUBMIT_HINT } from "./ui";
 import { useRead, type Team } from "./useTeam";
@@ -133,7 +134,7 @@ export function StandupBoard({
                 {waiting.map((m) => (
                   <li key={m.account}>
                     <Avatar account={m.account} name={m.name} size={22} />
-                    {displayName(m.account, m.name)}
+                    <PersonName account={m.account} name={m.name} />
                   </li>
                 ))}
               </ul>
@@ -149,7 +150,7 @@ export function StandupBoard({
               <li key={u.author}>
                 <div className="byline">
                   <Avatar account={u.author} name={u.author_name} size={22} />
-                  <strong>{u.author === me ? "You" : displayName(u.author, u.author_name)}</strong>
+                  <strong>{u.author === me ? "You" : <PersonName account={u.author} name={u.author_name} />}</strong>
                   <button className="link" onClick={() => setDay(u.day)}>
                     {describeDay(u.day)}
                   </button>
@@ -257,7 +258,7 @@ function UpdateCard({
       <div className="byline">
         <Avatar account={update.author} name={update.author_name} />
         <div className="who">
-          <strong>{displayName(update.author, update.author_name)}</strong>
+          <strong><PersonName account={update.author} name={update.author_name} /></strong>
           <span className="dim" title={new Date(update.edited_at / 1e6).toLocaleString()}>
             {relativeTime(update.edited_at)}
             {update.edited_at !== update.created_at && " · edited"}
@@ -340,7 +341,7 @@ function HelpLine({
             <li key={h.account}>
               <Avatar account={h.account} name={h.name} size={20} />
               <span>
-                <strong>{h.account === me ? "You" : displayName(h.account, h.name)}</strong>{" "}
+                <strong>{h.account === me ? "You" : <PersonName account={h.account} name={h.name} />}</strong>{" "}
                 {h.note ? <span className="dim">— {h.note}</span> : <span className="dim">can help</span>}
               </span>
             </li>
