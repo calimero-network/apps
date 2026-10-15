@@ -115,6 +115,26 @@ describe('MemberPicker', () => {
     expect(screen.getAllByRole('option')).toHaveLength(2);
   });
 
+  // A TEE node is a member row of the namespace, but nobody to share with.
+  it('never offers a TEE node as a person', () => {
+    useGroupMembersMock.mockReturnValue({
+      members: [
+        ...members,
+        { identity: 'tee-pubkey-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', role: 'RelayTee' },
+        { identity: 'tee-pubkey-ffffffffffffffffffffffffffffffffff', role: 'ReadOnlyTee' },
+      ],
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    render(<MemberPicker namespaceId="ns" onSelect={vi.fn()} />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+    fireEvent.change(input, { target: { value: 'tee-pubkey' } });
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+  });
+
   it('clicking an option calls onSelect with the identity and closes the dropdown', () => {
     const onSelect = vi.fn();
     render(<MemberPicker namespaceId="ns" onSelect={onSelect} />);

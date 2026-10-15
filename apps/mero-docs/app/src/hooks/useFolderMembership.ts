@@ -11,11 +11,15 @@ import {
   useRemoveGroupMembers,
   type GroupMember,
 } from '@calimero-network/mero-react';
+import { splitTeeMembers } from '@/lib/roles';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
 export interface FolderMembershipState {
+  /** People only; TEE nodes are split out into `teeMembers`. */
   members: GroupMember[];
+  /** TEE nodes (`ReadOnlyTee` / `RelayTee`) admitted to this group. */
+  teeMembers: GroupMember[];
   /** The folder `members` was last read for; a failed or running read keeps it. */
   readFor: string | null;
   loading: boolean;
@@ -34,6 +38,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
   const { registryContextId } = useDriveWorkspace();
 
   const [members, setMembers] = useState<GroupMember[]>([]);
+  const [teeMembers, setTeeMembers] = useState<GroupMember[]>([]);
   const [readFor, setReadFor] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
@@ -50,6 +55,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
   const refetch = useCallback(async () => {
     if (!admin || !folderId) {
       setMembers([]);
+      setTeeMembers([]);
       setReadFor(null);
       setLoading(false);
       setError(null);
@@ -61,7 +67,11 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
     try {
       const { members: rows } = await admin.listGroupMembers(folderId);
       if (seq !== fetchSeqRef.current) return;
-      setMembers(rows);
+      // A TEE node is a member row, not a person: kept out of `members` so no
+      // member list, count or role control ever shows it.
+      const { people, tee } = splitTeeMembers(rows);
+      setMembers(people);
+      setTeeMembers(tee);
       setReadFor(folderId);
     } catch (e: unknown) {
       if (seq !== fetchSeqRef.current) return;
@@ -114,5 +124,5 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
     [folderId, removeGroupMembers, refetch],
   );
 
-  return { members, readFor, loading, error, add, remove, refetch };
+  return { members, teeMembers, readFor, loading, error, add, remove, refetch };
 }

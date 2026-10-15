@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { namespaceLabel } from '@/lib/namespaceLabel';
+import { peopleCount } from '@/lib/roles';
 import { NamespaceCreateDialog } from './NamespaceCreateDialog';
 import { NamespaceJoinDialog } from './NamespaceJoinDialog';
 
@@ -24,6 +25,7 @@ export function NamespaceSwitcher() {
     namespaces,
     selectedNamespaceId,
     selectNamespace,
+    namespaceMembers,
     loading,
     error,
     refetch,
@@ -103,6 +105,12 @@ export function NamespaceSwitcher() {
               >
                 {namespaces.map((n) => {
                   const label = namespaceLabel(n.name);
+                  // Core's count includes TEE nodes; only the selected
+                  // workspace's are known, so only its count drops them.
+                  const count =
+                    n.namespaceId === selectedNamespaceId
+                      ? peopleCount(n.memberCount, namespaceMembers.teeMembers.length)
+                      : n.memberCount;
                   return (
                     <DropdownMenuRadioItem
                       key={n.namespaceId}
@@ -113,7 +121,7 @@ export function NamespaceSwitcher() {
                       <span className="min-w-0 flex-1 leading-tight">
                         <span className="block truncate">{label}</span>
                         <span className="block text-xs text-muted-foreground">
-                          {n.memberCount} member{n.memberCount === 1 ? '' : 's'}
+                          {count} member{count === 1 ? '' : 's'}
                         </span>
                       </span>
                     </DropdownMenuRadioItem>
