@@ -1,9 +1,5 @@
 import { useEffect, useRef } from 'react';
-import {
-  isNamespaceJustJoined,
-  JOIN_SYNC_POLL_MS,
-  useJoinSync,
-} from '@calimero-network/mero-react';
+import { JOIN_SYNC_POLL_MS, useJoinSync } from '@calimero-network/mero-react';
 
 /** The lobby whose match list has come back from the node, empty or not. */
 export interface LobbyReadFor {
@@ -16,10 +12,8 @@ export interface LobbyJoinSyncOptions {
   namespaceId: string | null;
   /** The selected lobby's context, through which its matches are read. */
   contextId: string | null;
-  /** Which lobby the last match-list read was for. */
+  /** Which lobby the last successful match-list read was for. */
   readFor: LobbyReadFor | null;
-  /** How many matches that read returned. */
-  matchCount: number;
   /** Re-reads the match list. */
   reread: () => Promise<void> | void;
 }
@@ -29,30 +23,26 @@ export interface LobbyJoinSyncOptions {
  * "Syncing…" until its own state has been read here: the match list, read
  * through the lobby context once this node has entered it.
  *
- * Right after the join the node may not have synced the lobby, so an empty
- * list is what it returns then: while the namespace is flagged just-joined an
- * empty read does not settle, the gate waits up to its ceiling, and the list
- * is re-read. Once the flag clears, a lobby with no matches reads as empty.
+ * Right after the join the node may not have synced the lobby, and then the
+ * read fails (it does not come back empty), so a read that succeeds is the
+ * lobby having arrived, even with no matches in it. Nothing else read the
+ * lobby again after a failed first read, so while the gate is up it is
+ * re-read on a timer.
  */
 export function useLobbyJoinSync({
   namespaceId,
   contextId,
   readFor,
-  matchCount,
   reread,
 }: LobbyJoinSyncOptions): boolean {
-  const read =
-    readFor !== null &&
-    readFor.namespaceId === namespaceId &&
-    readFor.contextId === contextId;
   const { isSyncing } = useJoinSync({
     namespaceId,
-    settled: read && (matchCount > 0 || !isNamespaceJustJoined(namespaceId)),
-    // Still empty: let the gate wait up to its ceiling, not the base window.
-    active: matchCount === 0,
+    settled:
+      readFor !== null &&
+      readFor.namespaceId === namespaceId &&
+      readFor.contextId === contextId,
   });
 
-  // Nothing else re-reads the list, so keep asking while the gate is up.
   const rereadRef = useRef(reread);
   rereadRef.current = reread;
   useEffect(() => {

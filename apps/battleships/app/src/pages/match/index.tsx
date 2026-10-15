@@ -309,8 +309,8 @@ export default function MatchPage() {
   }, [location.key, joinedLobbyId]);
 
   // A lobby just joined from an invitation link holds the invitation dialog on
-  // "Syncing…" until its match list has been read here, re-reading while the
-  // lobby has not synced yet.
+  // "Syncing…" until its match list has been read here, re-reading while a
+  // read fails because the lobby has not synced yet.
   const rereadLobby = useCallback(async () => {
     const namespaceId = namespaceIdRef.current;
     const contextId = currentContext?.contextId;
@@ -325,7 +325,6 @@ export default function MatchPage() {
     namespaceId: lobby.namespaceId,
     contextId: lobby.lobbyContextId,
     readFor: lobbyReadFor,
-    matchCount: myMatches.length,
     reread: rereadLobby,
   });
 
