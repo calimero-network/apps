@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useJoinSync } from "@calimero-network/mero-react";
 
 import Composer from "../components/Composer";
 import InfiniteScroll from "../components/InfiniteScroll";
@@ -46,6 +47,14 @@ export default function FeedPage() {
   const contextId = getContextId();
   const forumName = contextId ? getForumName(contextId) : "";
   const namespaceId = getActiveNamespaceId();
+
+  // A forum invitation lands here, not on the forum list, so this is the page
+  // that knows the space's data has arrived: the first page of posts came
+  // back, empty or not. That ends the invitation dialog's "Syncing…".
+  useJoinSync({
+    namespaceId,
+    settled: items.length > 0 || !hasMore,
+  });
 
   const vote = async (postId: string, value: number) => {
     if (!client) return;

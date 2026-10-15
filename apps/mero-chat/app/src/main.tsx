@@ -4,10 +4,10 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 import { BrowserRouter } from "react-router-dom";
-import { primeInvitationCapture } from "@calimero-apps/invite";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
+  primeInvitationCapture,
   getNodeUrl,
   setNodeUrl,
 } from "@calimero-network/mero-react";

@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -7,14 +7,14 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { ConnectButton, useMero } from "@calimero-network/mero-react";
-import { ContextPicker } from "./ContextPicker";
-import { JoinCard } from "./JoinCard";
-import { TablePage } from "./TablePage";
 import {
-  useJoinFromInvitation,
-  type JoinFromInvitation,
-} from "./useJoinFromInvitation";
+  ConnectButton,
+  InvitationDialog,
+  useMero,
+} from "@calimero-network/mero-react";
+import { ContextPicker } from "./ContextPicker";
+import { TablePage } from "./TablePage";
+import { useJoinFromInvitation } from "./useJoinFromInvitation";
 import LandingPage from "./pages/landing/LandingPage";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
@@ -72,8 +72,16 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
  * The three states are exactly the three things that can be missing — a
  * session, a context, and then nothing.
  */
-function PlayPage({ join }: { join: JoinFromInvitation }) {
-  const { isAuthenticated, isLoading, applicationId, contextId } = useMero();
+function PlayPage({ joinedContextId }: { joinedContextId: string | null }) {
+  const {
+    isAuthenticated,
+    isLoading,
+    applicationId,
+    contextId: storedContextId,
+  } = useMero();
+  // A table an invitation just joined wins over the stored one: it is opened
+  // in place (see `AppRoutes`), and is the stored one too from the next load.
+  const contextId = joinedContextId ?? storedContextId;
 
   if (isLoading) {
     return (
@@ -108,23 +116,28 @@ function PlayPage({ join }: { join: JoinFromInvitation }) {
   if (!contextId) {
     return (
       <ContextPicker applicationId={applicationId}>
-        <JoinCard join={join} />
+        {/* An invitation reaches this app only by its link being opened, so
+            there is nothing to paste: this says where one comes from, and the
+            invitation dialog asks once a link has been opened. */}
+        <div className="card join-card">
+          <div className="card-head">
+            <h2>Join with an invitation</h2>
+          </div>
+          <p className="hint">
+            Open an invitation link someone sent you. It opens this app and asks
+            before joining.
+          </p>
+        </div>
       </ContextPicker>
     );
   }
 
-  return (
-    <>
-      {/* A link can arrive while a table is already open, and the prompt has to
-          be reachable then too — otherwise an invitation received mid-game
-          waits silently until the player happens to log out. */}
-      {join.state.stage !== "idle" && <JoinCard join={join} />}
-      <TablePage contextId={contextId} />
-    </>
-  );
+  // Keyed, so joining another table starts from a fresh read rather than
+  // counting the previous table's view as the joined one's.
+  return <TablePage key={contextId} contextId={contextId} />;
 }
 
-function AppShell({ join }: { join: JoinFromInvitation }) {
+function AppShell({ joinedContextId }: { joinedContextId: string | null }) {
   const { isAuthenticated, nodeUrl, logout } = useMero();
   const navigate = useNavigate();
   return (
@@ -156,10 +169,15 @@ function AppShell({ join }: { join: JoinFromInvitation }) {
         </div>
       </header>
       <main className="wrap">
-        <PlayPage join={join} />
+        <PlayPage joinedContextId={joinedContextId} />
       </main>
     </div>
   );
+}
+
+/** `head…tail`, so two ids can be told apart without the full 44 characters. */
+function shortId(id: string) {
+  return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
 }
 
 export function App() {
@@ -174,42 +192,68 @@ function AppRoutes() {
   // Above the routes, unconditionally: an invitation captured before login has
   // to be offered as soon as the session exists, and a link can be opened on
   // any page — the landing page, the docs, or mid-game.
-  const join = useJoinFromInvitation();
+  //
+  // The joined table is opened in place, not by storing it and reloading as
+  // the picker does: a reload would take the invitation dialog down while it
+  // is still waiting for the table to arrive.
+  const [joinedContextId, setJoinedContextId] = useState<string | null>(null);
+  const join = useJoinFromInvitation(setJoinedContextId);
+  const invited = join.parsed;
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  // The prompt lives on the play page, which is also where a join lands, so an
-  // invitation that surfaces anywhere else takes the player there.
+  // A join lands on the play page, so an invitation that surfaces anywhere
+  // else takes the player there, where the table fills in behind the dialog.
   const pending = join.state.stage !== "idle";
   useEffect(() => {
     if (pending && pathname !== "/play") navigate("/play");
   }, [pending, pathname, navigate]);
 
   return (
-    <Routes>
-      {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
-            are real URLs so they can be shared and opened cold, which needs a
-            route here — otherwise the catch-all below swallows the deep link
-            before the page ever renders. */}
-      {LANDING_PATHS.map((path) => (
-        <Route
-          key={path}
-          path={path}
-          // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
-          // `/preview` are reference pages, and somebody already signed in is
-          // exactly the person most likely to want to read them.
-          element={
-            path === "/" ? (
-              <RedirectIfAuthed>
+    <>
+      {/* Above the routes, so a link opened mid-game is asked about too. It
+          stays on "Syncing…" until `TablePage` has read the joined table. The
+          ids are shown because following a link must not act on the player's
+          behalf: joining binds their identity to a namespace someone else
+          chose and switches the table they are at. */}
+      <InvitationDialog
+        redemption={join}
+        noun="table"
+        appName="Mero Chess"
+        detail={
+          invited
+            ? `Joining adds this node to namespace ${shortId(invited.namespaceId)} and opens its table ${shortId(invited.contextId)}.`
+            : undefined
+        }
+      />
+      <Routes>
+        {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
+              are real URLs so they can be shared and opened cold, which needs a
+              route here — otherwise the catch-all below swallows the deep link
+              before the page ever renders. */}
+        {LANDING_PATHS.map((path) => (
+          <Route
+            key={path}
+            path={path}
+            // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
+            // `/preview` are reference pages, and somebody already signed in is
+            // exactly the person most likely to want to read them.
+            element={
+              path === "/" ? (
+                <RedirectIfAuthed>
+                  <AppLandingPage />
+                </RedirectIfAuthed>
+              ) : (
                 <AppLandingPage />
-              </RedirectIfAuthed>
-            ) : (
-              <AppLandingPage />
-            )
-          }
+              )
+            }
+          />
+        ))}
+        <Route
+          path="/play"
+          element={<AppShell joinedContextId={joinedContextId} />}
         />
-      ))}
-      <Route path="/play" element={<AppShell join={join} />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }

@@ -10,7 +10,7 @@ import type { RepoEntry } from "../hooks/useWorkspace";
 import type { TeeMode } from "../utils/tee";
 import type { Namespace } from "@calimero-network/mero-react";
 import { IconAllIssues, IconMyIssues, IconBoard, IconMembers } from "./icons";
-import { JoinSyncBanner } from "@calimero-apps/join-sync";
+import { JoinSyncBanner } from "@calimero-network/mero-react";
 
 export interface SidebarProps {
   totalIssues: number;

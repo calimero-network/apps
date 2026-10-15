@@ -123,8 +123,3 @@ export async function deleteSpace() {
 export async function deleteForum() {
   /* as above */
 }
-
-/** Mirrors the real helper's shape; the shots never drive a failed join. */
-export function redeemFailureMessage(outcome: { message?: string }): string {
-  return outcome.message ?? "Could not join.";
-}

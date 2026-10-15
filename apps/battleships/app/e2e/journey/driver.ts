@@ -288,7 +288,7 @@ export const driver: AppDriver = {
     // After the join the app re-reads its lobbies and enters the new one once
     // its context resolves; when the context is slow it stays on the picker
     // with the lobby listed, and entering it is a click, as before.
-    const failed = page.getByTestId("invite-status").and(page.locator('[data-stage="failed"]'));
+    const failed = page.getByTestId("invite-prompt").and(page.locator('[data-stage="failed"]'));
     const row = page.getByTestId("lobby-row").filter({ hasText: lobbyName });
     const inside = page.locator(".naval-card-title", { hasText: lobbyName });
     await expect

@@ -292,10 +292,10 @@ export const driver: AppDriver = {
     // The prompt opens the joined team's calendars.
     const landed = page.waitForURL((u) => u.pathname === `/teams/${teamId}`, { timeout: 120_000 });
     const failed = page
-      .locator('[data-testid="invite-status"][data-stage="failed"]')
+      .locator('[data-testid="invite-prompt"][data-stage="failed"]')
       .waitFor({ state: "visible", timeout: 120_000 })
       .then(async () => {
-        throw new Error(`join refused: ${await page.getByTestId("invite-status").innerText()}`);
+        throw new Error(`join refused: ${await page.getByTestId("invite-prompt").innerText()}`);
       });
     landed.catch(() => undefined);
     failed.catch(() => undefined);

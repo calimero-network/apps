@@ -57,7 +57,10 @@ import {
   writeActiveRepo,
   clearPersistedWorkspace,
 } from "./workspacePersistence";
-import { markNamespaceJustJoined, useJoinSync } from "@calimero-apps/join-sync";
+import {
+  markNamespaceJustJoined,
+  useJoinSync,
+} from "@calimero-network/mero-react";
 
 export interface RepoEntry {
   contextId: string;
@@ -720,13 +723,21 @@ export function useWorkspace(): UseWorkspaceReturn {
   // what was joined, with a list that already shows it.
   useJoinedWorkspace((nsId) => void enterJoined(nsId));
 
-  // `reposLoading` going false is the signal the repo list answered — for the
-  // namespace that was active when it did, which is why the id is recorded
-  // rather than just a boolean.
+  // `reposLoading` going true and then false is the signal the repo list
+  // answered — for the namespace that was active when it did, which is why the
+  // id is recorded rather than just a boolean. The true half matters: on the
+  // render that switches into a just-joined workspace `reposLoading` is still
+  // false (the fetch starts in an effect), and taking that for an answer would
+  // end the invitation dialog's "Syncing…" before the node was asked.
   const [listedForNs, setListedForNs] = useState<string | null>(null);
+  const readingNs = useRef<string | null>(null);
   useEffect(() => {
-    if (!activeNs || reposLoading) return;
-    setListedForNs(activeNs);
+    if (!activeNs) return;
+    if (reposLoading) {
+      readingNs.current = activeNs;
+      return;
+    }
+    if (readingNs.current === activeNs) setListedForNs(activeNs);
   }, [activeNs, reposLoading]);
 
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({

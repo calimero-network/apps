@@ -1,34 +1,28 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
-import {
-  InviteStatusBanner,
+  InvitationDialog,
+  redeemInvitation,
   useInviteRedemption,
   type InviteRedeemer,
   type ParsedInvitation,
-} from "@calimero-apps/invite";
+  type RedeemOutcome,
+} from "@calimero-network/mero-react";
 import {
   getContextIdentities,
   joinContextById,
   joinNamespace,
   listNamespaces,
 } from "../api/adminApi";
+import { rpcRaw } from "../api/rpc";
 import { setContextId, setContextIdentity } from "../lib/mero";
 import { readInviteToken, type InvitePayload } from "../lib/invite";
 
 /** How long to keep trying the context once the namespace is joined. */
 const CONTEXT_JOIN_MS = 90_000;
 const CONTEXT_RETRY_MS = 3_000;
-
-type ContextJoin =
-  | { stage: "idle" }
-  | { stage: "joining"; contextId: string }
-  | { stage: "joined"; contextId: string }
-  | { stage: "failed"; contextId: string; message: string };
+/** How long to keep asking the joined context for its state. */
+const STATE_READ_MS = 90_000;
+const STATE_RETRY_MS = 2_000;
 
 const redeemer: InviteRedeemer = {
   join: (namespaceId, invitation) =>
@@ -36,26 +30,13 @@ const redeemer: InviteRedeemer = {
   memberships: async () => (await listNamespaces()).map((n) => n.namespaceId),
 };
 
-const box: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  padding: "10px 14px",
-  borderRadius: 8,
-  fontSize: 13,
-  background: "var(--color-bg-card)",
-  border: "1px solid var(--color-border)",
-};
+interface ScaffoldInvitation extends ParsedInvitation {
+  payload: InvitePayload;
+}
 
-const linkButton: CSSProperties = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  color: "inherit",
-  textDecoration: "underline",
-  cursor: "pointer",
-  fontSize: 12,
-};
+const short = (id: string) => `${id.slice(0, 16)}…`;
+const sleep = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Node B's whole join: an invitation link was opened, so ask, then join the
@@ -66,21 +47,24 @@ const linkButton: CSSProperties = {
  * desktop. Mounted in the signed-in layout, above every section, so it shows
  * whichever section is open; before sign-in the invitation is buffered.
  *
- * It asks first — joining gives Node A's namespace a peer on this node — and
- * then does what the wizard's joiner steps used to make you do by hand: join
- * the namespace with the signed invitation, then join and activate the context
- * the link names. The context join is retried: right after the namespace join
- * the node may not hold the context's membership yet.
+ * It is mero-react's `InvitationDialog`. It asks first — joining gives Node A's
+ * namespace a peer on this node — and then does what the wizard's joiner steps
+ * used to make you do by hand: join the namespace with the signed invitation,
+ * then join and activate the context the link names. The context join is
+ * retried: right after the namespace join the node may not hold the context's
+ * membership yet. The dialog stays on "Syncing…" until a read of that context's
+ * state (the store's `len`) has come back from this node.
  */
 export function InvitationPrompt({
   onContextJoined,
 }: {
   onContextJoined: (contextId: string) => void;
 }) {
-  const payloadRef = useRef<InvitePayload | null>(null);
   const onContextJoinedRef = useRef(onContextJoined);
   onContextJoinedRef.current = onContextJoined;
-  const [context, setContext] = useState<ContextJoin>({ stage: "idle" });
+  const [status, setStatus] = useState<string | null>(null);
+  /** The namespace whose joined context has answered a read. */
+  const [readFor, setReadFor] = useState<string | null>(null);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -89,16 +73,20 @@ export function InvitationPrompt({
     };
   }, []);
 
-  const parse = useCallback((token: string): ParsedInvitation | null => {
+  const parse = useCallback((token: string): ScaffoldInvitation | null => {
     const payload = readInviteToken(token);
-    payloadRef.current = payload;
     return payload
-      ? { namespaceId: payload.namespaceId, invitation: payload.invitation }
+      ? {
+          namespaceId: payload.namespaceId,
+          invitation: payload.invitation,
+          payload,
+        }
       : null;
   }, []);
 
+  /** Join and activate the context; the last error if it never would. */
   const joinContext = useCallback(async (contextId: string) => {
-    setContext({ stage: "joining", contextId });
+    setStatus(`Joined the namespace. Joining context ${short(contextId)}…`);
     const deadline = Date.now() + CONTEXT_JOIN_MS;
     let last = "";
     while (alive.current) {
@@ -107,115 +95,72 @@ export function InvitationPrompt({
         const identities = await getContextIdentities(contextId);
         setContextId(contextId);
         if (identities[0]) setContextIdentity(identities[0]);
-        if (!alive.current) return;
-        setContext({ stage: "joined", contextId });
-        onContextJoinedRef.current(contextId);
-        return;
+        return null;
       } catch (e) {
         last = e instanceof Error ? e.message : String(e);
       }
       if (Date.now() > deadline) break;
-      await new Promise((resolve) => setTimeout(resolve, CONTEXT_RETRY_MS));
+      await sleep(CONTEXT_RETRY_MS);
     }
-    if (alive.current)
-      setContext({
-        stage: "failed",
-        contextId,
-        message: last || "The context could not be joined.",
-      });
+    return last || "The context could not be joined.";
   }, []);
 
-  const onJoined = useCallback(
-    (namespaceId: string) => {
-      const payload = payloadRef.current;
-      if (payload?.namespaceId === namespaceId && payload.contextId)
-        void joinContext(payload.contextId);
+  /** Wait for the context's state to answer, empty or not. */
+  const readState = useCallback(
+    async (namespaceId: string, contextId: string) => {
+      const deadline = Date.now() + STATE_READ_MS;
+      while (alive.current) {
+        const envelope = await rpcRaw("len", {}, contextId).catch(() => null);
+        if (envelope && !envelope.error) {
+          if (alive.current) setReadFor(namespaceId);
+          return;
+        }
+        if (Date.now() > deadline) return;
+        await sleep(STATE_RETRY_MS);
+      }
     },
-    [joinContext],
+    [],
   );
 
-  const { state, accept, decline, retry, dismiss } = useInviteRedemption({
-    parse,
-    redeemer,
-    onJoined,
-  });
+  const redeem = useCallback(
+    async (parsed: ScaffoldInvitation): Promise<RedeemOutcome> => {
+      setReadFor(null);
+      try {
+        const outcome = await redeemInvitation(parsed, redeemer);
+        const contextId = parsed.payload.contextId;
+        if (outcome.status === "failed" || !contextId) return outcome;
+        const failure = await joinContext(contextId);
+        if (failure) {
+          // Kept, so "Try again" goes round once more: the namespace join is
+          // then already-member and only the context is retried.
+          return {
+            status: "failed",
+            namespaceId: parsed.namespaceId,
+            message: `Joined the namespace, but not context ${short(contextId)}: ${failure}`,
+            reason: "unknown",
+            retryable: true,
+          };
+        }
+        onContextJoinedRef.current(contextId);
+        void readState(parsed.namespaceId, contextId);
+        return outcome;
+      } finally {
+        setStatus(null);
+      }
+    },
+    [joinContext, readState],
+  );
 
-  const close = useCallback(() => {
-    setContext({ stage: "idle" });
-    dismiss();
-  }, [dismiss]);
+  const redemption = useInviteRedemption({ parse, redeem });
+  const { state } = redemption;
 
-  if (context.stage !== "idle") {
-    const short = `${context.contextId.slice(0, 16)}…`;
-    return (
-      <div style={{ margin: "12px 16px 0" }}>
-        {context.stage === "failed" ? (
-          <div
-            data-testid="invite-error"
-            role="alert"
-            style={{
-              ...box,
-              color: "var(--color-error)",
-              borderColor: "var(--color-error)",
-            }}
-          >
-            <span style={{ flex: 1 }}>
-              Joined the namespace, but not context <code>{short}</code>:{" "}
-              {context.message}
-            </span>
-            <button
-              type="button"
-              style={linkButton}
-              onClick={() => void joinContext(context.contextId)}
-            >
-              Try again
-            </button>
-            <button type="button" style={linkButton} onClick={close}>
-              Dismiss
-            </button>
-          </div>
-        ) : (
-          <div
-            data-testid="invite-context"
-            data-stage={context.stage}
-            role="status"
-            style={box}
-          >
-            <span style={{ flex: 1 }}>
-              {context.stage === "joining" ? (
-                <>
-                  Joined the namespace. Joining context <code>{short}</code>…
-                </>
-              ) : (
-                <>
-                  Joined the namespace and context <code>{short}</code> —
-                  active. State syncs from Node A.
-                </>
-              )}
-            </span>
-            {context.stage === "joined" && (
-              <button type="button" style={linkButton} onClick={close}>
-                Dismiss
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (state.stage === "idle") return null;
   return (
-    <div style={{ margin: "12px 16px 0" }}>
-      <InviteStatusBanner
-        state={state}
-        noun="namespace"
-        onAccept={accept}
-        onDecline={decline}
-        onRetry={retry}
-        onDismiss={dismiss}
-        style={{ background: "var(--color-bg-card)" }}
-      />
-    </div>
+    <InvitationDialog
+      redemption={redemption}
+      noun="namespace"
+      appName="Calimero E2E"
+      status={status}
+      synced={state.stage === "joined" && readFor === state.namespaceId}
+    />
   );
 }

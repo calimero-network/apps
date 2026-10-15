@@ -3,7 +3,8 @@ import { ContextApiDataSource } from "./nodeApiDataSource";
 
 const { mockCreateContext } = vi.hoisted(() => ({ mockCreateContext: vi.fn() }));
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getNodeUrl: () => "http://localhost:2428",
 }));
 

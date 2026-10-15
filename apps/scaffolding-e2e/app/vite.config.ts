@@ -17,7 +17,7 @@ export default defineConfig({
     exclude: ["**/node_modules/**", "tests/**"],
     server: {
       deps: {
-        // @calimero-network/mero-platform (reached through @calimero-apps/invite)
+        // @calimero-network/mero-platform (reached through mero-react's invitations)
         // ships directory imports (`from "./bridge"`), which Node's ESM resolver
         // rejects; inlining routes it through Vite's resolver instead.
         inline: ["@calimero-network/mero-platform"],

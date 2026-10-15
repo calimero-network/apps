@@ -12,7 +12,7 @@
  *   - it has already been shown this session — returning to play should not
  *     pay for the pitch twice.
  */
-import { peekInvitation } from '@calimero-apps/invite';
+import { peekInvitation } from '@calimero-network/mero-react';
 import { createRoot } from 'react-dom/client';
 
 import LandingPage from './LandingPage';

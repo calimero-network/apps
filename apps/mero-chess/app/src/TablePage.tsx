@@ -1,5 +1,9 @@
 import { useState, type ReactNode } from "react";
-import { clearContextId } from "@calimero-network/mero-react";
+import {
+  clearContextId,
+  useContextGroup,
+  useJoinSync,
+} from "@calimero-network/mero-react";
 import { ChessBoard } from "./ChessBoard";
 import type { GameSummary, TableView } from "./generated/MeroChessClient";
 import { InviteCard } from "./InviteCard";
@@ -20,6 +24,14 @@ export function TablePage({ contextId }: { contextId: string }) {
   const table = useChessTable(contextId);
   const [name, setName] = useState(storedName);
   useAnnounce(contextId, name);
+
+  // After a join, the invitation dialog waits on this: the first `table()`
+  // read that comes back, an empty board and no players included, is the
+  // table having arrived. A read that fails is retried by the hook's own poll.
+  // Tables live directly in their namespace (see `ContextPicker`), so the
+  // context's group is the namespace that was joined.
+  const { groupId: namespaceId } = useContextGroup(contextId);
+  useJoinSync({ namespaceId, settled: table.view !== null });
 
   function switchTable() {
     // A reload rather than local state: the provider reads the stored context

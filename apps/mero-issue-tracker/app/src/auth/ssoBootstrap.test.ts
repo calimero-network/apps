@@ -24,7 +24,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const setNodeUrl = vi.fn();
 const setApplicationId = vi.fn();
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   setNodeUrl: (u: string) => setNodeUrl(u),
   setApplicationId: (id: string) => setApplicationId(id),
 }));
@@ -82,7 +83,7 @@ Object.assign(globalThis, {
 const { bootstrapSsoAndInvitation } = await import("./ssoBootstrap");
 const { APP_PACKAGE } = await import("../config");
 const { peekInvitation, resetInvitationCaptureForTests } = await import(
-  "@calimero-apps/invite"
+  "@calimero-network/mero-react"
 );
 
 const NODE = "http://localhost:2528";
@@ -139,8 +140,8 @@ describe("persistAuthHash (via bootstrapSsoAndInvitation)", () => {
 });
 
 describe("invitation capture (via bootstrapSsoAndInvitation)", () => {
-  // The bootstrap delegates to the shared capture (`@calimero-apps/invite`,
-  // which has its own suite). What is pinned HERE is
+  // The bootstrap delegates to mero-react's shared capture (which has its own
+  // suite). What is pinned HERE is
   // the wiring — that boot starts capture at all, and that starting it does not
   // disturb the auth hash. Both were regressions waiting to happen: the capture
   // MUST run before React mounts, because App.tsx redirects a signed-in visitor

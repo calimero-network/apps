@@ -749,10 +749,6 @@ td.mono { font-family: var(--mono); }
 .received li.bad { color: var(--danger); }
 
 /* ── the join prompt ───────────────────────────────────────────────────── */
-.invite-prompt { margin-top: 18px; border: 1px solid color-mix(in srgb, var(--accent-ink) 35%, transparent); background: var(--accent-soft); border-radius: 18px; padding: 18px; }
-.invite-prompt .lead { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
-.invite-prompt .lead strong { font-size: 15px; }
-.invite-prompt .kv { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
 
 /* ── phone ─────────────────────────────────────────────────────────────── */
 @media (max-width: 760px) {

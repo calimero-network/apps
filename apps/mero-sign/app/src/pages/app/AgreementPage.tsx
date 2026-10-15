@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useJoinSync } from '@calimero-network/mero-react';
 import {
   CheckCircle2,
   Clock,
@@ -296,6 +297,13 @@ export default function AgreementPage() {
       cancelled = true;
     };
   }, [app, contextId, loadDetails, loadDocuments]);
+
+  // An invitation to a workspace holding one agreement lands HERE, not on the
+  // workspace's list, so this page is the one that can say the joined
+  // workspace's data has arrived: the agreement's details came back. That ends
+  // the invitation dialog's "Syncing…". The workspace is the active one, which
+  // the join set before navigating.
+  useJoinSync({ namespaceId: workspaceId, settled: details !== null });
 
   useEffect(() => {
     function onOutside(e: MouseEvent) {

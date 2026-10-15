@@ -1,14 +1,13 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  InviteStatusBanner,
-  useInviteRedemption,
-  type ParsedInvitation,
-} from "@calimero-apps/invite";
 import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
-import { useMero } from "@calimero-network/mero-react";
+import {
+  InvitationDialog,
+  useInviteRedemption,
+  useMero,
+  type ParsedInvitation,
+} from "@calimero-network/mero-react";
 import { useApi } from "../api/useApi";
-import { useToast } from "../contexts/ToastContext";
 import { decodeInvitationObject } from "../utils/invitation";
 import { setStoredTeamName } from "../utils/teamName";
 
@@ -35,24 +34,25 @@ function parseTeamInvitation(raw: string): ParsedInvitation | null {
 }
 
 /**
- * An invitation link opened this app.
+ * An invitation link opened this app: mero-react's `InvitationDialog`.
  *
  * Mounted once, above the routes, so a link opened on any page — the landing
  * page, the editor, the teams list — is offered wherever the person is.
  * Capture is primed in `main.tsx` and buffers the invitation until the session
  * can join, so arriving before login loses nothing. It asks first: joining
  * puts this node into someone else's team, which a forwarded link must not do
- * on its own. Once joined it opens the team, as the teams list would.
+ * on its own. Once joined it opens the team, as the teams list would, and
+ * stays on "Syncing…" until ProjectsPage's `useJoinSync` sees the team's
+ * project list come back from the node.
  */
 export default function InvitationPrompt() {
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const { isAuthenticated, isLoading } = useMero();
   // The session-aware API (see api/useApi): on an account the join redeems
   // through the admitter's route; the raw node route is a 403 there.
   const api = useApi();
 
-  /** The two calls @calimero-apps/invite needs from this app. */
+  /** The two calls the standard join needs from this app. */
   const redeemer = useMemo(
     () => ({
       join: async (namespaceId: string, invitation: unknown) => {
@@ -68,51 +68,12 @@ export default function InvitationPrompt() {
     [api],
   );
 
-  const invite = useInviteRedemption({
+  const redemption = useInviteRedemption({
     parse: parseTeamInvitation,
     redeemer,
     enabled: isAuthenticated && !isLoading,
     onJoined: (namespaceId) => navigate(`/teams/${namespaceId}/projects`),
   });
 
-  // Landed: the team is on screen now, so the banner hands over to a toast
-  // rather than sitting over the page with nothing left to ask.
-  const { stage } = invite.state;
-  const { dismiss } = invite;
-  useEffect(() => {
-    if (stage !== "joined" && stage !== "already-member") return;
-    showToast(
-      stage === "joined"
-        ? "Joined team. Syncing artwork…"
-        : "You are already in this team.",
-      "success",
-    );
-    dismiss();
-  }, [stage, dismiss, showToast]);
-
-  if (stage === "idle") return null;
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: "1rem",
-        left: "50%",
-        transform: "translateX(-50%)",
-        width: "min(36rem, calc(100% - 2rem))",
-        zIndex: 1000,
-        borderRadius: "0.5rem",
-        background: "var(--bg-1)",
-        boxShadow: "var(--shadow-sm)",
-      }}
-    >
-      <InviteStatusBanner
-        state={invite.state}
-        noun="team"
-        onAccept={invite.accept}
-        onDecline={invite.decline}
-        onRetry={invite.retry}
-        onDismiss={invite.dismiss}
-      />
-    </div>
-  );
+  return <InvitationDialog redemption={redemption} noun="team" appName="Mero PixArt" />;
 }

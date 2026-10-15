@@ -39,7 +39,7 @@
 //      or, mostly, missing.
 //
 // Pure functions only — no DOM, no session. The capture side is
-// `primeInvitationCapture` from `@calimero-apps/invite`, primed in `main.tsx`.
+// `primeInvitationCapture` from `@calimero-network/mero-react`, primed in `main.tsx`.
 
 import { createLink, parseIntent } from "@calimero-network/mero-platform";
 

@@ -2,7 +2,7 @@
   "name": "mero-pass",
   "private": true,
   "version": "1.0.0",
-  "description": "Mero Pass — a peer-to-peer secret manager on Calimero",
+  "description": "Mero Pass \u2014 a peer-to-peer secret manager on Calimero",
   "keywords": [
     "calimero",
     "secrets",
@@ -30,8 +30,6 @@
   },
   "dependencies": {
     "@calimero-apps/glass": "workspace:*",
-    "@calimero-apps/invite": "workspace:*",
-    "@calimero-apps/join-sync": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",

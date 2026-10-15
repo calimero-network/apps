@@ -118,11 +118,6 @@ export async function redeemInvite() {
   };
 }
 
-/** Mirrors the real helper's surface; the harness never fails a join. */
-export function redeemFailureMessage(outcome: { message?: string }): string {
-  return outcome.message ?? "Could not join";
-}
-
 export async function enterRoomContext() {
   return MY_IDENTITY;
 }

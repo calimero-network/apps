@@ -155,28 +155,10 @@ export const driver: AppDriver = {
   },
 
   async joined(actor) {
-    const page = actor.page;
-    // The prompt was accepted; a join reloads into the context it names, where the
-    // invitation card is gone. Waiting for that, not just for the context view,
-    // matters when the actor was already inside another context. A refusal stays
-    // on screen with the reason, so fail with that, not a timeout.
-    const inside = page.getByRole("heading", { name: "Write", exact: true });
-    const prompt = page.getByRole("heading", {
-      name: "Join with an invitation",
-      exact: true,
-    });
-    const refused = page.getByTestId("invite-error");
-    const where = async () =>
-      (await refused.isVisible())
-        ? "refused"
-        : (await inside.isVisible()) && !(await prompt.isVisible())
-          ? "in"
-          : "waiting";
-    await expect
-      .poll(where, { timeout: 120_000, intervals: [500, 1_000] })
-      .not.toBe("waiting");
-    if ((await where()) === "refused")
-      throw new Error(`join refused: ${await refused.innerText()}`);
+    // The dialog was accepted and has closed by itself, which it does only
+    // once the panel read the joined context's entries. The join opens that
+    // context in place, so the panel is what is on screen now.
+    await waitForPanel(actor.page);
   },
 
   async afterReload(actor) {

@@ -14,7 +14,7 @@
  */
 import bs58 from "bs58";
 import { deflateSync, inflateSync } from "fflate";
-import { buildInviteLink } from "@calimero-apps/invite";
+import { buildInviteLink } from "@calimero-network/mero-react";
 import { APP_PACKAGE } from "../config";
 
 /**

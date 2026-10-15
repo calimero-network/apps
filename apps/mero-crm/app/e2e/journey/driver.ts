@@ -355,11 +355,11 @@ export const driver: AppDriver = {
       { timeout: SYNC },
     );
     const failed = page
-      .locator('[data-testid="invite-status"][data-stage="failed"]')
+      .locator('[data-testid="invite-prompt"][data-stage="failed"]')
       .waitFor({ state: "visible", timeout: SYNC })
       .then(async () => {
         throw new Error(
-          `join refused: ${await page.getByTestId("invite-status").innerText()}`,
+          `join refused: ${await page.getByTestId("invite-prompt").innerText()}`,
         );
       });
     landed.catch(() => undefined);

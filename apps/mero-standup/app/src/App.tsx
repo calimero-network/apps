@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { ConnectButton, clearContextId, useMero } from "@calimero-network/mero-react";
+import {
+  ConnectButton,
+  InvitationDialog,
+  clearContextId,
+  useContextGroup,
+  useMero,
+} from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
 import { InviteCard } from "./InviteCard";
-import { JoinCard } from "./JoinCard";
 import { StandupBoard } from "./StandupBoard";
 import { WeekDigest } from "./WeekDigest";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
@@ -13,15 +18,72 @@ import { useRead, useTeam, type Team } from "./useTeam";
 
 type Tab = "standup" | "week" | "decisions" | "invite";
 
+/** A team opened in this page, ahead of the one the provider read from storage. */
+interface OpenedTeam {
+  contextId: string;
+  namespaceId: string;
+}
+
 export function App() {
-  const { isAuthenticated, isLoading, applicationId, contextId, logout } = useMero();
+  const { isAuthenticated, isLoading, applicationId, contextId: stored, logout } =
+    useMero();
+  const [opened, setOpened] = useState<OpenedTeam | null>(null);
+  const contextId = opened?.contextId ?? stored;
   // Mounted at the root, unconditionally: an invitation captured before login
-  // has to be redeemed as soon as the session exists.
-  const invitation = useJoinFromInvitation();
+  // has to be redeemed as soon as the session exists. Joining opens the team in
+  // place, and the dialog holds "Syncing…" until its board has read the team's
+  // updates (`useJoinSync` in StandupBoard).
+  const invitation = useJoinFromInvitation({
+    onOpen: (contextId, namespaceId) => setOpened({ contextId, namespaceId }),
+  });
   const [theme, setTheme] = useTheme();
 
-  const join = <JoinCard join={invitation} />;
+  return (
+    <>
+      <InvitationDialog
+        redemption={invitation}
+        noun="team"
+        appName="Mero Standup"
+        // The grant is the namespace, not just the team the link names, and the
+        // person accepting should know that before they click.
+        detail="Joining makes this node a member of the namespace this team lives in, and the team's updates and decisions sync here from the other members."
+      />
+      <Screen
+        isLoading={isLoading}
+        isAuthenticated={isAuthenticated}
+        applicationId={applicationId}
+        contextId={contextId}
+        joinedNamespace={
+          opened && opened.contextId === contextId ? opened.namespaceId : null
+        }
+        theme={theme}
+        setTheme={setTheme}
+        logout={logout}
+      />
+    </>
+  );
+}
 
+/** Whichever of the four states the session is in. */
+function Screen({
+  isLoading,
+  isAuthenticated,
+  applicationId,
+  contextId,
+  joinedNamespace,
+  theme,
+  setTheme,
+  logout,
+}: {
+  isLoading: boolean;
+  isAuthenticated: boolean;
+  applicationId: string | null;
+  contextId: string | null;
+  joinedNamespace: string | null;
+  theme: Theme;
+  setTheme: (t: Theme) => void;
+  logout: () => void;
+}) {
   if (isLoading) {
     return (
       <Shell>
@@ -56,15 +118,23 @@ export function App() {
     return (
       <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={logout} />}>
         <ContextPicker applicationId={applicationId} />
-        {join}
+        <div className="card">
+          <h2>Join with an invitation</h2>
+          <p className="empty">
+            Open an invitation link someone sent you. It opens this app and asks
+            before joining.
+          </p>
+        </div>
       </Shell>
     );
   }
 
   return (
+    // Keyed, so a team opened in place starts from nothing of the last one's.
     <TeamView
+      key={contextId}
       contextId={contextId}
-      join={invitation.state.stage !== "idle" ? join : null}
+      joinedNamespace={joinedNamespace}
       theme={theme}
       setTheme={setTheme}
       onLogout={logout}
@@ -98,18 +168,23 @@ function Shell({
 
 function TeamView({
   contextId,
-  join,
+  joinedNamespace,
   theme,
   setTheme,
   onLogout,
 }: {
   contextId: string;
-  join: React.ReactNode;
+  /** The namespace, when the team was just joined in this page. */
+  joinedNamespace: string | null;
   theme: Theme;
   setTheme: (t: Theme) => void;
   onLogout: () => void;
 }) {
   const team = useTeam(contextId);
+  // This app's contexts live directly in the namespace (see ContextPicker), so
+  // the context's group is the namespace an invitation joined.
+  const { groupId } = useContextGroup(joinedNamespace ? null : contextId);
+  const namespaceId = joinedNamespace ?? groupId;
   const [tab, setTab] = useState<Tab>("standup");
   const [decisionDraft, setDecisionDraft] = useState<DecisionDraft | null>(null);
   // Read once from the contract: it is the same string every view's `author`
@@ -144,7 +219,6 @@ function TeamView({
         />
       }
     >
-      {join}
       {me.error && <pre className="err">{me.error}</pre>}
       {me.data && myName.data === "" && <Welcome team={team} contextId={contextId} />}
 
@@ -172,6 +246,7 @@ function TeamView({
       {tab === "standup" && (
         <StandupBoard
           team={team}
+          namespaceId={namespaceId}
           me={me.data}
           onLogDecision={(draft) => {
             setDecisionDraft(draft);

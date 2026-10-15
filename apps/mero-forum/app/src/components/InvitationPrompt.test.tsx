@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -8,37 +7,50 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import type { CapturedInvitation } from "@calimero-apps/invite";
 import { encodeInvite } from "../lib/inviteCodec";
 import InvitationPrompt from "./InvitationPrompt";
 
 // The prompt's one decision worth pinning: whether an invitation is acked. Acked
 // on a join (or an already-held one) and on a failure no retry can fix; kept on
-// one that could pass, so the next load tries again.
+// one that could pass, so the next load tries again. The link is opened for real
+// through mero-react's capture, so "acked" is the store letting it go.
 
 const h = vi.hoisted(() => ({
-  listener: null as null | ((c: CapturedInvitation) => void),
   admin: {} as Record<string, (...a: unknown[]) => Promise<unknown>>,
 }));
 
-vi.mock("@calimero-apps/invite", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@calimero-apps/invite")>()),
-  onInvitation: (listener: (c: CapturedInvitation) => void) => {
-    h.listener = listener;
-    return () => {};
-  },
-}));
-
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ mero: { admin: h.admin } }),
 }));
 
+const { peekInvitation, resetInvitationCaptureForTests } =
+  await import("@calimero-network/mero-react");
+
+const TOKEN = encodeInvite({
+  invitation: {
+    invitation: { groupId: "ns1" },
+    inviter_signature: "sig",
+  } as never,
+  groupAlias: "Team",
+});
+
+beforeEach(() => {
+  resetInvitationCaptureForTests();
+  localStorage.clear();
+  sessionStorage.clear();
+  window.history.replaceState(null, "", "/");
+});
 afterEach(cleanup);
 
 const httpError = (status: number, message: string) =>
   Object.assign(new Error(message), { status });
 
-function setup(
+/** Whether the invitation is still held for another attempt. */
+const held = () => peekInvitation() !== null;
+
+/** Open the link as the links page would, and (by default) press Join. */
+async function setup(
   admin: {
     joinNamespace: () => Promise<unknown>;
     listNamespaces?: () => Promise<unknown>;
@@ -49,6 +61,8 @@ function setup(
     listNamespaces: () => Promise.resolve([]),
     ...admin,
   };
+  resetInvitationCaptureForTests();
+  window.history.replaceState(null, "", `/?invitation=${TOKEN}`);
   render(
     <MemoryRouter initialEntries={["/"]}>
       <InvitationPrompt />
@@ -58,76 +72,84 @@ function setup(
       </Routes>
     </MemoryRouter>,
   );
-  const resolve = vi.fn();
-  const token = encodeInvite({
-    invitation: {
-      invitation: { groupId: "ns1" },
-      inviter_signature: "sig",
-    } as never,
-    groupAlias: "Team",
-  });
-  act(() =>
-    h.listener?.({
-      token,
-      params: { invitation: token },
-      resolve,
-      autoJoin: false,
-    }),
-  );
+  expect(
+    await screen.findByRole("dialog", { name: "Join “Team”?" }),
+  ).toBeInTheDocument();
   if (click) fireEvent.click(screen.getByTestId("invite-accept"));
-  return resolve;
 }
 
 describe("InvitationPrompt", () => {
-  it("asks before joining, naming what the invitation is for", () => {
+  it("asks before joining, naming what the invitation is for", async () => {
     const joinNamespace = vi.fn(() => Promise.resolve());
-    const resolve = setup({ joinNamespace }, { click: false });
+    await setup({ joinNamespace }, { click: false });
+    expect(screen.getByTestId("invite-prompt")).toHaveAttribute(
+      "data-stage",
+      "awaiting-confirmation",
+    );
     expect(screen.getByTestId("invite-prompt").textContent).toContain(
-      "You have been invited to Team",
+      "Joining gives you access to the space and every forum in it.",
     );
     expect(screen.getByTestId("invite-decline")).toBeInTheDocument();
     expect(joinNamespace).not.toHaveBeenCalled();
-    expect(resolve).not.toHaveBeenCalled();
+    expect(held()).toBe(true);
   });
 
-  it("acks and enters the space on a join", async () => {
-    const resolve = setup({ joinNamespace: () => Promise.resolve() });
+  it("acks on Not now, so the prompt does not come back", async () => {
+    const joinNamespace = vi.fn(() => Promise.resolve());
+    await setup({ joinNamespace }, { click: false });
+    fireEvent.click(screen.getByTestId("invite-decline"));
+    expect(screen.queryByTestId("invite-prompt")).toBeNull();
+    expect(held()).toBe(false);
+    expect(joinNamespace).not.toHaveBeenCalled();
+  });
+
+  it("acks, enters the space and waits for its data on a join", async () => {
+    await setup({ joinNamespace: () => Promise.resolve() });
     await screen.findByTestId("in-space");
-    expect(resolve).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(screen.getByTestId("invite-prompt")).toHaveAttribute(
+        "data-stage",
+        "syncing",
+      ),
+    );
+    expect(held()).toBe(false);
   });
 
   it("acks and enters the space when the join failed but the node lists it", async () => {
-    const resolve = setup({
+    await setup({
       joinNamespace: () => Promise.reject(new Error("The request was aborted")),
       listNamespaces: () => Promise.resolve([{ namespaceId: "ns1" }]),
     });
     await screen.findByTestId("in-space");
-    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(held()).toBe(false);
   });
 
-  it("acks a refused invitation and says why", async () => {
-    const resolve = setup({
+  it("acks a refused invitation and says why, with no retry", async () => {
+    await setup({
       joinNamespace: () => Promise.reject(httpError(409, "member was removed")),
     });
-    await screen.findByText(
+    expect(await screen.findByTestId("invite-error")).toHaveTextContent(
       "You can't join this space with this invitation. Ask an admin to invite you again.",
     );
-    expect(resolve).toHaveBeenCalledTimes(1);
-    expect(screen.queryByTestId("invite-prompt")).toBeNull();
-    expect(screen.getByTestId("invite-error").textContent).toContain(
-      "You can't join this space with this invitation.",
-    );
+    expect(held()).toBe(false);
+    expect(screen.queryByTestId("invite-retry")).toBeNull();
   });
 
   it("keeps the invitation when no one is online to let you in", async () => {
-    const resolve = setup({
-      joinNamespace: () => Promise.reject(httpError(503, "no peer available")),
-    });
-    await screen.findByText(/No one in this space is online/);
-    await waitFor(() =>
-      expect(screen.getByTestId("invite-accept")).not.toBeDisabled(),
+    const joinNamespace = vi.fn((): Promise<unknown> =>
+      Promise.reject(httpError(503, "no peer available")),
     );
-    expect(resolve).not.toHaveBeenCalled();
-    expect(screen.getByTestId("invite-prompt")).toBeInTheDocument();
+    await setup({ joinNamespace });
+    expect(await screen.findByTestId("invite-error")).toHaveTextContent(
+      /No one in this space is online/,
+    );
+    expect(held()).toBe(true);
+
+    // And the retry really is one: it joins (without asking again), then acks.
+    joinNamespace.mockImplementation(() => Promise.resolve());
+    fireEvent.click(screen.getByTestId("invite-retry"));
+    await screen.findByTestId("in-space");
+    expect(held()).toBe(false);
+    expect(joinNamespace).toHaveBeenCalledTimes(2);
   });
 });

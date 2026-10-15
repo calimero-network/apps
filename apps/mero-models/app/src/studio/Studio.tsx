@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { clearContextId, useMero } from "@calimero-network/mero-react";
+import {
+  clearContextId,
+  useContextGroup,
+  useJoinSync,
+  useMero,
+} from "@calimero-network/mero-react";
 import * as cmd from "../editor/commands";
 import { rememberName, storedName, useJoin, usePresence, useSceneSync } from "../editor/hooks";
 import { IMPORT_ACCEPT, download, exportScene, importFile, type ExportFormat } from "../editor/io";
@@ -41,7 +46,14 @@ import { GameExportDialog } from "./GameExport";
  * The modeller: menu bar across the top, tools down the left, the 3D view in
  * the middle, outliner and properties on the right, status along the bottom.
  */
-export function Studio({ contextId }: { contextId: string }) {
+export function Studio({
+  contextId,
+  namespaceId: joinedNamespace = null,
+}: {
+  contextId: string;
+  /** The namespace, when the scene was just joined and the caller knows it. */
+  namespaceId?: string | null;
+}) {
   const { sync, saving } = useSceneSync(contextId);
   // One texture cache per open scene, shared by the viewport, the panels and export.
   const textures = useMemo(() => (sync ? new TextureCache(sync.blobs) : null), [sync]);
@@ -63,6 +75,19 @@ export function Studio({ contextId }: { contextId: string }) {
 
   const state = useEditor();
   const active = activeObject(state);
+
+  // Ends the invitation dialog's "Syncing…" for a scene just joined. `loaded`
+  // is set by the first read of the scene that came back, an empty scene
+  // included; a joined scene whose state has not arrived yet fails that read
+  // and is retried on every event and poll. `sync` is this mount's own, so a
+  // `loaded` left over from the previous scene cannot count.
+  // This app's scenes live directly in the namespace (see ScenePicker), so the
+  // context's group is the namespace the invitation joined.
+  const { groupId } = useContextGroup(joinedNamespace ? null : contextId);
+  useJoinSync({
+    namespaceId: joinedNamespace ?? groupId,
+    settled: sync !== null && state.loaded,
+  });
   const canEdit = state.role !== "viewer";
 
   const onEnvironment = useCallback(

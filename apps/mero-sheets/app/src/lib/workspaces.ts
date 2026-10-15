@@ -19,9 +19,8 @@ import type { MeroJs } from '@calimero-network/mero-js';
 import {
   describeInviteFailure,
   redeemInvitation,
-  shouldRetain,
   type RedeemOutcome,
-} from '@calimero-apps/invite';
+} from '@calimero-network/mero-react';
 import {
   encodeInvite,
   namespaceIdOfInvite,
@@ -317,9 +316,8 @@ export interface AcceptedInvite {
  * A workspace join the node did not let through, as `redeemInvitation` read it.
  *
  * The message is already the sentence to show (in this app's word,
- * "workspace"), so the invitation prompt can render `e.message` as it is;
- * `outcome` is there to decide whether to keep the invitation (see
- * `keepsInvitation`).
+ * "workspace"); `outcome` is what the invitation prompt hands its dialog, which
+ * keeps or lets go of the invitation by it.
  */
 export class InviteRedeemError extends Error {
   readonly outcome: Extract<RedeemOutcome, { status: 'failed' }>;
@@ -328,18 +326,6 @@ export class InviteRedeemError extends Error {
     this.name = 'InviteRedeemError';
     this.outcome = outcome;
   }
-}
-
-/**
- * Whether a failed accept should leave a captured invitation for another try.
- *
- * True for a failure a later attempt could fix (no member online yet, a flaky
- * node) — and for any error that is not a refused join, as before. False once
- * the node has refused this invitation for good, which would otherwise replay a
- * dead link on every load.
- */
-export function keepsInvitation(e: unknown): boolean {
-  return e instanceof InviteRedeemError ? shouldRetain(e.outcome) : true;
 }
 
 /**

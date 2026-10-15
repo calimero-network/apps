@@ -200,7 +200,7 @@ test.describe("an invite link handed to the running desktop app", () => {
       ),
       code,
     );
-    await expect(page.getByTestId("invite-status")).toContainText("far lands");
+    await expect(page.getByRole("dialog", { name: "Join “far lands”?" })).toBeVisible();
     expect(state.methods).not.toContain("leave"); // still playing until Join
 
     const reloaded = page.waitForEvent("load");

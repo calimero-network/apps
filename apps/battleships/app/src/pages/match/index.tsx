@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
 } from '@calimero-network/mero-ui';
 import {
+  useJoinSync,
   useMero,
 } from '@calimero-network/mero-react';
 import { createLobbyClient, createGameClient, LobbyClient, GameClient } from '../../features/kv/api';
@@ -101,6 +102,16 @@ export default function MatchPage() {
 
   // Lobby API and context
   const [lobbyApi, setLobbyApi] = useState<LobbyClient | null>(null);
+  // The lobby whose match list has come back from the node, empty or not.
+  // Keyed by namespace AND context: for one render after the selection moves
+  // the hook still reports the previous lobby's context, and a read of that
+  // must not count for the new namespace.
+  const [lobbyReadFor, setLobbyReadFor] = useState<{
+    namespaceId: string;
+    contextId: string;
+  } | null>(null);
+  const namespaceIdRef = useRef(lobby.namespaceId);
+  namespaceIdRef.current = lobby.namespaceId;
   const [currentContext, setCurrentContext] = useState<{
     applicationId: string;
     contextId: string;
@@ -285,6 +296,17 @@ export default function MatchPage() {
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- once per navigation that carries a join
   }, [location.key, joinedLobbyId]);
+
+  // A lobby just joined from an invitation link holds the invitation dialog on
+  // "Syncing…" until its own state has been read here: the match list, read
+  // through the lobby context once this node has entered it.
+  useJoinSync({
+    namespaceId: lobby.namespaceId,
+    settled:
+      lobbyReadFor !== null &&
+      lobbyReadFor.namespaceId === lobby.namespaceId &&
+      lobbyReadFor.contextId === lobby.lobbyContextId,
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -568,6 +590,7 @@ export default function MatchPage() {
     }
 
     const lobbyContextId = lobby.lobbyContextId;
+    const namespaceId = namespaceIdRef.current;
     let cancelled = false;
 
     (async () => {
@@ -620,7 +643,13 @@ export default function MatchPage() {
           contextId: context.contextId,
           nodeUrl: nodeUrl || defaultNodeUrl,
         });
-        try { const summaries = await client.getMatches(); if (!cancelled) setMyMatches(summaries); } catch { /* noop */ }
+        try {
+          const summaries = await client.getMatches();
+          if (!cancelled) {
+            setMyMatches(summaries);
+            if (namespaceId) setLobbyReadFor({ namespaceId, contextId: lobbyContextId });
+          }
+        } catch { /* noop */ }
         if (!cancelled) setCurrentUser(executorKey);
       } catch (e) {
         console.error('Lobby API init failed:', e);

@@ -1,12 +1,13 @@
 import { useRef } from "react";
-import { setContextId, useMero } from "@calimero-network/mero-react";
-import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
 import {
+  setContextId,
   useInviteRedemption,
+  useMero,
   type InviteRedeemer,
   type InviteRedemption,
   type ParsedInvitation,
-} from "@calimero-apps/invite";
+} from "@calimero-network/mero-react";
+import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
 import {
   decodeInvitationPayload,
   parseInvitationPayload,
@@ -16,9 +17,7 @@ import {
 export type ModelsInvitation = ParsedInvitation & { contextId: string };
 
 /** The redemption, with `parsed` carrying the context this app's links name. */
-export type JoinFromInvitation = Omit<InviteRedemption, "parsed"> & {
-  parsed: ModelsInvitation | null;
-};
+export type JoinFromInvitation = InviteRedemption<ModelsInvitation>;
 
 /** Read a link's token into what the join needs, or `null` if it is not one. */
 export function readInvitation(token: string): ModelsInvitation | null {
@@ -44,15 +43,22 @@ export function readInvitation(token: string): ModelsInvitation | null {
  *
  * The invitation is acked — permanently dropped — on success, or on a failure
  * that can never succeed; anything else is kept and offered again on the next
- * load. `@calimero-apps/invite` decides which, and treats "the request failed
- * but the namespace is now listed" as success: the desktop proxy aborts at 30s
- * while a join can take ~95s and land anyway.
+ * load. mero-js decides which, and treats "the request failed but the namespace
+ * is now listed" as success: the desktop proxy aborts at 30s while a join can
+ * take ~95s and land anyway.
  */
 export function useJoinFromInvitation({
   landingPath,
+  onOpen,
 }: {
   /** Where the joined context opens, for an app whose landing page is elsewhere. */
   landingPath?: string;
+  /**
+   * Open the joined scene in this page. Without it (or on an account, see
+   * below) the page reloads into it instead, which also ends the invitation
+   * dialog: a node session should always pass it.
+   */
+  onOpen?: (contextId: string, namespaceId: string) => void;
 } = {}): JoinFromInvitation {
   // `admin`, NOT `mero.admin`. `mero` is the raw client, and on a delegated
   // (account) session its transport is the relay: `mero.admin.joinNamespace`
@@ -100,7 +106,7 @@ export function useJoinFromInvitation({
     },
   };
 
-  const redemption = useInviteRedemption({
+  return useInviteRedemption<ModelsInvitation>({
     parse: (token) => {
       const parsed = readInvitation(token);
       contextId.current = parsed?.contextId ?? null;
@@ -109,22 +115,24 @@ export function useJoinFromInvitation({
     redeemer,
     enabled: isAuthenticated,
     // `already-member` lands here too: a link followed twice, or a join the
-    // proxy gave up on that landed anyway. The invitation is already acked, so
-    // the reload cannot replay it; reloading is what makes the provider pick up
-    // the new context (see `ContextPicker.select`).
-    onJoined: () => {
-      if (contextId.current) setContextId(contextId.current);
-      if (landingPath && window.location.pathname !== landingPath) {
+    // proxy gave up on that landed anyway. Runs after the namespace is marked
+    // just-joined, so the studio that opens next is the one that clears it.
+    onJoined: (namespaceId) => {
+      const joined = contextId.current;
+      if (!joined) return;
+      // Stored too, so a reload stays in the joined scene.
+      setContextId(joined);
+      // In-page on a node, so the dialog stays up through "Syncing…" until the
+      // studio has read the scene. An account still reloads: the provider builds
+      // its relay client for the context it read from storage on mount, and has
+      // no way to switch to another one in place.
+      if (onOpen && !isDelegated) {
+        onOpen(joined, namespaceId);
+      } else if (landingPath && window.location.pathname !== landingPath) {
         window.location.assign(landingPath);
       } else {
         window.location.reload();
       }
     },
   });
-
-  // `parse` is ours, so what the hook holds is a `ModelsInvitation`.
-  return {
-    ...redemption,
-    parsed: redemption.parsed as ModelsInvitation | null,
-  };
 }

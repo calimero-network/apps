@@ -114,8 +114,8 @@ export default defineConfig({
     exclude: ['e2e/**', 'node_modules/**', 'build/**', 'dist/**'],
     server: {
       deps: {
-        // `@calimero-network/mero-platform` (pulled in by @calimero-apps/invite)
-        // ships an ESM entry with an extensionless directory import that Node's
+        // `@calimero-network/mero-platform` (pulled in by mero-react's
+        // invitation capture) ships an ESM entry with an extensionless directory import that Node's
         // ESM resolver refuses. Inlining routes it through Vite's transform,
         // which is how the app itself loads it.
         inline: [/@calimero-network\/mero-platform/],
@@ -205,9 +205,9 @@ export default defineConfig({
     },
     // nodePolyfills prepends `import … from 'vite-plugin-node-polyfills/shims/…'`
     // to every module it transforms under serve (dev and vitest), including the
-    // linked workspace packages (@calimero-apps/invite). Resolved from
-    // packages/invite that import finds nothing, since only this app depends on
-    // the plugin; deduping resolves it from this app's root instead.
+    // linked packages outside this app. Resolved from such a package that
+    // import finds nothing, since only this app depends on the plugin;
+    // deduping resolves it from this app's root instead.
     dedupe: ['vite-plugin-node-polyfills'],
   },
 });

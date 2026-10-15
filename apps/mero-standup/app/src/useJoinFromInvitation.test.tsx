@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -7,10 +8,13 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  clearNamespaceJustJoined,
+  InvitationDialog,
+  isNamespaceJustJoined,
+  peekInvitation,
   primeInvitationCapture,
   resetInvitationCaptureForTests,
-} from "@calimero-apps/invite";
-import { JoinCard } from "./JoinCard";
+} from "@calimero-network/mero-react";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
 import {
   APP_SLUG,
@@ -36,7 +40,8 @@ const rawAdmin = {
 let isDelegated = false;
 const setContextId = vi.fn();
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     isAuthenticated: true,
     isDelegated,
@@ -60,8 +65,17 @@ function httpError(status: number, message: string): Error {
   return Object.assign(new Error(message), { status });
 }
 
+/** The app's in-page open; `undefined` to see the reload fallback. */
+let onOpen: ((contextId: string, namespaceId: string) => void) | undefined;
+const opened = vi.fn();
+
 function Harness() {
-  return <JoinCard join={useJoinFromInvitation()} />;
+  return (
+    <InvitationDialog
+      redemption={useJoinFromInvitation({ onOpen })}
+      noun="team"
+    />
+  );
 }
 
 const reload = vi.fn();
@@ -89,25 +103,25 @@ function openApp(path: string): void {
   render(<Harness />);
 }
 
-/** Open the app from an invitation link and press the prompt's Join. */
+/** Open the app from an invitation link and press the dialog's Join. */
 async function followLinkAndConfirm(): Promise<void> {
   openApp(`/?invitation=${TOKEN}`);
   fireEvent.click(await screen.findByTestId("invite-accept"));
 }
 
-/** Whether the invitation is offered again the next time the app opens. */
-async function offeredOnNextOpen(): Promise<boolean> {
-  openApp("/");
-  return screen
-    .findByTestId("invite-accept", undefined, { timeout: 200 })
-    .then(() => true)
-    .catch(() => false);
-}
+/** Whether the invitation is still held, to be offered on the next open. */
+const held = () => peekInvitation() !== null;
+
+/** The stage the dialog is showing. */
+const stage = () =>
+  screen.getByTestId("invite-prompt").getAttribute("data-stage");
 
 beforeEach(() => {
   vi.clearAllMocks();
   isDelegated = false;
+  onOpen = opened;
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -119,15 +133,17 @@ afterEach(() => {
   });
   window.history.replaceState(null, "", "/");
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 describe("useJoinFromInvitation", () => {
-  it("asks first, showing what joining adds this node to", async () => {
+  it("asks first, saying what joining grants", async () => {
     openApp(`/?invitation=${TOKEN}`);
 
-    await screen.findByTestId("invite-accept");
-    expect(screen.getByText(NAMESPACE)).toBeTruthy();
-    expect(screen.getByText(CONTEXT)).toBeTruthy();
+    expect(
+      await screen.findByRole("dialog", { name: "Join this team?" }),
+    ).toBeTruthy();
+    expect(stage()).toBe("awaiting-confirmation");
     expect(admin.joinNamespace).not.toHaveBeenCalled();
     // Captured, then taken off the address bar.
     expect(originalLocation.search).not.toContain("invitation");
@@ -137,9 +153,9 @@ describe("useJoinFromInvitation", () => {
     openApp(`/?invitation=${TOKEN}`);
     fireEvent.click(await screen.findByTestId("invite-decline"));
 
-    expect(screen.queryByTestId("invite-accept")).toBeNull();
+    expect(screen.queryByTestId("invite-prompt")).toBeNull();
     expect(admin.joinNamespace).not.toHaveBeenCalled();
-    expect(await offeredOnNextOpen()).toBe(false);
+    expect(held()).toBe(false);
   });
 
   it("says so for a link that is not an invitation", async () => {
@@ -149,16 +165,17 @@ describe("useJoinFromInvitation", () => {
       "This invitation link isn't valid. Ask for a new one.",
     );
     expect(admin.joinNamespace).not.toHaveBeenCalled();
+    expect(held()).toBe(false);
   });
 
-  it("joins the namespace, then the context, then acks and reloads", async () => {
+  it("joins the namespace, then the context, acks, and opens the team in place until it has synced", async () => {
     admin.joinNamespace.mockResolvedValue({});
     admin.joinContext.mockResolvedValue({});
     admin.listNamespaces.mockResolvedValue([{ namespaceId: NAMESPACE }]);
 
     await followLinkAndConfirm();
 
-    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(opened).toHaveBeenCalledWith(CONTEXT, NAMESPACE));
     expect(admin.joinNamespace).toHaveBeenCalledTimes(1);
     expect(admin.joinNamespace).toHaveBeenCalledWith(NAMESPACE, {
       invitation: payload.invitation,
@@ -170,7 +187,16 @@ describe("useJoinFromInvitation", () => {
     expect(setContextId).toHaveBeenCalledWith(CONTEXT);
     expect(rawAdmin.joinNamespace).not.toHaveBeenCalled();
     expect(rawAdmin.joinContext).not.toHaveBeenCalled();
-    expect(await offeredOnNextOpen()).toBe(false);
+    expect(held()).toBe(false);
+    // No reload: that would take the dialog down before the team arrived.
+    expect(reload).not.toHaveBeenCalled();
+
+    // Waits on the board's first read of the team's updates (its `useJoinSync`)...
+    expect(stage()).toBe("syncing");
+    expect(isNamespaceJustJoined(NAMESPACE)).toBe(true);
+    // ...and says so once that read has come back.
+    act(() => clearNamespaceJustJoined(NAMESPACE));
+    expect(stage()).toBe("ready");
   });
 
   it("redeems for an account through the account admin, never the relay's node route", async () => {
@@ -193,7 +219,10 @@ describe("useJoinFromInvitation", () => {
 
     await followLinkAndConfirm();
 
+    // An account reloads into the team: the provider builds its relay client
+    // for the stored context on mount and cannot switch in place.
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(opened).not.toHaveBeenCalled();
     expect(admin.joinNamespace).toHaveBeenCalledWith(NAMESPACE, {
       invitation: payload.invitation,
     });
@@ -217,11 +246,12 @@ describe("useJoinFromInvitation", () => {
 
     await followLinkAndConfirm();
 
-    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(opened).toHaveBeenCalledWith(CONTEXT, NAMESPACE));
     // Sent once, never re-sent.
     expect(admin.joinNamespace).toHaveBeenCalledTimes(1);
     expect(setContextId).toHaveBeenCalledWith(CONTEXT);
     expect(screen.queryByText(/Gateway Timeout/)).toBeNull();
+    expect(held()).toBe(false);
   });
 
   it("drops an invitation the node refused for good, and says why", async () => {
@@ -238,32 +268,32 @@ describe("useJoinFromInvitation", () => {
     expect((await screen.findByTestId("invite-error")).textContent).toBe(
       "This invitation has expired. Ask for a new link.",
     );
-    expect(
-      screen.getByText("This invitation cannot succeed; ask for a new one."),
-    ).toBeTruthy();
     expect(screen.queryByTestId("invite-retry")).toBeNull();
     expect(admin.joinContext).not.toHaveBeenCalled();
+    expect(opened).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
-    expect(await offeredOnNextOpen()).toBe(false);
+    expect(held()).toBe(false);
   });
 
-  it("keeps an invitation nobody could let in yet, and offers the retry", async () => {
+  it("keeps an invitation nobody could let in yet, and its retry joins without asking again", async () => {
     admin.joinNamespace.mockRejectedValue(httpError(503, "no online member"));
     admin.listNamespaces.mockResolvedValue([]);
 
     await followLinkAndConfirm();
 
-    await screen.findByText(
-      /No one in this namespace is online to let you in yet\./,
+    expect((await screen.findByTestId("invite-error")).textContent).toMatch(
+      /No one in this team is online to let you in yet\./,
     );
-    expect(
-      screen.getByText(
-        "Kept — it will be offered again the next time the app opens.",
-      ),
-    ).toBeTruthy();
-    expect(screen.getByTestId("invite-retry")).toBeTruthy();
-    expect(reload).not.toHaveBeenCalled();
-    expect(await offeredOnNextOpen()).toBe(true);
+    expect(opened).not.toHaveBeenCalled();
+    expect(held()).toBe(true);
+
+    admin.joinNamespace.mockResolvedValue({});
+    admin.joinContext.mockResolvedValue({});
+    fireEvent.click(screen.getByTestId("invite-retry"));
+
+    await waitFor(() => expect(opened).toHaveBeenCalledWith(CONTEXT, NAMESPACE));
+    expect(admin.joinNamespace).toHaveBeenCalledTimes(2);
+    expect(held()).toBe(false);
   });
 
   it("shows the node's own message when the failure has no better name", async () => {
@@ -277,7 +307,7 @@ describe("useJoinFromInvitation", () => {
     expect((await screen.findByTestId("invite-error")).textContent).toBe(
       "something nobody has seen before",
     );
-    expect(reload).not.toHaveBeenCalled();
+    expect(opened).not.toHaveBeenCalled();
   });
 
   it("checks membership through the session's admin when the join request failed", async () => {

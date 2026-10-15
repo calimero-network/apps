@@ -7,7 +7,6 @@ import {
   enterSpreadsheet,
   InviteRedeemError,
   isAlreadyMember,
-  keepsInvitation,
   listSpreadsheets,
   mintInvite,
   namespaceLabel,
@@ -16,6 +15,7 @@ import {
   type AdminLike,
 } from './workspaces';
 import { decodeInvite, type SignedInvitation } from './inviteCodec';
+import { shouldRetain } from '@calimero-network/mero-react';
 
 const GROUP_BYTES = Array.from({ length: 32 }, (_, i) => i + 1);
 const GROUP_HEX = GROUP_BYTES.map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -274,8 +274,8 @@ describe('acceptInvite through redeemInvitation', () => {
       reason: 'refused',
       retryable: false,
     });
-    // Acked: the prompt resolves it rather than replaying a dead link.
-    expect(keepsInvitation(err)).toBe(false);
+    // Acked: the prompt lets it go rather than replaying a dead link.
+    expect(shouldRetain((err as InviteRedeemError).outcome)).toBe(false);
   });
 
   it('a transient failure (503) keeps the invitation for a retry', async () => {
@@ -297,11 +297,7 @@ describe('acceptInvite through redeemInvitation', () => {
       reason: 'no-one-online',
       retryable: true,
     });
-    expect(keepsInvitation(err)).toBe(true);
-  });
-
-  it('keeps the invitation on an error that is not a refused join', () => {
-    expect(keepsInvitation(new Error('enter failed'))).toBe(true);
+    expect(shouldRetain((err as InviteRedeemError).outcome)).toBe(true);
   });
 });
 

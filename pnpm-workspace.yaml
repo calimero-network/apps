@@ -124,7 +124,10 @@ catalog:
   # itself signed in and sent every request without a token. 9.13.2 writes and
   # reads it through the MeroJs for the node. An app or test that seeds
   # `mero-tokens` itself has to stamp `node_origin` the same way.
-  "@calimero-network/mero-react": ^9.13.2
+  # 9.14.0 (#106) carries what the apps' own @calimero-apps/invite and
+  # @calimero-apps/join-sync were (link capture, redemption, the post-join
+  # sync gate) plus InvitationDialog, the one invitation prompt every app shows.
+  "@calimero-network/mero-react": ^9.14.0
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"

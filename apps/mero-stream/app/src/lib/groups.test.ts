@@ -11,7 +11,6 @@ import {
   mintNamespaceInvite,
   namespaceTeeMode,
   mintRoomInvite,
-  redeemFailureMessage,
   redeemInvite,
   unwrapInvitation,
 } from "./groups";
@@ -20,7 +19,7 @@ import {
   clearHostingState,
   hostingProblem,
 } from "./hosting";
-import { shouldRetain } from "@calimero-apps/invite";
+import { shouldRetain } from "@calimero-network/mero-react";
 
 /** The one type every flow takes: the session-aware admin, `useMero().admin`. */
 type AdminLike = AdminApiClient;
@@ -491,9 +490,6 @@ describe("redeemInvite", () => {
     if (out.outcome.status !== "failed") throw new Error("expected a failure");
     expect(out.outcome.reason).toBe("refused");
     expect(shouldRetain(out.outcome)).toBe(false);
-    expect(redeemFailureMessage(out.outcome)).toBe(
-      "You can't join this stream with this invitation. Ask an admin to invite you again.",
-    );
   });
 
   it("returns a 503 as a failure worth keeping the invitation for", async () => {
@@ -506,18 +502,17 @@ describe("redeemInvite", () => {
     if (out.outcome.status !== "failed") throw new Error("expected a failure");
     expect(out.outcome.reason).toBe("no-one-online");
     expect(shouldRetain(out.outcome)).toBe(true);
-    expect(redeemFailureMessage(out.outcome)).toMatch(
-      /No one in this stream is online/,
-    );
   });
 
-  it("shows the node's own message when the reason is unknown", async () => {
+  it("keeps the node's own message when the reason is unknown", async () => {
     const admin = fakeAdmin({
       joinNamespace: () => Promise.reject(new Error("something odd")),
     });
     const out = await redeemInvite(admin, { invitation: signed("ns1") }, noop);
     if (out.outcome.status !== "failed") throw new Error("expected a failure");
-    expect(redeemFailureMessage(out.outcome)).toBe("something odd");
+    // The dialog shows it as is: there is no plainer wording for an unknown.
+    expect(out.outcome.reason).toBe("unknown");
+    expect(out.outcome.message).toBe("something odd");
   });
 });
 

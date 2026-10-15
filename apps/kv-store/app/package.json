@@ -15,7 +15,6 @@
     "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
-    "@calimero-apps/invite": "workspace:*",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-platform-react": "catalog:",

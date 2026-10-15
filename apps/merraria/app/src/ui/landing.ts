@@ -384,7 +384,7 @@ export class Landing {
   // world (if any) renders first, synchronously, with one-click Enter; the
   // rest of the node's worlds load as cards below it. Creating a world lives in
   // a popup so the card itself stays clean; joining a friend's is the invite
-  // prompt, raised by opening their link (ui/invitePrompt.ts).
+  // prompt, raised by opening their link (ui/invitePrompt.tsx).
   private renderWorldPicker(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     const connected = hasConnection();
@@ -440,8 +440,9 @@ export class Landing {
     // redirect. Joining starts the game in the invited world.
     setInviteJoiner({
       join: async (code) => {
-        await acceptWorldInvite(code);
+        const contextId = await acceptWorldInvite(code);
         done(this.readChoice());
+        return { contextId };
       },
     });
 

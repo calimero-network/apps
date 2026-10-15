@@ -13,7 +13,6 @@
     "src/test",
     "src/generated",
     "src/useJoinFromInvitation.ts",
-    "src/JoinCard.tsx",
     "src/icons.tsx",
     "src/ui.tsx",
     "src/theme.ts",

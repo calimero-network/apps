@@ -30,7 +30,7 @@
 // address bar — would sign the user out to accept an invitation.
 //
 // Pure functions only — no DOM, no session. The capture side is
-// `primeInvitationCapture` in `@calimero-apps/invite`, primed in `index.tsx`.
+// `primeInvitationCapture` in `@calimero-network/mero-react`, primed in `index.tsx`.
 
 import { createLink } from '@calimero-network/mero-platform';
 

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ConnectButton,
+  InvitationDialog,
   clearContextId,
   useMero,
 } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { InviteCard } from "./InviteCard";
-import { JoinCard } from "./JoinCard";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
 import { VotePanel } from "./VotePanel";
 import { ThemeToggle } from "./ThemeToggle";
@@ -17,6 +17,7 @@ import {
   ChevronRightIcon,
   KeyIcon,
   LayersIcon,
+  LinkIcon,
   LockIcon,
   LogOutIcon,
   ServerIcon,
@@ -25,21 +26,31 @@ import {
   UserPlusIcon,
   VoteIcon,
 } from "./icons";
-import { IdField, shortId } from "./ui";
+import { IconTile, IdField, shortId } from "./ui";
 
 export function App() {
   const {
     isAuthenticated,
     isLoading,
     applicationId,
-    contextId,
+    contextId: stored,
     nodeUrl,
     logout,
   } = useMero();
+  // A context joined in this page, ahead of the one the provider read from
+  // storage: opening it in place keeps the invitation dialog up until its
+  // polls have been read.
+  const [opened, setOpened] = useState<{
+    contextId: string;
+    namespaceId: string;
+  } | null>(null);
+  const contextId = opened?.contextId ?? stored;
   // Mounted at the root, unconditionally: an invitation captured before login
   // has to be redeemed as soon as the session exists, which means this cannot
   // live inside a branch that only renders once a context is chosen.
-  const join = useJoinFromInvitation();
+  const join = useJoinFromInvitation({
+    onOpen: (contextId, namespaceId) => setOpened({ contextId, namespaceId }),
+  });
 
   // Drop the stored context and re-render at the picker. A reload rather than
   // local state, for the same reason `ContextPicker.select` reloads: the
@@ -54,6 +65,18 @@ export function App() {
 
   return (
     <>
+      {/*
+        At the root, so a link that arrives while a context is already open is
+        answered too, not left waiting until the user happens to log out.
+      */}
+      <InvitationDialog
+        redemption={join}
+        noun="voting group"
+        appName="Mero Vote"
+        // The grant is the namespace, not just the context the link names, and
+        // the person accepting should know that before they click.
+        detail="Joining makes this node a member of the namespace this voting group lives in, and its polls and ballots sync here from the other members."
+      />
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
@@ -228,22 +251,30 @@ export function App() {
                 Have an invitation?
               </h3>
             </div>
-            <JoinCard join={join} />
+            <div className="card">
+              <div className="card-head">
+                <IconTile>
+                  <LinkIcon size={18} />
+                </IconTile>
+                <div className="grow">
+                  <h2>Join with an invitation</h2>
+                  <div className="meta">
+                    Open an invitation link someone sent you. It opens this app
+                    and asks before joining.
+                  </div>
+                </div>
+              </div>
+            </div>
           </>
         ) : (
           <>
-            {/*
-              A link can arrive while a context is already open, and the prompt has
-              to be reachable then too — otherwise an invitation received mid-session
-              waits silently until the user happens to log out.
-            */}
-            {join.state.stage !== "idle" && (
-              <div style={{ marginBottom: 16 }}>
-                <JoinCard join={join} />
-              </div>
-            )}
+            {/* Keyed, so a context opened in place starts from nothing of the last one's. */}
             <VotePanel
+              key={contextId}
               contextId={contextId}
+              joinedNamespace={
+                opened?.contextId === contextId ? opened.namespaceId : null
+              }
               side={<InviteCard contextId={contextId} />}
             />
           </>

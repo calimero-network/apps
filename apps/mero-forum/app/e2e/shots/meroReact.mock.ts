@@ -1,5 +1,10 @@
 // Aliased over @calimero-network/mero-react by vite.config.ts. The pages need a
 // session-shaped object to render; nothing here reaches a node.
+import { scenarioById } from "./fixtures";
+
+// The invitation dialog is the real one; only the redemption driving it is a
+// fixture, so the "invitation" shot shows the production prompt.
+export { InvitationDialog, JoinSyncBanner } from "mero-react-real";
 
 /** The id `pickApplicationId` should settle on for the fixture node. */
 const APP_ID = "3xKm9QpLvR7nTzB4aW1cYeUf3gJd6NqSvXhKrM8tZoPq";
@@ -62,4 +67,26 @@ export function useSubscription() {
 /** `useSelfAccount` reads this; the byline's "(you)" depends on it. */
 export function useNodeIdentity() {
   return { identity: { accountId: "a".repeat(64) }, loading: false };
+}
+
+export function useJoinSync() {
+  return { isSyncing: false, dismiss: () => {} };
+}
+
+/** Only the "invitation" scenario has a link open, waiting on a click. */
+export function useInviteRedemption() {
+  const id = new URLSearchParams(location.search).get("s") ?? "feed";
+  const asking = scenarioById(id).id === "invitation";
+  const noop = () => {};
+  return {
+    state: asking
+      ? { stage: "awaiting-confirmation", teamName: "Design review" }
+      : { stage: "idle" },
+    token: asking ? "shots-token" : null,
+    parsed: null,
+    accept: noop,
+    decline: noop,
+    retry: noop,
+    dismiss: noop,
+  };
 }

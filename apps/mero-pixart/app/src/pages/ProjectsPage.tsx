@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useJoinSync, useMero } from "@calimero-network/mero-react";
 import { useApi } from "../api/useApi";
 import { listGroupContextRows, listSubgroupRows } from "../api/teamContexts";
 import Logo from "../components/Logo";
@@ -50,6 +50,8 @@ export default function ProjectsPage() {
   const [tab, setTab] = useState<Tab>("projects");
   const [projects, setProjects] = useState<ProjectCard[]>([]);
   const [loading, setLoading] = useState(true);
+  // The team whose project list last came back from the node, empty or not.
+  const [listedFor, setListedFor] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [settingsProject, setSettingsProject] = useState<Project | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
@@ -122,7 +124,10 @@ export default function ProjectsPage() {
             // no context yet
           }
         }
-        if (!cancelled) setProjects(resolved);
+        if (!cancelled) {
+          setProjects(resolved);
+          setListedFor(teamId!);
+        }
       } catch {
         if (!cancelled) setProjects([]);
       } finally {
@@ -133,6 +138,12 @@ export default function ProjectsPage() {
     const id = setInterval(loadProjects, 30_000);
     return () => { cancelled = true; clearInterval(id); };
   }, [teamId, api, admin]);
+
+  // A team just joined by invitation has not replicated yet; the invitation
+  // dialog holds "Syncing…" until this page's read of the team's projects has
+  // come back. An empty list counts (a new team has none); a failed read does
+  // not, and the 30s poll above tries again.
+  useJoinSync({ namespaceId: teamId ?? null, settled: !!teamId && listedFor === teamId });
 
   // Close menu on outside click
   useEffect(() => {

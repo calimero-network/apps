@@ -7,7 +7,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import App from '../App';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   AppMode: { MultiContext: 'MultiContext' },
   MeroProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useMero: () => ({ isAuthenticated: true, isLoading: false }),

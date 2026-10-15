@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SignClient } from '../lib/node';
-import { shouldRetain } from '@calimero-apps/invite';
+import { shouldRetain } from '@calimero-network/mero-react';
 
 import { setMeroInstance } from '../lib/node';
 import { encodeInvite } from '../lib/inviteCodec';
@@ -11,12 +11,12 @@ import {
 
 // ── Redeeming an open invitation: did we join, and is the link worth keeping ──
 //
-// The workspace join goes through `@calimero-apps/invite`'s `redeemInvitation`,
+// The workspace join goes through mero-react's `redeemInvitation` (mero-js's),
 // which decides by membership rather than by the request resolving. What these
 // pin is the app's side of that: the node's status reaches the classifier
-// through `lib/node`'s `{data, error}` shim, and the error the popup catches
-// says whether the invitation is finished with and whether "Try again" means
-// anything.
+// through `lib/node`'s `{data, error}` shim, and the error the invitation
+// dialog's redeem catches says whether the invitation is finished with and
+// whether "Try again" means anything.
 
 // No agreement in the workspace, so the flow stops at "you are in the
 // workspace" — the post-join steps are not what is under test here.
@@ -26,7 +26,8 @@ vi.mock('../lib/agreements', () => ({
   enterAgreement: vi.fn(),
 }));
 vi.mock('../lib/activeWorkspace', () => ({ setActiveWorkspace: vi.fn() }));
-vi.mock('@calimero-apps/join-sync', () => ({
+vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   markNamespaceJustJoined: vi.fn(),
 }));
 

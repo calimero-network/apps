@@ -34,7 +34,7 @@ import {
 } from '../../lib/vaults';
 import type { VaultRow } from '../../lib/vaults';
 import styles from '../../styles/shell.module.css';
-import { JoinSyncBanner, useJoinSync } from '@calimero-apps/join-sync';
+import { JoinSyncBanner, useJoinSync } from '@calimero-network/mero-react';
 import { describeError } from '../../lib/errors';
 
 type Tab = 'vaults' | 'people';

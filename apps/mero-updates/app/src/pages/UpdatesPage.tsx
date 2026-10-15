@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useJoinSync } from "@calimero-network/mero-react";
 
 import { useAudience } from "../components/AudienceShell";
 import { Avatar, CategoryChip, Empty } from "../components/bits";
@@ -17,6 +18,7 @@ import {
 import type { CategoryView, PostCard } from "../generated/UpdatesClient";
 import { TEMPLATES } from "../lib/templates";
 import { dueLabel, formatDate, personLabel, timeAgo, useLive, useUpdatesClient } from "../lib/updates";
+import { getActiveNamespaceId } from "../lib/session";
 
 /**
  * The home screen. Same page for both sides, weighted differently:
@@ -34,6 +36,15 @@ export default function UpdatesPage() {
   );
   const items = feed.data?.items ?? [];
   const navigate = useNavigate();
+  // An audience invitation lands HERE rather than on the company's audience
+  // list, so this page says when the joined company's data has arrived: the
+  // feed came back, empty or not. That ends the invitation dialog's
+  // "Syncing…". The company is the active one, set by the join before it
+  // navigated.
+  useJoinSync({
+    namespaceId: getActiveNamespaceId(),
+    settled: feed.data !== null,
+  });
 
   return (
     <>

@@ -15,7 +15,8 @@ const admin = {
   listGroupMembers: vi.fn(),
   getMemberCapabilities: vi.fn(),
 };
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ admin }),
 }));
 

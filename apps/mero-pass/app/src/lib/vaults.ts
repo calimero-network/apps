@@ -72,8 +72,11 @@ import {
   type PassInvitePayload,
   type SignedInvitation,
 } from './inviteCodec';
-import { markNamespaceJustJoined } from '@calimero-apps/join-sync';
-import { redeemInvitation, type RedeemOutcome } from '@calimero-apps/invite';
+import {
+  markNamespaceJustJoined,
+  redeemInvitation,
+  type RedeemOutcome,
+} from '@calimero-network/mero-react';
 
 import { MeroPassClient } from '../generated/MeroPassClient';
 import type { DeviceKeyPair } from './crypto';
@@ -973,7 +976,7 @@ export type Redeemed =
  * Thrown rather than returned so every step after the grant (the vault joins,
  * entering the context) keeps its plain-error contract; the caller tells the two
  * apart with `instanceof` and decides whether to keep the invitation from
- * `outcome` — see `hooks/useRedeemInvitation`.
+ * `outcome` — see `components/InvitationPrompt`.
  */
 export class InviteRedeemError extends Error {
   readonly outcome: Extract<RedeemOutcome, { status: 'failed' }>;

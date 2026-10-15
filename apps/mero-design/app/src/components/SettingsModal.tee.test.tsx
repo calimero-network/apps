@@ -13,7 +13,10 @@ vi.mock("../api/rpc", () => ({
   updateMemberRole: vi.fn(),
 }));
 vi.mock("../api/teamContexts", () => ({ listTeamContexts: vi.fn().mockResolvedValue([]) }));
-vi.mock("@calimero-network/mero-react", () => ({ useMero: () => ({ applicationId: "app-1" }) }));
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useMero: () => ({ applicationId: "app-1" }),
+}));
 vi.mock("../contexts/ToastContext", () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
 const SettingsModal = (await import("./SettingsModal")).default;

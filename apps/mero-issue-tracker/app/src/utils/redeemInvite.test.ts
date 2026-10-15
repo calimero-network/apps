@@ -12,7 +12,7 @@ import {
   redeemInvitation,
   shouldRetain,
   type RedeemOutcome,
-} from "@calimero-apps/invite";
+} from "@calimero-network/mero-react";
 import { encodeInvitation } from "./invitation";
 import {
   inviteRedeemer,
@@ -71,7 +71,7 @@ async function redeemInviteCode(
   return redeemInvitation(parsed, inviteRedeemer(admin));
 }
 
-/** What the prompt shows for a failure (see `InviteStatusBanner`). */
+/** What the prompt shows for a failure (see mero-react's `InvitationDialog`). */
 function inviteFailureCopy(
   outcome: Extract<RedeemOutcome, { status: "failed" }>,
 ): string {

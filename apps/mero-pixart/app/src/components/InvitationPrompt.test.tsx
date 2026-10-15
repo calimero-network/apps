@@ -1,4 +1,4 @@
-// This app's wiring into @calimero-apps/invite, on a delegated (account)
+// This app's wiring into mero-react's invitation dialog, on a delegated (account)
 // session: the codec it supplies, the join it supplies, and what lands on
 // screen.
 //
@@ -29,7 +29,6 @@ const stub = vi.hoisted(() => {
     admin,
     rawAdmin,
     navigate: vi.fn(),
-    showToast: vi.fn(),
     mero: {
       mero: { admin: rawAdmin, rpc: { execute: vi.fn() } },
       admin,
@@ -42,19 +41,16 @@ const stub = vi.hoisted(() => {
   };
 });
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => stub.mero,
   setApplicationId: vi.fn(),
 }));
 vi.mock("react-router-dom", () => ({ useNavigate: () => stub.navigate }));
-vi.mock("../contexts/ToastContext", () => ({
-  useToast: () => ({ showToast: stub.showToast }),
-}));
 
 const { encodeInvitationObject } = await import("../utils/invitation");
-const { resetInvitationCaptureForTests } = await import(
-  "@calimero-apps/invite"
-);
+const { isNamespaceJustJoined, peekInvitation, resetInvitationCaptureForTests } =
+  await import("@calimero-network/mero-react");
 const InvitationPrompt = (await import("./InvitationPrompt")).default;
 
 const INVITATION = {
@@ -94,8 +90,12 @@ describe("InvitationPrompt – an invite link opened this app", () => {
     openWithInvitation();
     render(<InvitationPrompt />);
 
-    expect(await screen.findByText(/invited to “Acme”/)).toBeTruthy();
-    expect(screen.getByTestId("invite-accept")).toBeTruthy();
+    expect(
+      await screen.findByRole("dialog", { name: "Join “Acme”?" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("invite-prompt").getAttribute("data-stage")).toBe(
+      "awaiting-confirmation",
+    );
     expect(stub.admin.joinNamespace).not.toHaveBeenCalled();
   });
 
@@ -127,11 +127,14 @@ describe("InvitationPrompt – an invite link opened this app", () => {
       invitation: INVITATION,
     });
     expect(stub.rawAdmin.joinNamespace).not.toHaveBeenCalled();
+    // Acked, and the dialog waits on "Syncing…" for ProjectsPage to read the
+    // team's projects.
+    expect(peekInvitation()).toBeNull();
+    expect(isNamespaceJustJoined(NS)).toBe(true);
     await waitFor(() =>
-      expect(stub.showToast).toHaveBeenCalledWith(
-        "Joined team. Syncing artwork…",
-        "success",
-      ),
+      expect(
+        screen.getByTestId("invite-prompt").getAttribute("data-stage"),
+      ).toBe("syncing"),
     );
   });
 
@@ -142,13 +145,14 @@ describe("InvitationPrompt – an invite link opened this app", () => {
     fireEvent.click(await screen.findByTestId("invite-decline"));
 
     await waitFor(() =>
-      expect(screen.queryByTestId("invite-status")).toBeNull(),
+      expect(screen.queryByTestId("invite-prompt")).toBeNull(),
     );
+    expect(peekInvitation()).toBeNull();
     expect(stub.admin.joinNamespace).not.toHaveBeenCalled();
     expect(stub.navigate).not.toHaveBeenCalled();
   });
 
-  it("shows why when the join really failed, and stays put", async () => {
+  it("shows why when the join really failed, stays put, and retries", async () => {
     stub.admin.joinNamespace.mockRejectedValue(
       new Error("could not reach any member of this namespace"),
     );
@@ -160,9 +164,23 @@ describe("InvitationPrompt – an invite link opened this app", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByTestId("invite-status").getAttribute("data-stage"),
+        screen.getByTestId("invite-prompt").getAttribute("data-stage"),
       ).toBe("failed"),
     );
+    expect(screen.getByTestId("invite-error").textContent).toMatch(
+      /could not reach any member of this namespace/,
+    );
     expect(stub.navigate).not.toHaveBeenCalled();
+    // Kept for another try, which joins without asking again.
+    expect(peekInvitation()).not.toBeNull();
+    stub.admin.joinNamespace.mockResolvedValue({ namespaceId: NS });
+    stub.admin.listNamespacesForApplication.mockResolvedValue([
+      { namespaceId: NS, name: "Acme" },
+    ]);
+    fireEvent.click(screen.getByTestId("invite-retry"));
+    await waitFor(() =>
+      expect(stub.navigate).toHaveBeenCalledWith(`/teams/${NS}/projects`),
+    );
+    expect(peekInvitation()).toBeNull();
   });
 });

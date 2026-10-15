@@ -32,12 +32,11 @@ import {
   type SignedInvitation,
   type AudienceInvitePayload,
 } from "./inviteCodec";
-import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
 import {
-  describeInviteFailure,
+  markNamespaceJustJoined,
   redeemInvitation,
   type RedeemOutcome,
-} from "@calimero-apps/invite";
+} from "@calimero-network/mero-react";
 import {
   HOSTING_REFUSED_MESSAGE,
   clearSpaceUnhosted,
@@ -369,15 +368,8 @@ export type RedeemResult =
       landed: Redeemed;
     };
 
-/** What to tell the user about a failed join, in this app's noun. */
-export function redeemFailureMessage(
-  outcome: Extract<RedeemOutcome, { status: "failed" }>,
-): string {
-  return describeInviteFailure(outcome.reason, "company") ?? outcome.message;
-}
-
 /** The namespace an invitation grants: the same signed id `acceptInvite` joins. */
-function invitedNamespaceOf(payload: AudienceInvitePayload): string {
+export function invitedNamespaceOf(payload: AudienceInvitePayload): string {
   const step = payload.chain?.find((s) => s.kind === "namespace");
   if (step) return groupIdOfInvite(step.invitation) || step.groupId;
   return groupIdOfInvite(payload);

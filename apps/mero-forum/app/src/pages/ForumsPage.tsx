@@ -47,7 +47,7 @@ function focusCreate() {
     el.focus();
   }
 }
-import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
+import { JoinSyncBanner, useJoinSync } from "@calimero-network/mero-react";
 
 /**
  * Forums inside one space (namespace). A forum is a SUBGROUP plus the context bound

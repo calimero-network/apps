@@ -1,4 +1,4 @@
-import { buildInviteLink } from "@calimero-apps/invite";
+import { buildInviteLink } from "@calimero-network/mero-react";
 
 // ─── Invitation links ─────────────────────────────────────────────────────────
 //

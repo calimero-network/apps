@@ -1,27 +1,26 @@
 import { useRef } from "react";
-import { setContextId, useMero } from "@calimero-network/mero-react";
-import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
 import {
+  setContextId,
   useInviteRedemption,
+  useMero,
   type InviteRedeemer,
   type InviteRedemption,
   type ParsedInvitation,
-} from "@calimero-apps/invite";
+} from "@calimero-network/mero-react";
+import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
 import {
   decodeInvitationPayload,
   parseInvitationPayload,
 } from "./utils/invitation";
 
 /** What a captured invitation names: the namespace, and the context to open in it. */
-export type ContextInvitation = ParsedInvitation & { contextId: string };
+export type VoteInvitation = ParsedInvitation & { contextId: string };
 
 /** The redemption, with `parsed` carrying the context this app's links name. */
-export type JoinFromInvitation = Omit<InviteRedemption, "parsed"> & {
-  parsed: ContextInvitation | null;
-};
+export type JoinFromInvitation = InviteRedemption<VoteInvitation>;
 
 /** Read a link's token into what the join needs, or `null` if it is not one. */
-export function readInvitation(token: string): ContextInvitation | null {
+export function readInvitation(token: string): VoteInvitation | null {
   const json = decodeInvitationPayload(token);
   const payload = json ? parseInvitationPayload(json) : null;
   if (!payload) return null;
@@ -43,11 +42,20 @@ export function readInvitation(token: string): ContextInvitation | null {
  *
  * The invitation is acked — permanently dropped — on success, or on a failure
  * that can never succeed; anything else is kept and offered again on the next
- * load. `@calimero-apps/invite` decides which, and treats "the request failed
- * but the namespace is now listed" as success: the desktop proxy aborts at 30s
- * while a join can take ~95s and land anyway.
+ * load. mero-js decides which, and treats "the request failed but the namespace
+ * is now listed" as success: the desktop proxy aborts at 30s while a join can
+ * take ~95s and land anyway.
  */
-export function useJoinFromInvitation(): JoinFromInvitation {
+export function useJoinFromInvitation({
+  onOpen,
+}: {
+  /**
+   * Open the joined context in this page. Without it (or on an account, see
+   * below) the page reloads into it instead, which also ends the invitation
+   * dialog: a node session should always pass it.
+   */
+  onOpen?: (contextId: string, namespaceId: string) => void;
+} = {}): JoinFromInvitation {
   // `admin`, NOT `mero.admin`. `mero` is the raw client, and on a delegated
   // (account) session its transport is the relay: `mero.admin.joinNamespace`
   // became `POST {relay}/admin-api/namespaces/{ns}/join` with the account's
@@ -94,7 +102,7 @@ export function useJoinFromInvitation(): JoinFromInvitation {
     },
   };
 
-  const redemption = useInviteRedemption({
+  return useInviteRedemption<VoteInvitation>({
     parse: (token) => {
       const parsed = readInvitation(token);
       contextId.current = parsed?.contextId ?? null;
@@ -103,18 +111,22 @@ export function useJoinFromInvitation(): JoinFromInvitation {
     redeemer,
     enabled: isAuthenticated,
     // `already-member` lands here too: a link followed twice, or a join the
-    // proxy gave up on that landed anyway. The invitation is already acked, so
-    // the reload cannot replay it; reloading is what makes the provider pick up
-    // the new context (see `ContextPicker.select`).
-    onJoined: () => {
-      if (contextId.current) setContextId(contextId.current);
-      window.location.reload();
+    // proxy gave up on that landed anyway. Runs after the namespace is marked
+    // just-joined, so the panel that opens next is the one that clears it.
+    onJoined: (namespaceId) => {
+      const joined = contextId.current;
+      if (!joined) return;
+      // Stored too, so a reload stays in the joined context.
+      setContextId(joined);
+      // In-page on a node, so the dialog stays up through "Syncing…" until the
+      // panel has read the context's polls. An account still reloads: the
+      // provider builds its relay client for the context it read from storage
+      // on mount, and has no way to switch to another one in place.
+      if (onOpen && !isDelegated) {
+        onOpen(joined, namespaceId);
+      } else {
+        window.location.reload();
+      }
     },
   });
-
-  // `parse` is ours, so what the hook holds is a `ContextInvitation`.
-  return {
-    ...redemption,
-    parsed: redemption.parsed as ContextInvitation | null,
-  };
 }

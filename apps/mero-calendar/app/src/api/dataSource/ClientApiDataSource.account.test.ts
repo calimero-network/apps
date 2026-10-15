@@ -12,7 +12,10 @@ const NS = "a1".repeat(32);
 const ME = "e".repeat(64);
 const PEER = "f".repeat(64);
 
-vi.mock("@calimero-network/mero-react", () => ({ getContextId: () => CTX }));
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getContextId: () => CTX,
+}));
 vi.mock("../identity", () => ({ accountId: () => ME }));
 
 import { ClientApiDataSource } from "./ClientApiDataSource";

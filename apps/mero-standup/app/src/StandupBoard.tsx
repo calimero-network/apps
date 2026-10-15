@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useJoinSync } from "@calimero-network/mero-react";
 import type { UpdateView } from "./generated/StandupClient";
 import { carryForward, type Draft } from "./lib/carry";
 import {
@@ -21,10 +22,13 @@ import { useRead, type Team } from "./useTeam";
  */
 export function StandupBoard({
   team,
+  namespaceId,
   me,
   onLogDecision,
 }: {
   team: Team;
+  /** The team's namespace, whose just-joined flag a first read here clears. */
+  namespaceId: string | null;
   me: string | null;
   onLogDecision: (draft: DecisionDraft) => void;
 }) {
@@ -33,6 +37,10 @@ export function StandupBoard({
   const isToday = day === today();
 
   const board = useRead(client, version, (c) => c.getDay({ day }), [day]);
+  // Ends the invitation dialog's "Syncing…" for a team just joined: a day's
+  // updates read back, none posted included. A team whose state has not
+  // arrived yet fails the read, and it is retried on every event and poll.
+  useJoinSync({ namespaceId, settled: board.data !== null });
   const members = useRead(client, version, (c) => c.members(), []);
   const blockers = useRead(client, version, (c) => c.currentBlockers(), []);
   const decided = useRead(

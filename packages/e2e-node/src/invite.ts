@@ -80,9 +80,63 @@ export async function openInviteLink(page: Page, link: string, route: InviteRout
     .toBeGreaterThan(0);
 }
 
-/** Click the app's invitation prompt through. */
+/**
+ * Accept the app's invitation dialog (mero-react `InvitationDialog`) and see it
+ * through: joining, syncing, and closing by itself once the joined namespace's
+ * data has reached this node.
+ *
+ * The close is the point. The dialog holds "Syncing…" until the page that reads
+ * the namespace clears its just-joined flag (`useJoinSync({ settled })`), and
+ * otherwise only lets go at its 2-minute ceiling. Waiting well under that
+ * ceiling makes an app whose page never reports its data fail here, rather than
+ * leave a real person staring at a spinner.
+ */
 export async function acceptInvitePrompt(page: Page, timeout = 60_000): Promise<void> {
+  const prompt = page.getByTestId("invite-prompt");
   const accept = page.getByTestId("invite-accept");
-  await expect(accept, "the app shows its invitation prompt").toBeVisible({ timeout });
+  await expect(accept, "the app shows its invitation dialog").toBeVisible({ timeout });
+
+  // Every stage the dialog passes through, however briefly it shows. Sent to
+  // the test as it happens, and the observer is reinstalled on every load: an
+  // app may enter the joined namespace with a full page load right after the
+  // dialog closes (mero-chat does), which would wipe anything kept in the page.
+  const stages: string[] = [];
+  const binding = `__inviteStage_${Math.random().toString(36).slice(2)}`;
+  await page.exposeFunction(binding, (stage: string) => {
+    if (stages[stages.length - 1] !== stage) stages.push(stage);
+  });
+  const observe = (name: string) => {
+    const send = (window as unknown as Record<string, ((stage: string) => void) | undefined>)[
+      name
+    ];
+    if (!send) return;
+    const read = () =>
+      send(
+        document.querySelector('[data-testid="invite-prompt"]')?.getAttribute("data-stage") ??
+          "closed",
+      );
+    read();
+    // `document`, not `documentElement`: on a fresh load the init script runs
+    // before the root element exists.
+    new MutationObserver(read).observe(document, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["data-stage"],
+    });
+  };
+  await page.addInitScript(observe, binding);
+  await page.evaluate(observe, binding);
   await accept.click();
+
+  await expect(
+    prompt,
+    "the invitation dialog closes by itself once the joined namespace's data has arrived",
+  ).toBeHidden({ timeout: 90_000 });
+
+  // The last reports cross from the page asynchronously; give them a moment.
+  await expect
+    .poll(() => stages, { message: "the dialog joined, then reported the join done", timeout: 5_000 })
+    .toEqual(expect.arrayContaining(["joining", "ready"]));
+  expect(stages, "the dialog never failed").not.toContain("failed");
 }

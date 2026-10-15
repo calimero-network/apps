@@ -495,28 +495,6 @@ select:focus {
   min-width: 0;
 }
 
-.kv {
-  border-collapse: collapse;
-  margin: 8px 0;
-  width: 100%;
-}
-
-.kv th {
-  text-align: left;
-  color: var(--muted);
-  font-weight: 500;
-  padding: 2px 10px 2px 0;
-  vertical-align: top;
-}
-
-.kv td {
-  word-break: break-all;
-}
-
-.confirm-title {
-  font-weight: 600;
-}
-
 .link-row {
   display: flex;
   gap: 8px;
@@ -534,16 +512,6 @@ select:focus {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 6px 8px;
-}
-
-.join-float {
-  position: fixed;
-  z-index: 50;
-  right: 16px;
-  bottom: 40px;
-  width: min(420px, calc(100vw - 32px));
-  box-shadow: var(--glass-shadow-float);
-  border-radius: var(--glass-radius-lg);
 }
 
 @media (max-width: 820px) {

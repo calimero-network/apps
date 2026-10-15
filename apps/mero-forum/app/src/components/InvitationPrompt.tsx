@@ -1,19 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
-import { redeemFailureMessage, redeemInvite } from "../lib/groups";
-import { decodeInvite, type ForumInvitePayload } from "../lib/inviteCodec";
 import {
-  onInvitation,
-  shouldRetain,
-  type CapturedInvitation,
-} from "@calimero-apps/invite";
+  InvitationDialog,
+  useInviteRedemption,
+  useMero,
+  type ParsedInvitation,
+  type RedeemOutcome,
+} from "@calimero-network/mero-react";
+import { redeemInvite } from "../lib/groups";
+import {
+  decodeInvite,
+  groupIdOfInvite,
+  type ForumInvitePayload,
+} from "../lib/inviteCodec";
 import { setActiveForum, setForumName } from "../lib/session";
-import styles from "./InvitationPrompt.module.css";
-import { AlertIcon, MailIcon, XIcon } from "./icons";
 
 /**
- * "You have been invited to X" — for an invitation that arrived as a link.
+ * "Join X?" for an invitation that arrived as a link: mero-react's
+ * `InvitationDialog`, which asks, joins, and stays up on "Syncing…" until the
+ * space's data has reached this node.
  *
  * ── Why this is mounted at the APP level, not on a page ──────────────────────
  *
@@ -31,158 +36,93 @@ import { AlertIcon, MailIcon, XIcon } from "./icons";
  * forwarded link, or a background tab that refreshes, join silently. Decoding is
  * pure and local, so the scope can be shown first and the join needs a click.
  *
- * ── Why both buttons ack ─────────────────────────────────────────────────────
- *
- * The platform store keeps an intent until the app says it is handled. "Not now"
- * IS handled — without the ack the same prompt returns on every load, which reads
- * as the app nagging rather than as durability.
+ * The join is this app's own (`redeemInvite`): a forum invitation also enters
+ * the forum's context, and where it lands depends on which. The syncing stage
+ * ends when the landing page reads the space: ForumsPage's forum list, or
+ * FeedPage's first page of posts.
  */
+interface ForumInvitation extends ParsedInvitation {
+  payload: ForumInvitePayload;
+}
+
 export default function InvitationPrompt() {
   const { mero } = useMero();
   const navigate = useNavigate();
-  const [pending, setPending] = useState<{
-    captured: CapturedInvitation;
-    payload: ForumInvitePayload;
-  } | null>(null);
-  const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(
-    () =>
-      onInvitation((captured) => {
-        const payload = decodeInvite(captured.token);
-        if (!payload) {
-          setError("That invitation could not be read. Ask for a new link.");
-          // Acked anyway: a payload that will not decode now will not decode
-          // later either, and leaving it unacked replays the error every load.
-          captured.resolve();
-          return;
+  const parse = useCallback((token: string): ForumInvitation | null => {
+    const payload = decodeInvite(token);
+    if (!payload) return null;
+    return {
+      namespaceId: groupIdOfInvite(payload),
+      invitation: payload.invitation,
+      teamName: payload.forumName ?? payload.groupAlias,
+      payload,
+    };
+  }, []);
+
+  const redeem = useCallback(
+    async ({ payload }: ForumInvitation): Promise<RedeemOutcome> => {
+      if (!mero) {
+        return {
+          status: "failed",
+          namespaceId: null,
+          message: "No node connection yet. Reconnect and try again.",
+          reason: "node-unreachable",
+          retryable: true,
+        };
+      }
+      try {
+        // A failed join comes back as its outcome, already carrying whether
+        // the invitation is worth keeping; the hook acks or keeps it by that.
+        const { outcome, landed } = await redeemInvite(
+          mero.admin,
+          payload,
+          setStatus,
+        );
+        if (!landed) return outcome;
+        // The space the landing page reads, so its `useJoinSync` clears the
+        // flag the dialog is waiting on. The join's own id is the fallback for
+        // a code that named no destination.
+        let namespaceId = outcome.namespaceId;
+        if (landed.kind === "forum") {
+          if (landed.forumName)
+            setForumName(landed.contextId, landed.forumName);
+          setActiveForum(landed.contextId, landed.identity, landed.namespaceId);
+          namespaceId = landed.namespaceId ?? namespaceId;
+          navigate("/f");
+        } else if (landed.kind === "namespace") {
+          namespaceId = landed.namespaceId;
+          navigate(`/spaces/${landed.namespaceId}`);
+        } else {
+          navigate("/spaces");
         }
-        setPending({ captured, payload });
-      }),
-    [],
+        return {
+          status: outcome.status,
+          namespaceId,
+          teamName: payload.forumName ?? payload.groupAlias,
+        };
+      } finally {
+        setStatus(null);
+      }
+    },
+    [mero, navigate],
   );
 
-  const accept = useCallback(async () => {
-    if (!pending || !mero) return;
-    const { captured, payload } = pending;
-    setBusy(true);
-    setError(null);
-    try {
-      const { outcome, landed } = await redeemInvite(
-        mero.admin,
-        payload,
-        setStatus,
-      );
-      if (!landed) {
-        setError(redeemFailureMessage(outcome));
-        // A failure that could pass (no online member yet, a flaky node) is NOT
-        // acked: the store exists precisely so the invitation survives to be
-        // retried on the next load. One that cannot is, or it replays every load.
-        if (!shouldRetain(outcome)) {
-          captured.resolve();
-          setPending(null);
-        }
-        return;
-      }
-      // Acked only once the redeem actually returned. Acking first would drop the
-      // invitation on a transient network failure, leaving nothing to retry with.
-      captured.resolve();
-      setPending(null);
-      if (landed.kind === "forum") {
-        if (landed.forumName) setForumName(landed.contextId, landed.forumName);
-        setActiveForum(landed.contextId, landed.identity, landed.namespaceId);
-        navigate("/f");
-      } else if (landed.kind === "namespace") {
-        navigate(`/spaces/${landed.namespaceId}`);
-      } else {
-        navigate("/spaces");
-      }
-    } catch (e) {
-      // NOT acked: a failure here is usually transient (no online member yet, a
-      // flaky node), and the store exists precisely so the invitation survives to
-      // be retried on the next load.
-      setError(e instanceof Error ? e.message : "Could not accept the invite.");
-    } finally {
-      setBusy(false);
-      setStatus(null);
-    }
-  }, [pending, mero, navigate]);
-
-  const decline = useCallback(() => {
-    pending?.captured.resolve();
-    setPending(null);
-    setError(null);
-  }, [pending]);
-
-  if (!pending) {
-    // An undecodable invitation still deserves to be reported, even though there
-    // is nothing to accept.
-    return error ? (
-      <div className={styles.wrap}>
-        <div
-          className={`${styles.prompt} ${styles.promptError}`}
-          data-testid="invite-error"
-        >
-          <span className={`${styles.icon} ${styles.iconError}`}>
-            <AlertIcon size={20} />
-          </span>
-          <span className={styles.text}>{error}</span>
-          <button
-            type="button"
-            className={styles.close}
-            onClick={() => setError(null)}
-            aria-label="Dismiss"
-            title="Dismiss"
-          >
-            <XIcon size={18} />
-          </button>
-        </div>
-      </div>
-    ) : null;
-  }
-
-  const name =
-    pending.payload.forumName ?? pending.payload.groupAlias ?? "a space";
+  const redemption = useInviteRedemption({ parse, redeem, enabled: !!mero });
+  const payload = redemption.parsed?.payload;
 
   return (
-    <div className={styles.wrap}>
-      <div className={styles.prompt} data-testid="invite-prompt">
-        <span className={styles.icon}>
-          <MailIcon size={22} />
-        </span>
-        <span className={styles.text}>
-          <strong>You have been invited to {name}</strong>
-          <span className={styles.sub}>
-            {status ??
-              error ??
-              (pending.payload.forumName
-                ? "Joining takes you straight into that call."
-                : "Joining gives you access to the space and every forum in it.")}
-          </span>
-        </span>
-        <span className={styles.actions}>
-          <button
-            type="button"
-            className={styles.ghost}
-            onClick={decline}
-            disabled={busy}
-            data-testid="invite-decline"
-          >
-            Not now
-          </button>
-          <button
-            type="button"
-            className={styles.accept}
-            onClick={() => void accept()}
-            disabled={busy || !mero}
-            data-testid="invite-accept"
-          >
-            {busy ? "Joining…" : "Join"}
-          </button>
-        </span>
-      </div>
-    </div>
+    <InvitationDialog
+      redemption={redemption}
+      noun="space"
+      appName="Mero Forum"
+      status={status}
+      detail={
+        payload?.forumName
+          ? "Joining takes you straight into that forum."
+          : "Joining gives you access to the space and every forum in it."
+      }
+    />
   );
 }

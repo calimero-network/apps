@@ -162,13 +162,15 @@ export class WorkspaceDriver {
     const parsed = new URL(inviteUrl, 'http://placeholder');
     await this.page.goto(`/${parsed.search}`);
     await this.page.getByTestId('invite-accept').click();
-    // Wait for the prompt to close, which it does only once the join is done.
-    // The URL alone proves nothing: `/` sends a signed-in visitor to /app at
-    // once, while the prompt (above the routes) is still joining. On a node
-    // that already holds a workspace, the name gate's settled marker is up
-    // too, so moving on here would race the join and its name gate.
+    // Wait for the prompt to close, which it does by itself only once the
+    // join is done AND the workspace has synced (the same gate as the
+    // workspace's "Syncing workspace from peers…"). The URL alone proves
+    // nothing: `/` sends a signed-in visitor to /app at once, while the prompt
+    // (above the routes) is still joining. On a node that already holds a
+    // workspace, the name gate's settled marker is up too, so moving on here
+    // would race the join and its name gate.
     await expect(this.page.getByTestId('invite-prompt')).toBeHidden({
-      timeout: 60_000,
+      timeout: 90_000,
     });
     await expect(this.page).toHaveURL(/\/app/, { timeout: 30_000 });
   }

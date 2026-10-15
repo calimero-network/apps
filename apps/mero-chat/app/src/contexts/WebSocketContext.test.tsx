@@ -9,7 +9,8 @@ let capturedEventCallback: ((event: WebSocketEvent) => void) | null = null;
 // Capture the ids argument so tests can assert group subscriptions ride along.
 let capturedSubscriptionInput: unknown = null;
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: vi.fn((input: unknown, callback: unknown) => {
     capturedSubscriptionInput = input;
     capturedEventCallback = callback as (event: WebSocketEvent) => void;

@@ -13,7 +13,7 @@ import { AppMode, MeroProvider } from '@calimero-network/mero-react';
 import { LoginGate } from './lib/loginGate';
 import { MeroBridge } from './lib/MeroBridge';
 import { PACKAGE_NAME, REGISTRY_URL } from './constants/config';
-import { primeInvitationCapture } from '@calimero-apps/invite';
+import { primeInvitationCapture } from '@calimero-network/mero-react';
 import { APP_SLUG } from './lib/inviteLink';
 import { bootstrapDesktopSession, hashNodeUrl } from './auth/desktopBootstrap';
 

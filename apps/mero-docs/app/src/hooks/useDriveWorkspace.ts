@@ -101,7 +101,7 @@ const EMPTY_DUPLICATES: string[] = [];
  *  hardcoding the string and drifting from this hook's reader. */
 export const ACTIVE_NS_KEY = 'mero-drive:activeNs';
 // SessionStorage-only so it doesn't persist across tabs or reloads
-// once sync settles. Set by the invitation prompt (JoinInviteCard) on a
+// once sync settles. Set by the invitation prompt (InvitationPrompt) on a
 // successful joinNamespace; the first time the namespace reaches a ready state in
 // useDriveWorkspace, the flag is cleared and we stop gating.
 const JUST_JOINED_KEY = 'mero-drive:justJoined';

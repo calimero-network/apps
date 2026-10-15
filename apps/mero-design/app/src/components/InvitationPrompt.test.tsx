@@ -1,7 +1,7 @@
-// This app's wiring into @calimero-apps/invite: the codec it supplies, the two
-// calls it supplies, and what lands on screen.
+// This app's wiring into mero-react's invitation dialog: the codec it supplies,
+// the two calls it supplies, and what lands on screen.
 //
-// The redemption decisions themselves are the package's, and tested there. What
+// The redemption decisions themselves are mero-react's, and tested there. What
 // can only be tested here is that this app's invitation shape parses, that it
 // asks before joining, that the join body is the one the node wants, and that
 // the outcome reaches the user.
@@ -11,7 +11,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const joinNamespace = vi.fn();
 const listNamespaces = vi.fn();
-const showToast = vi.fn();
 const navigate = vi.fn();
 const session = { isAuthenticated: true, isLoading: false };
 
@@ -22,18 +21,15 @@ vi.mock("../api/rpc", () => ({
 vi.mock("../hooks/useApplicationId", () => ({
   useApplicationId: () => async () => "app-1",
 }));
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => session,
 }));
 vi.mock("react-router-dom", () => ({ useNavigate: () => navigate }));
-vi.mock("../contexts/ToastContext", () => ({
-  useToast: () => ({ showToast }),
-}));
 
 const { encodeInvitationObject } = await import("../utils/invitation");
-const { resetInvitationCaptureForTests } = await import(
-  "@calimero-apps/invite"
-);
+const { isNamespaceJustJoined, peekInvitation, resetInvitationCaptureForTests } =
+  await import("@calimero-network/mero-react");
 const InvitationPrompt = (await import("./InvitationPrompt")).default;
 
 const NS = "7d847b7afeab53bef1899496014ce7dae7cecc6e4fda9901b4bdcc706afcc807";
@@ -66,7 +62,6 @@ describe("InvitationPrompt – an invite link opened this app", () => {
     sessionStorage.clear();
     joinNamespace.mockReset();
     listNamespaces.mockReset();
-    showToast.mockReset();
     navigate.mockReset();
     session.isAuthenticated = true;
     window.history.replaceState(null, "", "/");
@@ -81,8 +76,12 @@ describe("InvitationPrompt – an invite link opened this app", () => {
     openWithInvitation();
     render(<InvitationPrompt />);
 
-    expect(await screen.findByText(/invited to “Design”/)).toBeTruthy();
-    expect(screen.getByTestId("invite-accept")).toBeTruthy();
+    expect(
+      await screen.findByRole("dialog", { name: "Join “Design”?" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("invite-prompt").dataset.stage).toBe(
+      "awaiting-confirmation",
+    );
     expect(joinNamespace).not.toHaveBeenCalled();
   });
 
@@ -97,7 +96,7 @@ describe("InvitationPrompt – an invite link opened this app", () => {
     expect(await screen.findByTestId("invite-accept")).toBeTruthy();
   });
 
-  it("joins on accept, says so, and opens the team", async () => {
+  it("joins on accept, opens the team and waits for its data", async () => {
     joinNamespace.mockResolvedValue(undefined);
     listNamespaces.mockResolvedValue([{ namespaceId: NS, name: "Design" }]);
     openWithInvitation();
@@ -110,14 +109,13 @@ describe("InvitationPrompt – an invite link opened this app", () => {
     );
     // The body is the invitation struct, not the whole decoded token.
     expect(joinNamespace).toHaveBeenCalledWith(NS, OUTER);
-    // And the post-join sync gate is armed before the navigation.
-    expect(sessionStorage.getItem("calimero:justJoinedNamespaces")).toContain(
-      NS,
-    );
+    // Acked, and the post-join sync gate is armed: the dialog stays on
+    // "Syncing…" until ProjectsPage has read the team's projects.
+    expect(peekInvitation()).toBeNull();
+    expect(isNamespaceJustJoined(NS)).toBe(true);
     await waitFor(() =>
-      expect(showToast).toHaveBeenCalledWith(
-        "Joined team. Syncing projects…",
-        "success",
+      expect(screen.getByTestId("invite-prompt").dataset.stage).toBe(
+        "syncing",
       ),
     );
   });
@@ -129,8 +127,9 @@ describe("InvitationPrompt – an invite link opened this app", () => {
     fireEvent.click(await screen.findByTestId("invite-decline"));
 
     await waitFor(() =>
-      expect(screen.queryByTestId("invite-status")).toBeNull(),
+      expect(screen.queryByTestId("invite-prompt")).toBeNull(),
     );
+    expect(peekInvitation()).toBeNull();
     expect(joinNamespace).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -145,15 +144,15 @@ describe("InvitationPrompt – an invite link opened this app", () => {
     fireEvent.click(await screen.findByTestId("invite-accept"));
 
     await waitFor(() =>
-      expect(showToast).toHaveBeenCalledWith(
-        "You are already in this team.",
-        "success",
+      expect(screen.getByTestId("invite-prompt").dataset.stage).toBe(
+        "already-member",
       ),
     );
+    expect(screen.queryByTestId("invite-error")).toBeNull();
     expect(navigate).toHaveBeenCalledWith(`/teams/${NS}/projects`);
   });
 
-  it("shows the node's own reason when the join really failed", async () => {
+  it("shows the node's own reason when the join really failed, and retries", async () => {
     joinNamespace.mockRejectedValue(
       new Error("could not reach any member of this namespace"),
     );
@@ -163,11 +162,19 @@ describe("InvitationPrompt – an invite link opened this app", () => {
 
     fireEvent.click(await screen.findByTestId("invite-accept"));
 
-    expect(
-      await screen.findByText(/could not reach any member of this namespace/),
-    ).toBeTruthy();
+    expect(await screen.findByTestId("invite-error")).toHaveTextContent(
+      /could not reach any member of this namespace/,
+    );
     expect(navigate).not.toHaveBeenCalled();
-    // Retryable, so the user is offered one.
-    expect(screen.getByTestId("invite-retry")).toBeTruthy();
+    // Retryable, so it is kept and the user is offered one that joins without
+    // asking again.
+    expect(peekInvitation()).not.toBeNull();
+    joinNamespace.mockResolvedValue(undefined);
+    listNamespaces.mockResolvedValue([{ namespaceId: NS, name: "Design" }]);
+    fireEvent.click(screen.getByTestId("invite-retry"));
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith(`/teams/${NS}/projects`),
+    );
+    expect(peekInvitation()).toBeNull();
   });
 });

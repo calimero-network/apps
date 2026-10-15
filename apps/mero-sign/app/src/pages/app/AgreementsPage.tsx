@@ -39,7 +39,7 @@ import { adminApi } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
 import { AgreementService } from '../../api/agreementService';
 import styles from './AgreementsPage.module.css';
-import { JoinSyncBanner, useJoinSync } from '@calimero-apps/join-sync';
+import { JoinSyncBanner, useJoinSync } from '@calimero-network/mero-react';
 
 // ── The agreements in one workspace ─────────────────────────────────────────
 //

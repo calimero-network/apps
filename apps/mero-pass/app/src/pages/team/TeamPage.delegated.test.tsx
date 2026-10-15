@@ -66,8 +66,11 @@ const stub = vi.hoisted(() => {
   return { admin, rawAdmin, session };
 });
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => stub.session,
+  useJoinSync: () => ({ isSyncing: false, dismiss: () => {} }),
+  JoinSyncBanner: () => null,
 }));
 
 vi.mock('../../hooks/useApplicationId', () => ({
@@ -91,11 +94,6 @@ vi.mock('../../hooks/useTeamCapabilities', async () => {
     }),
   };
 });
-
-vi.mock('@calimero-apps/join-sync', () => ({
-  useJoinSync: () => ({ isSyncing: false, dismiss: () => {} }),
-  JoinSyncBanner: () => null,
-}));
 
 vi.mock('../../components/MembersPanel', () => ({ default: () => null }));
 

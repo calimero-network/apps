@@ -47,8 +47,7 @@ vi.mock('@/hooks/useMemberDisplayName', () => ({
 vi.mock('@calimero-network/mero-react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@calimero-network/mero-react')>();
   return {
-    MeroContext: actual.MeroContext,
-    useMero: actual.useMero,
+    ...actual,
     useGroupContexts: () => ({ contexts: h.none, loading: false, refetch: h.refetch }),
     useGroupInfo: () => ({ groupInfo: null, loading: false }),
     useGroupMembers: () => ({ members: h.none, loading: false, refetch: h.refetch }),

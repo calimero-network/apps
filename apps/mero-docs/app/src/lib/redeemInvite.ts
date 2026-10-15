@@ -1,10 +1,10 @@
 // Redeeming a parsed invite: join once, and decide whether it worked.
 //
-// The deciding is `@calimero-apps/invite`'s `redeemInvitation`, which does not
+// The deciding is mero-js's `redeemInvitation` (via mero-react), which does not
 // trust the join request alone: the desktop proxy aborts an admin request at
 // 30s while a namespace join can take far longer and still land. Judged by the
 // request, a workspace the node had joined read as "could not join". Asked of
-// the node's namespace list, it reads as `already-member`, which the card
+// the node's namespace list, it reads as `already-member`, which the prompt
 // routes exactly like a join.
 //
 // Kept free of React so the whole path is testable against fake node calls.
@@ -13,7 +13,7 @@ import {
   describeInviteFailure,
   redeemInvitation,
   type RedeemOutcome,
-} from '@calimero-apps/invite';
+} from '@calimero-network/mero-react';
 import type { ParsedInvite } from '@/hooks/useNamespaceInvitation';
 
 /** The node calls a redeem makes: the join hooks, plus the namespace list. */
@@ -107,7 +107,7 @@ const SPECIFIC_REFUSALS: ReadonlyArray<[RegExp, string]> = [
   ],
 ];
 
-/** What the card says about a failed redeem, in the scope's own noun: the
+/** What the prompt says about a failed redeem, in the scope's own noun: the
  *  shared wording, plus a line naming the refusal when the node's message
  *  says which one it was. */
 export function inviteFailureCopy(

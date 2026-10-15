@@ -30,7 +30,8 @@ const session = vi.hoisted(() => ({
   applicationId: "registry-app-id",
 }));
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     mero: {
       rpc: { execute: session.execute },

@@ -22,7 +22,12 @@ import React, {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
-import { useMero } from '@calimero-network/mero-react';
+import {
+  clearNamespaceJustJoined as clearInviteSyncing,
+  isNamespaceJustJoined as isInviteSyncing,
+  useJoinSync,
+  useMero,
+} from '@calimero-network/mero-react';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import { NamespaceSwitcher } from './NamespaceSwitcher';
@@ -199,6 +204,21 @@ export function WorkspaceLayout() {
     ],
   );
   const routedFolder = registryFolders?.find((f) => f.id === selectedFolderId);
+  // The invitation dialog (InvitationPrompt) holds "Syncing…" for what it
+  // joined until this page has its data. A workspace's is here when the gate
+  // behind "Syncing workspace from peers…" lifts: registry resolved, folder
+  // list read, workspace listed.
+  useJoinSync({
+    namespaceId,
+    settled: !!namespaceId && !isJustJoined,
+  });
+  // A folder invitation's wait is keyed by the folder, which is here once the
+  // workspace's folder list has it.
+  useEffect(() => {
+    for (const folder of registryFolders ?? []) {
+      if (isInviteSyncing(folder.id)) clearInviteSyncing(folder.id);
+    }
+  }, [registryFolders]);
   // Name what was linked: a doc link reads as a doc whether or not this node
   // lists its folder, since an unlisted folder may be Restricted to others and
   // the card must not tell that apart from one that never existed. An absent

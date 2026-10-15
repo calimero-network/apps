@@ -1,11 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { AppMode, MeroProvider, setApplicationId } from "@calimero-network/mero-react";
+import {
+  AppMode,
+  MeroProvider,
+  primeInvitationCapture,
+  setApplicationId,
+} from "@calimero-network/mero-react";
 import { applyContextFromJwt, getNodeUrl, setNodeUrl, setTokens } from "./lib/mero";
 import "./index.css";
 import App from "./App.tsx";
-import { primeInvitationCapture } from "@calimero-apps/invite";
 import { APP_SLUG } from "./lib/invite";
 
 // An invitation reaches this app only as an opened link: the links page (or a

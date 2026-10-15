@@ -1,6 +1,6 @@
-// This app's wiring into @calimero-apps/invite, on a delegated (account)
-// session: the codec it supplies, the join it supplies, and what lands on
-// screen.
+// This app's wiring into mero-react's invitation dialog, on a delegated
+// (account) session: the codec it supplies, the join it supplies, and what
+// lands on screen.
 //
 // Measured on prod as an account, a join through the raw node route
 // (`POST /admin-api/namespaces/{ns}/join`) is a 403. It must go through the
@@ -29,12 +29,12 @@ const stub = vi.hoisted(() => {
     admin,
     rawAdmin,
     navigate: vi.fn(),
-    showToast: vi.fn(),
     session: { isAuthenticated: true },
   };
 });
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     admin: stub.admin,
     mero: { admin: stub.rawAdmin },
@@ -47,13 +47,10 @@ vi.mock('@calimero-network/mero-react', () => ({
   getApplicationId: () => '',
 }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => stub.navigate }));
-vi.mock('../../../contexts/ToastContext', () => ({
-  useToast: () => ({ showToast: stub.showToast }),
-}));
 
 const { encodeInvitationObject } = await import('../../../utils/invitation');
-const { resetInvitationCaptureForTests } = await import(
-  '@calimero-apps/invite'
+const { peekInvitation, resetInvitationCaptureForTests } = await import(
+  '@calimero-network/mero-react'
 );
 const InvitationPrompt = (await import('./InvitationPrompt')).default;
 
@@ -92,7 +89,9 @@ describe('InvitationPrompt – an invite link opened this app', () => {
     openWithInvitation();
     render(<InvitationPrompt />);
 
-    expect(await screen.findByText(/invited to “Design”/)).toBeTruthy();
+    expect(
+      await screen.findByRole('dialog', { name: 'Join “Design”?' }),
+    ).toBeTruthy();
     expect(screen.getByTestId('invite-accept')).toBeTruthy();
     expect(stub.admin.joinNamespace).not.toHaveBeenCalled();
   });
@@ -108,7 +107,7 @@ describe('InvitationPrompt – an invite link opened this app', () => {
     expect(await screen.findByTestId('invite-accept')).toBeTruthy();
   });
 
-  it('joins on accept through the account admin, never the raw client, and opens the team', async () => {
+  it('joins on accept through the account admin, never the raw client, opens the team and waits for its calendars', async () => {
     stub.admin.listNamespacesForApplication.mockResolvedValue([]);
     stub.admin.joinNamespace.mockImplementation(async () => {
       stub.admin.listNamespacesForApplication.mockResolvedValue([
@@ -137,12 +136,12 @@ describe('InvitationPrompt – an invite link opened this app', () => {
     // exactly as minted.
     expect(body.invitation).toEqual(SIGNED);
     expect(stub.rawAdmin.joinNamespace).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(stub.showToast).toHaveBeenCalledWith(
-        'Joined team. Syncing calendar…',
-        'success',
-      ),
+    // Joined and acked, and held on "Syncing…": the team's page clears that
+    // once it has read the calendars, and nothing here does.
+    expect(screen.getByTestId('invite-prompt').getAttribute('data-stage')).toBe(
+      'syncing',
     );
+    expect(peekInvitation()).toBeNull();
   });
 
   it('declining joins nothing and puts the prompt away', async () => {
@@ -152,8 +151,9 @@ describe('InvitationPrompt – an invite link opened this app', () => {
     fireEvent.click(await screen.findByTestId('invite-decline'));
 
     await waitFor(() =>
-      expect(screen.queryByTestId('invite-status')).toBeNull(),
+      expect(screen.queryByTestId('invite-prompt')).toBeNull(),
     );
+    expect(peekInvitation()).toBeNull();
     expect(stub.admin.joinNamespace).not.toHaveBeenCalled();
     expect(stub.navigate).not.toHaveBeenCalled();
   });
@@ -170,9 +170,18 @@ describe('InvitationPrompt – an invite link opened this app', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByTestId('invite-status').getAttribute('data-stage'),
+        screen.getByTestId('invite-prompt').getAttribute('data-stage'),
       ).toBe('failed'),
     );
+    expect(screen.getByTestId('invite-error')).toBeTruthy();
     expect(stub.navigate).not.toHaveBeenCalled();
+    // Kept for another try, which joins without asking again.
+    expect(peekInvitation()).not.toBeNull();
+    stub.admin.joinNamespace.mockResolvedValue({ namespaceId: NS });
+    fireEvent.click(screen.getByTestId('invite-retry'));
+    await waitFor(() =>
+      expect(stub.navigate).toHaveBeenCalledWith(`/teams/${NS}`),
+    );
+    expect(peekInvitation()).toBeNull();
   });
 });

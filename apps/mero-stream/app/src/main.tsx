@@ -7,7 +7,7 @@ import {
   AppMode as MeroAppMode,
 } from "@calimero-network/mero-react";
 import "@calimero-network/mero-ui/styles.css";
-import { primeInvitationCapture } from "@calimero-apps/invite";
+import { primeInvitationCapture } from "@calimero-network/mero-react";
 import App from "./App";
 import { ToastProvider } from "./contexts/ToastContext";
 import { APP_ENABLED, IS_TAURI } from "./lib/tauri";

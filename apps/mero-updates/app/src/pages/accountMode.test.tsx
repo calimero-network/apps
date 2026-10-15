@@ -8,7 +8,6 @@ import {
   vi,
 } from "vitest";
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -16,7 +15,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import type { CapturedInvitation } from "@calimero-apps/invite";
 import { ToastProvider } from "../contexts/ToastContext";
 import { encodeInvite } from "../lib/inviteCodec";
 import { clearHostingState } from "../lib/hosting";
@@ -25,6 +23,9 @@ import { getExecutorPublicKey } from "../lib/session";
 import CompaniesPage from "./CompaniesPage";
 import AudiencesPage from "./AudiencesPage";
 import InvitationPrompt from "../components/InvitationPrompt";
+
+const { resetInvitationCaptureForTests } =
+  await import("@calimero-network/mero-react");
 
 // ── The three calls that 403 on prod for an account ───────────────────────────
 //
@@ -79,23 +80,13 @@ const rawAdmin = Object.fromEntries(
 
 const navigate = vi.fn();
 
-/** The app-level prompt's subscription, so a test can hand it an opened link. */
-const captured = vi.hoisted(() => ({
-  listener: null as null | ((c: CapturedInvitation) => void),
-}));
-vi.mock("@calimero-apps/invite", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@calimero-apps/invite")>()),
-  onInvitation: (listener: (c: CapturedInvitation) => void) => {
-    captured.listener = listener;
-    return () => {};
-  },
-}));
 vi.mock("react-router-dom", async (importOriginal) => {
   const mod = await importOriginal<typeof import("react-router-dom")>();
   return { ...mod, useNavigate: () => navigate };
 });
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     isAuthenticated: true,
     isDelegated: true,
@@ -179,11 +170,6 @@ describe("an account session (delegated) on the companies page", () => {
   });
 
   it("redeems an opened invitation through the account admin", async () => {
-    render(
-      <MemoryRouter initialEntries={["/companies"]}>
-        <InvitationPrompt />
-      </MemoryRouter>,
-    );
     const code = encodeInvite({
       invitation: {
         invitation: { groupId: "ns2", nonce: 1 },
@@ -193,14 +179,15 @@ describe("an account session (delegated) on the companies page", () => {
       groupId: "ns2",
       groupAlias: "Beta",
     } as unknown as Parameters<typeof encodeInvite>[0]);
-    act(() =>
-      captured.listener?.({
-        token: code,
-        params: { invitation: code },
-        resolve: () => {},
-        autoJoin: false,
-      }),
+    // Opened as a real link, through mero-react's capture.
+    resetInvitationCaptureForTests();
+    window.history.replaceState(null, "", `/?invitation=${code}`);
+    render(
+      <MemoryRouter initialEntries={["/companies"]}>
+        <InvitationPrompt />
+      </MemoryRouter>,
     );
+    await screen.findByTestId("invite-accept");
     fireEvent.click(screen.getByTestId("invite-accept"));
 
     await waitFor(() =>

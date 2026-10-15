@@ -44,12 +44,12 @@ import {
   pickInvitedAgreement,
 } from '../lib/agreements';
 import { setActiveWorkspace } from '../lib/activeWorkspace';
-import { markNamespaceJustJoined } from '@calimero-apps/join-sync';
 import {
   describeInviteFailure,
+  markNamespaceJustJoined,
   redeemInvitation,
   type RedeemOutcome,
-} from '@calimero-apps/invite';
+} from '@calimero-network/mero-react';
 
 /**
  * The `app` handle `useCalimero()` returns.

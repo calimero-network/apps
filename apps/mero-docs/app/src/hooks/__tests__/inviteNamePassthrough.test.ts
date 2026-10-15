@@ -26,7 +26,8 @@ const joinGroup = vi.fn();
 const createGroupInvitation = vi.fn();
 const createNamespaceInvitation = vi.fn();
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     // The hooks write through the session-aware `admin`, never `mero.admin`.
     mero: { admin: {} },

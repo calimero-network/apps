@@ -43,7 +43,8 @@ vi.mock("../../constants/config", () => ({
   setGroupMemberIdentity: () => {},
 }));
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getContextIdentity: () => "self-device-key",
 }));
 

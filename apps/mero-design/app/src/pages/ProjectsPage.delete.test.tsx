@@ -23,7 +23,8 @@ vi.mock("../api/rpc", () => ({
 vi.mock("../hooks/useApplicationId", () => ({
   useApplicationId: () => async () => "app-1",
 }));
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ logout: vi.fn(), isDelegated: false }),
 }));
 vi.mock("react-router-dom", () => ({

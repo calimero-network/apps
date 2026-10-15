@@ -21,7 +21,7 @@ import {
   IconPlus,
 } from "./icons";
 import { useSignOut } from "../auth/signOut";
-import { JoinSyncBanner } from "@calimero-apps/join-sync";
+import { JoinSyncBanner } from "@calimero-network/mero-react";
 
 /** The product name as people say it (studio.config's `metadata.name` is the
  *  package slug, `mero-crm`); matches index.html's <title>. */

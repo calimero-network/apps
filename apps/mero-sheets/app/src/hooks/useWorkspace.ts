@@ -29,6 +29,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  markNamespaceJustJoined,
+  useJoinSync,
   useMero,
   useNamespacesForApplication,
   useGroupContexts,
@@ -46,7 +48,6 @@ import {
   type AcceptedInvite,
   type SpreadsheetRow,
 } from '../lib/workspaces';
-import { markNamespaceJustJoined, useJoinSync } from '@calimero-apps/join-sync';
 
 export interface Workspace {
   contextId: string;
@@ -119,8 +120,15 @@ export function useWorkspace(): UseWorkspaceReturn {
     refetch: refetchNamespaces,
   } = useNamespacesForApplication(applicationId || null);
 
-  // The app's namespace (first one bound to this application). null on first run.
-  const namespace = namespaces[0] ?? null;
+  // A workspace joined by invitation this session, once the node lists it.
+  const [joinedNsId, setJoinedNsId] = useState<string | null>(null);
+
+  // The app's namespace: the one just joined, else the first one bound to this
+  // application. null on first run. Preferring the joined one is what lands an
+  // invited person who already had a workspace in the one they were invited
+  // to, and what lets the join-sync gate below see that workspace's list.
+  const namespace =
+    namespaces.find((n) => n.namespaceId === joinedNsId) ?? namespaces[0] ?? null;
   const namespaceId = namespace?.namespaceId ?? null;
   const namespaceName = namespace
     ? namespaceLabel(namespace, APP_DISPLAY_NAME)
@@ -329,7 +337,10 @@ export function useWorkspace(): UseWorkspaceReturn {
       // The join has returned; the workspace's own state has not arrived yet.
       // Without this the joiner lands on an empty spreadsheet list that looks
       // exactly like a workspace with nothing in it.
-      if (landed.namespaceId) markNamespaceJustJoined(landed.namespaceId);
+      if (landed.namespaceId) {
+        markNamespaceJustJoined(landed.namespaceId);
+        setJoinedNsId(landed.namespaceId);
+      }
       await refresh();
       // The code can name a spreadsheet to open. It is an unsigned hint, so
       // the node still decides whether to admit us — `openWorkspace` goes
@@ -339,9 +350,23 @@ export function useWorkspace(): UseWorkspaceReturn {
     [refresh, openWorkspace],
   );
 
+  // Whether this namespace's context list has come back from the node. The
+  // spreadsheet list alone cannot say: it is rebuilt the moment `namespaceId`
+  // changes, from whatever contexts are on hand (none, or the previous
+  // namespace's), so it would "settle" a just-joined workspace before reading
+  // it at all. Same in-flight-then-ended test as `namespaceKnown` above, for
+  // the same reason.
+  const ctxReadStartedFor = useRef<string | null>(null);
+  const [ctxSettledFor, setCtxSettledFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!namespaceId) return;
+    if (ctxLoading) ctxReadStartedFor.current = namespaceId;
+    else if (ctxReadStartedFor.current === namespaceId) setCtxSettledFor(namespaceId);
+  }, [namespaceId, ctxLoading]);
+
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
     namespaceId,
-    settled: listedForNs === namespaceId,
+    settled: ctxSettledFor === namespaceId && listedForNs === namespaceId,
   });
 
   return {

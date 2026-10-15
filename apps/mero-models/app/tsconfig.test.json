@@ -18,7 +18,6 @@
     "src/generated",
     "src/editor",
     "src/useJoinFromInvitation.ts",
-    "src/JoinCard.tsx",
     "src/utils"
   ]
 }

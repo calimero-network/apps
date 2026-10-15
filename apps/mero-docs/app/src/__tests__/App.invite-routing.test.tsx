@@ -8,7 +8,8 @@
 // the link over as a `deep-link` event instead, with the app open on /app.
 // The shared capture takes both at boot; the prompt sits above the routes.
 //
-// These tests drive the real App router and the real capture.
+// These tests drive the real App router, the real capture and the real
+// prompt (mero-react's InvitationDialog); only the node is fake.
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -23,15 +24,21 @@ import {
   peekInvitation,
   primeInvitationCapture,
   resetInvitationCaptureForTests,
-} from '@calimero-apps/invite';
+} from '@calimero-network/mero-react';
 // vitest hoists `vi.mock` above every import, so App can be imported here and
 // still see the mocks below.
 import App from '../App';
 import { saveReturnTo } from '@/lib/routes';
 
-const meroState = { isAuthenticated: false, isLoading: false };
+const joinNamespace = vi.hoisted(() => vi.fn(async () => ({})));
+const meroState = {
+  isAuthenticated: false,
+  isLoading: false,
+  admin: { joinNamespace, listNamespaces: async () => [] },
+};
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   AppMode: { MultiContext: 'MultiContext' },
   MeroProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -61,6 +68,13 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
   DriveWorkspaceProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
+  markNamespaceJustJoined: vi.fn(),
+}));
+vi.mock('@/hooks/useApplicationId', () => ({
+  useApplicationId: () => ({ appId: 'app-1' }),
+}));
+vi.mock('@/hooks/useAppNamespaces', () => ({
+  useAppNamespaces: () => ({ namespaces: [] }),
 }));
 vi.mock('../pages/landing/LandingPage', () => ({
   default: () => <div data-testid="landing" />,
@@ -68,37 +82,6 @@ vi.mock('../pages/landing/LandingPage', () => ({
 vi.mock('../pages/workspace', () => ({
   default: () => <div data-testid="workspace" />,
 }));
-// The card's own behaviour (the join call, its failures) is pinned in its own
-// tests; here it only has to show what it was handed and say yes.
-const joinedVia = vi.fn();
-vi.mock('@/components/workspace/JoinInviteCard', () => ({
-  JoinInviteCard: ({
-    parsed,
-    onJoined,
-    secondaryAction,
-  }: {
-    parsed: { kind: string; targetId: string; targetName?: string };
-    onJoined: () => void;
-    secondaryAction?: { label: string; onClick: () => void };
-  }) => (
-    <div data-testid="card" data-target={parsed.targetId}>
-      {parsed.targetName}
-      <button
-        data-testid="invite-accept"
-        onClick={() => {
-          joinedVia(parsed.targetId);
-          onJoined();
-        }}
-      >
-        Accept &amp; join
-      </button>
-      <button data-testid="invite-decline" onClick={secondaryAction?.onClick}>
-        {secondaryAction?.label}
-      </button>
-    </div>
-  ),
-}));
-
 const SLUG = 'com.calimero.mero-drive-docs';
 
 /** What a running desktop launcher injects before the app boots. */
@@ -131,13 +114,18 @@ beforeEach(() => {
   meroState.isLoading = false;
   sessionStorage.clear();
   localStorage.clear();
-  joinedVia.mockClear();
+  joinNamespace.mockClear();
   resetInvitationCaptureForTests();
   delete (window as unknown as Record<string, unknown>).__calimero_platform__;
   go('/');
 });
 
 const INVITE = '?invitation=eyJ0ZXN0Ijp0cnVlfQ&kind=namespace&id=ns-1&name=Q3';
+
+/** The prompt, once it is asking about the workspace named Q3. */
+const asking = () => screen.findByRole('dialog', { name: 'Join “Q3”?' });
+const prompt = () => screen.queryByTestId('invite-prompt');
+const stage = () => prompt()?.getAttribute('data-stage');
 
 describe('an opened invitation link reaches the prompt', () => {
   it('asks a signed-in visitor on /app, and joins only on accept', async () => {
@@ -147,14 +135,17 @@ describe('an opened invitation link reaches the prompt', () => {
     // The signed-in redirect still runs; the invitation survives it.
     expect(await screen.findByTestId('workspace')).toBeTruthy();
     expect(window.location.pathname).toBe('/app');
-    const card = await screen.findByTestId('card');
-    expect(card.dataset.target).toBe('ns-1');
-    expect(card.textContent).toContain('Q3');
-    expect(joinedVia).not.toHaveBeenCalled();
+    await asking();
+    expect(joinNamespace).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId('invite-accept'));
-    expect(joinedVia).toHaveBeenCalledWith('ns-1');
-    await waitFor(() => expect(screen.queryByTestId('card')).toBeNull());
+    // Joined; the workspace's data is still to come, so the prompt says so
+    // rather than closing on an empty workspace.
+    await waitFor(() => expect(stage()).toBe('syncing'));
+    expect(joinNamespace).toHaveBeenCalledWith(
+      'ns-1',
+      expect.objectContaining({ groupName: 'Q3' }),
+    );
     expect(window.location.pathname).toBe('/app');
     // Acked: it does not come back on the next load.
     expect(peekInvitation()).toBeNull();
@@ -164,7 +155,7 @@ describe('an opened invitation link reaches the prompt', () => {
     meroState.isAuthenticated = true;
     go(`/${INVITE}`);
     boot();
-    await screen.findByTestId('card');
+    await asking();
     expect(window.location.search).not.toContain('invitation');
   });
 
@@ -172,7 +163,7 @@ describe('an opened invitation link reaches the prompt', () => {
     go(`/${INVITE}`);
     boot();
     expect(screen.getByTestId('landing')).toBeTruthy();
-    expect(screen.queryByTestId('card')).toBeNull();
+    expect(prompt()).toBeNull();
     expect(peekInvitation()?.params.id).toBe('ns-1');
   });
 
@@ -180,18 +171,19 @@ describe('an opened invitation link reaches the prompt', () => {
     meroState.isAuthenticated = true;
     go(`/${INVITE}`);
     boot();
-    await screen.findByTestId('card');
+    await asking();
     fireEvent.click(screen.getByTestId('invite-decline'));
-    await waitFor(() => expect(screen.queryByTestId('card')).toBeNull());
+    await waitFor(() => expect(prompt()).toBeNull());
     expect(peekInvitation()).toBeNull();
-    expect(joinedVia).not.toHaveBeenCalled();
+    expect(joinNamespace).not.toHaveBeenCalled();
   });
 
   it('a link that landed on an old /join URL is still offered', async () => {
     meroState.isAuthenticated = true;
     go(`/join${INVITE}`);
     boot();
-    expect((await screen.findByTestId('card')).dataset.target).toBe('ns-1');
+    await asking();
+    expect(peekInvitation()?.params.id).toBe('ns-1');
   });
 
   it('reads the id from the signed invitation when the link has none', async () => {
@@ -199,7 +191,10 @@ describe('an opened invitation link reaches the prompt', () => {
     // {"invitation":{"group_id":[171,1]}}
     go('/?invitation=eyJpbnZpdGF0aW9uIjp7Imdyb3VwX2lkIjpbMTcxLDFdfX0');
     boot();
-    expect((await screen.findByTestId('card')).dataset.target).toBe('ab01');
+    fireEvent.click(await screen.findByTestId('invite-accept'));
+    await waitFor(() =>
+      expect(joinNamespace).toHaveBeenCalledWith('ab01', expect.anything()),
+    );
   });
 });
 
@@ -212,13 +207,13 @@ describe('a link handed to the open desktop app', () => {
     expect(await screen.findByTestId('workspace')).toBeTruthy();
 
     act(() => fire(`calimero://com.calimero.not-this-app/join${INVITE}`));
-    expect(screen.queryByTestId('card')).toBeNull();
+    expect(prompt()).toBeNull();
 
     act(() => fire(`calimero://${SLUG}/join${INVITE}`));
-    expect((await screen.findByTestId('card')).dataset.target).toBe('ns-1');
+    await asking();
     fireEvent.click(screen.getByTestId('invite-accept'));
-    expect(joinedVia).toHaveBeenCalledWith('ns-1');
-    await waitFor(() => expect(screen.queryByTestId('card')).toBeNull());
+    await waitFor(() => expect(stage()).toBe('syncing'));
+    expect(joinNamespace).toHaveBeenCalledWith('ns-1', expect.anything());
     expect(window.location.pathname).toBe('/app');
   });
 });
