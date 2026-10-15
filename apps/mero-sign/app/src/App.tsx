@@ -12,7 +12,7 @@ import ConnectPopup from './pages/landing/ConnectPopup';
 import InvitationHandlerPopup from './components/InvitationHandlerPopup';
 import { useCalimero } from './lib/useCalimero';
 import { ROUTES, type Screen } from './routes';
-import { onInvitation, type CapturedInvitation } from "@calimero-apps/invite";
+import { onInvitation, type CapturedInvitation } from '@calimero-apps/invite';
 
 /**
  * The single screen renderer.
@@ -92,7 +92,7 @@ function AppContent() {
   // Invitations are captured at APP level, not per page: a link can land on any
   // route. Subscribed unconditionally, outside any auth branch — capture starts
   // in main.tsx before React mounts, so an invitation survives the login
-  // redirect. See `lib/invitationIntents.ts`.
+  // redirect. The prompt asks before it joins.
   useEffect(() => onInvitation(setInvitation), []);
 
   const handleInvitationSuccess = useCallback(
@@ -161,6 +161,7 @@ function AppContent() {
       />
       {invitation && isAuthenticated && (
         <InvitationHandlerPopup
+          key={invitation.token}
           invitation={invitation.token}
           onSuccess={handleInvitationSuccess}
           onFinalFailure={handleInvitationFinalFailure}

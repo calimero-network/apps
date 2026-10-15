@@ -43,7 +43,7 @@ import {
   verifyDocumentBytes,
 } from '../../lib/documentIntegrity';
 import { encodeInvite } from '../../lib/inviteCodec';
-import { shareableInvitation } from '../../lib/inviteLink';
+import { invitationUrl } from '../../lib/inviteLink';
 import {
   INVITABLE_LEVELS,
   INVITE_LEVEL_LABELS,
@@ -220,11 +220,7 @@ export default function AgreementPage() {
   }, [viewing, contextId]);
   const [roleBusyFor, setRoleBusyFor] = useState<string | null>(null);
 
-  const [invite, setInvite] = useState<{
-    link: string;
-    deepLink: string;
-    code: string;
-  } | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [mintingInvite, setMintingInvite] = useState(false);
   // ⚠️ An invitation is to the WORKSPACE, not to this agreement. See below.
   const workspaceId = useActiveWorkspace();
@@ -236,7 +232,7 @@ export default function AgreementPage() {
   const [inviteeLevel, setInviteeLevel] = useState<PermissionLevel>(
     PermissionLevel.Sign,
   );
-  const [targetedPayload, setTargetedPayload] = useState('');
+  const [targetedLink, setTargetedLink] = useState('');
 
   const flash = useCallback((message: string) => {
     setNotice(message);
@@ -425,7 +421,7 @@ export default function AgreementPage() {
         // `context_name` supersedes it the moment they join.
         contextName: details?.context_name,
       });
-      setInvite(shareableInvitation(code));
+      setInviteLink(invitationUrl(code));
     } finally {
       setMintingInvite(false);
     }
@@ -462,7 +458,9 @@ export default function AgreementPage() {
         contextId,
         executorKey || undefined,
       );
-      setTargetedPayload(res.data);
+      // A link like any other: the invitee opens it, and the payload is
+      // useless to anyone but the identity it names.
+      setTargetedLink(invitationUrl(res.data));
     } finally {
       setMintingInvite(false);
     }
@@ -652,7 +650,9 @@ export default function AgreementPage() {
                       <span className={styles.cardBody}>
                         <span className={styles.cardName}>{doc.name}</span>
                         <span className={styles.cardStatus}>
-                          <span className={`${styles.badge} ${statusClass(doc.status)}`}>
+                          <span
+                            className={`${styles.badge} ${statusClass(doc.status)}`}
+                          >
                             {statusIcon(doc.status)}
                             {statusLabel(doc.status)}
                           </span>
@@ -795,41 +795,24 @@ export default function AgreementPage() {
                 <div>
                   <h2 className={styles.panelTitle}>Shareable link</h2>
                   <p className={styles.panelText}>
-                    Anybody holding this link can join. It expires within a
-                    day, and it grants membership of this agreement and
-                    nothing else.
+                    Anybody holding this link can join. It expires within a day,
+                    and it grants membership of this agreement and nothing else.
                   </p>
                 </div>
               </div>
-              {invite ? (
-                <>
-                  <div className={styles.tokenBox}>
-                    <span className={styles.token} data-testid="invite-link">
-                      {invite.link}
-                    </span>
-                    <button
-                      className={styles.copyBtn}
-                      onClick={() => copy(invite.link, 'Invitation link')}
-                    >
-                      <Copy size={14} />
-                      Copy
-                    </button>
-                  </div>
-                  <div className={styles.buttonRow}>
-                    <button
-                      className={styles.btnGhost}
-                      onClick={() => copy(invite.deepLink, 'Desktop link')}
-                    >
-                      Copy desktop link
-                    </button>
-                    <button
-                      className={styles.btnGhost}
-                      onClick={() => copy(invite.code, 'Invitation code')}
-                    >
-                      Copy code
-                    </button>
-                  </div>
-                </>
+              {inviteLink ? (
+                <div className={styles.tokenBox}>
+                  <span className={styles.token} data-testid="invite-link">
+                    {inviteLink}
+                  </span>
+                  <button
+                    className={styles.copyBtn}
+                    onClick={() => copy(inviteLink, 'Invitation link')}
+                  >
+                    <Copy size={14} />
+                    Copy
+                  </button>
+                </div>
               ) : (
                 <div className={styles.buttonRow}>
                   <button
@@ -858,7 +841,7 @@ export default function AgreementPage() {
                   <h2 className={styles.panelTitle}>Invite one person</h2>
                   <p className={styles.panelText}>
                     For a specific Calimero identity. They send you their id;
-                    this mints a payload only they can redeem.
+                    this mints a link only they can redeem.
                   </p>
                 </div>
               </div>
@@ -900,12 +883,12 @@ export default function AgreementPage() {
                 signer cannot be made a viewer — to undo that you have to remove
                 them and invite them again.
               </p>
-              {targetedPayload && (
+              {targetedLink && (
                 <div className={styles.tokenBox}>
-                  <span className={styles.token}>{targetedPayload}</span>
+                  <span className={styles.token}>{targetedLink}</span>
                   <button
                     className={styles.copyBtn}
-                    onClick={() => copy(targetedPayload, 'Invitation payload')}
+                    onClick={() => copy(targetedLink, 'Invitation link')}
                   >
                     <Copy size={14} />
                     Copy
@@ -940,7 +923,11 @@ export default function AgreementPage() {
               className={`${styles.drop} ${uploadFile ? styles.dropPicked : ''}`}
             >
               <span className={styles.dropIcon}>
-                {uploadFile ? <FileText size={22} /> : <UploadCloud size={22} />}
+                {uploadFile ? (
+                  <FileText size={22} />
+                ) : (
+                  <UploadCloud size={22} />
+                )}
               </span>
               <span className={styles.dropName}>
                 {uploadFile ? uploadFile.name : 'Choose a PDF…'}
