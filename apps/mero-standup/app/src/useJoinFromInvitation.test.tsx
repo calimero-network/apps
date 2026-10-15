@@ -196,7 +196,9 @@ describe("useJoinFromInvitation", () => {
     expect(isNamespaceJustJoined(NAMESPACE)).toBe(true);
     // ...and says so once that read has come back.
     act(() => clearNamespaceJustJoined(NAMESPACE));
-    expect(stage()).toBe("ready");
+    // The dialog hears the flag clear through a store subscription; wait for
+    // the render rather than assume it landed inside this act.
+    await waitFor(() => expect(stage()).toBe("ready"));
   });
 
   it("redeems for an account through the account admin, never the relay's node route", async () => {
