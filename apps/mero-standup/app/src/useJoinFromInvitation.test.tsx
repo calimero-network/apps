@@ -254,7 +254,55 @@ describe("useJoinFromInvitation", () => {
     expect(setContextId).toHaveBeenCalledWith(CONTEXT);
     expect(screen.queryByText(/Gateway Timeout/)).toBeNull();
     expect(held()).toBe(false);
+    // The namespace join landed without answering; the context still has to
+    // be joined, or the table opened is one this node is not in.
+    expect(admin.joinContext).toHaveBeenCalledWith(CONTEXT);
   });
+
+  // Right after the namespace join the node may not hold the context yet and
+  // refuses to join it. That refusal used to be swallowed as "already a member
+  // of the namespace": the invitation was spent and the app opened a context
+  // the node never joined, so the table never loaded and the link was gone.
+  it("keeps joining the context until the node holds it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      admin.joinNamespace.mockResolvedValue({});
+      admin.joinContext
+        .mockRejectedValueOnce(httpError(404, "context not found"))
+        .mockRejectedValueOnce(httpError(404, "context not found"))
+        .mockResolvedValue({});
+      admin.listNamespaces.mockResolvedValue([{ namespaceId: NAMESPACE }]);
+
+      await followLinkAndConfirm();
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await waitFor(() => expect(opened).toHaveBeenCalledWith(CONTEXT, NAMESPACE));
+      expect(admin.joinContext).toHaveBeenCalledTimes(3);
+      expect(admin.joinNamespace).toHaveBeenCalledTimes(1);
+      expect(held()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the invitation, and says so, when the context never lets it in", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      admin.joinNamespace.mockResolvedValue({});
+      admin.joinContext.mockRejectedValue(httpError(404, "context not found"));
+      admin.listNamespaces.mockResolvedValue([{ namespaceId: NAMESPACE }]);
+
+      await followLinkAndConfirm();
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      expect(await screen.findByTestId("invite-retry")).toBeTruthy();
+      expect(opened).not.toHaveBeenCalled();
+      expect(held()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
 
   it("drops an invitation the node refused for good, and says why", async () => {
     admin.joinNamespace.mockRejectedValue(

@@ -8,15 +8,40 @@ export interface Credentials {
 
 export const RIG_CREDENTIALS: Credentials = { username: ADMIN_USER, password: ADMIN_PASSWORD };
 
+/** What the login modal showed, for a failure message: which state kept Connect disabled. */
+async function describeLoginModal(page: Page): Promise<string> {
+  const input = page.getByTestId("node-url-input");
+  const parts = [
+    `searching for nodes: ${(await page.getByTestId("node-discovering").count()) > 0}`,
+    `url field shown: ${await input.isVisible().catch(() => false)}`,
+    `url field value: ${JSON.stringify(await input.inputValue({ timeout: 500 }).catch(() => null))}`,
+    `connect enabled: ${await page.getByTestId("connect-button").isEnabled().catch(() => false)}`,
+  ];
+  return parts.join(", ");
+}
+
 export async function chooseNodeInLoginModal(page: Page, nodeUrl: string): Promise<void> {
   const input = page.getByTestId("node-url-input");
   const custom = page.getByTestId("node-option-custom");
-  await expect(page.getByTestId("connect-button")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId("node-discovering")).toHaveCount(0, { timeout: 20_000 });
-  if (!(await input.isVisible()) && (await custom.isVisible())) await custom.click();
-  await input.fill(nodeUrl);
-  await expect(page.getByTestId("connect-button")).toBeEnabled();
-  await page.getByTestId("connect-button").click();
+  const connect = page.getByTestId("connect-button");
+  await expect(connect).toBeVisible({ timeout: 20_000 });
+  // The modal's first frame has no search running yet, so "no search shown"
+  // can be true before the local-node search has even started. And the
+  // modal can be mounted again (empty URL) after it is first filled. Two CI
+  // runs (mero-crm, mero-kombat) failed on Connect staying disabled for 20s
+  // with nothing to say which. Fill until Connect takes it, re-filling
+  // whatever the modal lost, and say what it showed if it never does.
+  await expect(async () => {
+    await expect(page.getByTestId("node-discovering")).toHaveCount(0);
+    if (!(await input.isVisible()) && (await custom.isVisible())) await custom.click();
+    if ((await input.inputValue({ timeout: 1_000 })) !== nodeUrl) await input.fill(nodeUrl);
+    await expect(connect).toBeEnabled({ timeout: 1_000 });
+  }, "the login modal takes the node URL and enables Connect")
+    .toPass({ timeout: 40_000, intervals: [250, 500, 1_000] })
+    .catch(async (err: unknown) => {
+      throw new Error(`${err instanceof Error ? err.message : String(err)}\nlogin modal: ${await describeLoginModal(page)}`);
+    });
+  await connect.click();
 }
 
 export async function completeNodeLogin(
