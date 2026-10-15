@@ -37,7 +37,8 @@ import { acceptInvite, InviteRedeemError, type AcceptedInvite } from '../lib/wor
  *
  * The join is this app's own (`acceptInvite`, which walks a chain if the code
  * carries one). The syncing stage ends when `useWorkspace`'s `useJoinSync` sees
- * the joined workspace's spreadsheet list come back from the node.
+ * the joined workspace's spreadsheets come back from the node, or its watchdog
+ * decides an empty workspace really is empty.
  */
 interface SheetsInvitation extends ParsedInvitation {
   payload: SheetsInvitePayload;

@@ -39,7 +39,12 @@ import { adminApi } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
 import { AgreementService } from '../../api/agreementService';
 import styles from './AgreementsPage.module.css';
-import { JoinSyncBanner, useJoinSync } from '@calimero-network/mero-react';
+import {
+  JOIN_SYNC_POLL_MS,
+  JoinSyncBanner,
+  isNamespaceJustJoined,
+  useJoinSync,
+} from '@calimero-network/mero-react';
 
 // ── The agreements in one workspace ─────────────────────────────────────────
 //
@@ -103,10 +108,13 @@ export default function AgreementsPage() {
 
   // A workspace joined this session whose agreements have not replicated yet.
   // Without this a joiner following an invite is told "No agreements yet" about
-  // the very workspace they were invited to sign something in.
+  // the very workspace they were invited to sign something in. `active` while
+  // nothing can be opened yet, so the gate waits out a slow sync up to its
+  // ceiling rather than giving up at the base window.
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
     namespaceId: workspaceId ?? null,
     settled: !!workspaceId && listedForWs === workspaceId,
+    active: !rows.some((r) => r.contextId),
   });
 
   const [newName, setNewName] = useState('');
@@ -134,17 +142,32 @@ export default function AgreementsPage() {
     }
     setLoading(true);
     setError(null);
+    // Read before the listing: the flag is what says an empty answer is
+    // "not replicated yet" rather than "empty".
+    const justJoined = isNamespaceJustJoined(workspaceId);
     try {
       // Never throws: an unreadable member list reads as "no TEE".
       void workspaceTeeMode(adminApi(), workspaceId).then((mode) =>
         setTee({ id: workspaceId, mode }),
       );
-      setRows(await listAgreements(adminApi(), workspaceId));
-      // A real answer, empty or not — that is what ends the sync gate.
-      setListedForWs(workspaceId);
+      const listed = await listAgreements(adminApi(), workspaceId);
+      setRows(listed);
+      // ⚠️ EMPTY IS NOT AN ANSWER WHILE JUST JOINED. The namespace join returns
+      // before its subgroups replicate, so the first listings of a workspace
+      // you were invited into are empty whatever it holds; settling on that
+      // closed the invitation dialog on "No agreements yet". Only a non-empty
+      // listing ends the gate early; once the flag has cleared (the watchdog
+      // gave up), empty is an ordinary answer again.
+      // Nor is a list whose agreements have no context yet: the subgroup
+      // replicates first, and a card without a context cannot be opened.
+      if (listed.some((r) => r.contextId) || !justJoined) setListedForWs(workspaceId);
       setGone(false);
     } catch (e) {
       setRows([]);
+      // The same window, failing rather than empty ("Uninitialized"): the
+      // poll below asks again, and it is not an error to show or a reason to
+      // think the workspace is gone.
+      if (justJoined) return;
       setError(
         e instanceof Error ? e.message : 'Could not load your agreements.',
       );
@@ -180,6 +203,14 @@ export default function AgreementsPage() {
     // `location.key` so returning here after opening an agreement reloads the
     // list without a full page reload, which is what the old flow used.
   }, [app, load, location.key]);
+
+  // Nothing else re-reads the list while it replicates, so ask again until the
+  // gate settles or gives up.
+  useEffect(() => {
+    if (!app || !isSyncing) return;
+    const timer = setInterval(() => void load(), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [app, isSyncing, load]);
 
   useEffect(() => {
     function onOutside(e: MouseEvent) {

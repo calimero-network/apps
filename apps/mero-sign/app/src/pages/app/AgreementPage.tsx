@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useJoinSync } from '@calimero-network/mero-react';
+import { JOIN_SYNC_POLL_MS, useJoinSync } from '@calimero-network/mero-react';
 import {
   CheckCircle2,
   Clock,
@@ -303,7 +303,21 @@ export default function AgreementPage() {
   // workspace's data has arrived: the agreement's details came back. That ends
   // the invitation dialog's "Syncing…". The workspace is the active one, which
   // the join set before navigating.
-  useJoinSync({ namespaceId: workspaceId, settled: details !== null });
+  const { isSyncing } = useJoinSync({
+    namespaceId: workspaceId,
+    settled: details !== null,
+    active: details === null,
+  });
+
+  // Until then the read fails ("Uninitialized") rather than coming back empty,
+  // and nothing else asks again: keep reading while the gate is open.
+  useEffect(() => {
+    if (!app || !contextId || !isSyncing) return;
+    const timer = setInterval(() => {
+      void loadDetails().then(loadDocuments);
+    }, JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [app, contextId, isSyncing, loadDetails, loadDocuments]);
 
   useEffect(() => {
     function onOutside(e: MouseEvent) {

@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useJoinSync } from "@calimero-network/mero-react";
+import {
+  JOIN_SYNC_POLL_MS,
+  isNamespaceJustJoined,
+  useJoinSync,
+} from "@calimero-network/mero-react";
 
 import Composer from "../components/Composer";
 import InfiniteScroll from "../components/InfiniteScroll";
@@ -39,10 +43,8 @@ export default function FeedPage() {
   const selfAccount = useSelfAccount();
   const nickname = useNickname(client);
   const [sort, setSort] = useState<Sort>("new");
-  const { items, loadMore, hasMore, loading, error, reset, setItems } = useFeed(
-    client,
-    sort,
-  );
+  const { items, loadMore, hasMore, loading, error, reset, reload, setItems } =
+    useFeed(client, sort);
 
   const contextId = getContextId();
   const forumName = contextId ? getForumName(contextId) : "";
@@ -50,11 +52,27 @@ export default function FeedPage() {
 
   // A forum invitation lands here, not on the forum list, so this is the page
   // that knows the space's data has arrived: the first page of posts came
-  // back, empty or not. That ends the invitation dialog's "Syncing…".
-  useJoinSync({
+  // back. That ends the invitation dialog's "Syncing…".
+  //
+  // An EMPTY first page settles only once the space is no longer just-joined:
+  // until then it is what a node that has not synced the forum returns. The
+  // watchdog clears the flag, after which an empty forum reads as empty.
+  const { isSyncing } = useJoinSync({
     namespaceId,
-    settled: items.length > 0 || !hasMore,
+    settled:
+      items.length > 0 || (!hasMore && !isNamespaceJustJoined(namespaceId)),
+    // Still empty: let the gate wait up to its ceiling, not the base window.
+    active: items.length === 0,
   });
+
+  // Nothing else re-reads an empty feed — the auto-load stops once a page says
+  // there is no more, and a failed read changes nothing it keys on — so while
+  // the gate is up, ask for the first page again.
+  useEffect(() => {
+    if (!isSyncing || items.length > 0) return;
+    const timer = setInterval(() => void reload(), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, items.length, reload]);
 
   const vote = async (postId: string, value: number) => {
     if (!client) return;
@@ -190,7 +208,7 @@ export default function FeedPage() {
         ))}
       </div>
 
-      {!loading && items.length === 0 && !hasMore && (
+      {!loading && !isSyncing && items.length === 0 && !hasMore && (
         <div className="empty">
           <MessageIcon size={28} />
           <strong>No discussions yet</strong>

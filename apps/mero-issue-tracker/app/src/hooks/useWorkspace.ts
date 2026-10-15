@@ -58,9 +58,18 @@ import {
   clearPersistedWorkspace,
 } from "./workspacePersistence";
 import {
+  JOIN_SYNC_POLL_MS,
   markNamespaceJustJoined,
   useJoinSync,
 } from "@calimero-network/mero-react";
+
+/**
+ * How long to keep asking to join the active repo, and how often. Right after
+ * a namespace join the node may not hold the repo yet and refuses the join; it
+ * is let in once the namespace has synced.
+ */
+const REPO_JOIN_MS = 90_000;
+const REPO_JOIN_RETRY_MS = 3_000;
 
 export interface RepoEntry {
   contextId: string;
@@ -420,8 +429,10 @@ export function useWorkspace(): UseWorkspaceReturn {
     }
     if (activeRepo === callbackContextId && callbackContextIdentity) return;
     let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     setExecutorPublicKey(null);
-    (async () => {
+    const deadline = Date.now() + REPO_JOIN_MS;
+    const attempt = async () => {
       try {
         const { identities } =
           await admin.getContextIdentitiesOwned(activeRepo);
@@ -439,15 +450,25 @@ export function useWorkspace(): UseWorkspaceReturn {
         // Joining is an explicit call; membership in the namespace is what
         // authorises it.
         const joined = await admin.joinContext(activeRepo);
-        if (!cancelled && joined?.memberPublicKey) {
+        if (cancelled) return;
+        if (joined?.memberPublicKey) {
           setExecutorPublicKey(joined.memberPublicKey);
+          return;
         }
       } catch {
-        /* leave null - useItems stays not-ready until an identity resolves */
+        /* not let in yet - retried below */
       }
-    })();
+      // Just after a namespace join the node may not hold this repo yet, and
+      // refuses the join until it does. Ask again rather than leave the board
+      // loading for good; past the deadline it stays null (not ready).
+      if (!cancelled && Date.now() < deadline) {
+        retry = setTimeout(() => void attempt(), REPO_JOIN_RETRY_MS);
+      }
+    };
+    void attempt();
     return () => {
       cancelled = true;
+      clearTimeout(retry);
     };
   }, [mero, admin, activeRepo, callbackContextId, callbackContextIdentity]);
 
@@ -740,10 +761,23 @@ export function useWorkspace(): UseWorkspaceReturn {
     if (readingNs.current === activeNs) setListedForNs(activeNs);
   }, [activeNs, reposLoading]);
 
+  // While the workspace is just-joined an EMPTY list is not an answer: the node
+  // may simply not hold its repos yet, so only a list with something in it
+  // settles the gate. An empty list keeps it `active`, which holds it open up
+  // to its ceiling; once it gives up, empty is the ordinary empty state again.
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
     namespaceId: activeNs,
-    settled: listedForNs === activeNs,
+    settled: listedForNs === activeNs && contexts.length > 0,
+    active: contexts.length === 0,
   });
+
+  // `useGroupContexts` reads once per namespace; nothing tells this node when
+  // the repos arrive. Keep asking while the gate is up.
+  useEffect(() => {
+    if (!isSyncing) return;
+    const timer = setInterval(() => void refetchContexts(), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, refetchContexts]);
 
   const clearPersisted = useCallback(() => clearPersistedWorkspace(), []);
 

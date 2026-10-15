@@ -29,6 +29,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  JOIN_SYNC_POLL_MS,
+  isNamespaceJustJoined,
   markNamespaceJustJoined,
   useJoinSync,
   useMero,
@@ -177,8 +179,8 @@ export function useWorkspace(): UseWorkspaceReturn {
       (rows: SpreadsheetRow[]) => {
         if (cancelled) return;
         setWorkspaces(rows);
-        // Settled means "a real read came back", including an empty one — a
-        // workspace with no spreadsheets yet is an answer, not a pending state.
+        // A real read came back. Whether an EMPTY one settles the join-sync
+        // gate is decided there, not here: see `settled` below.
         setListedForNs(namespaceId);
       },
     );
@@ -364,10 +366,28 @@ export function useWorkspace(): UseWorkspaceReturn {
     else if (ctxReadStartedFor.current === namespaceId) setCtxSettledFor(namespaceId);
   }, [namespaceId, ctxLoading]);
 
+  // An empty list is a settled answer only once the namespace is no longer
+  // just-joined. Before that it is what a node that has not synced the
+  // workspace yet returns, and settling on it closed the invitation dialog onto
+  // an empty picker that nothing ever re-read. The watchdog clears the flag, so
+  // a workspace that really has no spreadsheets still settles.
+  const listed = ctxSettledFor === namespaceId && listedForNs === namespaceId;
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
     namespaceId,
-    settled: ctxSettledFor === namespaceId && listedForNs === namespaceId,
+    settled: listed && (workspaces.length > 0 || !isNamespaceJustJoined(namespaceId)),
+    // Still empty: let the gate wait up to its ceiling rather than the base
+    // window, since the spreadsheets may still be on their way.
+    active: workspaces.length === 0,
   });
+
+  // While the gate is up, keep re-reading: the context list only moves when
+  // asked, and the node gains the workspace's spreadsheets on its own schedule.
+  // A read that fails because the node has not synced yet is retried here too.
+  useEffect(() => {
+    if (!isSyncing) return;
+    const timer = setInterval(() => void refresh(), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, refresh]);
 
   return {
     isSyncing,
