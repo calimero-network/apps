@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   InvitationDialog,
   useInviteRedemption,
@@ -59,6 +59,8 @@ export default function InvitationPrompt({
 }) {
   const { mero } = useMero();
   const [status, setStatus] = useState<string | null>(null);
+  /** What the last join landed in, for `reportJoined`. */
+  const landedRef = useRef<Pick<AcceptedInvite, 'namespaceId' | 'contextId'> | null>(null);
 
   const parse = useCallback((token: string): SheetsInvitation | null => {
     const payload = decodeInvite(token);
@@ -87,7 +89,11 @@ export default function InvitationPrompt({
         // The workspace `useWorkspace` will show and watch: it prefers the one
         // just joined, so its `useJoinSync` clears the flag this dialog waits on.
         const namespaceId = landed.namespaceId ?? namespaceIdOfInvite(payload);
-        onJoined({ namespaceId, contextId: landed.contextId });
+        // Reported from `onJoined` below, not here: the redemption marks the
+        // namespace just-joined only after this returns. A workspace the page
+        // already shows settles at once, and a mark after that settle was never
+        // cleared, leaving the dialog on "Syncing…".
+        landedRef.current = { namespaceId, contextId: landed.contextId };
         return { status: 'joined', namespaceId, teamName: payload.groupAlias };
       } catch (e) {
         // A refused or unanswered join already says whether to keep the
@@ -98,10 +104,24 @@ export default function InvitationPrompt({
         setStatus(null);
       }
     },
-    [mero, onJoined],
+    [mero],
   );
 
-  const redemption = useInviteRedemption({ parse, redeem, enabled: enabled && !!mero });
+  const reportJoined = useCallback(
+    (namespaceId: string) => {
+      const landed = landedRef.current;
+      landedRef.current = null;
+      onJoined(landed?.namespaceId === namespaceId ? landed : { namespaceId, contextId: null });
+    },
+    [onJoined],
+  );
+
+  const redemption = useInviteRedemption({
+    parse,
+    redeem,
+    onJoined: reportJoined,
+    enabled: enabled && !!mero,
+  });
   const payload = redemption.parsed?.payload;
 
   return (

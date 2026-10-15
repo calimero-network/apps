@@ -27,11 +27,11 @@
  *    `InvitationPrompt` once an opened link is accepted; `landJoined` is the
  *    half of a join that needs this hook's state.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   JOIN_SYNC_POLL_MS,
   isNamespaceJustJoined,
-  markNamespaceJustJoined,
+  subscribeJustJoined,
   useJoinSync,
   useMero,
   useNamespacesForApplication,
@@ -337,12 +337,12 @@ export function useWorkspace(): UseWorkspaceReturn {
   const landJoined = useCallback(
     async (landed: Pick<AcceptedInvite, 'namespaceId' | 'contextId'>) => {
       // The join has returned; the workspace's own state has not arrived yet.
-      // Without this the joiner lands on an empty spreadsheet list that looks
-      // exactly like a workspace with nothing in it.
-      if (landed.namespaceId) {
-        markNamespaceJustJoined(landed.namespaceId);
-        setJoinedNsId(landed.namespaceId);
-      }
+      // The redemption has marked it just-joined, and the gate below holds the
+      // dialog until its spreadsheets are read. Not marked again here: a page
+      // already showing this workspace settles and clears the mark at once, and
+      // a second mark in the same render went unseen by useJoinSync, so nothing
+      // cleared it and the dialog sat on "Syncing…".
+      if (landed.namespaceId) setJoinedNsId(landed.namespaceId);
       await refresh();
       // The code can name a spreadsheet to open. It is an unsigned hint, so
       // the node still decides whether to admit us — `openWorkspace` goes
@@ -371,13 +371,30 @@ export function useWorkspace(): UseWorkspaceReturn {
   // workspace yet returns, and settling on it closed the invitation dialog onto
   // an empty picker that nothing ever re-read. The watchdog clears the flag, so
   // a workspace that really has no spreadsheets still settles.
-  const listed = ctxSettledFor === namespaceId && listedForNs === namespaceId;
+  //
+  // The gate watches the namespace just joined even before the node lists it.
+  // Until then `namespaceId` is whichever workspace this node already had (or
+  // none): watching that one left the joined namespace's flag with no one to
+  // clear it and, since that one was never just-joined, nothing re-reading the
+  // node, so the dialog sat on "Syncing…" until its ceiling.
+  const watchedNs = joinedNsId ?? namespaceId;
+  const onWatched = namespaceId === watchedNs;
+  const listed = onWatched && ctxSettledFor === namespaceId && listedForNs === namespaceId;
+  // useJoinSync reads the just-joined flag only when its namespace changes. A
+  // join of the workspace this page already shows (a new spreadsheet in a
+  // workspace this node joined before) marks it without changing it, so the
+  // gate gets the namespace only while it is flagged: the mark is then a change.
+  const watchedJustJoined = useSyncExternalStore(
+    subscribeJustJoined,
+    () => !!watchedNs && isNamespaceJustJoined(watchedNs),
+    () => false,
+  );
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
-    namespaceId,
+    namespaceId: watchedJustJoined ? watchedNs : null,
     settled: listed && (workspaces.length > 0 || !isNamespaceJustJoined(namespaceId)),
-    // Still empty: let the gate wait up to its ceiling rather than the base
-    // window, since the spreadsheets may still be on their way.
-    active: workspaces.length === 0,
+    // Not listed yet, or still empty: let the gate wait up to its ceiling
+    // rather than the base window, since the spreadsheets may be on their way.
+    active: !onWatched || workspaces.length === 0,
   });
 
   // While the gate is up, keep re-reading: the context list only moves when
