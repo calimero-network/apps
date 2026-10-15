@@ -70,7 +70,11 @@ import {
   stageHidesContent,
   type DriveLoadingStage,
 } from '@/lib/driveStage';
-import { syncWorkspaceRoute } from '@/lib/namespaceSelection';
+import {
+  confirmedNamespace,
+  rememberedOn,
+  syncWorkspaceRoute,
+} from '@/lib/namespaceSelection';
 import {
   pinnedMetadata,
   readPin,
@@ -96,7 +100,8 @@ import { splitTeeMembers } from '@/lib/roles';
 /** Shared empty array so the "no duplicates" case keeps a stable identity. */
 const EMPTY_DUPLICATES: string[] = [];
 
-/** Persisted-namespace localStorage key. Exported so other call sites
+/** Persisted-namespace localStorage key, holding `{ node, ns }` (older builds
+ *  wrote the bare id). Exported so other call sites
  *  (e.g. WorkspacePage's logout cleanup) can clear the same key without
  *  hardcoding the string and drifting from this hook's reader. */
 export const ACTIVE_NS_KEY = 'mero-drive:activeNs';
@@ -285,6 +290,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     applicationId: authApplicationId,
     isAuthenticated,
     isLoading: authLoading,
+    nodeUrl,
   } = useMero();
 
   // --- Which app are we? ---
@@ -329,20 +335,38 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // workspace switcher shows the real name instead of the raw id.
   const namespaces = useNamespaceDisplayNames(rawNamespaces);
 
-  // The URL names the workspace; the stored id is the last one used, which
-  // `/app` opens and a link to a workspace this node is not in falls back to.
+  // The URL names the workspace; the stored id is the last one used on this
+  // node, which `/app` opens once the list confirms this node still holds it.
+  // It is scoped to the node: another node's workspace is not this one's.
   const { route, goWorkspace, goFolder, goHome } = useAppRoute();
   const routeNsId = route?.ws ?? null;
-  const [storedNsId, setStoredNsId] = useLocalStorage<string | null>(
-    ACTIVE_NS_KEY,
-    null,
+  const [storedRaw, setStoredRaw] = useLocalStorage<unknown>(ACTIVE_NS_KEY, null);
+  const node = nodeUrl ?? null;
+  const storedNsId = rememberedOn(storedRaw, node);
+  const setStoredNsId = useCallback(
+    (nsId: string | null) => setStoredRaw(nsId ? { node, ns: nsId } : null),
+    [setStoredRaw, node],
   );
-  const selectedNsId = routeNsId ?? storedNsId;
+  const userCleared = useRef(false);
+  const createdNsId = useRef<string | null>(null);
+  const listedNsIds = useMemo(
+    () => namespaces.map((n) => n.namespaceId),
+    [namespaces],
+  );
+  // Only an id this node is known to hold reaches the group reads below; an
+  // unlisted one 404s ("group not found") and left the registry unresolved.
+  const selectedNsId = confirmedNamespace({
+    answered: namespacesListed,
+    listed: listedNsIds,
+    routeNs: routeNsId,
+    justJoined: readJustJoinedSet(),
+    created: createdNsId.current,
+  });
 
   // Auto-select a namespace when the list lands and the URL has no
-  // valid one, writing it into the URL. Fall back to the persisted id,
-  // then [0], if the linked id isn't in the list (deleted remotely,
-  // a link to a workspace this node is not in, etc.).
+  // valid one, writing it into the URL: the persisted id if this node
+  // lists it, else [0]. Nothing moves before the list answers, and a
+  // persisted id this node does not list is dropped.
   //
   // Edge case (load-bearing for the post-join flow): if the user just
   // joined a namespace via the invitation prompt, the just-joined set in
@@ -353,16 +377,14 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // and the persisted activeNs might still be valid from a previous
   // session. Prefer a just-joined id over both, so the user lands on
   // the namespace they just accepted instead of an arbitrary survivor.
-  const userCleared = useRef(false);
-  const createdNsId = useRef<string | null>(null);
   useEffect(() => {
     if (userCleared.current) return;
-    const listed = namespaces.map((n) => n.namespaceId);
-    if (createdNsId.current && listed.includes(createdNsId.current)) {
+    if (createdNsId.current && listedNsIds.includes(createdNsId.current)) {
       createdNsId.current = null;
     }
-    const { goTo, remember } = syncWorkspaceRoute({
-      listed,
+    const { goTo, remember, forget } = syncWorkspaceRoute({
+      answered: namespacesListed,
+      listed: listedNsIds,
       routeNs: routeNsId,
       stored: storedNsId,
       justJoined: readJustJoinedSet(),
@@ -370,7 +392,15 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     });
     if (goTo) goWorkspace(goTo, { replace: true });
     if (remember) setStoredNsId(remember);
-  }, [namespaces, routeNsId, storedNsId, goWorkspace, setStoredNsId]);
+    else if (forget) setStoredNsId(null);
+  }, [
+    namespacesListed,
+    listedNsIds,
+    routeNsId,
+    storedNsId,
+    goWorkspace,
+    setStoredNsId,
+  ]);
 
   const rootGroupId = selectedNsId;
 

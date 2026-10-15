@@ -416,20 +416,12 @@ export function WorkspaceLayout() {
           )}
 
           <main className="m-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-white/90 bg-card shadow-[0_14px_36px_-24px_rgba(40,50,110,0.4)] dark:border-white/[0.08]">
-            {showSettings && namespaceId ? (
-              <div className="flex-1 overflow-y-auto">
-                <NamespaceSettingsPanel key={`settings:${namespaceId}`} />
-              </div>
-            ) : !namespaceId ? (
-              <EmptyState
-                title="No workspace selected"
-                body="Create or pick a workspace from the top bar to see your folders."
-              />
-            ) : linkTarget === 'no-access' ||
-              linkTarget === 'deleted' ||
-              linkTarget === 'not-in-workspace' ? (
+            {linkTarget === 'no-access' ||
+            linkTarget === 'deleted' ||
+            linkTarget === 'not-in-workspace' ? (
               // A routed folder/doc/workspace the caller can't open. Checked
-              // ahead of the editor so a dead or restricted link never mounts it.
+              // ahead of settings and the editor so a dead or restricted link
+              // never mounts them (settings reads groups this node lacks).
               <div className="flex h-full items-center justify-center p-6">
                 <LinkTargetCard
                   kind={linkTarget}
@@ -439,6 +431,18 @@ export function WorkspaceLayout() {
                   linkUrl={window.location.href}
                 />
               </div>
+            ) : showSettings && namespaceId ? (
+              <div className="flex-1 overflow-y-auto">
+                <NamespaceSettingsPanel key={`settings:${namespaceId}`} />
+              </div>
+            ) : !namespaceId && !namespacesListed && !namespacesError ? (
+              // Nothing is selected before the list confirms what this node holds.
+              <QuietLoading />
+            ) : !namespaceId ? (
+              <EmptyState
+                title="No workspace selected"
+                body="Create or pick a workspace from the top bar to see your folders."
+              />
             ) : selectedFolderId && selectedDocId && showEditor ? (
               // Editor gated on selectedFolderId (stable persistent state),
               // NOT selectedFolder - `folders` is a useMemo that recomputes on

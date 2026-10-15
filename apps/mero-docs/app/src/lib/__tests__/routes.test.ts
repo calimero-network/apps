@@ -123,6 +123,30 @@ describe('returnTo', () => {
     expect(readReturnTo()).toBeNull();
   });
 
+  // Settings is a screen inside a workspace, not somewhere to land after sign-in.
+  it('saves a settings page as its workspace Home', () => {
+    saveReturnTo('/app/w/settings?node=2');
+    expect(readReturnTo()).toBe('/app/w?node=2');
+  });
+
+  // The user's own last page belongs to the node it was on; a link does not.
+  it('gives back the own last page only on the node it was on', () => {
+    saveReturnTo('/app/w/f/f1', 'http://n1');
+    expect(readReturnTo('http://n1')).toBe('/app/w/f/f1');
+    expect(readReturnTo('http://n2')).toBeNull();
+  });
+
+  it('drops an own last page whose node is unknown', () => {
+    saveReturnTo('/app/w/f/f1', null);
+    expect(readReturnTo('http://n1')).toBeNull();
+  });
+
+  it('gives back a link on any node', () => {
+    saveReturnTo('/app/w/f/f1', 'http://n1');
+    saveReturnTo('/app/x');
+    expect(readReturnTo('http://n2')).toBe('/app/x');
+  });
+
   it('refuses anything outside the app', () => {
     for (const bad of ['//evil.example/app/w', 'https://evil.example/app/w', '/join?x', '/application']) {
       sessionStorage.setItem('mero-drive:returnTo', bad);

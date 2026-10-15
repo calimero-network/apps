@@ -45,6 +45,24 @@ describe('WorkspacePage sign-in guard', () => {
     expect(readReturnTo()).toBe('/app/w/f/f1/d/doc-2?node=2#b=blk');
   });
 
+  // Signing in to another node must not reopen the last node's workspace.
+  it('ties a signed-out reload of the remembered workspace to its node, as Home', () => {
+    localStorage.setItem('mero-drive:activeNs', JSON.stringify({ node: 'http://n1', ns: 'w' }));
+    const { rerender } = render(tree('/app/w/settings'));
+    meroState.isLoading = false;
+    rerender(tree('/app/w/settings'));
+    expect(readReturnTo('http://n1')).toBe('/app/w');
+    expect(readReturnTo('http://n2')).toBeNull();
+  });
+
+  it('keeps a link to another workspace for any node', () => {
+    localStorage.setItem('mero-drive:activeNs', JSON.stringify({ node: 'http://n1', ns: 'w' }));
+    const { rerender } = render(tree('/app/x/f/f1'));
+    meroState.isLoading = false;
+    rerender(tree('/app/x/f/f1'));
+    expect(readReturnTo('http://n2')).toBe('/app/x/f/f1');
+  });
+
   // The next person on this browser must not inherit the last one's page.
   it('does not remember the page someone logged out from', () => {
     meroState.isAuthenticated = true;

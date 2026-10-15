@@ -102,10 +102,10 @@ const hashNodeUrl =
  * routes, so this redirect cannot lose it.
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading, nodeUrl } = useMero();
   if (isLoading) return null; // the auth probe is still in flight
   if (isAuthenticated)
-    return <Navigate to={readReturnTo() ?? '/app'} replace />;
+    return <Navigate to={readReturnTo(nodeUrl ?? null) ?? '/app'} replace />;
   return <>{children}</>;
 }
 
