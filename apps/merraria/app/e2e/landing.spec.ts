@@ -352,7 +352,7 @@ test.describe("world picker (web auth, no context yet)", () => {
       groupId: "grp-e2e",
     });
 
-  test("joins a friend's world with a pasted invite code (popup locks while joining)", async ({ page }) => {
+  test("an opened invite link asks first, then joins the friend's world (prompt locks while joining)", async ({ page }) => {
     await seedAuthOnly(page);
     const state = freshState();
     await mockNode(page, state);
@@ -369,13 +369,16 @@ test.describe("world picker (web auth, no context yet)", () => {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
     });
 
-    await page.goto("/");
-    await page.getByTestId("join-invite-open-btn").click();
-    await page.getByTestId("invite-input").fill(inviteCode());
-    await page.getByTestId("join-invite-btn").click();
-    // while the join is in flight the popup is locked: no re-click, no close
-    await expect(page.getByTestId("join-invite-btn")).toBeDisabled();
-    await expect(page.getByTestId("invite-close")).toBeDisabled();
+    // how the links page opens the app
+    await page.goto(`/?invitation=${inviteCode()}`);
+    await expect(page.getByTestId("invite-status")).toContainText("You've been invited to e2e world");
+    // nothing joins until the player says so
+    await page.waitForTimeout(500);
+    expect(joined).toEqual([]);
+    await page.getByTestId("invite-accept").click();
+    // while the join is in flight the prompt is locked: no re-click, no dismiss
+    await expect(page.getByTestId("invite-accept")).toBeDisabled();
+    await expect(page.getByTestId("invite-decline")).toBeDisabled();
     await page.waitForFunction(() => "__mt" in window);
     await expect(page.getByTestId("debug")).toContainText("online");
     expect(joined).toEqual([
@@ -383,6 +386,36 @@ test.describe("world picker (web auth, no context yet)", () => {
       "/admin-api/groups/grp-e2e/join-via-inheritance",
     ]);
     expect(state.methods).toContain("world_meta"); // actually playing in the invited world
+  });
+
+  test("Not now on an invite prompt joins nothing, and the link is not offered again", async ({ page }) => {
+    await seedAuthOnly(page);
+    await mockNode(page, freshState());
+    await mockAdmin(page, [], {});
+    const joined: string[] = [];
+    await page.route(`${NODE_URL}/admin-api/namespaces/*/join`, (route) => {
+      joined.push(route.request().url());
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+    });
+
+    await page.goto(`/?invitation=${inviteCode()}`);
+    await page.getByTestId("invite-decline").click();
+    await expect(page.getByTestId("invite-prompt")).toHaveCount(0);
+    await expect(page.getByTestId("world-list")).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId("world-list")).toBeVisible();
+    await expect(page.getByTestId("invite-prompt")).toHaveCount(0);
+    expect(joined).toEqual([]);
+  });
+
+  test("there is nowhere to paste an invite", async ({ page }) => {
+    await seedAuthOnly(page);
+    await mockNode(page, freshState());
+    await mockAdmin(page, [], {});
+    await page.goto("/");
+    await expect(page.getByTestId("world-list")).toBeVisible();
+    await expect(page.getByTestId("join-invite-open-btn")).toHaveCount(0);
+    await expect(page.getByPlaceholder(/invite/i)).toHaveCount(0);
   });
 
   test("shows the node's reason when the invite's subgroup join is refused", async ({ page }) => {
@@ -397,13 +430,11 @@ test.describe("world picker (web auth, no context yet)", () => {
       }),
     );
 
-    await page.goto("/");
-    await page.getByTestId("join-invite-open-btn").click();
-    await page.getByTestId("invite-input").fill(inviteCode());
-    await page.getByTestId("join-invite-btn").click();
+    await page.goto(`/?invitation=${inviteCode()}`);
+    await page.getByTestId("invite-accept").click();
 
     // a friendly explanation, not "HTTP 403" — and we never enter the world
-    await expect(page.getByTestId("picker-error")).toContainText("not open to invited players");
+    await expect(page.getByTestId("invite-error")).toContainText("not open to invited players");
     await expect(page.getByTestId("landing")).toBeVisible();
   });
 
@@ -424,10 +455,8 @@ test.describe("world picker (web auth, no context yet)", () => {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
     });
 
-    await page.goto("/");
-    await page.getByTestId("join-invite-open-btn").click();
-    await page.getByTestId("invite-input").fill(inviteCode());
-    await page.getByTestId("join-invite-btn").click();
+    await page.goto(`/?invitation=${inviteCode()}`);
+    await page.getByTestId("invite-accept").click();
     await page.waitForFunction(() => "__mt" in window);
     await expect(page.getByTestId("debug")).toContainText("online");
     expect(attempts).toBe(2); // failed → namespace sync → succeeded
@@ -444,11 +473,9 @@ test.describe("world picker (web auth, no context yet)", () => {
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) }),
     );
 
-    await page.goto("/");
-    await page.getByTestId("join-invite-open-btn").click();
-    await page.getByTestId("invite-input").fill(inviteCode());
-    await page.getByTestId("join-invite-btn").click();
-    await expect(page.getByTestId("picker-error")).toContainText("no identity");
+    await page.goto(`/?invitation=${inviteCode()}`);
+    await page.getByTestId("invite-accept").click();
+    await expect(page.getByTestId("invite-error")).toContainText("no identity");
     await expect(page.getByTestId("landing")).toBeVisible();
   });
 });
