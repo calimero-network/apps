@@ -22,7 +22,7 @@ const DRAG_TYPE = 'application/x-mero-deal';
  * column to move it, or onto Won / Lost at the bottom to close it.
  */
 export default function PipelinePage(): React.ReactElement {
-  const { data, ownerFilter, searchQuery, openNewDeal } = useAppCtx();
+  const { data, ownerFilter, searchQuery, openNewDeal, aliases } = useAppCtx();
   const navigate = useNavigate();
   const toast = useToast();
   const [dragId, setDragId] = useState<string | null>(null);
@@ -34,9 +34,9 @@ export default function PipelinePage(): React.ReactElement {
   const open = useMemo(
     () => data.deals
       .filter((d) => d.status === 'open')
-      .filter((d) => !ownerFilter || d.owner === ownerFilter)
-      .filter((d) => dealMatches(d, searchQuery)),
-    [data.deals, ownerFilter, searchQuery],
+      .filter((d) => !ownerFilter || aliases.ownerName(d.owner) === ownerFilter)
+      .filter((d) => dealMatches(d, searchQuery, aliases.ownerName)),
+    [data.deals, ownerFilter, searchQuery, aliases],
   );
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -148,7 +148,7 @@ export default function PipelinePage(): React.ReactElement {
                       <div className="bottom">
                         <span className="value"><Money value={deal.value} currency={currency} /></span>
                         <span className="owner">
-                          <AvatarGlyph seed={deal.owner} size="sm" title={deal.owner ?? 'Unassigned'} />
+                          <AvatarGlyph seed={aliases.ownerName(deal.owner)} size="sm" title={aliases.ownerName(deal.owner) || 'Unassigned'} />
                         </span>
                       </div>
                       <div className="next">

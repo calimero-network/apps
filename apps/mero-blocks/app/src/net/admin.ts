@@ -218,7 +218,7 @@ async function ensureWorldOpen(groupId: string): Promise<void> {
  * Mint a copyable invite string for the current world: a signed namespace
  * invitation (from the node, or signed by the account), wrapped with the
  * world's group+context ids and encoded deflate+base58 (see inviteCodec.ts).
- * Paste it on another client.
+ * Shared as a link (net/inviteLink.ts) that the invitee opens.
  */
 export async function createWorldInvite(worldName?: string): Promise<string> {
   const s = getSession();
@@ -244,7 +244,7 @@ const msgOf = (e: unknown): string => (e instanceof Error ? e.message : String(e
 type FailedRedeem = Extract<RedeemOutcome, { status: "failed" }>;
 
 /**
- * The namespace join did not land. Carries the outcome so the invite modal can
+ * The namespace join did not land. Carries the outcome so the invite prompt can
  * tell a link that is finished with (expired, invalid, refused — ack it) from
  * one that failed for the moment (no one online, node unreachable — keep it
  * for the next load); the message is the player-facing copy for it.
@@ -259,7 +259,7 @@ export class WorldInviteError extends Error {
 }
 
 /**
- * Accept a pasted invite: join the namespace with the signed invitation,
+ * Accept an invite from an opened link: join the namespace with the signed invitation,
  * self-join the world's subgroup via inheritance, then join the context and
  * verify we own an identity for it.
  *

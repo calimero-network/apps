@@ -91,6 +91,8 @@ async function injectAuth(page: import("@playwright/test").Page) {
         access_token: accessToken,
         refresh_token: refreshToken,
         expires_at: Date.now() + 3600_000,
+        // mero-js ignores a bundle bound to no node, or another one.
+        node_origin: new URL(nodeUrl).origin + new URL(nodeUrl).pathname.replace(/\/+$/, ""),
       }));
       localStorage.setItem("mero:node_url", nodeUrl);
       localStorage.setItem("mero:application_id", applicationId);

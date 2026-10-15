@@ -23,8 +23,9 @@
  *    in it. Waiting for auto-follow — which only carries identities into
  *    contexts created after you joined — is why an invited collaborator could
  *    sit on "Opening workspace…" indefinitely with nothing logged.
- * 4. Invitations are minted and redeemed through `lib/workspaces` + the shared
- *    link/codec modules, so the paste path and the link path cannot drift.
+ * 4. Invitations are minted here and redeemed by the app-level
+ *    `InvitationPrompt` once an opened link is accepted; `landJoined` is the
+ *    half of a join that needs this hook's state.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -34,9 +35,7 @@ import {
 } from '@calimero-network/mero-react';
 import { APP_DISPLAY_NAME, PRIMARY_SERVICE } from '../config';
 import { useApplicationId } from './useApplicationId';
-import { decodeInvite } from '../lib/inviteCodec';
 import {
-  acceptInvite,
   createSpreadsheet,
   enterSpreadsheet,
   ensureNamespace,
@@ -44,6 +43,7 @@ import {
   mintInvite,
   namespaceLabel,
   spreadsheetFallbackLabel,
+  type AcceptedInvite,
   type SpreadsheetRow,
 } from '../lib/workspaces';
 import { markNamespaceJustJoined, useJoinSync } from '@calimero-apps/join-sync';
@@ -74,6 +74,13 @@ export interface UseWorkspaceReturn {
   /** True once the open context is resolved and we hold its executor identity. */
   ready: boolean;
   loading: boolean;
+  /**
+   * True once a press of "create" would do what it says: this app's id and its
+   * namespace (or the lack of one) are known, and no create is running. Unlike
+   * `loading` it does not flicker while the node is read, so a press is never
+   * dropped on a button that was on a frame ago.
+   */
+  canCreate: boolean;
   /** What a multi-step operation is currently doing, for the UI to echo. */
   status: string | null;
   error: Error | null;
@@ -88,9 +95,11 @@ export interface UseWorkspaceReturn {
   /** Mint a shareable invite code for this workspace. */
   invite: (opts?: { contextId?: string | null; projectName?: string }) => Promise<string>;
   inviteLoading: boolean;
-  /** Redeem an invitation link or code. */
-  join: (codeOrLink: string) => Promise<void>;
-  joinLoading: boolean;
+  /**
+   * Land a join the invitation prompt completed: re-read the node and open the
+   * spreadsheet the link named, if it named one.
+   */
+  landJoined: (landed: Pick<AcceptedInvite, 'namespaceId' | 'contextId'>) => Promise<void>;
   /** Re-read namespaces and contexts from the node. */
   refresh: () => Promise<void>;
 }
@@ -135,7 +144,6 @@ export function useWorkspace(): UseWorkspaceReturn {
   const [error, setError] = useState<Error | null>(null);
   const [pendingInitName, setPendingInitName] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
-  const [joinLoading, setJoinLoading] = useState(false);
 
   // Desktop SSO: the auth callback pins a specific context — open it directly.
   useEffect(() => {
@@ -218,10 +226,30 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   const clearPendingInit = useCallback(() => setPendingInitName(null), []);
 
+  // Whether this app's namespaces have been read for the current app id.
+  //
+  // `loading` alone cannot say: mero-react's resource hooks report themselves
+  // in flight only from the render AFTER their inputs change, so between the
+  // app id resolving and the namespace read starting there is a render with
+  // nothing loading and no namespace. Gating "create" on `loading` turned the
+  // button on in that render and off again in the next (and once more between
+  // the namespace and the context reads), and a press in one of those frames
+  // hit a disabled button and was lost. A press in the very first one was
+  // worse: with no namespace known yet, create would have made a second one.
+  // So: settled means a read for this id was seen in flight and then ended.
+  const nsReadStartedFor = useRef<string | null>(null);
+  const [nsSettledFor, setNsSettledFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!applicationId) return;
+    if (nsLoading) nsReadStartedFor.current = applicationId;
+    else if (nsReadStartedFor.current === applicationId) setNsSettledFor(applicationId);
+  }, [applicationId, nsLoading]);
+  const namespaceKnown = !!applicationId && nsSettledFor === applicationId;
+
   const creatingRef = useRef(false);
   const createWorkspace = useCallback(
     async (name: string) => {
-      if (!mero || !applicationId || creatingRef.current) return;
+      if (!mero || !applicationId || !namespaceKnown || creatingRef.current) return;
       creatingRef.current = true;
       setBusy(true);
       setError(null);
@@ -261,7 +289,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         setStatus(null);
       }
     },
-    [mero, applicationId, namespaceId, refresh],
+    [mero, applicationId, namespaceKnown, namespaceId, refresh],
   );
 
   const activeName = useMemo(() => {
@@ -296,34 +324,19 @@ export function useWorkspace(): UseWorkspaceReturn {
     [mero, namespaceId, namespaceName],
   );
 
-  const join = useCallback(
-    async (codeOrLink: string) => {
-      if (!mero) throw new Error('Not connected to a node.');
-      const payload = decodeInvite(codeOrLink);
-      if (!payload) {
-        throw new Error(
-          'That invitation could not be read. Paste the whole link you were sent.',
-        );
-      }
-      setJoinLoading(true);
-      setError(null);
-      try {
-        const landed = await acceptInvite(mero.admin, payload, setStatus);
-        // The join has returned; the workspace's own state has not arrived yet.
-        // Without this the joiner lands on an empty spreadsheet list that looks
-        // exactly like a workspace with nothing in it.
-        if (landed.namespaceId) markNamespaceJustJoined(landed.namespaceId);
-        await refresh();
-        // The code can name a spreadsheet to open. It is an unsigned hint, so
-        // the node still decides whether to admit us — `openWorkspace` goes
-        // through `enterSpreadsheet`, which asks.
-        if (landed.contextId) openWorkspace(landed.contextId);
-      } finally {
-        setJoinLoading(false);
-        setStatus(null);
-      }
+  const landJoined = useCallback(
+    async (landed: Pick<AcceptedInvite, 'namespaceId' | 'contextId'>) => {
+      // The join has returned; the workspace's own state has not arrived yet.
+      // Without this the joiner lands on an empty spreadsheet list that looks
+      // exactly like a workspace with nothing in it.
+      if (landed.namespaceId) markNamespaceJustJoined(landed.namespaceId);
+      await refresh();
+      // The code can name a spreadsheet to open. It is an unsigned hint, so
+      // the node still decides whether to admit us — `openWorkspace` goes
+      // through `enterSpreadsheet`, which asks.
+      if (landed.contextId) openWorkspace(landed.contextId);
     },
-    [mero, refresh, openWorkspace],
+    [refresh, openWorkspace],
   );
 
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
@@ -342,6 +355,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     activeName,
     ready: contextId !== null && executorPublicKey !== null,
     loading: appIdResolving || nsLoading || ctxLoading || busy,
+    canCreate: namespaceKnown && !busy,
     status,
     error,
     notInstalled,
@@ -352,8 +366,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     leaveWorkspace,
     invite,
     inviteLoading,
-    join,
-    joinLoading,
+    landJoined,
     refresh,
   };
 }

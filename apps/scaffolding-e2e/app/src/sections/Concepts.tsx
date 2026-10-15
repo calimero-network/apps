@@ -695,10 +695,11 @@ merobox run --no-docker --home ~/.merod-b --server-port 2429 --swarm-port 2529`}
         </p>
         <p style={{ margin: "0 0 8px" }}>
           On Tab A: go to Setup Wizard → Generate Invitation → copy the
-          payload.
+          link.
         </p>
         <p style={{ margin: "0 0 8px" }}>
-          On Tab B: Setup Wizard → Join Context → paste the payload.
+          On Tab B: open the link and accept the prompt — it joins the
+          namespace and the context.
         </p>
         <p style={{ margin: 0 }}>
           Both tabs now share the same context ID and state root.

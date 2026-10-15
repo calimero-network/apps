@@ -22,9 +22,9 @@ export default function UsernameModal({ onSubmit, initialValue = "" }: Props) {
   return (
     <div className={styles.backdrop}>
       <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="username-title">
-        <h2 id="username-title" className={styles.title}>Choose a display name</h2>
+        <h2 id="username-title" className={styles.title}>Choose your name for this team</h2>
         <p className={styles.desc}>
-          This name is shown to collaborators on the canvas. You cannot skip this step.
+          Everyone in the team sees this name, on every board. You only pick it once.
         </p>
         <form onSubmit={handleSubmit} className={styles.form}>
           <input

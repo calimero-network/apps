@@ -1,4 +1,5 @@
 import React, { type ReactNode, useCallback } from 'react';
+import type { AcceptedInvite } from './lib/workspaces';
 import {
   BrowserRouter,
   Navigate,
@@ -52,12 +53,19 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
  * of the two cases that actually happen, so it lives here, where it is always
  * mounted, and the platform store buffers the intent until it asks.
  *
- * Accepting navigates to the app route; `useWorkspace` there re-reads the
- * namespaces and finds the one that was just joined.
+ * Accepting navigates to the app route, carrying what was joined in the
+ * navigation state: the app page may already be showing (the usual case), so a
+ * bare navigation would change nothing there. It hands the state to
+ * `useWorkspace().landJoined`, which re-reads the node and opens the
+ * spreadsheet the link named.
  */
 function AppInvitations() {
   const navigate = useNavigate();
-  const onJoined = useCallback(() => navigate(APP_ROUTE), [navigate]);
+  const onJoined = useCallback(
+    (joined: Pick<AcceptedInvite, 'namespaceId' | 'contextId'>) =>
+      navigate(APP_ROUTE, { state: { joined } }),
+    [navigate],
+  );
   const { isAuthenticated, isLoading } = useMero();
   // Nothing to join into without a node session, and prompting before login
   // would ask a question the user cannot answer yet. The intent is durable, so

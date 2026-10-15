@@ -106,6 +106,8 @@ describe("rpcRaw", () => {
   it("posts an execute call to the node with the bearer token", async () => {
     localStorage.setItem("mero-tokens", JSON.stringify({
       access_token: "tok", refresh_token: "r", expires_at: Date.now() + 60_000,
+      // mero-js binds a stored bundle to the node that issued it.
+      node_origin: "http://localhost:2528",
     }));
     const fetchMock = reply({ result: { output: bytes({ ok: true }), logs: [] } });
     vi.stubGlobal("fetch", fetchMock);

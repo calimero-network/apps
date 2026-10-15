@@ -176,4 +176,14 @@ describe("getMeroClient", () => {
     expect(signedIn).not.toBe(anonymous);
     expect(signedIn?.isAuthenticated()).toBe(true);
   });
+
+  it("binds a login to the selected node, so another node's client is signed out", () => {
+    // mero-js reads a stored bundle only when its `node_origin` names the node
+    // the client talks to; an unbound bundle is no login at all.
+    setNodeUrl("http://localhost:2528");
+    setTokens("access-1", "refresh-1", 3600);
+    expect(JSON.parse(localStorage.getItem("mero-tokens")!).node_origin).toBe("http://localhost:2528");
+    setNodeUrl("http://localhost:2529");
+    expect(getMeroClient()?.isAuthenticated()).toBe(false);
+  });
 });

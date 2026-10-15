@@ -159,7 +159,6 @@ class PDFService {
   async addSignatureToCanvas(
     canvas: HTMLCanvasElement,
     signature: SignaturePosition,
-    scale: number = 1.5,
   ): Promise<void> {
     const context = canvas.getContext('2d');
     if (!context) return;

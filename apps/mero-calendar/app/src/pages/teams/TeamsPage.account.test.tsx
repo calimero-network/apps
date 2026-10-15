@@ -5,9 +5,10 @@
  * `localStorage`'s node URL with the node JWT — a delegated session has
  * neither, and the relay's node routes answer an account's token with 403
  * (`POST /admin-api/namespaces`, `POST /admin-api/namespaces/{ns}/join`,
- * `POST /admin-api/namespaces/{ns}/invite`). The page must create, join and
- * invite through `useMero().admin` — the session-aware account admin — and
- * never through the raw client's `mero.admin`.
+ * `POST /admin-api/namespaces/{ns}/invite`). The page must create and invite
+ * through `useMero().admin` — the session-aware account admin — and never
+ * through the raw client's `mero.admin`. (Joining is the invitation prompt's,
+ * and tested beside it.)
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -21,7 +22,6 @@ const stub = vi.hoisted(() => {
     createNamespace: vi.fn(),
     listNamespacesForApplication: vi.fn(async () => []),
     listNamespaces: vi.fn(async () => []),
-    joinNamespace: vi.fn(async () => ({ namespaceId: "" })),
     createNamespaceInvitation: vi.fn(),
     deleteNamespace: vi.fn(),
     listApplications: vi.fn(),
@@ -30,7 +30,6 @@ const stub = vi.hoisted(() => {
   // These spies exist to prove the page never reaches it.
   const rawAdmin = {
     createNamespace: vi.fn(),
-    joinNamespace: vi.fn(),
     createNamespaceInvitation: vi.fn(),
     listApplications: vi.fn(),
     listNamespaces: vi.fn(),
@@ -59,26 +58,7 @@ vi.mock("../../contexts/ToastContext", () => ({
 vi.mock("../../components/common/theme-toggle/ThemeToggle", () => ({
   default: () => null,
 }));
-// The link-capture half of @calimero-apps/invite needs the real window
-// history; the redeem engine is exercised for real below (it is mero-js's).
-vi.mock("@calimero-apps/invite", async () => {
-  const real = await vi.importActual<typeof import("@calimero-apps/invite")>(
-    "@calimero-apps/invite",
-  );
-  return {
-    ...real,
-    useInviteRedemption: () => ({
-      state: { status: "idle" },
-      token: "",
-      retry: vi.fn(),
-      dismiss: vi.fn(),
-    }),
-    InviteStatusBanner: () => null,
-  };
-});
-
 import TeamsPage from "./TeamsPage";
-import { encodeInvitationObject } from "../../utils/invitation";
 
 function open() {
   return render(
@@ -145,40 +125,6 @@ describe("an account creating a team", () => {
   });
 });
 
-describe("an account joining a team from an invitation code", () => {
-  it("redeems through the account admin's joinNamespace, never the raw client", async () => {
-    // After the join the account's own namespace list has the team.
-    stub.admin.listNamespacesForApplication.mockResolvedValue([]);
-    stub.admin.joinNamespace.mockImplementation(async () => {
-      stub.admin.listNamespacesForApplication.mockResolvedValue([
-        { namespaceId: NS, targetApplicationId: "app-from-registry", name: "Design" },
-      ]);
-      return { namespaceId: NS };
-    });
-
-    open();
-    // Exactly what `generateInvite` encodes: the admin's `{ invitation }`
-    // envelope plus the team name hint.
-    const code = encodeInvitationObject({ invitation: SIGNED, __teamName: "Design" });
-    fireEvent.change(await screen.findByTestId("join-code-input"), {
-      target: { value: code },
-    });
-    fireEvent.click(screen.getByTestId("join-team-btn"));
-
-    await waitFor(() => expect(stub.admin.joinNamespace).toHaveBeenCalled());
-    const [namespaceId, body] = stub.admin.joinNamespace.mock.calls[0] as [
-      string,
-      { invitation: unknown },
-    ];
-    expect(namespaceId).toBe(NS);
-    // The signed invitation goes through untouched: the signature covers it
-    // exactly as minted.
-    expect(body.invitation).toEqual(SIGNED);
-    expect(stub.rawAdmin.joinNamespace).not.toHaveBeenCalled();
-    await screen.findByTestId(`team-card-${NS}`);
-  });
-});
-
 describe("an account inviting to a team", () => {
   it("mints the invitation through the account admin, never the raw client", async () => {
     stub.admin.listNamespacesForApplication.mockResolvedValue([
@@ -192,6 +138,23 @@ describe("an account inviting to a team", () => {
     );
     expect(stub.rawAdmin.createNamespaceInvitation).not.toHaveBeenCalled();
     await screen.findByTestId("copy-invite");
+  });
+
+  it("shows the link it copies, never the raw code", async () => {
+    // A link is opened; a code would have to be pasted somewhere, and there
+    // is nowhere to paste one.
+    stub.admin.listNamespacesForApplication.mockResolvedValue([
+      { namespaceId: NS, targetApplicationId: "app-from-registry", name: "Design" },
+    ]);
+    open();
+    fireEvent.click(await screen.findByTestId(`team-menu-${NS}`));
+    fireEvent.click(screen.getByText("Invite"));
+    const copy = await screen.findByTestId("copy-invite");
+    const shown = copy.parentElement?.querySelector("code");
+    expect(shown?.getAttribute("title")).toMatch(
+      /^https:\/\/links\.calimero\.network\/com\.calimero\.mero-calendar\/join\?invitation=/,
+    );
+    expect(shown?.textContent).toMatch(/^https:\/\/links\.calimero\.network\//);
   });
 
   it("does not offer Delete: deleting a namespace is a node's own operation", async () => {

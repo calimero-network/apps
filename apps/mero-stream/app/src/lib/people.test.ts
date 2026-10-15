@@ -160,3 +160,54 @@ describe("buildRoster", () => {
     expect(r[0].live).toBe(true);
   });
 });
+
+// Someone with no room nickname — or broadcasting before the roster polled —
+// used to show as `5926f2d2…` even when they had named themselves for the
+// whole stream (namespace member metadata).
+describe("buildRoster – stream-wide names", () => {
+  const ANA =
+    "5926f2d2a4940fa2a62edd2cd7d833897c2c1596c697ea674dd0f49b89d11334";
+  const nameOf = (id: string) => (id === ANA ? "Ana" : undefined);
+  const base = {
+    me: "me",
+    selfName: "You",
+    selfLive: false,
+    nameOf,
+  };
+
+  it("names a live sender the roster has not caught up with", () => {
+    const r = buildRoster({
+      ...base,
+      members: [{ memberId: "me", name: "You" }],
+      liveIds: new Set([ANA]),
+    });
+    expect(r.find((p) => p.memberId === ANA)?.name).toBe("Ana");
+  });
+
+  it("names a member with a blank contract nickname", () => {
+    const r = buildRoster({
+      ...base,
+      members: [{ memberId: ANA, name: "" }],
+      liveIds: new Set<string>(),
+    });
+    expect(r[0].name).toBe("Ana");
+  });
+
+  it("keeps the room nickname over the stream-wide name", () => {
+    const r = buildRoster({
+      ...base,
+      members: [{ memberId: ANA, name: "ana-cam" }],
+      liveIds: new Set<string>(),
+    });
+    expect(r[0].name).toBe("ana-cam");
+  });
+
+  it("still falls back to a short id when nobody named them", () => {
+    const r = buildRoster({
+      ...base,
+      members: [],
+      liveIds: new Set(["b".repeat(64)]),
+    });
+    expect(r[0].name).toBe(shortId("b".repeat(64)));
+  });
+});

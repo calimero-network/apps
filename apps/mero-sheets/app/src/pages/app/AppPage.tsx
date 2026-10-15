@@ -16,14 +16,15 @@
  * Panels (functions, comments, …) float in from the right as overlays.
  *
  * Three states:
- *  1. Workspace picker (!ws.contextId) — open / create / join a workspace
+ *  1. Workspace picker (!ws.contextId) — open / create a workspace
  *  2. Opening (ws.contextId set, !ws.ready) — identity resolving
  *  3. Workspace open — full spreadsheet UI (with ← back to the picker)
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useGroupMembers, useMero } from '@calimero-network/mero-react';
+import { useMemberNames, useMyName } from '@calimero-apps/names';
 import { C } from '../../theme';
 import ThemeToggle from '../../components/ThemeToggle';
 import { field, primaryPill, secondaryPill } from '../../components/glass';
@@ -44,7 +45,6 @@ import SpreadsheetGrid from '../../components/SpreadsheetGrid';
 import SheetTabs from '../../components/SheetTabs';
 import FunctionHelpPanel from '../../components/FunctionHelpPanel';
 import InviteModal from '../../components/InviteModal';
-import JoinModal from '../../components/JoinModal';
 import NicknameModal from '../../components/NicknameModal';
 import ContextMenu from '../../components/ContextMenu';
 import NamesModal from '../../components/NamesModal';
@@ -77,12 +77,12 @@ import { idsToNames, namesToIds } from '../../spreadsheet/sheetref';
 import StatusBar from '../../components/StatusBar';
 import { avatarLabel, distinctCollaborators, peerCount } from '../../spreadsheet/presence';
 import { useSheetPresence } from '../../hooks/useSheetPresence';
-import { labelMembers, labelsById } from '../../lib/people';
-import { rememberName, rememberedName } from '../../lib/displayName';
+import { labelMembers, labelsById, withNamespaceNames } from '../../lib/people';
+import { isUsableName, normaliseName, rememberName, rememberedName } from '../../lib/displayName';
 
 
 export default function AppPage() {
-  const { logout, mero } = useMero();
+  const { logout, mero, admin } = useMero();
   const ws = useWorkspace();
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const ss = useSpreadsheet({
@@ -91,6 +91,21 @@ export default function AppPage() {
     activeSheetId,
   });
   const navigate = useNavigate();
+
+  // An invitation the app-level prompt just joined arrives as navigation state
+  // (see `AppInvitations` in App.tsx): this page is usually already showing,
+  // so the state — not a remount — is what makes it re-read the node and open
+  // what was joined. Cleared once handled, so a reload does not replay it.
+  const location = useLocation();
+  const joined = (location.state as {
+    joined?: Parameters<typeof ws.landJoined>[0];
+  } | null)?.joined;
+  const { landJoined } = ws;
+  useEffect(() => {
+    if (!joined) return;
+    void landJoined(joined);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [joined, landJoined, navigate, location.pathname]);
 
   // Log out: mero-react drops this browser's node session (tokens and all),
   // and the front door is where a signed-out visitor belongs.
@@ -119,7 +134,6 @@ export default function AppPage() {
 
   // ── Workspace modals ────────────────────────────────────────────
   const [showInvite, setShowInvite] = useState(false);
-  const [showJoin, setShowJoin] = useState(false);
   // The minted code lives here rather than inside InviteModal, because minting
   // is a network call against the namespace and the modal is a presentation of
   // its result — keeping them together made the dialog either mint on every open
@@ -162,6 +176,15 @@ export default function AppPage() {
     ss.selfId !== null &&
     !ss.members.some((m) => m.id === ss.selfId && m.nickname.trim());
 
+  // The name each person set for the whole workspace (namespace member
+  // metadata), shared by every app on it. It names people who have not picked
+  // a nickname in this workbook, or have not opened it at all.
+  const { nameOf: namespaceNameOf, displayName: namespaceDisplayName } = useMemberNames(admin, ws.namespaceId);
+  // Your own name is the workspace's, one per workspace: a workbook asks only
+  // when the workspace has none for you, and only once its names have loaded.
+  const myName = useMyName(admin, ws.namespaceId, ss.selfId);
+  const selfNamespaceName = normaliseName(myName.name);
+
   const submitNickname = useCallback(
     async (name: string) => {
       setSavingNickname(true);
@@ -169,14 +192,28 @@ export default function AppPage() {
       try {
         await ss.joinAs(name);
         rememberName(name);
+        // The workspace-wide name too, so every other app on it says the same.
+        // Best-effort: the workbook nickname is what was asked for.
+        if (name !== selfNamespaceName) void myName.setName(name).catch(() => undefined);
       } catch (err) {
         setNicknameError(describeError(err));
       } finally {
         setSavingNickname(false);
       }
     },
-    [ss],
+    [ss, myName, selfNamespaceName],
   );
+
+  // Someone who already named themselves for the workspace is not asked again:
+  // the workbook adopts that name. Once per spreadsheet; if the write fails,
+  // the modal opens with the name filled in and the error shown.
+  const adoptedFor = useRef<string | null>(null);
+  const adoptNamespaceName = needsNickname && isUsableName(selfNamespaceName) && !nicknameError;
+  useEffect(() => {
+    if (!adoptNamespaceName || adoptedFor.current === ws.contextId) return;
+    adoptedFor.current = ws.contextId;
+    void submitNickname(selfNamespaceName);
+  }, [adoptNamespaceName, ws.contextId, selfNamespaceName, submitNickname]);
 
   // ── New-workspace bootstrap ─────────────────────────────────────
   const [projectName, setProjectName] = useState('Untitled Spreadsheet');
@@ -288,8 +325,18 @@ export default function AppPage() {
       !selfCreatedRef.current.has(ws.contextId) &&
       ensuredDefaultSheetRef.current !== ws.contextId
     ) {
-      ensuredDefaultSheetRef.current = ws.contextId;
-      void ss.createSheet('Sheet 1');
+      const contextId = ws.contextId;
+      ensuredDefaultSheetRef.current = contextId;
+      // A joiner can land here before the shared state has replicated: the
+      // node answers `Uninitialized`, and the inviter's sheets are on their
+      // way. Nothing to create yet — free the guard so a later change retries —
+      // and never let it escape as an unhandled rejection.
+      ss.createSheet('Sheet 1').catch((err: unknown) => {
+        if (ensuredDefaultSheetRef.current === contextId) ensuredDefaultSheetRef.current = null;
+        if (!/uninitiali[sz]ed/i.test(String((err as { message?: string })?.message ?? err))) {
+          console.warn('[mero-sheets] could not create the default sheet', err);
+        }
+      });
     }
   }, [ss.ready, ss.loaded, ss.sheets.length, ss.cells.length, ss, ws.contextId]);
 
@@ -1281,8 +1328,9 @@ export default function AppPage() {
             <Eyebrow>Workspace</Eyebrow>
             <h1>{ws.namespaceName}</h1>
             <p>
-              Open a spreadsheet, create a new one, or join a workspace you&rsquo;ve
-              been invited to. All data lives on your node — no central server.
+              Open a spreadsheet or create a new one. To join someone else&rsquo;s,
+              open the invitation link they sent you. All data lives on your node —
+              no central server.
             </p>
           </PickerHero>
 
@@ -1336,7 +1384,7 @@ export default function AppPage() {
                 <EmptyList>
                   <RowIcon aria-hidden="true"><SheetGlyph size={20} /></RowIcon>
                   <strong>No spreadsheets yet</strong>
-                  <span>Create the first one, or join one you&rsquo;ve been invited to.</span>
+                  <span>Create the first one, or open an invitation link someone sent you.</span>
                 </EmptyList>
               )}
               {ws.notInstalled && (
@@ -1363,14 +1411,11 @@ export default function AppPage() {
               <ButtonRow>
                 <PrimaryBtn
                   data-testid="action-init_project"
-                  disabled={!projectName.trim() || ws.loading}
+                  disabled={!projectName.trim() || !ws.canCreate}
                   onClick={() => void ws.createWorkspace(projectName.trim())}
                 >
                   Create spreadsheet
                 </PrimaryBtn>
-                <SecondaryBtn onClick={() => setShowJoin(true)}>
-                  Join with invitation
-                </SecondaryBtn>
               </ButtonRow>
 
               {ws.status && <StatusLine>{ws.status}</StatusLine>}
@@ -1379,12 +1424,6 @@ export default function AppPage() {
           </PickerGrid>
         </PickerMain>
 
-        {showJoin && (
-          <JoinModal
-            onJoin={async (code) => { await ws.join(code); setShowJoin(false); }}
-            onClose={() => setShowJoin(false)}
-          />
-        )}
       </PickerShell>
     );
   }
@@ -1425,7 +1464,7 @@ export default function AppPage() {
   // name (from the replicated context metadata) covers the window before
   // `init_project` lands, and only then a placeholder.
   const activeWorkspaceName = ss.project?.name?.trim() || ws.activeName;
-  const roster = labelsById(labelMembers(ss.members, ss.selfId));
+  const roster = labelsById(labelMembers(withNamespaceNames(ss.members, namespaceNameOf), ss.selfId));
   // `ss.selfId` — the id the CONTRACT writes under — and NOT
   // `ws.executorPublicKey`, which is a context identity. Both are 64 hex, so the
   // old comparison type-checked, never matched, and rendered the local user as a
@@ -1434,7 +1473,7 @@ export default function AppPage() {
   const peers = peerCount(presence.cursors, ss.selfId);
   const cursorLabel = (author: string) => avatarLabel(roster.get(author)?.label ?? author);
   const personName = (memberId: string) =>
-    memberId === ss.selfId ? 'You' : roster.get(memberId)?.label ?? `${memberId.slice(0, 8)}…`;
+    memberId === ss.selfId ? 'You' : roster.get(memberId)?.label ?? namespaceDisplayName(memberId);
   const editedBy = (c: { last_editor: string; last_edited_at: number }) =>
     c.last_editor ? `Edited by ${personName(c.last_editor)}, ${ago(nsToMs(c.last_edited_at))}` : null;
   const connected = ss.ready && ss.loaded;
@@ -1520,7 +1559,7 @@ export default function AppPage() {
                 c.isSelf
                   ? `You · ${c.name}`
                   : c.anonymous
-                    ? `Has not chosen a name yet (${c.author.slice(0, 12)}…)`
+                    ? namespaceNameOf(c.author) ?? `Has not chosen a name yet (${c.author.slice(0, 12)}…)`
                     : c.name
               }
               data-testid="collaborator-avatar"
@@ -1549,14 +1588,6 @@ export default function AppPage() {
       {/* ── Tool dock: file, history and the side panels ─────────────── */}
       <ToolDock role="toolbar" aria-label="Spreadsheet tools">
         <ToolGroup>
-          <ToolBtn onClick={() => setShowJoin(true)} aria-label="Join workspace">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-              <polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" />
-            </svg>
-            <span>Join</span>
-          </ToolBtn>
           <ToolBtn
             data-testid="action-export_all"
             onClick={handleDownload}
@@ -1804,16 +1835,10 @@ export default function AppPage() {
           onClose={() => setShowInvite(false)}
         />
       )}
-      {showJoin && (
-        <JoinModal
-          onJoin={async (code) => { await ws.join(code); setShowJoin(false); }}
-          onClose={() => setShowJoin(false)}
-        />
-      )}
-      {needsNickname && (
+      {needsNickname && myName.ready && !adoptNamespaceName && (
         <NicknameModal
           projectName={activeWorkspaceName}
-          initialName={rememberedName()}
+          initialName={selfNamespaceName || rememberedName()}
           saving={savingNickname}
           error={nicknameError}
           onSubmit={(name) => void submitNickname(name)}

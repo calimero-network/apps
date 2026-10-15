@@ -21,7 +21,11 @@ export function InviteCard({ contextId }: { contextId: string }) {
   // in — and `ContextPicker` creates contexts directly in the namespace, so that
   // group IS the namespace. (Put a context in a subgroup instead and this would
   // hand `createNamespaceInvitation` a subgroup id.)
-  const { groupId, loading: groupLoading, error: groupError } = useContextGroup(contextId);
+  const {
+    groupId,
+    loading: groupLoading,
+    error: groupError,
+  } = useContextGroup(contextId);
   const { createNamespaceInvitation } = useCreateNamespaceInvitation();
 
   const [link, setLink] = useState<string | null>(null);
@@ -86,7 +90,9 @@ export function InviteCard({ contextId }: { contextId: string }) {
         standups and decisions — nobody without one can.
       </p>
 
-      {groupLoading && <p className="empty">Resolving this team&apos;s namespace…</p>}
+      {groupLoading && (
+        <p className="empty">Resolving this team&apos;s namespace…</p>
+      )}
       {groupError && <pre className="err">{groupError.message}</pre>}
 
       <div className="row">
@@ -128,10 +134,10 @@ export function InviteCard({ contextId }: { contextId: string }) {
             `links.frontend`; with that field absent it forgets the link.
           */}
           <p className="empty">
-            The link carries the invitation and works when pasted into this app.
-            Opening it in a browser or the desktop app additionally needs this
-            app&apos;s published bundle to declare a <code>links.frontend</code>{" "}
-            origin — see <code>logic/Cargo.toml</code>.
+            Send it to whoever you are inviting; they join by opening it. It
+            opens in a browser or the desktop app once this app&apos;s published
+            bundle declares a <code>links.frontend</code> origin — see{" "}
+            <code>logic/Cargo.toml</code>.
           </p>
         </>
       )}

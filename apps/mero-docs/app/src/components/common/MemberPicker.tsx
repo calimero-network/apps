@@ -27,6 +27,7 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useGroupMembers } from '@calimero-network/mero-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { splitTeeMembers } from '@/lib/roles';
 import {
   foldForSearch,
   matchScore,
@@ -64,7 +65,9 @@ export function MemberPicker({
   // currently-selected workspace when the prop is unset.
   const { rootGroupId } = useDriveWorkspace();
   const groupId = namespaceId ?? rootGroupId;
-  const { members } = useGroupMembers(groupId);
+  const { members: rows } = useGroupMembers(groupId);
+  // A TEE node is a member row, but nobody to pick.
+  const members = useMemo(() => splitTeeMembers(rows).people, [rows]);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   // Active option index for keyboard navigation (Arrow keys) + the

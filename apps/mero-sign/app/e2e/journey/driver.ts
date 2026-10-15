@@ -235,17 +235,14 @@ export const driver: AppDriver = {
     return value;
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    await expect(heading(page, "Your workspaces")).toBeVisible({ timeout: 60_000 });
-    await page.getByTestId("join-code").fill(link);
-    await page.getByTestId("join-workspace").click();
     const landed = page.waitForURL(/\/(agreements|workspaces)\/[^/]+/, { timeout: SYNC });
     const failed = page
-      .getByTestId("list-error")
+      .getByTestId("invite-error")
       .waitFor({ state: "visible", timeout: SYNC })
       .then(async () => {
-        throw new Error(`join refused: ${await page.getByTestId("list-error").innerText()}`);
+        throw new Error(`join refused: ${await page.getByTestId("invite-error").innerText()}`);
       });
     landed.catch(() => undefined);
     failed.catch(() => undefined);

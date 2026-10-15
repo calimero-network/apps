@@ -34,6 +34,11 @@ test.describe(`issue creator: delete an issue (with its comments) from the detai
 
     // Confirm the delete in the modal.
     await page.getByTestId('action-delete_issue').click();
+    // The scrim covers the whole window, not just the workspace pane: an
+    // ancestor with backdrop-filter would confine this position: fixed overlay.
+    const scrim = page.getByRole('dialog', { name: 'Delete issue' }).locator('..');
+    const viewport = page.viewportSize()!;
+    expect(await scrim.boundingBox()).toEqual({ x: 0, y: 0, width: viewport.width, height: viewport.height });
     await page.getByTestId('confirm-delete_issue').click();
 
     // Back on the list, and the card is gone.

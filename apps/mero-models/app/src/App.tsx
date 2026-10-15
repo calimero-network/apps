@@ -1,5 +1,12 @@
 import { Suspense, lazy, type ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { ConnectButton, useMero } from "@calimero-network/mero-react";
 import { JoinCard } from "./JoinCard";
 import { ScenePicker } from "./ScenePicker";
@@ -10,7 +17,9 @@ import LandingPage from "./pages/landing/LandingPage";
  * The modeller is three.js and most of this bundle; the landing page a stranger
  * opens first should not wait for it.
  */
-const Studio = lazy(() => import("./studio/Studio").then((m) => ({ default: m.Studio })));
+const Studio = lazy(() =>
+  import("./studio/Studio").then((m) => ({ default: m.Studio })),
+);
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -23,7 +32,12 @@ const LANDING_PATHS = ["/", "/docs", "/preview"];
 function AppLandingPage() {
   const { isAuthenticated } = useMero();
   const navigate = useNavigate();
-  return <LandingPage isAuthenticated={isAuthenticated} onOpenApp={() => navigate("/studio")} />;
+  return (
+    <LandingPage
+      isAuthenticated={isAuthenticated}
+      onOpenApp={() => navigate("/studio")}
+    />
+  );
 }
 
 /**
@@ -36,7 +50,8 @@ function AppLandingPage() {
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
   const location = useLocation();
-  const deliberate = (location.state as { fromApp?: boolean } | null)?.fromApp === true;
+  const deliberate =
+    (location.state as { fromApp?: boolean } | null)?.fromApp === true;
   if (isLoading) return null;
   if (isAuthenticated && !deliberate) return <Navigate to="/studio" replace />;
   return <>{children}</>;
@@ -45,9 +60,6 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
 /** Connect, pick a scene, model. Three states — exactly the three things that can be missing. */
 function StudioPage() {
   const { isAuthenticated, isLoading, applicationId, contextId } = useMero();
-  // Mounted unconditionally: an invitation captured before login is redeemed
-  // the moment a session exists.
-  const { state: joinState, redeemPasted, confirmJoin, declineJoin } = useJoinFromInvitation();
   const navigate = useNavigate();
 
   if (isLoading) {
@@ -68,7 +80,8 @@ function StudioPage() {
             <img className="connect-mark" src="/favicon.svg" alt="" />
             <h1>Connect a node</h1>
             <p className="lede">
-              Mero Models runs on your own Calimero node. The login finds one on the usual local ports, or takes a URL.
+              Mero Models runs on your own Calimero node. The login finds one on
+              the usual local ports, or takes a URL.
             </p>
             <ConnectButton />
             <ul className="connect-points">
@@ -82,36 +95,47 @@ function StudioPage() {
     );
   }
 
-  const join = (
-    <JoinCard state={joinState} onSubmit={redeemPasted} onConfirm={confirmJoin} onDecline={declineJoin} />
-  );
-
   if (!contextId) {
     return (
       <div className="page">
         <TopBar onHome={() => navigate("/", { state: { fromApp: true } })} />
         <main className="wrap">
-          <ScenePicker applicationId={applicationId}>{join}</ScenePicker>
+          <ScenePicker applicationId={applicationId} />
         </main>
       </div>
     );
   }
 
   return (
-    <>
-      {/* A link can arrive while a scene is open; the prompt must be reachable then too. */}
-      {joinState.status !== "idle" && <div className="join-float">{join}</div>}
-      <Suspense
-        fallback={
-          <div className="loading-state">
-            <span className="spinner" aria-hidden="true" />
-            <p className="empty">Loading the studio…</p>
-          </div>
-        }
-      >
-        <Studio contextId={contextId} />
-      </Suspense>
-    </>
+    <Suspense
+      fallback={
+        <div className="loading-state">
+          <span className="spinner" aria-hidden="true" />
+          <p className="empty">Loading the studio…</p>
+        </div>
+      }
+    >
+      <Studio contextId={contextId} />
+    </Suspense>
+  );
+}
+
+/**
+ * The invitation prompt, above every route.
+ *
+ * Mounted once, outside `<Routes>`, so navigation never unmounts it and a link
+ * opened on any page — the landing page, the picker, an open scene — reaches
+ * it. Shown once there is a session to join with; until then the captured
+ * invitation waits. Joining lands in the studio, on the joined scene.
+ */
+function InvitationPrompt() {
+  const { isAuthenticated } = useMero();
+  const join = useJoinFromInvitation({ landingPath: "/studio" });
+  if (!isAuthenticated || join.state.stage === "idle") return null;
+  return (
+    <div className="join-float">
+      <JoinCard join={join} />
+    </div>
   );
 }
 
@@ -143,6 +167,7 @@ function TopBar({ onHome }: { onHome: () => void }) {
 export function App() {
   return (
     <BrowserRouter basename="/">
+      <InvitationPrompt />
       <Routes>
         {LANDING_PATHS.map((path) => (
           <Route

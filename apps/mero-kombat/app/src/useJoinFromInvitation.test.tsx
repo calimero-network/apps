@@ -1,9 +1,22 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DeepLinkIntent } from "@calimero-network/mero-platform";
+import {
+  primeInvitationCapture,
+  resetInvitationCaptureForTests,
+} from "@calimero-apps/invite";
 import { JoinCard } from "./JoinCard";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
-import { encodeInvitationPayload, serializeInvitationPayload } from "./utils/invitation";
+import {
+  APP_SLUG,
+  encodeInvitationPayload,
+  serializeInvitationPayload,
+} from "./utils/invitation";
 
 // The session-aware admin the hook must use: `useMero().admin`. On a node it
 // is the node's client; on an account it redeems through the admitter.
@@ -24,17 +37,13 @@ let isDelegated = false;
 const setContextId = vi.fn();
 
 vi.mock("@calimero-network/mero-react", () => ({
-  useMero: () => ({ isAuthenticated: true, isDelegated, admin, mero: { admin: rawAdmin } }),
+  useMero: () => ({
+    isAuthenticated: true,
+    isDelegated,
+    admin,
+    mero: { admin: rawAdmin },
+  }),
   setContextId: (id: string) => setContextId(id),
-}));
-
-// Capture the deep-link handler so a test can deliver a link the way the
-// launcher would.
-let deliver: ((intent: DeepLinkIntent) => void) | null = null;
-vi.mock("@calimero-network/mero-platform-react", () => ({
-  useDeepLink: (handler: (intent: DeepLinkIntent) => void) => {
-    deliver = handler;
-  },
 }));
 
 const NAMESPACE = "ns-1";
@@ -44,66 +53,114 @@ const payload = {
   namespaceId: NAMESPACE,
   contextId: CONTEXT,
 } as unknown as Parameters<typeof serializeInvitationPayload>[0];
+const TOKEN = encodeInvitationPayload(serializeInvitationPayload(payload));
 
 /** An error shaped like mero-js's HTTPError: the status is what decides. */
 function httpError(status: number, message: string): Error {
   return Object.assign(new Error(message), { status });
 }
 
-function Harness() {
-  const { state, redeemPasted, confirmJoin, declineJoin } = useJoinFromInvitation();
-  return (
-    <JoinCard
-      state={state}
-      onSubmit={redeemPasted}
-      onConfirm={confirmJoin}
-      onDecline={declineJoin}
-    />
-  );
-}
+let landingPath: string | undefined;
 
-/** Deliver a link-borne invitation and press the prompt's Join. */
-async function followLinkAndConfirm(): Promise<ReturnType<typeof vi.fn>> {
-  const resolve = vi.fn();
-  render(<Harness />);
-  act(() => {
-    deliver?.({
-      action: "join",
-      params: { invitation: encodeInvitationPayload(serializeInvitationPayload(payload)) },
-      resolve,
-    } as unknown as DeepLinkIntent);
-  });
-  // The prompt's Join is the second of the two buttons named "Join".
-  const buttons = screen.getAllByRole("button", { name: "Join" });
-  fireEvent.click(buttons[buttons.length - 1]!);
-  return resolve;
+function Harness() {
+  return <JoinCard join={useJoinFromInvitation({ landingPath })} />;
 }
 
 const reload = vi.fn();
+const assign = vi.fn();
 const originalLocation = window.location;
+
+/**
+ * Boot the app the way main.tsx does, at `path`, and render the prompt.
+ *
+ * Capture reads the real location; `reload` is stubbed only afterwards, since
+ * jsdom's own cannot be spied on.
+ */
+function openApp(path: string): void {
+  cleanup();
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: originalLocation,
+  });
+  window.history.replaceState(null, "", path);
+  resetInvitationCaptureForTests();
+  primeInvitationCapture("mero-kombat", { slug: APP_SLUG });
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { ...originalLocation, reload, assign },
+  });
+  render(<Harness />);
+}
+
+/** Open the app from an invitation link and press the prompt's Join. */
+async function followLinkAndConfirm(): Promise<void> {
+  openApp(`/?invitation=${TOKEN}`);
+  fireEvent.click(await screen.findByTestId("invite-accept"));
+}
+
+/** Whether the invitation is offered again the next time the app opens. */
+async function offeredOnNextOpen(): Promise<boolean> {
+  openApp("/");
+  return screen
+    .findByTestId("invite-accept", undefined, { timeout: 200 })
+    .then(() => true)
+    .catch(() => false);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
   isDelegated = false;
-  deliver = null;
-  Object.defineProperty(window, "location", {
-    configurable: true,
-    value: { ...originalLocation, reload },
-  });
+  landingPath = undefined;
+  localStorage.clear();
 });
 
 afterEach(() => {
   cleanup();
-  Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
+  resetInvitationCaptureForTests();
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: originalLocation,
+  });
+  window.history.replaceState(null, "", "/");
+  localStorage.clear();
 });
 
 describe("useJoinFromInvitation", () => {
+  it("asks first, showing what joining adds this node to", async () => {
+    openApp(`/?invitation=${TOKEN}`);
+
+    await screen.findByTestId("invite-accept");
+    expect(screen.getByText(NAMESPACE)).toBeTruthy();
+    expect(screen.getByText(CONTEXT)).toBeTruthy();
+    expect(admin.joinNamespace).not.toHaveBeenCalled();
+    // Captured, then taken off the address bar.
+    expect(originalLocation.search).not.toContain("invitation");
+  });
+
+  it("joins nothing when declined, and does not ask again", async () => {
+    openApp(`/?invitation=${TOKEN}`);
+    fireEvent.click(await screen.findByTestId("invite-decline"));
+
+    expect(screen.queryByTestId("invite-accept")).toBeNull();
+    expect(admin.joinNamespace).not.toHaveBeenCalled();
+    expect(await offeredOnNextOpen()).toBe(false);
+  });
+
+  it("says so for a link that is not an invitation", async () => {
+    openApp("/?invitation=not-an-invitation");
+
+    expect((await screen.findByTestId("invite-error")).textContent).toBe(
+      "This invitation link isn't valid. Ask for a new one.",
+    );
+    expect(admin.joinNamespace).not.toHaveBeenCalled();
+  });
+
   it("joins the namespace, then the context, then acks and reloads", async () => {
     admin.joinNamespace.mockResolvedValue({});
     admin.joinContext.mockResolvedValue({});
     admin.listNamespaces.mockResolvedValue([{ namespaceId: NAMESPACE }]);
 
-    const resolve = await followLinkAndConfirm();
+    await followLinkAndConfirm();
 
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
     expect(admin.joinNamespace).toHaveBeenCalledTimes(1);
@@ -115,9 +172,9 @@ describe("useJoinFromInvitation", () => {
       admin.joinContext.mock.invocationCallOrder[0]!,
     );
     expect(setContextId).toHaveBeenCalledWith(CONTEXT);
-    expect(resolve).toHaveBeenCalledTimes(1);
     expect(rawAdmin.joinNamespace).not.toHaveBeenCalled();
     expect(rawAdmin.joinContext).not.toHaveBeenCalled();
+    expect(await offeredOnNextOpen()).toBe(false);
   });
 
   it("redeems for an account through the account admin, never the relay's node route", async () => {
@@ -128,14 +185,17 @@ describe("useJoinFromInvitation", () => {
     // passes only if nothing asks it.
     isDelegated = true;
     rawAdmin.joinNamespace.mockRejectedValue(
-      httpError(403, "Token does not carry the permissions this route requires"),
+      httpError(
+        403,
+        "Token does not carry the permissions this route requires",
+      ),
     );
     rawAdmin.joinContext.mockRejectedValue(httpError(403, "forbidden"));
     rawAdmin.listNamespaces.mockRejectedValue(httpError(403, "forbidden"));
     admin.joinNamespace.mockResolvedValue({ namespaceId: NAMESPACE });
     admin.listNamespaces.mockResolvedValue([{ namespaceId: NAMESPACE }]);
 
-    const resolve = await followLinkAndConfirm();
+    await followLinkAndConfirm();
 
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
     expect(admin.joinNamespace).toHaveBeenCalledWith(NAMESPACE, {
@@ -148,63 +208,79 @@ describe("useJoinFromInvitation", () => {
     expect(rawAdmin.joinContext).not.toHaveBeenCalled();
     expect(rawAdmin.listNamespaces).not.toHaveBeenCalled();
     expect(setContextId).toHaveBeenCalledWith(CONTEXT);
-    expect(resolve).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(/can't join/)).toBeNull();
+    expect(screen.queryByTestId("invite-error")).toBeNull();
   });
 
   it("treats a failed request for a namespace it is now in as joined", async () => {
     // The desktop proxy gives up at 30s; the join lands anyway.
     admin.joinNamespace.mockRejectedValue(httpError(504, "Gateway Timeout"));
-    admin.listNamespaces.mockResolvedValue([{ namespaceId: "other" }, { namespaceId: NAMESPACE }]);
+    admin.listNamespaces.mockResolvedValue([
+      { namespaceId: "other" },
+      { namespaceId: NAMESPACE },
+    ]);
 
-    const resolve = await followLinkAndConfirm();
+    await followLinkAndConfirm();
 
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
     // Sent once, never re-sent.
     expect(admin.joinNamespace).toHaveBeenCalledTimes(1);
     expect(setContextId).toHaveBeenCalledWith(CONTEXT);
-    expect(resolve).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/Gateway Timeout/)).toBeNull();
   });
 
   it("drops an invitation the node refused for good, and says why", async () => {
     admin.joinNamespace.mockRejectedValue(
-      httpError(409, "invitation for group ContextGroupId(Identity([1, 2])) expired at 1759000000"),
+      httpError(
+        409,
+        "invitation for group ContextGroupId(Identity([1, 2])) expired at 1759000000",
+      ),
     );
     admin.listNamespaces.mockResolvedValue([]);
 
-    const resolve = await followLinkAndConfirm();
+    await followLinkAndConfirm();
 
-    await screen.findByText("This invitation has expired. Ask for a new link.");
-    expect(resolve).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("This invitation cannot succeed; ask for a new one.")).toBeTruthy();
-    expect(screen.queryByText(/will be retried/)).toBeNull();
+    expect((await screen.findByTestId("invite-error")).textContent).toBe(
+      "This invitation has expired. Ask for a new link.",
+    );
+    expect(
+      screen.getByText("This invitation cannot succeed; ask for a new one."),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("invite-retry")).toBeNull();
     expect(admin.joinContext).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
+    expect(await offeredOnNextOpen()).toBe(false);
   });
 
   it("keeps an invitation nobody could let in yet, and offers the retry", async () => {
     admin.joinNamespace.mockRejectedValue(httpError(503, "no online member"));
     admin.listNamespaces.mockResolvedValue([]);
 
-    const resolve = await followLinkAndConfirm();
+    await followLinkAndConfirm();
 
-    await screen.findByText(/No one in this namespace is online to let you in yet\./);
-    expect(resolve).not.toHaveBeenCalled();
+    await screen.findByText(
+      /No one in this namespace is online to let you in yet\./,
+    );
     expect(
-      screen.getByText("Kept — this will be retried the next time the app loads."),
+      screen.getByText(
+        "Kept — it will be offered again the next time the app opens.",
+      ),
     ).toBeTruthy();
+    expect(screen.getByTestId("invite-retry")).toBeTruthy();
     expect(reload).not.toHaveBeenCalled();
+    expect(await offeredOnNextOpen()).toBe(true);
   });
 
   it("shows the node's own message when the failure has no better name", async () => {
-    admin.joinNamespace.mockRejectedValue(httpError(500, "something nobody has seen before"));
+    admin.joinNamespace.mockRejectedValue(
+      httpError(500, "something nobody has seen before"),
+    );
     admin.listNamespaces.mockRejectedValue(new Error("list failed"));
 
-    const resolve = await followLinkAndConfirm();
+    await followLinkAndConfirm();
 
-    await screen.findByText("something nobody has seen before");
-    expect(resolve).not.toHaveBeenCalled();
+    expect((await screen.findByTestId("invite-error")).textContent).toBe(
+      "something nobody has seen before",
+    );
     expect(reload).not.toHaveBeenCalled();
   });
 
@@ -219,5 +295,21 @@ describe("useJoinFromInvitation", () => {
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
     expect(admin.listNamespaces).toHaveBeenCalled();
     expect(rawAdmin.listNamespaces).not.toHaveBeenCalled();
+  });
+
+  it("opens what was joined on /play when the link was opened on another page", async () => {
+    // The prompt is app-level, so a link opened on the landing page is
+    // answered there; the joined context opens where the app shows one.
+    landingPath = "/play";
+    admin.joinNamespace.mockResolvedValue({});
+    admin.joinContext.mockResolvedValue({});
+    admin.listNamespaces.mockResolvedValue([{ namespaceId: NAMESPACE }]);
+
+    openApp(`/docs?invitation=${TOKEN}`);
+    fireEvent.click(await screen.findByTestId("invite-accept"));
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/play"));
+    expect(reload).not.toHaveBeenCalled();
+    expect(setContextId).toHaveBeenCalledWith(CONTEXT);
   });
 });

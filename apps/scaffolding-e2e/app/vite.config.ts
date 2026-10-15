@@ -15,5 +15,13 @@ export default defineConfig({
     // plain `node scripts/check-contract-calls.mjs`.
     include: ["src/**/*.{test,spec}.{ts,tsx}", "scripts/**/*.test.mjs"],
     exclude: ["**/node_modules/**", "tests/**"],
+    server: {
+      deps: {
+        // @calimero-network/mero-platform (reached through @calimero-apps/invite)
+        // ships directory imports (`from "./bridge"`), which Node's ESM resolver
+        // rejects; inlining routes it through Vite's resolver instead.
+        inline: ["@calimero-network/mero-platform"],
+      },
+    },
   },
 });

@@ -3,7 +3,7 @@ import { v4 as uuid } from "uuid";
 import { rpcCall } from "../api/rpc";
 import { clampText, MAX_COMMENT_LEN, MAX_REPLY_LEN } from "../utils/sanitize";
 import type { Member, CanvasComment } from "../types";
-import { resolveName } from "../hooks/useMemberNames";
+import { resolveName, type TeamNameLookup } from "../hooks/useMemberNames";
 import styles from "./CommentsOverlay.module.css";
 
 const CommentIcon = ({ size = 18, color = "currentColor" }: { size?: number; color?: string }) => (
@@ -18,6 +18,8 @@ interface Props {
   myIdentity: string;
   /** Used to show usernames instead of identity ids (items 8 and 12). */
   members?: Member[];
+  /** Team-wide names, for authors with no board username. */
+  teamName?: TeamNameLookup;
   addingComment: boolean;
   onCommentAdded: (c: CanvasComment) => void;
   onCommentDeleted: (id: string) => void;
@@ -30,7 +32,7 @@ interface Props {
 }
 
 export default function CommentsOverlay({
-  contextId, comments, myIdentity, members = [], addingComment,
+  contextId, comments, myIdentity, members = [], teamName, addingComment,
   onCommentAdded, onCommentDeleted, onReplyAdded, onReplyDeleted,
   onCancelAdd, viewport, readOnly = false,
 }: Props) {
@@ -103,7 +105,7 @@ export default function CommentsOverlay({
 
   /** Username when we know it, a short id when we do not. */
   function displayName(identity: string) {
-    return resolveName(members, identity);
+    return resolveName(members, identity, teamName);
   }
 
   return (

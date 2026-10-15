@@ -111,44 +111,6 @@
 }
 
 /* ── Buttons not covered by ui.tsx ─────────────────────────────────────────── */
-.ghostBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 12px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  background: var(--glass-surface-solid);
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.ghostBtn:hover {
-  background: var(--surface-hover);
-}
-
-.iconBtn {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  color: var(--text-dim);
-  background: transparent;
-  border: 0;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.iconBtn:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
 .openBtn {
   display: inline-flex;
   align-items: center;
@@ -243,8 +205,7 @@
   color: var(--text-dim);
 }
 
-.input,
-.dialogInput {
+.input {
   flex: 1;
   min-width: 0;
   height: 38px;
@@ -256,16 +217,13 @@
   border: 1px solid var(--border-strong);
   border-radius: 12px;
 }
-.input::placeholder,
-.dialogInput::placeholder {
+.input::placeholder {
   color: var(--text-faint);
 }
-.input:hover:not(:focus):not(:disabled),
-.dialogInput:hover:not(:focus):not(:disabled) {
+.input:hover:not(:focus):not(:disabled) {
   background: var(--surface-sunken);
 }
-.input:focus,
-.dialogInput:focus {
+.input:focus {
   outline: none;
   border-color: var(--text);
   box-shadow: var(--ring);
@@ -468,81 +426,6 @@
   max-width: 420px;
   font-size: 13px;
   color: var(--text-dim);
-  line-height: 1.5;
-}
-
-.emptyActions {
-  margin-top: 12px;
-  display: flex;
-  gap: 8px;
-}
-
-/* ── Join dialog ──────────────────────────────────────────────────────────── */
-.dialog {
-  width: min(480px, calc(100vw - 32px));
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  background: var(--glass-surface-solid);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 14px;
-  box-shadow: var(--glass-shadow-float);
-}
-
-.dialog::backdrop {
-  background: var(--overlay);
-}
-
-.dialogHead {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 20px 16px 4px 24px;
-}
-
-.dialogTitle {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.dialogDesc {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--text-dim);
-}
-
-.dialogBody {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px 24px 0;
-}
-
-.dialogLabel {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.dialogRow {
-  display: flex;
-  gap: 8px;
-}
-
-.dialogFoot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 20px 24px;
-}
-
-.help {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-faint);
   line-height: 1.5;
 }
 

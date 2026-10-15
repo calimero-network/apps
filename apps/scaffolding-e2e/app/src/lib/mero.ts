@@ -130,13 +130,28 @@ export function resetMeroClient(): void {
   cached = null;
 }
 
-/** Persist a token pair — used by the SSO hash bootstrap before React mounts. */
+/**
+ * Persist a token pair — used by the SSO hash bootstrap before React mounts.
+ *
+ * Written through a `MeroJs` for the selected node, so the bundle carries the
+ * `node_origin` mero-js (>= 25.0.7) binds it to: `MeroJs` and `MeroProvider`
+ * read a bundle without one, or one for another node, as signed out. With no
+ * node selected there is nothing to bind it to, and it is stored as given.
+ */
 export function setTokens(accessToken: string, refreshToken: string, expiresIn?: number): void {
-  tokens.setTokens({
+  const data = {
     access_token: accessToken,
     refresh_token: refreshToken,
     expires_at: Date.now() + (expiresIn && expiresIn > 0 ? expiresIn * 1000 : 3600_000),
-  });
+  };
+  const nodeUrl = getNodeUrl();
+  if (!nodeUrl) {
+    tokens.setTokens(data);
+    return;
+  }
+  const client = new MeroJs({ baseUrl: nodeUrl, tokenStore: tokens });
+  client.setTokenData(data);
+  client.close();
 }
 
 /** Forget the current context selection (not the tokens). */

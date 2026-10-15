@@ -57,7 +57,7 @@ const OUT = resolve(argOf("--out") ?? resolve(APP, "../data/shots"));
 // importing it would need a loader hook for four string literals.
 const SCENARIOS = [
   ["streams", "Your streams", '[data-testid="stream-row"]'],
-  ["streams-empty", "No streams yet", '[data-testid="open-join"]'],
+  ["streams-empty", "No streams yet", '[data-testid="streams-empty"]'],
   ["rooms", "Rooms inside one stream", '[data-testid="room-row"]'],
   ["invite", "An invitation", '[data-testid="invite-modal"]'],
   ["idle", "Joined, nobody broadcasting yet"],

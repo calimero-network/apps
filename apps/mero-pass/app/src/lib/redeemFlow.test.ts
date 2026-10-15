@@ -1,19 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { destinationFor, parseInvitation } from './redeemFlow';
-import { encodeInvite } from './inviteCodec';
-import { invitationUrl, invitationDeepLink } from './inviteLink';
-import type { PassInvitePayload } from './inviteCodec';
+import { destinationFor } from './redeemFlow';
 import type { Redeemed } from './vaults';
-
-const payload: PassInvitePayload = {
-  kind: 'namespace',
-  invitation: {
-    invitation: { group_id: [1, 2, 3], invited_role: 0 },
-    inviter_signature: 'ff'.repeat(64),
-  },
-  groupAlias: 'Acme',
-} as PassInvitePayload;
 
 describe('destinationFor', () => {
   // ⚠️ THE REGRESSION THIS FILE EXISTS FOR. `InvitationPrompt` navigated to
@@ -37,42 +25,5 @@ describe('destinationFor', () => {
 
   it('falls back to the teams list when the node cannot place it yet', () => {
     expect(destinationFor({ kind: 'joined' })).toBe('/teams');
-  });
-});
-
-describe('parseInvitation', () => {
-  const code = encodeInvite(payload);
-
-  it('reads an https invitation link', () => {
-    expect(parseInvitation(invitationUrl(code))).not.toBeNull();
-  });
-
-  it('reads a calimero:// deep link', () => {
-    expect(parseInvitation(invitationDeepLink(code))).not.toBeNull();
-  });
-
-  it('reads the BARE CODE, which is what people paste', () => {
-    // The invite dialog offers "Copy code" as well as "Copy link", so the
-    // string a sender forwards is routinely not a URL at all. Before the paste
-    // field existed every caller had a URL and this could not come up.
-    expect(parseInvitation(code)).not.toBeNull();
-  });
-
-  it('tolerates the whitespace a paste brings with it', () => {
-    expect(parseInvitation(`  ${code}\n`)).not.toBeNull();
-  });
-
-  it('refuses another app’s invitation link', () => {
-    expect(
-      parseInvitation(
-        `https://links.calimero.network/com.calimero.mero-sign/join?invitation=${code}`,
-      ),
-    ).toBeNull();
-  });
-
-  it('refuses noise rather than reporting a broken invitation', () => {
-    for (const junk of ['', '   ', 'hello there', 'https://example.com/x']) {
-      expect(parseInvitation(junk)).toBeNull();
-    }
   });
 });

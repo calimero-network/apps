@@ -201,6 +201,10 @@ export const driver: AppDriver = {
   app: "mero-forum",
 
   async createNamespace(actor, name) {
+    // Each lifecycle test starts its own namespace; nothing from the last one applies.
+    for (const state of [currentForum, posts, comments, scores]) {
+      for (const key of Object.keys(state)) delete state[key];
+    }
     const page = actor.page;
     await expect(page.getByTestId("space-name-input")).toBeVisible({ timeout: 60_000 });
     await page.getByTestId("space-name-input").fill(name);
@@ -242,13 +246,18 @@ export const driver: AppDriver = {
     return text;
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    const input = page.getByTestId("join-input");
-    await expect(input).toBeVisible({ timeout: 60_000 });
-    await input.fill(link);
-    await page.getByTestId("join-btn").click();
-    await expect(page).toHaveURL(/\/spaces\/[^/]+$/, { timeout: SYNC });
+    const landed = page.waitForURL(/\/spaces\/[^/]+$/, { timeout: SYNC });
+    const failed = page
+      .getByTestId("invite-error")
+      .waitFor({ state: "visible", timeout: SYNC })
+      .then(async () => {
+        throw new Error(`join refused: ${await page.getByTestId("invite-error").innerText()}`);
+      });
+    landed.catch(() => undefined);
+    failed.catch(() => undefined);
+    await Promise.race([landed, failed]);
     await waitForForumList(page);
   },
 

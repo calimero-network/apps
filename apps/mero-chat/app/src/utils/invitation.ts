@@ -1,6 +1,6 @@
 import bs58 from "bs58";
 import { deflateSync, inflateSync } from "fflate";
-import { createLink } from "@calimero-network/mero-platform";
+import { buildInviteLink } from "@calimero-apps/invite";
 import type { SignedGroupOpenInvitation } from "../api/groupApi";
 
 /**
@@ -109,7 +109,8 @@ export function parseGroupInvitationPayload(
   }
 }
 
-const BASE58_ALPHABET = /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/;
+const BASE58_ALPHABET =
+  /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/;
 
 /** Compress + base58 encode a JSON payload string. Shorter URLs than plain base58. */
 export function encodeInvitationPayload(payload: string): string {
@@ -163,52 +164,13 @@ export function decodeInvitationPayload(encoded: string): string | null {
 }
 
 /**
- * Parse user input: full URL (https or calimero), or raw encoded string, or raw JSON.
- * Returns the invitation payload string (JSON) or null.
- */
-export function parseInvitationInput(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  try {
-    if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("calimero://")) {
-      const parsed = new URL(trimmed);
-      const invitation = parsed.searchParams.get("invitation");
-      return invitation ? decodeInvitationPayload(invitation) : null;
-    }
-    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-      return trimmed;
-    }
-    return decodeInvitationPayload(trimmed);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Device-local deep link (`calimero://com.calimero.chat/join?invitation=…`).
- *
- * The platform SDK is HTTPS-only by design (the `calimero://` scheme is a
- * device transport, not a shareable link), so this thin helper stays local for
- * the "copy desktop link" affordance. The primary shareable link is HTTPS via
- * {@link generateInvitationUrl}. Slug is the app package for launcher parity.
- */
-export const CALIMERO_JOIN_DEEP_LINK = `calimero://${APP_SLUG}/join`;
-
-export function generateInvitationDeepLink(invitationPayload: string): string {
-  const encoded = encodeInvitationPayload(invitationPayload);
-  return `${CALIMERO_JOIN_DEEP_LINK}?invitation=${encoded}`;
-}
-
-/**
- * Canonical shareable invitation link (HTTPS), built by the platform SDK:
+ * The one shareable invitation link:
  * `https://links.calimero.network/com.calimero.chat/join?invitation=…`.
  *
- * An HTTPS link works everywhere: it opens the web/PWA app directly, and on a
- * device with the desktop installed hands off to the launcher.
+ * It is the only form an invitation is shared in. The links page opens the
+ * web/PWA app with `?invitation=…`, and a running desktop hands it over as a
+ * deep-link event; both reach the app-level prompt, which asks before joining.
  */
 export function generateInvitationUrl(invitationPayload: string): string {
-  return createLink(APP_SLUG, "join", {
-    invitation: encodeInvitationPayload(invitationPayload),
-  });
+  return buildInviteLink(APP_SLUG, encodeInvitationPayload(invitationPayload));
 }
-

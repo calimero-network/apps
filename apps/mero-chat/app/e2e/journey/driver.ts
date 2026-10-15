@@ -77,7 +77,9 @@ function messageRow(page: Page, text: string): Locator {
 const currentChannel: Record<string, string> = {};
 
 async function selectChannel(page: Page, name: string): Promise<void> {
-  await expect(channelItem(page, name).first()).toBeVisible({ timeout: 30_000 });
+  await expect(channelItem(page, name).first()).toBeVisible({
+    timeout: 30_000,
+  });
   await channelItem(page, name).first().click();
   await expect(composer(page)).toBeVisible({ timeout: 30_000 });
 }
@@ -183,9 +185,17 @@ const sendImage: Feature = {
     await composer(page)
       .locator('input[type="file"]')
       .first()
-      .setInputFiles({ name: file, mimeType: "image/png", buffer: makePng(Date.now() & 0xffff) });
-    await expect(composer(page).getByRole("img", { name: file })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText(/^Uploading /)).toHaveCount(0, { timeout: 30_000 });
+      .setInputFiles({
+        name: file,
+        mimeType: "image/png",
+        buffer: makePng(Date.now() & 0xffff),
+      });
+    await expect(composer(page).getByRole("img", { name: file })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByText(/^Uploading /)).toHaveCount(0, {
+      timeout: 30_000,
+    });
     await typeAndSend(page, caption);
     await expect(messageRow(page, caption).first().getByRole("img", { name: file })).toBeVisible({
       timeout: 30_000,
@@ -195,7 +205,10 @@ const sendImage: Feature = {
     const sentImage = images[by.name];
     if (!sentImage) throw new Error(`${by.name} has not sent an image yet`);
     await inChannel(actor);
-    const img = () => messageRow(actor.page, sentImage.caption).getByRole("img", { name: sentImage.file });
+    const img = () =>
+      messageRow(actor.page, sentImage.caption).getByRole("img", {
+        name: sentImage.file,
+      });
     await eventually(actor, img);
     await expect
       .poll(
@@ -249,7 +262,9 @@ const editMessage: Feature = {
     await expect(editor).toHaveText(text, { timeout: 10_000 });
     await page.keyboard.press("Enter");
     sent[actor.name] = text;
-    await expect(messageRow(page, text).first()).toBeVisible({ timeout: 30_000 });
+    await expect(messageRow(page, text).first()).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(messageRow(page, text).first()).toContainText("(edited)");
   },
   async seen(actor, by) {
@@ -278,7 +293,9 @@ const deleteMessage: Feature = {
     if (!text) throw new Error(`${by.name} has not deleted anything yet`);
     await inChannel(actor);
     await eventually(actor, () => actor.page.getByText("This message has been deleted."));
-    await expect(messageRow(actor.page, text)).toHaveCount(0, { timeout: SYNC });
+    await expect(messageRow(actor.page, text)).toHaveCount(0, {
+      timeout: SYNC,
+    });
   },
 };
 
@@ -298,8 +315,13 @@ export const driver: AppDriver = {
   app: "mero-chat",
 
   async createNamespace(actor, name) {
+    // A new test, a new workspace: forget the previous test's channels.
+    for (const key of Object.keys(currentChannel)) delete currentChannel[key];
     const page = actor.page;
-    const fresh = page.getByRole("button", { name: "Create workspace", exact: true });
+    const fresh = page.getByRole("button", {
+      name: "Create workspace",
+      exact: true,
+    });
     const another = page.getByText("+ Create new workspace", { exact: true });
     await expect(fresh.or(another).first()).toBeVisible({ timeout: 60_000 });
     if (await fresh.isVisible().catch(() => false)) await fresh.click();
@@ -316,7 +338,9 @@ export const driver: AppDriver = {
     await page.getByPlaceholder("# channel name").fill(name);
     await page.getByRole("button", { name: "Public", exact: true }).click();
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await expect(page.getByPlaceholder("# channel name")).toBeHidden({ timeout: 30_000 });
+    await expect(page.getByPlaceholder("# channel name")).toBeHidden({
+      timeout: 30_000,
+    });
     await selectChannel(page, name);
     currentChannel[actor.name] = name;
   },
@@ -337,7 +361,9 @@ export const driver: AppDriver = {
           const join = row.getByRole("button", { name: "Join", exact: true });
           if (await join.isEnabled().catch(() => false)) {
             await join.click();
-            await expect(channelItem(page, name).first()).toBeVisible({ timeout: 15_000 }).catch(() => undefined);
+            await expect(channelItem(page, name).first())
+              .toBeVisible({ timeout: 15_000 })
+              .catch(() => undefined);
           }
           if ((await channelItem(page, name).count()) > 0) return true;
           if (Date.now() - last > 20_000) {
@@ -360,20 +386,32 @@ export const driver: AppDriver = {
     const copy = page.getByRole("button", { name: "Copy invite link" });
     await expect(copy).toBeVisible({ timeout: 30_000 });
     await copy.click();
-    await expect(page.getByRole("button", { name: "✓ Copied!" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "✓ Copied!" })).toBeVisible({
+      timeout: 10_000,
+    });
     const link = (await readClipboard(page)).trim();
     await page.getByRole("button", { name: "Done", exact: true }).click();
     return link;
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    const joinLink = page.getByText("Join existing workspace", { exact: true });
-    await expect(joinLink).toBeVisible({ timeout: 60_000 });
-    await joinLink.click();
-    await page.getByPlaceholder(/^calimero:\/\/com\.calimero\.chat\/join/).fill(link);
-    await page.getByRole("button", { name: "Join", exact: true }).click();
-    await enterName(page, actor.name === "alice" ? "Alice" : "Bob");
+    // The prompt was accepted. Someone who has never chosen a display name
+    // lands on the picker's name step for the joined workspace; someone who
+    // has goes straight into it. A refused join stays on the prompt, failed.
+    const nameStep = page.getByPlaceholder("e.g. Alice");
+    const home = page.getByText("Browse Channels", { exact: true }).first();
+    const failed = page.locator('[data-testid="invite-status"][data-stage="failed"]');
+    await expect(nameStep.or(home).or(failed).first()).toBeVisible({
+      timeout: SYNC,
+    });
+    if (await failed.isVisible().catch(() => false)) {
+      throw new Error(`join refused: ${await failed.innerText()}`);
+    }
+    if (await nameStep.isVisible().catch(() => false)) {
+      await enterName(page, actor.name === "alice" ? "Alice" : "Bob");
+    }
+    await readyHome(page);
   },
 
   async afterReload(actor) {

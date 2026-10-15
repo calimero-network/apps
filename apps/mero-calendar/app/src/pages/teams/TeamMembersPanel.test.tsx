@@ -172,3 +172,55 @@ describe("a no-op change", () => {
     expect(setMemberCapabilities).not.toHaveBeenCalled();
   });
 });
+
+describe("TEE nodes", () => {
+  // A TEE fleet node is admitted to the team as a member row (role
+  // `ReadOnlyTee` / `RelayTee`). It used to show up here as a nameless person
+  // with an editable role; it is infrastructure, so it is shown as "TEE
+  // enabled" instead.
+  const REPLICA = "c".repeat(64);
+  const RELAY = "d".repeat(64);
+
+  it("keeps TEE nodes out of the member list", async () => {
+    listGroupMembers.mockResolvedValue([
+      { identity: ALICE, name: "alice" },
+      { identity: BOB, name: "bob" },
+      { identity: REPLICA, role: "ReadOnlyTee" },
+      { identity: RELAY, role: "RelayTee" },
+    ]);
+    open();
+    await screen.findByTestId(`member-${BOB}`);
+    expect(screen.queryByTestId(`member-${REPLICA}`)).toBeNull();
+    expect(screen.queryByTestId(`member-${RELAY}`)).toBeNull();
+    expect(getMemberCapabilities).not.toHaveBeenCalledWith("team-1", REPLICA);
+  });
+
+  it("shows TEE enabled, in Relay mode when a relay TEE is admitted", async () => {
+    listGroupMembers.mockResolvedValue([
+      { identity: ALICE, name: "alice" },
+      { identity: REPLICA, role: "ReadOnlyTee" },
+      { identity: RELAY, role: "RelayTee" },
+    ]);
+    open();
+    const badge = await screen.findByTestId("tee-enabled");
+    expect(badge.textContent).toMatch(/TEE enabled/);
+    expect(badge.textContent).toMatch(/Relay/);
+    expect(badge.getAttribute("title")).toMatch(/hardware-attested/i);
+  });
+
+  it("shows Replica mode when every TEE node is a read-only replica", async () => {
+    listGroupMembers.mockResolvedValue([
+      { identity: ALICE, name: "alice" },
+      { identity: REPLICA, role: "ReadOnlyTee" },
+    ]);
+    open();
+    const badge = await screen.findByTestId("tee-enabled");
+    expect(badge.textContent).toMatch(/Replica/);
+  });
+
+  it("shows nothing when the team has no TEE node", async () => {
+    open();
+    await screen.findByTestId(`member-${BOB}`);
+    expect(screen.queryByTestId("tee-enabled")).toBeNull();
+  });
+});

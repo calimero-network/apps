@@ -140,7 +140,10 @@ export async function listVaults() {
 }
 
 export async function listTeamMembers() {
-  return VARIANT === 'peopleMismatch' ? MISMATCHED : MEMBERS;
+  return {
+    members: VARIANT === 'peopleMismatch' ? MISMATCHED : MEMBERS,
+    teeMembers: [],
+  };
 }
 
 export async function createTeam() {

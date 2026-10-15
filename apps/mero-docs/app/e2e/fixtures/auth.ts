@@ -34,6 +34,11 @@ export async function injectMeroAuth(
         access_token: data.accessToken,
         refresh_token: data.refreshToken,
         expires_at: expiresAt,
+        // mero-js reads a bundle as signed out unless it names the node that
+        // issued it: the node's origin plus its path prefix.
+        node_origin:
+          new URL(data.nodeUrl).origin +
+          new URL(data.nodeUrl).pathname.replace(/\/+$/, ''),
       }),
     );
     localStorage.setItem('mero:expires_at', String(expiresAt));

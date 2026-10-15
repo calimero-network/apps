@@ -5,6 +5,14 @@ import { AppMode, MeroProvider, setApplicationId } from "@calimero-network/mero-
 import { applyContextFromJwt, getNodeUrl, setNodeUrl, setTokens } from "./lib/mero";
 import "./index.css";
 import App from "./App.tsx";
+import { primeInvitationCapture } from "@calimero-apps/invite";
+import { APP_SLUG } from "./lib/invite";
+
+// An invitation reaches this app only as an opened link: the links page (or a
+// cold desktop start) appends `?invitation=…` to this URL, and a running
+// desktop sends a `deep-link` event. Captured before React mounts; a link
+// addressed to another app is dropped, not offered.
+primeInvitationCapture("scaffolding-e2e", { slug: APP_SLUG });
 
 // Pre-process Tauri SSO hash params BEFORE React mounts.
 (function bootstrapHashParams() {
@@ -12,6 +20,14 @@ import App from "./App.tsx";
   // changing .env. The param is preserved across reloads (we don't strip it).
   const searchNode = new URLSearchParams(window.location.search).get("node");
   if (searchNode) setNodeUrl(searchNode.trim());
+
+  // Seed node URL from .env if nothing is stored yet. Before the hash, because
+  // `setTokens` binds the bundle to the selected node; a hash `node_url` still
+  // wins, as it overwrites this below.
+  const envUrl = import.meta.env.VITE_NODE_URL?.trim();
+  if (envUrl && !getNodeUrl()) {
+    setNodeUrl(envUrl);
+  }
 
   const hash = window.location.hash.slice(1);
   if (hash) {
@@ -42,11 +58,6 @@ import App from "./App.tsx";
           : window.location.pathname + window.location.search,
       );
     }
-  }
-  // Seed node URL from .env if nothing is stored yet (hash or localStorage).
-  const envUrl = import.meta.env.VITE_NODE_URL?.trim();
-  if (envUrl && !getNodeUrl()) {
-    setNodeUrl(envUrl);
   }
 })();
 

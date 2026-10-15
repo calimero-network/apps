@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  APP_SLUG,
-  invitationDeepLink,
-  invitationFromRaw,
-  invitationUrl,
-  shareableInvitation,
-  urlWithoutInvitation,
-} from './inviteLink';
+import { buildInviteLink, invitationFromRaw } from '@calimero-apps/invite';
+import { APP_SLUG, invitationUrl, urlWithoutInvitation } from './inviteLink';
 
 const CODE = '3vQB7B6MrGQZaxCuFg4oh';
 
@@ -35,46 +29,13 @@ describe('invitationUrl', () => {
   });
 });
 
-describe('invitationDeepLink', () => {
-  it('addresses the app by its dotted slug', () => {
-    expect(invitationDeepLink(CODE)).toBe(
-      `calimero://${APP_SLUG}/join?invitation=${CODE}`,
-    );
+describe('the shared capture', () => {
+  it('builds the same link every app shares', () => {
+    expect(invitationUrl(CODE)).toBe(buildInviteLink(APP_SLUG, CODE));
   });
-});
 
-describe('invitationFromRaw', () => {
-  it('reads a platform link', () => {
+  it('reads the token back out of the link this app shares', () => {
     expect(invitationFromRaw(invitationUrl(CODE))).toBe(CODE);
-  });
-
-  it('reads a calimero:// deep link with a dotted slug', () => {
-    expect(invitationFromRaw(invitationDeepLink(CODE))).toBe(CODE);
-  });
-
-  it("still reads this app's older origin link", () => {
-    // Links already sent to people carry the raw JSON in `?invitation=`.
-    const json = '{"invitation":{"contextId":"aa"},"inviterSignature":"bb"}';
-    const legacy = `https://mero-sign.vercel.app/?invitation=${encodeURIComponent(json)}`;
-    expect(invitationFromRaw(legacy)).toBe(json);
-  });
-
-  it('reads a bare code', () => {
-    expect(invitationFromRaw(`  ${CODE}  `)).toBe(CODE);
-  });
-
-  it('reads pasted JSON', () => {
-    expect(invitationFromRaw('{"a":1}')).toBe('{"a":1}');
-  });
-
-  it("refuses another app's invitation link", () => {
-    const other = `https://links.calimero.network/com.calimero.mero-chat/join?invitation=${CODE}`;
-    expect(invitationFromRaw(other)).toBeNull();
-  });
-
-  it('returns null for something that is not an invitation at all', () => {
-    expect(invitationFromRaw('')).toBeNull();
-    expect(invitationFromRaw('https://example.com/nothing-here')).toBeNull();
   });
 });
 
@@ -106,14 +67,5 @@ describe('urlWithoutInvitation', () => {
     expect(urlWithoutInvitation('https://app.test/x#y')).toBe(
       'https://app.test/x#y',
     );
-  });
-});
-
-describe('shareableInvitation', () => {
-  it('offers the link, the desktop link and the bare code', () => {
-    const share = shareableInvitation(` ${CODE} `);
-    expect(share.code).toBe(CODE);
-    expect(share.link).toBe(invitationUrl(CODE));
-    expect(share.deepLink).toBe(invitationDeepLink(CODE));
   });
 });

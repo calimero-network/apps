@@ -128,4 +128,5 @@ app/e2e/                    Playwright against a native merod
 The frontend is not deployed yet: `frontend` in `logic/Cargo.toml` names
 `https://mero-standup.vercel.app`, which needs a Vercel project with Root
 Directory `apps/mero-standup/app` (see [docs/VERCEL.md](../../docs/VERCEL.md)).
-Until then, invite links work when pasted into the app.
+Until then the links page cannot open the app, and invitations cannot be redeemed
+(an invitation reaches an app only by its link being opened; there is no paste field).

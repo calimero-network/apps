@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
-import { getNodeIdentity, listGroupMembers, rpcCall, updateMemberRole } from "../api/rpc";
+import { useMemberNames, useMyName } from "@calimero-apps/names";
+import { ShieldCheck } from "@calimero-network/mero-icons";
+import { getNodeIdentity, listGroupMembers, rpcCall, updateMemberRole, type GroupMemberInfo } from "../api/rpc";
 import { listTeamContexts } from "../api/teamContexts";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
@@ -36,14 +38,24 @@ interface Props {
    */
   groupId?: string;
   name: string;
+  /**
+   * The team (namespace) this belongs to. People's names live on the namespace
+   * — the one group everyone is in — so a project's member rows read them from
+   * here. Defaults to `id` for a team.
+   */
+  namespaceId?: string;
   onClose: () => void;
 }
 
-export default function SettingsModal({ type, id, groupId, name, onClose }: Props) {
-  const { applicationId } = useMero();
+export default function SettingsModal({ type, id, groupId, name, namespaceId, onClose }: Props) {
+  const { applicationId, admin } = useMero();
+  const teamNamespace = namespaceId ?? (type === "team" ? id : undefined);
+  const { nameOf } = useMemberNames(admin, teamNamespace);
   const { showToast } = useToast();
   const membersGroupId = groupId || id;
   const [members, setMembers] = useState<MemberEntry[]>([]);
+  // TEE nodes admitted to the group: not people, so never in `members`.
+  const [teeMembers, setTeeMembers] = useState<GroupMemberInfo[]>([]);
   const [selfIdentity, setSelfIdentity] = useState("");
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -118,12 +130,15 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
     let cancelled = false;
     setLoadingMembers(true);
     listGroupMembers(membersGroupId)
-      .then((arr) => {
+      .then((res) => {
         if (cancelled) return;
-        setMembers(arr.map((m): MemberEntry => ({ identity: m.identity, role: m.role, name: m.name })));
+        setMembers(res.members.map((m): MemberEntry => ({ identity: m.identity, role: m.role, name: m.name })));
+        setTeeMembers(res.teeMembers);
       })
       .catch(() => {
-        if (!cancelled) setMembers([]);
+        if (cancelled) return;
+        setMembers([]);
+        setTeeMembers([]);
       })
       .finally(() => {
         if (!cancelled) setLoadingMembers(false);
@@ -273,12 +288,27 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
           <span className={styles.badge}>Public</span>
         </div>
 
+        {teamNamespace && selfIdentity && (
+          <YourName namespaceId={teamNamespace} selfAccount={selfIdentity} />
+        )}
+
         <div className={styles.divider} />
 
         <div className={styles.row}>
-          <span className={styles.label}>
-            Members{members.length > 0 ? ` (${members.length})` : ""}
-          </span>
+          <div className={styles.labelRow}>
+            <span className={styles.label}>
+              Members{members.length > 0 ? ` (${members.length})` : ""}
+            </span>
+            {teeMembers.length > 0 && (
+              <span
+                className={styles.teeBadge}
+                title="A hardware-attested node keeps this workspace in sync and available when members are offline."
+              >
+                <ShieldCheck size={12} aria-hidden />
+                TEE enabled · {teeMembers.some((m) => m.role === "RelayTee") ? "Relay" : "Replica"}
+              </span>
+            )}
+          </div>
           {loadingMembers ? (
             <span className={styles.muted}>Loading…</span>
           ) : members.length === 0 ? (
@@ -288,10 +318,12 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
               {members.map((m) => {
                 const isAdmin = m.role === "Admin";
                 const isSelf = m.identity === selfIdentity;
-                // item 12: prefer the username from the contract over the raw id.
+                // item 12: a name, never the raw id. The team name first — it is
+                // the one name a person has on every board and in every app —
+                // then a board username from before names were per team.
                 // Keyed by account — `m.identity` IS an account id here.
                 const canvasName = canvasNames[m.identity];
-                const shownName = canvasName || m.name;
+                const shownName = nameOf(m.identity) || canvasName || m.name;
                 const initial = (shownName?.[0] ?? m.identity[0] ?? "?").toUpperCase();
                 const canModerate = type === "team" && selfIsAdmin && !isSelf;
                 const busy = pendingRole === m.identity;
@@ -366,6 +398,72 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Your name in this team — the one place to change it.
+ *
+ * It is the team's name for you, not this board's: every board and every app
+ * on the team shows it, and boards you are on pick a rename up when opened.
+ */
+function YourName({ namespaceId, selfAccount }: { namespaceId: string; selfAccount: string }) {
+  const { admin } = useMero();
+  const { showToast } = useToast();
+  const me = useMyName(admin, namespaceId, selfAccount);
+  const [draft, setDraft] = useState(me.name);
+  const [saving, setSaving] = useState(false);
+
+  // Follow the name as it loads, unless the field is being edited.
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) setDraft(me.name);
+  }, [me.name, editing]);
+
+  const trimmed = draft.trim();
+  const unchanged = trimmed === me.name;
+
+  async function save() {
+    if (trimmed.length < 2 || unchanged) return;
+    setSaving(true);
+    try {
+      await me.setName(trimmed);
+      setEditing(false);
+      showToast("Name updated for the whole team.", "success");
+    } catch (err) {
+      showToast(extractErrorMessage(err, "Could not save your name."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className={styles.row}>
+      <span className={styles.label}>Your name in this team</span>
+      <div className={styles.copyRow}>
+        <input
+          className={styles.nameInput}
+          value={draft}
+          maxLength={32}
+          placeholder="Your name…"
+          aria-label="Your name in this team"
+          data-testid="your-name-input"
+          onChange={(e) => {
+            setEditing(true);
+            setDraft(e.target.value);
+          }}
+          onKeyDown={(e) => e.key === "Enter" && void save()}
+        />
+        <button
+          className={styles.copyBtn}
+          onClick={() => void save()}
+          disabled={saving || unchanged || trimmed.length < 2}
+          data-testid="your-name-save"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
       </div>
     </div>
   );

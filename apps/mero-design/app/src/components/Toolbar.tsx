@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { resolveName } from "../hooks/useMemberNames";
+import { resolveName, type TeamNameLookup } from "../hooks/useMemberNames";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore, type Background } from "../store/canvasStore";
@@ -182,6 +182,8 @@ interface Props {
   members?: CursorState[];
   /** Board roster, for resolving identities to usernames (item 8). */
   memberList?: Member[];
+  /** Team-wide names, for members with no board username. */
+  teamName?: TeamNameLookup;
   onSaveProject?: () => void;
   onImportProject?: (snapshot: ProjectSnapshot) => void | Promise<void>;
   /** Loads one of the bundled starter projects into this board and persists it. */
@@ -206,6 +208,7 @@ export default function Toolbar({
   onToggleComment,
   members = [],
   memberList = [],
+  teamName,
   onSaveProject,
   onImportProject,
   readOnly = false,
@@ -442,7 +445,7 @@ export default function Toolbar({
                     className={styles.memberDot}
                     style={{ background: colorForIdentity(m.identity) }}
                   />
-                  <span className={styles.memberLabel}>{resolveName(memberList, m.account ?? m.identity)}</span>
+                  <span className={styles.memberLabel}>{resolveName(memberList, m.account ?? m.identity, teamName)}</span>
                 </div>
               ))
             )}

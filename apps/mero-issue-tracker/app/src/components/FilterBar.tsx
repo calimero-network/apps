@@ -4,15 +4,16 @@ import { useNavigate } from 'react-router-dom';
 import { tokens as t, STATUSES, PRIORITIES } from '../theme';
 import { APP_ROUTE } from '../config';
 import { useAppCtx } from '../pages/app/appContext';
-import { ChevronDown } from './icons';
+import { ChevronDown, IconFilter } from './icons';
 import { Popover, MenuItem, MenuInput } from './Dropdown';
 
 /**
  * Status / Priority / Assignee / Label filter chips with dropdowns, active-filter
  * chips, and Clear. Status/Assignee/Label drive the server-side list_issues
  * params; Priority is applied client-side (no server param exists for it).
+ * `shown` is how many issues the list below is showing, said on the right.
  */
-export default function FilterBar(): React.ReactElement {
+export default function FilterBar({ shown }: { shown?: number }): React.ReactElement {
   const { filters, setFilter, clearFilters, myIssues } = useAppCtx();
   const navigate = useNavigate();
 
@@ -21,6 +22,7 @@ export default function FilterBar(): React.ReactElement {
 
   return (
     <Bar>
+      <span className="lead" aria-hidden="true"><IconFilter /></span>
       <Popover trigger={({ open, toggle }) => (
         <ChipButton data-testid="filter-chip-status" onClick={toggle} $active={open}>
           Status <ChevronDown size={9} />
@@ -91,39 +93,57 @@ export default function FilterBar(): React.ReactElement {
       {(myIssues || filters.status || filters.priority || filters.assignee || filters.label) && (
         <Clear onClick={() => { clearFilters(); if (myIssues) clearMine(); }}>Clear</Clear>
       )}
+
+      {shown !== undefined && (
+        <span className="shown">{shown} {shown === 1 ? 'issue' : 'issues'}</span>
+      )}
     </Bar>
   );
 }
 
+/* Chips sit straight on the page ground: no frosted strip, because a blurred
+   strip would stack its dropdowns under the frosted list cards below it. */
 const Bar = styled.div`
-  display: flex; align-items: center; gap: 8px;
-  padding: 9px 16px; border-bottom: 1px solid ${t.color.border};
-  flex-wrap: wrap;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 2px 2px 0;
+  .lead { display: inline-flex; color: ${t.color.text3}; margin-right: 2px; }
+  .shown {
+    margin-left: auto; font-size: 12.5px; color: ${t.color.text3}; font-weight: 500;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  @media (max-width: 720px) { .lead { display: none; } }
 `;
 const baseChip = `
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; border-radius: ${t.radius}; padding: 4px 9px;
-  transition: background 150ms ease-out, color 150ms ease-out;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font-family: inherit; font-size: 12.5px; font-weight: 600; border-radius: ${t.radiusPill};
+  min-height: 32px; padding: 0 13px;
+  transition: background 150ms ease-out, color 150ms ease-out, box-shadow 150ms ease-out;
 `;
 const ChipButton = styled.button<{ $active?: boolean }>`
   ${baseChip}
-  color: ${t.color.text2};
-  background: ${({ $active }) => ($active ? t.color.raised2 : t.color.raised)};
-  border: 1px solid ${t.color.border};
+  cursor: pointer;
+  color: ${({ $active }) => ($active ? t.color.text : t.color.text2)};
+  background: ${t.color.raised};
+  border: 1px solid ${({ $active }) => ($active ? t.color.accentBorder : t.color.border)};
+  box-shadow: ${({ $active }) => ($active ? `0 0 0 3px ${t.focus}` : t.shadowCard)};
   svg { color: ${t.color.text3}; }
-  &:hover { background: ${t.color.raised2}; color: ${t.color.text}; }
+  &:hover { color: ${t.color.text}; border-color: ${t.color.borderStrong}; }
+  &:focus-visible { outline: none; box-shadow: 0 0 0 3px ${t.focus}; }
 `;
 const ActiveChip = styled.span`
   ${baseChip}
-  color: ${t.color.text};
+  min-height: 30px; padding: 0 6px 0 12px;
+  color: ${t.color.accentText};
   border: 1px solid ${t.color.accentBorder};
   background: ${t.color.accentDim};
 `;
 const X = styled.span`
-  color: ${t.color.text3}; font-size: 13px; line-height: 1; cursor: pointer;
-  &:hover { color: ${t.color.text}; }
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  color: ${t.color.accentText}; font-size: 14px; line-height: 1; cursor: pointer;
+  &:hover { background: ${t.color.accentDim}; color: ${t.color.text}; }
 `;
 const Clear = styled.button`
-  font-size: 12px; color: ${t.color.text3}; background: none; border: none; padding: 4px 6px;
-  &:hover { color: ${t.color.text}; }
+  font-family: inherit; font-size: 12.5px; font-weight: 600; color: ${t.color.text2};
+  background: none; border: none; border-radius: ${t.radiusPill}; padding: 6px 10px; cursor: pointer;
+  &:hover { color: ${t.color.text}; background: ${t.color.hover}; }
 `;

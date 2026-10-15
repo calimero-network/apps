@@ -372,7 +372,7 @@ async function ensureWorldOpen(groupId: string): Promise<void> {
  * invitation (the node's, or one the account signs itself — naming the
  * relays that admit, so an invitee with no node can be let in), wrapped with
  * the world's group+context ids and encoded deflate+base58 (see
- * inviteCodec.ts). Paste it on another client.
+ * inviteCodec.ts). Shared as a link (net/inviteLink.ts) that the invitee opens.
  */
 export async function createWorldInvite(worldName?: string): Promise<string> {
   const s = getSession();
@@ -417,7 +417,7 @@ async function listNamespaceIds(): Promise<string[]> {
 type FailedRedeem = Extract<RedeemOutcome, { status: "failed" }>;
 
 /**
- * The namespace join did not land. Carries the outcome so the invite modal can
+ * The namespace join did not land. Carries the outcome so the invite prompt can
  * tell a link that is finished with (expired, invalid, refused — ack it) from
  * one that failed for the moment (no one online, node unreachable — keep it
  * for the next load); the message is the player-facing copy for it.
@@ -432,7 +432,7 @@ export class WorldInviteError extends Error {
 }
 
 /**
- * Accept a pasted invite: join the namespace with the signed invitation,
+ * Accept an invite from an opened link: join the namespace with the signed invitation,
  * self-join the world's subgroup via inheritance, then join the context and
  * verify we own an identity for it.
  *

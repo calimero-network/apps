@@ -52,6 +52,30 @@ export function isTeeRole(role: GroupRole): boolean {
 }
 
 /**
+ * Split a `listGroupMembers` reply into people and TEE nodes. A TEE node is a
+ * member row on the node but infrastructure, not a person: it is kept out of
+ * every member list, count and picker, and only says that TEE is enabled.
+ */
+export function splitTeeMembers<T extends { role?: string }>(
+  rows: readonly T[],
+): { people: T[]; tee: T[] } {
+  const people: T[] = [];
+  const tee: T[] = [];
+  for (const m of rows) (isTeeRole(parseGroupRole(m.role)) ? tee : people).push(m);
+  return { people, tee };
+}
+
+/** Relay when any TEE node may relay, else a read-only Replica. */
+export function teeMode(tee: ReadonlyArray<{ role?: string }>): 'Relay' | 'Replica' {
+  return tee.some((m) => m.role === 'RelayTee') ? 'Relay' : 'Replica';
+}
+
+/** Core's `memberCount` counts TEE rows too; the people in it, when those are known. */
+export function peopleCount(memberCount: number, teeCount: number): number {
+  return Math.max(0, memberCount - teeCount);
+}
+
+/**
  * Normalise a server-reported role string.
  *
  * `listGroupMembers` rows carry `role?: string`, so the value is untyped and

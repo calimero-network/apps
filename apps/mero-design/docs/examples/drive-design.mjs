@@ -25,6 +25,7 @@ await page.addInitScript(() => {
       access_token: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0LWlkZW50aXR5In0.sig',
       refresh_token: 'fake-refresh',
       expires_at: Date.now() + 3600000,
+      node_origin: 'http://localhost:2430', // mero-js ignores a bundle bound to no node
     }),
   );
   localStorage.setItem('mero:node_url', 'http://localhost:2430');

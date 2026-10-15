@@ -135,7 +135,7 @@ export function ScenePicker({ applicationId, children }: { applicationId: string
             </p>
           )}
           {!loading && applicationId && contexts.length === 0 && (
-            <p className="empty">No scenes on this node yet. Start one above, or join one with an invitation.</p>
+            <p className="empty">No scenes on this node yet. Start one above, or open an invitation link someone sent you.</p>
           )}
           {contexts.length > 0 && (
             <ul className="scene-list">

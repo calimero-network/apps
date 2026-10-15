@@ -9,7 +9,8 @@ import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage, humanizeError } from "../utils/errorMessage";
 import { encodeInvitationObject, invitationLink } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
-import { getStoredTeamName, teamLabel } from "../utils/teamName";
+import { getStoredTeamName, useTeamName } from "../utils/teamName";
+import { splitTeeMembers } from "../utils/teeMembers";
 import { SHOWCASE_PROJECTS } from "../showcase";
 import type { Project, DocumentInfo } from "../types";
 import styles from "./ProjectsPage.module.css";
@@ -45,6 +46,7 @@ export default function ProjectsPage() {
   // admin on a delegated session, where the raw node routes are a 403.
   const api = useApi();
   const { admin, isDelegated } = api;
+  const teamTitle = useTeamName(teamId);
 
   const [tab, setTab] = useState<Tab>("projects");
   const [projects, setProjects] = useState<ProjectCard[]>([]);
@@ -104,7 +106,8 @@ export default function ProjectsPage() {
               let memberCount: number | undefined = doc?.memberCount;
               try {
                 const m = await admin.listGroupMembers(sgId);
-                if (Array.isArray(m?.members)) memberCount = m.members.length;
+                // People only: a Born Open subgroup admits the TEE node too.
+                if (Array.isArray(m?.members)) memberCount = splitTeeMembers(m.members).members.length;
               } catch { /* keep the doc fallback */ }
               resolved.push({
                 contextId,
@@ -307,8 +310,7 @@ export default function ProjectsPage() {
   async function copyInvite() {
     if (!invitation || inviteCopying) return;
     // Share the canonical link, not the bare token: it opens the desktop app
-    // where installed and the published web build otherwise. The join box on
-    // the Teams page still accepts either form, so links already shared work.
+    // where installed and the published web build otherwise.
     await navigator.clipboard.writeText(invitationLink(invitation));
     showToast("Invitation link copied to clipboard.", "success");
     // Brief loader, then reset to the "generate" state so each share is fresh.
@@ -319,8 +321,6 @@ export default function ProjectsPage() {
       setInvitation("");
     }, 5000);
   }
-
-  const teamTitle = teamId ? teamLabel(teamId, "") : "Team";
 
   return (
     <div className={styles.root}>
@@ -431,8 +431,8 @@ export default function ProjectsPage() {
           <div className={styles.inviteSection}>
             <p className={styles.inviteDesc}>
               Generate an invitation link and share it with teammates. Opening it launches
-              the desktop app where installed, and the web build otherwise — or they can
-              paste it on the Teams page to join.
+              the desktop app where installed, and the web build otherwise, and asks
+              them to join.
             </p>
             {invitation ? (
               inviteCopying ? (
@@ -581,6 +581,7 @@ export default function ProjectsPage() {
           type="project"
           id={settingsProject.contextId}
           groupId={settingsProject.groupId}
+          namespaceId={teamId}
           name={settingsProject.name || settingsProject.contextId.slice(0, 8)}
           onClose={() => setSettingsProject(null)}
         />

@@ -52,7 +52,7 @@ export default function PostPage() {
   const navigate = useNavigate();
   const client = useForumClient();
   const selfAccount = useSelfAccount();
-  const nickname = useNickname(client);
+  const nickname = useNickname(client, selfAccount);
   const [post, setPost] = useState<PostView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { items, loadMore, hasMore, loading, reload, setItems } = useComments(

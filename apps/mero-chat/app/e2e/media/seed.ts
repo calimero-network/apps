@@ -15,7 +15,11 @@ if (!scene.unauthenticated) {
   // A syntactically valid, unsigned JWT: only its `exp` is ever read client-side.
   const b64 = (o: object) => btoa(JSON.stringify(o)).replace(/=+$/, "");
   const jwt = `${b64({ alg: "none" })}.${b64({ exp: Math.floor(exp / 1000) })}.x`;
-  localStorage.setItem("mero-tokens", JSON.stringify({ access_token: jwt, refresh_token: "r", expires_at: exp }));
+  // `node_origin`: mero-js reads a bundle bound to no node, or another one, as signed out.
+  localStorage.setItem(
+    "mero-tokens",
+    JSON.stringify({ access_token: jwt, refresh_token: "r", expires_at: exp, node_origin: "http://node.mock" }),
+  );
   localStorage.setItem("mero:node_url", "http://node.mock");
   localStorage.setItem("chat-username", ME.name);
 }

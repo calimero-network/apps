@@ -91,6 +91,7 @@ import {
 } from '@/constants/config';
 import { loadCoreFolders, type CoreFolder } from '@/lib/coreFolders';
 import { folderLabel } from '@/lib/folderLabel';
+import { splitTeeMembers } from '@/lib/roles';
 
 /** Shared empty array so the "no duplicates" case keeps a stable identity. */
 const EMPTY_DUPLICATES: string[] = [];
@@ -100,8 +101,8 @@ const EMPTY_DUPLICATES: string[] = [];
  *  hardcoding the string and drifting from this hook's reader. */
 export const ACTIVE_NS_KEY = 'mero-drive:activeNs';
 // SessionStorage-only so it doesn't persist across tabs or reloads
-// once sync settles. Set by JoinPage on successful joinNamespace /
-// joinGroup; the first time the namespace reaches a ready state in
+// once sync settles. Set by the invitation prompt (JoinInviteCard) on a
+// successful joinNamespace; the first time the namespace reaches a ready state in
 // useDriveWorkspace, the flag is cleared and we stop gating.
 const JUST_JOINED_KEY = 'mero-drive:justJoined';
 // Base window for the syncing gate. The governance op + registry state
@@ -140,7 +141,7 @@ export interface RegistryAdminSlice {
 export type { DriveLoadingStage };
 
 /** Session-scoped set of namespace ids awaiting post-join sync.
- *  Exposed so JoinPage can stamp an id at accept time. */
+ *  Exposed so the invitation prompt can stamp an id at accept time. */
 export function markNamespaceJustJoined(namespaceId: string): void {
   if (typeof sessionStorage === 'undefined') return;
   const raw = sessionStorage.getItem(JUST_JOINED_KEY);
@@ -184,7 +185,10 @@ export interface DriveWorkspaceState {
   namespaceMemberNames: Record<string, string>;
   /** The selected namespace's members, re-read on every namespace event (a join included). */
   namespaceMembers: {
+    /** People only; TEE nodes are split out into `teeMembers`. */
     members: GroupMember[];
+    /** TEE nodes admitted to the namespace; known once the members load. */
+    teeMembers: GroupMember[];
     loading: boolean;
     error: Error | null;
   };
@@ -340,8 +344,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // then [0], if the linked id isn't in the list (deleted remotely,
   // a link to a workspace this node is not in, etc.).
   //
-  // Edge case (load-bearing for the post-/join flow): if the user just
-  // joined a namespace via JoinPage, the just-joined set in
+  // Edge case (load-bearing for the post-join flow): if the user just
+  // joined a namespace via the invitation prompt, the just-joined set in
   // sessionStorage has its id. Server-side memberships outlive
   // browser-context lifetimes (Playwright fresh contexts inherit a
   // node that already knows the user from prior tests), so on first
@@ -392,18 +396,25 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     useNodeIdentity();
   const selfIdentity = nodeIdentity?.accountId ?? null;
   const {
-    members: nsMembers,
+    members: nsRows,
     loading: membersLoading,
     error: membersError,
     refetch: refetchNsMembers,
   } = useGroupMembers(selectedNsId ?? undefined);
+  // A TEE node is a member row, not a person: split out here so no list, name
+  // map or picker reading `namespaceMembers` shows it.
+  const { people: nsMembers, tee: nsTeeMembers } = useMemo(
+    () => splitTeeMembers(nsRows),
+    [nsRows],
+  );
   const namespaceMembers = useMemo(
     () => ({
       members: nsMembers,
+      teeMembers: nsTeeMembers,
       loading: membersLoading,
       error: membersError,
     }),
-    [nsMembers, membersLoading, membersError],
+    [nsMembers, nsTeeMembers, membersLoading, membersError],
   );
 
   // Identity → server-reported display name map for THIS namespace.

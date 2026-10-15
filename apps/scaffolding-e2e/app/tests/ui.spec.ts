@@ -251,6 +251,8 @@ async function setupMocks(page: Page) {
         access_token: jwt,
         refresh_token: "fake-refresh",
         expires_at: Date.now() + 7_200_000,
+        // mero-js reads a bundle bound to another node, or to none, as signed out.
+        node_origin: nodeUrl,
       }));
       localStorage.setItem("mero:access_token", jwt);
       localStorage.setItem("mero:refresh_token", "fake-refresh");

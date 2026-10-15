@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import type { CommentView } from "../generated/UpdatesClient";
-import { personLabel, timeAgo, useLive, useSelfAccount, useUpdatesClient } from "../lib/updates";
+import { usePersonLabel, timeAgo, useLive, useSelfAccount, useUpdatesClient } from "../lib/updates";
 import { Avatar } from "./bits";
 import { MessageIcon, SendIcon } from "./icons";
 
@@ -86,6 +86,7 @@ function CommentItem({
   onDelete: () => void;
   onReply: (body: string) => Promise<void>;
 }) {
+  const personLabel = usePersonLabel();
   const [replying, setReplying] = useState(false);
   return (
     <div className="comment" data-testid="comment">

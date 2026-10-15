@@ -42,7 +42,7 @@ function formOf(d: DealDetail['deal']): Form {
 
 export default function DealDetailPage(): React.ReactElement {
   const { id = '' } = useParams();
-  const { data, currentUser, myName, ownerOptions } = useAppCtx();
+  const { data, currentUser, myName, myOwner, ownerOptions, aliases } = useAppCtx();
   const navigate = useNavigate();
   const toast = useToast();
   const [detail, setDetail] = useState<DealDetail | null>(null);
@@ -121,7 +121,7 @@ export default function DealDetailPage(): React.ReactElement {
 
   const schedule = (kind: string, subject: string, due: number, note = '') => run(
     () => data.act((c) => c.addActivity({
-      deal_id: deal.id, contact_id: deal.contact_id, kind, subject, due_at: due, owner: deal.owner ?? (myName || null), note,
+      deal_id: deal.id, contact_id: deal.contact_id, kind, subject, due_at: due, owner: deal.owner ?? (myOwner || null), note,
     })),
     `Scheduled: ${subject}`,
   );
@@ -150,7 +150,7 @@ export default function DealDetailPage(): React.ReactElement {
             <strong><Money value={deal.value} currency={currency} /></strong>
             {deal.organization && <> · {deal.organization}</>}
             {deal.contact_name && <> · {deal.contact_name}</>}
-            {deal.owner && <> · owned by {deal.owner}</>}
+            {deal.owner && <> · owned by {aliases.ownerName(deal.owner)}</>}
             {deal.status === 'lost' && deal.lost_reason && <> · lost: {deal.lost_reason}</>}
           </div>
         </div>
@@ -219,7 +219,8 @@ export default function DealDetailPage(): React.ReactElement {
                 Owner
                 <Select ref={(el) => { fieldRefs.current.owner = el; }} value={form.owner} onChange={(e) => set({ owner: e.target.value })}>
                   <option value="">— Unassigned —</option>
-                  {ownerOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+                  {(form.owner && !ownerOptions.includes(form.owner) ? [...ownerOptions, form.owner] : ownerOptions)
+                    .map((o) => <option key={o} value={o}>{aliases.ownerName(o)}</option>)}
                 </Select>
               </Label>
               <Label>

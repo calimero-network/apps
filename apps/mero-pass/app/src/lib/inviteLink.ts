@@ -160,8 +160,8 @@ export function urlWithoutInvitation(url: string): string {
  *
  * Always a link: the platform host is a constant, so unlike an origin-derived
  * version there is no environment in which a link cannot be built — the desktop
- * shell included, where `tauri://` is not an origin worth sharing. The raw code
- * remains available as a disclosure for cross-app pasting.
+ * shell included, where `tauri://` is not an origin worth sharing. The invite
+ * dialog shows only `link`.
  */
 export function shareableInvitation(code: string): {
   link: string;

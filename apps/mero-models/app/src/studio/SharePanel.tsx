@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { MemberView } from "../generated/MeroModelsClient";
-import { useModelsClient } from "../editor/hooks";
+import { useModelsClient, useSpaceNames } from "../editor/hooks";
 import { memberColor, shortId } from "../editor/model";
-import { useEditor } from "../editor/store";
+import { chosenName, useEditor } from "../editor/store";
 import { messageOf } from "../editor/sync";
 import type { Peer } from "../editor/viewport";
 import { InviteCard } from "../InviteCard";
@@ -33,6 +33,9 @@ export function SharePanel({
   const client = useModelsClient(contextId);
   const me = useEditor((s) => s.me);
   const role = useEditor((s) => s.role);
+  const { nameOf: spaceNameOf } = useSpaceNames(contextId);
+  /** The scene name, else the namespace name, else the short id. */
+  const label = (m: MemberView) => chosenName(m.name) || spaceNameOf(m.id) || shortId(m.id);
   const [members, setMembers] = useState<MemberView[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,11 +124,11 @@ export function SharePanel({
             {members.map((m) => (
               <li key={m.id}>
                 <span className="avatar" style={{ background: memberColor(m.id) }}>
-                  {initial(m.name)}
+                  {initial(label(m))}
                 </span>
                 <span className="member-text">
                   <span className="member-name">
-                    {m.name}
+                    {label(m)}
                     {m.id === me && <span className="you"> (you)</span>}
                     {online.has(m.name) && m.id !== me && <span className="online-dot" title="Online" />}
                   </span>

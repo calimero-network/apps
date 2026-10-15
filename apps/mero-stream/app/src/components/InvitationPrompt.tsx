@@ -119,7 +119,10 @@ export default function InvitationPrompt() {
     // is nothing to accept.
     return error ? (
       <div className={styles.wrap}>
-        <div className={`${styles.prompt} ${styles.promptError}`}>
+        <div
+          className={`${styles.prompt} ${styles.promptError}`}
+          data-testid="invite-error"
+        >
           <span
             className={`${styles.icon} ${styles.iconError}`}
             aria-hidden="true"

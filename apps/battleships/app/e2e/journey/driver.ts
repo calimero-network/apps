@@ -42,7 +42,15 @@ function cellIn(grid: Locator, at: Cell): Locator {
 async function enterLobby(actor: Actor, name: string): Promise<void> {
   const page = actor.page;
   const row = page.getByTestId("lobby-row").filter({ hasText: name });
-  await expect(row).toBeVisible({ timeout: SYNC });
+  // The app may enter the lobby on its own (after a join, once its context
+  // resolves), which takes the row off screen.
+  await expect
+    .poll(
+      async () =>
+        (await row.isVisible().catch(() => false)) || (await inviteButton(page).isVisible().catch(() => false)),
+      { message: `lobby ${name} is listed`, timeout: SYNC },
+    )
+    .toBe(true);
   const deadline = Date.now() + SYNC;
   for (;;) {
     const enter = row.getByRole("button", { name: "Enter" });
@@ -275,24 +283,33 @@ export const driver: AppDriver = {
     return (await link.innerText()).trim();
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    await expect(page.getByPlaceholder("Lobby name")).toBeVisible({ timeout: 60_000 });
-    await page.getByRole("tab", { name: "Join via invitation" }).click();
-    const input = page.getByPlaceholder("Paste invitation link");
-    await input.fill(link);
+    // After the join the app re-reads its lobbies and enters the new one once
+    // its context resolves; when the context is slow it stays on the picker
+    // with the lobby listed, and entering it is a click, as before.
+    const failed = page.getByTestId("invite-status").and(page.locator('[data-stage="failed"]'));
     const row = page.getByTestId("lobby-row").filter({ hasText: lobbyName });
-    const deadline = Date.now() + SYNC;
-    for (;;) {
-      const join = page.getByRole("button", { name: "Join", exact: true });
-      if (await join.isEnabled().catch(() => false)) await join.click();
-      const listed = await row
-        .waitFor({ state: "visible", timeout: 30_000 })
-        .then(() => true)
-        .catch(() => false);
-      if (listed) break;
-      if (Date.now() > deadline) throw new Error("the lobby never appeared after joining");
-      if (!(await input.inputValue().catch(() => ""))) await input.fill(link);
+    const inside = page.locator(".naval-card-title", { hasText: lobbyName });
+    await expect
+      .poll(
+        async () => {
+          if (await failed.isVisible().catch(() => false)) {
+            throw new Error(`join refused: ${await failed.innerText()}`);
+          }
+          if ((await inviteButton(page).isVisible().catch(() => false)) && (await inside.first().isVisible().catch(() => false))) {
+            return "inside";
+          }
+          return (await row.isVisible().catch(() => false)) ? "listed" : "waiting";
+        },
+        { message: "the joined lobby is listed or open", timeout: SYNC, intervals: [1_000, 2_000] },
+      )
+      .not.toBe("waiting");
+    if (await inviteButton(page).isVisible().catch(() => false)) {
+      await expect(page).toHaveURL(/\/lobby\?id=/, { timeout: 15_000 });
+      const url = new URL(page.url());
+      lobbyUrl[actor.name] = url.pathname + url.search;
+      return;
     }
     await enterLobby(actor, lobbyName);
   },

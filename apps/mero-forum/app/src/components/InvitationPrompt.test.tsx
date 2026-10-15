@@ -38,10 +38,13 @@ afterEach(cleanup);
 const httpError = (status: number, message: string) =>
   Object.assign(new Error(message), { status });
 
-function setup(admin: {
-  joinNamespace: () => Promise<unknown>;
-  listNamespaces?: () => Promise<unknown>;
-}) {
+function setup(
+  admin: {
+    joinNamespace: () => Promise<unknown>;
+    listNamespaces?: () => Promise<unknown>;
+  },
+  { click = true }: { click?: boolean } = {},
+) {
   h.admin = {
     listNamespaces: () => Promise.resolve([]),
     ...admin,
@@ -63,12 +66,30 @@ function setup(admin: {
     } as never,
     groupAlias: "Team",
   });
-  act(() => h.listener?.({ token, resolve, autoJoin: false }));
-  fireEvent.click(screen.getByTestId("invite-accept"));
+  act(() =>
+    h.listener?.({
+      token,
+      params: { invitation: token },
+      resolve,
+      autoJoin: false,
+    }),
+  );
+  if (click) fireEvent.click(screen.getByTestId("invite-accept"));
   return resolve;
 }
 
 describe("InvitationPrompt", () => {
+  it("asks before joining, naming what the invitation is for", () => {
+    const joinNamespace = vi.fn(() => Promise.resolve());
+    const resolve = setup({ joinNamespace }, { click: false });
+    expect(screen.getByTestId("invite-prompt").textContent).toContain(
+      "You have been invited to Team",
+    );
+    expect(screen.getByTestId("invite-decline")).toBeInTheDocument();
+    expect(joinNamespace).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
   it("acks and enters the space on a join", async () => {
     const resolve = setup({ joinNamespace: () => Promise.resolve() });
     await screen.findByTestId("in-space");
@@ -93,6 +114,9 @@ describe("InvitationPrompt", () => {
     );
     expect(resolve).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId("invite-prompt")).toBeNull();
+    expect(screen.getByTestId("invite-error").textContent).toContain(
+      "You can't join this space with this invitation.",
+    );
   });
 
   it("keeps the invitation when no one is online to let you in", async () => {

@@ -34,6 +34,7 @@ import {
   deltaLabel,
   timeAgo,
   useLive,
+  usePersonLabel,
   useRevision,
   useUpdatesClient,
 } from "../lib/updates";
@@ -65,6 +66,7 @@ export default function ComposePage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const client = useUpdatesClient();
+  const personLabel = usePersonLabel();
   const { me, categories, reload: reloadShell } = useAudience();
   const { bump } = useRevision();
   const metrics = useLive((c) => c.listMetrics(), []);
@@ -177,7 +179,7 @@ export default function ComposePage() {
   if (error && !state) return <div className="error">{error}</div>;
   if (!state) return <div className="skeleton tall" />;
 
-  const thanks = thanksSection(contributions.data ?? []);
+  const thanks = thanksSection(contributions.data ?? [], personLabel);
   const hasThanks = state.sections.some((s) => s.kind === "thanks");
 
   return (

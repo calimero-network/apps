@@ -8,6 +8,8 @@ import { mapLimit } from "../utils/concurrency";
 import { useSse } from "../hooks/useSse";
 import { useToast } from "../contexts/ToastContext";
 import { useShallow } from "zustand/react/shallow";
+import { useMemberNames, useMyName } from "@calimero-apps/names";
+import { decideProjectName } from "../utils/projectName";
 import { useEditorStore } from "../store/editorStore";
 import {
   getLayerCanvas, peekLayerCanvas, getMaskCanvas, peekMaskCanvas,
@@ -72,6 +74,8 @@ export default function EditorPage() {
   const rpcCall = api.call;
   const adminUploadBlob = api.uploadBlob;
   const adminGetBlob = api.getBlob;
+  // The name each person set once for the whole team, shared by every app on it.
+  const { nameOf: teamNameOf } = useMemberNames(admin, teamId);
 
   const {
     doc, layers, selectedLayerId, editingMaskOf, showRulers, panels,
@@ -102,6 +106,8 @@ export default function EditorPage() {
   })));
 
   const myId = useRef<string>("");
+  // Your name in the team: one per team, shared by every project in it.
+  const myName = useMyName(admin, teamId, myId.current);
   const loadedBlobs = useRef<Set<string>>(new Set());
   const lastCursor = useRef(0);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -111,6 +117,8 @@ export default function EditorPage() {
   const [cursors, setCursors] = useState<CursorState[]>([]);
   const [subgroupId, setSubgroupId] = useState("");
   const [needName, setNeedName] = useState(false);
+  // Whether this account is on this project's roster: null until known.
+  const [onProject, setOnProject] = useState<boolean | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showShowcase, setShowShowcase] = useState(false);
@@ -298,9 +306,9 @@ export default function EditorPage() {
         setMembers(ms);
         const alreadyMember = ms.some((m) => m.id === myId.current);
         const storedName = localStorage.getItem("mp-username") ?? "";
-        if (!alreadyMember) {
-          setNeedName(true);
-        } else if (storedName) {
+        // Whether to ask for a name is the TEAM's question, decided below.
+        setOnProject(alreadyMember);
+        if (alreadyMember && storedName) {
           // Re-announce even as an existing member. `join` records this device's
           // device→account pairing before its early return, and that pairing is
           // the ONLY thing that lets an admin name us in a role grant — the
@@ -359,13 +367,32 @@ export default function EditorPage() {
       await rpcCall(ctxId, "join", { username, avatar: null, timestamp: ts() });
       setNeedName(false);
       localStorage.setItem("mp-username", username);
+      setOnProject(true);
+      // The name is the team's: every project and every other app on it
+      // uses it. Best-effort: the project roster above has it either way.
+      if (username !== myName.name) void myName.setName(username).catch(() => {});
       const role = await rpcCall<Role>(ctxId, "my_role", {}).catch(() => "viewer" as Role);
       setRole(role);
       refetch();
     } catch (e) {
       showToast(errMsg(e), "error");
     }
-  }, [ctxId, setRole, refetch, showToast, rpcCall]);
+  }, [ctxId, setRole, refetch, showToast, rpcCall, myName]);
+
+  // A name is asked for once per TEAM, never per project: a project you are
+  // not on yet is joined under your team name. Decided only once the team's
+  // names have loaded — deciding earlier asked people who already had one.
+  useEffect(() => {
+    const action = decideProjectName({
+      onProject,
+      teamReady: myName.ready,
+      teamName: myName.name,
+      legacyName: localStorage.getItem("mp-username") ?? "",
+    });
+    if (action.kind === "join") void handleJoin(action.name);
+    else if (action.kind === "ask") setNeedName(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onProject, myName.ready, myName.name]);
 
   // ── Pixel commit (raster) ───────────────────────────────────────────────
   const commitPixels = useCallback(async (layerId: string) => {
@@ -1427,7 +1454,14 @@ export default function EditorPage() {
               onDeleteLayer={onDelete}
               onCrop={onCrop}
               onCursorMove={onCursorMove}
-              overlay={<CursorsOverlay cursors={screenCursors} myIdentity={myId.current} members={members} />}
+              overlay={
+                <CursorsOverlay
+                  cursors={screenCursors}
+                  myIdentity={myId.current}
+                  members={members}
+                  teamName={teamNameOf}
+                />
+              }
             />
           </div>
         </div>
@@ -1498,13 +1532,14 @@ export default function EditorPage() {
           onClose={() => setShowShowcase(false)}
         />
       )}
-      {needName && <UsernameModal onSubmit={handleJoin} initialValue={localStorage.getItem("mp-username") ?? ""} />}
+      {needName && <UsernameModal onSubmit={handleJoin} initialValue={localStorage.getItem("mp-username") || myName.name || ""} />}
       {showInvite && teamId && <InviteModal teamId={teamId} onClose={() => setShowInvite(false)} />}
       {showSettings && (
         <SettingsModal
           type="project"
           id={ctxId}
           groupId={subgroupId}
+          namespaceId={teamId}
           name={doc?.name ?? "Project"}
           onClose={() => setShowSettings(false)}
         />

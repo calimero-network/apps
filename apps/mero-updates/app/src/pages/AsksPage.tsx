@@ -4,7 +4,7 @@ import AskCard from "../components/AskCard";
 import { useAudience } from "../components/AudienceShell";
 import { Avatar, Empty } from "../components/bits";
 import { AskKindIcon, HandIcon } from "../components/icons";
-import { askKind, formatDate, personLabel, useLive } from "../lib/updates";
+import { askKind, formatDate, usePersonLabel, useLive } from "../lib/updates";
 
 /**
  * Every ask across every update, in one place.
@@ -14,6 +14,7 @@ import { askKind, formatDate, personLabel, useLive } from "../lib/updates";
  * and — below it — the contributions ledger that the next update thanks.
  */
 export default function AsksPage() {
+  const personLabel = usePersonLabel();
   const { me } = useAudience();
   const isTeam = !!me?.is_team;
   const [status, setStatus] = useState<"open" | "resolved">("open");

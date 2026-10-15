@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { AskView } from "../generated/UpdatesClient";
-import { askKind, personLabel, timeAgo, useUpdatesClient } from "../lib/updates";
+import { askKind, usePersonLabel, timeAgo, useUpdatesClient } from "../lib/updates";
 import { Avatar } from "./bits";
 import { AskKindIcon, CheckIcon, FileTextIcon, HandIcon } from "./icons";
 
@@ -25,6 +25,7 @@ export default function AskCard({
   showPost?: boolean;
   onChanged: () => void;
 }) {
+  const personLabel = usePersonLabel();
   const client = useUpdatesClient();
   const kind = askKind(ask.kind);
   const [offering, setOffering] = useState(false);

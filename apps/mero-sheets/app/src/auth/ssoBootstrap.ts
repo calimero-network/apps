@@ -1,8 +1,7 @@
 /**
- * SSO + invitation bootstrap — runs ONCE before React mounts (see index.tsx).
+ * SSO bootstrap — runs ONCE before React mounts (see index.tsx).
  *
- * Two jobs:
- *  1. Desktop cold-open pre-seed: when opened from the Calimero desktop (Tauri)
+ * Desktop cold-open pre-seed: when opened from the Calimero desktop (Tauri)
  *     app, the session arrives in the URL hash
  *     (#access_token=…&refresh_token=…&node_url=…&application_id=…).
  *
@@ -20,24 +19,25 @@
  *     token blob) for BOTH token-less and token-bearing hashes: token-less
  *     pre-fills the connect screen, and token-bearing needs node_url seeded
  *     so mero-react ≥4.2.0 trusts the callback's node (see persistAuthHash).
- *  2. Web invitation capture: a shared link is `?invitation=<encoded>`. We stash
- *     it (the join flow consumes it after auth) and strip it from the URL.
  *
- * Both are best-effort and never throw into the render path.
+ * Best-effort; never throws into the render path.
+ *
+ * ⚠️ NOT INVITATIONS. This used to stash `?invitation=` in its own
+ * `localStorage['pending-invitation']` and strip it from the URL — and nothing
+ * ever read that key back, while running first meant the shared capture
+ * (`primeInvitationCapture`, index.tsx) found the URL already empty. Every
+ * opened link was silently dropped. The shared capture owns the query now.
  */
 import { setNodeUrl, setApplicationId } from '@calimero-network/mero-react';
-
-const INVITATION_KEY = 'pending-invitation';
 
 /** True when running inside the Calimero desktop (Tauri) shell. */
 export const IS_DESKTOP =
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
-/** Run the SSO + invitation bootstrap. Call once, before ReactDOM.render. */
-export function bootstrapSsoAndInvitation(): void {
+/** Run the SSO bootstrap. Call once, before ReactDOM.render. */
+export function bootstrapSso(): void {
   if (typeof window === 'undefined') return;
   try { persistAuthHash(); } catch { /* never block boot on a bad hash */ }
-  try { captureInvitation(); } catch { /* never block boot on a bad query */ }
 }
 
 /**
@@ -82,30 +82,4 @@ function persistAuthHash(): void {
   // node_url above; leave the TOKEN and the hash itself untouched so
   // parseAuthCallback stores the token where mero-js reads it and strips the
   // hash (see file header — touching the token/hash here breaks auth).
-}
-
-/** Web invitation: stash `?invitation=` for the join flow, then clean the URL. */
-function captureInvitation(): void {
-  const params = new URLSearchParams(window.location.search);
-  const raw = params.get('invitation');
-  if (!raw) return;
-  localStorage.setItem(INVITATION_KEY, raw);
-  params.delete('invitation');
-  const qs = params.toString();
-  window.history.replaceState(
-    {}, '',
-    window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash,
-  );
-}
-
-/** Consume a captured invitation (returns it once, then clears it). */
-export function takePendingInvitation(): string | null {
-  const v = localStorage.getItem(INVITATION_KEY);
-  if (v) localStorage.removeItem(INVITATION_KEY);
-  return v;
-}
-
-/** Peek at a captured invitation without consuming it (e.g. to show a banner). */
-export function peekPendingInvitation(): string | null {
-  return localStorage.getItem(INVITATION_KEY);
 }

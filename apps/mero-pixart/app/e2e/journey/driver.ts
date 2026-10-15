@@ -1,6 +1,6 @@
 import { deflateSync } from "node:zlib";
 import { expect, type Locator, type Page } from "@playwright/test";
-import type { Actor, AppDriver, Feature } from "@calimero-apps/e2e-node/journey";
+import { answeredNamePrompt, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
 
 const SYNC = 90_000;
 
@@ -11,7 +11,6 @@ const projects: Record<string, string> = {};
 const layerNames: Record<string, string> = {};
 const named = new Set<string>();
 let teamId = "";
-let teamName = "";
 let mainProject = "";
 let granted = false;
 
@@ -116,6 +115,7 @@ async function nameIfAsked(actor: Actor, waitMs: number): Promise<void> {
   const deadline = Date.now() + waitMs;
   do {
     if (await input.isVisible().catch(() => false)) {
+      answeredNamePrompt(actor, new URL(page.url()).pathname);
       await input.fill(`${actor.name}-${actor.run}`);
       await page.getByTestId("username-submit").click();
       await expect(input).toBeHidden({ timeout: 30_000 });
@@ -341,7 +341,12 @@ export const driver: AppDriver = {
   async createNamespace(actor, name) {
     track(actor);
     const page = actor.page;
-    teamName = name;
+    // A fresh namespace per test: nothing from the previous test's team may
+    // leak into this one.
+    for (const key of Object.keys(projects)) delete projects[key];
+    named.clear();
+    mainProject = "";
+    granted = false;
     await expect(page.getByTestId("new-team-input")).toBeVisible({ timeout: 60_000 });
     await page.getByTestId("new-team-input").fill(name);
     await page.getByTestId("create-team-btn").click();
@@ -401,16 +406,22 @@ export const driver: AppDriver = {
     return (await token.getAttribute("title")) ?? (await token.innerText());
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     track(actor);
     const page = actor.page;
-    await expect(page.getByTestId("join-code-input")).toBeVisible({ timeout: 60_000 });
-    await page.getByTestId("join-code-input").fill(link);
-    await page.getByTestId("join-team-btn").click();
-    await expect(page.getByTestId("toast").filter({ hasText: /Joined team|already in this team/ })).toBeVisible({
-      timeout: SYNC,
-    });
-    await openTeam(page, teamName);
+    const landed = expect(page.getByTestId("toast").filter({ hasText: /Joined team|already in this team/ }))
+      .toBeVisible({ timeout: SYNC })
+      .then(() => page.waitForURL(new RegExp(`${teamPath()}$`), { timeout: 30_000 }));
+    const failed = page
+      .locator('[data-testid="invite-status"][data-stage="failed"]')
+      .waitFor({ state: "visible", timeout: SYNC })
+      .then(async () => {
+        throw new Error(`join refused: ${await page.getByTestId("invite-status").innerText()}`);
+      });
+    landed.catch(() => undefined);
+    failed.catch(() => undefined);
+    await Promise.race([landed, failed]);
+    await expect(projectsTab(page)).toBeVisible({ timeout: 30_000 });
   },
 
   async afterReload(actor) {

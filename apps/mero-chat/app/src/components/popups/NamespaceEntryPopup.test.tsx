@@ -1,24 +1,15 @@
-import { useEffect } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  encodeInvitationPayload,
-  serializeGroupInvitationPayload,
-} from "../../utils/invitation";
-import type { SignedGroupOpenInvitation } from "../../api/groupApi";
+import { setStoredGroupAlias } from "../../constants/config";
 import NamespaceEntryPopup from "./NamespaceEntryPopup";
 
-// The popup's one decision worth pinning: whether a link invitation is acked.
-// Acked on a join (or one the node already holds) and on a failure no retry can
-// fix; kept on one that could pass, so the next load tries again.
+// The picker no longer joins anything: an invitation arrives as an opened link
+// and the app-level prompt joins it. What the picker still owes that flow is
+// the name step for a workspace just joined by someone with no name yet, and
+// no field to paste an invitation into.
 
 const h = vi.hoisted(() => ({
-  intent: null as null | {
-    params: Record<string, string>;
-    resolve: () => void;
-  },
-  joinGroup: vi.fn(),
-  listNamespaces: vi.fn(),
+  listGroups: vi.fn(),
   resolveCurrentMemberIdentity: vi.fn(),
 }));
 
@@ -45,19 +36,9 @@ vi.mock("@calimero-network/mero-react", () => ({
   getNodeUrl: () => "http://localhost:2428",
 }));
 
-// Replays the held intent on mount, as the SDK's pending-intent store does.
-vi.mock("@calimero-network/mero-platform-react", () => ({
-  useDeepLink: (handler: (intent: NonNullable<typeof h.intent>) => void) => {
-    useEffect(() => {
-      if (h.intent) handler(h.intent);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-  },
-}));
-
 vi.mock("../../api/meroJsClient", () => ({
   getMeroJs: () => ({
-    admin: { listNamespaces: h.listNamespaces },
+    admin: { listNamespaces: vi.fn() },
     isDelegated: false,
     applicationId: null,
   }),
@@ -70,8 +51,7 @@ vi.mock("../../contexts/ToastContext", () => ({
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
-    listGroups = () => Promise.resolve({ data: [], error: null });
-    joinGroup = h.joinGroup;
+    listGroups = h.listGroups;
     resolveCurrentMemberIdentity = h.resolveCurrentMemberIdentity;
     setGroupMetadata = () => Promise.resolve({ data: null, error: null });
     setMemberMetadata = () => Promise.resolve({ data: null, error: null });
@@ -79,74 +59,52 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   },
 }));
 
-const failure = (code: number, message: string) =>
-  Promise.resolve({ data: null, error: { code, message } });
-
-function arrive() {
-  const resolve = vi.fn();
-  const invitation = {
-    invitation: { group_id: "ns1" },
-    inviter_signature: "sig",
-  } as unknown as SignedGroupOpenInvitation;
-  h.intent = {
-    params: {
-      invitation: encodeInvitationPayload(
-        serializeGroupInvitationPayload({ invitation, groupAlias: "Team" }),
-      ),
-    },
-    resolve,
-  };
-  render(
-    <NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />,
-  );
-  return resolve;
-}
-
 beforeEach(() => {
   localStorage.clear();
-  h.joinGroup.mockReset();
-  h.listNamespaces.mockReset().mockResolvedValue([]);
+  sessionStorage.clear();
+  h.listGroups.mockReset().mockResolvedValue({
+    data: [{ groupId: "ns0", alias: "Mine" }],
+    error: null,
+  });
   h.resolveCurrentMemberIdentity
     .mockReset()
     .mockResolvedValue({ data: { memberIdentity: "me", members: [] } });
 });
 
-describe("NamespaceEntryPopup invitation link", () => {
-  it("acks and asks for a name on a join", async () => {
-    h.joinGroup.mockResolvedValue({
-      data: { groupId: "ns1", memberIdentity: "me" },
-    });
-    const resolve = arrive();
-    await screen.findByText("Join Team");
-    expect(resolve).toHaveBeenCalledTimes(1);
-    expect(h.joinGroup).toHaveBeenCalledTimes(1);
+function open() {
+  render(
+    <NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />,
+  );
+}
+
+describe("NamespaceEntryPopup", () => {
+  it("opens on the name step of a workspace an invitation just joined", async () => {
+    setStoredGroupAlias("ns1", "Team");
+    sessionStorage.setItem("chat:joined-awaiting-name", "ns1");
+    open();
+    expect(await screen.findByText("Join Team")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("e.g. Alice")).toBeInTheDocument();
   });
 
-  it("acks and goes in when the join failed but the node lists the workspace", async () => {
-    h.joinGroup.mockReturnValue(failure(500, "The request was aborted"));
-    h.listNamespaces.mockResolvedValue([{ namespaceId: "ns1" }]);
-    const resolve = arrive();
-    await screen.findByText("Join Team");
-    expect(resolve).toHaveBeenCalledTimes(1);
-    expect(h.joinGroup).toHaveBeenCalledTimes(1);
-    // The join never answered, so the identity is looked up instead.
-    expect(h.resolveCurrentMemberIdentity.mock.calls[0]?.[0]).toBe("ns1");
-  });
-
-  it("acks a refused invitation and says why", async () => {
-    h.joinGroup.mockReturnValue(failure(409, "member was removed"));
-    const resolve = arrive();
-    await screen.findByText(
-      "You can't join this workspace with this invitation. Ask an admin to invite you again.",
+  it("lists workspaces and says how to join another, with no field to paste into", async () => {
+    open();
+    expect(await screen.findByText("Select workspace")).toBeInTheDocument();
+    expect(screen.getByTestId("join-hint")).toHaveTextContent(
+      "open the invitation link",
     );
-    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByText("Join existing workspace"),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector("textarea")).toBeNull();
   });
 
-  it("keeps the invitation when no one is online to let you in", async () => {
-    h.joinGroup.mockReturnValue(failure(503, "no peer available"));
-    const resolve = arrive();
-    await screen.findByText(/No one in this workspace is online/);
-    await waitFor(() => expect(h.listNamespaces).toHaveBeenCalled());
-    expect(resolve).not.toHaveBeenCalled();
+  it("says how to join when the node has no workspace yet", async () => {
+    h.listGroups.mockResolvedValue({ data: [], error: null });
+    open();
+    expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(screen.getByTestId("join-hint")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Join existing workspace"),
+    ).not.toBeInTheDocument();
   });
 });

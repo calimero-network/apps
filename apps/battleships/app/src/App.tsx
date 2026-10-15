@@ -7,6 +7,7 @@ import MatchPage from './pages/match';
 import HomePage from './pages/home';
 import LandingPage from './pages/landing/LandingPage';
 import PlayPage from './pages/play';
+import InvitationPrompt from './components/InvitationPrompt';
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
@@ -121,6 +122,8 @@ export default function App() {
     >
       <ToastProvider>
         <BrowserRouter basename="/">
+          {/* Above the routes: an opened invitation link can land on any page. */}
+          <InvitationPrompt />
           <Routes>
             {/* The explainer is the front door. A signed-in visitor who comes
                 back here from inside the app — the in-app footer links to it —

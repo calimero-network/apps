@@ -21,7 +21,7 @@
  *    treat that context as the active pipeline and resolve its namespace, skipping
  *    the pickers entirely.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useMero,
   useNamespacesForApplication,
@@ -31,17 +31,23 @@ import {
   useNodeIdentity,
   useSetMemberMetadata,
   type Namespace,
-} from '@calimero-network/mero-react';
-import { useSubscription } from '@calimero-network/mero-react';
-import { useStreamReconnect } from './useStreamReconnect';
-import { PRIMARY_SERVICE } from '../config';
-import { buildInvitePayload } from '../utils/invitePayload';
-import { redeemInviteCode } from '../utils/redeemInvite';
-import { createWorkspaceContext, foundWorkspace, publishContextName } from '../utils/workspaceOps';
-import { CrmClient } from '../generated/CrmClient';
-import { useApplicationId } from './useApplicationId';
-import { useMemberRoles, type UseMemberRolesReturn } from './useMemberRoles';
-import { buildAliasMap } from './useAliases';
+} from "@calimero-network/mero-react";
+import type { GroupMember } from "@calimero-network/mero-js";
+import { useSubscription } from "@calimero-network/mero-react";
+import { useStreamReconnect } from "./useStreamReconnect";
+import { PRIMARY_SERVICE } from "../config";
+import { buildInvitePayload } from "../utils/invitePayload";
+import { useJoinedWorkspace } from "./joinedWorkspace";
+import {
+  createWorkspaceContext,
+  foundWorkspace,
+  publishContextName,
+} from "../utils/workspaceOps";
+import { CrmClient } from "../generated/CrmClient";
+import { useApplicationId } from "./useApplicationId";
+import { useMemberRoles, type UseMemberRolesReturn } from "./useMemberRoles";
+import { buildAliasMap } from "./useAliases";
+import { splitTeeMembers, teeMode as teeModeOf, type TeeMode } from "../utils/tee";
 import {
   readActiveNs,
   writeActiveNs,
@@ -49,9 +55,8 @@ import {
   readActivePipeline,
   writeActivePipeline,
   clearPersistedWorkspace,
-} from './workspacePersistence';
-import { markNamespaceJustJoined, useJoinSync } from '@calimero-apps/join-sync';
-import type { RedeemOutcome } from '@calimero-apps/invite';
+} from "./workspacePersistence";
+import { markNamespaceJustJoined, useJoinSync } from "@calimero-apps/join-sync";
 
 export interface PipelineEntry {
   contextId: string;
@@ -97,8 +102,6 @@ export interface UseWorkspaceReturn {
   createNamespace: (name: string) => Promise<CreateWorkspaceResult>;
   createNamespaceLoading: boolean;
   createNamespaceError: Error | null;
-  /** Redeems an invite code; never throws for an ordinary failure. */
-  join: (code: string) => Promise<RedeemOutcome>;
   /** Mints an invitation and returns the JSON payload to wrap in a share link. */
   invite: () => Promise<string>;
   inviteLoading: boolean;
@@ -116,8 +119,13 @@ export interface UseWorkspaceReturn {
   contextId: string | null;
   executorPublicKey: string | null;
   selfIdentity: string | null;
+  /** People only: TEE nodes are split out into `teeMembers`. */
   members: string[];
   memberNames: Map<string, string>;
+  /** TEE nodes (`ReadOnlyTee` / `RelayTee`) admitted to the workspace. */
+  teeMembers: GroupMember[];
+  /** Relay / Replica when a TEE node backs the workspace, else null. */
+  teeMode: TeeMode | null;
   /** Namespace roles + capabilities, keyed by ACCOUNT. See utils/roles. */
   roles: UseMemberRolesReturn;
   membersLoading: boolean;
@@ -159,7 +167,8 @@ export function useWorkspace(): UseWorkspaceReturn {
   // answer: this app is not installed there under its package (a raw-wasm dev
   // install). That is strictly the old behaviour, and only where the old
   // behaviour was all there was.
-  const { appId: nodeApplicationId, resolving: resolvingApplicationId } = useApplicationId();
+  const { appId: nodeApplicationId, resolving: resolvingApplicationId } =
+    useApplicationId();
   // Null while the node is still answering, NOT the session id. Scoping the
   // namespace list to a possibly-wrong id for one render is how a stale pick
   // gets auto-selected and then persisted; `resolvingApplicationId` lets the
@@ -168,21 +177,29 @@ export function useWorkspace(): UseWorkspaceReturn {
     ? null
     : nodeApplicationId || authApplicationId || null;
 
-  const { namespaces, loading: nsLoading, refetch: refetchNamespaces } =
-    useNamespacesForApplication(applicationId);
-  const { createNamespaceInvitation, loading: inviteLoading } = useCreateNamespaceInvitation();
+  const {
+    namespaces,
+    loading: nsLoading,
+    refetch: refetchNamespaces,
+  } = useNamespacesForApplication(applicationId);
+  const { createNamespaceInvitation, loading: inviteLoading } =
+    useCreateNamespaceInvitation();
   const { setMemberMetadata } = useSetMemberMetadata();
 
   // Drop the pre-versioning key on load; it is never read for a value, only
   // ever explicit selections (below) populate the versioned one.
-  useEffect(() => { dropLegacyActiveNs(); }, []);
+  useEffect(() => {
+    dropLegacyActiveNs();
+  }, []);
 
   // --- Active namespace (persisted; SSO callback context resolves its own) ---
   const [activeNs, setActiveNs] = useState<string | null>(() => readActiveNs());
   // True while an SSO-callback context is present but its namespace hasn't
   // resolved yet - the caller holds off on the empty-state picker during this
   // window so it doesn't flash in right before the desktop handoff lands.
-  const [resolvingCallback, setResolvingCallback] = useState(() => !!callbackContextId);
+  const [resolvingCallback, setResolvingCallback] = useState(
+    () => !!callbackContextId,
+  );
   const userSelectedNs = useRef(false);
 
   // Resolve the namespace of the SSO callback context (a context's group IS
@@ -190,8 +207,14 @@ export function useWorkspace(): UseWorkspaceReturn {
   // - a separate "apply the resolved id" effect would let resolvingCallback
   // clear a render before activeNs catches up, flashing the empty state.
   useEffect(() => {
-    if (!callbackContextId) { setResolvingCallback(false); return; }
-    if (!admin) { setResolvingCallback(true); return; }
+    if (!callbackContextId) {
+      setResolvingCallback(false);
+      return;
+    }
+    if (!admin) {
+      setResolvingCallback(true);
+      return;
+    }
     let cancelled = false;
     setResolvingCallback(true);
     (async () => {
@@ -208,7 +231,9 @@ export function useWorkspace(): UseWorkspaceReturn {
         if (!cancelled) setResolvingCallback(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [admin, callbackContextId]);
 
   // Pick a workspace to show on load. A valid persisted/current selection wins;
@@ -218,7 +243,10 @@ export function useWorkspace(): UseWorkspaceReturn {
   useEffect(() => {
     if (userSelectedNs.current || resolvingCallback) return;
     if (namespaces.length === 0) {
-      if (activeNs) { setActiveNs(null); writeActiveNs(null); }
+      if (activeNs) {
+        setActiveNs(null);
+        writeActiveNs(null);
+      }
       return;
     }
     if (activeNs && namespaces.some((n) => n.namespaceId === activeNs)) return;
@@ -233,8 +261,11 @@ export function useWorkspace(): UseWorkspaceReturn {
   }, []);
 
   // --- Contexts (pipelines) in the active namespace ---
-  const { contexts, loading: pipelinesLoading, refetch: refetchContexts } =
-    useGroupContexts(activeNs);
+  const {
+    contexts,
+    loading: pipelinesLoading,
+    refetch: refetchContexts,
+  } = useGroupContexts(activeNs);
 
   // Pipeline names, from the REPLICATED context metadata record.
   //
@@ -250,13 +281,18 @@ export function useWorkspace(): UseWorkspaceReturn {
   // returns a fresh array on every poll and would otherwise re-fetch metadata
   // for every pipeline on every refetch.
   const contextIdsKey = useMemo(
-    () => contexts.map((c) => c.contextId).join(','),
+    () => contexts.map((c) => c.contextId).join(","),
     [contexts],
   );
-  const [pipelineMetaNames, setPipelineMetaNames] = useState<Map<string, string>>(new Map());
+  const [pipelineMetaNames, setPipelineMetaNames] = useState<
+    Map<string, string>
+  >(new Map());
   useEffect(() => {
-    const ids = contextIdsKey ? contextIdsKey.split(',') : [];
-    if (!admin || !activeNs || ids.length === 0) { setPipelineMetaNames(new Map()); return; }
+    const ids = contextIdsKey ? contextIdsKey.split(",") : [];
+    if (!admin || !activeNs || ids.length === 0) {
+      setPipelineMetaNames(new Map());
+      return;
+    }
     let cancelled = false;
     (async () => {
       const entries = await Promise.all(
@@ -271,9 +307,13 @@ export function useWorkspace(): UseWorkspaceReturn {
         }),
       );
       if (cancelled) return;
-      setPipelineMetaNames(new Map(entries.filter((e): e is [string, string] => e !== null)));
+      setPipelineMetaNames(
+        new Map(entries.filter((e): e is [string, string] => e !== null)),
+      );
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [admin, activeNs, contextIdsKey]);
 
   const pipelines = useMemo<PipelineEntry[]>(
@@ -291,7 +331,9 @@ export function useWorkspace(): UseWorkspaceReturn {
   );
 
   // --- Active pipeline (a contextId; persisted per namespace) ---
-  const [activePipeline, setActivePipeline] = useState<string | null>(callbackContextId);
+  const [activePipeline, setActivePipeline] = useState<string | null>(
+    callbackContextId,
+  );
   const userSelectedPipeline = useRef(false);
 
   // On a namespace switch, drop the previous namespace's pipeline so a stale
@@ -306,9 +348,19 @@ export function useWorkspace(): UseWorkspaceReturn {
   // Prefer the SSO callback context; otherwise auto-select the persisted pipeline
   // if it still exists, else the first pipeline, else none (add-pipeline empty state).
   useEffect(() => {
-    if (callbackContextId) { setActivePipeline(callbackContextId); return; }
-    if (!activeNs) { setActivePipeline(null); return; }
-    if (userSelectedPipeline.current && activePipeline && pipelines.some((r) => r.contextId === activePipeline)) {
+    if (callbackContextId) {
+      setActivePipeline(callbackContextId);
+      return;
+    }
+    if (!activeNs) {
+      setActivePipeline(null);
+      return;
+    }
+    if (
+      userSelectedPipeline.current &&
+      activePipeline &&
+      pipelines.some((r) => r.contextId === activePipeline)
+    ) {
       return;
     }
     const persisted = readActivePipeline(activeNs);
@@ -316,15 +368,19 @@ export function useWorkspace(): UseWorkspaceReturn {
       setActivePipeline(persisted);
       return;
     }
-    if (activePipeline && pipelines.some((r) => r.contextId === activePipeline)) return;
+    if (activePipeline && pipelines.some((r) => r.contextId === activePipeline))
+      return;
     setActivePipeline(pipelines[0]?.contextId ?? null);
   }, [callbackContextId, activeNs, pipelines, activePipeline]);
 
-  const selectPipeline = useCallback((contextId: string) => {
-    userSelectedPipeline.current = true;
-    setActivePipeline(contextId);
-    if (activeNs) writeActivePipeline(activeNs, contextId);
-  }, [activeNs]);
+  const selectPipeline = useCallback(
+    (contextId: string) => {
+      userSelectedPipeline.current = true;
+      setActivePipeline(contextId);
+      if (activeNs) writeActivePipeline(activeNs, contextId);
+    },
+    [activeNs],
+  );
 
   // --- Executor identity for the active pipeline context (for RPC) ---
   const [executorPublicKey, setExecutorPublicKey] = useState<string | null>(
@@ -344,15 +400,22 @@ export function useWorkspace(): UseWorkspaceReturn {
     // the node's own client on a node login, and on an account the account
     // admin, whose `joinContext` joins the context's group as the account and
     // whose `getContextIdentitiesOwned` answers with the account itself.
-    if (!mero || !admin || !activePipeline) { setExecutorPublicKey(callbackContextIdentity); return; }
+    if (!mero || !admin || !activePipeline) {
+      setExecutorPublicKey(callbackContextIdentity);
+      return;
+    }
     if (activePipeline === callbackContextId && callbackContextIdentity) return;
     let cancelled = false;
     setExecutorPublicKey(null);
     (async () => {
       try {
-        const { identities } = await admin.getContextIdentitiesOwned(activePipeline);
+        const { identities } =
+          await admin.getContextIdentitiesOwned(activePipeline);
         if (cancelled) return;
-        if (identities.length > 0) { setExecutorPublicKey(identities[0]); return; }
+        if (identities.length > 0) {
+          setExecutorPublicKey(identities[0]);
+          return;
+        }
 
         // No identity in this context yet. Auto-follow enrols a member in
         // contexts created AFTER they joined the namespace and in no others, so
@@ -369,12 +432,14 @@ export function useWorkspace(): UseWorkspaceReturn {
         /* leave null - useItems stays not-ready until an identity resolves */
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [mero, admin, activePipeline, callbackContextId, callbackContextIdentity]);
 
   // --- Namespace members (people names live here) ---
   const {
-    members: nsMembers,
+    members: rosterRows,
     loading: membersLoading,
     refetch: refetchMembers,
   } = useGroupMembers(activeNs);
@@ -386,7 +451,8 @@ export function useWorkspace(): UseWorkspaceReturn {
   // Both ids are 32 bytes and neither the client nor the node rejects the
   // wrong one (it just names a principal that exists nowhere), so this has to
   // be the account and never `publicKey`.
-  const { identity: nodeIdentity, refetch: refetchNodeIdentity } = useNodeIdentity();
+  const { identity: nodeIdentity, refetch: refetchNodeIdentity } =
+    useNodeIdentity();
   // useNodeIdentity takes no key, so it resolves once on mount - and on the
   // onboarding path the node has no account yet at that point, because it is
   // creating/joining the namespace that enrols it. Re-ask on every namespace
@@ -395,7 +461,9 @@ export function useWorkspace(): UseWorkspaceReturn {
   // identity) and leaves every member lookup unresolved.
   const refetchNodeIdentityRef = useRef(refetchNodeIdentity);
   refetchNodeIdentityRef.current = refetchNodeIdentity;
-  useEffect(() => { if (activeNs) void refetchNodeIdentityRef.current(); }, [activeNs]);
+  useEffect(() => {
+    if (activeNs) void refetchNodeIdentityRef.current();
+  }, [activeNs]);
   const selfIdentity = nodeIdentity?.accountId ?? null;
   const [membersLoaded, setMembersLoaded] = useState(false);
   useEffect(() => {
@@ -408,28 +476,48 @@ export function useWorkspace(): UseWorkspaceReturn {
   // Live member list: the node emits a GroupMembership event on the namespace
   // group id when someone joins/leaves, so refetch instead of making the user
   // reload. Group events carry `groupId` (context events carry `contextId`).
-  useSubscription(
-    { groupIds: activeNs ? [activeNs] : [] },
-    (ev) => { if ('groupId' in ev && ev.groupId) void refetchMembers(); },
-  );
+  useSubscription({ groupIds: activeNs ? [activeNs] : [] }, (ev) => {
+    if ("groupId" in ev && ev.groupId) void refetchMembers();
+  });
   // A join or leave during a stream outage sends no event we will ever see.
-  useStreamReconnect(() => { if (activeNs) void refetchMembers(); });
+  useStreamReconnect(() => {
+    if (activeNs) void refetchMembers();
+  });
+
+  // A TEE node is a member row on the node, but not a person: split out here,
+  // once, so no member list, count, owner picker, name map or role control
+  // ever shows it. Its presence is shown as "TEE enabled" instead.
+  const { people: nsMembers, tee: teeMembers } = useMemo(() => splitTeeMembers(rosterRows), [rosterRows]);
+  const teeMode = useMemo(() => teeModeOf(teeMembers), [teeMembers]);
 
   const members = useMemo(() => nsMembers.map((m) => m.identity), [nsMembers]);
   const memberNames = useMemo(
-    () => buildAliasMap(nsMembers.filter((m) => m.name).map((m) => ({ name: m.name as string, value: m.identity }))),
+    () =>
+      buildAliasMap(
+        nsMembers
+          .filter((m) => m.name)
+          .map((m) => ({ name: m.name as string, value: m.identity })),
+      ),
     [nsMembers],
   );
 
   // Roles + capabilities for this workspace. Keyed by ACCOUNT throughout —
   // `nsMembers[].identity` and `selfIdentity` are accounts; `executorPublicKey`
   // is a context executor key and is NOT interchangeable with them.
-  const roles = useMemberRoles(activeNs, nsMembers, selfIdentity, refetchMembers);
+  const roles = useMemberRoles(
+    activeNs,
+    nsMembers,
+    selfIdentity,
+    refetchMembers,
+  );
 
   const setMemberName = useCallback(
     async (name: string) => {
-      if (!activeNs || !selfIdentity) throw new Error('Workspace not ready');
-      await setMemberMetadata(activeNs, selfIdentity, { name: name.trim(), data: {} });
+      if (!activeNs || !selfIdentity) throw new Error("Workspace not ready");
+      await setMemberMetadata(activeNs, selfIdentity, {
+        name: name.trim(),
+        data: {},
+      });
       await refetchMembers();
     },
     [activeNs, selfIdentity, setMemberMetadata, refetchMembers],
@@ -437,14 +525,18 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   // --- Mutations: create namespace / add pipeline / join / invite ---
   const [createNamespaceLoading, setCreateNamespaceLoading] = useState(false);
-  const [createNamespaceError, setCreateNamespaceError] = useState<Error | null>(null);
+  const [createNamespaceError, setCreateNamespaceError] =
+    useState<Error | null>(null);
   const createNamespace = useCallback(
     async (name: string): Promise<CreateWorkspaceResult> => {
-      const failed: CreateWorkspaceResult = { namespaceId: null, haError: null };
+      const failed: CreateWorkspaceResult = {
+        namespaceId: null,
+        haError: null,
+      };
       if (!admin || !applicationId) return failed;
       const trimmed = name.trim();
       if (!trimmed) {
-        setCreateNamespaceError(new Error('Workspace name is required'));
+        setCreateNamespaceError(new Error("Workspace name is required"));
         return failed;
       }
       setCreateNamespaceLoading(true);
@@ -463,7 +555,9 @@ export function useWorkspace(): UseWorkspaceReturn {
         selectNamespace(namespaceId);
         return { namespaceId, haError };
       } catch (err) {
-        setCreateNamespaceError(err instanceof Error ? err : new Error(String(err)));
+        setCreateNamespaceError(
+          err instanceof Error ? err : new Error(String(err)),
+        );
         return failed;
       } finally {
         setCreateNamespaceLoading(false);
@@ -480,7 +574,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       const trimmedName = name.trim();
       const code = currency.trim().toUpperCase();
       if (!trimmedName) {
-        setAddPipelineError(new Error('Pipeline name is required'));
+        setAddPipelineError(new Error("Pipeline name is required"));
         return null;
       }
       setAddPipelineLoading(true);
@@ -495,10 +589,14 @@ export function useWorkspace(): UseWorkspaceReturn {
         // The pipeline starts in USD. Anything else is written into shared
         // state here; best-effort, because Settings can change it later and a
         // currency is not worth failing an otherwise-created pipeline over.
-        if (code && code !== 'USD') {
+        if (code && code !== "USD") {
           try {
-            await new CrmClient(mero, contextId).setCurrency({ currency: code });
-          } catch { /* stays USD until changed in Settings */ }
+            await new CrmClient(mero, contextId).setCurrency({
+              currency: code,
+            });
+          } catch {
+            /* stays USD until changed in Settings */
+          }
         }
         // The replicated name (context metadata) for every other member, and
         // on a node a local alias too - an account has no node to keep one in,
@@ -512,13 +610,23 @@ export function useWorkspace(): UseWorkspaceReturn {
         selectPipeline(contextId);
         return contextId;
       } catch (err) {
-        setAddPipelineError(err instanceof Error ? err : new Error(String(err)));
+        setAddPipelineError(
+          err instanceof Error ? err : new Error(String(err)),
+        );
         return null;
       } finally {
         setAddPipelineLoading(false);
       }
     },
-    [mero, admin, isDelegated, applicationId, activeNs, refetchContexts, selectPipeline],
+    [
+      mero,
+      admin,
+      isDelegated,
+      applicationId,
+      activeNs,
+      refetchContexts,
+      selectPipeline,
+    ],
   );
 
   /**
@@ -534,41 +642,45 @@ export function useWorkspace(): UseWorkspaceReturn {
    * at join time.
    */
   const invite = useCallback(async (): Promise<string> => {
-    if (!activeNs) throw new Error('No workspace yet - create one first.');
+    if (!activeNs) throw new Error("No workspace yet - create one first.");
     // Non-recursive: this app invites to the WORKSPACE, and the recursive form
     // returns a different envelope for no extra grant. Old recursive codes are
     // still decoded on the way in.
     const res = await createNamespaceInvitation(activeNs, {});
     const namespaceName =
       namespaces.find((n) => n.namespaceId === activeNs)?.name?.trim() || null;
-    const payload = buildInvitePayload(res, { namespaceId: activeNs, namespaceName });
+    const payload = buildInvitePayload(res, {
+      namespaceId: activeNs,
+      namespaceName,
+    });
     if (!payload) {
-      throw new Error('The node returned an invitation with no signature.');
+      throw new Error("The node returned an invitation with no signature.");
     }
     return JSON.stringify(payload);
   }, [activeNs, namespaces, createNamespaceInvitation]);
 
-  const join = useCallback(async (code: string): Promise<RedeemOutcome> => {
-    // `admin`, not `mero.admin` (apps#348): on an account `joinNamespace` is
-    // the account admin's claim through the relay; the node route is a 403.
-    const outcome = await redeemInviteCode(code, admin);
-    if (outcome.status === 'failed') return outcome;
-    const nsId = outcome.namespaceId;
-    // Joined (or already in it); this workspace's pipelines have not replicated yet.
-    // Flagged so the sidebar says "syncing" rather than "No pipelines yet" — which
-    // is what a joiner currently reads about a workspace full of them.
-    markNamespaceJustJoined(nsId);
-    // The refresh is not the join: a refresh that throws must not turn a real
-    // join into a reported failure.
-    try {
-      await refetchNamespaces();
-      selectNamespace(nsId);
-      await refetchContexts();
-    } catch {
-      selectNamespace(nsId);
-    }
-    return outcome;
-  }, [admin, refetchNamespaces, refetchContexts, selectNamespace]);
+  const enterJoined = useCallback(
+    async (nsId: string): Promise<void> => {
+      // Joined (or already in it); this workspace's pipelines have not replicated yet.
+      // Flagged so the sidebar says "syncing" rather than "No pipelines yet" — which
+      // is what a joiner currently reads about a workspace full of them.
+      markNamespaceJustJoined(nsId);
+      // The refresh is not the join: a refresh that throws must not turn a real
+      // join into a reported failure.
+      try {
+        await refetchNamespaces();
+        selectNamespace(nsId);
+        await refetchContexts();
+      } catch {
+        selectNamespace(nsId);
+      }
+    },
+    [refetchNamespaces, refetchContexts, selectNamespace],
+  );
+
+  // An invitation link was accepted (see components/InvitationHost): land in
+  // what was joined, with a list that already shows it.
+  useJoinedWorkspace((nsId) => void enterJoined(nsId));
 
   // `pipelinesLoading` going false is the signal the pipeline list answered — for the
   // namespace that was active when it did, which is why the id is recorded
@@ -598,7 +710,6 @@ export function useWorkspace(): UseWorkspaceReturn {
     createNamespace,
     createNamespaceLoading,
     createNamespaceError,
-    join,
     invite,
     inviteLoading,
     pipelines,
@@ -613,6 +724,8 @@ export function useWorkspace(): UseWorkspaceReturn {
     selfIdentity,
     members,
     memberNames,
+    teeMembers,
+    teeMode,
     roles,
     membersLoading,
     membersLoaded,

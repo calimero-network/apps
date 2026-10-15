@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { avatarColor, labelColor, initial, truncateKey, relativeTime, formatDate } from './display';
+import { avatarColor, labelColor, initial, truncateKey, shortIssueId, relativeTime, formatDate } from './display';
 
 describe('display helpers', () => {
   it('avatarColor is deterministic and a hex swatch', () => {
@@ -23,6 +23,13 @@ describe('display helpers', () => {
 
   it('truncateKey leaves an alias-length display string unchanged', () => {
     expect(truncateKey('alexander-dev')).toBe('alexander-dev');
+  });
+
+  it('shortIssueId tells issues apart by their nonce, not their shared prefix', () => {
+    expect(shortIssueId('issue-1792008980538-a1321d61')).toBe('a1321d');
+    expect(shortIssueId('issue-1792008980999-ff00aa11')).toBe('ff00aa');
+    expect(shortIssueId('custom-identifier-x')).toBe('custom-i');
+    expect(shortIssueId('abc')).toBe('abc');
   });
 
   it('relativeTime is compact and unit-aware', () => {

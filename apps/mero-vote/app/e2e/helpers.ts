@@ -97,9 +97,15 @@ export function watchForErrors(page: Page) {
     errors.push(`console.error: ${text.slice(0, 400)}`);
   });
   page.on("pageerror", (e) => errors.push(`pageerror: ${String(e).slice(0, 400)}`));
-  page.on("requestfailed", (r) =>
-    errors.push(`requestfailed: ${r.method()} ${r.url()} — ${r.failure()?.errorText ?? "?"}`),
-  );
+  page.on("requestfailed", (r) => {
+    const reason = r.failure()?.errorText ?? "?";
+    // mero-react probes `HEAD /auth/validate` and cancels the probe still in
+    // flight once the session resolves or the provider unmounts. The page
+    // cancelled it; nothing failed. Any other cancelled request still counts.
+    const probe = r.method() === "HEAD" && new URL(r.url()).pathname === "/auth/validate";
+    if (probe && reason.includes("ERR_ABORTED")) return;
+    errors.push(`requestfailed: ${r.method()} ${r.url()} — ${reason}`);
+  });
   page.on("response", (r) => {
     if (r.status() >= 400) errors.push(`HTTP ${r.status()}: ${r.request().method()} ${r.url()}`);
   });

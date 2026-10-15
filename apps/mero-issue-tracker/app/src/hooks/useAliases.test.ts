@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildAliasMap, resolveFromMap } from './useAliases';
+import { buildAliasMap, makeAliases, resolveFromMap } from './useAliases';
 
 describe('buildAliasMap', () => {
   it('maps identity value -> alias name', () => {
@@ -43,5 +43,25 @@ describe('resolveFromMap (the actual resolve() logic)', () => {
     // Simulates what refresh() does: re-fetch, rebuild the map, swap it in.
     map = buildAliasMap([{ name: 'alice', value: 'pk-1' }]);
     expect(resolveFromMap(map, 'pk-1')).toBe('alice');
+  });
+});
+
+// The admin API lists members in hex; the contract stamps `created_by` and
+// comment `author` with the same account in base58. Comparing raw strings
+// left every author as a key glyph and `711j…k4eX` beside a named member.
+describe('account spellings', () => {
+  const HEX = '5926f2d2a4940fa2a62edd2cd7d833897c2c1596c697ea674dd0f49b89d11334';
+  const B58 = '711jRM5BkBNcexvBDoEHuEd2ffTynNCBzRGNjfC4k4eX';
+
+  it('names a base58-stamped author from the hex member name', () => {
+    const map = buildAliasMap([{ name: 'Sandi', value: HEX }]);
+    expect(resolveFromMap(map, B58)).toBe('Sandi');
+  });
+
+  it('hasAlias matches either spelling, so the avatar uses the name', () => {
+    const aliases = makeAliases(buildAliasMap([{ name: 'Sandi', value: HEX }]), async () => {}, async () => {}, false, true);
+    expect(aliases.hasAlias(B58)).toBe(true);
+    expect(aliases.hasAlias(HEX.toUpperCase())).toBe(true);
+    expect(aliases.resolve(B58)).toBe('Sandi');
   });
 });

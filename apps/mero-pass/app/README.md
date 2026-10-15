@@ -1,75 +1,53 @@
-# MeroPass Frontend
+# Mero Pass: web app
 
-React + TypeScript frontend for the MeroPass secret management application.
+The React 19 + TypeScript frontend of Mero Pass, built with Vite. It talks to your own Calimero node through
+`@calimero-network/mero-react`, and encrypts and decrypts every secret in the browser. What the app does, and how
+vaults, teams and encryption map onto Calimero, is in [Mero Pass's README](../README.md); this page covers working
+on the frontend.
 
-## Tech Stack
+## Scripts
 
-- **Framework**: React 19 + TypeScript
-- **Build Tool**: Vite
-- **UI Library**: Calimero UI components
-- **Routing**: React Router
-- **State Management**: React hooks + Calimero context
+Run these from this directory (`apps/mero-pass/app`):
 
-## Project Structure
+| Script                        | What it does                                                  |
+| ----------------------------- | ------------------------------------------------------------- |
+| `pnpm dev`                    | Vite dev server                                               |
+| `pnpm build`                  | Typecheck, then a production build into `dist/`               |
+| `pnpm preview`                | Serve the production build                                    |
+| `pnpm typecheck`              | `tsc -b`                                                      |
+| `pnpm lint` / `pnpm prettier` | ESLint, and a Prettier check of `src/`                        |
+| `pnpm test`                   | Vitest unit tests                                             |
+| `pnpm test:e2e`               | Playwright browser tests (`tests/`) against a mocked node     |
+| `pnpm test:live`              | Contract tests against a real node (`e2e/live/`)              |
+| `pnpm test:journey`           | Two-node journey: log in, create a team, invite, sync secrets |
+| `pnpm codegen`                | Regenerate the typed contract client in `src/generated/`      |
 
-```
-app/
-├── src/
-│   ├── api/                    # Generated ABI client
-│   ├── components/             # Reusable UI components
-│   │   └── SecretForm.tsx     # Secret creation/editing forms
-│   ├── pages/                 # Page components
-│   │   ├── home/              # Vault list page
-│   │   ├── vault/             # Vault dashboard
-│   │   └── login/             # Authentication
-│   ├── constants/             # App constants
-│   └── App.tsx               # Main app with routing
-├── public/                    # Static assets
-└── package.json              # Dependencies
-```
+## Theme and Log out
 
-## Development
+- **Light by default.** The sun/moon switch at the end of the top bar flips to dark (`src/components/ThemeToggle.tsx`,
+  logic in `src/lib/theme.ts`). The choice is saved in `localStorage` under `mero-pass:theme`, only when the switch
+  is pressed. An inline script in `index.html` applies it to `<html data-theme>` before the first paint, so a dark
+  reload never flashes light.
+- **Log out** sits under "Signed in" at the foot of the side rail, and on the Security page. `src/auth/signOut.ts`
+  locks the device key (every open vault drops its decrypted items), clears a copied secret from the clipboard,
+  forgets the app selection, then calls mero-react's `logout()` and returns to the landing page. The theme choice and
+  the auto-lock delay stay, because they belong to the browser rather than the account.
+- **Signed-in routes are guarded.** `/teams`, `/teams/:teamId`, `/vault/:vaultId` and `/security` send a signed-out
+  visitor to the landing page, so Back after Log out never shows an empty app. `/share`, `/docs` and `/preview` stay
+  public.
+- Tests: `tests/theme.spec.ts`, `tests/logout.spec.ts`, `src/lib/theme.test.ts`, `src/auth/signOut.test.ts` and
+  `src/App.routes.test.tsx`.
 
-### Prerequisites
+## Layout
 
-- Node.js 18+
-- pnpm
-
-### Setup
-
-```bash
-# Install dependencies
-pnpm install
-
-# Start development server
-pnpm dev
-```
-
-### Key Components
-
-- **VaultList**: Displays all user's vaults with search and filtering
-- **VaultDashboard**: Main vault interface with secrets, members, and audit logs
-- **SecretForm**: Dynamic form for creating/editing secrets of different types
-
-### Features
-
-- 🔍 **Search & Filter**: Find secrets by name or tags
-- 📊 **Dashboard**: Vault statistics and overview
-- 📝 **Secret Management**: Create, edit, and delete secrets
-- 👥 **Member Management**: View vault members and roles
-- 📋 **Audit Logs**: Real-time activity tracking
-- 📱 **Responsive**: Works on desktop and mobile
-
-## Building
-
-```bash
-# Build for production
-pnpm build
-
-# Preview production build
-pnpm preview
-```
-
-## Environment
-
-The app connects to Calimero network nodes. The application ID is configured in `src/App.tsx` and points to the deployed WASM contract.
+| Path                          | Contents                                                  |
+| ----------------------------- | --------------------------------------------------------- |
+| `src/pages/landing`           | The public landing page, docs and preview                 |
+| `src/pages/teams`, `team`     | Your teams, and one team's vaults and people              |
+| `src/pages/vault`             | A vault: its items and the item detail                    |
+| `src/pages/security`          | Device key, auto-lock, approvals and Log out              |
+| `src/pages/share`             | Opening a share link (needs no node and no login)         |
+| `src/components/AppShell.tsx` | The signed-in frame: side rail, top bar, phone nav drawer |
+| `src/lib`                     | Crypto, device key, invites, clipboard, theme             |
+| `src/auth`                    | Sign-out and desktop bootstrap                            |
+| `src/generated`               | The typed contract client (`pnpm codegen`)                |

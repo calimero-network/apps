@@ -1,7 +1,9 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Input } from '@calimero-network/mero-ui';
+import { ShieldCheck } from '@calimero-network/mero-icons';
 import CopyButton from './CopyButton';
 import type { MatchSummary, MatchRecord, PlayerStatsView } from '../generated/lobby/LobbyClient';
+import { formatKey, playerName } from '../utils/playerName';
 
 interface GroupMember {
   identity: string;
@@ -14,6 +16,8 @@ interface LobbyViewProps {
   lobbyAlias?: string | null;
   isAdmin: boolean;
   members: GroupMember[];
+  /** TEE nodes admitted to the lobby's group; never part of `members`. */
+  teeMembers?: GroupMember[];
   membersLoading: boolean;
   /** Player keys in this lobby — what `create_match` accepts. */
   playerKeys: string[];
@@ -45,9 +49,13 @@ interface LobbyViewProps {
   playerStats: PlayerStatsView | null;
   history: MatchRecord[];
   currentUser: string | null;
+
+  /** The namespace name for an account (`useMemberNames().nameOf`). */
+  nameOf?: (account: string) => string | undefined;
+  /** Publish your name for the namespace. Omitted, the name field is hidden. */
+  onSaveName?: (name: string) => void;
 }
 
-const formatKey = (k: string) => `${k.slice(0, 8)}…${k.slice(-4)}`;
 const formatTs = (ms: number) => new Date(ms).toLocaleString(undefined, {
   year: 'numeric',
   month: 'short',
@@ -57,14 +65,20 @@ const formatTs = (ms: number) => new Date(ms).toLocaleString(undefined, {
 });
 
 export default function LobbyView({
-  lobbyAlias, isAdmin, members, membersLoading, playerKeys, playerByAccount,
+  lobbyAlias, isAdmin, members, teeMembers = [], membersLoading, playerKeys, playerByAccount,
   onChallengePlayer, selfIdentity, executorPublicKey,
   inviteLoading, invitationJson, onCreateInvitation, onDismissInvitation,
   player2, creatingMatch, onPlayer2Change, onCreateMatch,
   matches, onOpenGame,
   playerStats, history, currentUser,
+  nameOf, onSaveName,
 }: LobbyViewProps) {
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
+  const selfName = selfIdentity ? nameOf?.(selfIdentity) ?? '' : '';
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const nameValue = nameDraft ?? selfName;
+  const nameSources = { playerByAccount, selfIdentity, executorPublicKey, nameOf };
+  const nameOfKey = (key: string) => playerName(key, nameSources);
   const [matchTab, setMatchTab] = useState<'matches' | 'record' | 'history'>('matches');
 
   /**
@@ -138,6 +152,21 @@ export default function LobbyView({
           <div className="naval-card-title">
             {lobbyAlias || 'Lobby'}
             {isAdmin && <span className="badge badge-admin">Admin</span>}
+            {/* A TEE node is infrastructure, not a player: it is not listed
+                below, only noted here. */}
+            {teeMembers.length > 0 && (
+              <span
+                className="badge badge-tee"
+                data-testid="tee-indicator"
+                title="A hardware-attested node keeps this workspace in sync and available when members are offline."
+              >
+                <ShieldCheck size={11} aria-hidden />
+                TEE enabled
+                <span className="badge-tee-mode">
+                  {teeMembers.some((m) => m.role === 'RelayTee') ? 'Relay' : 'Replica'}
+                </span>
+              </span>
+            )}
           </div>
         </div>
         <div className="naval-card-body">
@@ -161,19 +190,23 @@ export default function LobbyView({
               {members.map((m) => {
                 const isSelf = m.identity === selfIdentity;
                 const key = playerKeyForMember(m.identity);
+                const name = nameOf?.(m.identity);
                 return (
                   <div key={m.identity} className="member-row" data-testid="lobby-member">
                     <span className={`member-role ${m.role === 'Admin' ? 'role-admin' : 'role-member'}`}>
                       {m.role}
                     </span>
+                    {name && <span data-testid="member-name">{name}</span>}
                     {isSelf && (
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-accent)' }}>you</span>
                     )}
                     {key ? (
                       <>
-                        <span className="mono-sm" style={{ fontSize: '0.72rem' }}>
-                          {key.slice(0, 10)}…{key.slice(-6)}
-                        </span>
+                        {!name && (
+                          <span className="mono-sm" style={{ fontSize: '0.72rem' }} title={key}>
+                            {formatKey(key)}
+                          </span>
+                        )}
                         <CopyButton text={key} label="Copy" copiedLabel="Copied" className="btn-icon" />
                         {!isSelf && (
                           <button
@@ -195,6 +228,30 @@ export default function LobbyView({
                 );
               })}
             </div>
+
+            {onSaveName && selfIdentity && (
+              <form
+                onSubmit={(e) => { e.preventDefault(); onSaveName(nameValue.trim()); setNameDraft(null); }}
+                style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
+              >
+                <label className="info-label" htmlFor="lobby-your-name">Your name</label>
+                <Input
+                  id="lobby-your-name"
+                  type="text"
+                  placeholder="How other players see you"
+                  maxLength={32}
+                  value={nameValue}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="btn-ghost"
+                  disabled={!nameValue.trim() || nameValue.trim() === selfName}
+                >
+                  Save
+                </button>
+              </form>
+            )}
 
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
@@ -321,7 +378,7 @@ export default function LobbyView({
                             </span>
                             {m.winner && (
                               <span className="mono-sm" style={{ fontSize: '0.7rem' }}>
-                                Winner: {m.winner.slice(0, 8)}...
+                                Winner: {nameOfKey(m.winner)}
                               </span>
                             )}
                           </div>
@@ -408,7 +465,7 @@ export default function LobbyView({
                               {youWon ? 'You won' : youLost ? 'You lost' : 'Finished'}
                             </span>
                             <span className="mono-sm" style={{ fontSize: '0.7rem' }}>
-                              {formatKey(r.winner)} beat {formatKey(r.loser)}
+                              {nameOfKey(r.winner)} beat {nameOfKey(r.loser)}
                             </span>
                             <span className="mono-sm" style={{ fontSize: '0.7rem', opacity: 0.75 }}>
                               {formatTs(r.finished_ms)}

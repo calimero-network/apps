@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
+import { useMemberNames } from '@calimero-apps/names';
 
 import AppShell, { InRail } from '../../components/AppShell';
 import DeviceApprovals from '../../components/DeviceApprovals';
@@ -131,6 +132,8 @@ function VaultBody() {
     reload,
     retry,
   } = useVaultSession(contextId, team);
+  // Names people set for the team, for every "by" and "account" line below.
+  const { nameOf } = useMemberNames(admin, found?.namespaceId);
 
   const [view, setView] = useState<View>({ type: 'all' });
   const [query, setQuery] = useState('');
@@ -484,6 +487,7 @@ function VaultBody() {
               session={session}
               requests={approvals}
               me={session.info?.my_account}
+              nameOf={nameOf}
               onChanged={() => void reload()}
             />
           </div>
@@ -531,7 +535,12 @@ function VaultBody() {
                 />
               )}
               {tool === 'activity' && (
-                <ActivityList events={events} secrets={secrets} me={me} />
+                <ActivityList
+                  events={events}
+                  secrets={secrets}
+                  me={me}
+                  nameOf={nameOf}
+                />
               )}
               {tool === 'transfer' && (
                 <ImportExport
@@ -588,6 +597,7 @@ function VaultBody() {
                   <ItemDetail
                     secret={current}
                     me={me}
+                    nameOf={nameOf}
                     canWrite={canWrite}
                     onBack={() => setSelected(null)}
                     onCopy={(v, what) => void copy(v, what)}
@@ -720,10 +730,12 @@ function ActivityList({
   events,
   secrets,
   me,
+  nameOf,
 }: {
   events: AuditView[];
   secrets: Secret[];
   me?: string;
+  nameOf?: (account: string) => string | undefined;
 }) {
   if (events.length === 0)
     return (
@@ -748,8 +760,8 @@ function ActivityList({
                 e.target.slice(0, 24)}
             </div>
             <div className={vault.eventMeta}>
-              {asDate(e.timestamp).toLocaleString()} · {who(e.account, me)} ·
-              device {e.device.slice(0, 8)}
+              {asDate(e.timestamp).toLocaleString()} ·{' '}
+              {who(e.account, me, nameOf)} · device {e.device.slice(0, 8)}
             </div>
           </div>
         </div>

@@ -1,24 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { useApplicationId } from "../hooks/useApplicationId";
 import { useToast } from "../contexts/ToastContext";
-import { setActiveRoom, setRoomName } from "../lib/session";
-import { decodeInvite } from "../lib/inviteCodec";
 import {
   createStreamNamespace,
   listStreamNamespaces,
   mintNamespaceInvite,
-  redeemFailureMessage,
-  redeemInvite,
   type NamespaceRow,
 } from "../lib/groups";
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
 import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
-import { invitationFromRaw } from "../lib/inviteLink";
 import { hostingProblem } from "../lib/hosting";
-import { useDialogOpen } from "../hooks/useDialogOpen";
 import CopyId from "../components/CopyId";
 import {
   AlertTriangleIcon,
@@ -26,11 +20,9 @@ import {
   BrandMark,
   HashIcon,
   LayersIcon,
-  LinkIcon,
   PlusIcon,
   UserPlusIcon,
   UsersIcon,
-  XIcon,
 } from "../components/icons";
 import styles from "./Manage.module.css";
 
@@ -45,16 +37,13 @@ import styles from "./Manage.module.css";
  *   Namespace ("stream")  ← you invite people HERE
  *     └── Subgroup ("room") + Context   ← one video call   → /streams/:id
  *
- * So: this page creates namespaces, invites to namespaces, and accepts any invite
- * code. Rooms live on RoomsPage.
- *
- * Invite codes are the SAME format mero-chat and mero-blocks use — one base58
- * token of deflated JSON (lib/inviteCodec) — so a code minted by any of them
- * decodes here, and a code from here pastes into a chat window without being
- * mangled.
+ * So: this page creates namespaces and invites to namespaces. Rooms live on
+ * RoomsPage. Joining is not done here: an invitation reaches the app only as an
+ * opened link, and the app-level `InvitationPrompt` takes it from there.
  */
 export default function StreamsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   // `admin`, not `mero.admin`: the session-aware admin. On a node login it is
   // the node's own client; on an account it is the account admin, which
   // carries the same calls through the relay. The raw client's admin is the
@@ -67,13 +56,10 @@ export default function StreamsPage() {
   const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
   const [listing, setListing] = useState(true);
   const [name, setName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [showJoin, setShowJoin] = useState(false);
-  const joinDialogRef = useRef<HTMLDialogElement | null>(null);
 
-  // One key names the action in flight ("create", "join", `invite:<id>`), instead
-  // of a single `busy` boolean. With a boolean, clicking Invite disabled Create,
-  // Join and every row, and all of them read "Working…" — indistinguishable from
+  // One key names the action in flight ("create", `invite:<id>`), instead of a
+  // single `busy` boolean. With a boolean, clicking Invite disabled Create and
+  // every row, and all of them read "Working…" — indistinguishable from
   // the page having locked up.
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -125,9 +111,13 @@ export default function StreamsPage() {
     [admin, appId],
   );
 
+  // Keyed on the navigation too. Accepting an invitation whose stream cannot be
+  // placed yet lands on `/streams` — possibly this page, which React Router
+  // does not remount — so without the key the joined stream would be missing
+  // from the list until a full reload.
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, location.key]);
 
   const create = useCallback(() => {
     const streamName = name.trim();
@@ -172,67 +162,6 @@ export default function StreamsPage() {
     [admin, run, showToast],
   );
 
-  /**
-   * Accept any code: a namespace invite, or a room invite (which carries the
-   * namespace invitation too, so someone with no prior membership gets both joins
-   * from one paste). A room code that names its context takes you into the call.
-   */
-  const acceptCode = useCallback(
-    (raw: string) => {
-      if (!admin) return;
-      // Accept a LINK pasted into the code field, not just a code. People paste
-      // whatever they were sent, and the two are indistinguishable to them —
-      // rejecting a link here would be the app refusing its own invitation.
-      // Accepts a platform link, a `calimero://` deep link, this app's older
-      // `?invite=` link, or the bare code — people paste whatever they were sent.
-      const candidate = invitationFromRaw(raw) ?? raw;
-      const payload = decodeInvite(candidate);
-      if (!payload) {
-        setError(
-          "That invite is not valid. If you pasted a code, paste the whole thing — it is one long line with no spaces.",
-        );
-        return;
-      }
-      void run("join", async (onStatus) => {
-        // Shared with the app-level link prompt, so the two cannot drift. A room
-        // invitation needs BOTH joins — the namespace grant and the room's
-        // context — and this sequence is where that lives.
-        const { outcome, landed } = await redeemInvite(
-          admin,
-          payload,
-          onStatus,
-        );
-        if (!landed) {
-          setError(redeemFailureMessage(outcome));
-          return;
-        }
-        setJoinCode("");
-        onStatus("Refreshing your streams…");
-        await load(false);
-
-        if (landed.kind === "room") {
-          if (landed.roomName) setRoomName(landed.contextId, landed.roomName);
-          setActiveRoom(landed.contextId, landed.identity, landed.namespaceId);
-          navigate("/live");
-          return;
-        }
-        if (landed.kind === "namespace") {
-          navigate(`/streams/${landed.namespaceId}`);
-          return;
-        }
-        showToast("Joined. Your streams are listed below.");
-      });
-    },
-    [admin, run, load, navigate, showToast],
-  );
-
-  const join = useCallback(() => {
-    acceptCode(joinCode);
-    setShowJoin(false);
-  }, [acceptCode, joinCode]);
-
-  useDialogOpen(joinDialogRef, showJoin);
-
   return (
     <div className={styles.page}>
       <header className={styles.topbar}>
@@ -243,16 +172,6 @@ export default function StreamsPage() {
         </div>
         <span className={styles.spacer} />
         <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.ghostBtn}
-            onClick={() => setShowJoin(true)}
-            data-testid="open-join"
-          >
-            <LinkIcon size={16} />
-            Join with a link or code
-          </button>
-          <span className={styles.headerDivider} aria-hidden="true" />
           <SessionMenu />
         </div>
       </header>
@@ -369,26 +288,15 @@ export default function StreamsPage() {
           !resolvingAppId &&
           !notInstalled &&
           namespaces.length === 0 && (
-            <div className={styles.empty}>
+            <div className={styles.empty} data-testid="streams-empty">
               <span className={styles.emptyIcon} aria-hidden="true">
                 <LayersIcon size={20} />
               </span>
               <span className={styles.emptyTitle}>No streams yet</span>
               <span className={styles.emptyHint}>
-                Create one above to start a call, or use{" "}
-                <strong>Join with a link or code</strong> if someone invited
-                you.
+                Create one above to start a call, or open an invitation link
+                someone sent you.
               </span>
-              <div className={styles.emptyActions}>
-                <button
-                  type="button"
-                  className={styles.ghostBtn}
-                  onClick={() => setShowJoin(true)}
-                >
-                  <LinkIcon size={16} />
-                  Join with an invitation
-                </button>
-              </div>
             </div>
           )}
 
@@ -465,72 +373,6 @@ export default function StreamsPage() {
           </div>
         )}
       </main>
-
-      <dialog
-        ref={joinDialogRef}
-        className={styles.dialog}
-        data-testid="join-dialog"
-        onClose={() => setShowJoin(false)}
-      >
-        <div className={styles.dialogHead}>
-          <div>
-            <h2 className={styles.dialogTitle}>Join a stream or room</h2>
-            <p className={styles.dialogDesc}>
-              Paste the invitation someone sent you.
-            </p>
-          </div>
-          <span className={styles.spacer} />
-          <button
-            type="button"
-            className={styles.iconBtn}
-            onClick={() => setShowJoin(false)}
-            data-testid="join-dialog-close"
-            aria-label="Close"
-            title="Close"
-          >
-            <XIcon size={18} />
-          </button>
-        </div>
-        <div className={styles.dialogBody}>
-          <label className={styles.dialogLabel} htmlFor="join-code">
-            Invitation link or code
-          </label>
-          <div className={styles.dialogRow}>
-            <input
-              id="join-code"
-              className={styles.dialogInput}
-              placeholder="Paste an invite link or code"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && join()}
-              disabled={pending === "join"}
-              data-testid="join-code-input"
-              aria-label="Invite link or code"
-            />
-          </div>
-          <p className={styles.help}>
-            An invite <strong>link</strong> normally just needs opening — it
-            brings you here and joins on its own. Paste one in only if it did
-            not survive however it was sent to you. A raw <strong>code</strong>{" "}
-            is one long line of base58 with no spaces, and any mero app&apos;s
-            code works here.
-          </p>
-        </div>
-        <div className={styles.dialogFoot}>
-          <ActionButton onClick={() => setShowJoin(false)} variant="secondary">
-            Cancel
-          </ActionButton>
-          <ActionButton
-            onClick={join}
-            pending={pending === "join"}
-            pendingLabel="Joining…"
-            disabled={!joinCode.trim() || !admin}
-            testId="join-submit"
-          >
-            Join
-          </ActionButton>
-        </div>
-      </dialog>
     </div>
   );
 }

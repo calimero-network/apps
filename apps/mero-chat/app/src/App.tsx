@@ -6,6 +6,7 @@ import { isNamespaceReady } from "./utils/session";
 import { hasLiveSession } from "./utils/authTokens";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { ToastManager } from "./components/common/ToastManager";
+import InvitationPrompt from "./components/popups/InvitationPrompt";
 
 const Login = lazy(() => import("./pages/Login"));
 // `/docs` and `/preview` are the shared landing template's other two pages.
@@ -51,45 +52,55 @@ function App() {
   // client-side navigate that workspace entry does would then bounce back to the
   // picker (fixed only by a manual reload). Treat a stored, non-expired token as
   // a valid session so entry doesn't flap — namespace selection is still required.
-  const canEnterApp = (isAuthenticated || hasLiveSession()) && isNamespaceReady();
+  const canEnterApp =
+    (isAuthenticated || hasLiveSession()) && isNamespaceReady();
 
-  if (isLoading && !providerTimedOut) {
-    return <LoadingSpinner />;
-  }
+  const loading = isLoading && !providerTimedOut;
 
   return (
     <ToastProvider>
-      <Suspense fallback={<LoadingSpinner />}>
-        <Routes>
-          <Route
-            path="/login"
-            element={
-              canEnterApp ? (
-                <Navigate to="/" replace />
-              ) : (
-                <Login
-                  isAuthenticated={isAuthenticated}
-                  isConfigSet={isAuthenticated}
-                />
-              )
-            }
-          />
-          <Route
-            path="/"
-            element={
-              canEnterApp ? (
-                <Home isConfigSet={isAuthenticated} />
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
-          <Route path="/docs" element={<Landing />} />
-          <Route path="/preview" element={<Landing />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-        <ToastDisplay />
-      </Suspense>
+      {/* Above the routes, and mounted through loading too, so an opened
+          invitation link is offered on whatever page the user is on — the
+          workspace picker after login, or inside a workspace — and the prompt
+          is never torn down mid-join. It waits until the session can join. */}
+      <InvitationPrompt
+        enabled={!loading && (isAuthenticated || hasLiveSession())}
+      />
+      {loading ? (
+        <LoadingSpinner />
+      ) : (
+        <Suspense fallback={<LoadingSpinner />}>
+          <Routes>
+            <Route
+              path="/login"
+              element={
+                canEnterApp ? (
+                  <Navigate to="/" replace />
+                ) : (
+                  <Login
+                    isAuthenticated={isAuthenticated}
+                    isConfigSet={isAuthenticated}
+                  />
+                )
+              }
+            />
+            <Route
+              path="/"
+              element={
+                canEnterApp ? (
+                  <Home isConfigSet={isAuthenticated} />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
+            <Route path="/docs" element={<Landing />} />
+            <Route path="/preview" element={<Landing />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+          <ToastDisplay />
+        </Suspense>
+      )}
     </ToastProvider>
   );
 }

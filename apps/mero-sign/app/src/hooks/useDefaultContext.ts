@@ -35,10 +35,6 @@ export const useDefaultContext = () => {
 
       if (result.success && result.contextInfo) {
         setDefaultContextInfo(result.contextInfo);
-
-        if (result.wasCreated) {
-        } else {
-        }
       } else {
         console.error('Failed to ensure default context:', result.error);
         setError(result.error || 'Failed to ensure default context');

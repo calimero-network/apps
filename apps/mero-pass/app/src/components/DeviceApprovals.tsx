@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { shortAccount } from '@calimero-apps/names';
 
 import {
   type DeviceRecord,
@@ -19,11 +20,14 @@ export default function DeviceApprovals({
   session,
   requests,
   me,
+  nameOf,
   onChanged,
 }: {
   session: VaultSession;
   requests: DeviceRecord[];
   me: string | undefined;
+  /** The team name of an account (`useMemberNames`), so a request says whose. */
+  nameOf?: (account: string) => string | undefined;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -70,7 +74,8 @@ export default function DeviceApprovals({
             <div className={shell.rowSub}>
               {d.account === me
                 ? 'your account'
-                : `account ${d.account.slice(0, 10)}…`}{' '}
+                : (nameOf?.(d.account) ??
+                  `account ${shortAccount(d.account)}`)}{' '}
               · registered {new Date(d.added_at / 1e6).toLocaleString()}
             </div>
           </div>

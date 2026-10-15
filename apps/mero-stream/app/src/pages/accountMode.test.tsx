@@ -9,6 +9,7 @@ import {
   type Mock,
 } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -16,12 +17,14 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import type { CapturedInvitation } from "@calimero-apps/invite";
 import { ToastProvider } from "../contexts/ToastContext";
 import { clearHostingState } from "../lib/hosting";
 import { clearApplicationIdCache } from "../hooks/useApplicationId";
 import { getExecutorPublicKey, getContextId } from "../lib/session";
 import StreamsPage from "./StreamsPage";
 import RoomsPage from "./RoomsPage";
+import InvitationPrompt from "../components/InvitationPrompt";
 
 // ── The transport switch, as a test ──────────────────────────────────────────
 //
@@ -91,6 +94,18 @@ const rpcExecute = fn(() => []);
 /** No jest-dom here: the attribute is the fact. */
 const isDisabled = (el: HTMLElement) => (el as HTMLButtonElement).disabled;
 const navigate = vi.fn();
+
+/** The app-level prompt's subscription, so a test can hand it an opened link. */
+const captured = vi.hoisted(() => ({
+  listener: null as null | ((c: CapturedInvitation) => void),
+}));
+vi.mock("@calimero-apps/invite", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@calimero-apps/invite")>()),
+  onInvitation: (listener: (c: CapturedInvitation) => void) => {
+    captured.listener = listener;
+    return () => {};
+  },
+}));
 vi.mock("react-router-dom", async (importOriginal) => {
   const mod = await importOriginal<typeof import("react-router-dom")>();
   return { ...mod, useNavigate: () => navigate };
@@ -219,7 +234,7 @@ describe("StreamsPage on an account session", () => {
     expect(isDisabled(screen.getByTestId("invite-namespace"))).toBe(true);
   });
 
-  it("redeems a pasted code through the account admin's joinNamespace", async () => {
+  it("redeems an opened invitation through the account admin's joinNamespace", async () => {
     const { encodeInvite } = await import("../lib/inviteCodec");
     const code = encodeInvite({
       invitation: {
@@ -229,13 +244,20 @@ describe("StreamsPage on an account session", () => {
       kind: "namespace",
       groupId: "ns-joined",
     });
-    renderStreams();
-    await screen.findByText("Team");
-    fireEvent.click(screen.getByTestId("open-join"));
-    fireEvent.change(screen.getByTestId("join-code-input"), {
-      target: { value: code },
-    });
-    fireEvent.click(screen.getByTestId("join-submit"));
+    render(
+      <MemoryRouter initialEntries={["/streams"]}>
+        <InvitationPrompt />
+      </MemoryRouter>,
+    );
+    act(() =>
+      captured.listener?.({
+        token: code,
+        params: { invitation: code },
+        resolve: () => {},
+        autoJoin: false,
+      }),
+    );
+    fireEvent.click(screen.getByTestId("invite-accept"));
 
     await waitFor(() =>
       expect(navigate).toHaveBeenCalledWith("/streams/ns-joined"),
@@ -325,5 +347,46 @@ describe("RoomsPage on an account session", () => {
     expect(isDisabled(screen.getByTestId("invite-namespace"))).toBe(true);
     expect(admin.createNamespaceInvitation).toHaveBeenCalledWith("ns1", {});
     neverTouchedTheNodeRoute();
+  });
+  // A TEE node is a member row of the namespace and of every room born Open.
+  // It is not a person: the room says "1 member" and the stream's header says
+  // "TEE enabled" instead.
+  it("shows TEE enabled beside the stream name and leaves the node out of the room's count", async () => {
+    admin.listNamespaceGroups.mockResolvedValueOnce([{ groupId: "room1" }]);
+    admin.listGroupMembers.mockImplementation(async () => ({
+      members: [
+        { identity: "aa", role: "Admin" },
+        { identity: "tt", role: "RelayTee" },
+      ],
+    }));
+    try {
+      renderRooms();
+      const badge = await screen.findByTestId("tee-badge");
+      expect(badge.textContent).toContain("TEE enabled");
+      expect(badge.textContent).toContain("Relay");
+      expect(badge.title).toMatch(
+        /hardware-attested node keeps this workspace in sync/,
+      );
+      expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1");
+      await waitFor(() =>
+        expect(screen.getByTestId("room-row").textContent).toContain(
+          "1 member",
+        ),
+      );
+      expect(screen.getByTestId("room-row").textContent).not.toContain(
+        "2 members",
+      );
+    } finally {
+      admin.listGroupMembers.mockImplementation(async () => ({ members: [] }));
+    }
+  });
+
+  it("shows no TEE indicator when the stream has no TEE node", async () => {
+    renderRooms();
+    await waitFor(() =>
+      expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1"),
+    );
+    await screen.findByText("Team", { selector: "h2" });
+    expect(screen.queryByTestId("tee-badge")).toBeNull();
   });
 });

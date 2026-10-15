@@ -1,14 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  describeInviteFailure,
-  InviteStatusBanner,
-  redeemInvitation,
-  useInviteRedemption,
-} from "@calimero-apps/invite";
-import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
 import { useMero } from "@calimero-network/mero-react";
-import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
 import { listNamespaces } from "../../api/admin";
 import { useEnsureAppId } from "../../hooks/useEnsureAppId";
 import CalendarLogo from "../../components/common/logo/CalendarLogo";
@@ -16,12 +8,7 @@ import ThemeToggle from "../../components/common/theme-toggle/ThemeToggle";
 import LogoutButton from "../../components/common/logout-button/LogoutButton";
 import { useToast } from "../../contexts/ToastContext";
 import { extractErrorMessage } from "../../utils/errorMessage";
-import {
-  decodeInvitationObject,
-  encodeInvitationObject,
-  invitationLink,
-  invitationTokenFrom,
-} from "../../utils/invitation";
+import { encodeInvitationObject, invitationLink } from "../../utils/invitation";
 import {
   getStoredTeamName,
   setStoredTeamName,
@@ -29,14 +16,6 @@ import {
 } from "../../utils/teamName";
 import type { Team } from "../../types/workspace";
 import styles from "./teams.module.scss";
-
-type NamespaceRaw = {
-  namespaceId?: string;
-  groupId?: string;
-  id?: string;
-  alias?: string;
-  name?: string;
-};
 
 export default function TeamsPage() {
   const navigate = useNavigate();
@@ -46,18 +25,15 @@ export default function TeamsPage() {
   // is `POST {relay}/admin-api/namespaces` under the account's bearer token,
   // which carries no `namespace:manage` — a 403. `admin` is the session-aware
   // one: the node's own client on a node login, and on an account the account
-  // admin, which founds through the relay, signs invitations as the account
-  // and redeems them through the admitter's route.
+  // admin, which founds through the relay and signs invitations as the account
+  // (joining is `components/common/invitation-prompt`'s).
   const { admin, isDelegated } = useMero();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const [joinCode, setJoinCode] = useState("");
-  const [joining, setJoining] = useState(false);
-  const [joinError, setJoinError] = useState("");
-  const [inviteFor, setInviteFor] = useState<{ id: string; code: string } | null>(
+  const [inviteFor, setInviteFor] = useState<{ id: string; link: string } | null>(
     null,
   );
   const menuRef = useRef<HTMLDivElement>(null);
@@ -162,123 +138,6 @@ export default function TeamsPage() {
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
   }
 
-  /** Read a raw invitation token into the parts the join needs. */
-  const parseInvitation = useCallback((raw: string) => {
-    const invObj = decodeInvitationObject<Record<string, unknown>>(raw);
-    const outer = (invObj.invitation as Record<string, unknown>) ?? invObj;
-    const inner = (outer?.invitation as Record<string, unknown>) ?? outer;
-    const rawGroupId =
-      inner?.group_id ?? inner?.groupId ?? outer?.group_id ?? outer?.groupId;
-    const namespaceId = Array.isArray(rawGroupId)
-      ? (rawGroupId as number[])
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("")
-      : String(rawGroupId ?? "");
-    if (!namespaceId) return null;
-
-    const teamName =
-      typeof invObj.__teamName === "string" ? invObj.__teamName.trim() : "";
-    if (teamName) setStoredTeamName(namespaceId, teamName);
-
-    return { namespaceId, invitation: outer, teamName: teamName || undefined };
-  }, []);
-
-  /** The two calls @calimero-apps/invite needs from this app. */
-  const redeemer = useMemo(
-    () => ({
-      // Through `admin`: on an account, `joinNamespace` redeems the invitation
-      // via the admitter's unauthenticated route and moves the session onto
-      // that relay. `join` has to THROW on refusal — the redeemer reads the
-      // outcome off the error — so no catch here.
-      join: async (namespaceId: string, invitation: unknown) => {
-        await requireAdmin().joinNamespace(namespaceId, {
-          invitation: invitation as SignedGroupOpenInvitation,
-        });
-      },
-      memberships: async () => {
-        const items = await listNamespaces(requireAdmin(), await ensureAppId());
-        return (Array.isArray(items) ? items : []).map(
-          (n: NamespaceRaw) => n.namespaceId ?? n.groupId ?? n.id ?? "",
-        );
-      },
-    }),
-    [ensureAppId, requireAdmin],
-  );
-
-  const refreshTeams = useCallback(async () => {
-    const items = await listNamespaces(requireAdmin(), await ensureAppId()).catch(
-      () => null,
-    );
-    if (!Array.isArray(items)) return;
-    setTeams(
-      items.map((n: NamespaceRaw) => ({
-        groupId: n.namespaceId ?? n.groupId ?? n.id ?? "",
-        name: (n.alias ?? n.name ?? "").trim(),
-      })),
-    );
-  }, [ensureAppId, requireAdmin]);
-
-  // ── An invitation link opened this app ──────────────────────────────────────
-  //
-  // Capture, redemption and the attempt cap all live in @calimero-apps/invite;
-  // this page supplies the codec and the two calls, and renders the result.
-  const invite = useInviteRedemption({
-    parse: parseInvitation,
-    redeemer,
-    onJoined: (namespaceId) => {
-      setJoinCode("");
-      void refreshTeams();
-      navigate(`/teams/${namespaceId}`);
-    },
-  });
-
-  // Keep the manual field in step, so a link that could not be joined
-  // automatically is one click away rather than lost.
-  useEffect(() => {
-    if (invite.token) setJoinCode(invite.token);
-  }, [invite.token]);
-
-  /** The manual "paste a code and press Join" path. */
-  async function joinTeam(codeOverride?: string): Promise<boolean> {
-    const raw = invitationTokenFrom(codeOverride ?? joinCode);
-    if (!raw) return false;
-    setJoining(true);
-    setJoinError("");
-    try {
-      const parsed = parseInvitation(raw);
-      if (!parsed) throw new Error("no namespace id in invitation");
-
-      const outcome = await redeemInvitation(parsed, redeemer);
-      if (outcome.status === "failed") {
-        throw new Error(
-          describeInviteFailure(outcome.reason, "team") ?? outcome.message,
-        );
-      }
-
-      markNamespaceJustJoined(outcome.namespaceId);
-      await refreshTeams();
-      setJoinCode("");
-      showToast(
-        outcome.status === "already-member"
-          ? "You are already in this team."
-          : "Joined team. Syncing calendar…",
-        "success",
-      );
-      return true;
-    } catch (err) {
-      const msg = extractErrorMessage(
-        err,
-        "Could not join. Check the invitation code.",
-      );
-      setJoinError(msg);
-      showToast(msg);
-      return false;
-    } finally {
-      setJoining(false);
-    }
-  }
-
-
   /**
    * Open a team by showing its calendars, not by guessing one.
    *
@@ -297,15 +156,19 @@ export default function TeamsPage() {
     try {
       // `{ invitation, groupName? }` — the same envelope the node route
       // returned, so the code a node mints and the one an account mints decode
-      // identically in `parseInvitation`. On an account the invitation is
+      // identically in the invitation prompt. On an account the invitation is
       // signed by the account itself.
       const data = (await requireAdmin().createNamespaceInvitation(
         teamId,
       )) as unknown as Record<string, unknown>;
       const teamName = getStoredTeamName(teamId);
       const payload = teamName ? { ...data, __teamName: teamName } : data;
-      const code = encodeInvitationObject(payload);
-      setInviteFor({ id: teamId, code });
+      // The link is all there is to share: opening it is how the invitation
+      // reaches the other person's app. No raw code is shown or copied.
+      setInviteFor({
+        id: teamId,
+        link: invitationLink(encodeInvitationObject(payload)),
+      });
     } catch (err) {
       showToast(
         extractErrorMessage(err, "Failed to generate invitation."),
@@ -317,7 +180,7 @@ export default function TeamsPage() {
     if (!inviteFor) return;
     // Share the canonical link, not the bare token: it opens the desktop app
     // where installed and the web build otherwise.
-    await navigator.clipboard.writeText(invitationLink(inviteFor.code));
+    await navigator.clipboard.writeText(inviteFor.link);
     showToast("Invitation link copied to clipboard.", "success");
   }
 
@@ -336,15 +199,6 @@ export default function TeamsPage() {
       <main className={styles.main}>
         <h1 className={styles.title}>Your Teams</h1>
 
-        {/* Following an invite link used to land here with nothing on screen
-            for as long as the join took. */}
-        <InviteStatusBanner
-          state={invite.state}
-          noun="team"
-          onRetry={invite.retry}
-          onDismiss={invite.dismiss}
-          style={{ marginBottom: "1rem" }}
-        />
         <p className={styles.subtitle}>Teams are shared calendars.</p>
 
         <div className={styles.createRow}>
@@ -370,7 +224,8 @@ export default function TeamsPage() {
           <p className={styles.empty}>Loading…</p>
         ) : teams.length === 0 ? (
           <p className={styles.empty} data-testid="empty-teams">
-            No teams yet. Create one above.
+            No teams yet. Create one above, or open an invitation link someone
+            sent you.
           </p>
         ) : (
           <div className={styles.grid}>
@@ -434,8 +289,8 @@ export default function TeamsPage() {
                 )}
                 {inviteFor?.id === t.groupId && (
                   <div className={styles.inviteBox}>
-                    <code className={styles.inviteCode} title={inviteFor.code}>
-                      {inviteFor.code.slice(0, 18)}…{inviteFor.code.slice(-8)}
+                    <code className={styles.inviteCode} title={inviteFor.link}>
+                      {inviteFor.link.slice(0, 40)}…{inviteFor.link.slice(-8)}
                     </code>
                     <button
                       className="mc-btn"
@@ -457,28 +312,6 @@ export default function TeamsPage() {
           </div>
         )}
 
-        <div className={styles.joinSection}>
-          <p className={styles.joinLabel}>Got an invitation? Join a team.</p>
-          <div className={styles.joinRow}>
-            <input
-              className={`mc-input ${styles.createInput}`}
-              placeholder="Paste invitation code…"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void joinTeam(); }}
-              data-testid="join-code-input"
-            />
-            <button
-              className="mc-btn"
-              onClick={() => void joinTeam()}
-              disabled={joining || !joinCode.trim()}
-              data-testid="join-team-btn"
-            >
-              {joining ? "Joining…" : "Join"}
-            </button>
-          </div>
-          {joinError && <p className={styles.joinError}>{joinError}</p>}
-        </div>
       </main>
     </div>
   );

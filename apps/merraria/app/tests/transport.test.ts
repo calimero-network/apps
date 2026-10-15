@@ -135,9 +135,19 @@ describe("node session → mero-js node client", () => {
   });
 
   it("the token store serves a bundle with no refresh token (a desktop hand-over)", () => {
-    expect(merrariaTokenStore().getTokens()).toMatchObject({ access_token: "tok-123", refresh_token: "" });
+    expect(merrariaTokenStore("http://node:2428").getTokens()).toMatchObject({ access_token: "tok-123", refresh_token: "" });
     localStorage.removeItem("mero-tokens");
-    expect(merrariaTokenStore().getTokens()).toBeNull();
+    expect(merrariaTokenStore("http://node:2428").getTokens()).toBeNull();
+  });
+
+  it("the token store binds the bundle session.ts wrote to its node, and keeps the node mero-js named", () => {
+    // mero-js reads a bundle as signed out unless `node_origin` names its node.
+    expect(merrariaTokenStore("http://node:2428/").getTokens()?.node_origin).toBe("http://node:2428");
+    localStorage.setItem(
+      "mero-tokens",
+      JSON.stringify({ access_token: "tok-9", refresh_token: "r", expires_at: 1, node_origin: "http://other:2428" }),
+    );
+    expect(merrariaTokenStore("http://node:2428").getTokens()?.node_origin).toBe("http://other:2428");
   });
 });
 

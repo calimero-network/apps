@@ -22,9 +22,9 @@ export default function UsernameModal({ onSubmit, initialValue = "" }: Props) {
   return (
     <div className="mp-overlay">
       <div className={`mp-modal ${styles.modal}`} role="dialog" aria-modal="true" aria-labelledby="username-title">
-        <h2 id="username-title">Choose a display name</h2>
+        <h2 id="username-title">Choose your name for this team</h2>
         <p className="sub">
-          This name is shown to collaborators on the canvas. You cannot skip this step.
+          Everyone in the team sees this name, on every project. You only pick it once.
         </p>
         <form onSubmit={handleSubmit} className={styles.form}>
           <input

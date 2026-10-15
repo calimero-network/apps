@@ -89,19 +89,6 @@ test.describe('Lobby Picker (integration)', () => {
     await expect(page.locator('.lobby-grid')).toBeVisible();
   });
 
-  test('swaps between Create new and Join via invitation tabs', async ({ page }) => {
-    await page.goto('/lobby');
-    await expect(page.locator('.naval-card-title', { hasText: 'Add a Lobby' })).toBeVisible({ timeout: 30_000 });
-
-    await expect(page.getByPlaceholder(/Lobby name/i)).toBeVisible();
-
-    await page.getByRole('tab', { name: /Join via invitation/i }).click();
-    await expect(page.getByPlaceholder(/Paste invitation/i)).toBeVisible({ timeout: 5_000 });
-
-    await page.getByRole('tab', { name: /Create new/i }).click();
-    await expect(page.getByPlaceholder(/Lobby name/i)).toBeVisible({ timeout: 5_000 });
-  });
-
   test('info icon is keyboard-focusable with an aria label', async ({ page }) => {
     await page.goto('/lobby');
     const infoIcon = page.locator('.info-icon').first();

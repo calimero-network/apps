@@ -5,7 +5,7 @@ import { createWorkspace, createAgreement } from '../../src/lib/agreements';
 import { encodeInvite } from '../../src/lib/inviteCodec';
 import { nodeApi, setMeroInstance } from '../../src/lib/node';
 import { meroApp } from '../../src/lib/meroApp';
-import { redeemInvitation } from '../../src/api/invitationJoin';
+import { joinWorkspaceFromInvitation } from '../../src/api/invitationJoin';
 
 // ── Redeeming an invitation, across two real nodes ─────────────────────────
 //
@@ -19,8 +19,9 @@ import { redeemInvitation } from '../../src/api/invitationJoin';
 // first. `ContextApiDataSource` swallowed that and replaced it with the
 // second, which was untrue and sent people to look at their node.
 //
-// This drives `redeemInvitation`, the function the app actually calls, so the
-// whole chain is under test: decode, join the NAMESPACE, find the agreement,
+// This drives `joinWorkspaceFromInvitation`, the function the app actually
+// calls (the invitation popup and the dashboard's paste box), so the whole
+// chain is under test: decode, join the NAMESPACE, find the agreement,
 // enter its subgroup.
 
 const store = new Map<string, string>();
@@ -52,7 +53,7 @@ beforeAll(async () => {
   acct1 = (await n1.admin.getNodeIdentity()).accountId;
 }, 300_000);
 
-describe('redeemInvitation', () => {
+describe('joinWorkspaceFromInvitation', () => {
   it('joins the workspace and lands in its agreement', async () => {
     setMeroInstance(n1);
     const { namespaceId } = await createWorkspace(n1.admin, {
@@ -77,7 +78,7 @@ describe('redeemInvitation', () => {
 
     // Now as the JOINER.
     setMeroInstance(n2);
-    const result = await redeemInvitation(code, meroApp(n2, null));
+    const result = await joinWorkspaceFromInvitation(code, meroApp(n2, null));
 
     expect(result.namespaceId).toBe(namespaceId);
     // The workspace holds one agreement, so it resolves to that one.

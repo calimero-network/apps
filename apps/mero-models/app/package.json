@@ -11,11 +11,13 @@
     "test": "vitest run",
     "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name MeroModelsClient --import-path @calimero-network/mero-js",
     "icons": "node scripts/gen-icons.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
     "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/invite": "workspace:*",
+    "@calimero-apps/names": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",

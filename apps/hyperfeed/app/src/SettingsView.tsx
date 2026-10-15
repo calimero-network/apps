@@ -317,6 +317,7 @@ function AgentsSection({
   install: ((pkg: string) => Promise<void>) | null;
 }) {
   const settings = feed.settings;
+  const ownerName = usePersonName(feed, settings?.owner);
   if (!settings) return null;
   const now = Date.now();
   const privates = new Set(privateAgents(settings));
@@ -372,12 +373,36 @@ function AgentsSection({
           </div>
           <div className="fact">
             <dt>Owner</dt>
-            <dd className="mono">{settings.owner}</dd>
+            {ownerName ? (
+              <dd>
+                {ownerName} <span className="mono muted">{settings.owner}</span>
+              </dd>
+            ) : (
+              <dd className="mono">{settings.owner}</dd>
+            )}
           </div>
         </dl>
       </section>
     </div>
   );
+}
+
+/** `identity`'s name from the namespace (`Feed.namePerson`), `""` until known or off a node. */
+function usePersonName(feed: Feed, identity: string | undefined): string {
+  const { namePerson } = feed;
+  const [name, setName] = useState("");
+  useEffect(() => {
+    setName("");
+    if (!namePerson || !identity) return;
+    let live = true;
+    namePerson(identity)
+      .then((n) => live && setName(n))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [namePerson, identity]);
+  return name;
 }
 
 /** What your feed reads from each app: the lenses your agent proposed, and yours to approve. */

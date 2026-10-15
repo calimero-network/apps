@@ -8,6 +8,7 @@ import TeamsPage from "./pages/teams/TeamsPage";
 import TeamCalendarsPage from "./pages/teams/TeamCalendarsPage";
 import CalendarPage from "./pages/calendar";
 import { ToastProvider } from "./contexts/ToastContext";
+import InvitationPrompt from "./components/common/invitation-prompt/InvitationPrompt";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
@@ -68,6 +69,8 @@ export default function App() {
   return (
     <ToastProvider>
       <MeroSessionBridge />
+      {/* Above the routes: an invitation link can open this app on any page. */}
+      <InvitationPrompt />
       <Routes>
         {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
             real URLs so they can be shared and opened cold, which needs a route

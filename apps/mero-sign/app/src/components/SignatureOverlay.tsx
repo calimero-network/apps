@@ -255,7 +255,7 @@ const SignatureOverlay: React.FC<SignatureOverlayProps> = ({
         const deltaX = canvasX - initialCanvasX;
         const deltaY = canvasY - initialCanvasY;
 
-        let newProps = { ...signature };
+        const newProps = { ...signature };
 
         switch (resizeHandle) {
           case 'top-left':
@@ -383,7 +383,7 @@ const SignatureOverlay: React.FC<SignatureOverlayProps> = ({
         const deltaX = canvasX - initialCanvasX;
         const deltaY = canvasY - initialCanvasY;
 
-        let newProps = { ...signature };
+        const newProps = { ...signature };
 
         // Apply more responsive scaling for touch
         const scaleFactor = 1.2; // Makes resize more responsive to touch

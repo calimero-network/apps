@@ -18,7 +18,7 @@ import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage, humanizeError } from "../utils/errorMessage";
 import { encodeInvitationObject, invitationLink } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
-import { getStoredTeamName, teamLabel } from "../utils/teamName";
+import { getStoredTeamName, useTeamName } from "../utils/teamName";
 import type { Project } from "../types";
 import ThemeToggle from "../components/ThemeToggle";
 import { EmptyBoardsArt, InviteArt } from "../components/Artwork";
@@ -32,6 +32,7 @@ export default function ProjectsPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { logout, isDelegated } = useMero();
+  const teamName = useTeamName(teamId);
 
   const [tab, setTab] = useState<Tab>("projects");
   const [projects, setProjects] = useState<Project[]>([]);
@@ -184,8 +185,8 @@ export default function ProjectsPage() {
         // Embed the team's human name so the joiner doesn't see a raw ID before
         // the namespace metadata syncs. `__teamName` is a sibling of the signed
         // invitation, so the existing decode path (invObj.invitation) is unchanged.
-        const teamName = getStoredTeamName(teamId);
-        const payload = teamName ? { ...data, __teamName: teamName } : data;
+        const storedName = getStoredTeamName(teamId);
+        const payload = storedName ? { ...data, __teamName: storedName } : data;
         setInvitation(encodeInvitationObject(payload));
       }
     } catch (err) {
@@ -200,8 +201,7 @@ export default function ProjectsPage() {
   async function copyInvite() {
     if (!invitation || inviteCopying) return;
     // Share the canonical link, not the bare token: it opens the desktop app
-    // where installed and the published web build otherwise. The join box on
-    // the Teams page still accepts either form, so links already shared work.
+    // where installed and the published web build otherwise.
     await navigator.clipboard.writeText(invitationLink(invitation));
     showToast("Invitation link copied to clipboard.", "success");
     // Show a brief loader, then reset back to the "Generate invitation" state so
@@ -214,7 +214,6 @@ export default function ProjectsPage() {
     }, 5000);
   }
 
-  const teamName = teamId ? teamLabel(teamId) : "Team";
 
   const createField = (
     <div className={styles.field}>
@@ -365,8 +364,8 @@ export default function ProjectsPage() {
               <h2 className={styles.inviteTitle}>Invite people to {teamName}</h2>
               <p className={styles.inviteDesc}>
                 Generate an invitation link and share it with teammates. Opening it launches
-                the desktop app where installed, and the web build otherwise — or they can
-                paste it on the Teams page to join.
+                the desktop app where installed, and the web build otherwise, and asks
+                them to join.
               </p>
               <ol className={styles.inviteSteps}>
                 <li><b>1</b> Generate</li>
@@ -414,6 +413,7 @@ export default function ProjectsPage() {
           type="project"
           id={settingsProject.contextId}
           groupId={settingsProject.groupId}
+          namespaceId={teamId}
           name={settingsProject.name || settingsProject.contextId.slice(0, 8)}
           onClose={() => setSettingsProject(null)}
         />

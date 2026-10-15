@@ -293,10 +293,28 @@ describe("members", () => {
     admin.listGroupMembers.mockResolvedValue({
       members: [{ identity: "a", role: "Admin", name: " Ana " }, { memberId: "b", role: "Member" }, { id: "" }],
     });
-    expect(await listGroupMembers("ns1")).toEqual([
-      { identity: "a", role: "Admin", name: "Ana" },
-      { identity: "b", role: "Member", name: undefined },
-    ]);
+    expect(await listGroupMembers("ns1")).toEqual({
+      members: [
+        { identity: "a", role: "Admin", name: "Ana" },
+        { identity: "b", role: "Member", name: undefined },
+      ],
+      teeMembers: [],
+    });
+  });
+
+  // A TEE fleet node is admitted to the namespace and every Born Open subgroup
+  // as a member row. It is infrastructure, so it is split out, never listed.
+  it("listGroupMembers keeps TEE nodes out of `members` and reports them as `teeMembers`", async () => {
+    admin.listGroupMembers.mockResolvedValue({
+      members: [
+        { identity: "a", role: "Admin", name: "Ana" },
+        { identity: "t1", role: "ReadOnlyTee" },
+        { identity: "t2", role: "RelayTee" },
+      ],
+    });
+    const { members, teeMembers } = await listGroupMembers("ns1");
+    expect(members.map((m) => m.identity)).toEqual(["a"]);
+    expect(teeMembers.map((m) => m.identity)).toEqual(["t1", "t2"]);
   });
 
   it("updateMemberRole sends { role }", async () => {

@@ -66,7 +66,13 @@ async function openNode(browser: Browser): Promise<Page> {
     ({ ownerUrl, token }) => {
       if (sessionStorage.getItem('conformance.seeded')) return;
       sessionStorage.setItem('conformance.seeded', '1');
-      localStorage.setItem('mero-tokens', JSON.stringify({ ...token, expires_at: Date.now() + 3_600_000 }));
+      // mero-js reads a bundle as signed out unless it names the node that
+      // issued it: the node's origin plus its path prefix.
+      const nodeOrigin = new URL(ownerUrl).origin + new URL(ownerUrl).pathname.replace(/\/+$/, '');
+      localStorage.setItem(
+        'mero-tokens',
+        JSON.stringify({ ...token, expires_at: Date.now() + 3_600_000, node_origin: nodeOrigin }),
+      );
       localStorage.setItem('mero:node_url', ownerUrl);
       localStorage.setItem('mero:token_node_url', ownerUrl);
     },

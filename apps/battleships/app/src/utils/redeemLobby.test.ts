@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { shouldRetain } from '@calimero-apps/invite';
-import { lobbyJoinFailureMessage, redeemLobbyInvitation, type LobbyAdmin } from './redeemLobby';
+import { describeInviteFailure, redeemInvitation, shouldRetain } from '@calimero-apps/invite';
+import { lobbyRedeemer, type LobbyAdmin } from './redeemLobby';
+
+/** What the prompt's banner shows for a failure, in this app's noun. */
+const lobbyJoinFailureMessage = (outcome: { reason: Parameters<typeof describeInviteFailure>[0]; message: string }) =>
+  describeInviteFailure(outcome.reason, 'lobby') ?? outcome.message;
 
 const NS = 'ns-1';
 const INVITATION = { invitation: { groupId: NS }, inviterSignature: 'sig' };
@@ -19,13 +23,17 @@ function fakeAdmin(
   } as unknown as LobbyAdmin & { joinNamespace: ReturnType<typeof vi.fn> };
 }
 
+/** What `useInviteRedemption` does with the redeemer, without React around it. */
+const redeemLobbyInvitation = (admin: LobbyAdmin, namespaceId: string, invitation: unknown, groupName?: string) =>
+  redeemInvitation({ namespaceId, invitation }, lobbyRedeemer(admin, () => groupName));
+
 async function failed(admin: LobbyAdmin) {
   const outcome = await redeemLobbyInvitation(admin, NS, INVITATION);
   if (outcome.status !== 'failed') throw new Error(`expected a failure, got ${outcome.status}`);
   return outcome;
 }
 
-describe('redeemLobbyInvitation', () => {
+describe('lobbyRedeemer', () => {
   it('reports a clean join as joined, sending the invitation and name as given', async () => {
     const admin = fakeAdmin(async () => ({ namespaceId: NS }), [NS]);
     const outcome = await redeemLobbyInvitation(admin, NS, INVITATION, 'Friday');

@@ -13,13 +13,16 @@ export interface AppCtx {
   data: UseCrmReturn;
   /** Account id: what `created_by` / `author` hold. Authorship gates use this. */
   currentUser: string;
-  /** The signed-in member's display name — what `owner` holds. */
+  /** The signed-in member's display name. */
   myName: string;
-  /** Display names of every member, for owner pickers. */
+  /** The signed-in member's account — what a new `owner` holds. */
+  myOwner: string;
+  /** Owner values for pickers (member accounts, plus legacy stored names);
+   *  label each with `aliases.ownerName`. */
   ownerOptions: string[];
   members: string[];
   aliases: UseAliasesReturn;
-  /** '' = everyone; otherwise a display name. Applies to board, deals, activities. */
+  /** '' = everyone; otherwise a display name (compare `aliases.ownerName(owner)`). Applies to board, deals, activities. */
   ownerFilter: string;
   setOwnerFilter: (owner: string) => void;
   searchQuery: string;

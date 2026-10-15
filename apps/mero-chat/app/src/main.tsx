@@ -4,12 +4,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 import { BrowserRouter } from "react-router-dom";
-import {
-  DeepLinkController,
-  PendingIntentStore,
-  getBridge,
-} from "@calimero-network/mero-platform";
-import { __setDeepLinkController } from "@calimero-network/mero-platform-react";
+import { primeInvitationCapture } from "@calimero-apps/invite";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
@@ -19,9 +14,9 @@ import {
 import MeroJsBridge from "./api/MeroJsBridge.tsx";
 import { BLOB_READ_TIMEOUT_MS } from "./api/blobs.ts";
 import {
-  TOKENS_KEY,
   jwtExpiryMs,
   readStoredTokens,
+  seedTokens,
   shouldSeedTokens,
 } from "./utils/authTokens.ts";
 import "@calimero-network/mero-ui/styles.css";
@@ -43,7 +38,7 @@ applyTheme(readStoredTheme());
 // the localStorage stays small and predictable.
 purgeLegacyIdentityDisplayNames();
 
-import 'react-photo-view/dist/react-photo-view.css';
+import "react-photo-view/dist/react-photo-view.css";
 
 // Session-specific keys that become stale across SSO opens and must be
 // cleared so the app starts fresh rather than navigating into old state.
@@ -110,14 +105,11 @@ function persistAuthHashOnLoad(): void {
     // Only on a genuinely new session: re-opening the current one must not
     // nuke the navigation state out from under a live tab.
     clearStaleSessionData();
-    localStorage.setItem(
-      TOKENS_KEY,
-      JSON.stringify({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        expires_at: hashExpiresAtMs,
-      }),
-    );
+    seedTokens(nodeUrl || previousNodeUrl, {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: hashExpiresAtMs,
+    });
   }
 
   // Remove the hash either way, so MeroProvider's parseAuthCallback doesn't
@@ -129,45 +121,18 @@ function persistAuthHashOnLoad(): void {
   );
 }
 
-// Capture any inbound deep-link intent (e.g. `?invitation=…`) into the platform
-// SDK's durable pending-intent store BEFORE React mounts. This must happen here,
-// not in a component effect, because React Router's <Navigate> replaces the URL
-// with /login (children effects fire before parents), wiping the query before
-// any component could read it — and on a cold invite open the user isn't
-// authenticated yet, so the consuming <NamespaceEntryPopup> (and its
-// `useDeepLink`) doesn't even mount until after the Connect/auth reload.
+// An invitation reaches this app only as an opened link: the links page (or a
+// cold desktop start) appends `?invitation=…` to this URL, and a running
+// desktop sends a `deep-link` event. Capture both BEFORE React mounts: React
+// Router's <Navigate> replaces the URL with /login before any component effect
+// could read the query, and on a cold open the user is not signed in yet.
 //
-// We pre-construct the singleton DeepLinkController and inject it so the
-// consumer's `useDeepLink` reuses it. The intent is persisted to
-// `calimero.platform.pendingIntents` (preserved across the Connect wipe — see
-// CONNECT_PRESERVE_EXACT in pages/Login) and replayed once the popup mounts.
-(function primeDeepLinkCapture() {
-  try {
-    const store = new PendingIntentStore(window.localStorage);
-    const controller = new DeepLinkController(store, {
-      location: window.location,
-      bridge: getBridge(),
-      launchQueue:
-        (window as unknown as { launchQueue?: unknown }).launchQueue ?? null,
-    } as ConstructorParameters<typeof DeepLinkController>[1]);
-    __setDeepLinkController(controller);
-
-    // The intent is now durably captured; strip `?invitation=` from the address
-    // bar for a clean URL (parity with the previous hand-rolled behavior).
-    const params = new URLSearchParams(window.location.search);
-    if (params.has("invitation")) {
-      params.delete("invitation");
-      const qs = params.toString();
-      window.history.replaceState(
-        {},
-        "",
-        window.location.pathname + (qs ? "?" + qs : "") + window.location.hash,
-      );
-    }
-  } catch {
-    /* ignore — storage/URL may be unavailable */
-  }
-})();
+// The intent is persisted in the platform SDK's pending-intent store
+// (`calimero.platform.pendingIntents`, preserved across the Connect wipe — see
+// CONNECT_PRESERVE_EXACT in pages/Login) and offered by the app-level
+// `InvitationPrompt` once the session can join. A link addressed to another
+// app is dropped, not offered.
+primeInvitationCapture("mero-chat", { slug: APP_SLUG });
 
 const CALIMERO_APP_ID_KEY = "calimero-application-id";
 
@@ -177,7 +142,9 @@ const CALIMERO_APP_ID_KEY = "calimero-application-id";
 // session, and getApplicationId() (constants/config.ts) reads the stored
 // value ahead of the build defaults.
 function getUrlApplicationId(): string {
-  const fromSearch = new URLSearchParams(window.location.search).get("app-id")?.trim();
+  const fromSearch = new URLSearchParams(window.location.search)
+    .get("app-id")
+    ?.trim();
   if (fromSearch) return fromSearch;
   const hash = new URLSearchParams(window.location.hash.slice(1));
   return hash.get("app-id")?.trim() || hash.get("application_id")?.trim() || "";
@@ -204,8 +171,12 @@ if ("serviceWorker" in navigator && !import.meta.env.DEV) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js")
-      .then(() => log.info("ServiceWorker", "Service worker registered successfully"))
-      .catch((error) => log.error("ServiceWorker", "Service worker registration failed", error));
+      .then(() =>
+        log.info("ServiceWorker", "Service worker registered successfully"),
+      )
+      .catch((error) =>
+        log.error("ServiceWorker", "Service worker registration failed", error),
+      );
   });
 }
 
@@ -227,7 +198,10 @@ function boot() {
     <AppWrapper>
       <ErrorBoundary
         onError={(error, errorInfo) => {
-          log.error("App", "Uncaught error in React tree", { error, errorInfo });
+          log.error("App", "Uncaught error in React tree", {
+            error,
+            errorInfo,
+          });
         }}
       >
         <MeroProvider

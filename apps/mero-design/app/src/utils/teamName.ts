@@ -1,3 +1,6 @@
+import { useMero } from "@calimero-network/mero-react";
+import { placeholderName, useGroupName } from "@calimero-apps/names";
+
 // Human names for teams (namespaces) aren't always available from the server on
 // the node that *joined* a team — the namespace metadata may not have synced yet,
 // so the team would otherwise render as a raw ID. We cache the name locally:
@@ -33,4 +36,24 @@ export function teamLabel(groupId: string, serverName?: string): string {
   const cached = getStoredTeamName(groupId);
   if (cached) return cached;
   return `Team ${groupId.slice(0, 6)}`;
+}
+
+/**
+ * A team's name for rendering: the namespace's replicated record first, so a
+ * deep link or a new device shows the name rather than `Team fb884a`, then the
+ * listing, then this browser's cache. A name only this browser knows is
+ * promoted into the record once, so everyone else sees it too.
+ */
+export function useTeamName(groupId: string | undefined, listedName?: string): string {
+  const { admin } = useMero();
+  return useGroupName(
+    admin,
+    groupId,
+    {
+      listedName,
+      localName: groupId ? getStoredTeamName(groupId) : "",
+      fallback: groupId ? placeholderName("Team", groupId) : "Team",
+    },
+    { backfillLocal: true },
+  );
 }

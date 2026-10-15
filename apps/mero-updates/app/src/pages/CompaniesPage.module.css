@@ -69,8 +69,7 @@
   color: var(--text);
   margin-bottom: 8px;
 }
-.createRow,
-.joinRow {
+.createRow {
   display: flex;
   gap: 8px;
 }
@@ -100,7 +99,9 @@
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
 }
 .btn:hover:not(:disabled) {
   background: var(--accent-hover);
@@ -260,7 +261,9 @@
   color: var(--text);
   text-align: left;
   cursor: pointer;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 .card:hover:not(:disabled) {
   box-shadow: var(--shadow-lift);
@@ -445,7 +448,6 @@
   color: var(--text);
 }
 .emptyTile,
-.joinTile,
 .dangerTile {
   flex: none;
   width: 46px;
@@ -459,36 +461,6 @@
 }
 .emptyTile {
   margin-bottom: 6px;
-}
-
-/* ── Join ────────────────────────────────────────────────────────────────── */
-.joinSection {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-  padding: 22px;
-  background:
-    radial-gradient(380px 150px at 0% 0%, color-mix(in srgb, var(--glass-tint) 12%, transparent), transparent 70%),
-    var(--surface);
-  border-radius: 20px;
-  box-shadow: var(--shadow-card);
-}
-.joinBody {
-  flex: 1;
-  min-width: 0;
-}
-.joinTitle {
-  margin: 0 0 2px;
-  font-size: 16px;
-  font-weight: 700;
-}
-.joinLabel {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: var(--text-dim);
-}
-.joinRow {
-  max-width: 560px;
 }
 
 /* ── Destructive confirm ─────────────────────────────────────────────────── */
@@ -542,8 +514,7 @@
   .main {
     padding: 24px 16px 64px;
   }
-  .createRow,
-  .joinRow {
+  .createRow {
     flex-wrap: wrap;
   }
   .pageHead {
@@ -558,8 +529,5 @@
   }
   .title {
     font-size: 30px;
-  }
-  .joinTile {
-    display: none;
   }
 }

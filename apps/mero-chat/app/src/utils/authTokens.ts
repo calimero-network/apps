@@ -3,6 +3,8 @@
 // mero-js stores auth as a single JSON blob at `mero-tokens` (its
 // LocalStorageTokenStore); MeroProvider reads and rotates that same blob.
 
+import { LocalStorageTokenStore, MeroJs } from "@calimero-network/mero-js";
+
 export const TOKENS_KEY = "mero-tokens";
 
 export type StoredTokens = {
@@ -93,4 +95,23 @@ export function shouldSeedTokens(args: {
   if (!stored) return true;
   if (nodeChanged) return true;
   return hashExpiresAtMs > tokenExpiryMs(stored);
+}
+
+/**
+ * Store a bundle as the session for `nodeUrl`.
+ *
+ * mero-js (>= 25.0.7) binds a stored bundle to the node that issued it
+ * (`node_origin`) and reads one without that binding, or bound to another node,
+ * as signed out. Writing through a `MeroJs` for the node is what stamps it, so
+ * MeroProvider adopts the bundle. With no node known there is nothing to bind
+ * it to, and it is stored as given.
+ */
+export function seedTokens(nodeUrl: string | null, tokens: StoredTokens): void {
+  if (!nodeUrl) {
+    localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
+    return;
+  }
+  const client = new MeroJs({ baseUrl: nodeUrl, tokenStore: new LocalStorageTokenStore(TOKENS_KEY) });
+  client.setTokenData(tokens);
+  client.close();
 }

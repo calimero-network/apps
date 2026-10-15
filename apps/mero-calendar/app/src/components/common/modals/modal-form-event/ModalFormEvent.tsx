@@ -382,7 +382,7 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
                           onClick={() => addPeer(m.id)}
                         >
                           <span className={styles.peers__optionName}>
-                            {m.username?.trim() || shortPk(m.id)}
+                            {displayName(m.id)}
                           </span>
                           <span className={styles.peers__optionPk}>
                             {shortPk(m.id)}

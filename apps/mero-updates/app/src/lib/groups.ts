@@ -34,6 +34,11 @@ import {
 } from "./inviteCodec";
 import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
 import {
+  describeInviteFailure,
+  redeemInvitation,
+  type RedeemOutcome,
+} from "@calimero-apps/invite";
+import {
   HOSTING_REFUSED_MESSAGE,
   clearSpaceUnhosted,
   markSpaceUnhosted,
@@ -183,6 +188,43 @@ function isAlreadyMember(e: unknown): boolean {
   );
 }
 
+// ── TEE nodes ─────────────────────────────────────────────────────────────────
+//
+// A TEE fleet node is admitted by hardware attestation as a member row with
+// role `ReadOnlyTee` (replica) or `RelayTee` (relay), in the namespace and in
+// every audience born Open. It is infrastructure, not a person: no member count
+// may include it. Its presence is what "TEE enabled" means.
+
+export const isTeeRole = (role: string | undefined): boolean =>
+  role === "ReadOnlyTee" || role === "RelayTee";
+
+/** How a TEE node serves a group: `relay` if any TEE row is a `RelayTee`. */
+export type TeeMode = "relay" | "replica";
+
+function teeModeOf(rows: readonly { role?: string }[]): TeeMode | null {
+  const tee = rows.filter((m) => isTeeRole(m.role));
+  if (tee.length === 0) return null;
+  return tee.some((m) => m.role === "RelayTee") ? "relay" : "replica";
+}
+
+/**
+ * Whether a TEE node backs this namespace, read from its own member list.
+ *
+ * Failures read as "no TEE": the indicator is informational and must never
+ * break the page it sits on.
+ */
+export async function namespaceTeeMode(
+  admin: AdminApiClient,
+  namespaceId: string,
+): Promise<TeeMode | null> {
+  try {
+    const r = await admin.listGroupMembers(namespaceId);
+    return teeModeOf(r.members ?? []);
+  } catch {
+    return null;
+  }
+}
+
 // ── Namespaces ────────────────────────────────────────────────────────────────
 
 export interface NamespaceRow {
@@ -293,9 +335,8 @@ export async function createSpaceNamespace(
 /**
  * Where a redeemed invitation should land the user.
  *
- * Returned rather than navigated to, because the two callers that redeem — the
- * paste field and the link prompt — live in different parts of the tree and only
- * the audienceer knows how it wants to route.
+ * Returned rather than navigated to, so the caller — the app-level link prompt —
+ * decides how to route.
  */
 export type Redeemed =
   | {
@@ -314,20 +355,77 @@ export type Redeemed =
   | { kind: "joined" };
 
 /**
+ * What redeeming an invitation came to: the join's outcome and, when the join
+ * held, where it landed. A failed join is returned rather than thrown, because
+ * the caller acks or keeps the invitation by it (`shouldRetain`).
+ */
+export type RedeemResult =
+  | {
+      outcome: Extract<RedeemOutcome, { status: "failed" }>;
+      landed?: undefined;
+    }
+  | {
+      outcome: Exclude<RedeemOutcome, { status: "failed" }>;
+      landed: Redeemed;
+    };
+
+/** What to tell the user about a failed join, in this app's noun. */
+export function redeemFailureMessage(
+  outcome: Extract<RedeemOutcome, { status: "failed" }>,
+): string {
+  return describeInviteFailure(outcome.reason, "company") ?? outcome.message;
+}
+
+/** The namespace an invitation grants: the same signed id `acceptInvite` joins. */
+function invitedNamespaceOf(payload: AudienceInvitePayload): string {
+  const step = payload.chain?.find((s) => s.kind === "namespace");
+  if (step) return groupIdOfInvite(step.invitation) || step.groupId;
+  return groupIdOfInvite(payload);
+}
+
+/**
  * Accept an invitation and enter whatever it granted.
  *
- * Extracted so the paste path and the link path cannot drift: they used to be one
- * inline sequence in CompaniesPage, which meant the app-wide invitation prompt
- * either had to duplicate it or could not exist. An audience invitation needs BOTH
- * joins — the namespace grant and then the audience's context — and forgetting the
- * second leaves someone a member of a space staring at an audience they cannot open.
+ * An audience invitation needs BOTH joins — the namespace grant and then the
+ * audience's context — and forgetting the second leaves someone a member of a
+ * space staring at an audience they cannot open.
+ *
+ * The join goes through `redeemInvitation`, which sends it once and settles a
+ * failed request against the node's namespace list: the desktop proxy aborts at
+ * 30s while a join can take far longer and land anyway, and that is a member,
+ * not a failure.
  */
 export async function redeemInvite(
   admin: AdminApiClient,
   payload: AudienceInvitePayload,
   onStatus: (message: string) => void,
-): Promise<Redeemed> {
-  const accepted = await acceptInvite(admin, payload, onStatus);
+): Promise<RedeemResult> {
+  // Written from inside `join`; the cast keeps TS from narrowing it to `null`.
+  let joined = null as AcceptedInvite | null;
+  const outcome = await redeemInvitation(
+    {
+      namespaceId: invitedNamespaceOf(payload),
+      invitation: payload.invitation,
+    },
+    {
+      join: async () => {
+        joined = await acceptInvite(admin, payload, onStatus);
+      },
+      memberships: async () =>
+        ((await admin.listNamespaces()) ?? []).map((n) => n.namespaceId),
+    },
+  );
+  if (outcome.status === "failed") return { outcome };
+
+  // `already-member` after a request that failed: the node lists the namespace,
+  // so route by the code's hints exactly as a clean join of it would.
+  const accepted: AcceptedInvite = joined ?? {
+    namespaceId: outcome.namespaceId,
+    audienceId: payload.audienceId ?? null,
+    contextId: payload.contextId ?? null,
+    audienceName: payload.audienceName,
+    namespaceName: payload.groupAlias,
+  };
 
   // The grant has landed; the namespace's own state has not. Flag it so the
   // list this joiner is about to see says "syncing" rather than rendering an
@@ -341,17 +439,23 @@ export async function redeemInvite(
       onStatus,
     );
     return {
-      kind: "audience",
-      contextId: accepted.contextId,
-      identity,
-      audienceName: accepted.audienceName,
-      namespaceId: accepted.namespaceId ?? undefined,
+      outcome,
+      landed: {
+        kind: "audience",
+        contextId: accepted.contextId,
+        identity,
+        audienceName: accepted.audienceName,
+        namespaceId: accepted.namespaceId ?? undefined,
+      },
     };
   }
   if (accepted.namespaceId) {
-    return { kind: "namespace", namespaceId: accepted.namespaceId };
+    return {
+      outcome,
+      landed: { kind: "namespace", namespaceId: accepted.namespaceId },
+    };
   }
-  return { kind: "joined" };
+  return { outcome, landed: { kind: "joined" } };
 }
 
 export interface AudienceRow {
@@ -359,7 +463,10 @@ export interface AudienceRow {
   name: string;
   /** The audience's audience context. Null while an audience exists but its context has not replicated yet. */
   contextId: string | null;
+  /** People only: TEE node rows are not counted. */
   memberCount: number;
+  /** The audience's TEE node, if one was admitted (born-Open audiences admit it). */
+  teeMode: TeeMode | null;
   /** True when this node already holds an identity in the audience's context. */
   joined: boolean;
   /**
@@ -405,7 +512,8 @@ export async function listAudiences(
           (meta?.name ?? "").trim() ||
           `Audience ${sg.groupId.slice(0, 6)}`,
         contextId,
-        memberCount: members.length,
+        memberCount: members.filter((m) => !isTeeRole(m.role)).length,
+        teeMode: teeModeOf(members),
         joined: !!identity,
         identity,
       };
@@ -529,7 +637,9 @@ export async function deleteSpace(
   onStatus: StatusFn = noop,
 ): Promise<void> {
   onStatus("Finding the audiences in this space…");
-  const audiences = await listAudiences(admin, opts.namespaceId).catch(() => []);
+  const audiences = await listAudiences(admin, opts.namespaceId).catch(
+    () => [],
+  );
 
   for (const audience of audiences) {
     if (!audience.contextId) continue;
@@ -884,7 +994,9 @@ async function diagnoseAdmission(
     );
   }
 
-  const namespaceId = await parentNamespaceOf(admin, audienceId).catch(() => null);
+  const namespaceId = await parentNamespaceOf(admin, audienceId).catch(
+    () => null,
+  );
   if (!namespaceId) {
     return (
       "This node cannot see which space the audience belongs to, which means the " +

@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import { defaultLogin, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
+import { answeredNamePrompt, defaultLogin, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
 
 const SYNC = 90_000;
 
@@ -38,6 +38,7 @@ async function waitForCalendar(actor: Actor): Promise<void> {
   await expect(page.getByTestId("add-event-btn")).toBeVisible({ timeout: 60_000 });
   const modal = page.getByTestId("username-modal");
   if (await modal.isVisible()) {
+    answeredNamePrompt(actor, new URL(page.url()).pathname);
     await page.getByTestId("username-input").fill(username(actor));
     await page.getByTestId("username-submit").click();
     await expect(modal).toBeHidden({ timeout: 15_000 });
@@ -229,6 +230,9 @@ export const driver: AppDriver = {
 
   async createNamespace(actor, name) {
     const page = actor.page;
+    // A fresh namespace per test: no calendar from the previous test's team
+    // may be opened in this one.
+    for (const key of Object.keys(spaceOf)) delete spaceOf[key];
     await goTeams(page);
     await page.getByTestId("new-team-input").fill(name);
     await page.getByTestId("create-team-btn").click();
@@ -284,12 +288,20 @@ export const driver: AppDriver = {
     return link;
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    await goTeams(page);
-    await page.getByTestId("join-code-input").fill(link);
-    await page.getByTestId("join-team-btn").click();
-    await expect(page.getByTestId(`team-card-${teamId}`)).toBeVisible({ timeout: 120_000 });
+    // The prompt opens the joined team's calendars.
+    const landed = page.waitForURL((u) => u.pathname === `/teams/${teamId}`, { timeout: 120_000 });
+    const failed = page
+      .locator('[data-testid="invite-status"][data-stage="failed"]')
+      .waitFor({ state: "visible", timeout: 120_000 })
+      .then(async () => {
+        throw new Error(`join refused: ${await page.getByTestId("invite-status").innerText()}`);
+      });
+    landed.catch(() => undefined);
+    failed.catch(() => undefined);
+    await Promise.race([landed, failed]);
+    await expect(page.getByTestId("create-calendar-btn")).toBeVisible({ timeout: 30_000 });
   },
 
   async afterReload(actor) {

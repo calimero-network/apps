@@ -11,9 +11,12 @@ import {
   listAudiences,
   mintNamespaceInvite,
   mintAudienceInvite,
+  namespaceTeeMode,
   type AudienceRow,
+  type TeeMode,
 } from "../lib/groups";
 import InviteModal from "../components/InviteModal";
+import { TeeBadge } from "../components/ui";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { hostingProblem } from "../lib/hosting";
 import AppHeader from "../components/AppHeader";
@@ -66,8 +69,11 @@ export default function AudiencesPage() {
   // Whether anyone can be invited to this space — see lib/hosting. Re-read
   // after every mint, since a refused one is where the answer may change.
   const [hostingVersion, setHostingVersion] = useState(0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const hostingNote = useMemo(() => hostingProblem(namespaceId), [namespaceId, hostingVersion]);
+  const hostingNote = useMemo(
+    () => hostingProblem(namespaceId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [namespaceId, hostingVersion],
+  );
 
   const [audiences, setAudiences] = useState<AudienceRow[]>([]);
   /** The space whose audience list has come back at least once. */
@@ -75,6 +81,14 @@ export default function AudiencesPage() {
   /** Contract roster per audience context, kept for the member counts on each row. */
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
+  /**
+   * The company's TEE node, if any, keyed by the namespace it was read for —
+   * shown beside its name, never as a member.
+   */
+  const [tee, setTee] = useState<{
+    id: string;
+    mode: TeeMode | null;
+  } | null>(null);
   const [name, setName] = useState("");
 
   const [pending, setPending] = useState<string | null>(null);
@@ -123,6 +137,10 @@ export default function AudiencesPage() {
         const info = await admin.getNamespace(namespaceId).catch(() => null);
         setNsName(
           (info?.name ?? "").trim() || `Space ${namespaceId.slice(0, 6)}`,
+        );
+        // Never throws: an unreadable member list reads as "no TEE".
+        void namespaceTeeMode(admin, namespaceId).then((mode) =>
+          setTee({ id: namespaceId, mode }),
         );
         setAudiences(await listAudiences(admin, namespaceId));
         // A real answer, empty or not — that is what ends the sync gate.
@@ -221,11 +239,12 @@ export default function AudiencesPage() {
           scope: `Opens ${audience.name}`,
           hint: (
             <>
-              One paste puts them straight into <strong>{audience.name}</strong>.
-              Note what it grants: joining <strong>{nsName}</strong>, which
-              makes every audience in it reachable — access is inherited from
-              the company, so this is <em>not</em> narrower than the company
-              link. It just lands them in this audience instead of the list.
+              Opening the link puts them straight into{" "}
+              <strong>{audience.name}</strong>. Note what it grants: joining{" "}
+              <strong>{nsName}</strong>, which makes every audience in it
+              reachable — access is inherited from the company, so this is{" "}
+              <em>not</em> narrower than the company link. It just lands them in
+              this audience instead of the list.
             </>
           ),
         });
@@ -250,9 +269,9 @@ export default function AudiencesPage() {
         hint: (
           <>
             This link joins <strong>{nsName}</strong> and every audience in it,
-            including audiences made later. It lands them on the audience list — to
-            drop someone straight into one audience, use <strong>Invite</strong> on
-            that audience.
+            including audiences made later. It lands them on the audience list —
+            to drop someone straight into one audience, use{" "}
+            <strong>Invite</strong> on that audience.
           </>
         ),
       });
@@ -289,6 +308,13 @@ export default function AudiencesPage() {
     [admin, run, load, showToast],
   );
 
+  // The namespace's own member list says so; an audience born Open admitted the
+  // same node, so its rows say so too when the namespace read came back empty.
+  const teeMode =
+    (tee?.id === namespaceId ? tee.mode : null) ??
+    audiences.find((a) => a.teeMode)?.teeMode ??
+    null;
+
   const copyId = (label: string, id: string) => {
     void navigator.clipboard
       ?.writeText(id)
@@ -300,7 +326,11 @@ export default function AudiencesPage() {
     <div className={styles.root}>
       <AppHeader
         crumbs={[
-          { label: "Companies", onClick: () => navigate("/companies"), icon: <LayersIcon size={14} /> },
+          {
+            label: "Companies",
+            onClick: () => navigate("/companies"),
+            icon: <LayersIcon size={14} />,
+          },
           { label: nsName || "Company" },
         ]}
         right={<LogoutButton />}
@@ -313,6 +343,7 @@ export default function AudiencesPage() {
           </span>
           <div className={styles.headText}>
             <h1 className={styles.title}>{nsName || "Company"}</h1>
+            <TeeBadge mode={teeMode} />
             {/* Said on the page because it is the one thing a founder would
                 otherwise assume wrong: an audience here is a FILTER for attention,
                 not a wall. Audiences are open subgroups, so a member of the company
@@ -385,7 +416,9 @@ export default function AudiencesPage() {
 
         <div className={styles.sectionHead}>
           <h2 className={styles.sectionTitle}>Audiences</h2>
-          {!listing && audiences.length > 0 && <span className={styles.count}>{audiences.length}</span>}
+          {!listing && audiences.length > 0 && (
+            <span className={styles.count}>{audiences.length}</span>
+          )}
         </div>
 
         {isSyncing ? (
@@ -417,7 +450,11 @@ export default function AudiencesPage() {
                   disabled={!audience.contextId}
                   onClick={() => enter(audience)}
                 >
-                  <span className={styles.cardTile} data-joined={audience.joined} aria-hidden>
+                  <span
+                    className={styles.cardTile}
+                    data-joined={audience.joined}
+                    aria-hidden
+                  >
                     <HashIcon size={18} />
                   </span>
                   <span className={styles.cardText}>
@@ -427,7 +464,9 @@ export default function AudiencesPage() {
                         <>
                           <UsersIcon size={13} />
                           {`${audience.memberCount} member${audience.memberCount === 1 ? "" : "s"}`}
-                          {!audience.joined && <span className={styles.tag}>not joined</span>}
+                          {!audience.joined && (
+                            <span className={styles.tag}>not joined</span>
+                          )}
                         </>
                       ) : (
                         <>
@@ -440,7 +479,10 @@ export default function AudiencesPage() {
                   {pending === `enter:${audience.audienceId}` ? (
                     <span className={styles.spinner} aria-hidden />
                   ) : (
-                    <ChevronRightIcon size={16} className={styles.cardChevron} />
+                    <ChevronRightIcon
+                      size={16}
+                      className={styles.cardChevron}
+                    />
                   )}
                 </button>
                 <button
@@ -452,7 +494,9 @@ export default function AudiencesPage() {
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpenId(
-                      menuOpenId === audience.audienceId ? null : audience.audienceId,
+                      menuOpenId === audience.audienceId
+                        ? null
+                        : audience.audienceId,
                     );
                   }}
                 >
@@ -508,7 +552,10 @@ export default function AudiencesPage() {
                         </button>
                       </>
                     )}
-                    <div className={styles.dropdownMeta} title={audience.audienceId}>
+                    <div
+                      className={styles.dropdownMeta}
+                      title={audience.audienceId}
+                    >
                       Group <code>{audience.audienceId}</code>
                     </div>
                   </div>

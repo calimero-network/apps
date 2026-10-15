@@ -1,6 +1,6 @@
 import { deflateSync } from "node:zlib";
 import { expect, type Locator, type Page } from "@playwright/test";
-import type { Actor, AppDriver, Feature } from "@calimero-apps/e2e-node/journey";
+import { answeredNamePrompt, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
 
 const SYNC = 90_000;
 
@@ -10,7 +10,6 @@ const tracked = new WeakSet<Page>();
 const boards: Record<string, string> = {};
 const named = new Set<string>();
 let teamId = "";
-let teamName = "";
 let mainBoard = "";
 let granted = false;
 
@@ -106,6 +105,7 @@ async function nameIfAsked(actor: Actor, waitMs: number): Promise<void> {
   const deadline = Date.now() + waitMs;
   do {
     if (await input.isVisible().catch(() => false)) {
+      answeredNamePrompt(actor, new URL(page.url()).pathname);
       await input.fill(`${actor.name}-${actor.run}`);
       await page.getByTestId("username-submit").click();
       await expect(input).toBeHidden({ timeout: 30_000 });
@@ -347,13 +347,117 @@ const deleteImage: Feature = {
   },
 };
 
+async function openProjectSettings(actor: Actor, name: string): Promise<Locator> {
+  const page = actor.page;
+  await gotoTeam(actor);
+  const card = projectCard(page, name);
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  const ctx = await contextIdOf(card);
+  await card.locator("xpath=..").getByTitle("More options").click();
+  await page.getByTestId(`project-settings-${ctx}`).click();
+  const modal = page.getByRole("heading", { name: /— Settings$/ }).locator("xpath=../..");
+  await expect(modal).toBeVisible({ timeout: 30_000 });
+  return modal;
+}
+
+async function closeSettings(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "✕", exact: true }).click();
+}
+
+/**
+ * The name a person picked once, for the team, reaches the other node: their
+ * member row in a board's settings shows it instead of an account id. The
+ * name lives in namespace member metadata, outside any board's contract, so
+ * this is the one check that it crossed nodes through governance.
+ */
+const teamName: Feature = {
+  name: "your team name reaches the other node",
+  async do(actor) {
+    // Named on the first board it opened; nothing else to do. Opening the main
+    // board again must not ask (answeredNamePrompt fails the run if it does).
+    await ensureBoard(actor);
+  },
+  async seen(actor, by) {
+    const page = actor.page;
+    const want = `${by.name}-${by.run}`;
+    await expect
+      .poll(
+        async () => {
+          const modal = await openProjectSettings(actor, mainBoard);
+          const found = await modal
+            .getByText(want, { exact: false })
+            .first()
+            .waitFor({ timeout: 5_000 })
+            .then(() => true, () => false);
+          await closeSettings(page);
+          return found;
+        },
+        { timeout: SYNC, intervals: [2_000, 5_000] },
+      )
+      .toBe(true);
+  },
+};
+
+/**
+ * A board you have not opened before joins you under your team name: no
+ * prompt. The lifecycle opens more boards later too, and every one of them is
+ * held to the same rule by answeredNamePrompt.
+ */
+const noPromptOnNewBoard: Feature = {
+  name: "a new board does not ask for your name again",
+  // One way: creating a project is an admin's act, and only alice is one. The
+  // other direction is covered by `seen` — bob opens alice's new board.
+  oneWay: true,
+  async do(actor) {
+    const name = `named-${actor.name}-${actor.run}`;
+    await gotoTeam(actor);
+    await actor.page.getByTestId("new-project-input").fill(name);
+    await actor.page.getByTestId("create-project-btn").click();
+    const card = projectCard(actor.page, name);
+    await expect(card).toBeVisible({ timeout: 60_000 });
+    boards[name] = await contextIdOf(card);
+    await card.click();
+    await expect(actor.page.getByTestId("fabric-canvas")).toBeVisible({ timeout: SYNC });
+    // Long enough for the old behaviour to show its prompt.
+    await actor.page.waitForTimeout(8_000);
+    await expect(actor.page.getByTestId("username-input")).toBeHidden();
+  },
+  async seen(actor, by) {
+    // The board reached the other node and opens there without a prompt for
+    // `actor` either (they named themselves on the main board already).
+    const name = `named-${by.name}-${by.run}`;
+    await gotoTeam(actor);
+    const card = projectCard(actor.page, name);
+    await expect
+      .poll(
+        async () => {
+          if (await card.isVisible()) return true;
+          await actor.page.reload();
+          await card.waitFor({ timeout: 8_000 }).catch(() => undefined);
+          return card.isVisible();
+        },
+        { timeout: SYNC, intervals: [2_000, 3_000, 5_000] },
+      )
+      .toBe(true);
+    await card.click();
+    await expect(actor.page.getByTestId("fabric-canvas")).toBeVisible({ timeout: SYNC });
+    await actor.page.waitForTimeout(8_000);
+    await expect(actor.page.getByTestId("username-input")).toBeHidden();
+  },
+};
+
 export const driver: AppDriver = {
   app: "mero-design",
 
   async createNamespace(actor, name) {
     track(actor);
     const page = actor.page;
-    teamName = name;
+    // A fresh namespace per test: nothing from the previous test's team may
+    // leak into this one.
+    for (const key of Object.keys(boards)) delete boards[key];
+    named.clear();
+    mainBoard = "";
+    granted = false;
     await expect(page.getByRole("heading", { name: "Your Teams" })).toBeVisible({ timeout: 60_000 });
     await page.getByPlaceholder("New team name").fill(name);
     await page.getByRole("button", { name: "Create", exact: true }).click();
@@ -414,19 +518,21 @@ export const driver: AppDriver = {
     return (await token.getAttribute("title")) ?? (await token.innerText());
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     track(actor);
     const page = actor.page;
-    await expect(page.getByRole("heading", { name: "Your Teams" })).toBeVisible({ timeout: 60_000 });
-    await page.getByPlaceholder("Paste invitation code").fill(link);
-    await page.getByRole("button", { name: "Join", exact: true }).click();
-    await expect(page.getByTestId("toast").filter({ hasText: /Joined team|already in this team/ })).toBeVisible({
-      timeout: SYNC,
-    });
-    const card = page.locator("button", { hasText: teamName });
-    await expect(card).toBeVisible({ timeout: 60_000 });
-    await card.click();
-    await page.waitForURL(/\/teams\/[^/]+\/projects$/, { timeout: 30_000 });
+    const landed = expect(page.getByTestId("toast").filter({ hasText: /Joined team|already in this team/ }))
+      .toBeVisible({ timeout: SYNC })
+      .then(() => page.waitForURL(new RegExp(`${teamPath()}$`), { timeout: 30_000 }));
+    const failed = page
+      .locator('[data-testid="invite-status"][data-stage="failed"]')
+      .waitFor({ state: "visible", timeout: SYNC })
+      .then(async () => {
+        throw new Error(`join refused: ${await page.getByTestId("invite-status").innerText()}`);
+      });
+    landed.catch(() => undefined);
+    failed.catch(() => undefined);
+    await Promise.race([landed, failed]);
     await expect(projectsTab(page)).toBeVisible({ timeout: 30_000 });
   },
 
@@ -434,5 +540,5 @@ export const driver: AppDriver = {
     await waitBoard(actor);
   },
 
-  features: [drawRect, placeImage, renameShape, deleteImage],
+  features: [drawRect, teamName, noPromptOnNewBoard, placeImage, renameShape, deleteImage],
 };

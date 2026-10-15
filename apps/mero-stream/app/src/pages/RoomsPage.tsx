@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
+import { useMemberNames } from "@calimero-apps/names";
 import { useApplicationId } from "../hooks/useApplicationId";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveRoom, setRoomName } from "../lib/session";
@@ -10,9 +11,11 @@ import {
   listRooms,
   mintNamespaceInvite,
   mintRoomInvite,
+  namespaceTeeMode,
   type RoomRow,
+  type TeeMode,
 } from "../lib/groups";
-import { ActionButton, StatusNote, Spinner } from "../components/ui";
+import { ActionButton, StatusNote, Spinner, TeeBadge } from "../components/ui";
 import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
 import { hostingProblem } from "../lib/hosting";
@@ -64,6 +67,8 @@ export default function RoomsPage() {
   // transport shape on both and is what the contract roster is read with.
   const { mero, admin } = useMero();
   const { showToast } = useToast();
+  // Stream-wide names, for members with no room nickname yet.
+  const { nameOf } = useMemberNames(admin, namespaceId);
   // What the contract calls "you" on an ACCOUNT: the certified device key,
   // which is not the identity `identities-owned` reports (the account). Null on
   // a node, where it is the room's own identity instead — see lib/identity.
@@ -73,11 +78,19 @@ export default function RoomsPage() {
 
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   /** Contract roster per room context, so rows can show WHO is in a call. */
-  const [rosters, setRosters] = useState<Record<string, RoomMemberLabel[]>>({});
+  const [rosters, setRosters] = useState<Record<string, Member[]>>({});
   const [listing, setListing] = useState(true);
   /** The stream whose room list has come back at least once. */
   const [listedForNs, setListedForNs] = useState<string | null>(null);
   const [nsName, setNsName] = useState("");
+  /**
+   * The stream's TEE node, if any, keyed by the namespace it was read for —
+   * shown beside its name, never as a member.
+   */
+  const [tee, setTee] = useState<{
+    id: string;
+    mode: TeeMode | null;
+  } | null>(null);
   const [name, setName] = useState("");
 
   const [pending, setPending] = useState<string | null>(null);
@@ -129,6 +142,10 @@ export default function RoomsPage() {
         setNsName(
           (info?.name ?? "").trim() || `Stream ${namespaceId.slice(0, 6)}`,
         );
+        // Never throws: an unreadable member list reads as "no TEE".
+        void namespaceTeeMode(admin, namespaceId).then((mode) =>
+          setTee({ id: namespaceId, mode }),
+        );
         setRooms(await listRooms(admin, namespaceId));
         // A real answer, empty or not — that is what ends the sync gate.
         setListedForNs(namespaceId);
@@ -170,26 +187,21 @@ export default function RoomsPage() {
             method: "get_members",
             argsJson: {},
           });
-          return [
-            room.contextId!,
-            // Self is the CONTRACT's id for this session: the device key on an
-            // account, the room's own identity on a node.
-            labelMembers(members ?? [], accountMyId ?? room.identity ?? ""),
-          ] as const;
+          return [room.contextId!, members ?? []] as const;
         } catch {
           return null;
         }
       }),
     ).then((entries) => {
       if (cancelled) return;
-      const next: Record<string, RoomMemberLabel[]> = {};
+      const next: Record<string, Member[]> = {};
       for (const entry of entries) if (entry) next[entry[0]] = entry[1];
       setRosters(next);
     });
     return () => {
       cancelled = true;
     };
-  }, [mero, rooms, accountMyId]);
+  }, [mero, rooms]);
 
   const create = useCallback(() => {
     const roomName = name.trim();
@@ -263,11 +275,12 @@ export default function RoomsPage() {
           scope: `Opens ${room.name}`,
           hint: (
             <>
-              One paste puts them straight into <strong>{room.name}</strong>.
-              Note what it grants: joining <strong>{nsName}</strong>, which is
-              what makes any room in it reachable — room access is inherited
-              from the stream, so this is <em>not</em> narrower than the stream
-              code. It just lands them in this call instead of the room list.
+              Opening the link puts them straight into{" "}
+              <strong>{room.name}</strong>. Note what it grants: joining{" "}
+              <strong>{nsName}</strong>, which is what makes any room in it
+              reachable — room access is inherited from the stream, so this is{" "}
+              <em>not</em> narrower than the stream link. It just lands them in
+              this call instead of the room list.
             </>
           ),
         });
@@ -302,9 +315,20 @@ export default function RoomsPage() {
     });
   }, [admin, namespaceId, nsName, run, showToast]);
 
-  /** This room's labelled roster, or undefined when we do not have one. */
-  const roomRoster = (room: RoomRow): RoomMemberLabel[] | undefined =>
-    room.contextId ? rosters[room.contextId] : undefined;
+  /**
+   * This room's labelled roster, or undefined when we do not have one.
+   *
+   * Labelled at render, not when fetched, so a stream-wide name that arrives
+   * after the roster still replaces the short id without another RPC. Self is
+   * the CONTRACT's id for this session: the device key on an account, the
+   * room's own identity on a node.
+   */
+  const roomRoster = (room: RoomRow): RoomMemberLabel[] | undefined => {
+    const members = room.contextId ? rosters[room.contextId] : undefined;
+    return members
+      ? labelMembers(members, accountMyId ?? room.identity ?? "", nameOf)
+      : undefined;
+  };
 
   // Why nobody can be invited to this stream, when that is so: an account's
   // namespace the cloud does not host yet (`haError` at creation, or a refused
@@ -312,6 +336,12 @@ export default function RoomsPage() {
   // the create that learned this navigates here, so a new stream shows it on
   // arrival. Null on a node, always.
   const hostingNote = hostingProblem(namespaceId);
+  // The namespace's own member list says so; a room born Open admitted the same
+  // node, so its rows say so too when the namespace read came back empty.
+  const teeMode =
+    (tee?.id === namespaceId ? tee.mode : null) ??
+    rooms.find((r) => r.teeMode)?.teeMode ??
+    null;
 
   return (
     <div className={styles.page}>
@@ -358,7 +388,8 @@ export default function RoomsPage() {
         <div className={styles.heading}>
           <div className={styles.headingText}>
             <h2 className={styles.title}>
-              {nsName || <span className={styles.muteInline}>Loading…</span>}
+              {nsName || <span className={styles.muteInline}>Loading…</span>}{" "}
+              <TeeBadge mode={teeMode} />
             </h2>
             <p className={styles.subtitle}>
               Each <strong>room</strong> is one video call. Everyone invited to

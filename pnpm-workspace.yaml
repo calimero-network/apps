@@ -68,7 +68,18 @@ catalog:
   # app (mero-blocks, merraria) signs in with an account without mero-react.
   # 24.5.0 signs what current core requires: schema 23 namespace ops, account-bound
   # device ids, and warrants naming the executor key and the release they pin.
-  "@calimero-network/mero-js": ^24.5.0
+  # 25.2.0 signs namespace ops at schema 25, which core 0.11.0-rc.87 requires:
+  # against an rc.87 node every account join, create and governance op signed
+  # at 24 (24.5.0, 25.0.x) is refused with "schema version mismatch: expected
+  # 25, got 24". The `merod-image` pin in Cargo.toml and this line move
+  # TOGETHER. The 25.0.0 break (#265) is the sealed verifier trusting only the
+  # production image profile by default; 25.0.3 (#264) resolves a join's relay
+  # from the cloud's list only, so a resolved relay no longer carries `via` or
+  # `admitterAddrs`. No app on the catalog used either. mero-react 9.13.2 still
+  # declares mero-js ^24.5.0, so the root `pnpm.overrides` entry in package.json
+  # (`"@calimero-network/mero-js": "catalog:"`) is what puts it on this line
+  # too; without it mero-react bundles its own 24.5.0 and its joins sign at 24.
+  "@calimero-network/mero-js": ^25.3.0
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
@@ -107,7 +118,13 @@ catalog:
   # 9.12.0 (#99): inside a Calimero Desktop window the connect dialog has no
   # Cloud tab — the window is already bound to the desktop's node, and the
   # wallet redirect would navigate it off to another origin. Browsers unchanged.
-  "@calimero-network/mero-react": ^9.12.0
+  # 9.13.2 moves with mero-js 25: from 25.0.7 a stored token bundle is bound to
+  # the node that issued it (`node_origin`), and 9.12-9.13.1 wrote and read the
+  # token store directly, so a login on them stored an unbound bundle, called
+  # itself signed in and sent every request without a token. 9.13.2 writes and
+  # reads it through the MeroJs for the node. An app or test that seeds
+  # `mero-tokens` itself has to stamp `node_origin` the same way.
+  "@calimero-network/mero-react": ^9.13.2
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"

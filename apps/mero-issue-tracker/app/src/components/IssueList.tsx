@@ -1,19 +1,18 @@
 import React from 'react';
 import styled from 'styled-components';
-import { tokens as t, STATUSES } from '../theme';
+import { tokens as t, STATUSES, STATUS_COLOR } from '../theme';
 import type { IssueView } from '../hooks/useItems';
 import type { UseAliasesReturn } from '../hooks/useAliases';
-import { relativeTime } from '../utils/display';
+import { relativeTime, shortIssueId } from '../utils/display';
 import PriorityGlyph from './PriorityGlyph';
 import StatusDot from './StatusDot';
 import AvatarGlyph from './AvatarGlyph';
 import LabelChip from './LabelChip';
+import { EmptyCard, Panel } from './ui';
 
-function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
-}
-
-/** Issue rows grouped by status with live per-group counts. */
+/** Issue rows grouped by status, one frosted card per status with its live
+ *  count. On a phone each row wraps: the title on its own line, the meta
+ *  (id, labels, assignee, age) under it. */
 export default function IssueList({
   issues,
   aliases,
@@ -39,88 +38,106 @@ export default function IssueList({
     // cannot read it yet. Claiming "no issues match" during a join is the same
     // class of untruth as the error toasts that used to fire here.
     if (warmingUp) {
-      return <Empty data-testid="issues-syncing">Syncing this workspace…</Empty>;
+      return (
+        <EmptyCard data-testid="issues-syncing">
+          <strong>Syncing this workspace…</strong>
+          Issues appear as soon as your teammates’ nodes send them.
+        </EmptyCard>
+      );
     }
     return (
-      <Empty>
+      <EmptyCard>
+        <strong>Nothing here</strong>
         {query?.trim() ? `No issues match "${query.trim()}".` : 'No issues match these filters.'}
-      </Empty>
+      </EmptyCard>
     );
   }
 
   return (
-    <Scroll>
+    <Groups>
       {groups.map(({ status, rows }) => (
-        <React.Fragment key={status}>
-          <GroupHeader>
-            <StatusDot status={status} />
+        <Group key={status} aria-label={status}>
+          <GroupHeader style={{ '--status': STATUS_COLOR[status] } as React.CSSProperties}>
+            <StatusDot status={status} size={9} />
             <span className="g-name">{status}</span>
             <span className="g-count" data-testid={`count-${status}`}>{rows.length}</span>
           </GroupHeader>
-          {rows.map((issue) => (
-            <Row
-              key={issue.id}
-              data-testid="item-issue"
-              data-issue-id={issue.id}
-              onClick={() => onOpen(issue.id)}
-            >
-              <span className="prio"><PriorityGlyph priority={issue.priority} /></span>
-              <span className="issue-id">{shortId(issue.id)}</span>
-              <span className="issue-title">{issue.title}</span>
-              <span className="right">
-                <span className="labels">
-                  {issue.labels.slice(0, 2).map((l) => <LabelChip key={l} label={l} />)}
+          <div className="rows">
+            {rows.map((issue) => (
+              <Row
+                key={issue.id}
+                data-testid="item-issue"
+                data-issue-id={issue.id}
+                onClick={() => onOpen(issue.id)}
+              >
+                <span className="prio"><PriorityGlyph priority={issue.priority} /></span>
+                <span className="issue-id">{shortIssueId(issue.id)}</span>
+                <span className="issue-title">{issue.title}</span>
+                <span className="right">
+                  <span className="labels">
+                    {issue.labels.slice(0, 2).map((l) => <LabelChip key={l} label={l} />)}
+                  </span>
+                  <AvatarGlyph
+                    seed={issue.assignee && aliases.hasAlias(issue.assignee) ? aliases.resolve(issue.assignee) : issue.assignee}
+                    size="sm"
+                    title={issue.assignee ? aliases.resolve(issue.assignee) : undefined}
+                    keyFallback={!!issue.assignee && !aliases.hasAlias(issue.assignee)}
+                  />
+                  <span className="time">{relativeTime(issue.created_at)}</span>
                 </span>
-                <AvatarGlyph
-                  seed={issue.assignee && aliases.hasAlias(issue.assignee) ? aliases.resolve(issue.assignee) : issue.assignee}
-                  size="sm"
-                  title={issue.assignee ? aliases.resolve(issue.assignee) : undefined}
-                  keyFallback={!!issue.assignee && !aliases.hasAlias(issue.assignee)}
-                />
-                <StatusDot status={issue.status} />
-                <span className="time">{relativeTime(issue.created_at)}</span>
-              </span>
-            </Row>
-          ))}
-        </React.Fragment>
+              </Row>
+            ))}
+          </div>
+        </Group>
       ))}
-    </Scroll>
+    </Groups>
   );
 }
 
-const Scroll = styled.div`overflow-y: auto; flex: 1 1 auto;`;
+const Groups = styled.div`display: flex; flex-direction: column; gap: 14px;`;
+const Group = styled(Panel)`
+  padding: 6px;
+  .rows { display: flex; flex-direction: column; gap: 4px; }
+`;
 const GroupHeader = styled.div`
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 16px; background: ${t.color.panel};
-  border-bottom: 1px solid ${t.color.border};
-  position: sticky; top: 0; z-index: 1;
-  .g-name { font-size: 12.5px; font-weight: 600; }
-  .g-count { font-size: 11.5px; color: ${t.color.text3}; font-variant-numeric: tabular-nums; }
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 12px 8px;
+  .g-name { font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em; }
+  .g-count {
+    min-width: 22px; height: 20px; padding: 0 7px; border-radius: ${t.radiusPill};
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--status); background: color-mix(in srgb, var(--status) 14%, transparent);
+  }
 `;
 const Row = styled.div`
-  display: flex; align-items: center; gap: 11px;
-  padding: 0 16px; height: 40px;
-  border-bottom: 1px solid ${t.color.border};
-  cursor: pointer; transition: background 150ms ease-out;
-  &:hover { background: rgba(255,255,255,0.035); }
-  .prio { flex: 0 0 auto; display: inline-flex; }
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 12px; min-height: 48px;
+  background: ${t.color.panel}; border-radius: 13px;
+  box-shadow: 0 0 0 1px ${t.color.border};
+  cursor: pointer; transition: box-shadow 150ms ease-out, background 150ms ease-out;
+  &:hover { box-shadow: ${t.shadowLift}; }
+  .prio { flex: 0 0 auto; display: inline-flex; width: 16px; justify-content: center; }
   .issue-id {
-    font-family: ${t.font.mono}; font-size: 11.5px; color: ${t.color.text3};
-    width: 62px; flex: 0 0 auto; font-variant-numeric: tabular-nums;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-family: ${t.font.mono}; font-size: 11px; color: ${t.color.text3};
+    flex: 0 0 auto; font-variant-numeric: tabular-nums; white-space: nowrap;
+    padding: 2px 7px; border-radius: 6px; background: ${t.color.raised2};
   }
   .issue-title {
-    flex: 1 1 auto; min-width: 0; font-size: 13px; color: ${t.color.text};
+    flex: 1 1 auto; min-width: 0; font-size: 13.5px; font-weight: 550; color: ${t.color.text};
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .right { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
   .labels { display: inline-flex; gap: 5px; flex: 0 0 auto; }
   .time {
-    font-size: 11.5px; color: ${t.color.text3}; width: 30px; text-align: right;
+    font-size: 12px; color: ${t.color.text3}; min-width: 30px; text-align: right;
     font-variant-numeric: tabular-nums;
   }
-`;
-const Empty = styled.div`
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  color: ${t.color.text3}; font-size: 13px; padding: 60px 20px;
+  @media (max-width: 720px) {
+    flex-wrap: wrap; row-gap: 6px; column-gap: 8px; padding: 11px 12px;
+    .issue-title { order: -1; flex: 1 1 calc(100% - 28px); white-space: normal; line-height: 1.35; }
+    .prio { order: -2; }
+    .right { flex: 1 1 auto; gap: 8px; min-width: 0; }
+    .labels { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+  }
 `;

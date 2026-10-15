@@ -11,6 +11,8 @@ const driveState = {
   ] as Array<{ namespaceId: string; name?: string; memberCount: number }>,
   selectedNamespaceId: 'ns-acme' as string | null,
   selectNamespace,
+  // The selected workspace's TEE node: counted by core, not a person.
+  namespaceMembers: { teeMembers: [{ identity: 'e'.repeat(64), role: 'RelayTee' }] },
   loading: false,
   error: null as Error | null,
   refetch: vi.fn(),
@@ -20,9 +22,6 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
 }));
 vi.mock('../NamespaceCreateDialog', () => ({
   NamespaceCreateDialog: () => <div role="dialog" aria-label="create dialog" />,
-}));
-vi.mock('../NamespaceJoinDialog', () => ({
-  NamespaceJoinDialog: () => <div role="dialog" aria-label="join dialog" />,
 }));
 
 // Radix DropdownMenu opens on pointerdown in jsdom.
@@ -62,20 +61,25 @@ describe('NamespaceSwitcher', () => {
       'true',
       'false',
     ]);
+    expect(items[0].textContent).toBe('Acme Product3 members');
     expect(items[1].textContent).toBe('Personal1 member');
     fireEvent.click(items[1]);
     expect(selectNamespace).toHaveBeenCalledWith('ns-solo');
   });
 
-  it('opens the create and join dialogs from the menu', () => {
+  it('opens the create dialog from the menu', () => {
     render(<NamespaceSwitcher />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /New workspace/i }));
     expect(screen.getByRole('dialog', { name: 'create dialog' })).toBeTruthy();
+  });
+
+  // An invitation is joined by opening its link; there is nowhere to paste one.
+  it('offers no way to join by pasting a link', () => {
+    render(<NamespaceSwitcher />);
     openMenu();
-    fireEvent.click(
-      screen.getByRole('menuitem', { name: /Join with invite link/i }),
-    );
-    expect(screen.getByRole('dialog', { name: 'join dialog' })).toBeTruthy();
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+      'New workspace',
+    ]);
   });
 });
