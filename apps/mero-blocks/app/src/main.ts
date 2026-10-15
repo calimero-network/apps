@@ -15,10 +15,10 @@ import { generateWorld, spawnPoint } from "./engine/terrain";
 import { WorldStore, WORLD_CX, WORLD_CY, WORLD_CZ, chunkKey } from "./engine/world";
 import { arrowLook, pointerLockAvailable } from "./input/look";
 import { WheelSteps } from "./input/wheel";
-import { inviteLink } from "./net/inviteLink";
+import { APP_SLUG, inviteLink } from "./net/inviteLink";
 import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/invite";
 import { completeAccountEnrolment, isReturningFromWallet } from "./net/account";
-import { createWorldInvite, ownedContextIdentity } from "./net/admin";
+import { acceptWorldInvite, createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { GameClient, type WorldMeta } from "./net/client";
 import {
   adoptAccountSession,
@@ -32,6 +32,7 @@ import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer } from "./renderer";
 import { loadWorld, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
+import { invitePromptOpen, setInviteJoiner } from "./ui/invitePrompt";
 import { CloudReturn, Landing, LaunchChoice } from "./ui/landing";
 import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu, WorldMap } from "./ui/overlays";
@@ -42,10 +43,28 @@ import { PauseMenu, WorldMap } from "./ui/overlays";
 // `?invitation=…` to its own frontend URL, and the landing flow rewrites the URL
 // as it goes. Capture is durable, so an invite that arrives before a node is
 // connected survives the web-login redirect and is replayed once the world
-// picker can act on it. Until now this app built shareable links but never read
-// one back, so opening one dropped the recipient on the landing page with the
-// code stuck in the address bar.
-primeInviteCapture("mero-blocks");
+// picker can act on it. A running desktop app hands a link over as a
+// `deep-link` event instead, which this also hears — in the game too. Either
+// way ui/invitePrompt.ts asks before joining. A link addressed to another app
+// is dropped, not offered.
+primeInviteCapture("mero-blocks", { slug: APP_SLUG });
+
+/**
+ * Set for one reload by an invite accepted in-game: the session already names
+ * the invited world, so the next boot goes straight into it instead of
+ * stopping at the world picker.
+ */
+const ENTER_JOINED_WORLD = "mb-enter-joined-world";
+
+function takeEnterJoinedWorld(): boolean {
+  try {
+    const set = sessionStorage.getItem(ENTER_JOINED_WORLD) === "1";
+    sessionStorage.removeItem(ENTER_JOINED_WORLD);
+    return set;
+  } catch {
+    return false;
+  }
+}
 
 const REACH = 6;
 const EDIT_REPEAT_MS = 250;
@@ -116,8 +135,10 @@ async function boot(): Promise<void> {
 
   // Desktop SSO auto-enter: a full hash (tokens + context) means the desktop
   // already authenticated us — zero clicks, straight into the shared world.
+  // Likewise a world just joined from an invite accepted in-game.
   let choice: LaunchChoice;
-  if (captured === "full" && hasConnection()) {
+  const enterJoined = takeEnterJoinedWorld();
+  if ((captured === "full" && hasConnection()) || (enterJoined && hasConnection() && getSession().contextId)) {
     choice = { name: defaults.name };
   } else {
     // The marketing landing page sits in front of the launcher. It skips
@@ -266,7 +287,7 @@ async function boot(): Promise<void> {
   });
   renderer.setFov(options.getFov()); // restore the player's FOV choice
   const worldMap = new WorldMap(app, world);
-  const uiOpen = () => options.open || worldMap.open;
+  const uiOpen = () => options.open || worldMap.open || invitePromptOpen();
 
   // ---- input -----------------------------------------------------------
   const keys = new Set<string>();
@@ -292,6 +313,7 @@ async function boot(): Promise<void> {
   };
 
   window.addEventListener("keydown", (e) => {
+    if (invitePromptOpen()) return; // the invite prompt is answered by clicking
     if (e.code === "KeyO") return openOverlay("options");
     if (e.code === "KeyM") return openOverlay("map");
     // Esc = Minecraft game menu: closes the map if it's up, otherwise
@@ -506,6 +528,38 @@ async function boot(): Promise<void> {
   window.addEventListener("beforeunload", () => {
     save();
     void sync?.leave();
+  });
+
+  // ---- invite links opened while playing ---------------------------------
+  // A running desktop app hands a link to this page as it is. Joining another
+  // world means leaving this one: join first (the session moves to the invited
+  // world only once that succeeded, so a refusal leaves the game untouched),
+  // then save and leave like "Save & leave world", and reload into it.
+  setInviteJoiner({
+    join: async (code, payload) => {
+      if (payload.contextId === worldId) {
+        hud.toast("You're already in this world");
+        return;
+      }
+      await acceptWorldInvite(code);
+      save();
+      void sync?.leave();
+      try {
+        sessionStorage.setItem(ENTER_JOINED_WORLD, "1");
+      } catch {
+        /* no session storage: the picker shows the joined world as the current one */
+      }
+      window.location.reload();
+    },
+    onShow: () => {
+      document.exitPointerLock();
+      keys.clear();
+      breakHeld = false;
+      placeHeld = false;
+      tap = null;
+      options.hide();
+      worldMap.hide();
+    },
   });
 
   // ---- frame/tick loop ---------------------------------------------------

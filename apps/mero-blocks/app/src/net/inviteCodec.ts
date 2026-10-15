@@ -1,6 +1,6 @@
 // World-invite codec — the same wire format as mero-chat (curb): the JSON
-// payload is deflate-compressed and base58-encoded into a compact string you
-// paste on another client. Pure functions, no session/network access, so both
+// payload is deflate-compressed and base58-encoded into the compact code an
+// invite link carries (net/inviteLink.ts). Pure functions, no session/network access, so both
 // the app and the e2e suite can import it.
 
 import bs58 from "bs58";
@@ -72,9 +72,9 @@ function codeFromLink(input: string): string {
 }
 
 /**
- * Decode pasted input: an invite link, or the bare base58(deflate(JSON)) code —
- * also tolerating uncompressed base58 and raw JSON, so curb-era invites and
- * debugging paste-ins work.
+ * Decode an invite: the base58(deflate(JSON)) code an opened link carries (or
+ * the link itself) — also tolerating uncompressed base58 and raw JSON, so
+ * curb-era invites still decode.
  */
 export function decodeInvite(input: string): WorldInvitePayload | null {
   const trimmed = codeFromLink(input.trim()).trim();

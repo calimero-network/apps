@@ -98,11 +98,13 @@ one click to connect — with a manual node-URL fallback.
 
 A world is a **namespace subgroup + context**: creating one provisions the
 app's namespace (once per node), a subgroup named after the world, and the
-context inside it. To play together, mint an invite (**Invite friends** on the
-landing page, or **Copy world invite** in the in-game options menu) — a
-compact base58 string (curb's deflate+base58 format, pinned to the world's
-group and context) — and a friend pastes it into **Join with invite** on their
-own node.
+context inside it. To play together, copy an invite link (**Invite friends** on
+the landing page, or **Copy world invite** in the in-game options menu):
+`https://links.calimero.network/com.calimero.mero-blocks/join?invitation=…`,
+carrying a compact base58 code (curb's deflate+base58 format, pinned to the
+world's group and context). A friend opens the link; the app asks "You've been
+invited to <world>" — on the world picker, or in-game when a running desktop
+app receives it — and joins on **Join**. There is nothing to paste.
 
 ## Tests — 189 total, all green
 
