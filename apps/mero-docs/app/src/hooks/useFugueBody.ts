@@ -223,6 +223,8 @@ export function useFugueBody({
   const inFlightRef = useRef(false);
   const loadedRef = useRef(false);
   const syncedRef = useRef(false);
+  // The document the editor holds, so a reconnect to it is not a fresh open.
+  const openDocRef = useRef<string | null>(null);
   const editorRef = useRef<BodyEditor | null>(editor);
   editorRef.current = editor;
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -712,6 +714,19 @@ export function useFugueBody({
   drainRef.current = drain;
 
   useEffect(() => {
+    // A restarted node can drop the docs context for a moment and comes back
+    // with a new client. The editor still holds this document and any typing
+    // the node never got, so a reset here would forget that typing and reload
+    // over it. Keep both; re-read (folding in what peers wrote meanwhile) and
+    // resend.
+    if (!client || !docId) return;
+    if (openDocRef.current === docId && loadedRef.current) {
+      heldRef.current = false;
+      staleRef.current = true;
+      void drainRef.current?.();
+      return;
+    }
+    openDocRef.current = docId;
     idMapRef.current = new Map();
     anchorsRef.current = new Map();
     serverRef.current = [];
@@ -725,7 +740,6 @@ export function useFugueBody({
     resetRetry();
     setContent(undefined);
     setLoading(true);
-    if (!client || !docId) return;
     void refresh();
   }, [client, docId, refresh, resetRetry]);
 

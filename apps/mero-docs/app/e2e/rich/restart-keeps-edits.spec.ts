@@ -34,8 +34,15 @@ test('typing right before a node restarts is kept, on every node and in the wind
       for (const node of NODES) {
         await expect
           .poll(
-            async () => occurrences(blockText((await blocksOnNode(node, rig.doc))[0]), run),
-            { message: `round ${round}: node ${node} holds the run once`, timeout: 60_000 },
+            async () =>
+              occurrences(
+                blockText((await blocksOnNode(node, rig.doc))[0]),
+                run,
+              ),
+            {
+              message: `round ${round}: node ${node} holds the run once`,
+              timeout: 60_000,
+            },
           )
           .toBe(1);
       }
@@ -43,10 +50,17 @@ test('typing right before a node restarts is kept, on every node and in the wind
         .poll(
           async () =>
             occurrences(
-              await a.page.getByTestId('doc-editor').locator('.bn-inline-content').first().innerText(),
+              await a.page
+                .getByTestId('doc-editor')
+                .locator('.bn-inline-content')
+                .first()
+                .innerText(),
               run,
             ),
-          { message: `round ${round}: the window still shows the run`, timeout: 30_000 },
+          {
+            message: `round ${round}: the window still shows the run`,
+            timeout: 30_000,
+          },
         )
         .toBe(1);
     });
