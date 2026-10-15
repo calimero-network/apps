@@ -79,7 +79,7 @@ catalog:
   # declares mero-js ^24.5.0, so the root `pnpm.overrides` entry in package.json
   # (`"@calimero-network/mero-js": "catalog:"`) is what puts it on this line
   # too; without it mero-react bundles its own 24.5.0 and its joins sign at 24.
-  "@calimero-network/mero-js": ^25.2.0
+  "@calimero-network/mero-js": ^25.3.0
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
