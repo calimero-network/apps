@@ -1,50 +1,35 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  ReactNode,
-} from 'react';
+import React, { type ReactNode } from 'react';
+import {
+  applyTheme,
+  readStoredTheme,
+  useThemeChoice,
+  type Theme,
+} from '../theme';
 
-export type ThemeMode = 'dark';
+export type ThemeMode = Theme;
 
-interface ThemeContextType {
-  mode: ThemeMode;
-}
-
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
-
+/**
+ * The theme, for components. `mode` is the active theme (kept under that name
+ * for the components that already read it); `toggleTheme` is what the top
+ * bar's sun/moon button calls. The state itself lives in `src/theme.ts`, an
+ * external store, so every caller stays in step without a provider in the
+ * way — `ThemeProvider` only makes sure <html> carries the saved choice.
+ */
 export const useTheme = () => {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error('useTheme must be used within ThemeProvider');
-  }
-  return context;
+  const { theme, setTheme, toggleTheme } = useThemeChoice();
+  return { mode: theme, theme, setTheme, toggleTheme };
 };
 
 interface ThemeProviderProps {
   children: ReactNode;
 }
 
-export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const mode: ThemeMode = 'dark';
+// Light unless the person picked dark. index.html already applied this before
+// the first paint; doing it again as this module loads covers a page with no
+// inline script (the screenshot harness) and is a no-op otherwise. At module
+// scope rather than in an effect so the first render already reads it.
+applyTheme(readStoredTheme());
 
-  useEffect(() => {
-    // Always set dark mode
-    const body = document.body;
-    const html = document.documentElement;
-    
-    // Remove old classes
-    body.classList.remove('theme-light', 'theme-dark');
-    html.classList.remove('dark', 'light');
-    
-    // Add dark theme classes
-    body.classList.add('theme-dark');
-    html.classList.add('dark');
-  }, []);
-
-  return (
-    <ThemeContext.Provider value={{ mode }}>
-      {children}
-    </ThemeContext.Provider>
-  );
-};
+export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => (
+  <>{children}</>
+);

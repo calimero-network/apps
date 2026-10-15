@@ -40,6 +40,14 @@ export class ClientApiDataSource {
   async whoami() {
     return ok(current.me === 'admin' ? ALICE : BOB);
   }
+  // `undefined` is the default, which is "already consented": the signing
+  // scenarios go straight to the signature picker unless they ask otherwise.
+  async hasConsented() {
+    return ok(current.consented !== false);
+  }
+  async setConsent() {
+    return ok(undefined);
+  }
   async listSignatures() {
     return ok(current.signatures === 'none' ? [] : SIGNATURE_ROWS);
   }
@@ -94,3 +102,12 @@ export function parseInvitation() {
   return null;
 }
 export const PARTICIPANT_FIXTURE = PARTICIPANTS;
+/** The workspace picker's Join box; never pressed in a shot. */
+export async function joinWorkspaceFromInvitation() {
+  return { namespaceId: 'ns-1', contextId: null };
+}
+
+/** The signature library's private context, which a node would ensure. */
+export async function defaultContextIdFor() {
+  return 'ctx-private';
+}

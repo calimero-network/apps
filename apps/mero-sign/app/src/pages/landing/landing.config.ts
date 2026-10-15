@@ -22,6 +22,7 @@ export const CONFIG: LandingConfig = {
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   tint: "#38bdf8",
+  themeStorageKey: "mero-sign:theme",
   trust: ["No signing service", "Roles per signatory", "Verify peer-to-peer"],
   explainer: [
     "Upload a PDF, collect signatures from the people you invite, and verify them — with no e-signature company in the middle holding your contracts and charging per envelope.",

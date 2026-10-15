@@ -1,5 +1,8 @@
 import { Link } from 'react-router-dom';
+import { PlugZap } from 'lucide-react';
 import { useCalimero } from '../lib/useCalimero';
+import { AppShell } from './shell/AppShell';
+import shell from './shell/AppShell.module.css';
 import styles from '../pages/app/AgreementsPage.module.css';
 
 // ── What a signed-out visitor sees on an app route ───────────────────────────
@@ -25,38 +28,39 @@ export default function ConnectGate({ what }: { what: string }) {
   const { login } = useCalimero();
 
   return (
-    <div className={styles.root}>
-      <header className={styles.header}>
-        <span className={styles.logo}>
-          <span className={styles.mark}>M</span> Mero Sign
-        </span>
-        <div className={styles.headerRight}>
-          <Link className={styles.logoutBtn} to="/landing">
-            What is this?
-          </Link>
-        </div>
-      </header>
-
+    <AppShell
+      bare
+      actions={
+        <Link className={shell.topLink} to="/landing">
+          What is this?
+        </Link>
+      }
+    >
       <main className={styles.main}>
-        <h1 className={styles.title}>Connect your node</h1>
-        <p className={styles.subtitle}>
-          {what} lives on your own Calimero node. Connect one and you will come
-          straight back here.
-        </p>
-        <div className={styles.createRow}>
-          <button
-            type="button"
-            className={styles.btn}
-            onClick={() => login()}
-            data-testid="connect-cta"
-          >
-            Connect
-          </button>
-          <Link className={styles.btnGhost} to="/landing">
-            What is Mero Sign?
-          </Link>
-        </div>
+        <section className={`${styles.panel} ${styles.gate}`}>
+          <span className={styles.gateIcon}>
+            <PlugZap size={26} />
+          </span>
+          <h1 className={styles.title}>Connect your node</h1>
+          <p className={styles.subtitle}>
+            {what} lives on your own Calimero node. Connect one and you will
+            come straight back here.
+          </p>
+          <div className={styles.joinRow}>
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={() => login()}
+              data-testid="connect-cta"
+            >
+              Connect
+            </button>
+            <Link className={styles.btnGhost} to="/landing">
+              What is Mero Sign?
+            </Link>
+          </div>
+        </section>
       </main>
-    </div>
+    </AppShell>
   );
 }

@@ -73,14 +73,16 @@ describe('Legal Assistant availability', () => {
     expect(viewer).toContain(
       'import LegalChatbot, { LEGAL_ASSISTANT_ENABLED }',
     );
-    // The desktop button, whose wrapper is hidden outright rather than
-    // conditionally rendered (it has its own responsive classes).
-    expect(viewer).toMatch(
-      /className=\{LEGAL_ASSISTANT_ENABLED \? 'hidden sm:block' : 'hidden'\}/,
-    );
-    // The mobile menu item and the modal, each conditionally rendered.
+    // The desktop toolbar button, the phone actions-sheet item and the modal,
+    // each conditionally rendered. (The desktop button used to sit in a
+    // wrapper hidden by class instead; the glass toolbar renders it only
+    // when enabled, like the other two.)
     const blocks = viewer.match(/\{LEGAL_ASSISTANT_ENABLED && \(/g) ?? [];
-    expect(blocks).toHaveLength(2);
+    expect(blocks).toHaveLength(3);
+    // And the button itself is inside one of them, not beside it.
+    expect(viewer).toMatch(
+      /\{LEGAL_ASSISTANT_ENABLED && \(\s*<button[\s\S]{0,200}?setShowChatbot\(true\)/,
+    );
   });
 
   // Reading the files is the whole mechanism, so a rename that quietly makes

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { MoreHorizontal, PenLine, Trash2 } from 'lucide-react';
 import { blobClient } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
 import { defaultContextIdFor } from '../../api/defaultContextService';
 import { toBlobIdHex } from '../../lib/blobIds';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import SignaturePadComponent from '../../components/SignaturePad';
-import { AppHeader } from '../../components/AppHeader';
+import { AppShell } from '../../components/shell/AppShell';
 import styles from './AgreementsPage.module.css';
 
 // ── The signature library ────────────────────────────────────────────────────
@@ -203,15 +204,16 @@ export default function SignaturesPage() {
   }, [api, confirmDelete, fetchSignatures]);
 
   return (
-    <div className={styles.root}>
-      <AppHeader back={{ label: 'Agreements', to: '/agreements' }} />
-
+    <AppShell back={{ label: 'Agreements', to: '/agreements' }}>
       <main className={styles.main}>
-        <h1 className={styles.title}>Your signatures</h1>
-        <p className={styles.subtitle}>
-          The drawings you sign documents with. They are stored in your own
-          private context and never leave your node.
-        </p>
+        <header className={styles.pageHead}>
+          <span className={styles.eyebrow}>Signature library</span>
+          <h1 className={styles.title}>Your signatures</h1>
+          <p className={styles.subtitle}>
+            The drawings you sign documents with. They are stored in your own
+            private context and never leave your node.
+          </p>
+        </header>
 
         <div className={styles.createRow}>
           <button
@@ -220,7 +222,11 @@ export default function SignaturesPage() {
             disabled={saving}
             data-testid="new-signature"
           >
-            {saving ? <span className={styles.spinner} /> : null}
+            {saving ? (
+              <span className={styles.spinner} />
+            ) : (
+              <PenLine size={16} />
+            )}
             {saving ? 'Saving…' : 'Draw a new signature'}
           </button>
         </div>
@@ -232,12 +238,21 @@ export default function SignaturesPage() {
         )}
 
         {loading ? (
-          <p className={styles.empty}>Loading…</p>
+          <div className={styles.skeletonGrid} aria-label="Loading…">
+            <span className={styles.skeleton} />
+            <span className={styles.skeleton} />
+          </div>
         ) : signatures.length === 0 ? (
-          <p className={styles.empty} data-testid="signatures-empty">
-            No signatures yet. Draw one and it will be offered whenever you sign
-            a document.
-          </p>
+          <div className={styles.emptyState}>
+            <span className={styles.emptyIcon}>
+              <PenLine size={24} />
+            </span>
+            <p className={styles.emptyTitle}>Your library is empty</p>
+            <p className={styles.empty} data-testid="signatures-empty">
+              No signatures yet. Draw one and it will be offered whenever you
+              sign a document.
+            </p>
+          </div>
         ) : (
           <div className={styles.grid} data-testid="signatures-grid">
             {signatures.map((sig) => (
@@ -247,52 +262,38 @@ export default function SignaturesPage() {
                 ref={menuOpenId === sig.id ? menuRef : null}
                 data-testid="signature-card"
               >
-                <div className={styles.card} style={{ cursor: 'default' }}>
-                  {sig.dataURL ? (
-                    <img
-                      src={sig.dataURL}
-                      alt={sig.name}
-                      style={{
-                        width: '100%',
-                        height: 56,
-                        objectFit: 'contain',
-                        marginBottom: 10,
-                      }}
-                    />
-                  ) : (
-                    <span
-                      style={{
-                        width: '100%',
-                        height: 56,
-                        marginBottom: 10,
-                        background:
-                          'linear-gradient(135deg, #f5f5f5 0%, #ececec 100%)',
-                        borderRadius: 4,
-                      }}
-                    />
-                  )}
+                <div className={`${styles.card} ${styles.cardStatic}`}>
+                  <span className={styles.sigPaper}>
+                    {sig.dataURL ? <img src={sig.dataURL} alt={sig.name} /> : null}
+                  </span>
                   <span className={styles.cardName}>{sig.name}</span>
                   <span className={styles.cardSub}>{sig.createdAt}</span>
                 </div>
                 <button
-                  className={styles.menuBtn}
+                  className={`${styles.menuBtn} ${
+                    menuOpenId === sig.id ? styles.menuBtnOpen : ''
+                  }`}
                   title="More options"
+                  aria-label="More options"
+                  aria-expanded={menuOpenId === sig.id}
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpenId(menuOpenId === sig.id ? null : sig.id);
                   }}
                 >
-                  ⋯
+                  <MoreHorizontal size={18} />
                 </button>
                 {menuOpenId === sig.id && (
-                  <div className={styles.dropdown}>
+                  <div className={styles.dropdown} role="menu">
                     <button
                       className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                      role="menuitem"
                       onClick={() => {
                         setMenuOpenId(null);
                         setConfirmDelete(sig);
                       }}
                     >
+                      <Trash2 size={16} />
                       Delete
                     </button>
                   </div>
@@ -314,8 +315,14 @@ export default function SignaturesPage() {
           className={styles.modalBackdrop}
           onClick={() => setConfirmDelete(null)}
         >
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h2 className={styles.modalTitle}>
+          <div
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-signature-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className={styles.modalTitle} id="delete-signature-title">
               Delete “{confirmDelete.name}”?
             </h2>
             <p className={styles.modalDesc}>
@@ -330,17 +337,17 @@ export default function SignaturesPage() {
                 Cancel
               </button>
               <button
-                className={styles.btn}
-                style={{ background: '#c0392b' }}
+                className={`${styles.btn} ${styles.btnDanger}`}
                 onClick={() => void remove()}
                 data-testid="confirm-delete-signature"
               >
+                <Trash2 size={16} />
                 Delete
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   );
 }

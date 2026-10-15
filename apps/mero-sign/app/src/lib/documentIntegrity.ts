@@ -2,10 +2,9 @@
  * Does the file this node handed us match the hash the agreement recorded?
  *
  * `DocumentInfo.hash` has always been written — on upload, and again on every
- * signature — and displayed in the audit trail. Nothing ever recomputed it. So
- * a blob that came back corrupted, truncated, or simply belonging to a
- * different document rendered happily, and the hash beside it on screen was
- * decoration rather than evidence.
+ * signature. Nothing ever recomputed it. So a blob that came back corrupted,
+ * truncated, or simply belonging to a different document rendered happily,
+ * and the hash beside it on screen was decoration rather than evidence.
  *
  * ⚠️ A mismatch WARNS rather than refusing to open, deliberately. The hash is
  * a plain SHA-256 over the uploaded bytes and should always match, but

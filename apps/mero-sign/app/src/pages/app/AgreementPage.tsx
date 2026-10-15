@@ -1,6 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  CheckCircle2,
+  Clock,
+  Copy,
+  Eye,
+  FileSignature,
+  FileText,
+  Link2,
+  MoreHorizontal,
+  PenLine,
+  Trash2,
+  Upload,
+  UploadCloud,
+  UserPlus,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+import {
   apiClient,
   getContextId,
   getExecutorPublicKey,
@@ -40,7 +57,7 @@ import {
   shortId,
   toHexId,
 } from '../../lib/participants';
-import { AppHeader } from '../../components/AppHeader';
+import { AppShell } from '../../components/shell/AppShell';
 import PDFViewer from '../../components/PDFViewer';
 import styles from './AgreementPage.module.css';
 
@@ -55,10 +72,10 @@ import styles from './AgreementPage.module.css';
 
 type Tab = 'documents' | 'people' | 'invite';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'documents', label: 'Documents' },
-  { id: 'people', label: 'People' },
-  { id: 'invite', label: 'Invite' },
+const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
+  { id: 'documents', label: 'Documents', icon: FileText },
+  { id: 'people', label: 'People', icon: Users },
+  { id: 'invite', label: 'Invite', icon: UserPlus },
 ];
 
 function statusClass(status: string): string {
@@ -67,11 +84,17 @@ function statusClass(status: string): string {
   return styles.badgePending;
 }
 
-/** The card's thumbnail tint, so three documents do not read as three identical
- *  grey rectangles. Green only for the completed one, as a fill. */
+/** The card's stage tint, so three documents do not read as three identical
+ *  grey rectangles. Green only for the completed one. */
 function thumbClass(status: string): string {
   if (status === 'FullySigned') return styles.thumbSigned;
   return styles.thumbPartial;
+}
+
+function statusIcon(status: string) {
+  if (status === 'FullySigned') return <CheckCircle2 size={13} />;
+  if (status === 'PartiallySigned') return <PenLine size={13} />;
+  return <Clock size={13} />;
 }
 
 function statusLabel(status: string): string {
@@ -507,31 +530,49 @@ export default function AgreementPage() {
   const name = details?.context_name?.trim() || 'Agreement';
 
   return (
-    <div className={styles.root}>
-      <AppHeader back={{ label: 'Agreements', to: '/agreements' }} />
-
+    <AppShell back={{ label: 'Agreements', to: '/agreements' }}>
       <main className={styles.main}>
-        <h1 className={styles.title} data-testid="agreement-title">
-          {name}
-        </h1>
-        <p className={styles.subtitle}>
-          {details
-            ? `${details.participant_count} ${
-                details.participant_count === 1 ? 'person' : 'people'
-              } · ${documents.length} ${
-                documents.length === 1 ? 'document' : 'documents'
-              }`
-            : 'Loading…'}
-        </p>
+        <header className={styles.hero}>
+          <span className={styles.heroIcon} aria-hidden="true">
+            <FileSignature size={26} />
+          </span>
+          <div className={styles.heroText}>
+            <span className={styles.eyebrow}>Agreement</span>
+            <h1 className={styles.title} data-testid="agreement-title">
+              {name}
+            </h1>
+            <p className={styles.subtitle}>
+              {details ? (
+                <>
+                  <span className={styles.metaChip}>
+                    <Users size={14} />
+                    {details.participant_count}{' '}
+                    {details.participant_count === 1 ? 'person' : 'people'}
+                  </span>
+                  <span className={styles.metaChip}>
+                    <FileText size={14} />
+                    {documents.length}{' '}
+                    {documents.length === 1 ? 'document' : 'documents'}
+                  </span>
+                </>
+              ) : (
+                'Loading…'
+              )}
+            </p>
+          </div>
+        </header>
 
-        <div className={styles.tabs}>
+        <div className={styles.tabs} role="tablist" aria-label="Agreement">
           {TABS.map((t) => (
             <button
               key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
               className={`${styles.tab} ${tab === t.id ? styles.tabActive : ''}`}
               onClick={() => setTab(t.id)}
               data-testid={`tab-${t.id}`}
             >
+              <t.icon size={16} />
               {t.label}
             </button>
           ))}
@@ -539,6 +580,7 @@ export default function AgreementPage() {
 
         {notice && (
           <p className={styles.notice} data-testid="notice">
+            <CheckCircle2 size={16} />
             {notice}
           </p>
         )}
@@ -549,24 +591,36 @@ export default function AgreementPage() {
         )}
 
         {tab === 'documents' && (
-          <>
-            <div className={styles.createRow}>
+          <section className={styles.section}>
+            <div className={styles.toolbar}>
+              <h2 className={styles.sectionTitle}>Documents</h2>
               <button
                 className={styles.btn}
                 onClick={() => setUploadOpen(true)}
                 data-testid="open-upload"
               >
+                <Upload size={16} />
                 Upload a document
               </button>
             </div>
 
             {loading ? (
-              <p className={styles.empty}>Loading…</p>
+              <div className={styles.grid} aria-label="Loading…">
+                <span className={styles.skeleton} />
+                <span className={styles.skeleton} />
+                <span className={styles.skeleton} />
+              </div>
             ) : documents.length === 0 ? (
-              <p className={styles.empty} data-testid="documents-empty">
-                No documents yet. Upload a PDF and the people in this agreement
-                can sign it.
-              </p>
+              <div className={styles.emptyState}>
+                <span className={styles.emptyIcon}>
+                  <FileText size={24} />
+                </span>
+                <p className={styles.emptyTitle}>No documents yet</p>
+                <p className={styles.empty} data-testid="documents-empty">
+                  No documents yet. Upload a PDF and the people in this
+                  agreement can sign it.
+                </p>
+              </div>
             ) : (
               <div className={styles.grid} data-testid="documents-grid">
                 {documents.map((doc) => (
@@ -582,40 +636,64 @@ export default function AgreementPage() {
                     >
                       <span
                         className={`${styles.cardThumb} ${thumbClass(doc.status)}`}
-                      />
-                      <span className={styles.cardName}>{doc.name}</span>
-                      <span className={styles.cardStatus}>
-                        <span className={statusClass(doc.status)}>
-                          {statusLabel(doc.status)}
+                        aria-hidden="true"
+                      >
+                        <span className={styles.paper}>
+                          <span className={styles.paperTitle} />
+                          <span className={styles.paperLine} />
+                          <span className={styles.paperLine} />
+                          <span className={styles.paperLineShort} />
+                          <span className={styles.paperSign}>
+                            {doc.status === 'FullySigned' ? (
+                              <PenLine size={12} />
+                            ) : null}
+                          </span>
+                        </span>
+                      </span>
+                      <span className={styles.cardBody}>
+                        <span className={styles.cardName}>{doc.name}</span>
+                        <span className={styles.cardStatus}>
+                          <span className={`${styles.badge} ${statusClass(doc.status)}`}>
+                            {statusIcon(doc.status)}
+                            {statusLabel(doc.status)}
+                          </span>
                         </span>
                       </span>
                     </button>
                     <button
-                      className={styles.menuBtn}
+                      className={`${styles.menuBtn} ${
+                        menuOpenId === doc.id ? styles.menuBtnOpen : ''
+                      }`}
                       title="More options"
+                      aria-label="More options"
+                      aria-expanded={menuOpenId === doc.id}
                       onClick={(e) => {
                         e.stopPropagation();
                         setMenuOpenId(menuOpenId === doc.id ? null : doc.id);
                       }}
                     >
-                      ⋯
+                      <MoreHorizontal size={18} />
                     </button>
                     {menuOpenId === doc.id && (
-                      <div className={styles.dropdown}>
+                      <div className={styles.dropdown} role="menu">
                         <button
                           className={styles.dropdownItem}
+                          role="menuitem"
                           onClick={() => {
                             setMenuOpenId(null);
                             setViewing(doc);
                           }}
                         >
+                          <Eye size={16} />
                           Open
                         </button>
                         {iAmAdmin && (
                           <button
                             className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                            role="menuitem"
                             onClick={() => void removeDocument(doc)}
                           >
+                            <Trash2 size={16} />
                             Delete
                           </button>
                         )}
@@ -625,15 +703,23 @@ export default function AgreementPage() {
                 ))}
               </div>
             )}
-          </>
+          </section>
         )}
 
         {tab === 'people' && (
-          <>
+          <section className={styles.section}>
+            <div className={styles.toolbar}>
+              <h2 className={styles.sectionTitle}>People</h2>
+            </div>
             {roster.length === 0 ? (
-              <p className={styles.empty} data-testid="people-empty">
-                {loading ? 'Loading…' : 'Nobody has joined yet.'}
-              </p>
+              <div className={styles.emptyState}>
+                <span className={styles.emptyIcon}>
+                  <Users size={24} />
+                </span>
+                <p className={styles.empty} data-testid="people-empty">
+                  {loading ? 'Loading…' : 'Nobody has joined yet.'}
+                </p>
+              </div>
             ) : (
               <div className={styles.rows} data-testid="people-rows">
                 {roster.map((entry) => {
@@ -665,7 +751,8 @@ export default function AgreementPage() {
                           )}
                         </span>
                         <span className={styles.rowSub}>
-                          {entry.level} — {LEVEL_DESCRIPTIONS[entry.level]}
+                          <span className={styles.roleChip}>{entry.level}</span>
+                          {LEVEL_DESCRIPTIONS[entry.level]}
                         </span>
                       </span>
                       {iAmAdmin && (
@@ -696,79 +783,97 @@ export default function AgreementPage() {
                 })}
               </div>
             )}
-          </>
+          </section>
         )}
 
         {tab === 'invite' && (
-          <div style={{ maxWidth: 520 }}>
-            <div className={styles.sectionRow}>
-              <span className={styles.sectionTitle}>Shareable link</span>
-            </div>
-            <p className={styles.subtitle} style={{ marginBottom: 16 }}>
-              Anybody holding this link can join. It expires within a day, and
-              it grants membership of this agreement and nothing else.
-            </p>
-            {invite ? (
-              <>
-                <div className={styles.tokenBox}>
-                  <span className={styles.token} data-testid="invite-link">
-                    {invite.link}
-                  </span>
-                  <button
-                    className={styles.copyBtn}
-                    onClick={() => copy(invite.link, 'Invitation link')}
-                  >
-                    Copy
-                  </button>
+          <div className={styles.inviteGrid}>
+            <section className={styles.panel}>
+              <div className={styles.panelHead}>
+                <span className={styles.panelIcon}>
+                  <Link2 size={20} />
+                </span>
+                <div>
+                  <h2 className={styles.panelTitle}>Shareable link</h2>
+                  <p className={styles.panelText}>
+                    Anybody holding this link can join. It expires within a
+                    day, and it grants membership of this agreement and
+                    nothing else.
+                  </p>
                 </div>
-                <div
-                  className={styles.modalRow}
-                  style={{ justifyContent: 'flex-start' }}
-                >
-                  <button
-                    className={styles.btnGhost}
-                    onClick={() => copy(invite.deepLink, 'Desktop link')}
-                  >
-                    Copy desktop link
-                  </button>
-                  <button
-                    className={styles.btnGhost}
-                    onClick={() => copy(invite.code, 'Invitation code')}
-                  >
-                    Copy code
-                  </button>
-                </div>
-              </>
-            ) : (
-              <button
-                className={styles.btn}
-                onClick={() => void mintLink()}
-                disabled={mintingInvite}
-                data-testid="mint-invite"
-              >
-                {mintingInvite ? <span className={styles.spinner} /> : null}
-                {mintingInvite ? 'Creating…' : 'Create invitation link'}
-              </button>
-            )}
-
-            <div className={styles.section}>
-              <div className={styles.sectionRow}>
-                <span className={styles.sectionTitle}>Invite one person</span>
               </div>
-              <p className={styles.subtitle} style={{ marginBottom: 12 }}>
-                For a specific Calimero identity. They send you their id; this
-                mints a payload only they can redeem.
-              </p>
+              {invite ? (
+                <>
+                  <div className={styles.tokenBox}>
+                    <span className={styles.token} data-testid="invite-link">
+                      {invite.link}
+                    </span>
+                    <button
+                      className={styles.copyBtn}
+                      onClick={() => copy(invite.link, 'Invitation link')}
+                    >
+                      <Copy size={14} />
+                      Copy
+                    </button>
+                  </div>
+                  <div className={styles.buttonRow}>
+                    <button
+                      className={styles.btnGhost}
+                      onClick={() => copy(invite.deepLink, 'Desktop link')}
+                    >
+                      Copy desktop link
+                    </button>
+                    <button
+                      className={styles.btnGhost}
+                      onClick={() => copy(invite.code, 'Invitation code')}
+                    >
+                      Copy code
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className={styles.buttonRow}>
+                  <button
+                    className={styles.btn}
+                    onClick={() => void mintLink()}
+                    disabled={mintingInvite}
+                    data-testid="mint-invite"
+                  >
+                    {mintingInvite ? (
+                      <span className={styles.spinner} />
+                    ) : (
+                      <Link2 size={16} />
+                    )}
+                    {mintingInvite ? 'Creating…' : 'Create invitation link'}
+                  </button>
+                </div>
+              )}
+            </section>
+
+            <section className={styles.panel}>
+              <div className={styles.panelHead}>
+                <span className={styles.panelIcon}>
+                  <UserPlus size={20} />
+                </span>
+                <div>
+                  <h2 className={styles.panelTitle}>Invite one person</h2>
+                  <p className={styles.panelText}>
+                    For a specific Calimero identity. They send you their id;
+                    this mints a payload only they can redeem.
+                  </p>
+                </div>
+              </div>
               <div className={styles.createRow}>
                 <input
                   className={styles.input}
                   placeholder="Their id (64 hex characters)…"
+                  aria-label="Their id"
                   value={inviteeId}
                   onChange={(e) => setInviteeId(e.target.value)}
                   data-testid="invitee-id"
                 />
                 <select
-                  className={styles.input}
+                  className={`${styles.input} ${styles.select}`}
                   value={inviteeLevel}
                   onChange={(e) =>
                     setInviteeLevel(e.target.value as PermissionLevel)
@@ -790,7 +895,7 @@ export default function AgreementPage() {
                   Create
                 </button>
               </div>
-              <p className={styles.note} style={{ marginTop: 8 }}>
+              <p className={styles.note}>
                 A document is complete once every signer has signed it; viewers
                 are never waited on. A viewer can be made a signer later, but a
                 signer cannot be made a viewer — to undo that you have to remove
@@ -803,11 +908,12 @@ export default function AgreementPage() {
                     className={styles.copyBtn}
                     onClick={() => copy(targetedPayload, 'Invitation payload')}
                   >
+                    <Copy size={14} />
                     Copy
                   </button>
                 </div>
               )}
-            </div>
+            </section>
           </div>
         )}
       </main>
@@ -817,8 +923,16 @@ export default function AgreementPage() {
           className={styles.modalBackdrop}
           onClick={() => setUploadOpen(false)}
         >
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h2 className={styles.modalTitle}>Upload a document</h2>
+          <div
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="upload-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className={styles.modalTitle} id="upload-title">
+              Upload a document
+            </h2>
             <p className={styles.modalDesc}>
               A PDF. Everyone in this agreement will be able to read it and sign
               it; it is stored on the nodes of the people invited here.
@@ -826,7 +940,15 @@ export default function AgreementPage() {
             <label
               className={`${styles.drop} ${uploadFile ? styles.dropPicked : ''}`}
             >
-              {uploadFile ? uploadFile.name : 'Choose a PDF…'}
+              <span className={styles.dropIcon}>
+                {uploadFile ? <FileText size={22} /> : <UploadCloud size={22} />}
+              </span>
+              <span className={styles.dropName}>
+                {uploadFile ? uploadFile.name : 'Choose a PDF…'}
+              </span>
+              <span className={styles.dropHint}>
+                {uploadFile ? 'Click to choose another' : 'PDF files only'}
+              </span>
               <input
                 className={styles.dropInput}
                 type="file"
@@ -857,13 +979,15 @@ export default function AgreementPage() {
 
       {viewing && (
         <div
-          className={styles.modalBackdrop}
+          className={styles.viewerScrim}
           onClick={() => setViewing(null)}
           data-testid="document-backdrop"
         >
           <div
-            className={styles.modal}
-            style={{ maxWidth: 980, padding: 0, maxHeight: '92vh' }}
+            className={styles.viewerPanel}
+            role="dialog"
+            aria-modal="true"
+            aria-label={viewing.name}
             // Clicks inside the panel are not a click on the backdrop.
             onClick={(e) => e.stopPropagation()}
           >
@@ -877,21 +1001,20 @@ export default function AgreementPage() {
                 what failed, and the viewer appears when it has something to
                 view. */}
             {viewingError ? (
-              <div style={{ padding: 24 }}>
+              <div className={styles.viewerState}>
                 <p className={styles.error} data-testid="document-error">
                   {viewingError}
                 </p>
-                <div className={styles.modalRow}>
-                  <button
-                    className={styles.btnGhost}
-                    onClick={() => setViewing(null)}
-                  >
-                    Close
-                  </button>
-                </div>
+                <button
+                  className={styles.btnGhost}
+                  onClick={() => setViewing(null)}
+                >
+                  Close
+                </button>
               </div>
             ) : !viewingFile ? (
-              <div style={{ padding: 24 }}>
+              <div className={styles.viewerState}>
+                <span className={styles.spinnerLarge} />
                 <p className={styles.empty} data-testid="document-loading">
                   Loading {viewing.name}…
                 </p>
@@ -900,9 +1023,8 @@ export default function AgreementPage() {
               <>
                 {integrity && (
                   <p
-                    className={styles.error}
+                    className={`${styles.error} ${styles.integrity}`}
                     data-testid="integrity-warning"
-                    style={{ margin: '12px 16px 0' }}
                   >
                     {integrity}
                   </p>
@@ -913,7 +1035,7 @@ export default function AgreementPage() {
                   title={viewing.name}
                   showDownload
                   showClose
-                  maxHeight="86vh"
+                  maxHeight="100%"
                   contextId={contextId}
                   documentId={viewing.id}
                   documentHash={viewing.hash}
@@ -942,6 +1064,6 @@ export default function AgreementPage() {
           </p>
         </main>
       )}
-    </div>
+    </AppShell>
   );
 }

@@ -1,4 +1,4 @@
-import * as pdfjsLib from 'pdfjs-dist';
+import { pdfjsLib } from './pdfjs';
 
 import { configurePdfWorker } from './pdfWorker';
 import { jsPDF } from 'jspdf';
@@ -10,7 +10,13 @@ configurePdfWorker();
 
 export interface PDFPage {
   pageNumber: number;
+  /** The page at `width` x `height`: the coordinate space signatures use. */
   canvas: HTMLCanvasElement;
+  /** The same page with `pixelRatio` times the pixels, for display only, so
+   *  text stays sharp when the page is shown larger than `width` (zoom, a
+   *  high-density screen). `canvas` itself when no extra pixels were asked
+   *  for. */
+  displayCanvas: HTMLCanvasElement;
   viewport: pdfjsLib.PageViewport;
   width: number;
   height: number;
@@ -64,10 +70,24 @@ class PDFService {
     pdf: pdfjsLib.PDFDocumentProxy,
     pageNumber: number,
     scale: number = 1.5,
+    pixelRatio: number = 1,
   ): Promise<PDFPage> {
     try {
       const page = await pdf.getPage(pageNumber);
       const viewport = page.getViewport({ scale });
+
+      // Rasterise once, at the resolution the page is displayed at, capped so
+      // a big page at full zoom cannot ask for a canvas the browser refuses.
+      const MAX_PIXELS = 16_000_000;
+      const ratio = Math.max(
+        1,
+        Math.min(
+          pixelRatio,
+          Math.sqrt(MAX_PIXELS / (viewport.width * viewport.height)),
+        ),
+      );
+      const renderViewport =
+        ratio === 1 ? viewport : page.getViewport({ scale: scale * ratio });
 
       const canvas = document.createElement('canvas');
       // Kept as a CHECK, not as an argument: pdf.js is handed the canvas now
@@ -77,8 +97,8 @@ class PDFService {
         throw new Error('Unable to get 2D context');
       }
 
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
+      canvas.height = renderViewport.height;
+      canvas.width = renderViewport.width;
 
       // pdfjs-dist 6 takes the CANVAS, not its context: `canvas` is required on
       // RenderParameters and `canvasContext` is the legacy path, which its own
@@ -91,11 +111,25 @@ class PDFService {
       // failed on the tsconfig before it type-checked a single file, and this
       // call went unchecked. It surfaced the moment the app moved to the
       // workspace's TS 5.8.
-      await page.render({ canvas, viewport }).promise;
+      await page.render({ canvas, viewport: renderViewport }).promise;
+
+      // The logical page, drawn down from the sharp one rather than rendered
+      // twice. Signature placement and dragging measure THIS canvas, so its
+      // size must stay `width` x `height` whatever the display resolution.
+      let logical = canvas;
+      if (ratio !== 1) {
+        logical = document.createElement('canvas');
+        logical.width = viewport.width;
+        logical.height = viewport.height;
+        logical
+          .getContext('2d')
+          ?.drawImage(canvas, 0, 0, viewport.width, viewport.height);
+      }
 
       return {
         pageNumber,
-        canvas,
+        canvas: logical,
+        displayCanvas: canvas,
         viewport,
         width: viewport.width,
         height: viewport.height,
@@ -109,12 +143,13 @@ class PDFService {
   async renderAllPages(
     pdf: pdfjsLib.PDFDocumentProxy,
     scale: number = 1.5,
+    pixelRatio: number = 1,
   ): Promise<PDFPage[]> {
     const numPages = pdf.numPages;
     const pages: PDFPage[] = [];
 
     for (let i = 1; i <= numPages; i++) {
-      const page = await this.renderPage(pdf, i, scale);
+      const page = await this.renderPage(pdf, i, scale, pixelRatio);
       pages.push(page);
     }
 

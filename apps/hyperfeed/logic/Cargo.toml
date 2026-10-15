@@ -42,6 +42,10 @@ min-runtime-version = "0.11.0-rc.87"
 # node's sign-in page trust Hyperfeed with full access at this origin
 # (`TRUSTED_APPS` in tauri-app and auth-frontend): change them together.
 frontend = "https://hyperfeed.me"
+# Also trusted for the login callback, never opened: www (should redirect here,
+# but a login started there must still land), and the vercel.app origin
+# Hyperfeed was served at before, for nodes still opening a bundle that names it.
+frontend-aliases = ["https://www.hyperfeed.me", "https://hyperfeed-two.vercel.app"]
 # Shown to an agent by mero-mcp the first time it meets this app: how to report,
 # ask and carry out the user's decisions through the feed.
 guide = "GUIDE.md"
