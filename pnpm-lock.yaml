@@ -126,6 +126,9 @@ importers:
       '@calimero-apps/invite':
         specifier: workspace:*
         version: link:../../../packages/invite
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -333,6 +336,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -546,6 +552,9 @@ importers:
       '@calimero-apps/join-sync':
         specifier: workspace:*
         version: link:../../../packages/join-sync
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -821,6 +830,9 @@ importers:
       '@calimero-apps/invite':
         specifier: workspace:*
         version: link:../../../packages/invite
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -906,6 +918,9 @@ importers:
       '@calimero-apps/join-sync':
         specifier: workspace:*
         version: link:../../../packages/join-sync
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1402,6 +1417,9 @@ importers:
       '@calimero-apps/join-sync':
         specifier: workspace:*
         version: link:../../../packages/join-sync
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1487,6 +1505,9 @@ importers:
       '@calimero-apps/invite':
         specifier: workspace:*
         version: link:../../../packages/invite
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1569,6 +1590,9 @@ importers:
       '@calimero-apps/invite':
         specifier: workspace:*
         version: link:../../../packages/invite
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1663,6 +1687,9 @@ importers:
       '@calimero-apps/join-sync':
         specifier: workspace:*
         version: link:../../../packages/join-sync
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1763,6 +1790,9 @@ importers:
       '@calimero-apps/join-sync':
         specifier: workspace:*
         version: link:../../../packages/join-sync
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1869,6 +1899,9 @@ importers:
       '@calimero-apps/join-sync':
         specifier: workspace:*
         version: link:../../../packages/join-sync
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1975,6 +2008,9 @@ importers:
       '@calimero-apps/join-sync':
         specifier: workspace:*
         version: link:../../../packages/join-sync
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -2159,6 +2195,9 @@ importers:
       '@calimero-apps/invite':
         specifier: workspace:*
         version: link:../../../packages/invite
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-js':
         specifier: ^25.2.0
         version: 25.2.0
@@ -2235,6 +2274,9 @@ importers:
       '@calimero-apps/join-sync':
         specifier: workspace:*
         version: link:../../../packages/join-sync
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -2341,6 +2383,9 @@ importers:
       '@calimero-apps/join-sync':
         specifier: workspace:*
         version: link:../../../packages/join-sync
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -2438,6 +2483,9 @@ importers:
       '@calimero-apps/invite':
         specifier: workspace:*
         version: link:../../../packages/invite
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-js':
         specifier: ^25.2.0
         version: 25.2.0
