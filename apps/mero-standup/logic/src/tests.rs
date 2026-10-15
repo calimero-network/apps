@@ -824,18 +824,27 @@ fn a_week_is_seven_days_across_a_month_boundary() {
 
 // ── v1 -> v2 ─────────────────────────────────────────────────────────────────
 
+// Every item below is left out of `cargo mero`'s ABI build (`--cfg
+// calimero_abi`). That build runs the lib tests named `__calimero_abi_dump`, and
+// v1's `#[app::logic]` generates one too: with v1 compiled in, two dumps raced
+// for the same file and v1's ABI could land in res/abi.json. `cargo test`
+// still runs these.
+
 /// The frozen v1 contract, compiled into this test module from the same file
 /// `crates/v1` builds the v1 bundle from. In-module rather than a
 /// dev-dependency because `#[app::state]` only implements TestHost's bridge
 /// under `cfg(test)` of the crate that defines the state.
+#[cfg(not(calimero_abi))]
 #[path = "../crates/v1/src/lib.rs"]
 #[allow(dead_code)]
 mod v1;
 
+#[cfg(not(calimero_abi))]
 type V1 = v1::MeroStandup;
 
 /// What a v1 team looks like after a few days of use: two people's updates,
 /// a blocker, names, and a decision that superseded another.
+#[cfg(not(calimero_abi))]
 fn v1_team() -> (TestHost<V1>, String) {
     let mut app = TestHost::new(V1::init);
     app.call(|s| s.set_name("Ana".to_owned())).unwrap();
@@ -873,6 +882,7 @@ fn v1_team() -> (TestHost<V1>, String) {
     (app, old)
 }
 
+#[cfg(not(calimero_abi))]
 #[test]
 fn the_migration_keeps_every_v1_record_readable() {
     let (v1, old) = v1_team();
@@ -898,6 +908,7 @@ fn the_migration_keeps_every_v1_record_readable() {
 
 /// After the upgrade the v1 entries are not frozen relics: their owners still
 /// edit them, and v2 features work on top of them.
+#[cfg(not(calimero_abi))]
 #[test]
 fn v1_entries_stay_editable_and_v2_features_work_on_them() {
     let (v1, _) = v1_team();
@@ -944,6 +955,7 @@ fn v1_entries_stay_editable_and_v2_features_work_on_them() {
 /// collections through as handles and creates the three v2 ones, and the
 /// latter is what this proves deterministic. Convergence over real v1 data is
 /// what `workflows/migrate-v1-v2.yml` checks, on two nodes.
+#[cfg(not(calimero_abi))]
 #[test]
 fn the_migration_converges_across_nodes() {
     calimero_sdk::testing::assert_migrate_converges::<V1, MeroStandup>(
