@@ -1745,6 +1745,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/members':
+        specifier: workspace:*
+        version: link:../../../packages/members
       '@calimero-apps/names':
         specifier: workspace:*
         version: link:../../../packages/names
