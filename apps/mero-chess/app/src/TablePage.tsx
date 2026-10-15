@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { clearContextId } from "@calimero-network/mero-react";
 import { ChessBoard } from "./ChessBoard";
 import type { GameSummary, TableView } from "./generated/MeroChessClient";
 import { InviteCard } from "./InviteCard";
 import { GameCard, Moves, PastGames, PlayerBar, type TableActions } from "./TablePanel";
-import { rememberName, storedName, useAnnounce, useChessTable, usePastGames } from "./useChess";
+import { useAnnounce, useChessTable, usePastGames } from "./useChess";
+import { useSeatNames } from "./useSeatNames";
 import { materialFromSquares, piecesFromFen, type PieceColor } from "./utils/board";
 
 /**
@@ -18,7 +19,9 @@ import { materialFromSquares, piecesFromFen, type PieceColor } from "./utils/boa
  */
 export function TablePage({ contextId }: { contextId: string }) {
   const table = useChessTable(contextId);
-  const [name, setName] = useState(storedName);
+  // Seats named from the namespace when the table has no name for them.
+  const names = useSeatNames(contextId, table.view);
+  const name = names.name;
   useAnnounce(contextId, name);
 
   function switchTable() {
@@ -29,7 +32,7 @@ export function TablePage({ contextId }: { contextId: string }) {
     window.location.reload();
   }
 
-  const view = table.view;
+  const view = names.view;
   // Re-read the record only when the table says it could have changed: a game
   // ending, or a rematch starting. See `usePastGames`.
   const past = usePastGames(contextId, `${view?.games_played ?? 0}:${view?.result ?? ""}`);
@@ -45,11 +48,11 @@ export function TablePage({ contextId }: { contextId: string }) {
       invite={<InviteCard contextId={contextId} />}
       busy={table.busy}
       name={name}
-      onNameChange={(next) => {
-        setName(next);
-        rememberName(next);
+      onNameChange={names.changeName}
+      onSit={(seat) => {
+        names.publish(name);
+        void table.sit(seat, name);
       }}
-      onSit={(seat) => void table.sit(seat, name)}
       onStand={() => void table.stand()}
       onResign={() => void table.resign()}
       onOfferDraw={() => void table.offerDraw()}
