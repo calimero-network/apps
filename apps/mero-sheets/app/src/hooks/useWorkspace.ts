@@ -74,6 +74,13 @@ export interface UseWorkspaceReturn {
   /** True once the open context is resolved and we hold its executor identity. */
   ready: boolean;
   loading: boolean;
+  /**
+   * True once a press of "create" would do what it says: this app's id and its
+   * namespace (or the lack of one) are known, and no create is running. Unlike
+   * `loading` it does not flicker while the node is read, so a press is never
+   * dropped on a button that was on a frame ago.
+   */
+  canCreate: boolean;
   /** What a multi-step operation is currently doing, for the UI to echo. */
   status: string | null;
   error: Error | null;
@@ -218,10 +225,30 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   const clearPendingInit = useCallback(() => setPendingInitName(null), []);
 
+  // Whether this app's namespaces have been read for the current app id.
+  //
+  // `loading` alone cannot say: mero-react's resource hooks report themselves
+  // in flight only from the render AFTER their inputs change, so between the
+  // app id resolving and the namespace read starting there is a render with
+  // nothing loading and no namespace. Gating "create" on `loading` turned the
+  // button on in that render and off again in the next (and once more between
+  // the namespace and the context reads), and a press in one of those frames
+  // hit a disabled button and was lost. A press in the very first one was
+  // worse: with no namespace known yet, create would have made a second one.
+  // So: settled means a read for this id was seen in flight and then ended.
+  const nsReadStartedFor = useRef<string | null>(null);
+  const [nsSettledFor, setNsSettledFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!applicationId) return;
+    if (nsLoading) nsReadStartedFor.current = applicationId;
+    else if (nsReadStartedFor.current === applicationId) setNsSettledFor(applicationId);
+  }, [applicationId, nsLoading]);
+  const namespaceKnown = !!applicationId && nsSettledFor === applicationId;
+
   const creatingRef = useRef(false);
   const createWorkspace = useCallback(
     async (name: string) => {
-      if (!mero || !applicationId || creatingRef.current) return;
+      if (!mero || !applicationId || !namespaceKnown || creatingRef.current) return;
       creatingRef.current = true;
       setBusy(true);
       setError(null);
@@ -261,7 +288,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         setStatus(null);
       }
     },
-    [mero, applicationId, namespaceId, refresh],
+    [mero, applicationId, namespaceKnown, namespaceId, refresh],
   );
 
   const activeName = useMemo(() => {
@@ -342,6 +369,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     activeName,
     ready: contextId !== null && executorPublicKey !== null,
     loading: appIdResolving || nsLoading || ctxLoading || busy,
+    canCreate: namespaceKnown && !busy,
     status,
     error,
     notInstalled,
