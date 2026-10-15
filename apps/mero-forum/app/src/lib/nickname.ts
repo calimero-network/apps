@@ -54,7 +54,13 @@ export function useNickname(client: ForumClient | null, selfAccount?: string | n
    */
   const spaceName = selfAccount ? nameOf(selfAccount) : undefined;
   useEffect(() => {
-    if (getUsername() || !spaceName) return;
+    if (!spaceName) return;
+    // Another instance may have adopted it already: still fill this one.
+    const stored = getUsername();
+    if (stored) {
+      setName((current) => current || stored);
+      return;
+    }
     setUsername(spaceName);
     setName(spaceName);
     void client?.setNickname({ name: spaceName }).catch(() => undefined);

@@ -50,10 +50,15 @@ export function useSeatNames(contextId: string, view: TableView | null) {
 
   // A blank name field adopts the name this person set for the namespace, so
   // they sit (and announce themselves) under it rather than as a Guest.
+  //
+  // Every instance fills its own field: the first to see the name stores it,
+  // and an instance that finds it already stored still takes it rather than
+  // returning with its field blank.
   useEffect(() => {
-    if (storedName() || !selfName) return;
-    rememberName(selfName);
-    setName(selfName);
+    if (!selfName) return;
+    const stored = storedName();
+    if (!stored) rememberName(selfName);
+    setName((current) => current || stored || selfName);
   }, [selfName]);
 
   /** Publish `next` namespace-wide. Best-effort: the table name is what was asked for. */

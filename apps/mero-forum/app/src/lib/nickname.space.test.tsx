@@ -44,6 +44,14 @@ describe("useNickname – the space name", () => {
     expect(c.setNickname).toHaveBeenCalledWith({ name: "Sandi" });
   });
 
+  it("fills every mounted instance, not just the first to adopt it", async () => {
+    admin.listGroupMembers.mockResolvedValue({ members: [{ identity: SELF, name: "Sandi" }] });
+    const a = renderHook(() => useNickname(client() as never, SELF));
+    const b = renderHook(() => useNickname(client() as never, SELF));
+    await waitFor(() => expect(a.result.current.name).toBe("Sandi"));
+    await waitFor(() => expect(b.result.current.name).toBe("Sandi"));
+  });
+
   it("keeps a forum nickname you already picked", async () => {
     username = "ana";
     admin.listGroupMembers.mockResolvedValue({ members: [{ identity: SELF, name: "Sandi" }] });

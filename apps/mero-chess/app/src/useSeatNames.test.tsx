@@ -56,6 +56,17 @@ describe("useSeatNames – namespace names", () => {
     expect(window.localStorage.getItem("mero-chess:name")).toBe("Sandi");
   });
 
+  it("prefills every mounted field, not just the first to load", async () => {
+    // Two components on the table read the same name. The first to see the
+    // namespace name stored it, and the second then found it "already stored"
+    // and never set its own field, so it stayed blank.
+    const view = table(seat({}), seat({ seat: "black" }));
+    const a = renderHook(() => useSeatNames("ctx1", view));
+    const b = renderHook(() => useSeatNames("ctx1", view));
+    await waitFor(() => expect(a.result.current.name).toBe("Sandi"));
+    await waitFor(() => expect(b.result.current.name).toBe("Sandi"));
+  });
+
   it("publishes the name a player sits under namespace-wide", async () => {
     const view = table(seat({}), seat({ seat: "black" }));
     const { result } = renderHook(() => useSeatNames("ctx1", view));

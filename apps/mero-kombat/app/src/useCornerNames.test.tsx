@@ -57,6 +57,16 @@ describe("useCornerNames – namespace names", () => {
     expect(window.localStorage.getItem("mero-kombat:name")).toBe("Sandi");
   });
 
+  it("prefills every mounted field, not just the first to load", async () => {
+    // The first instance to see the namespace name stored it; a second found
+    // it "already stored" and never set its own field, which stayed blank.
+    const view = arena(corner({}), corner({ seat: "p2" }));
+    const a = renderHook(() => useCornerNames("ctx1", view));
+    const b = renderHook(() => useCornerNames("ctx1", view));
+    await waitFor(() => expect(a.result.current.name).toBe("Sandi"));
+    await waitFor(() => expect(b.result.current.name).toBe("Sandi"));
+  });
+
   it("publishes the name a player fights under namespace-wide", async () => {
     const view = arena(corner({}), corner({ seat: "p2" }));
     const { result } = renderHook(() => useCornerNames("ctx1", view));
