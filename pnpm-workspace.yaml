@@ -127,7 +127,9 @@ catalog:
   # 9.14.0 (#106) carries what the apps' own @calimero-apps/invite and
   # @calimero-apps/join-sync were (link capture, redemption, the post-join
   # sync gate) plus InvitationDialog, the one invitation prompt every app shows.
-  "@calimero-network/mero-react": ^9.14.0
+  # 9.14.1 (#107): useJoinSync hears a join of the namespace a page already
+  # shows; on 9.14.0 the dialog sat on "Syncing…" for that invitation.
+  "@calimero-network/mero-react": ^9.14.1
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"
