@@ -413,16 +413,16 @@ function YourName({ namespaceId, selfAccount }: { namespaceId: string; selfAccou
   const { admin } = useMero();
   const { showToast } = useToast();
   const me = useMyName(admin, namespaceId, selfAccount);
-  const [draft, setDraft] = useState(me.name);
   const [saving, setSaving] = useState(false);
 
-  // Follow the name as it loads, unless the field is being edited.
-  const [editing, setEditing] = useState(false);
-  useEffect(() => {
-    if (!editing) setDraft(me.name);
-  }, [me.name, editing]);
+  // What you typed, or `null` while the field just shows your name as it
+  // loads. Derived, not copied in an effect: an effect runs after the render
+  // that showed the field (a task later on a busy machine), so its copy
+  // overwrote a name typed in between and left Save disabled.
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? me.name;
 
-  const trimmed = draft.trim();
+  const trimmed = value.trim();
   const unchanged = trimmed === me.name;
 
   async function save() {
@@ -430,7 +430,7 @@ function YourName({ namespaceId, selfAccount }: { namespaceId: string; selfAccou
     setSaving(true);
     try {
       await me.setName(trimmed);
-      setEditing(false);
+      setDraft(null);
       showToast("Name updated for the whole team.", "success");
     } catch (err) {
       showToast(extractErrorMessage(err, "Could not save your name."));
@@ -445,15 +445,12 @@ function YourName({ namespaceId, selfAccount }: { namespaceId: string; selfAccou
       <div className={styles.copyRow}>
         <input
           className={styles.nameInput}
-          value={draft}
+          value={value}
           maxLength={32}
           placeholder="Your name…"
           aria-label="Your name in this team"
           data-testid="your-name-input"
-          onChange={(e) => {
-            setEditing(true);
-            setDraft(e.target.value);
-          }}
+          onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void save()}
         />
         <button
