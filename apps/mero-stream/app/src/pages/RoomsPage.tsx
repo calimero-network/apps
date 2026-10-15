@@ -38,7 +38,12 @@ import {
   VideoIcon,
 } from "../components/icons";
 import styles from "./Manage.module.css";
-import { JoinSyncBanner, useJoinSync } from "@calimero-network/mero-react";
+import {
+  JOIN_SYNC_POLL_MS,
+  JoinSyncBanner,
+  isNamespaceJustJoined,
+  useJoinSync,
+} from "@calimero-network/mero-react";
 
 /**
  * Rooms inside one stream (namespace). A room is a SUBGROUP plus the context bound
@@ -123,14 +128,6 @@ export default function RoomsPage() {
     [],
   );
 
-  // A stream joined this session whose rooms have not replicated yet. Without
-  // this a brand-new member is told "No rooms in this stream" about a stream
-  // that may well have several.
-  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
-    namespaceId: namespaceId || null,
-    settled: listedForNs === namespaceId,
-  });
-
   const load = useCallback(
     async (showSpinner = true) => {
       if (!admin || !namespaceId) return;
@@ -147,7 +144,8 @@ export default function RoomsPage() {
           setTee({ id: namespaceId, mode }),
         );
         setRooms(await listRooms(admin, namespaceId));
-        // A real answer, empty or not — that is what ends the sync gate.
+        // A real answer. Whether an EMPTY one ends the sync gate is decided
+        // there, not here: see `settled` below.
         setListedForNs(namespaceId);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load rooms.");
@@ -161,6 +159,30 @@ export default function RoomsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A stream joined this session whose rooms have not replicated yet. Without
+  // this a brand-new member is told "No rooms in this stream" about a stream
+  // that may well have several.
+  //
+  // So an EMPTY list settles only once the stream is no longer just-joined:
+  // until then it is what a node that has not synced the stream returns. The
+  // watchdog clears the flag, after which a stream with no rooms reads as empty.
+  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
+    namespaceId: namespaceId || null,
+    settled:
+      listedForNs === namespaceId &&
+      (rooms.length > 0 || !isNamespaceJustJoined(namespaceId || null)),
+    // Still empty: let the gate wait up to its ceiling, not the base window.
+    active: rooms.length === 0,
+  });
+
+  // Nothing else re-reads the list (Refresh is manual), so while the gate is
+  // up keep asking until the rooms land.
+  useEffect(() => {
+    if (!isSyncing) return;
+    const timer = setInterval(() => void load(false), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, load]);
 
   /**
    * Read each joined room's contract roster, so a row can say WHO is in the
