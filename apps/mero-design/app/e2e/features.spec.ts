@@ -2,6 +2,8 @@
  * E2E tests for features T01–T15
  */
 import { test, expect } from "@playwright/test";
+import bs58 from "bs58";
+import { deflateSync } from "fflate";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -406,10 +408,22 @@ test.describe("Preview mode", () => {
   });
 });
 
-// ── TeamsPage — Join invitation ───────────────────────────────────────────────
+// ── TeamsPage — Joining by invitation ────────────────────────────────────────
+//
+// An invitation reaches the app only by its link being opened; there is no
+// field to paste one into. The link's token is the app's own deflate + base58
+// encoding, built here with the same two libraries rather than by importing
+// the app's codec into the test runner.
 
-test.describe("TeamsPage – Join invitation", () => {
+function invitationToken(obj: unknown): string {
+  return bs58.encode(deflateSync(new TextEncoder().encode(JSON.stringify(obj)), { level: 9 }));
+}
+
+test.describe("TeamsPage – Joining by invitation", () => {
+  let joinRequests = 0;
+
   test.beforeEach(async ({ page }) => {
+    joinRequests = 0;
     await injectAuth(page);
     await page.route("**/admin-api/namespaces", (route) =>
       route.fulfill({
@@ -418,16 +432,29 @@ test.describe("TeamsPage – Join invitation", () => {
         body: JSON.stringify({ data: [] }),
       }),
     );
+    await page.route("**/admin-api/namespaces/*/join", (route) => {
+      joinRequests += 1;
+      return route.fulfill({ status: 500, body: "the test never accepts" });
+    });
+  });
+
+  test("there is no field to paste an invitation into", async ({ page }) => {
     await page.goto("/teams");
+    await expect(page.getByText("open an invitation link someone sent you")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByPlaceholder(/invitation/i)).toHaveCount(0);
+    await expect(page.getByText("Got an invitation? Join your team!")).toHaveCount(0);
   });
 
-  test("join invitation section is visible", async ({ page }) => {
-    await expect(page.getByText("Got an invitation? Join your team!")).toBeVisible({ timeout: 5000 });
-  });
-
-  test("join button is disabled when input is empty", async ({ page }) => {
-    const joinBtn = page.getByRole("button", { name: "Join" });
-    await expect(joinBtn).toBeDisabled();
+  test("an opened invitation link asks before joining", async ({ page }) => {
+    const groupId = Array.from({ length: 32 }, (_, i) => i);
+    const token = invitationToken({
+      invitation: { invitation: { group_id: groupId }, inviterSignature: "sig" },
+      __teamName: "Design",
+    });
+    await page.goto(`/?invitation=${token}`);
+    await expect(page.getByTestId("invite-accept")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/invited to .Design./)).toBeVisible();
+    expect(joinRequests, "nothing joins before Join is clicked").toBe(0);
   });
 });
 
