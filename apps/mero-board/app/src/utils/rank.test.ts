@@ -47,4 +47,16 @@ describe('rank', () => {
     expect(rankFor(sibs, 3) > 'v').toBe(true);
     expect(rankFor([], 0)).toBe('i');
   });
+
+  it('a drop inside a group of equal ranks lands after the group', () => {
+    const siblings = [{ rank: 'i' }, { rank: 'r' }, { rank: 'r' }, { rank: 'v' }];
+    const inside = rankFor(siblings, 2);
+    expect(inside > 'r' && inside < 'v').toBe(true);
+    const before = rankFor(siblings, 1);
+    expect(before > 'i' && before < 'r').toBe(true);
+  });
+
+  it('between equal ranks does not throw and lands after them', () => {
+    expect(rankBetween('r', 'r') > 'r').toBe(true);
+  });
 });

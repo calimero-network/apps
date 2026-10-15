@@ -40,3 +40,24 @@ test('get_board includes archived cards, so a rank never lands on a hidden neigh
   assert.ok(r > 'i' && r < 'n', r);
   assert.ok(resolveRank(withArchived, 'todo', 'after:h') > 'n');
 });
+
+test('after:<id> inside a group of equal ranks lands after the group', () => {
+  const equal = [
+    { id: 'a', list_id: 'todo', rank: 'i' },
+    { id: 'b', list_id: 'todo', rank: 'r' },
+    { id: 'c', list_id: 'todo', rank: 'r' },
+    { id: 'd', list_id: 'todo', rank: 'v' },
+  ];
+  const r = resolveRank(equal, 'todo', 'after:b');
+  assert.ok(r > 'r' && r < 'v', r);
+});
+test('after:<id> of the card before an equal-rank group lands before the group', () => {
+  const equal = [
+    { id: 'a', list_id: 'todo', rank: 'i' },
+    { id: 'b', list_id: 'todo', rank: 'r' },
+    { id: 'c', list_id: 'todo', rank: 'r' },
+    { id: 'd', list_id: 'todo', rank: 'v' },
+  ];
+  const r = resolveRank(equal, 'todo', 'after:a');
+  assert.ok(r > 'i' && r < 'r', r);
+});

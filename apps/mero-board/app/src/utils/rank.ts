@@ -23,6 +23,10 @@ function midpoint(a: string, b: string | null): string {
 
 /** A rank strictly between two neighbours; `null` on either side is the edge. */
 export function rankBetween(before: string | null, after: string | null): string {
+  // Two siblings can share a rank (concurrent moves on two nodes picked the same
+  // neighbour pair). A degenerate pair has no rank strictly between, so land
+  // after `before` rather than throwing.
+  if (before !== null && after !== null && before >= after) return rankAfter(before);
   return midpoint(before ?? '', after);
 }
 
@@ -33,11 +37,20 @@ export function rankAfter(last: string | null): string {
 
 /**
  * The rank for inserting at `index` into `siblings`, which must already be
- * sorted by rank and must not contain the item being placed.
+ * sorted by rank and must not contain the item being placed. A card dropped
+ * into a group of equal ranks lands after the group: `after` is the first
+ * sibling at or past `index` whose rank is strictly greater than `before`.
  */
 export function rankFor(siblings: ReadonlyArray<{ rank: string }>, index: number): string {
   const before = index > 0 ? siblings[index - 1]?.rank ?? null : null;
-  const after = index < siblings.length ? siblings[index]?.rank ?? null : null;
+  let after: string | null = null;
+  for (let i = index; i < siblings.length; i++) {
+    const r = siblings[i].rank;
+    if (before === null || r > before) {
+      after = r;
+      break;
+    }
+  }
   return rankBetween(before, after);
 }
 
