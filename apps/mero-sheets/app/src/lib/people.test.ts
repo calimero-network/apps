@@ -6,6 +6,7 @@ import {
   memberLabel,
   shortId,
   summariseMembers,
+  withNamespaceNames,
 } from './people';
 
 const HEX_A = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
@@ -134,5 +135,28 @@ describe('summariseMembers', () => {
 
   it('is empty for an empty roster', () => {
     expect(summariseMembers([])).toBe('');
+  });
+});
+
+// A collaborator who never picked a nickname in this workbook was `a1b2c3d4…`
+// here, even when they had named themselves for the whole workspace.
+describe('withNamespaceNames', () => {
+  const nsNames = new Map([[HEX_A, 'Sandi'], [HEX_B, 'Ana']]);
+  const nameOf = (id: string) => nsNames.get(id);
+
+  it('names a member with a blank nickname from the workspace name', () => {
+    const [label] = labelMembers(withNamespaceNames([{ id: HEX_A, nickname: '' }], nameOf), null);
+    expect(label.label).toBe('Sandi');
+    expect(label.anonymous).toBe(false);
+  });
+
+  it('keeps a nickname picked in this workbook', () => {
+    expect(withNamespaceNames([{ id: HEX_B, nickname: 'Bee' }], nameOf)[0].nickname).toBe('Bee');
+  });
+
+  it('stays a flagged short id when neither name exists', () => {
+    const [label] = labelMembers(withNamespaceNames([{ id: HEX_A, nickname: ' ' }], () => undefined), null);
+    expect(label.anonymous).toBe(true);
+    expect(label.label).toBe(shortId(HEX_A));
   });
 });

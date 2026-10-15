@@ -43,6 +43,7 @@ interface PeoplePanelProps {
   group: GroupPerson[];
   selfId: string | null;
   workspaceName: string;
+  /** A member id or a group account (the same hex) -> a name, never a raw id. */
   nameOf: (memberId: string) => string;
   /** This user may change workbook roles (an owner, or nobody owns it yet). */
   canManageRoles: boolean;
@@ -82,6 +83,15 @@ export function peopleRows(members: Member[], group: GroupPerson[]): { rows: Row
   return { rows, tees: teeIds.size };
 }
 
+/**
+ * The name for a row: a workbook member's, or — for someone in the workspace
+ * who has not opened this workbook — the name keyed by their account, which
+ * `nameOf` resolves from the workspace's member names.
+ */
+export function rowName(row: Pick<Row, 'member' | 'person'>, nameOf: (id: string) => string): string {
+  return nameOf(row.member ? row.member.id : row.person!.identity);
+}
+
 export default function PeoplePanel(props: PeoplePanelProps) {
   const { members, group, selfId, onClose } = props;
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +122,7 @@ export default function PeoplePanel(props: PeoplePanelProps) {
         <List>
           {rows.map(({ key, member, person }) => {
             const self = !!member && member.id === selfId;
-            const name = member ? props.nameOf(member.id) : `${person!.identity.slice(0, 8)}…`;
+            const name = rowName({ member, person }, props.nameOf);
             return (
               <Item key={key} data-testid="item-Person">
                 <div className="who">

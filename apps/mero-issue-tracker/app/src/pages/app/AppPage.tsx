@@ -257,7 +257,7 @@ export default function AppPage(): React.ReactElement | null {
     <AliasGate
       namespaceId={ws.activeNs}
       identity={ws.selfIdentity}
-      hasName={!!ws.selfIdentity && ws.memberNames.has(ws.selfIdentity)}
+      hasName={!!ws.selfIdentity && aliases.hasAlias(ws.selfIdentity)}
       membersLoaded={ws.membersLoaded}
       onSave={ws.setMemberName}
     />

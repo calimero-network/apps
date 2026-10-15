@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildAliasMap, resolveFromMap } from './useAliases';
+import { buildAliasMap, makeAliases, ownerLabel, resolveFromMap } from './useAliases';
 
 describe('buildAliasMap', () => {
   it('maps identity value -> alias name', () => {
@@ -43,5 +43,42 @@ describe('resolveFromMap (the actual resolve() logic)', () => {
     // Simulates what refresh() does: re-fetch, rebuild the map, swap it in.
     map = buildAliasMap([{ name: 'alice', value: 'pk-1' }]);
     expect(resolveFromMap(map, 'pk-1')).toBe('alice');
+  });
+});
+
+// Real account ids: the admin API lists members in hex, a contract stamps the
+// same account in base58, and a deal stores whichever its writer held.
+const HEX = '5926f2d2a4940fa2a62edd2cd7d833897c2c1596c697ea674dd0f49b89d11334';
+const B58 = '711jRM5BkBNcexvBDoEHuEd2ffTynNCBzRGNjfC4k4eX';
+const OTHER = '1111111111111111111111111111111111111111111111111111111111111111';
+
+describe('account spellings', () => {
+  it('resolves a base58 id to the name set for the same hex account', () => {
+    const aliases = makeAliases(buildAliasMap([{ name: 'Sandi', value: HEX }]), async () => {}, async () => {}, false, true);
+    expect(aliases.resolve(B58)).toBe('Sandi');
+    expect(aliases.hasAlias(B58)).toBe(true);
+    expect(aliases.hasAlias(HEX.toUpperCase())).toBe(true);
+  });
+});
+
+describe('ownerLabel (deal and activity owners)', () => {
+  const map = buildAliasMap([{ name: 'Sandi', value: HEX }]);
+  const resolve = (k: string) => resolveFromMap(map, k);
+
+  it('names a stored account at display time', () => {
+    expect(ownerLabel(HEX, resolve, [HEX])).toBe('Sandi');
+  });
+
+  it('falls back to a short id for an account with no name', () => {
+    expect(ownerLabel(OTHER, resolve, [OTHER])).toBe('1111…1111');
+  });
+
+  it('resolves an old frozen truncated key back to its member', () => {
+    expect(ownerLabel('5926…1334', resolve, [OTHER, HEX])).toBe('Sandi');
+  });
+
+  it('shows an old stored name as-is, and nothing for no owner', () => {
+    expect(ownerLabel('Ana', resolve, [HEX])).toBe('Ana');
+    expect(ownerLabel(null, resolve, [HEX])).toBe('');
   });
 });

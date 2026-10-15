@@ -13,7 +13,7 @@ import { useAppCtx } from './appContext';
  * and backed by the exact figure on hover, so no reading depends on colour.
  */
 export default function InsightsPage(): React.ReactElement {
-  const { data } = useAppCtx();
+  const { data, aliases } = useAppCtx();
   const now = Date.now();
   const { currency, rotting_days: rottingDays } = data.settings;
   const stats = useMemo(() => computeStats(data.deals, data.stages, now), [data.deals, data.stages, now]);
@@ -97,7 +97,7 @@ export default function InsightsPage(): React.ReactElement {
             <tbody>
               {stats.byOwner.map((o) => (
                 <tr key={o.owner} style={{ cursor: 'default' }}>
-                  <td className="title">{o.owner}</td>
+                  <td className="title">{aliases.ownerName(o.owner)}</td>
                   <td className="num"><Money value={o.wonValue} currency={currency} /></td>
                   <td className="num">{o.wonCount}</td>
                   <td className="num"><Money value={o.openValue} currency={currency} /></td>

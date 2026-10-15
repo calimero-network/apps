@@ -24,7 +24,7 @@ const SECTIONS: { key: ActivityBucket; title: string; empty: string }[] = [
 /** The to-do list: every call, meeting and task across the pipeline, grouped by
  *  when it is due. Overdue first, because that is the list that loses deals. */
 export default function ActivitiesPage(): React.ReactElement {
-  const { data, ownerFilter, searchQuery, myName } = useAppCtx();
+  const { data, ownerFilter, searchQuery, myOwner, aliases } = useAppCtx();
   const toast = useToast();
   const now = Date.now();
   const [kindFilter, setKindFilter] = useState('');
@@ -32,10 +32,10 @@ export default function ActivitiesPage(): React.ReactElement {
   const list = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return data.activities
-      .filter((a) => !ownerFilter || a.owner === ownerFilter)
+      .filter((a) => !ownerFilter || aliases.ownerName(a.owner) === ownerFilter)
       .filter((a) => !kindFilter || a.kind === kindFilter)
       .filter((a) => !q || a.subject.toLowerCase().includes(q) || (a.deal_title ?? '').toLowerCase().includes(q));
-  }, [data.activities, ownerFilter, kindFilter, searchQuery]);
+  }, [data.activities, ownerFilter, kindFilter, searchQuery, aliases]);
   const buckets = useMemo(() => bucketActivities(list, now), [list, now]);
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -59,7 +59,7 @@ export default function ActivitiesPage(): React.ReactElement {
       <QuickAdd
         deals={data.deals.filter((d) => d.status === 'open').map((d) => ({ id: d.id, title: d.title, contactId: d.contact_id }))}
         onAdd={(dealId, contactId, kind, subject, due) => run(() => data.act((c) => c.addActivity({
-          deal_id: dealId, contact_id: contactId, kind, subject, due_at: due, owner: myName || null, note: '',
+          deal_id: dealId, contact_id: contactId, kind, subject, due_at: due, owner: myOwner || null, note: '',
         })))}
       />
 
@@ -83,6 +83,7 @@ export default function ActivitiesPage(): React.ReactElement {
                   <ActivityRow
                     key={a.id}
                     a={a}
+                    ownerName={aliases.ownerName(a.owner)}
                     now={now}
                     onToggle={() => run(() => data.act((c) => c.setActivityDone({ activity_id: a.id, done: !a.done })))}
                     onSnooze={() => run(() => data.act((c) => c.rescheduleActivity({ activity_id: a.id, due_at: dueInDays(1, now) })))}
@@ -97,7 +98,7 @@ export default function ActivitiesPage(): React.ReactElement {
   );
 }
 
-function ActivityRow({ a, now, onToggle, onSnooze }: { a: ActivityView; now: number; onToggle: () => void; onSnooze: () => void }) {
+function ActivityRow({ a, ownerName, now, onToggle, onSnooze }: { a: ActivityView; ownerName: string; now: number; onToggle: () => void; onSnooze: () => void }) {
   return (
     <li className={a.done ? 'done' : ''} data-testid="activity-row">
       <input type="checkbox" checked={a.done} onChange={onToggle} aria-label={`Mark “${a.subject}” ${a.done ? 'not done' : 'done'}`} data-testid="activity-row-toggle" />
@@ -106,7 +107,7 @@ function ActivityRow({ a, now, onToggle, onSnooze }: { a: ActivityView; now: num
         <div className="subj">{a.subject}</div>
         <div className="meta">
           {a.deal_id && a.deal_title ? <Link to={`${APP_ROUTE}/deals/${a.deal_id}`}>{a.deal_title}</Link> : 'No deal'}
-          {a.owner && <> · {a.owner}</>}
+          {ownerName && <> · {ownerName}</>}
         </div>
       </div>
       {a.automation_id && <Chip title="Scheduled by an automation">auto</Chip>}
