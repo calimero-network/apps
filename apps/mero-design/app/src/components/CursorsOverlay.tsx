@@ -38,7 +38,7 @@ export default function CursorsOverlay({ cursors, myIdentity, members, teamName 
         // Members are keyed by account; a cursor by device, with its account.
         const member = members.find((m) => m.id === (c.account ?? c.identity));
         const label =
-          member?.username?.trim() || teamName?.(c.account ?? c.identity) || shortLabel(c.identity);
+          teamName?.(c.account ?? c.identity) || member?.username?.trim() || shortLabel(c.identity);
         return (
           <div
             key={c.identity}

@@ -6,7 +6,7 @@ import {
   getContextIdentity,
   useMero,
 } from "@calimero-network/mero-react";
-import { publishMemberName, useMemberNames } from "@calimero-apps/names";
+import { useMyName } from "@calimero-apps/names";
 
 import { accountId, loadAccountId } from "../../api/identity";
 import { bindSession } from "../../api/session";
@@ -29,8 +29,6 @@ export default function CalendarPage() {
   // `getNodeIdentity` is the ACCOUNT and its `getContextIdentitiesOwned` is the
   // account too — where the relay's own routes would name the relay.
   const { admin } = useMero();
-  // The name each person set once for the whole team, shared by every app on it.
-  const { nameOf: teamNameOf } = useMemberNames(admin, teamId);
   const [ready, setReady] = useState(false);
   const [askUsername, setAskUsername] = useState(false);
   const setupDone = useRef(false);
@@ -124,17 +122,17 @@ export default function CalendarPage() {
       // And as this person's name on the team, so every calendar and every
       // other app on it shows the name too. Best-effort: the calendar name
       // above is already set either way.
-      const me = accountId();
-      if (admin && teamId && me && trimmed !== teamNameOf(me)) {
-        void publishMemberName(admin, teamId, me, trimmed).catch(() => {});
-      }
+      if (trimmed !== myName.name) void myName.setName(trimmed).catch(() => {});
     }
     setAskUsername(false);
   }
 
   // Someone who already named themselves on the team is not asked again on
   // every new calendar: the team name becomes their calendar username.
-  const myTeamName = teamNameOf(accountId());
+  // One name per TEAM: asked for only when the team has none for you, and
+  // only once the team's names have loaded.
+  const myName = useMyName(admin, teamId, accountId());
+  const myTeamName = myName.name;
   useEffect(() => {
     if (askUsername && myTeamName) void handleUsernameSubmit(myTeamName);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,7 +148,7 @@ export default function CalendarPage() {
 
   return (
     <div data-testid="calendar-container">
-      {askUsername && (
+      {askUsername && myName.ready && !myTeamName && (
         <UsernameModal
           defaultName={defaultName}
           onSubmit={handleUsernameSubmit}

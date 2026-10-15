@@ -8,7 +8,7 @@ import { mapLimit } from "../utils/concurrency";
 import { useSse } from "../hooks/useSse";
 import { useToast } from "../contexts/ToastContext";
 import { useShallow } from "zustand/react/shallow";
-import { publishMemberName, useMemberNames } from "@calimero-apps/names";
+import { useMemberNames, useMyName } from "@calimero-apps/names";
 import { useEditorStore } from "../store/editorStore";
 import {
   getLayerCanvas, peekLayerCanvas, getMaskCanvas, peekMaskCanvas,
@@ -105,6 +105,8 @@ export default function EditorPage() {
   })));
 
   const myId = useRef<string>("");
+  // Your name in the team: one per team, shared by every project in it.
+  const myName = useMyName(admin, teamId, myId.current);
   const loadedBlobs = useRef<Set<string>>(new Set());
   const lastCursor = useRef(0);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -114,6 +116,8 @@ export default function EditorPage() {
   const [cursors, setCursors] = useState<CursorState[]>([]);
   const [subgroupId, setSubgroupId] = useState("");
   const [needName, setNeedName] = useState(false);
+  // Whether this account is on this project's roster: null until known.
+  const [onProject, setOnProject] = useState<boolean | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showShowcase, setShowShowcase] = useState(false);
@@ -301,9 +305,9 @@ export default function EditorPage() {
         setMembers(ms);
         const alreadyMember = ms.some((m) => m.id === myId.current);
         const storedName = localStorage.getItem("mp-username") ?? "";
-        if (!alreadyMember) {
-          setNeedName(true);
-        } else if (storedName) {
+        // Whether to ask for a name is the TEAM's question, decided below.
+        setOnProject(alreadyMember);
+        if (alreadyMember && storedName) {
           // Re-announce even as an existing member. `join` records this device's
           // device→account pairing before its early return, and that pairing is
           // the ONLY thing that lets an admin name us in a role grant — the
@@ -362,28 +366,29 @@ export default function EditorPage() {
       await rpcCall(ctxId, "join", { username, avatar: null, timestamp: ts() });
       setNeedName(false);
       localStorage.setItem("mp-username", username);
-      // And as this person's name on the team, so every project and every
-      // other app on it shows the name too. Best-effort: the project name
-      // above is already set either way.
-      const me = myId.current;
-      if (teamId && me && username !== teamNameOf(me)) {
-        void publishMemberName(admin, teamId, me, username).catch(() => {});
-      }
+      setOnProject(true);
+      // The name is the team's: every project and every other app on it
+      // uses it. Best-effort: the project roster above has it either way.
+      if (username !== myName.name) void myName.setName(username).catch(() => {});
       const role = await rpcCall<Role>(ctxId, "my_role", {}).catch(() => "viewer" as Role);
       setRole(role);
       refetch();
     } catch (e) {
       showToast(errMsg(e), "error");
     }
-  }, [ctxId, setRole, refetch, showToast, rpcCall, teamId, admin, teamNameOf]);
+  }, [ctxId, setRole, refetch, showToast, rpcCall, myName]);
 
-  // Someone who already named themselves on the team is not asked again on
-  // every new project: the team name becomes their project username.
-  const myTeamName = teamNameOf(myId.current);
+  // A name is asked for once per TEAM, never per project: a project you are
+  // not on yet is joined under your team name. Decided only once the team's
+  // names have loaded — deciding earlier asked people who already had one.
   useEffect(() => {
-    if (needName && myTeamName) void handleJoin(myTeamName);
+    if (onProject !== false || !myName.ready) return;
+    // A name this browser used before names were per team counts too.
+    const known = myName.name || localStorage.getItem("mp-username") || "";
+    if (known) void handleJoin(known);
+    else setNeedName(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needName, myTeamName]);
+  }, [onProject, myName.ready, myName.name]);
 
   // ── Pixel commit (raster) ───────────────────────────────────────────────
   const commitPixels = useCallback(async (layerId: string) => {
@@ -1523,7 +1528,7 @@ export default function EditorPage() {
           onClose={() => setShowShowcase(false)}
         />
       )}
-      {needName && <UsernameModal onSubmit={handleJoin} initialValue={localStorage.getItem("mp-username") || myTeamName || ""} />}
+      {needName && <UsernameModal onSubmit={handleJoin} initialValue={localStorage.getItem("mp-username") || myName.name || ""} />}
       {showInvite && teamId && <InviteModal teamId={teamId} onClose={() => setShowInvite(false)} />}
       {showSettings && (
         <SettingsModal

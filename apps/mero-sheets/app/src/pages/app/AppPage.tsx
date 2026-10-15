@@ -24,7 +24,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGroupMembers, useMero } from '@calimero-network/mero-react';
-import { publishMemberName, useMemberNames } from '@calimero-apps/names';
+import { useMemberNames, useMyName } from '@calimero-apps/names';
 import { C } from '../../theme';
 import ThemeToggle from '../../components/ThemeToggle';
 import { field, primaryPill, secondaryPill } from '../../components/glass';
@@ -180,7 +180,10 @@ export default function AppPage() {
   // metadata), shared by every app on it. It names people who have not picked
   // a nickname in this workbook, or have not opened it at all.
   const { nameOf: namespaceNameOf, displayName: namespaceDisplayName } = useMemberNames(admin, ws.namespaceId);
-  const selfNamespaceName = normaliseName((ss.selfId && namespaceNameOf(ss.selfId)) || '');
+  // Your own name is the workspace's, one per workspace: a workbook asks only
+  // when the workspace has none for you, and only once its names have loaded.
+  const myName = useMyName(admin, ws.namespaceId, ss.selfId);
+  const selfNamespaceName = normaliseName(myName.name);
 
   const submitNickname = useCallback(
     async (name: string) => {
@@ -191,16 +194,14 @@ export default function AppPage() {
         rememberName(name);
         // The workspace-wide name too, so every other app on it says the same.
         // Best-effort: the workbook nickname is what was asked for.
-        if (admin && ws.namespaceId && ss.selfId && name !== selfNamespaceName) {
-          void publishMemberName(admin, ws.namespaceId, ss.selfId, name).catch(() => undefined);
-        }
+        if (name !== selfNamespaceName) void myName.setName(name).catch(() => undefined);
       } catch (err) {
         setNicknameError(describeError(err));
       } finally {
         setSavingNickname(false);
       }
     },
-    [ss, admin, ws.namespaceId, selfNamespaceName],
+    [ss, myName, selfNamespaceName],
   );
 
   // Someone who already named themselves for the workspace is not asked again:
@@ -1834,7 +1835,7 @@ export default function AppPage() {
           onClose={() => setShowInvite(false)}
         />
       )}
-      {needsNickname && !adoptNamespaceName && (
+      {needsNickname && myName.ready && !adoptNamespaceName && (
         <NicknameModal
           projectName={activeWorkspaceName}
           initialName={selfNamespaceName || rememberedName()}

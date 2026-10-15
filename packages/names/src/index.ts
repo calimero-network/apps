@@ -17,3 +17,5 @@ export {
 export type { GroupNameSources } from "./groupName";
 export { useMemberNames, useGroupName } from "./hooks";
 export type { GroupNameOptions, MemberNames } from "./hooks";
+export { useMyName, getStoredMyName } from "./myName";
+export type { MyName } from "./myName";

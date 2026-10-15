@@ -38,7 +38,7 @@ export default function CursorsOverlay({ cursors, myIdentity, members, teamName 
       {active.map((c) => {
         const color = colorForIdentity(c.identity);
         const member = members.find((m) => m.id === c.identity);
-        const label = member?.username?.trim() || teamName?.(c.identity) || shortLabel(c.identity);
+        const label = teamName?.(c.identity) || member?.username?.trim() || shortLabel(c.identity);
         return (
           <div
             key={c.identity}

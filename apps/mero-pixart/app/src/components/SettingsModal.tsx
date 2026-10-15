@@ -422,7 +422,8 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
                 const isSelf = m.identity === selfIdentity;
                 // The listing's name, then the one the person set on the team,
                 // which every app shares. The id row below stays for copying.
-                const shownName = m.name || nameOf(m.identity);
+                // The team name first: one name per person across every project.
+                const shownName = nameOf(m.identity) || m.name;
                 const initial = (shownName?.[0] ?? m.identity[0] ?? "?").toUpperCase();
                 const canModerate = type === "team" && selfIsAdmin && !isSelf;
                 const busy = pendingRole === m.identity;

@@ -31,9 +31,17 @@ interface Entry {
   inflight: Promise<void> | null;
   /** Accounts renamed by this session that the listing may not show yet. */
   pending: Map<string, string>;
+  /** A load has finished, successfully or not: absence of a name now means something. */
+  settled: boolean;
 }
 
-const emptyEntry = (): Entry => ({ names: new Map(), fetchedAt: 0, inflight: null, pending: new Map() });
+const emptyEntry = (): Entry => ({
+  names: new Map(),
+  fetchedAt: 0,
+  inflight: null,
+  pending: new Map(),
+  settled: false,
+});
 
 /**
  * Member names for each namespace, keyed by canonical account.
@@ -60,6 +68,16 @@ export class MemberNameDirectory {
     const key = canonicalAccount(account);
     if (!namespaceId || !key) return undefined;
     return this.entries.get(namespaceId)?.names.get(key);
+  }
+
+  /**
+   * Whether `namespaceId`'s first load has finished (or failed).
+   *
+   * Until it has, "no name for this account" only means "not known yet" — a
+   * caller deciding whether to ask someone for their name must wait for this.
+   */
+  isSettled(namespaceId: string | null | undefined): boolean {
+    return !!namespaceId && !!this.entries.get(namespaceId)?.settled;
   }
 
   /**
@@ -94,11 +112,16 @@ export class MemberNameDirectory {
         }
         entry.names = names;
         entry.fetchedAt = Date.now();
+        entry.settled = true;
         this.emit();
       })
       .catch(() => {
         // Retry on the next read rather than caching the failure.
         entry.fetchedAt = 0;
+        if (!entry.settled) {
+          entry.settled = true;
+          this.emit();
+        }
       })
       .finally(() => {
         entry.inflight = null;

@@ -14,6 +14,7 @@ import {
   shortAccount,
   useGroupName,
   useMemberNames,
+  useMyName,
   type NamesAdmin,
 } from "./index";
 
@@ -188,5 +189,54 @@ describe("group name backfill", () => {
     await waitFor(() => expect(admin.getGroupMetadata).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 10));
     expect(setGroupMetadata).not.toHaveBeenCalled();
+  });
+});
+
+describe("useMyName", () => {
+  function Me({ admin, self = HEX }: { admin: NamesAdmin; self?: string }) {
+    const me = useMyName(admin, NS, self);
+    return (
+      <div>
+        <span data-testid="name">{me.name}</span>
+        <span data-testid="ready">{String(me.ready)}</span>
+        <button onClick={() => void me.setName("Ana")}>set</button>
+      </div>
+    );
+  }
+
+  beforeEach(() => localStorage.clear());
+
+  it("is not ready until the team's names have loaded", async () => {
+    let resolve!: (v: unknown) => void;
+    const admin: NamesAdmin = { listGroupMembers: vi.fn(() => new Promise((r) => (resolve = r))) };
+    render(<Me admin={admin} />);
+    expect(screen.getByTestId("ready").textContent).toBe("false");
+    await act(async () => resolve({ members: [{ identity: HEX, name: "Ana" }] }));
+    expect(screen.getByTestId("ready").textContent).toBe("true");
+    expect(screen.getByTestId("name").textContent).toBe("Ana");
+  });
+
+  it("is ready with no name when the team has none for you", async () => {
+    render(<Me admin={adminWith({ members: [] })} />);
+    await waitFor(() => expect(screen.getByTestId("ready").textContent).toBe("true"));
+    expect(screen.getByTestId("name").textContent).toBe("");
+  });
+
+  it("uses this browser's copy at once, and republishes it when the record lacks it", async () => {
+    localStorage.setItem(`calimero-names:me:${NS}`, "Ana");
+    const setMemberMetadata = vi.fn().mockResolvedValue(undefined);
+    render(<Me admin={adminWith({ members: [] }, { setMemberMetadata })} />);
+    expect(screen.getByTestId("name").textContent).toBe("Ana");
+    expect(screen.getByTestId("ready").textContent).toBe("true");
+    await waitFor(() => expect(setMemberMetadata).toHaveBeenCalledWith(NS, HEX, { name: "Ana" }));
+  });
+
+  it("sets the name for the whole team", async () => {
+    const setMemberMetadata = vi.fn().mockResolvedValue(undefined);
+    render(<Me admin={adminWith({ members: [] }, { setMemberMetadata })} />);
+    await act(async () => screen.getByText("set").click());
+    expect(setMemberMetadata).toHaveBeenCalledWith(NS, HEX, { name: "Ana" });
+    expect(screen.getByTestId("name").textContent).toBe("Ana");
+    expect(localStorage.getItem(`calimero-names:me:${NS}`)).toBe("Ana");
   });
 });

@@ -16,7 +16,7 @@ vi.mock("../api/rpc", () => ({
 }));
 vi.mock("../api/teamContexts", () => ({ listTeamContexts: vi.fn().mockResolvedValue([]) }));
 // The namespace listing, read through the session admin.
-const admin = {
+const admin: { listGroupMembers: ReturnType<typeof vi.fn>; setMemberMetadata?: ReturnType<typeof vi.fn> } = {
   listGroupMembers: vi.fn().mockResolvedValue({ members: [{ identity: ana, role: "Member", name: "Ana" }] }),
 };
 vi.mock("@calimero-network/mero-react", () => ({ useMero: () => ({ applicationId: "app-1", admin }) }));
@@ -31,5 +31,19 @@ describe("SettingsModal – member names", () => {
     );
     expect(await screen.findByText("Ana")).toBeInTheDocument();
     expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1");
+  });
+});
+
+describe("SettingsModal – your name", () => {
+  it("renames you for the whole team, not for one board", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    admin.setMemberMetadata = vi.fn().mockResolvedValue(undefined);
+    render(<SettingsModal type="team" id="ns1" name="Team" onClose={vi.fn()} />);
+    const input = await screen.findByTestId("your-name-input");
+    fireEvent.change(input, { target: { value: "Sandi" } });
+    fireEvent.click(screen.getByTestId("your-name-save"));
+    await vi.waitFor(() =>
+      expect(admin.setMemberMetadata).toHaveBeenCalledWith("ns1", "f".repeat(64), { name: "Sandi" }),
+    );
   });
 });

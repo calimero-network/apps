@@ -28,7 +28,9 @@ export type TeamNameLookup = (account: string) => string | undefined;
 
 export function resolveName(members: Member[], identity: string, teamName?: TeamNameLookup): string {
   const found = members.find((m) => m.id === identity);
-  return found?.username?.trim() || teamName?.(identity) || shortIdentity(identity);
+  // The team name first: it is the one name a person has across every board,
+  // and the only one they can change in one place.
+  return teamName?.(identity) || found?.username?.trim() || shortIdentity(identity);
 }
 
 export function useMemberNames(members: Member[]): NameResolver {
