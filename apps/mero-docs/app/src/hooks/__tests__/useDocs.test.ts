@@ -53,8 +53,12 @@ vi.mock('../useDocsClient', () => ({
   useDocsClient: (ctxId: string | null, identity: string | null) =>
     ctxId && identity ? (clientsByContext.get(ctxId) ?? docsClientStub) : null,
 }));
+// The latest handler useDocs gave the event stream, so a test can deliver events.
+const docEvents = { fire: (() => undefined) as () => void };
 vi.mock('../useDocEvents', () => ({
-  useDocEvents: () => undefined,
+  useDocEvents: (_contextId: string | null, onChange: () => void) => {
+    docEvents.fire = onChange;
+  },
 }));
 
 function deferred<T>() {
@@ -157,6 +161,57 @@ describe('useDocs', () => {
       await asked;
     });
     expect(result.current.list.map((d) => d.id)).toEqual(['new', 'old']);
+  });
+
+  it('a create settles once a read after it lands, while further refetches keep arriving', async () => {
+    // Events, sync reports and other windows' writes all ask for a re-read, so
+    // on a busy node a new ask lands during almost every read.
+    const reads: ReturnType<typeof deferred<{ id: string; title: string; updated_at: number }[]>>[] = [];
+    listDocs.mockImplementation(() => {
+      const read = deferred<{ id: string; title: string; updated_at: number }[]>();
+      reads.push(read);
+      return read.promise;
+    });
+    docsClientStub.createDoc.mockResolvedValue('new');
+    const { result } = renderHook(() => useDocs('folder-1'));
+    await waitFor(() => expect(reads).toHaveLength(1));
+    let created = false;
+    const create = result.current.create({ title: 'Untitled' }).then(() => (created = true));
+    for (let n = 1; n <= 4; n++) {
+      void result.current.refetch();
+      await act(async () => reads[n - 1].resolve([{ id: 'new', title: 'Untitled', updated_at: n }]));
+      await waitFor(() => expect(reads).toHaveLength(n + 1));
+    }
+    // The first read was in flight when the create asked; the second began after it.
+    expect(created).toBe(true);
+    await act(async () => {
+      for (const read of reads) read.resolve([]);
+      await create;
+    });
+  });
+
+  it('re-reads within a second of an event even while events keep arriving', async () => {
+    const { result } = renderHook(() => useDocs('folder-1'));
+    await waitFor(() => expect(result.current.listed).toBe(true));
+    expect(listDocs).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
+    try {
+      // A title change, then more events (a peer typing, the node's sync
+      // reports), each under a second after the last.
+      act(() => docEvents.fire());
+      await act(async () => vi.advanceTimersByTimeAsync(900));
+      act(() => docEvents.fire());
+      await act(async () => vi.advanceTimersByTimeAsync(100));
+      expect(listDocs).toHaveBeenCalledTimes(2);
+      for (let tick = 0; tick < 4; tick++) {
+        act(() => docEvents.fire());
+        await act(async () => vi.advanceTimersByTimeAsync(900));
+      }
+      // Still one read per second at most, however many events land.
+      expect(listDocs).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shares one context join between instances that both lack an identity', async () => {

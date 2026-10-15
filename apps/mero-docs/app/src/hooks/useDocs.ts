@@ -154,6 +154,24 @@ export async function listDocsJoining(
   }
 }
 
+/** One client's list read in flight, and the read queued behind it. */
+interface ListReads {
+  client: DocsClient;
+  running: Promise<void>;
+  queued: Promise<void> | null;
+}
+
+/** `read`, releasing `reads` once it lands with no read queued behind it. */
+function settleRead(
+  ref: { current: ListReads | null },
+  reads: ListReads,
+  read: Promise<void>,
+): Promise<void> {
+  return read.finally(() => {
+    if (!reads.queued && ref.current === reads) ref.current = null;
+  });
+}
+
 export interface UseDocsOptions {
   /** Include archived docs in `list`, for an existence check, not display. */
   includeArchived?: boolean;
@@ -233,13 +251,12 @@ export function useDocs(
     folderId: string;
     client: DocsClient | null;
   } | null>(null);
-  // The client's read in flight. A refetch asked for meanwhile joins it and
-  // queues one more read, so its answer always postdates the ask.
-  const readRef = useRef<{
-    client: DocsClient;
-    again: boolean;
-    done: Promise<void>;
-  } | null>(null);
+  // The client's read in flight, and the one read queued behind it. A refetch
+  // asked for meanwhile waits for the queued read, which begins after the ask,
+  // so its answer always postdates the ask. It never waits for a later one: on
+  // a busy node a new ask lands during almost every read, and a create that
+  // waited for the asks to stop would never open its document.
+  const readRef = useRef<ListReads | null>(null);
   // The current client, so a read that lands after a folder switch is dropped.
   const clientRef = useRef<DocsClient | null>(null);
   clientRef.current = docsClient;
@@ -259,11 +276,6 @@ export function useDocs(
         setListedFor({ folderId, client: null });
       }
       return;
-    }
-    const pending = readRef.current;
-    if (pending?.client === docsClient) {
-      pending.again = true;
-      return pending.done;
     }
     const stale = () => clientRef.current !== docsClient;
     const readList = async () => {
@@ -306,17 +318,24 @@ export function useDocs(
         setListLoading(false);
       }
     };
-    const read = { client: docsClient, again: false, done: Promise.resolve() };
-    read.done = (async () => {
-      do {
-        read.again = false;
-        await readList();
-      } while (read.again && !stale());
-    })().finally(() => {
-      if (readRef.current === read) readRef.current = null;
-    });
-    readRef.current = read;
-    return read.done;
+    const pending = readRef.current;
+    if (pending?.client === docsClient) {
+      pending.queued ??= pending.running.then(() => {
+        pending.queued = null;
+        if (stale()) return;
+        pending.running = settleRead(readRef, pending, readList());
+        return pending.running;
+      });
+      return pending.queued;
+    }
+    const reads: ListReads = {
+      client: docsClient,
+      running: Promise.resolve(),
+      queued: null,
+    };
+    reads.running = settleRead(readRef, reads, readList());
+    readRef.current = reads;
+    return reads.running;
   }, [
     docsClient,
     folderId,
@@ -338,27 +357,30 @@ export function useDocs(
   }, [refetch]);
 
   // Refresh on SSE events from the docs context - covers remote
-  // creates/edits/deletes without polling. DEBOUNCED: the context emits
-  // an event on every edit_doc, including the writer's OWN ~900ms
-  // autosaves, so a 1:1 refetch makes the sidebar list re-fetch and
-  // re-sort (by updated_at) on every keystroke-burst - visible as
-  // constant flicker. A trailing debounce collapses a burst into one
-  // quiet refetch after activity settles. Explicit mutations (create /
-  // delete / rename) bypass this and refetch immediately via
-  // notifyDocsRefetch, so user-initiated changes still feel instant.
+  // creates/edits/deletes and a title typed in the editor, without
+  // polling. COALESCED: the context emits an event on every edit, so a
+  // 1:1 refetch would re-read the list on every keystroke. The first
+  // event arms one refetch a second later and every event until then
+  // rides on it. It is not a debounce that restarts on each event: the
+  // stream need not go quiet (a peer typing, the node's sync-status
+  // reports), and a debounce waited out a rename for as long as events
+  // kept landing under a second apart. Explicit mutations (create /
+  // delete / tag / archive) also refetch at once via notifyDocsRefetch.
   //
   // Wrapped in useCallback so useDocEvents' downstream useSubscription
   // doesn't tear down and re-establish the SSE connection on every
   // consumer re-render (each saveStatus update in DocumentEditor would
   // otherwise churn the subscription).
   const sseRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refetchRef = useRef(refetch);
+  refetchRef.current = refetch;
   const onDocsEvent = useCallback(() => {
-    if (sseRefetchTimerRef.current) clearTimeout(sseRefetchTimerRef.current);
+    if (sseRefetchTimerRef.current) return;
     sseRefetchTimerRef.current = setTimeout(() => {
       sseRefetchTimerRef.current = null;
-      void refetch();
+      void refetchRef.current();
     }, 1000);
-  }, [refetch]);
+  }, []);
   useDocEvents(contextId, onDocsEvent);
   // Clear any pending debounced refetch on unmount / context change so a
   // late timer can't fire a refetch against a torn-down client.
