@@ -1,3 +1,5 @@
+import { LocalStorageTokenStore, MeroJs } from '@calimero-network/mero-js';
+
 // Dev-only: `?node=<n>` points this window at rig node n, so two windows on two
 // origins (localhost and 127.0.0.1) can drive two nodes at once.
 export interface DevNode {
@@ -67,14 +69,15 @@ export async function applyDevNodeSelection(): Promise<void> {
   const node = nodes.nodes.find((n) => n.index === selected);
   if (!node) return;
   const expiresAt = tokenExpiry(node.accessToken) ?? Date.now() + 3_600_000;
-  localStorage.setItem(
-    'mero-tokens',
-    JSON.stringify({
-      access_token: node.accessToken,
-      refresh_token: node.refreshToken,
-      expires_at: expiresAt,
-    }),
-  );
+  // Through a MeroJs for the node, so the bundle carries the `node_origin`
+  // mero-js binds it to; a bundle without one reads as signed out.
+  const client = new MeroJs({ baseUrl: node.url, tokenStore: new LocalStorageTokenStore() });
+  client.setTokenData({
+    access_token: node.accessToken,
+    refresh_token: node.refreshToken,
+    expires_at: expiresAt,
+  });
+  client.close();
   localStorage.setItem('mero:expires_at', String(expiresAt));
   localStorage.setItem('mero:node_url', node.url);
   localStorage.setItem('mero:application_id', nodes.applicationId);

@@ -19,9 +19,9 @@ import {
 import MeroJsBridge from "./api/MeroJsBridge.tsx";
 import { BLOB_READ_TIMEOUT_MS } from "./api/blobs.ts";
 import {
-  TOKENS_KEY,
   jwtExpiryMs,
   readStoredTokens,
+  seedTokens,
   shouldSeedTokens,
 } from "./utils/authTokens.ts";
 import "@calimero-network/mero-ui/styles.css";
@@ -110,14 +110,11 @@ function persistAuthHashOnLoad(): void {
     // Only on a genuinely new session: re-opening the current one must not
     // nuke the navigation state out from under a live tab.
     clearStaleSessionData();
-    localStorage.setItem(
-      TOKENS_KEY,
-      JSON.stringify({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        expires_at: hashExpiresAtMs,
-      }),
-    );
+    seedTokens(nodeUrl || previousNodeUrl, {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: hashExpiresAtMs,
+    });
   }
 
   // Remove the hash either way, so MeroProvider's parseAuthCallback doesn't
