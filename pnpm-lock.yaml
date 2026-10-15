@@ -537,6 +537,9 @@ importers:
 
   apps/mero-board/app:
     dependencies:
+      '@calimero-apps/glass':
+        specifier: workspace:*
+        version: link:../../../packages/glass
       '@calimero-apps/invite':
         specifier: workspace:*
         version: link:../../../packages/invite
