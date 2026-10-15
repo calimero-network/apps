@@ -64,6 +64,24 @@ interface Row {
   person: GroupPerson | null;
 }
 
+/**
+ * Workbook members, matched to the group roster by account; then anyone in the
+ * group who has not opened this workbook yet. A TEE node is in the group but is
+ * not a person, so it is left out of the rows and only counted, for the
+ * always-on section.
+ */
+export function peopleRows(members: Member[], group: GroupPerson[]): { rows: Row[]; tees: number } {
+  const people = group.filter((g) => !isTeeRole(g.role));
+  const teeIds = new Set(group.filter((g) => isTeeRole(g.role)).map((g) => g.identity));
+  const rows: Row[] = members.filter((m) => !m.account || !teeIds.has(m.account)).map((m) => ({
+    key: m.id, member: m, person: people.find((g) => m.account && g.identity === m.account) ?? null,
+  }));
+  for (const g of people) {
+    if (!rows.some((r) => r.person?.identity === g.identity)) rows.push({ key: g.identity, member: null, person: g });
+  }
+  return { rows, tees: teeIds.size };
+}
+
 export default function PeoplePanel(props: PeoplePanelProps) {
   const { members, group, selfId, onClose } = props;
   const [error, setError] = useState<string | null>(null);
@@ -75,14 +93,7 @@ export default function PeoplePanel(props: PeoplePanelProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Workbook members, matched to the group roster by account; then anyone in
-  // the group who has not opened this workbook yet.
-  const rows: Row[] = members.map((m) => ({
-    key: m.id, member: m, person: group.find((g) => m.account && g.identity === m.account) ?? null,
-  }));
-  for (const g of group) {
-    if (!rows.some((r) => r.person?.identity === g.identity)) rows.push({ key: g.identity, member: null, person: g });
-  }
+  const { rows, tees } = peopleRows(members, group);
 
   const run = async (fn: () => Promise<void>) => {
     setError(null);
@@ -172,7 +183,7 @@ export default function PeoplePanel(props: PeoplePanelProps) {
           })}
         </List>
         <AlwaysOn
-          tees={group.filter((g) => isTeeRole(g.role)).length}
+          tees={tees}
           policy={props.policy}
           canEdit={props.isGroupAdmin}
           onSave={props.onSetPolicy}
