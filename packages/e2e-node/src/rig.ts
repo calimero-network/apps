@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { stopNodes } from "./teardown";
@@ -290,6 +290,36 @@ export async function startRig(opts: RigOptions): Promise<RigState> {
       .join("\n");
     throw new Error(`${e instanceof Error ? e.message : String(e)}\n${logs}`);
   }
+}
+
+/**
+ * Stop the rig's nodes and start the same number again on the same ports, with
+ * empty state. For a test that must not inherit the previous test's namespaces:
+ * an app that keeps one namespace per node would otherwise reuse the old one,
+ * and its second test could never create anything new.
+ *
+ * The stopped nodes' logs are kept, renamed `<label>-<node>.log`, so a CI run
+ * still uploads what happened before the restart.
+ */
+export async function freshRig(state: RigState, label: string): Promise<RigState> {
+  const first = state.nodes[0];
+  if (!first) throw new Error("the rig has no nodes to restart");
+  await stopNodes(state.nodes.map((n) => n.pid));
+  const keep = `${state.dataDir}.keep`;
+  rmSync(keep, { recursive: true, force: true });
+  mkdirSync(keep, { recursive: true });
+  const kept = state.nodes.filter((n) => existsSync(n.log)).map((n) => path.basename(n.log));
+  for (const name of kept) copyFileSync(path.join(state.dataDir, name), path.join(keep, name));
+  const next = await startRig({
+    dataDir: state.dataDir,
+    mpk: state.mpk,
+    nodes: state.nodes.length,
+    basePort: first.serverPort,
+    merod: state.merod,
+  });
+  for (const name of kept) copyFileSync(path.join(keep, name), path.join(state.dataDir, `${label}-${name}`));
+  rmSync(keep, { recursive: true, force: true });
+  return next;
 }
 
 export function rigStatePath(dataDir: string): string {

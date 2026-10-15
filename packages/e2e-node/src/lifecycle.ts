@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { loginWithModal } from "./auth";
-import { adminApi, readRigState, restartNode, type RigNode, type RigState } from "./rig";
+import { adminApi, freshRig, readRigState, restartNode, type RigNode, type RigState } from "./rig";
 import { acceptInvitePrompt, installDesktopBridge, openInviteLink, type InviteRoute } from "./invite";
 import { TrafficLog } from "./traffic";
 
@@ -238,7 +238,10 @@ export function defineLifecycle(driver: AppDriver): void {
     browser,
   }, testInfo) => {
     test.setTimeout(Number(process.env["JOURNEY_TIMEOUT_MS"]) || 10 * 60_000);
-    const state = rig();
+    // Fresh nodes, so this test never depends on what the lifecycle left behind:
+    // an app with one namespace per node would otherwise hand alice back the old
+    // one, and bob would already be in it.
+    const state = await freshRig(rig(), "lifecycle");
     const [n1, n2] = state.nodes;
     if (!n1 || !n2) throw new Error(`the rig has ${state.nodes.length} node(s); the journey needs 2`);
     const run = `d${Date.now().toString(36)}`;
