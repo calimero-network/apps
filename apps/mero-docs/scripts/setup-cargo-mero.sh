@@ -7,14 +7,14 @@ set -euo pipefail
 # ⚠️ Keep this on the release the workspace pins. `fleet-bump` does not rewrite
 # it; CI fails when RELEASE differs from the core tag in the root Cargo.toml.
 # Bump RELEASE and the three checksums together - a stale checksum fails closed.
-RELEASE=0.11.0-rc.86
+RELEASE=0.11.0-rc.87
 
 # Per-asset SHA-256, so a re-uploaded asset under the same tag cannot swap the
 # binary silently. Refresh these together with RELEASE:
 #   shasum -a 256 cargo-mero_<target>.tar.gz
-CHECKSUM_aarch64_apple_darwin=f5d81939a5821361846539cc2021dbe477e14b91db06f454a57f48fe8affcdff
-CHECKSUM_aarch64_unknown_linux_gnu=c866ddcd56931df006364af02de88e881aade9da850f7e5e43a6175bdcd193da
-CHECKSUM_x86_64_unknown_linux_gnu=e7dc4e046834b3b27a1590d3978bd90a83202a1fc31a45e3b9eec280e8b48ffc
+CHECKSUM_aarch64_apple_darwin=f749cdd72d663ff7118d885cad4768c762ef9105fe5e1a9875c9a62278b13052
+CHECKSUM_aarch64_unknown_linux_gnu=74035138531c904a6d2209f9bb3a3ccd05e68263c1c58642c3c2ed113340b9fd
+CHECKSUM_x86_64_unknown_linux_gnu=d77fa1335398158fe477f5dc8c6eab2d7fc44ea3b5319269f81b19bb8fce1ea3
 
 # The CI action needs this value for its cache key; it asks rather than
 # grepping this file, so reformatting the line above cannot silently break it.
