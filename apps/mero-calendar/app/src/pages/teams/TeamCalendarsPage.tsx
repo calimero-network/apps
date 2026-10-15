@@ -34,6 +34,7 @@ import {
   useTeamName,
 } from "../../utils/teamName";
 import { useClickOutside } from "../../hooks/useClickOutside";
+import { joinCalendarWithRetry } from "../../api/joinCalendar";
 import styles from "./teams.module.scss";
 
 /**
@@ -77,6 +78,14 @@ export default function TeamCalendarsPage() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // An open in progress stops retrying its join once the page is gone.
+  const unmounted = useRef(false);
+  useEffect(() => {
+    unmounted.current = false;
+    return () => {
+      unmounted.current = true;
+    };
+  }, []);
 
   useClickOutside(menuRef, () => setMenuOpenId(null));
 
@@ -298,13 +307,27 @@ export default function TeamCalendarsPage() {
     }
   }
 
+  // Opening a calendar joins it first. Right after the team join the node may
+  // not hold that calendar yet and refuses the join; opening it anyway failed
+  // the calendar page's first read. The join is retried, and only a calendar
+  // the node has joined is opened.
   async function openCalendar(contextId: string) {
     setBusyId(contextId);
     try {
-      await requireAdmin().joinContext(contextId).catch(() => {});
+      const admin = requireAdmin();
+      await joinCalendarWithRetry(
+        () => admin.joinContext(contextId),
+        teamId || null,
+        () => unmounted.current,
+      );
       navigate(`/teams/${teamId}/calendar/${contextId}`);
+    } catch (err) {
+      if (unmounted.current) return;
+      showToast(
+        humanizeError(extractErrorMessage(err, "Could not open this calendar.")),
+      );
     } finally {
-      setBusyId(null);
+      if (!unmounted.current) setBusyId(null);
     }
   }
 

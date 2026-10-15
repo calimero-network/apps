@@ -42,7 +42,7 @@ const stub = vi.hoisted(() => {
   // Stable, as the real hook's `useCallback` is: a new function per render
   // would re-run the page's load effect on every render.
   const ensureAppId = async () => "app-calendar";
-  return { node, admin, ensureAppId, navigate: vi.fn() };
+  return { node, admin, ensureAppId, navigate: vi.fn(), showToast: vi.fn() };
 });
 
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -66,7 +66,7 @@ vi.mock("../../hooks/useEnsureAppId", () => ({
   useEnsureAppId: () => stub.ensureAppId,
 }));
 vi.mock("../../contexts/ToastContext", () => ({
-  useToast: () => ({ showToast: vi.fn() }),
+  useToast: () => ({ showToast: stub.showToast }),
 }));
 vi.mock("../../components/common/theme-toggle/ThemeToggle", () => ({
   default: () => null,
@@ -93,6 +93,7 @@ beforeEach(() => {
   stub.node.contexts = {};
   stub.node.appContexts = [];
   stub.node.namespaces = [{ namespaceId: NS, targetApplicationId: APP }];
+  stub.admin.joinContext.mockImplementation(async () => ({ contextId: CAL, memberPublicKey: "pk" }));
 });
 
 afterEach(() => {
@@ -147,5 +148,37 @@ describe("TeamCalendarsPage right after joining the team", () => {
     renderPage();
     expect(await screen.findByTestId("empty-calendars")).toBeTruthy();
     expect(screen.queryByTestId(`calendar-card-${CAL}`)).toBeNull();
+  });
+
+  // Opening a calendar joins it, and right after the team join the node may
+  // not hold that calendar yet: the join is refused, and the calendar page then
+  // failed its first read with "Failed to load calendar". The join is retried
+  // until the node accepts it, and only a joined calendar is opened.
+  it("retries opening a calendar the node refuses at first, then opens it", async () => {
+    stub.node.contexts = { [NS]: [{ contextId: CAL, name: "Standup" }] };
+    stub.admin.joinContext
+      .mockRejectedValueOnce(new Error("context not found"))
+      .mockRejectedValueOnce(new Error("context not found"));
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId(`calendar-card-${CAL}`));
+    await advance(100);
+    expect(stub.navigate).not.toHaveBeenCalled();
+
+    await advance(7_000);
+    expect(stub.admin.joinContext).toHaveBeenCalledTimes(3);
+    expect(stub.navigate).toHaveBeenCalledWith(`/teams/${NS}/calendar/${CAL}`);
+  });
+
+  it("does not open a calendar the node keeps refusing, and says why", async () => {
+    stub.node.contexts = { [NS]: [{ contextId: CAL, name: "Standup" }] };
+    stub.admin.joinContext.mockRejectedValue(new Error("context not found"));
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId(`calendar-card-${CAL}`));
+    await advance(25_000);
+
+    expect(stub.navigate).not.toHaveBeenCalled();
+    expect(stub.showToast).toHaveBeenCalled();
   });
 });
