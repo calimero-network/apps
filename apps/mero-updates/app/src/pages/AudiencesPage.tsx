@@ -34,7 +34,12 @@ import {
   UsersIcon,
 } from "../components/icons";
 import styles from "./AudiencesPage.module.css";
-import { JoinSyncBanner, useJoinSync } from "@calimero-network/mero-react";
+import {
+  JOIN_SYNC_POLL_MS,
+  JoinSyncBanner,
+  isNamespaceJustJoined,
+  useJoinSync,
+} from "@calimero-network/mero-react";
 
 /**
  * Audiences inside one space (namespace). An audience is a SUBGROUP plus the context bound
@@ -143,7 +148,7 @@ export default function AudiencesPage() {
           setTee({ id: namespaceId, mode }),
         );
         setAudiences(await listAudiences(admin, namespaceId));
-        // A real answer, empty or not — that is what ends the sync gate.
+        // A real answer for this space, which the sync gate below weighs.
         setListedForNs(namespaceId);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load audiences.");
@@ -160,11 +165,24 @@ export default function AudiencesPage() {
 
   // A space joined this session whose audiences have not replicated yet. Without
   // this the branch below tells a brand-new member "No audiences yet. Create one
-  // above." about a space that may be full of them.
+  // above." about a space that may be full of them. An empty list only counts
+  // once the just-joined flag has cleared; until then it is what a node that
+  // has not synced the space returns.
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
     namespaceId: namespaceId || null,
-    settled: listedForNs === namespaceId,
+    settled:
+      listedForNs === namespaceId &&
+      (audiences.length > 0 || !isNamespaceJustJoined(namespaceId)),
+    // Still empty: let the gate wait up to its ceiling, not the base window.
+    active: audiences.length === 0,
   });
+
+  // Nothing else re-reads the list, so while the gate is up ask again.
+  useEffect(() => {
+    if (!isSyncing || audiences.length > 0) return;
+    const timer = setInterval(() => void load(false), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, audiences.length, load]);
 
   const create = useCallback(() => {
     const audienceName = name.trim();

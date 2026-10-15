@@ -11,6 +11,7 @@
 
 import {
   describeInviteFailure,
+  isFinalInvitationError,
   redeemInvitation,
   type RedeemOutcome,
 } from '@calimero-network/mero-react';
@@ -42,6 +43,10 @@ function saysAlreadyMember(err: unknown): boolean {
   return ALREADY_MEMBER.some((re) => re.test(message));
 }
 
+/** How long to keep asking the node to join a folder it may not have synced. */
+export const FOLDER_JOIN_MS = 90_000;
+const FOLDER_RETRY_MS = 3_000;
+
 /**
  * Join what `parsed` invites to. Never throws: a refused join and an
  * unreachable node are both a `failed` outcome.
@@ -49,8 +54,34 @@ function saysAlreadyMember(err: unknown): boolean {
  * A folder is a subgroup, not a namespace, so the namespace list cannot vouch
  * for it; the only membership proof a failed folder join has is the node
  * saying so. Without that, its membership is "could not tell".
+ *
+ * A folder join is retried: right after the namespace join the node may not
+ * hold the folder subgroup yet and refuses it, and one attempt per page load
+ * left a locked folder until a reload. Only a refusal that may still change is
+ * retried; a final one (expired, revoked, a 4xx) ends it at once. Still refused
+ * at the deadline, the outcome stays retryable, so the invitation is kept.
  */
-export function redeemInvite(
+export async function redeemInvite(
+  parsed: ParsedInvite,
+  calls: InviteCalls,
+): Promise<RedeemOutcome> {
+  if (parsed.kind === 'namespace') return redeemOnce(parsed, calls);
+  const deadline = Date.now() + FOLDER_JOIN_MS;
+  for (;;) {
+    const outcome = await redeemOnce(parsed, calls);
+    if (
+      outcome.status !== 'failed' ||
+      !outcome.retryable ||
+      isFinalInvitationError(outcome.message) ||
+      Date.now() > deadline
+    ) {
+      return outcome;
+    }
+    await new Promise((resolve) => setTimeout(resolve, FOLDER_RETRY_MS));
+  }
+}
+
+function redeemOnce(
   parsed: ParsedInvite,
   calls: InviteCalls,
 ): Promise<RedeemOutcome> {

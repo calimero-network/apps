@@ -2,10 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
 } from '@calimero-network/mero-ui';
-import {
-  useJoinSync,
-  useMero,
-} from '@calimero-network/mero-react';
+import { useMero } from '@calimero-network/mero-react';
 import { publishMemberName, useMemberNames } from '@calimero-apps/names';
 import { createLobbyClient, createGameClient, LobbyClient, GameClient } from '../../features/kv/api';
 import type { ContextRole } from '../../features/kv/api';
@@ -24,6 +21,7 @@ import { loadBoard, saltBytes, saltHex, saveBoard } from '../../lib/boardStore';
 import type { AllGameEvents } from '../../types/events';
 import { useGameSubscriptions } from '../../hooks/useGameSubscriptions';
 import { useBattleshipsLobby } from '../../hooks/useBattleshipsLobby';
+import { useLobbyJoinSync } from '../../hooks/useLobbyJoinSync';
 import { resolveEffectiveMatchId, SHIP_TARGETS, validateFleetPayload } from './config';
 
 import NavBar from '../../components/NavBar';
@@ -311,14 +309,23 @@ export default function MatchPage() {
   }, [location.key, joinedLobbyId]);
 
   // A lobby just joined from an invitation link holds the invitation dialog on
-  // "Syncing…" until its own state has been read here: the match list, read
-  // through the lobby context once this node has entered it.
-  useJoinSync({
+  // "Syncing…" until its match list has been read here, re-reading while a
+  // read fails because the lobby has not synced yet.
+  const rereadLobby = useCallback(async () => {
+    const namespaceId = namespaceIdRef.current;
+    const contextId = currentContext?.contextId;
+    if (!lobbyApi || !contextId) return;
+    try {
+      const summaries = await lobbyApi.getMatches();
+      setMyMatches(summaries);
+      if (namespaceId) setLobbyReadFor({ namespaceId, contextId });
+    } catch { /* not synced yet; the next poll retries */ }
+  }, [lobbyApi, currentContext?.contextId]);
+  useLobbyJoinSync({
     namespaceId: lobby.namespaceId,
-    settled:
-      lobbyReadFor !== null &&
-      lobbyReadFor.namespaceId === lobby.namespaceId &&
-      lobbyReadFor.contextId === lobby.lobbyContextId,
+    contextId: lobby.lobbyContextId,
+    readFor: lobbyReadFor,
+    reread: rereadLobby,
   });
 
   useEffect(() => {

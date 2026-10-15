@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useContextGroup, useJoinSync, useMero } from "@calimero-network/mero-react";
+import {
+  JOIN_SYNC_POLL_MS,
+  useContextGroup,
+  useJoinSync,
+  useMero,
+} from "@calimero-network/mero-react";
 import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import type { Member, PollSummary } from "./generated/MeroVoteClient";
 import { CreatePoll } from "./CreatePoll";
@@ -80,10 +85,23 @@ export function VotePanel({
 
   // Ends the invitation dialog's "Syncing…" for a context just joined: `tick`
   // moves on the first read of the polls that came back, none included. A
-  // context whose state has not arrived yet fails the read, and every event
-  // re-reads it. This app's contexts live directly in the namespace (see
-  // ContextPicker), so the context's group is the namespace that was joined.
-  useJoinSync({ namespaceId: joinedNamespace ?? namespaceId, settled: tick > 0 });
+  // context whose state has not arrived yet fails the read (it does not come
+  // back empty), so a read that succeeds is the context having arrived, even
+  // with no polls in it. This app's contexts live directly in the namespace
+  // (see ContextPicker), so the context's group is the namespace that was
+  // joined.
+  const { isSyncing } = useJoinSync({
+    namespaceId: joinedNamespace ?? namespaceId,
+    settled: tick > 0,
+  });
+
+  // A failed read is retried by the next live event, and a context that has
+  // not synced sends none, so while the gate is up re-read on a timer.
+  useEffect(() => {
+    if (!isSyncing) return;
+    const timer = setInterval(() => void refresh(), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, refresh]);
 
   const names = new Map(roster.map((m) => [m.account, m.name]));
   const myName = me ? names.get(me) : undefined;

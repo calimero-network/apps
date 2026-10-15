@@ -4,6 +4,7 @@ import { v4 as uuid } from "uuid";
 import { useApi } from "../api/useApi";
 import { listGroupContextRows, listSubgroupRows } from "../api/teamContexts";
 import { resetMethodSupport, rpcWithFallback } from "../api/compat";
+import { readProjectWithJoinRetry } from "../api/loadProject";
 import { mapLimit } from "../utils/concurrency";
 import { useSse } from "../hooks/useSse";
 import { useToast } from "../contexts/ToastContext";
@@ -127,6 +128,9 @@ export default function EditorPage() {
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [fatal, setFatal] = useState("");
+  // The team was just joined and the project's data has not reached this node
+  // yet: the read is being retried, so this is a wait, not an error.
+  const [syncing, setSyncing] = useState(false);
 
   // ── Identity ────────────────────────────────────────────────────────────
   //
@@ -255,6 +259,7 @@ export default function EditorPage() {
     resetMethodSupport();
     loadedBlobs.current = new Set();
     setReady(false);
+    setSyncing(false);
     setMembers([]);
     setCursors([]);
 
@@ -282,8 +287,14 @@ export default function EditorPage() {
       } catch { /* optional — Settings falls back to namespace scope */ }
 
       try {
-        const d = await rpcCall<DocumentInfo>(ctxId, "get_document", {});
+        const d = await readProjectWithJoinRetry(
+          () => rpcCall<DocumentInfo>(ctxId, "get_document", {}),
+          teamId ?? null,
+          () => cancelled,
+          () => { if (!cancelled) setSyncing(true); },
+        );
         if (cancelled) return;
+        setSyncing(false);
         if (d) {
           setDoc(d);
           // fit-to-screen-ish default
@@ -291,7 +302,7 @@ export default function EditorPage() {
           setPan(48, 48);
         }
       } catch {
-        if (!cancelled) setFatal("Could not load the project. The node may still be syncing — try reopening.");
+        if (!cancelled) { setSyncing(false); setFatal("Could not load the project. The node may still be syncing — try reopening."); }
         return;
       }
 
@@ -1523,7 +1534,11 @@ export default function EditorPage() {
         </div>
       )}
 
-      {!ready && !fatal && <div className={styles.loading}>Loading project…</div>}
+      {!ready && !fatal && (
+        <div className={styles.loading}>
+          {syncing ? "Syncing the project from your team…" : "Loading project…"}
+        </div>
+      )}
       {showShowcase && (
         <ShowcasePicker
           hasContent={layers.length > 0}

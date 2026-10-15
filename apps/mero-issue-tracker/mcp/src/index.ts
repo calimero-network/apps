@@ -11,7 +11,6 @@ import {
   createRepoLister,
   createTargetResolver,
   listNamespaceRepos,
-  resolveExecutor,
   resolveNamespaceApp,
   type NamespaceRepo,
   type ResolvedTarget,
@@ -176,13 +175,7 @@ export async function listRepos(
 ): Promise<Array<{ name: string; repo_url: string }>> {
   return Promise.all(
     repos.map(async (repo) => {
-      const executorPublicKey = await resolveExecutor(cfg, repo.contextId);
-      const info = await callMethod<RepoInfo>(
-        cfg,
-        { contextId: repo.contextId, executorPublicKey },
-        'get_repo_info',
-        {},
-      );
+      const info = await callMethod<RepoInfo>(cfg, { contextId: repo.contextId }, 'get_repo_info', {});
       return { name: repo.name, repo_url: info.repo_url };
     }),
   );
@@ -205,15 +198,13 @@ export async function addRepo(
     throw new Error(`Repo "${name}" already exists.`);
   }
 
-  const { contextId, memberPublicKey } = await createContext(cfg, {
+  const { contextId } = await createContext(cfg, {
     applicationId,
     groupId: namespaceId,
     serviceName: cfg.serviceName,
     name,
   });
-  // The new context's owner is the returned memberPublicKey, not any repo's
-  // existing executor - it must be used as-is for this one call.
-  await callMethod(cfg, { contextId, executorPublicKey: memberPublicKey }, 'set_repo_url', { url });
+  await callMethod(cfg, { contextId }, 'set_repo_url', { url });
 
   try {
     await createContextAlias(cfg, name, contextId);

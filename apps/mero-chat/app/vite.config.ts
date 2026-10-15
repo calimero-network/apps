@@ -86,10 +86,29 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        // No HTML in the precache, and no precached navigation fallback. A
+        // precached index.html is served before the network is asked, so the
+        // first open after a deploy ran the previous build: an invite link
+        // opened in the desktop landed on a screen that release had removed.
+        // The page now comes from the network whenever there is one (Vercel
+        // serves it `no-cache`), and pulls this build's hashed assets.
+        globPatterns: ["**/*.{js,css,ico,png,svg,woff2}"],
+        navigateFallback: null,
         skipWaiting: true,
         clientsClaim: true,
         runtimeCaching: [
+          {
+            // Offline only: the last page the network served. Every route is
+            // the same SPA shell, so they share one entry, whatever the path
+            // or query (`?invitation=…` included).
+            urlPattern: ({ request }) => request.mode === "navigate",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "app-shell",
+              networkTimeoutSeconds: 5,
+              plugins: [{ cacheKeyWillBeUsed: async () => "/index.html" }],
+            },
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: "CacheFirst",
