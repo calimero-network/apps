@@ -499,6 +499,10 @@ export interface Event_LinksChanged {
   chain: string;
 }
 
+export interface Event_MemosChanged {
+  count: number;
+}
+
 export interface Event_MessageChanged {
   id: string;
   status: string;
@@ -837,6 +841,11 @@ export interface Hyperfeed {
    */
   prs: Record<string, PrSeen>;
   /**
+   * Your agent's query cache: what it read, by a hash of where, which tool
+   * and its arguments. See [`memo`].
+   */
+  memos: Record<string, Memo>;
+  /**
    * What each action touched, by the action's id.
    */
   action_subjects: Record<string, Subject>;
@@ -1006,6 +1015,115 @@ export interface LinkView {
    * The latest of them (ms); 0 with none.
    */
   last_at: number;
+}
+
+/**
+ * One read as the agent last saw it, kept by its key.
+ */
+export interface Memo {
+  scope: string;
+  tool: string;
+  args: string;
+  value: string;
+  class: string;
+  ttl_ms: number;
+  fetched_at: number;
+  unchanged: number;
+  /**
+   * Per agent, each only ever growing: merged by max, so two agents never
+   * lose each other's counts.
+   */
+  hits: MemoHits[];
+  last_hit_at: number;
+  agent: string;
+  attested: boolean;
+  /**
+   * When the feed last took a write to it (the feed's clock): what
+   * [`crate::Hyperfeed::memos`] reads after.
+   */
+  updated_at: number;
+}
+
+/**
+ * How often one agent used a row.
+ */
+export interface MemoHits {
+  agent: string;
+  hits: number;
+}
+
+/**
+ * One row as [`crate::Hyperfeed::put_memos`] takes it.
+ */
+export interface MemoInput {
+  /**
+   * A hex hash of scope, tool and arguments: the runtime's key for the read.
+   */
+  key: string;
+  /**
+   * What the read is about: `<app>:<context>`, `node`, `gh:<owner>/<name>`.
+   */
+  scope: string;
+  /**
+   * The tool, without its server's prefix: `chat_get_messages`, `gh`.
+   */
+  tool: string;
+  /**
+   * Its arguments, as canonical JSON or a command line.
+   */
+  args: string;
+  /**
+   * What it returned, at most [`MAX_MEMO_VALUE`].
+   */
+  value: string;
+  /**
+   * One of [`MEMO_CLASSES`].
+   */
+  class: string;
+  /**
+   * How long the value counts as fresh, as the runtime last judged it.
+   */
+  ttl_ms: number;
+  /**
+   * When it was read (ms).
+   */
+  fetched_at: number;
+  /**
+   * Refetches in a row that found the same value.
+   */
+  unchanged: number;
+  /**
+   * This agent's hits on it, in total: the feed keeps the largest it saw.
+   */
+  hits: number;
+  /**
+   * When this agent last used it (ms).
+   */
+  last_hit_at: number;
+  /**
+   * Read by an agent whose every model is attested: never shown to one that is not.
+   */
+  attested: boolean;
+}
+
+/**
+ * A row as [`crate::Hyperfeed::memos`] returns it.
+ */
+export interface MemoView {
+  key: string;
+  scope: string;
+  tool: string;
+  args: string;
+  value: string;
+  class: string;
+  ttl_ms: number;
+  fetched_at: number;
+  unchanged: number;
+  hits: MemoHits[];
+  last_hit_at: number;
+  agent: string;
+  attested: boolean;
+  updated_at: number;
 }
 
 /**
@@ -1715,6 +1833,8 @@ export interface Work {
 
 
 
+
+
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }
   | { name: "ActionRecorded"; payload: Event_ActionRecorded }
@@ -1760,6 +1880,20 @@ export type AbiEvent =
      */
     name: "LinksChanged";
     payload: Event_LinksChanged;
+  }
+  | {
+    /**
+     * Your agent's runtime wrote or dropped cached reads: re-read `memos`
+     * after the newest `updated_at` you have.
+     */
+    name: "MemosChanged";
+    payload: Event_MemosChanged;
+  }
+  | {
+    /**
+     * You cleared your agent's query cache: forget every cached read.
+     */
+    name: "MemosCleared";
   }
   | { name: "MessageChanged"; payload: Event_MessageChanged }
   | {
@@ -2173,6 +2307,18 @@ export class HyperfeedClient {
   }
 
   /**
+   * clear_memos
+   *
+   * Forget every cached read. Yours only. Returns how many were dropped.
+   *
+   * @intent mutating
+   */
+  public async clearMemos(): Promise<number> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'clear_memos', argsJson: {} });
+    return response as number;
+  }
+
+  /**
    * complete_action
    *
    * The agent reports what happened after you approved, asked for a retry,
@@ -2237,6 +2383,19 @@ export class HyperfeedClient {
   public async dismissRule(params: { id: string }): Promise<RuleProposalView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'dismiss_rule', argsJson: params });
     return response as RuleProposalView;
+  }
+
+  /**
+   * drop_memos
+   *
+   * Your agent's runtime drops cached reads it knows are wrong now (it
+   * wrote there, or the app changed). Returns how many it dropped.
+   *
+   * @intent mutating
+   */
+  public async dropMemos(params: { agent: string; keys: string[] }): Promise<number> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'drop_memos', argsJson: params });
+    return response as number;
   }
 
   /**
@@ -2365,6 +2524,19 @@ export class HyperfeedClient {
   }
 
   /**
+   * memos
+   *
+   * The cached reads written after `since` (the feed's clock, ms; 0 for
+   * all), oldest write first.
+   *
+   * @intent read_only
+   */
+  public async memos(params: { since: number }): Promise<MemoView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'memos', argsJson: params });
+    return response as MemoView[];
+  }
+
+  /**
    * open_questions
    *
    * Your messages your agent has not answered yet, oldest first: what an
@@ -2458,6 +2630,22 @@ export class HyperfeedClient {
   public async pushKey(): Promise<PushKeyView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'push_key', argsJson: {} });
     return response as PushKeyView;
+  }
+
+  /**
+   * put_memos
+   *
+   * Your agent's runtime keeps reads worth keeping, as `agent` (an added
+   * agent only as itself): up to [`MAX_MEMO_BATCH`] a call, each replacing
+   * its row unless the row was fetched later, while every agent's hits are
+   * kept. The least used rows are dropped past [`MAX_MEMOS`] or
+   * [`MAX_MEMO_BYTES`]. Returns how many rows it wrote.
+   *
+   * @intent mutating
+   */
+  public async putMemos(params: { agent: string; memos: MemoInput[] }): Promise<number> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'put_memos', argsJson: params });
+    return response as number;
   }
 
   /**
