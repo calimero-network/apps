@@ -1,14 +1,21 @@
 // Minecraft-title-screen style backdrop for the landing page: a real
 // generated world, rendered with a slowly spinning camera and blurred by CSS.
-// Fully self-contained — it owns its canvas and render loop and is destroyed
-// the moment the player enters the game (which regenerates its own world).
+// Fully self-contained — it owns its canvas, worker and render loop and is
+// destroyed the moment the player enters the game (which regenerates its own
+// world).
+//
+// ⚠️ THE WORLD IS BUILT IN A WORKER. Generating, lighting and meshing all 256
+// chunks is seconds of CPU (2.4–3.3 s on a 4-core dev box, far more on a busy
+// CI runner with software WebGL). It used to run in one requestAnimationFrame
+// callback on the main thread, which starts exactly when the launcher's
+// "Connect a node" button appears — so the page was frozen at the one moment a
+// player reaches for it: their click did nothing for seconds, and the journey's
+// `click()` on it timed out (CI, 15 s). The main thread now only uploads the
+// finished meshes and draws.
 
-import { LightGrid } from "../engine/lighting";
-import { buildChunkMesh } from "../engine/mesher";
 import { dayFactor, skyColor } from "../engine/sim";
-import { generateWorld, spawnPoint } from "../engine/terrain";
-import { WorldStore, WORLD_CX, WORLD_CY, WORLD_CZ, chunkKey } from "../engine/world";
 import { GameRenderer } from "../renderer";
+import type { PanoramaScene } from "./panoramaScene";
 
 const PANORAMA_SEED = 1337;
 const YAW_SPEED = 0.03; // rad/s — slow Minecraft-style spin
@@ -16,6 +23,7 @@ const DAY_TIMELAPSE = 40; // sky drifts through the cycle at 40× speed
 
 export class Panorama {
   private canvas: HTMLCanvasElement;
+  private worker: Worker | null = null;
   private raf = 0;
   private destroyed = false;
 
@@ -28,27 +36,32 @@ export class Panorama {
       "filter:blur(7px) brightness(0.85);transform:scale(1.06);pointer-events:none;";
     parent.appendChild(this.canvas);
 
-    // defer the (CPU-heavy) worldgen one frame so the landing UI paints first
-    requestAnimationFrame(() => {
-      if (!this.destroyed) this.start();
-    });
+    // A backdrop is decoration: with no worker (or a failed one) the launcher
+    // simply has no panorama, and never pays for it on the main thread.
+    if (typeof Worker === "undefined") return;
+    try {
+      this.worker = new Worker(new URL("./panorama.worker.ts", import.meta.url), { type: "module" });
+    } catch {
+      return;
+    }
+    this.worker.onmessage = (e: MessageEvent<PanoramaScene>) => {
+      this.stopWorker();
+      if (!this.destroyed) this.start(e.data);
+    };
+    this.worker.onerror = () => this.stopWorker();
+    this.worker.postMessage({ seed: PANORAMA_SEED });
   }
 
-  private start(): void {
-    const world = new WorldStore();
-    generateWorld(world, PANORAMA_SEED);
-    const light = new LightGrid();
-    light.recomputeAll(world);
+  private stopWorker(): void {
+    this.worker?.terminate();
+    this.worker = null;
+  }
 
+  private start(scene: PanoramaScene): void {
     const renderer = new GameRenderer(this.canvas);
-    for (let cx = 0; cx < WORLD_CX; cx++)
-      for (let cy = 0; cy < WORLD_CY; cy++)
-        for (let cz = 0; cz < WORLD_CZ; cz++) {
-          const mesh = buildChunkMesh(world, light, cx, cy, cz);
-          renderer.updateChunk(chunkKey(cx, cy, cz), mesh.opaque, mesh.translucent);
-        }
+    for (const c of scene.chunks) renderer.updateChunk(c.key, c.opaque, c.translucent);
 
-    const eye = spawnPoint(PANORAMA_SEED);
+    const eye = scene.eye;
     const start = performance.now();
     const frame = (now: number): void => {
       if (this.destroyed) return;
@@ -64,6 +77,7 @@ export class Panorama {
 
   destroy(): void {
     this.destroyed = true;
+    this.stopWorker();
     cancelAnimationFrame(this.raf);
     this.canvas.remove();
   }
