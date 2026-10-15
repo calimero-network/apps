@@ -11,6 +11,8 @@ const driveState = {
   ] as Array<{ namespaceId: string; name?: string; memberCount: number }>,
   selectedNamespaceId: 'ns-acme' as string | null,
   selectNamespace,
+  // The selected workspace's TEE node: counted by core, not a person.
+  namespaceMembers: { teeMembers: [{ identity: 'e'.repeat(64), role: 'RelayTee' }] },
   loading: false,
   error: null as Error | null,
   refetch: vi.fn(),
@@ -62,6 +64,7 @@ describe('NamespaceSwitcher', () => {
       'true',
       'false',
     ]);
+    expect(items[0].textContent).toBe('Acme Product3 members');
     expect(items[1].textContent).toBe('Personal1 member');
     fireEvent.click(items[1]);
     expect(selectNamespace).toHaveBeenCalledWith('ns-solo');

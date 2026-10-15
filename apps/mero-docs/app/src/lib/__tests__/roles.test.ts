@@ -10,9 +10,12 @@ import {
   MANAGER_FOLDER_CAPS,
   FOLDER_ROLES,
   parseGroupRole,
+  peopleCount,
   planDefaultsSweep,
   registryManagerIntent,
   roleDisplayLabel,
+  splitTeeMembers,
+  teeMode,
   workspaceRoleOf,
   WORKSPACE_ROLE_GRANTS,
   WORKSPACE_ROLES,
@@ -39,6 +42,23 @@ describe('parseGroupRole', () => {
     expect(folderRoleOf('RelayTee', 0)).toBe('Tee');
     expect(folderRoleOf('ReadOnlyTee', null)).toBe('Tee');
     expect(roleDisplayLabel('Tee')).toBe('TEE node');
+  });
+
+  // A TEE node is a member row on the node, not a person.
+  it('splits TEE rows out of a member list and names their mode', () => {
+    const rows = [
+      { identity: 'a', role: 'Admin' },
+      { identity: 'r', role: 'ReadOnlyTee' },
+      { identity: 'b' },
+      { identity: 'e', role: 'RelayTee' },
+    ];
+    const { people, tee } = splitTeeMembers(rows);
+    expect(people.map((m) => m.identity)).toEqual(['a', 'b']);
+    expect(tee.map((m) => m.identity)).toEqual(['r', 'e']);
+    expect(teeMode(tee)).toBe('Relay');
+    expect(teeMode([rows[1]])).toBe('Replica');
+    expect(peopleCount(4, tee.length)).toBe(2);
+    expect(peopleCount(1, 2)).toBe(0);
   });
 
   // Defaulting the other way would paint an admin badge on a plain member -

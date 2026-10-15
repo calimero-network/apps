@@ -326,4 +326,45 @@ describe("RoomsPage on an account session", () => {
     expect(admin.createNamespaceInvitation).toHaveBeenCalledWith("ns1", {});
     neverTouchedTheNodeRoute();
   });
+  // A TEE node is a member row of the namespace and of every room born Open.
+  // It is not a person: the room says "1 member" and the stream's header says
+  // "TEE enabled" instead.
+  it("shows TEE enabled beside the stream name and leaves the node out of the room's count", async () => {
+    admin.listNamespaceGroups.mockResolvedValueOnce([{ groupId: "room1" }]);
+    admin.listGroupMembers.mockImplementation(async () => ({
+      members: [
+        { identity: "aa", role: "Admin" },
+        { identity: "tt", role: "RelayTee" },
+      ],
+    }));
+    try {
+      renderRooms();
+      const badge = await screen.findByTestId("tee-badge");
+      expect(badge.textContent).toContain("TEE enabled");
+      expect(badge.textContent).toContain("Relay");
+      expect(badge.title).toMatch(
+        /hardware-attested node keeps this workspace in sync/,
+      );
+      expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1");
+      await waitFor(() =>
+        expect(screen.getByTestId("room-row").textContent).toContain(
+          "1 member",
+        ),
+      );
+      expect(screen.getByTestId("room-row").textContent).not.toContain(
+        "2 members",
+      );
+    } finally {
+      admin.listGroupMembers.mockImplementation(async () => ({ members: [] }));
+    }
+  });
+
+  it("shows no TEE indicator when the stream has no TEE node", async () => {
+    renderRooms();
+    await waitFor(() =>
+      expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1"),
+    );
+    await screen.findByText("Team", { selector: "h2" });
+    expect(screen.queryByTestId("tee-badge")).toBeNull();
+  });
 });

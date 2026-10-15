@@ -91,6 +91,7 @@ import {
 } from '@/constants/config';
 import { loadCoreFolders, type CoreFolder } from '@/lib/coreFolders';
 import { folderLabel } from '@/lib/folderLabel';
+import { splitTeeMembers } from '@/lib/roles';
 
 /** Shared empty array so the "no duplicates" case keeps a stable identity. */
 const EMPTY_DUPLICATES: string[] = [];
@@ -184,7 +185,10 @@ export interface DriveWorkspaceState {
   namespaceMemberNames: Record<string, string>;
   /** The selected namespace's members, re-read on every namespace event (a join included). */
   namespaceMembers: {
+    /** People only; TEE nodes are split out into `teeMembers`. */
     members: GroupMember[];
+    /** TEE nodes admitted to the namespace; known once the members load. */
+    teeMembers: GroupMember[];
     loading: boolean;
     error: Error | null;
   };
@@ -392,18 +396,25 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     useNodeIdentity();
   const selfIdentity = nodeIdentity?.accountId ?? null;
   const {
-    members: nsMembers,
+    members: nsRows,
     loading: membersLoading,
     error: membersError,
     refetch: refetchNsMembers,
   } = useGroupMembers(selectedNsId ?? undefined);
+  // A TEE node is a member row, not a person: split out here so no list, name
+  // map or picker reading `namespaceMembers` shows it.
+  const { people: nsMembers, tee: nsTeeMembers } = useMemo(
+    () => splitTeeMembers(nsRows),
+    [nsRows],
+  );
   const namespaceMembers = useMemo(
     () => ({
       members: nsMembers,
+      teeMembers: nsTeeMembers,
       loading: membersLoading,
       error: membersError,
     }),
-    [nsMembers, membersLoading, membersError],
+    [nsMembers, nsTeeMembers, membersLoading, membersError],
   );
 
   // Identity → server-reported display name map for THIS namespace.

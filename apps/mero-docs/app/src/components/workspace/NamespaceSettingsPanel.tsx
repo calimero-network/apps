@@ -8,14 +8,19 @@
 import React from 'react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { namespaceLabel } from '@/lib/namespaceLabel';
+import { peopleCount } from '@/lib/roles';
 import { NamespaceMembersPanel } from './NamespaceMembersPanel';
 import { MemberDefaultsPanel } from '@/components/admin/MemberDefaultsPanel';
 import { MyDisplayNamePanel } from '@/components/admin/MyDisplayNamePanel';
 import { WorkspaceSettingsPanel } from '@/components/admin/WorkspaceSettingsPanel';
 
 export function NamespaceSettingsPanel() {
-  const { namespaceId, namespaces } = useDriveWorkspace();
+  const { namespaceId, namespaces, namespaceMembers } = useDriveWorkspace();
   const ns = namespaces.find((n) => n.namespaceId === namespaceId);
+  // Core's `memberCount` counts TEE nodes too; the members list below does not.
+  const count = ns
+    ? peopleCount(ns.memberCount, namespaceMembers.teeMembers.length)
+    : 0;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
@@ -28,7 +33,7 @@ export function NamespaceSettingsPanel() {
           {ns && (
             <>
               {' '}
-              · {ns.memberCount} member{ns.memberCount === 1 ? '' : 's'}
+              · {count} member{count === 1 ? '' : 's'}
             </>
           )}
         </p>

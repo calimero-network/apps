@@ -8,6 +8,7 @@ import {
   createForum,
   enterForumContext,
   listForums,
+  namespaceTeeMode,
   mintForumInvite,
   redeemFailureMessage,
   redeemInvite,
@@ -610,6 +611,7 @@ describe("listForums", () => {
         name: "Ready",
         contextId: "ctx1",
         memberCount: 1,
+        teeMode: null,
         joined: true,
         // The identity itself, not just the fact of holding one: the forum's
         // contract keys its roster by this, so it is what marks "you" in a
@@ -621,10 +623,82 @@ describe("listForums", () => {
         name: "Pending",
         contextId: null,
         memberCount: 1,
+        teeMode: null,
         joined: false,
         identity: null,
       },
     ]);
+  });
+
+  // A subgroup born Open admits the namespace's TEE node as a member row. It
+  // used to be counted as a person: "2 members" for a forum with one.
+  it("keeps TEE nodes out of a forum's member count and records the TEE mode", async () => {
+    const admin = fakeAdmin({
+      listNamespaceGroups: () =>
+        Promise.resolve([
+          { groupId: "r1", name: "Relay" },
+          { groupId: "r2", name: "Replica" },
+          { groupId: "r3", name: "Plain" },
+        ]),
+      listGroupMembers: (id: unknown) =>
+        Promise.resolve({
+          members: [
+            { identity: "a", role: "Admin" },
+            ...(id === "r1"
+              ? [
+                  { identity: "t1", role: "ReadOnlyTee" },
+                  { identity: "t2", role: "RelayTee" },
+                ]
+              : id === "r2"
+                ? [{ identity: "t1", role: "ReadOnlyTee" }]
+                : []),
+          ],
+        }),
+    });
+
+    const rows = await listForums(admin, "ns1");
+    expect(rows.map((r) => [r.memberCount, r.teeMode])).toEqual([
+      [1, "relay"],
+      [1, "replica"],
+      [1, null],
+    ]);
+  });
+});
+
+describe("namespaceTeeMode", () => {
+  const withMembers = (members: { identity: string; role: string }[]) =>
+    fakeAdmin({ listGroupMembers: () => Promise.resolve({ members }) });
+
+  it("reads Relay when any TEE row is a RelayTee, Replica otherwise", async () => {
+    expect(
+      await namespaceTeeMode(
+        withMembers([
+          { identity: "a", role: "Admin" },
+          { identity: "t1", role: "ReadOnlyTee" },
+          { identity: "t2", role: "RelayTee" },
+        ]),
+        "ns1",
+      ),
+    ).toBe("relay");
+    expect(
+      await namespaceTeeMode(
+        withMembers([{ identity: "t1", role: "ReadOnlyTee" }]),
+        "ns1",
+      ),
+    ).toBe("replica");
+  });
+
+  it("is null without a TEE row, and when the read fails", async () => {
+    expect(
+      await namespaceTeeMode(
+        withMembers([{ identity: "a", role: "Member" }]),
+        "ns1",
+      ),
+    ).toBeNull();
+    const failing = fakeAdmin({
+      listGroupMembers: () => Promise.reject(new Error("403")),
+    });
+    expect(await namespaceTeeMode(failing, "ns1")).toBeNull();
   });
 });
 

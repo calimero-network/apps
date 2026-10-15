@@ -4,8 +4,10 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { tokens as t } from '../theme';
 import { APP_ROUTE } from '../config';
 import AvatarGlyph from './AvatarGlyph';
+import TeeBadge from './TeeBadge';
 import { SelectMenu } from './Dropdown';
 import type { PipelineEntry } from '../hooks/useWorkspace';
+import type { TeeMode } from '../utils/tee';
 import type { Namespace } from '@calimero-network/mero-react';
 import {
   IconBoard, IconMembers, IconDeals, IconActivities, IconContacts, IconInsights, IconSettings, IconLogout, IconPlus,
@@ -22,6 +24,8 @@ export interface SidebarProps {
   overdueActivities: number;
   contactsCount: number;
   membersCount: number;
+  /** Relay / Replica when a TEE node backs the workspace; shown as a shield. */
+  teeMode?: TeeMode | null;
   currentUser: string;
   currentUserLabel: string;
   currentUserHasAlias: boolean;
@@ -59,6 +63,7 @@ export default function Sidebar({
   overdueActivities,
   contactsCount,
   membersCount,
+  teeMode = null,
   currentUser,
   currentUserLabel,
   currentUserHasAlias,
@@ -187,6 +192,7 @@ export default function Sidebar({
         <div className="peer-sync">
           <span className="pulse-dot" aria-hidden="true" />
           <span>{membersCount} {membersCount === 1 ? 'peer' : 'peers'} <span className="mid">·</span> synced</span>
+          <TeeBadge mode={teeMode} compact />
         </div>
         <div className="me-row">
           <AvatarGlyph

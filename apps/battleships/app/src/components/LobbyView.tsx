@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Input } from '@calimero-network/mero-ui';
+import { ShieldCheck } from '@calimero-network/mero-icons';
 import CopyButton from './CopyButton';
 import type { MatchSummary, MatchRecord, PlayerStatsView } from '../generated/lobby/LobbyClient';
 
@@ -14,6 +15,8 @@ interface LobbyViewProps {
   lobbyAlias?: string | null;
   isAdmin: boolean;
   members: GroupMember[];
+  /** TEE nodes admitted to the lobby's group; never part of `members`. */
+  teeMembers?: GroupMember[];
   membersLoading: boolean;
   /** Player keys in this lobby — what `create_match` accepts. */
   playerKeys: string[];
@@ -57,7 +60,7 @@ const formatTs = (ms: number) => new Date(ms).toLocaleString(undefined, {
 });
 
 export default function LobbyView({
-  lobbyAlias, isAdmin, members, membersLoading, playerKeys, playerByAccount,
+  lobbyAlias, isAdmin, members, teeMembers = [], membersLoading, playerKeys, playerByAccount,
   onChallengePlayer, selfIdentity, executorPublicKey,
   inviteLoading, invitationJson, onCreateInvitation, onDismissInvitation,
   player2, creatingMatch, onPlayer2Change, onCreateMatch,
@@ -138,6 +141,21 @@ export default function LobbyView({
           <div className="naval-card-title">
             {lobbyAlias || 'Lobby'}
             {isAdmin && <span className="badge badge-admin">Admin</span>}
+            {/* A TEE node is infrastructure, not a player: it is not listed
+                below, only noted here. */}
+            {teeMembers.length > 0 && (
+              <span
+                className="badge badge-tee"
+                data-testid="tee-indicator"
+                title="A hardware-attested node keeps this workspace in sync and available when members are offline."
+              >
+                <ShieldCheck size={11} aria-hidden />
+                TEE enabled
+                <span className="badge-tee-mode">
+                  {teeMembers.some((m) => m.role === 'RelayTee') ? 'Relay' : 'Replica'}
+                </span>
+              </span>
+            )}
           </div>
         </div>
         <div className="naval-card-body">

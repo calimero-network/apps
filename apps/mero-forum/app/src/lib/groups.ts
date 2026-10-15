@@ -175,6 +175,43 @@ function isAlreadyMember(e: unknown): boolean {
   );
 }
 
+// ── TEE nodes ─────────────────────────────────────────────────────────────────
+//
+// A TEE fleet node is admitted by hardware attestation as a member row with
+// role `ReadOnlyTee` (replica) or `RelayTee` (relay), in the namespace and in
+// every forum born Open. It is infrastructure, not a person: no member count
+// may include it. Its presence is what "TEE enabled" means.
+
+export const isTeeRole = (role: string | undefined): boolean =>
+  role === "ReadOnlyTee" || role === "RelayTee";
+
+/** How a TEE node serves a group: `relay` if any TEE row is a `RelayTee`. */
+export type TeeMode = "relay" | "replica";
+
+function teeModeOf(rows: readonly { role?: string }[]): TeeMode | null {
+  const tee = rows.filter((m) => isTeeRole(m.role));
+  if (tee.length === 0) return null;
+  return tee.some((m) => m.role === "RelayTee") ? "relay" : "replica";
+}
+
+/**
+ * Whether a TEE node backs this namespace, read from its own member list.
+ *
+ * Failures read as "no TEE": the indicator is informational and must never
+ * break the page it sits on.
+ */
+export async function namespaceTeeMode(
+  admin: AdminLike,
+  namespaceId: string,
+): Promise<TeeMode | null> {
+  try {
+    const r = await admin.listGroupMembers(namespaceId);
+    return teeModeOf(r.members ?? []);
+  } catch {
+    return null;
+  }
+}
+
 // ── Namespaces ────────────────────────────────────────────────────────────────
 
 export interface NamespaceRow {
@@ -387,7 +424,10 @@ export interface ForumRow {
   name: string;
   /** The forum's forum context. Null while a forum exists but its context has not replicated yet. */
   contextId: string | null;
+  /** People only: TEE node rows are not counted. */
   memberCount: number;
+  /** The forum's TEE node, if one was admitted (born-Open forums admit it). */
+  teeMode: TeeMode | null;
   /** True when this node already holds an identity in the forum's context. */
   joined: boolean;
   /**
@@ -433,7 +473,8 @@ export async function listForums(
           (meta?.name ?? "").trim() ||
           `Forum ${sg.groupId.slice(0, 6)}`,
         contextId,
-        memberCount: members.length,
+        memberCount: members.filter((m) => !isTeeRole(m.role)).length,
+        teeMode: teeModeOf(members),
         joined: !!identity,
         identity,
       };

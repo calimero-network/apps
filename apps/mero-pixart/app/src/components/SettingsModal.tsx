@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
+import { ShieldCheck } from "@calimero-network/mero-icons";
 import { useApi } from "../api/useApi";
 import { listTeamContexts } from "../api/teamContexts";
 import { useToast } from "../contexts/ToastContext";
@@ -9,6 +10,7 @@ import {
   effectiveDocumentRole,
 } from "../utils/documentRoles";
 import { truncateMiddle } from "../utils/format";
+import { splitTeeMembers } from "../utils/teeMembers";
 import { useEditorStore } from "../store/editorStore";
 import type { DocumentInfo, MemberRole as ContractMemberRole } from "../types";
 import styles from "./SettingsModal.module.css";
@@ -49,6 +51,8 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
   const { showToast } = useToast();
   const membersGroupId = groupId || id;
   const [members, setMembers] = useState<MemberEntry[]>([]);
+  // TEE nodes admitted to the group: not people, so never in `members`.
+  const [teeMembers, setTeeMembers] = useState<MemberEntry[]>([]);
   const [selfIdentity, setSelfIdentity] = useState("");
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -171,6 +175,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
     // 400 and would surface as an empty list. Skip the doomed request instead.
     if (!/^[0-9a-fA-F]{64}$/.test(membersGroupId)) {
       setMembers([]);
+      setTeeMembers([]);
       setLoadingMembers(false);
       return;
     }
@@ -179,7 +184,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
       .then((raw) => {
         if (cancelled) return;
         const arr: MemberEntry[] = Array.isArray(raw?.members) ? raw.members : [];
-        setMembers(
+        const split = splitTeeMembers(
           arr
             .map((m) => ({
               identity: m.identity ?? (m as { memberId?: string }).memberId ?? (m as { id?: string }).id ?? "",
@@ -188,8 +193,14 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
             }))
             .filter((m) => m.identity),
         );
+        setMembers(split.members);
+        setTeeMembers(split.teeMembers);
       })
-      .catch(() => { if (!cancelled) setMembers([]); })
+      .catch(() => {
+        if (cancelled) return;
+        setMembers([]);
+        setTeeMembers([]);
+      })
       .finally(() => { if (!cancelled) setLoadingMembers(false); });
     return () => { cancelled = true; };
   }, [membersGroupId, admin]);
@@ -378,9 +389,20 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
         <div className={styles.divider} />
 
         <div className={styles.row}>
-          <span className="mp-label">
-            Members{members.length > 0 ? ` (${members.length})` : ""}
-          </span>
+          <div className={styles.labelRow}>
+            <span className="mp-label">
+              Members{members.length > 0 ? ` (${members.length})` : ""}
+            </span>
+            {teeMembers.length > 0 && (
+              <span
+                className={styles.teeBadge}
+                title="A hardware-attested node keeps this workspace in sync and available when members are offline."
+              >
+                <ShieldCheck size={12} aria-hidden />
+                TEE enabled · {teeMembers.some((m) => m.role === "RelayTee") ? "Relay" : "Replica"}
+              </span>
+            )}
+          </div>
           {loadingMembers ? (
             <span className={styles.muted}>Loading…</span>
           ) : members.length === 0 ? (

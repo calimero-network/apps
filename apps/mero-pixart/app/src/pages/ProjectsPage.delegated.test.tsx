@@ -129,6 +129,22 @@ describe("ProjectsPage on a delegated session", () => {
     expect(stub.rawAdmin.joinContext).not.toHaveBeenCalled();
   });
 
+  // A Born Open subgroup admits the TEE fleet node as a member row. It is
+  // infrastructure, so the card's "N members" counts people only.
+  it("leaves TEE nodes out of a project card's member count", async () => {
+    stub.admin.listGroupMembers.mockResolvedValueOnce({
+      members: [
+        { identity: "a", role: "Admin" },
+        { identity: "t1", role: "ReadOnlyTee" },
+        { identity: "t2", role: "RelayTee" },
+      ],
+    });
+    renderPage();
+    const card = await screen.findByTestId("project-card-ctx-existing");
+    await waitFor(() => expect(card).toHaveTextContent("1 member"));
+    expect(card).not.toHaveTextContent("3 members");
+  });
+
   it("hides the node-only Delete control", async () => {
     renderPage();
     await screen.findByTestId("project-card-ctx-existing");

@@ -10,7 +10,7 @@
 // view, tracked separately).
 
 import React, { useMemo, useState } from 'react';
-import { UserPlus } from 'lucide-react';
+import { ShieldCheck, UserPlus } from 'lucide-react';
 import { useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -22,7 +22,7 @@ import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { NamespaceMemberRow } from '@/components/admin/NamespaceMemberRow';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { useMemberCaps } from '@/hooks/useMemberCaps';
-import { countAdmins, parseGroupRole } from '@/lib/roles';
+import { countAdmins, parseGroupRole, teeMode } from '@/lib/roles';
 import { InviteDialog } from './InviteDialog';
 import { useCreateNamespaceInvite } from '@/hooks/useNamespaceInvitation';
 import { useWorkspacePresence } from '@/hooks/useWorkspacePresence';
@@ -117,12 +117,15 @@ export function NamespaceMembersPanel() {
     >
       <header className="flex items-center justify-between border-b border-border/60 px-4 py-3">
         <div>
-          <h3
-            id="namespace-members-heading"
-            className="text-sm font-semibold text-foreground"
-          >
-            Workspace members
-          </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3
+              id="namespace-members-heading"
+              className="text-sm font-semibold text-foreground"
+            >
+              Workspace members
+            </h3>
+            <TeeBadge tee={membership.teeMembers} />
+          </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
             People with access to this workspace.
           </p>
@@ -207,5 +210,19 @@ export function NamespaceMembersPanel() {
         />
       )}
     </section>
+  );
+}
+
+/** Says a TEE node backs the workspace; it is never listed as a member. */
+function TeeBadge({ tee }: { tee: ReadonlyArray<{ role?: string }> }) {
+  if (tee.length === 0) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+      title={`${teeMode(tee)} mode. A hardware-attested node keeps this workspace in sync and available when members are offline.`}
+    >
+      <ShieldCheck className="h-3 w-3" aria-hidden />
+      TEE enabled
+    </span>
   );
 }

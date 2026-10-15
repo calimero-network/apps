@@ -344,20 +344,37 @@ export interface GroupMemberInfo {
   name?: string;
 }
 
-export async function listGroupMembers(groupId: string): Promise<GroupMemberInfo[]> {
+/**
+ * A TEE fleet node admitted by hardware attestation (core's
+ * `GroupMemberRole::ReadOnlyTee` / `RelayTee`). It is infrastructure, not a
+ * person: never listed as a member, shown as "TEE enabled" instead.
+ */
+export const isTeeRole = (role: string | undefined): boolean =>
+  role === "ReadOnlyTee" || role === "RelayTee";
+
+export async function listGroupMembers(
+  groupId: string,
+): Promise<{ members: GroupMemberInfo[]; teeMembers: GroupMemberInfo[] }> {
   const raw: unknown = await getApi().admin.listGroupMembers(groupId);
   const list = Array.isArray(raw)
     ? raw
     : ((raw as { members?: unknown[]; data?: unknown[] } | null)?.members
         ?? (raw as { data?: unknown[] } | null)?.data
         ?? []);
-  return (list as Record<string, unknown>[])
+  const all = (list as Record<string, unknown>[])
     .map((m) => ({
       identity: String(m.identity ?? m.memberId ?? m.id ?? ""),
       role: typeof m.role === "string" ? m.role : "Member",
       name: (typeof m.name === "string" ? m.name.trim() : "") || undefined,
     }))
     .filter((m) => m.identity);
+  // TEE nodes are member rows on the node (the namespace and every Born Open
+  // subgroup admit them), but kept out of `members` so no list, count or role
+  // control ever shows one as a person.
+  return {
+    members: all.filter((m) => !isTeeRole(m.role)),
+    teeMembers: all.filter((m) => isTeeRole(m.role)),
+  };
 }
 
 export async function updateMemberRole(groupId: string, identity: string, role: string): Promise<void> {

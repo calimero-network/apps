@@ -11,9 +11,12 @@ import {
   listForums,
   mintNamespaceInvite,
   mintForumInvite,
+  namespaceTeeMode,
   type ForumRow,
+  type TeeMode,
 } from "../lib/groups";
 import InviteModal from "../components/InviteModal";
+import { TeeBadge } from "../components/ui";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import {
   AccountChip,
@@ -88,6 +91,14 @@ export default function ForumsPage() {
   /** Contract roster per forum context, kept for the member counts on each row. */
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
+  /**
+   * The space's TEE node, if any, keyed by the namespace it was read for —
+   * shown beside its name, never as a member.
+   */
+  const [tee, setTee] = useState<{
+    id: string;
+    mode: TeeMode | null;
+  } | null>(null);
   const [name, setName] = useState("");
 
   const [pending, setPending] = useState<string | null>(null);
@@ -138,6 +149,10 @@ export default function ForumsPage() {
           .catch(() => null);
         setNsName(
           (info?.name ?? "").trim() || `Space ${namespaceId.slice(0, 6)}`,
+        );
+        // Never throws: an unreadable member list reads as "no TEE".
+        void namespaceTeeMode(mero.admin, namespaceId).then((mode) =>
+          setTee({ id: namespaceId, mode }),
         );
         setForums(await listForums(mero.admin, namespaceId));
         // A real answer, empty or not — that is what ends the sync gate.
@@ -302,6 +317,12 @@ export default function ForumsPage() {
   );
 
   const spaceName = nsName || "Space";
+  // The namespace's own member list says so; a forum born Open admitted the same
+  // node, so its rows say so too when the namespace read came back empty.
+  const teeMode =
+    (tee?.id === namespaceId ? tee.mode : null) ??
+    forums.find((f) => f.teeMode)?.teeMode ??
+    null;
   const joinedCount = forums.filter((f) => f.joined).length;
 
   return (
@@ -351,6 +372,7 @@ export default function ForumsPage() {
               <span className="x-headSub">
                 <LayersIcon size={13} />
                 {spaceName}
+                <TeeBadge mode={teeMode} />
               </span>
             </div>
           </div>

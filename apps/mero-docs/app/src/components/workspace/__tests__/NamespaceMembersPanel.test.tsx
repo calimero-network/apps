@@ -25,12 +25,14 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     ],
   }),
 }));
+const membership = vi.hoisted(() => ({ teeMembers: [] as { identity: string; role: string }[] }));
 vi.mock('@/hooks/useFolderMembership', () => ({
   useFolderMembership: () => ({
     members: [
       { identity: ME, role: 'Admin' },
       { identity: BOB, role: 'Member' },
     ],
+    teeMembers: membership.teeMembers,
     loading: false,
     error: null,
     refetch: vi.fn().mockResolvedValue(undefined),
@@ -53,6 +55,7 @@ vi.mock('@/components/admin/NamespaceMemberRow', () => ({
 }));
 
 beforeEach(() => {
+  membership.teeMembers = [];
   removeGroupMembers.mockReset().mockResolvedValue(undefined);
   listGroupMembers.mockReset().mockImplementation(async (g: string) => ({
     members: g === 'notes' ? [{ identity: BOB }] : [],
@@ -88,5 +91,29 @@ describe('NamespaceMembersPanel removal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove Bob' }));
     expect((await screen.findByRole('alert')).textContent).toBe("Couldn't remove Bob: not allowed");
     expect(listGroupMembers).not.toHaveBeenCalled();
+  });
+});
+
+describe('NamespaceMembersPanel TEE indicator', () => {
+  // The TEE node is not listed as a member; the header says TEE is enabled instead.
+  it('says TEE is enabled, in Relay mode, when a relay TEE backs the workspace', () => {
+    membership.teeMembers = [{ identity: 'e'.repeat(64), role: 'RelayTee' }];
+    render(<NamespaceMembersPanel />);
+    expect(
+      screen.getByTitle(/^Relay mode\. A hardware-attested node keeps this workspace in sync/)
+        .textContent,
+    ).toBe('TEE enabled');
+    expect(screen.getAllByRole('button', { name: /^Remove/ })).toHaveLength(2);
+  });
+
+  it('says Replica mode when every TEE node is read-only', () => {
+    membership.teeMembers = [{ identity: 'e'.repeat(64), role: 'ReadOnlyTee' }];
+    render(<NamespaceMembersPanel />);
+    expect(screen.getByTitle(/^Replica mode\./).textContent).toBe('TEE enabled');
+  });
+
+  it('shows nothing when no TEE node is admitted', () => {
+    render(<NamespaceMembersPanel />);
+    expect(screen.queryByText('TEE enabled')).toBeNull();
   });
 });
