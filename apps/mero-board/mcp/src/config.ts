@@ -12,8 +12,6 @@ export interface Config {
   /** BOARD_FOLDER - default folder (context alias) within the namespace. */
   folderDefault?: string;
   authToken?: string;
-  /** BOARD_EXECUTOR override; when unset the executor is resolved via admin API. */
-  executorOverride?: string;
   /** BOARD_SERVICE - the app service name used by add_folder's createContext call. */
   serviceName: string;
 }
@@ -36,7 +34,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     namespaceRaw,
     folderDefault: env.BOARD_FOLDER?.trim() || undefined,
     authToken: env.CALIMERO_AUTH_TOKEN?.trim() || undefined,
-    executorOverride: env.BOARD_EXECUTOR?.trim() || undefined,
     serviceName: env.BOARD_SERVICE?.trim() || DEFAULT_SERVICE_NAME,
   };
 }

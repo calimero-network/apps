@@ -11,7 +11,6 @@ import {
   listNamespaceFolders,
   pickFolder,
   resolveContextId,
-  resolveExecutor,
   resolveNamespaceApp,
   resolveNamespaceId,
   RpcError,
@@ -55,7 +54,7 @@ test('callMethod posts the exact jsonrpc envelope and returns result.output', as
       );
     }) as typeof fetch,
     async () => {
-      const target = { contextId: 'ctx-1', executorPublicKey: 'exec-1' };
+      const target = { contextId: 'ctx-1' };
       const out = await callMethod(baseConfig, target, 'create_card', { title: 'Fix it' });
       assert.equal(out, 'card-123');
     },
@@ -71,7 +70,6 @@ test('callMethod posts the exact jsonrpc envelope and returns result.output', as
       contextId: 'ctx-1',
       method: 'create_card',
       argsJson: { title: 'Fix it' },
-      executorPublicKey: 'exec-1',
     },
   });
   const headers = capturedInit?.headers as Record<string, string>;
@@ -87,7 +85,7 @@ test('callMethod sends a bearer token when configured', async () => {
       headers = init?.headers as Record<string, string>;
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
     }) as typeof fetch,
-    () => callMethod(cfg, { contextId: 'c', executorPublicKey: 'e' }, 'list_cards', {}),
+    () => callMethod(cfg, { contextId: 'c' }, 'list_cards', {}),
   );
   assert.equal(headers.Authorization, 'Bearer tok-abc');
 });
@@ -101,7 +99,7 @@ test('callMethod throws RpcError on a jsonrpc-level error', async () => {
             JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'card not found' } }),
             { status: 200 },
           )) as typeof fetch,
-        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'get_card', { card_id: 'x' }),
+        () => callMethod(baseConfig, { contextId: 'c' }, 'get_card', { card_id: 'x' }),
       ),
     (err: unknown) => {
       assert.ok(err instanceof RpcError);
@@ -127,7 +125,7 @@ test('callMethod decodes a FunctionCallError data byte array into the real guest
             }),
             { status: 200 },
           )) as typeof fetch,
-        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'create_card', {}),
+        () => callMethod(baseConfig, { contextId: 'c' }, 'create_card', {}),
       ),
     (err: unknown) => {
       assert.ok(err instanceof RpcError);
@@ -146,7 +144,7 @@ test('callMethod falls back to the error type when data is not a decodable byte 
             JSON.stringify({ jsonrpc: '2.0', id: 1, error: { type: 'FunctionCallError', data: 'opaque' } }),
             { status: 200 },
           )) as typeof fetch,
-        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'create_card', {}),
+        () => callMethod(baseConfig, { contextId: 'c' }, 'create_card', {}),
       ),
     /FunctionCallError/,
   );
@@ -199,7 +197,7 @@ test('callMethod throws on non-2xx HTTP status', async () => {
     () =>
       withFetch(
         (async () => new Response('server exploded', { status: 500 })) as typeof fetch,
-        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'get_card', { card_id: 'x' }),
+        () => callMethod(baseConfig, { contextId: 'c' }, 'get_card', { card_id: 'x' }),
       ),
     /500/,
   );
@@ -237,70 +235,6 @@ test('resolveContextId falls back to the raw value on a network error', async ()
     () => resolveContextId(baseConfig),
   );
   assert.equal(contextId, 'my-board');
-});
-
-test('resolveExecutor returns the override without calling fetch', async () => {
-  const cfg: Config = { ...baseConfig, executorOverride: 'exec-override' };
-  let called = false;
-  const result = await withFetch(
-    (async () => {
-      called = true;
-      throw new Error('should not be called');
-    }) as typeof fetch,
-    () => resolveExecutor(cfg, 'ctx-1'),
-  );
-  assert.equal(result, 'exec-override');
-  assert.equal(called, false);
-});
-
-test('resolveExecutor fetches the first owned identity when no override is set', async () => {
-  let capturedUrl = '';
-  const result = await withFetch(
-    (async (url: string | URL) => {
-      capturedUrl = String(url);
-      return new Response(JSON.stringify({ data: { identities: ['id-1', 'id-2'] } }), { status: 200 });
-    }) as typeof fetch,
-    () => resolveExecutor(baseConfig, 'ctx-1'),
-  );
-  assert.equal(result, 'id-1');
-  assert.equal(capturedUrl, 'http://localhost:2428/admin-api/contexts/ctx-1/identities-owned');
-});
-
-test('resolveExecutor throws when the node owns no identity for the context', async () => {
-  await assert.rejects(
-    () =>
-      withFetch(
-        (async () => new Response(JSON.stringify({ data: { identities: [] } }), { status: 200 })) as typeof fetch,
-        () => resolveExecutor(baseConfig, 'ctx-1'),
-      ),
-    /No owned identity/,
-  );
-});
-
-test('createTargetResolver does not cache a rejected resolution - a later call retries and can succeed', async () => {
-  let identitiesAttempt = 0;
-  const resolver = createTargetResolver(baseConfig);
-
-  await withFetch(
-    (async (url: string | URL) => {
-      if (String(url).includes('alias/lookup')) return new Response('not found', { status: 404 });
-      identitiesAttempt += 1;
-      return new Response('node not up yet', { status: 500 });
-    }) as typeof fetch,
-    () => assert.rejects(() => resolver(), /500/),
-  );
-
-  const target = await withFetch(
-    (async (url: string | URL) => {
-      if (String(url).includes('alias/lookup')) return new Response('not found', { status: 404 });
-      identitiesAttempt += 1;
-      return new Response(JSON.stringify({ data: { identities: ['id-1'] } }), { status: 200 });
-    }) as typeof fetch,
-    () => resolver(),
-  );
-
-  assert.equal(target.executorPublicKey, 'id-1');
-  assert.equal(identitiesAttempt, 2);
 });
 
 // ---- resolveNamespaceId ----
@@ -650,10 +584,6 @@ test('createFolderLister does not cache a rejected resolution', async () => {
 function fullNamespaceFetch(): typeof fetch {
   return (async (url: string | URL) => {
     const u = String(url);
-    if (u.includes('/identities-owned')) {
-      const identity = u.includes('ctx-1') ? 'exec-frontend' : 'exec-backend';
-      return new Response(JSON.stringify({ data: { identities: [identity] } }), { status: 200 });
-    }
     if (u.endsWith('/admin-api/namespaces')) {
       return new Response(JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team' }] }), { status: 200 });
     }
@@ -679,23 +609,20 @@ test('createTargetResolver resolves the explicit folder param over BOARD_FOLDER'
   const cfg: Config = { ...namespaceConfig, folderDefault: 'backend' };
   const target = createTargetResolver(cfg);
   const resolved = await withFetch(fullNamespaceFetch(), () => target('frontend'));
-  assert.deepEqual(resolved, { contextId: 'ctx-1', executorPublicKey: 'exec-frontend' });
+  assert.deepEqual(resolved, { contextId: 'ctx-1' });
 });
 
 test('createTargetResolver falls back to BOARD_FOLDER when no folder param is given', async () => {
   const cfg: Config = { ...namespaceConfig, folderDefault: 'backend' };
   const target = createTargetResolver(cfg);
   const resolved = await withFetch(fullNamespaceFetch(), () => target());
-  assert.deepEqual(resolved, { contextId: 'ctx-2', executorPublicKey: 'exec-backend' });
+  assert.deepEqual(resolved, { contextId: 'ctx-2' });
 });
 
 test('createTargetResolver infers the single folder when neither folder param nor BOARD_FOLDER is set', async () => {
   const target = createTargetResolver(namespaceConfig);
   const impl = (async (url: string | URL) => {
     const u = String(url);
-    if (u.includes('/identities-owned')) {
-      return new Response(JSON.stringify({ data: { identities: ['exec-1'] } }), { status: 200 });
-    }
     if (u.endsWith('/admin-api/namespaces')) {
       return new Response(JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team' }] }), { status: 200 });
     }
@@ -710,7 +637,7 @@ test('createTargetResolver infers the single folder when neither folder param no
     throw new Error(`unexpected fetch: ${url}`);
   }) as typeof fetch;
   const resolved = await withFetch(impl, () => target());
-  assert.deepEqual(resolved, { contextId: 'ctx-1', executorPublicKey: 'exec-1' });
+  assert.deepEqual(resolved, { contextId: 'ctx-1' });
 });
 
 test('createTargetResolver rejects with a helpful error when the folder param does not match', async () => {
@@ -725,9 +652,6 @@ test('createTargetResolver resolves a folder param against the real node flat-ma
   const target = createTargetResolver(namespaceConfig);
   const impl = (async (url: string | URL) => {
     const u = String(url);
-    if (u.includes('/identities-owned')) {
-      return new Response(JSON.stringify({ data: { identities: ['exec-1'] } }), { status: 200 });
-    }
     if (u.endsWith('/admin-api/namespaces')) {
       return new Response(JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team' }] }), { status: 200 });
     }
@@ -743,7 +667,7 @@ test('createTargetResolver resolves a folder param against the real node flat-ma
     throw new Error(`unexpected fetch: ${url}`);
   }) as typeof fetch;
   const resolved = await withFetch(impl, () => target('backend'));
-  assert.deepEqual(resolved, { contextId: 'ctx-2', executorPublicKey: 'exec-1' });
+  assert.deepEqual(resolved, { contextId: 'ctx-2' });
 });
 
 test('createTargetResolver ignores the folder param when BOARD_CONTEXT pins a context directly', async () => {
@@ -751,9 +675,45 @@ test('createTargetResolver ignores the folder param when BOARD_CONTEXT pins a co
   const resolved = await withFetch(
     (async (url: string | URL) => {
       if (String(url).includes('alias/lookup')) return new Response('not found', { status: 404 });
-      return new Response(JSON.stringify({ data: { identities: ['exec-1'] } }), { status: 200 });
+      throw new Error(`unexpected fetch: ${url}`);
     }) as typeof fetch,
     () => target('frontend'),
   );
-  assert.deepEqual(resolved, { contextId: 'my-board', executorPublicKey: 'exec-1' });
+  assert.deepEqual(resolved, { contextId: 'my-board' });
+});
+
+test('callMethod posts exactly contextId, method and argsJson as params - no executor field', async () => {
+  let posted: { params?: Record<string, unknown> } = {};
+  await withFetch(
+    (async (_url: string | URL, init?: RequestInit) => {
+      posted = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: null } }), { status: 200 });
+    }) as typeof fetch,
+    () => callMethod(baseConfig, { contextId: 'ctx-1' }, 'list_boards', { include_archived: false }),
+  );
+  assert.deepEqual(Object.keys(posted.params ?? {}).sort(), ['argsJson', 'contextId', 'method']);
+  assert.deepEqual(posted.params, { contextId: 'ctx-1', method: 'list_boards', argsJson: { include_archived: false } });
+});
+
+test('callMethod surfaces the node detail of a non-FunctionCall error as "<type>: <data>"', async () => {
+  await assert.rejects(
+    () =>
+      withFetch(
+        (async () =>
+          new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              error: { type: 'ParseError', data: 'unknown field `executorPublicKey`, expected one of `contextId`, `method`, `argsJson`' },
+            }),
+            { status: 200 },
+          )) as typeof fetch,
+        () => callMethod(baseConfig, { contextId: 'c' }, 'list_boards', {}),
+      ),
+    (err: unknown) => {
+      assert.ok(err instanceof RpcError);
+      assert.equal(err.message, 'ParseError: unknown field `executorPublicKey`, expected one of `contextId`, `method`, `argsJson`');
+      return true;
+    },
+  );
 });

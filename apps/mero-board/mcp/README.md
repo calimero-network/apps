@@ -71,7 +71,6 @@ Cards:
 | `BOARD_FOLDER` | no | - | Default folder (context alias) within the namespace, used when a tool call omits `folder`. |
 | `BOARD_CONTEXT` | no | - | Direct pin to a single context id or alias. When set, it bypasses namespace/folder resolution entirely and every `folder` param is ignored. |
 | `CALIMERO_AUTH_TOKEN` | no | - | Bearer token sent to both `/admin-api` and `/jsonrpc`. |
-| `BOARD_EXECUTOR` | no | - | Executor public key for RPC calls. If unset, resolved from the node's first owned identity for the target context (`GET /admin-api/contexts/{id}/identities-owned`). |
 | `BOARD_SERVICE` | no | `board` | Service name passed to `createContext` by `add_folder`. |
 
 ## Run it
@@ -133,8 +132,8 @@ If you're contributing to this repo, run it from source instead:
 target another folder in the same namespace without restarting the server.
 Omit it if the namespace has one folder; it's inferred automatically.
 
-Add `CALIMERO_AUTH_TOKEN` / `BOARD_EXECUTOR` to `env` only if you need them -
-both are optional (see the table above).
+Add `CALIMERO_AUTH_TOKEN` to `env` only if you need it - it is optional
+(see the table above).
 
 ## Tests
 

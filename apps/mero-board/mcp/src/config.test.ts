@@ -7,7 +7,6 @@ test('loadConfig defaults nodeUrl and strips trailing slash', () => {
   assert.equal(cfg.nodeUrl, 'http://localhost:2428');
   assert.equal(cfg.contextRaw, 'my-board');
   assert.equal(cfg.authToken, undefined);
-  assert.equal(cfg.executorOverride, undefined);
   assert.equal(cfg.serviceName, 'board');
 });
 
@@ -24,12 +23,10 @@ test('loadConfig reads all env vars and trims a trailing slash off the node URL'
     CALIMERO_NODE_URL: 'http://node.example:9999/',
     BOARD_CONTEXT: 'ctx-abc',
     CALIMERO_AUTH_TOKEN: 'secret-token',
-    BOARD_EXECUTOR: 'executor-pubkey',
   });
   assert.equal(cfg.nodeUrl, 'http://node.example:9999');
   assert.equal(cfg.contextRaw, 'ctx-abc');
   assert.equal(cfg.authToken, 'secret-token');
-  assert.equal(cfg.executorOverride, 'executor-pubkey');
 });
 
 test('loadConfig throws when neither BOARD_CONTEXT nor BOARD_NAMESPACE is set', () => {

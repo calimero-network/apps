@@ -18,7 +18,7 @@ import {
 } from './index.ts';
 
 const cfg: Config = { nodeUrl: 'http://localhost:2428', contextRaw: 'ctx', serviceName: 'board' };
-const target: ResolvedTarget = { contextId: 'ctx-1', executorPublicKey: 'exec-1' };
+const target: ResolvedTarget = { contextId: 'ctx-1' };
 
 function withFetch<T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> {
   const original = globalThis.fetch;
@@ -32,7 +32,6 @@ interface SentCall {
   method: string;
   args: Record<string, unknown>;
   contextId: string;
-  executorPublicKey: string;
 }
 
 /**
@@ -48,7 +47,6 @@ function jsonrpcMock(outputs: Record<string, unknown | ((args: Record<string, un
       method: params.method,
       args: params.argsJson,
       contextId: params.contextId,
-      executorPublicKey: params.executorPublicKey,
     });
     const out = outputs[params.method];
     const output = typeof out === 'function' ? (out as (a: Record<string, unknown>) => unknown)(params.argsJson) : out ?? null;
@@ -112,7 +110,6 @@ test('createCard sends create_card with rank null and nulls for omitted optional
   assert.equal(calls.length, 1);
   assert.equal(calls[0].method, 'create_card');
   assert.equal(calls[0].contextId, 'ctx-1');
-  assert.equal(calls[0].executorPublicKey, 'exec-1');
   assert.deepEqual(calls[0].args, {
     board_id: 'board-1',
     list_id: 'todo',
@@ -221,7 +218,7 @@ test('moveList finds the board of the list and sends move_list with a rank among
     get_board: (args: Record<string, unknown>) => (args.board_id === 'board-1' ? board : other),
   });
   const result = await withFetch(impl, () => moveList(cfg, target, { list_id: 'doing', position: 'top' }));
-  assert.deepEqual(calls[0], { method: 'list_boards', args: { include_archived: true }, contextId: 'ctx-1', executorPublicKey: 'exec-1' });
+  assert.deepEqual(calls[0], { method: 'list_boards', args: { include_archived: true }, contextId: 'ctx-1' });
   const last = calls[calls.length - 1];
   assert.equal(last.method, 'move_list');
   const rank = last.args.rank as string;
@@ -396,7 +393,7 @@ async function connectedClient(serverCfg: Config = cfg) {
   return client;
 }
 
-test('createServer builds without resolving context/executor (no network call)', () => {
+test('createServer builds without resolving context (no network call)', () => {
   let fetchCalled = false;
   const original = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -423,18 +420,15 @@ test('the server registers exactly the board tools', async () => {
 });
 
 test('pass-through tools drop folder and send the contract args (create_board passes rank null)', async () => {
-  // Pinned context: the resolver looks up the alias and owned identities first.
+  // Pinned context: the resolver looks up the alias first.
   const sent: SentCall[] = [];
   const impl = (async (url: string | URL, init?: RequestInit) => {
     const u = String(url);
     if (u.includes('/alias/lookup/context/')) {
       return new Response(JSON.stringify({ data: { value: 'ctx-1' } }), { status: 200 });
     }
-    if (u.includes('/identities-owned')) {
-      return new Response(JSON.stringify({ data: { identities: ['exec-1'] } }), { status: 200 });
-    }
     const { params } = JSON.parse(String(init?.body));
-    sent.push({ method: params.method, args: params.argsJson, contextId: params.contextId, executorPublicKey: params.executorPublicKey });
+    sent.push({ method: params.method, args: params.argsJson, contextId: params.contextId });
     return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: 'board-9' } }), { status: 200 });
   }) as typeof fetch;
 
@@ -455,7 +449,7 @@ test('pass-through tools drop folder and send the contract args (create_board pa
       ['set_checklist_item_done', { item_id: 'item-1', done: true }],
     ],
   );
-  assert.ok(sent.every((c) => c.contextId === 'ctx-1' && c.executorPublicKey === 'exec-1'));
+  assert.ok(sent.every((c) => c.contextId === 'ctx-1'));
 });
 
 /**
@@ -484,13 +478,9 @@ function growingNamespaceFetch(contexts: Array<{ contextId: string; name: string
       return new Response(JSON.stringify({ data: { contextId: 'ctx-new', memberPublicKey: 'member-key' } }), { status: 200 });
     }
     if (u.endsWith('/admin-api/alias/create/context')) return new Response(JSON.stringify({ data: {} }), { status: 200 });
-    if (u.includes('/identities-owned')) {
-      const ctx = decodeURIComponent(u.split('/contexts/')[1].split('/')[0]);
-      return new Response(JSON.stringify({ data: { identities: [`exec-${ctx}`] } }), { status: 200 });
-    }
     if (u.endsWith('/jsonrpc')) {
       const { params } = JSON.parse(String(init?.body));
-      sent.push({ method: params.method, args: params.argsJson, contextId: params.contextId, executorPublicKey: params.executorPublicKey });
+      sent.push({ method: params.method, args: params.argsJson, contextId: params.contextId });
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: [] } }), { status: 200 });
     }
     throw new Error(`unexpected fetch: ${u}`);
@@ -522,11 +512,8 @@ test('after add_folder, list_folders and folder=<new> see the new folder without
     await client.close();
   });
   assert.deepEqual(
-    sent.map((c) => [c.contextId, c.executorPublicKey]),
-    [
-      ['ctx-1', 'exec-ctx-1'],
-      ['ctx-new', 'exec-ctx-new'],
-    ],
+    sent.map((c) => c.contextId),
+    ['ctx-1', 'ctx-new'],
   );
 });
 
@@ -554,7 +541,6 @@ test('a guest error in the rc.81+ text shape reaches the agent as the contract m
   const impl = (async (url: string | URL) => {
     const u = String(url);
     if (u.includes('/alias/lookup/context/')) return new Response(JSON.stringify({ data: { value: 'ctx-1' } }), { status: 200 });
-    if (u.includes('/identities-owned')) return new Response(JSON.stringify({ data: { identities: ['exec-1'] } }), { status: 200 });
     return new Response(
       JSON.stringify({
         jsonrpc: '2.0',
