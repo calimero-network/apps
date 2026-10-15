@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   JOIN_SYNC_POLL_MS,
-  isNamespaceJustJoined,
   useContextGroup,
   useJoinSync,
   useMero,
@@ -85,22 +84,19 @@ export function VotePanel({
   useLiveRefresh(contextId, () => void refresh());
 
   // Ends the invitation dialog's "Syncing…" for a context just joined: `tick`
-  // moves on every read of the polls that came back. Right after the join an
-  // empty list is what a node that has not synced the context returns, so it
-  // does not settle while the namespace is flagged just-joined; the watchdog
-  // clears the flag, after which a context with no polls reads as empty again.
-  // This app's contexts live directly in the namespace (see ContextPicker), so
-  // the context's group is the namespace that was joined.
-  const syncNamespace = joinedNamespace ?? namespaceId;
+  // moves on the first read of the polls that came back, none included. A
+  // context whose state has not arrived yet fails the read (it does not come
+  // back empty), so a read that succeeds is the context having arrived, even
+  // with no polls in it. This app's contexts live directly in the namespace
+  // (see ContextPicker), so the context's group is the namespace that was
+  // joined.
   const { isSyncing } = useJoinSync({
-    namespaceId: syncNamespace,
-    settled: tick > 0 && (polls.length > 0 || !isNamespaceJustJoined(syncNamespace)),
-    // Still empty: let the gate wait up to its ceiling, not the base window.
-    active: polls.length === 0,
+    namespaceId: joinedNamespace ?? namespaceId,
+    settled: tick > 0,
   });
 
-  // Polls that land after the join need not raise an event here, so while the
-  // gate is up, re-read on a timer.
+  // A failed read is retried by the next live event, and a context that has
+  // not synced sends none, so while the gate is up re-read on a timer.
   useEffect(() => {
     if (!isSyncing) return;
     const timer = setInterval(() => void refresh(), JOIN_SYNC_POLL_MS);
