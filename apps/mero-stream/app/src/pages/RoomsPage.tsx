@@ -263,11 +263,12 @@ export default function RoomsPage() {
           scope: `Opens ${room.name}`,
           hint: (
             <>
-              One paste puts them straight into <strong>{room.name}</strong>.
-              Note what it grants: joining <strong>{nsName}</strong>, which is
-              what makes any room in it reachable — room access is inherited
-              from the stream, so this is <em>not</em> narrower than the stream
-              code. It just lands them in this call instead of the room list.
+              Opening the link puts them straight into{" "}
+              <strong>{room.name}</strong>. Note what it grants: joining{" "}
+              <strong>{nsName}</strong>, which is what makes any room in it
+              reachable — room access is inherited from the stream, so this is{" "}
+              <em>not</em> narrower than the stream link. It just lands them in
+              this call instead of the room list.
             </>
           ),
         });

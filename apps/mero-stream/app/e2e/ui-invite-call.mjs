@@ -11,7 +11,7 @@
  *     picker that never gets you there.
  *
  * So the sequence a real second person actually performs — create a stream, make a
- * room in it, mint a code, paste that code on ANOTHER NODE, land in the call — had
+ * room in it, mint an invitation, open its link on ANOTHER NODE, land in the call — had
  * no coverage at all. This drives exactly that, by clicking, and only then asserts
  * the two-way video.
  *
@@ -19,13 +19,13 @@
  *
  *   1. Creating a stream lands on that stream's ROOM LIST (namespace ≠ room).
  *   2. Creating a room lands in the call, joined, on the 480p route.
- *   3. Minting a room code produces ONE pasteable base58 token — no JSON, no
- *      whitespace, none of base64's `+/=`, which is the whole reason for the format.
+ *   3. Minting a room invitation produces ONE link carrying a base58 token — no
+ *      JSON, no whitespace, none of base64's `+/=`.
  *   4. Pending state is VISIBLE while a multi-step flow runs: the button that was
  *      clicked reports `aria-busy`, and a named status line appears. Recorded with a
  *      MutationObserver installed BEFORE the click, because these are transient.
- *   5. Pasting that code on node2 joins the namespace AND the room AND the context,
- *      from one paste, and lands in the call.
+ *   5. Opening that link on node2 and accepting the prompt joins the namespace AND
+ *      the room AND the context, and lands in the call.
  *   6. BOTH peers then see the other's real 640x480 picture, advancing. Each side is
  *      checked, because a single-decoder implementation looks perfect with one
  *      sender.
@@ -206,18 +206,6 @@ async function main() {
     await nameInput.fill(streamName);
 
     await watchStatuses(peerA.page);
-    // The paste fallback shares `acceptCode` with the link path, but the DIALOG
-    // is new surface: a code field nobody can open is not a fallback. Checked
-    // here, on the streams page, because that is the only page that has it.
-    await peerA.page.locator('[data-testid="open-join"]').click();
-    const joinDialog = peerA.page.locator('[data-testid="join-dialog"]');
-    await joinDialog.waitFor({ state: "visible", timeout: 15_000 });
-    check(
-      await peerA.page.locator('[data-testid="join-code-input"]').isVisible(),
-      "the invite-code field is reachable from the Join dialog",
-    );
-    await peerA.page.locator('[data-testid="join-dialog-close"]').click();
-    await joinDialog.waitFor({ state: "hidden", timeout: 10_000 });
 
     await peerA.page.locator('[data-testid="create-stream"]').click();
 
@@ -284,13 +272,11 @@ async function main() {
 
     await watchStatuses(peerA.page);
     await peerA.page.locator('[data-testid="invite-room"]').first().click();
-    // The LINK is the primary artefact now. The raw code is still there, behind a
-    // <details> — read both, because they have to agree and each is a different
-    // promise: the link must open the app on the invitation, and the code must
-    // stay the cross-app token every other mero app can read.
-    const linkInput = peerA.page.locator('[data-testid="invite-link"]');
-    await linkInput.waitFor({ state: "visible", timeout: 60_000 });
-    const inviteLink = await linkInput.inputValue();
+    // The link is the only thing the dialog offers to share: there is no
+    // desktop variant or raw code, because nobody pastes anything anywhere.
+    const linkEl = peerA.page.locator('[data-testid="invite-link"]');
+    await linkEl.waitFor({ state: "visible", timeout: 60_000 });
+    const inviteLink = (await linkEl.getAttribute("title")) ?? "";
     check(
       inviteLink.includes("links.calimero.network") &&
         inviteLink.includes("invitation="),
@@ -300,32 +286,18 @@ async function main() {
       inviteLink.includes("com.calimero.mero-stream/join"),
       "the link addresses this app by slug and the join intent, not a route",
     );
-
-    // `inputValue()` reads a value without requiring visibility, so the collapsed
-    // disclosure does not need opening — but open it anyway, because a code
-    // nobody can reach is not a fallback.
-    await peerA.page.locator('[data-testid="invite-box"] summary').click();
-    const deepLink = await peerA.page
-      .locator('[data-testid="invite-deep-link"]')
-      .inputValue();
     check(
-      deepLink.startsWith("calimero://com.calimero.mero-stream/join?"),
-      "the desktop link uses the custom scheme and the same slug",
+      (await peerA.page.locator('[data-testid="invite-more"]').count()) === 0,
+      "the dialog offers no alternative to the link",
     );
-    const codeInput = peerA.page.locator('[data-testid="invite-code"]');
-    await codeInput.waitFor({ state: "visible", timeout: 15_000 });
-    inviteCode = await codeInput.inputValue();
+    inviteCode = new URL(inviteLink).searchParams.get("invitation") ?? "";
 
     check(inviteCode.length > 0, `minted a code (${inviteCode.length} chars)`);
-    // The format IS the feature: one line of base58, so it survives a chat window,
-    // a URL and shell quoting. base64's `+/=` are exactly what gets mangled there.
+    // The format IS the feature: one line of base58, so it survives a URL and
+    // shell quoting. base64's `+/=` are exactly what gets mangled there.
     check(
       !/[+/=\s"'{}]/.test(inviteCode),
-      "the code is one pasteable token — no JSON, no whitespace, no +/=",
-    );
-    check(
-      inviteLink.includes(encodeURIComponent(inviteCode)),
-      "the link carries exactly the code shown in the fallback",
+      "the token is one URL-safe line — no JSON, no whitespace, no +/=",
     );
     // The scope must be stated, because a namespace code and a room code look
     // identical — both are one base58 blob — and they do different things.
@@ -379,8 +351,7 @@ async function main() {
     // and the platform controller treats the two identically (null slug/action
     // with the params intact), so the same code path is covered.
     //
-    // The paste path is not skipped, only demoted: it shares `acceptCode` with
-    // this one, and the dialog is opened and exercised below.
+    // There is no paste path: opening the link is the only way in.
     c.step(
       "node2: open the invitation LINK — namespace + room + context, no pasting",
     );
@@ -423,7 +394,7 @@ async function main() {
       .waitFor({ state: "visible", timeout: 180_000 });
     check(
       new URL(peerB.page.url()).pathname === "/live",
-      "pasting a room code took node2 straight into the call",
+      "opening a room link took node2 straight into the call",
     );
     await peerB.page
       .locator('[data-testid="join-state"][data-joined="true"]')
@@ -431,10 +402,6 @@ async function main() {
     c.ok("peerB is joined to the room's context on its OWN node");
 
     const joinSeen = await readStatuses(peerB.page);
-    check(
-      joinSeen.busy.includes("join-submit"),
-      `the Join button reported aria-busy (saw: ${joinSeen.busy.join(", ") || "none"})`,
-    );
     // Each join step names itself. This is what turns a 20-second wait from
     // "hung" into "joining the namespace, then the room".
     check(
