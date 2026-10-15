@@ -1,8 +1,9 @@
 import { HTTPError } from '@calimero-network/mero-js';
 import { shouldRetain, type RedeemOutcome } from '@calimero-network/mero-react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ParsedInvite } from '@/hooks/useNamespaceInvitation';
 import {
+  FOLDER_JOIN_MS,
   inviteFailureCopy,
   redeemInvite,
   type InviteCalls,
@@ -157,15 +158,83 @@ describe('redeemInvite', () => {
   });
 
   it('does not read an unrelated "already" as membership', async () => {
+    vi.useFakeTimers();
     const c = calls({
       joinFolder: vi.fn(() =>
         Promise.reject(new Error('folder is already at member capacity')),
       ),
     });
-    const outcome = failed(await redeemInvite(folder, c));
+    // An unknown refusal is retried like a not-synced one, until the deadline.
+    const pending = redeemInvite(folder, c);
+    await vi.advanceTimersByTimeAsync(FOLDER_JOIN_MS + 3_000);
+    const outcome = failed(await pending);
+    vi.useRealTimers();
     expect(inviteFailureCopy(outcome, 'folder')).toBe(
       'folder is already at member capacity',
     );
     expect(c.listNamespaces).not.toHaveBeenCalled();
+  });
+
+  // Right after the namespace join the node may not hold the folder subgroup
+  // yet and refuses it. Tried once, that left a locked folder until a reload.
+  describe('a folder the node has not synced yet', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const notSynced = () => httpError(404, "group 'g1' not found");
+
+    it('retries the folder join until the node accepts it', async () => {
+      vi.useFakeTimers();
+      const joinFolder = vi
+        .fn<InviteCalls['joinFolder']>()
+        .mockRejectedValueOnce(notSynced())
+        .mockRejectedValueOnce(notSynced())
+        .mockResolvedValue('g1');
+      const pending = redeemInvite(folder, calls({ joinFolder }));
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect((await pending).status).toBe('joined');
+      expect(joinFolder).toHaveBeenCalledTimes(3);
+    });
+
+    it('fails retryable once the node has refused for the whole window', async () => {
+      vi.useFakeTimers();
+      const joinFolder = vi.fn<InviteCalls['joinFolder']>(() =>
+        Promise.reject(notSynced()),
+      );
+      let settled = false;
+      const pending = redeemInvite(folder, calls({ joinFolder })).finally(
+        () => {
+          settled = true;
+        },
+      );
+      await vi.advanceTimersByTimeAsync(FOLDER_JOIN_MS - 3_000);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(6_000);
+      const outcome = failed(await pending);
+      expect(outcome.retryable).toBe(true);
+      expect(shouldRetain(outcome)).toBe(true);
+      expect(joinFolder.mock.calls.length).toBeGreaterThan(20);
+    });
+
+    it('does not retry a final refusal', async () => {
+      vi.useFakeTimers();
+      const joinFolder = vi.fn<InviteCalls['joinFolder']>(() =>
+        Promise.reject(httpError(409, 'invitation for group g1 expired at 1')),
+      );
+      const outcome = failed(await redeemInvite(folder, calls({ joinFolder })));
+      expect(outcome.retryable).toBe(false);
+      expect(joinFolder).toHaveBeenCalledOnce();
+    });
+
+    it('does not retry a final refusal the status does not mark', async () => {
+      vi.useFakeTimers();
+      const joinFolder = vi.fn<InviteCalls['joinFolder']>(() =>
+        Promise.reject(new Error('invitation was revoked')),
+      );
+      const outcome = failed(await redeemInvite(folder, calls({ joinFolder })));
+      expect(joinFolder).toHaveBeenCalledOnce();
+      expect(outcome.status).toBe('failed');
+    });
   });
 });

@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useJoinSync } from "@calimero-network/mero-react";
+import {
+  JOIN_SYNC_POLL_MS,
+  isNamespaceJustJoined,
+  useJoinSync,
+} from "@calimero-network/mero-react";
 
 import { useAudience } from "../components/AudienceShell";
 import { Avatar, CategoryChip, Empty } from "../components/bits";
@@ -37,14 +41,30 @@ export default function UpdatesPage() {
   const items = feed.data?.items ?? [];
   const navigate = useNavigate();
   // An audience invitation lands HERE rather than on the company's audience
-  // list, so this page says when the joined company's data has arrived: the
-  // feed came back, empty or not. That ends the invitation dialog's
-  // "Syncing…". The company is the active one, set by the join before it
-  // navigated.
-  useJoinSync({
-    namespaceId: getActiveNamespaceId(),
-    settled: feed.data !== null,
+  // list, so this page says when the joined company's data has arrived. That
+  // ends the invitation dialog's "Syncing…". The company is the active one,
+  // set by the join before it navigated. Right after the join the node may not
+  // hold the audience yet and the feed reads empty, so an empty feed only
+  // counts once the just-joined flag has cleared; until then it is what an
+  // unsynced node returns.
+  const namespaceId = getActiveNamespaceId();
+  const { isSyncing } = useJoinSync({
+    namespaceId,
+    settled:
+      feed.data !== null &&
+      (items.length > 0 || !isNamespaceJustJoined(namespaceId)),
+    // Still empty: let the gate wait up to its ceiling, not the base window.
+    active: items.length === 0,
   });
+
+  // Nothing else re-reads the feed until a contract event arrives, and an
+  // audience that has not synced sends none, so ask again while the gate is up.
+  const reloadFeed = feed.reload;
+  useEffect(() => {
+    if (!isSyncing || items.length > 0) return;
+    const timer = setInterval(reloadFeed, JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, items.length, reloadFeed]);
 
   return (
     <>
@@ -87,7 +107,7 @@ export default function UpdatesPage() {
       )}
 
       {feed.error && <div className="error">{feed.error}</div>}
-      {feed.loading && !feed.data && (
+      {((feed.loading && !feed.data) || (isSyncing && items.length === 0)) && (
         <>
           <div className="skeleton" />
           <div className="skeleton" />
@@ -102,7 +122,7 @@ export default function UpdatesPage() {
         </div>
       )}
 
-      {!feed.loading && items.length === 0 && (
+      {!feed.loading && !isSyncing && items.length === 0 && (
         <Empty icon={<FileTextIcon size={20} />} title={category ? "Nothing in this category yet." : "No updates yet."}>
           {isTeam
             ? "Pick a template above — your investors see it the moment their node syncs."
