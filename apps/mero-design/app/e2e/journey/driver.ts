@@ -405,6 +405,9 @@ const teamName: Feature = {
  */
 const noPromptOnNewBoard: Feature = {
   name: "a new board does not ask for your name again",
+  // One way: creating a project is an admin's act, and only alice is one. The
+  // other direction is covered by `seen` — bob opens alice's new board.
+  oneWay: true,
   async do(actor) {
     const name = `named-${actor.name}-${actor.run}`;
     await gotoTeam(actor);
