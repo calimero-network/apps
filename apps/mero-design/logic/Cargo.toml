@@ -40,7 +40,13 @@ github = "https://github.com/calimero-network/mero-design"
 # host functions no runtime that old has, so the bundle advertised that it ran
 # on a node where it cannot even instantiate.
 min-runtime-version = "0.11.0-rc.87"
-frontend = "https://mero-design.vercel.app/"
+# Doubles as the registered login callback origin, compared by exact origin:
+# the node's sign-in page hands tokens only to the frontend (or an alias) the
+# registry or the installed bundle declares for this package.
+frontend = "https://design.hyperfeed.me"
+# Also trusted for the login callback, never opened: the vercel.app origin Mero
+# Design was served at before, for nodes still opening a bundle that names it.
+frontend-aliases = ["https://mero-design.vercel.app"]
 guide = "GUIDE.md"
 
 [dependencies]
