@@ -14,15 +14,11 @@ interface LobbySelectProps {
   selectedNamespaceId: string | null;
   lobbyContextId: string | null;
   namespaceId: string | null;
-  joinLoading: boolean;
   createLobbyLoading: boolean;
   newLobbyName: string;
-  joinInvitationInput: string;
   onNewLobbyNameChange: (v: string) => void;
-  onJoinInputChange: (v: string) => void;
   onSelectLobby: (nsId: string) => void;
   onCreateLobby: () => void;
-  onJoinLobby: () => void;
   onEnter: () => void;
 }
 
@@ -32,7 +28,6 @@ interface LobbySelectProps {
 // the user can try again instead of needing a page refresh.
 const PENDING_ENTER_TIMEOUT_MS = 20_000;
 
-type AddTab = 'create' | 'join';
 type ViewMode = 'list' | 'cards';
 
 const LOBBY_INFO_TOOLTIP =
@@ -42,12 +37,11 @@ const LOBBY_INFO_TOOLTIP =
 export default function LobbySelect({
   lobbies, lobbiesLoading, selectedNamespaceId,
   lobbyContextId, namespaceId,
-  joinLoading, createLobbyLoading,
-  newLobbyName, joinInvitationInput,
-  onNewLobbyNameChange, onJoinInputChange,
-  onSelectLobby, onCreateLobby, onJoinLobby, onEnter,
+  createLobbyLoading,
+  newLobbyName,
+  onNewLobbyNameChange,
+  onSelectLobby, onCreateLobby, onEnter,
 }: LobbySelectProps) {
-  const [addTab, setAddTab] = useState<AddTab>('create');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   // One-click Enter coordination: when a row's Enter button fires, we
@@ -98,7 +92,7 @@ export default function LobbySelect({
   return (
     <>
       {/* ============================================================
-          Add a Lobby — tabbed deployment panel
+          Add a Lobby — deployment panel
           ============================================================ */}
       <div className="naval-card fade-in">
         <div className="naval-card-header">
@@ -117,94 +111,37 @@ export default function LobbySelect({
           <div className="naval-card-subtitle">Deployment terminal · standby</div>
         </div>
         <div className="naval-card-body">
-          <div className="tab-rail" role="tablist" aria-label="Lobby creation method">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={addTab === 'create'}
-              className={`tab-btn ${addTab === 'create' ? 'tab-btn-active' : ''}`}
-              onClick={() => setAddTab('create')}
+          <div className="tab-content">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newLobbyName.trim()) return;
+                onCreateLobby();
+              }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
             >
-              <span className="tab-glyph" aria-hidden>＋</span>
-              Create new
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={addTab === 'join'}
-              className={`tab-btn ${addTab === 'join' ? 'tab-btn-active' : ''}`}
-              onClick={() => setAddTab('join')}
-            >
-              <span className="tab-glyph" aria-hidden>↧</span>
-              Join via invitation
-            </button>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '160px' }}>
+                  <Input
+                    type="text"
+                    placeholder="Lobby name"
+                    value={newLobbyName}
+                    onChange={(e) => onNewLobbyNameChange(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="btn-deploy"
+                  disabled={createLobbyLoading || !newLobbyName.trim()}
+                >
+                  {createLobbyLoading ? 'Creating…' : 'Create'}
+                </button>
+              </div>
+              <span className="console-hint">
+                Names are local labels — the lobby ID is what travels with invitations.
+              </span>
+            </form>
           </div>
-
-          {addTab === 'create' ? (
-            <div className="tab-content" key="create" role="tabpanel">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!newLobbyName.trim()) return;
-                  onCreateLobby();
-                }}
-                style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
-              >
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: '160px' }}>
-                    <Input
-                      type="text"
-                      placeholder="Lobby name"
-                      value={newLobbyName}
-                      onChange={(e) => onNewLobbyNameChange(e.target.value)}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="btn-deploy"
-                    disabled={createLobbyLoading || !newLobbyName.trim()}
-                  >
-                    {createLobbyLoading ? 'Creating…' : 'Create'}
-                  </button>
-                </div>
-                <span className="console-hint">
-                  Names are local labels — the lobby ID is what travels with invitations.
-                </span>
-              </form>
-            </div>
-          ) : (
-            <div className="tab-content" key="join" role="tabpanel">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!joinInvitationInput.trim()) return;
-                  onJoinLobby();
-                }}
-                style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
-              >
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: '160px' }}>
-                    <Input
-                      type="text"
-                      placeholder="Paste invitation link"
-                      value={joinInvitationInput}
-                      onChange={(e) => onJoinInputChange(e.target.value)}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="btn-deploy"
-                    disabled={joinLoading || !joinInvitationInput.trim()}
-                  >
-                    {joinLoading ? 'Joining…' : 'Join'}
-                  </button>
-                </div>
-                <span className="console-hint">
-                  Ask a lobby owner for an invitation link and paste the whole thing.
-                </span>
-              </form>
-            </div>
-          )}
         </div>
       </div>
 
@@ -291,8 +228,8 @@ export default function LobbySelect({
               </div>
               <div className="lobby-empty-headline">No fleets in port</div>
               <div className="lobby-empty-sub">
-                Create a lobby above to set up a private game group, or paste an
-                invitation link to join one a friend already runs.
+                Create a lobby above to set up a private game group, or open an
+                invitation link someone sent you to join theirs.
               </div>
               <div className="lobby-empty-arrow">↑ Add a lobby above</div>
             </div>

@@ -9,11 +9,9 @@ import {
 } from '@calimero-network/mero-react';
 import type { GroupMember } from '@calimero-network/mero-react';
 import { useNamespaceBootstrap } from './useNamespaceBootstrap';
-import { embeddedLobbyName, lobbyLabel, setStoredLobbyName } from '../utils/lobbyName';
-import { addKnownPlayer, embeddedInviterKey, getKnownPlayers } from '../utils/knownPlayers';
+import { lobbyLabel } from '../utils/lobbyName';
+import { getKnownPlayers } from '../utils/knownPlayers';
 import { LobbyClient } from '../generated/lobby/LobbyClient';
-import { redeemLobbyInvitation } from '../utils/redeemLobby';
-import type { RedeemOutcome } from '@calimero-apps/invite';
 
 const SELECTED_NS_KEY = 'battleships:selectedNamespaceId';
 
@@ -80,14 +78,6 @@ export interface UseBattleshipsLobbyReturn {
 
   invitePlayer: (validForSeconds?: number) => Promise<unknown>;
   inviteLoading: boolean;
-
-  /**
-   * Join the namespace a pasted invitation names. `null` when there is no node
-   * to join with; a failed join is in the outcome, not thrown. Throws only for
-   * an invitation that cannot be read.
-   */
-  joinLobby: (invitationJson: string) => Promise<RedeemOutcome | null>;
-  joinLoading: boolean;
 
   refetchContexts: () => Promise<void>;
 }
@@ -236,7 +226,6 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
 
   // --- Mutations ---
   const { createNamespaceInvitation, loading: inviteLoading } = useCreateNamespaceInvitation();
-  const [joinLoading, setJoinLoading] = useState(false);
   const {
     createNamespaceWithLobby,
     loading: createLobbyLoading,
@@ -340,63 +329,6 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     if (!namespaceId) return null;
     return createNamespaceInvitation(namespaceId, { recursive: true });
   }, [namespaceId, createNamespaceInvitation]);
-
-  const joinLobbyViaInvitation = useCallback(async (invitationJson: string): Promise<RedeemOutcome | null> => {
-    if (!mero) return null;
-    setJoinLoading(true);
-    try {
-      const parsed = JSON.parse(invitationJson);
-
-      // Support both single invitation and recursive invitation formats.
-      // Recursive: { invitations: [{ groupId, invitation, groupAlias }, ...] }
-      // Single:    { invitation: { groupId: number[], ... }, inviterSignature }
-      let nsId: string | null = null;
-      let invitation = parsed;
-      let groupAlias: string | undefined;
-
-      if (Array.isArray(parsed?.invitations) && parsed.invitations.length > 0) {
-        const first = parsed.invitations[0];
-        nsId = first.groupId;
-        invitation = first.invitation;
-        groupAlias = first.groupAlias || undefined;
-      } else if (parsed?.invitation?.groupId) {
-        const gid = parsed.invitation.groupId;
-        nsId = Array.isArray(gid)
-          ? gid.map((b: number) => b.toString(16).padStart(2, '0')).join('')
-          : String(gid);
-        groupAlias = parsed.groupAlias || undefined;
-      }
-
-      if (!nsId) {
-        throw new Error('Invalid invitation: cannot determine namespace ID');
-      }
-
-      // The inviter embeds the lobby's human name beside the signed invitation,
-      // so the joiner has something to render before the metadata syncs.
-      const embedded = embeddedLobbyName(parsed) || groupAlias || '';
-      if (embedded) setStoredLobbyName(nsId, embedded);
-
-      // The inviter's own player key, so this node has someone to challenge
-      // the moment it opens the lobby. The node will not tell it.
-      const inviter = embeddedInviterKey(parsed);
-      if (inviter) addKnownPlayer(nsId, inviter);
-
-      const outcome = await redeemLobbyInvitation(mero.admin, nsId, invitation, groupAlias);
-
-      if (outcome.status !== 'failed') {
-        // Outside the join's verdict: a refresh that throws must not turn a
-        // join that landed into a reported failure.
-        try {
-          await refetchNamespaces();
-        } catch {
-          // the next poll picks the lobby up
-        }
-      }
-      return outcome;
-    } finally {
-      setJoinLoading(false);
-    }
-  }, [mero, refetchNamespaces]);
 
   /**
    * The lobby context's identities, which is what "who can I play?" means here.
@@ -512,9 +444,6 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
 
     invitePlayer,
     inviteLoading,
-
-    joinLobby: joinLobbyViaInvitation,
-    joinLoading,
 
     refetchContexts,
   };

@@ -4,8 +4,10 @@ import {
   decodeInvitationPayload,
   encodeInvitationPayload,
   generateInvitationUrl,
-  parseInvitationInput,
+  readLobbyInvitation,
 } from './invitation';
+import { INVITER_KEY } from './knownPlayers';
+import { EMBEDDED_NAME_KEY } from './lobbyName';
 
 /** A recursive invitation, the shape the lobby actually emits. */
 const PAYLOAD = JSON.stringify({
@@ -53,31 +55,41 @@ describe('generateInvitationUrl', () => {
   });
 });
 
-describe('parseInvitationInput', () => {
-  it('accepts the whole https link', () => {
-    expect(parseInvitationInput(generateInvitationUrl(PAYLOAD))).toBe(PAYLOAD);
+describe('readLobbyInvitation', () => {
+  const token = (payload: unknown) =>
+    new URL(generateInvitationUrl(JSON.stringify(payload))).searchParams.get('invitation')!;
+
+  it('reads a recursive invitation, handing the signed invitation on untouched', () => {
+    const parsed = JSON.parse(PAYLOAD);
+    const read = readLobbyInvitation(token(parsed));
+    expect(read).toEqual({
+      namespaceId: '010203',
+      invitation: parsed.invitations[0].invitation,
+      groupAlias: 'lobby',
+      lobbyName: 'lobby',
+      inviterKey: undefined,
+    });
   });
 
-  it('accepts a bare encoded blob', () => {
-    expect(parseInvitationInput(encodeInvitationPayload(PAYLOAD))).toBe(PAYLOAD);
+  it('reads a single invitation by its byte group id', () => {
+    const single = { invitation: { groupId: [10, 11] }, inviterSignature: 'sig' };
+    const read = readLobbyInvitation(token(single));
+    expect(read?.namespaceId).toBe('0a0b');
+    expect(read?.invitation).toEqual(single);
   });
 
-  it('still accepts raw JSON — every invitation issued before links was one', () => {
-    expect(parseInvitationInput(PAYLOAD)).toBe(PAYLOAD);
+  it('carries the lobby name and inviter key the inviter embedded beside it', () => {
+    const key = 'ef'.repeat(32);
+    const read = readLobbyInvitation(
+      token({ ...JSON.parse(PAYLOAD), [EMBEDDED_NAME_KEY]: 'Friday', [INVITER_KEY]: key }),
+    );
+    expect(read?.lobbyName).toBe('Friday');
+    expect(read?.inviterKey).toBe(key);
   });
 
-  it('tolerates the whitespace a copy-paste brings with it', () => {
-    expect(parseInvitationInput(`  ${generateInvitationUrl(PAYLOAD)}  \n`)).toBe(PAYLOAD);
-  });
-
-  it('returns null for a link carrying no invitation', () => {
-    expect(
-      parseInvitationInput(`https://links.calimero.network/${APP_SLUG}/join`),
-    ).toBeNull();
-  });
-
-  it('returns null for empty input', () => {
-    expect(parseInvitationInput('')).toBeNull();
-    expect(parseInvitationInput('   ')).toBeNull();
+  it('returns null for a token that names no namespace, or is not one', () => {
+    expect(readLobbyInvitation(token({ hello: 'world' }))).toBeNull();
+    expect(readLobbyInvitation('')).toBeNull();
+    expect(readLobbyInvitation(encodeInvitationPayload('not json'))).toBeNull();
   });
 });

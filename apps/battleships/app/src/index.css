@@ -1093,13 +1093,6 @@ html, body {
   box-shadow: none;
 }
 
-.tab-glyph {
-  font-size: 0.85em;
-  display: inline-flex;
-  align-items: center;
-  line-height: 1;
-}
-
 /* Segmented view toggle (List / Cards) */
 .view-toggle {
   display: inline-flex;
@@ -2126,4 +2119,14 @@ html, body {
   .app-footer-grid { grid-template-columns: 1fr; }
   :root { --cell-size: 26px; }
   .nav-brand-text { display: none; }
+}
+
+/* The invitation prompt floats above every route: a link can land on any page. */
+.invite-prompt {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(32rem, calc(100% - 2rem));
+  z-index: 1000;
 }
