@@ -7,10 +7,10 @@ import styles from './InviteModal.module.css';
 /**
  * An invitation, as a modal you copy and dismiss.
  *
- * The link is the primary action, copying it closes the dialog, and the other
- * two forms (the desktop deep link, the raw cross-app code) stay behind a
- * disclosure for the cases that genuinely need them. Matches the invite shape
- * in mero-stream, mero-meet, mero-design and mero-calendar.
+ * One link, and copying it closes the dialog. It is the only form there is:
+ * the links page opens it in the web app or hands it to an installed desktop,
+ * so there is no desktop variant or raw code to pick between, and nowhere to
+ * paste either.
  *
  * ⚠️ `scope` is not decoration in THIS app. An invitation to a vault grants
  * membership of the whole team, because vault access is inherited — so the
@@ -66,15 +66,6 @@ export default function InviteModal({
     }
   }, [share, onClose]);
 
-  const copyQuietly = useCallback(async (value: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setNote(`${label} copied.`);
-    } catch {
-      setNote('Could not reach the clipboard — select it and copy.');
-    }
-  }, []);
-
   // After the hooks, never before: an early return above them would change the
   // hook order between renders.
   if (!share) return null;
@@ -109,7 +100,7 @@ export default function InviteModal({
           {scope}
         </p>
 
-        {/* One line by default; `showRaw` is also the "clipboard failed" state,
+        {/* One line by default; `showRaw` is the "clipboard failed" state,
             where the characters have to be selectable. */}
         <code
           className={styles.link}
@@ -136,57 +127,6 @@ export default function InviteModal({
         )}
 
         {hint && <p className={styles.hint}>{hint}</p>}
-
-        <button
-          type="button"
-          className={styles.disclosure}
-          onClick={() => setShowRaw((v) => !v)}
-          aria-expanded={showRaw}
-          data-testid="invite-more"
-        >
-          {showRaw ? 'Fewer options' : 'Other ways to send this'}
-        </button>
-
-        {showRaw && (
-          <div className={styles.more}>
-            <label className={styles.moreLabel}>
-              Desktop link
-              <span className={styles.moreNote}>
-                Hands the invitation straight to an installed desktop app. Does
-                not survive being pasted into most chat windows.
-              </span>
-            </label>
-            <div className={styles.moreRow}>
-              <code className={styles.moreValue}>{share.deepLink}</code>
-              <button
-                type="button"
-                className={styles.secondary}
-                onClick={() => void copyQuietly(share.deepLink, 'Desktop link')}
-                data-testid="invite-copy-deep"
-              >
-                Copy
-              </button>
-            </div>
-
-            <label className={styles.moreLabel}>
-              Raw code
-              <span className={styles.moreNote}>
-                The cross-app format mero-chat and mero-stream also read.
-              </span>
-            </label>
-            <div className={styles.moreRow}>
-              <code className={styles.moreValue}>{share.code}</code>
-              <button
-                type="button"
-                className={styles.secondary}
-                onClick={() => void copyQuietly(share.code, 'Code')}
-                data-testid="invite-copy-code"
-              >
-                Copy
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </dialog>
   );

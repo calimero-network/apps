@@ -7,6 +7,8 @@ import { AppMode, MeroProvider } from '@calimero-network/mero-react';
 import './index.css';
 import App from './App';
 import { bootstrapDesktopSession, hashNodeUrl } from './auth/desktopBootstrap';
+import { primeInvitationCapture } from '@calimero-apps/invite';
+import { APP_SLUG } from './lib/inviteLink';
 
 // ── Desktop SSO ───────────────────────────────────────────────────────────────
 //
@@ -44,6 +46,12 @@ import { bootstrapDesktopSession, hashNodeUrl } from './auth/desktopBootstrap';
 // same file for the same reason — identical on purpose so they cannot drift.
 bootstrapDesktopSession();
 const nodeUrlAnchor = hashNodeUrl();
+
+// An invitation reaches this app only as an opened link: the links page (or a
+// cold desktop start) appends `?invitation=…` to this URL, and a running
+// desktop sends a `deep-link` event. Captured before the router can rewrite
+// the URL; a link addressed to another app is dropped, not offered.
+primeInvitationCapture('mero-pass', { slug: APP_SLUG });
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement,

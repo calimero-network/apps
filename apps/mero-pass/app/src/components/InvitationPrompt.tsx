@@ -91,7 +91,10 @@ export default function InvitationPrompt() {
     // there is nothing to accept.
     return error ? (
       <div className={styles.wrap}>
-        <div className={`${styles.prompt} ${styles.promptError}`}>
+        <div
+          className={`${styles.prompt} ${styles.promptError}`}
+          data-testid="invite-error"
+        >
           <span className={styles.text}>{error}</span>
           <button
             type="button"

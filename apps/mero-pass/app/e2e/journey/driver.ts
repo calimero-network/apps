@@ -313,17 +313,14 @@ export const driver: AppDriver = {
     return value;
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    await waitForTeams(page);
-    await page.getByTestId("join-code").fill(link);
-    await page.getByTestId("join-submit").click();
     const landed = page.waitForURL(/\/(vault|teams)\/[^/]+/, { timeout: SYNC });
     const failed = page
-      .getByTestId("join-error")
+      .getByTestId("invite-error")
       .waitFor({ state: "visible", timeout: SYNC })
       .then(async () => {
-        throw new Error(`join refused: ${await page.getByTestId("join-error").innerText()}`);
+        throw new Error(`join refused: ${await page.getByTestId("invite-error").innerText()}`);
       });
     landed.catch(() => undefined);
     failed.catch(() => undefined);

@@ -11,10 +11,8 @@ import { Lock } from '@calimero-network/mero-icons';
 
 import AppShell from '../../components/AppShell';
 import InviteModal from '../../components/InviteModal';
-import { ChevronIcon, PlusIcon, UsersIcon } from '../../components/icons';
+import { ChevronIcon, PlusIcon } from '../../components/icons';
 import { useApplicationId } from '../../hooks/useApplicationId';
-import { useRedeemInvitation } from '../../hooks/useRedeemInvitation';
-import { NOT_AN_INVITATION, parseInvitation } from '../../lib/redeemFlow';
 import {
   createPersonalVault,
   createTeam,
@@ -74,17 +72,6 @@ export default function TeamsPage() {
   );
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // ── Joining by paste ──────────────────────────────────────────────────────
-  //
-  // The link path (`components/InvitationPrompt`) only fires when the
-  // invitation is OPENED. An invitation forwarded in a chat message, read off
-  // a phone, or copied with the dialog's "Copy code" button never opens
-  // anything — and until this field there was nowhere to put it. The empty
-  // state said "open an invitation link someone sent you", which was the only
-  // honest instruction and not a usable one.
-  const [joinCode, setJoinCode] = useState('');
-  const redeemer = useRedeemInvitation();
-
   const load = useCallback(async () => {
     if (!admin || !appId) {
       setLoading(resolving);
@@ -114,32 +101,14 @@ export default function TeamsPage() {
     }
   }, [admin, appId, resolving]);
 
+  // Keyed on the navigation too. Accepting an invitation navigates to where
+  // the person now belongs, and a team whose vaults have not replicated yet
+  // lands on `/teams` — this page. React Router does not remount for that, and
+  // neither the node nor the app id changed, so without the key the joined
+  // team would be missing from the list until a full reload.
   useEffect(() => {
     void load();
-  }, [load]);
-
-  const join = useCallback(async () => {
-    const raw = joinCode.trim();
-    if (!raw) return;
-    const payload = parseInvitation(raw);
-    if (!payload) {
-      // Not an invitation at all, which is a different failure from one that
-      // was refused — and the only one the person can do something about.
-      redeemer.setError(NOT_AN_INVITATION);
-      return;
-    }
-    const { destination } = await redeemer.redeem(payload);
-    if (!destination) return;
-    setJoinCode('');
-    // ⚠️ A join that cannot be placed — the team is joined but its vaults
-    // have not replicated here yet — resolves to `/teams`, which is THIS
-    // page. React Router does not remount for a navigation to where you
-    // already are, so `load` (whose deps are the node and the app id, neither
-    // of which changed) never re-runs: the new team is missing from the list,
-    // the field has cleared, and a successful join reads as a no-op until a
-    // full reload.
-    if (destination === location.pathname) await load();
-  }, [joinCode, redeemer, load, location.pathname]);
+  }, [load, location.key]);
 
   // A dropdown that does not close on an outside click is a dropdown that
   // covers the next thing you try to press.
@@ -325,7 +294,8 @@ export default function TeamsPage() {
           // answer.
           error ? null : (
             <p className={styles.empty} data-testid="teams-empty">
-              No teams yet. Start one or paste an invitation below.
+              No teams yet. Start one, or open an invitation link someone sent
+              you.
             </p>
           )
         ) : (
@@ -461,63 +431,6 @@ export default function TeamsPage() {
                 Create
               </button>
             </div>
-          </div>
-
-          <div className={styles.panel} data-testid="join-section">
-            <div className={styles.panelHead}>
-              <span className={styles.panelIcon} aria-hidden="true">
-                <UsersIcon size={18} />
-              </span>
-              <span>
-                <span className={styles.panelTitle}>
-                  Got an invitation? Join a team.
-                </span>
-                <br />
-                <span className={styles.panelSub}>
-                  Joining a team gives you every vault in it.
-                </span>
-              </span>
-            </div>
-            <div className={styles.createRow}>
-              <input
-                className={styles.input}
-                placeholder="Paste the link or code you were sent…"
-                value={joinCode}
-                onChange={(e) => {
-                  setJoinCode(e.target.value);
-                  // Clear a previous complaint as soon as they start fixing
-                  // it; a stale error under a field they have just edited
-                  // reads as the new value being rejected too.
-                  if (redeemer.error) redeemer.setError(null);
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && void join()}
-                aria-label="Invitation link or code"
-                data-testid="join-code"
-              />
-              <button
-                type="button"
-                className={styles.btn}
-                onClick={() => void join()}
-                disabled={!admin || !joinCode.trim() || redeemer.busy}
-                data-testid="join-submit"
-              >
-                {redeemer.busy ? 'Joining…' : 'Join'}
-              </button>
-            </div>
-            <p className={styles.sectionHint}>
-              Opening the link works too — you only need this if it arrived as
-              text.
-            </p>
-            {redeemer.status && (
-              <p className={styles.status} data-testid="join-status">
-                {redeemer.status}
-              </p>
-            )}
-            {redeemer.error && (
-              <p className={styles.error} data-testid="join-error">
-                {redeemer.error}
-              </p>
-            )}
           </div>
         </div>
       </main>
