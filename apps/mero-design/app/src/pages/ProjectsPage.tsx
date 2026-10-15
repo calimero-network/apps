@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useJoinSync, useMero } from "@calimero-network/mero-react";
 import {
   createContext,
   createNamespaceInvitation,
@@ -37,6 +37,8 @@ export default function ProjectsPage() {
   const [tab, setTab] = useState<Tab>("projects");
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  // The team whose project list last came back from the node, empty or not.
+  const [listedFor, setListedFor] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -87,6 +89,7 @@ export default function ProjectsPage() {
           }
         }
         setProjects(resolved);
+        setListedFor(teamId!);
       } catch {
         setProjects([]);
       } finally {
@@ -97,6 +100,12 @@ export default function ProjectsPage() {
     const id = setInterval(loadProjects, 30_000);
     return () => clearInterval(id);
   }, [teamId]);
+
+  // A team just joined by invitation has not replicated yet; the invitation
+  // dialog holds "Syncing…" until this page's read of the team's projects has
+  // come back. An empty list counts (a new team has none); a failed read does
+  // not, and the 30s poll above tries again.
+  useJoinSync({ namespaceId: teamId ?? null, settled: !!teamId && listedFor === teamId });
 
   // Close menu on outside click
   useEffect(() => {

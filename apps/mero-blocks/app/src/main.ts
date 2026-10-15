@@ -16,7 +16,7 @@ import { WorldStore, WORLD_CX, WORLD_CY, WORLD_CZ, chunkKey } from "./engine/wor
 import { arrowLook, pointerLockAvailable } from "./input/look";
 import { WheelSteps } from "./input/wheel";
 import { APP_SLUG, inviteLink } from "./net/inviteLink";
-import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/invite";
+import { primeInvitationCapture as primeInviteCapture } from "@calimero-network/mero-react";
 import { completeAccountEnrolment, isReturningFromWallet } from "./net/account";
 import { acceptWorldInvite, createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { GameClient, type WorldMeta } from "./net/client";
@@ -32,7 +32,7 @@ import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer } from "./renderer";
 import { loadWorld, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
-import { invitePromptOpen, setInviteJoiner } from "./ui/invitePrompt";
+import { invitePromptOpen, reportWorldLoaded, setInviteJoiner } from "./ui/invitePrompt";
 import { CloudReturn, Landing, LaunchChoice } from "./ui/landing";
 import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu, WorldMap } from "./ui/overlays";
@@ -45,7 +45,7 @@ import { PauseMenu, WorldMap } from "./ui/overlays";
 // connected survives the web-login redirect and is replayed once the world
 // picker can act on it. A running desktop app hands a link over as a
 // `deep-link` event instead, which this also hears — in the game too. Either
-// way ui/invitePrompt.ts asks before joining. A link addressed to another app
+// way ui/invitePrompt.tsx asks before joining. A link addressed to another app
 // is dropped, not offered.
 primeInviteCapture("mero-blocks", { slug: APP_SLUG });
 
@@ -69,6 +69,8 @@ function takeEnterJoinedWorld(): boolean {
 const REACH = 6;
 const EDIT_REPEAT_MS = 250;
 const SAVE_MS = 5000;
+/** How often a world the node has not synced yet is asked again (see `SyncEngine.connect`). */
+const CONNECT_RETRY_MS = 2000;
 const RELIGHT_FULL_THRESHOLD = 8;
 const WORLD_READY_MS = 60_000;
 const MEMBERSHIP_CHECK_MS = 8_000;
@@ -264,13 +266,17 @@ async function boot(): Promise<void> {
     // anything still pending — the same reconcile as joining.
     () => { void sync?.reconcile().catch(() => {}); },
   );
-  try {
-    await sync.join(choice.name);
-    await sync.reconcile();
+  // Joined and read, retrying while the node has not synced the world yet (a
+  // world just joined from an invite answers `Uninitialized` until it has).
+  // The world's meta and its edits have both come back from the node, so a
+  // world just joined from an invite is really here: the invite prompt's
+  // "Syncing…" ends on this, not on the join returning. Not awaited: the game
+  // runs meanwhile, and its edits queue until the join goes through.
+  void sync.connect(choice.name, CONNECT_RETRY_MS).then((connected) => {
+    if (!connected) return;
+    reportWorldLoaded(worldId);
     hud.toast("Connected to shared world");
-  } catch {
-    hud.toast("Sync failed — edits will retry in the background");
-  }
+  });
   // e.g. the cloud declined to host a world an account just created (HA):
   // playable, but worth knowing before inviting anyone
   if (choice.notice) hud.toast(choice.notice);
@@ -537,11 +543,8 @@ async function boot(): Promise<void> {
   // then save and leave like "Save & leave world", and reload into it.
   setInviteJoiner({
     join: async (code, payload) => {
-      if (payload.contextId === worldId) {
-        hud.toast("You're already in this world");
-        return;
-      }
-      await acceptWorldInvite(code);
+      if (payload.contextId === worldId) return { contextId: worldId, already: true };
+      const contextId = await acceptWorldInvite(code);
       save();
       void sync?.leave();
       try {
@@ -549,7 +552,10 @@ async function boot(): Promise<void> {
       } catch {
         /* no session storage: the picker shows the joined world as the current one */
       }
-      window.location.reload();
+      // After the prompt has acked the invitation, which happens once this
+      // returns; a reload in the same task could leave it to replay.
+      setTimeout(() => window.location.reload(), 0);
+      return { contextId };
     },
     onShow: () => {
       document.exitPointerLock();

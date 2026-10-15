@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { clearContextId } from "@calimero-network/mero-react";
+import {
+  clearContextId,
+  useContextGroup,
+  useJoinSync,
+} from "@calimero-network/mero-react";
 import { ArrowLeft, Refresh, Target } from "@calimero-network/mero-icons";
 import { useNavigate } from "react-router-dom";
 import { ArenaCanvas } from "./ArenaCanvas";
@@ -37,6 +41,14 @@ export function ArenaPage({ contextId }: { contextId: string }) {
   useAnnounce(contextId, name, fighter);
 
   const view = names.view;
+
+  // After a join, the invitation dialog waits on this: the first `arena()`
+  // read that comes back, an empty arena with nobody in either corner
+  // included, is the arena having arrived. A read that fails is retried by
+  // `useArena`'s own poll. Arenas live directly in their namespace (see
+  // `ContextPicker`), so the context's group is the namespace that was joined.
+  const { groupId: namespaceId } = useContextGroup(contextId);
+  useJoinSync({ namespaceId, settled: arena.view !== null });
   const past = usePastMatches(contextId, `${view?.match_index ?? 0}:${view?.winner ?? ""}`);
   const state = useMemo(() => (view ? toArenaState(view) : null), [view]);
   const mySeat = view?.my_seat ?? "";

@@ -21,7 +21,8 @@ const { ctx } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ctx,
   NoRelayError: class NoRelayError extends Error {
     constructor(call: string) {

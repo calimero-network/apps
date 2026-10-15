@@ -1,6 +1,8 @@
-import { useRef } from "react";
-import { styled } from "styled-components";
-import { InviteStatusBanner, useInviteRedemption } from "@calimero-apps/invite";
+import { useEffect, useRef, useState } from "react";
+import {
+  InvitationDialog,
+  useInviteRedemption,
+} from "@calimero-network/mero-react";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { getMeroJs } from "../../api/meroJsClient";
 import {
@@ -18,6 +20,7 @@ import {
   enterWorkspace,
 } from "../../utils/enterWorkspace";
 import { log } from "../../utils/logger";
+import { DM_CONTEXT_ALIAS_PREFIX } from "../../utils/dmContext";
 
 // ── An invitation link, opened ───────────────────────────────────────────────
 //
@@ -28,21 +31,19 @@ import { log } from "../../utils/logger";
 //
 // This prompt is mounted above the routes, so it answers on any page: on the
 // workspace picker after login, and inside a workspace when the desktop hands
-// over a link while the chat is open. It asks first — joining gives someone
-// else's workspace a new peer — and only joins on "Join".
+// over a link while the chat is open. It is mero-react's `InvitationDialog`:
+// it asks first — joining gives someone else's workspace a new peer — and only
+// joins on "Join".
 //
 // After the join it enters what was joined: straight into the chat when the
-// user already has a display name, else into the picker's name step.
+// user already has a display name, else into the picker's name step. Entering
+// is a full page load (see `enterWorkspace`), which would take the dialog down
+// mid-sync, so it waits for the dialog to close: once the workspace's channel
+// list has been read here (`synced`), or the person chose to carry on.
 
-/** Above the workspace picker's own overlay, so it can be answered there. */
-const Dock = styled.div`
-  position: fixed;
-  top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(32rem, calc(100vw - 2rem));
-  z-index: 100000;
-`;
+/** How long to keep asking for the joined workspace's channels. */
+const CHANNELS_READ_MS = 60_000;
+const CHANNELS_RETRY_MS = 2_000;
 
 interface Props {
   /** The session can join: a node and tokens. The invitation waits until then. */
@@ -53,6 +54,10 @@ export default function InvitationPrompt({ enabled }: Props) {
   const api = useRef(new GroupApiDataSource());
   /** What the join answered with; empty for `already-member`. */
   const joinedAs = useRef("");
+  /** The namespace whose channel list has come back from the node. */
+  const [readFor, setReadFor] = useState<string | null>(null);
+  /** Going in, held until the dialog has closed. */
+  const [pendingEnter, setPendingEnter] = useState<(() => void) | null>(null);
 
   const redemption = useInviteRedemption({
     enabled,
@@ -67,41 +72,43 @@ export default function InvitationPrompt({ enabled }: Props) {
       },
     ),
     onJoined: (namespaceId, teamName) => {
-      void enterJoined(api.current, namespaceId, teamName, joinedAs.current);
+      setReadFor(null);
+      setPendingEnter(null);
+      void prepareJoined(api.current, namespaceId, teamName, joinedAs.current, () =>
+        setReadFor(namespaceId),
+      ).then((go) => setPendingEnter(() => go));
     },
   });
 
   const { state } = redemption;
-  if (!enabled || state.stage === "idle") return null;
+  useEffect(() => {
+    if (state.stage !== "idle" || !pendingEnter) return;
+    setPendingEnter(null);
+    pendingEnter();
+  }, [state.stage, pendingEnter]);
 
   return (
-    <Dock>
-      <InviteStatusBanner
-        state={state}
-        noun="workspace"
-        onAccept={redemption.accept}
-        onDecline={redemption.decline}
-        onRetry={redemption.retry}
-        onDismiss={redemption.dismiss}
-        style={{
-          background: "var(--glass-surface-solid)",
-          boxShadow: "var(--chat-dialog-shadow)",
-        }}
-      />
-    </Dock>
+    <InvitationDialog
+      redemption={redemption}
+      noun="workspace"
+      appName="Mero Chat"
+      synced={state.stage === "joined" && readFor === state.namespaceId}
+    />
   );
 }
 
 /**
  * The join landed (or the node already held it): record what the workspace is
- * called and who we are in it, let it sync, then go in.
+ * called and who we are in it, let it sync and read its channels, then hand
+ * back how to go in.
  */
-async function enterJoined(
+async function prepareJoined(
   api: GroupApiDataSource,
   namespaceId: string,
   teamName: string | undefined,
   joinedAs: string,
-): Promise<void> {
+  onChannelsRead: () => void,
+): Promise<() => void> {
   let memberIdentity = joinedAs;
   try {
     if (!memberIdentity) {
@@ -128,12 +135,36 @@ async function enterJoined(
     log.warn("InvitationPrompt", "post-join bookkeeping failed", err);
   }
 
-  // One display name serves every workspace: if it is chosen, go straight in,
-  // as joining always did.
-  const existingName = getMessengerDisplayName();
-  if (existingName) {
-    enterWorkspace(api, namespaceId, existingName, memberIdentity);
-    return;
+  // The workspace's own data: its channels, as the sidebar reads them. Every
+  // workspace starts with #general, so an empty list is the node not having
+  // synced yet, not an empty workspace: keep asking until a channel is there.
+  // A workspace from before #general can have none; after the deadline it
+  // goes in anyway.
+  const deadline = Date.now() + CHANNELS_READ_MS;
+  for (;;) {
+    const res = await api.listSubgroups(namespaceId).catch(() => null);
+    const channels = (res && !res.error ? res.data ?? [] : []).filter(
+      (sg) => !(sg.alias ?? "").startsWith(DM_CONTEXT_ALIAS_PREFIX),
+    );
+    if (channels.length > 0) {
+      onChannelsRead();
+      break;
+    }
+    if (Date.now() > deadline) {
+      log.warn("InvitationPrompt", "channels of the joined workspace never read");
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, CHANNELS_RETRY_MS));
   }
-  enterJoinedWorkspaceForName(namespaceId);
+
+  return () => {
+    // One display name serves every workspace: if it is chosen, go straight
+    // in, as joining always did.
+    const existingName = getMessengerDisplayName();
+    if (existingName) {
+      enterWorkspace(api, namespaceId, existingName, memberIdentity);
+      return;
+    }
+    enterJoinedWorkspaceForName(namespaceId);
+  };
 }

@@ -45,6 +45,7 @@ import {
 } from "../utils/workspaceOps";
 import { CrmClient } from "../generated/CrmClient";
 import { useApplicationId } from "./useApplicationId";
+import { decideActiveNs, useAnswered } from "./activeNamespace";
 import { useMemberRoles, type UseMemberRolesReturn } from "./useMemberRoles";
 import { buildAliasMap } from "./useAliases";
 import { splitTeeMembers, teeMode as teeModeOf, type TeeMode } from "../utils/tee";
@@ -56,7 +57,19 @@ import {
   writeActivePipeline,
   clearPersistedWorkspace,
 } from "./workspacePersistence";
-import { markNamespaceJustJoined, useJoinSync } from "@calimero-apps/join-sync";
+import {
+  JOIN_SYNC_POLL_MS,
+  markNamespaceJustJoined,
+  useJoinSync,
+} from "@calimero-network/mero-react";
+
+/**
+ * How long to keep asking to join the active pipeline, and how often. Right
+ * after a namespace join the node may not hold the pipeline yet and refuses
+ * the join; it is let in once the namespace has synced.
+ */
+const PIPELINE_JOIN_MS = 90_000;
+const PIPELINE_JOIN_RETRY_MS = 3_000;
 
 export interface PipelineEntry {
   contextId: string;
@@ -180,8 +193,11 @@ export function useWorkspace(): UseWorkspaceReturn {
   const {
     namespaces,
     loading: nsLoading,
+    error: nsError,
     refetch: refetchNamespaces,
   } = useNamespacesForApplication(applicationId);
+  // The list reads `[]` until the node answers, and again on every scope change.
+  const nsListed = useAnswered(nsLoading, nsError, [mero, applicationId]);
   const { createNamespaceInvitation, loading: inviteLoading } =
     useCreateNamespaceInvitation();
   const { setMemberMetadata } = useSetMemberMetadata();
@@ -221,7 +237,10 @@ export function useWorkspace(): UseWorkspaceReturn {
       try {
         const gid = await admin.getContextGroup(callbackContextId);
         if (!cancelled && gid) {
-          // Explicit external handoff - persist it like any other selection.
+          // Explicit external handoff - persist it like any other selection,
+          // and like any other selection the cold-start default never
+          // overrides it.
+          userSelectedNs.current = true;
           setActiveNs(gid);
           writeActiveNs(gid);
         }
@@ -240,19 +259,19 @@ export function useWorkspace(): UseWorkspaceReturn {
   // otherwise default to the first namespace (the list is already scoped to this
   // app, so this is a friendly cold-start default, not a stale cross-app entry).
   // The default is in-memory only - explicit switcher picks are what persist.
+  // Only on a list that has answered: see ./activeNamespace.
   useEffect(() => {
-    if (userSelectedNs.current || resolvingCallback) return;
-    if (namespaces.length === 0) {
-      if (activeNs) {
-        setActiveNs(null);
-        writeActiveNs(null);
-      }
-      return;
-    }
-    if (activeNs && namespaces.some((n) => n.namespaceId === activeNs)) return;
-    if (activeNs) writeActiveNs(null); // drop a stale persisted id before defaulting
-    setActiveNs(namespaces[0].namespaceId);
-  }, [namespaces, activeNs, resolvingCallback]);
+    const decision = decideActiveNs({
+      namespaces,
+      listed: nsListed,
+      activeNs,
+      pinned: userSelectedNs.current,
+      resolvingCallback,
+    });
+    if (decision.kind === "keep") return;
+    if (decision.dropPersisted) writeActiveNs(null);
+    setActiveNs(decision.id);
+  }, [namespaces, nsListed, activeNs, resolvingCallback]);
 
   const selectNamespace = useCallback((id: string) => {
     userSelectedNs.current = true;
@@ -406,8 +425,10 @@ export function useWorkspace(): UseWorkspaceReturn {
     }
     if (activePipeline === callbackContextId && callbackContextIdentity) return;
     let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     setExecutorPublicKey(null);
-    (async () => {
+    const deadline = Date.now() + PIPELINE_JOIN_MS;
+    const attempt = async () => {
       try {
         const { identities } =
           await admin.getContextIdentitiesOwned(activePipeline);
@@ -425,15 +446,25 @@ export function useWorkspace(): UseWorkspaceReturn {
         // Joining is an explicit call; membership in the namespace is what
         // authorises it.
         const joined = await admin.joinContext(activePipeline);
-        if (!cancelled && joined?.memberPublicKey) {
+        if (cancelled) return;
+        if (joined?.memberPublicKey) {
           setExecutorPublicKey(joined.memberPublicKey);
+          return;
         }
       } catch {
-        /* leave null - useItems stays not-ready until an identity resolves */
+        /* not let in yet - retried below */
       }
-    })();
+      // Just after a namespace join the node may not hold this pipeline yet, and
+      // refuses the join until it does. Ask again rather than leave the board
+      // loading for good; past the deadline it stays null (not ready).
+      if (!cancelled && Date.now() < deadline) {
+        retry = setTimeout(() => void attempt(), PIPELINE_JOIN_RETRY_MS);
+      }
+    };
+    void attempt();
     return () => {
       cancelled = true;
+      clearTimeout(retry);
     };
   }, [mero, admin, activePipeline, callbackContextId, callbackContextIdentity]);
 
@@ -682,19 +713,40 @@ export function useWorkspace(): UseWorkspaceReturn {
   // what was joined, with a list that already shows it.
   useJoinedWorkspace((nsId) => void enterJoined(nsId));
 
-  // `pipelinesLoading` going false is the signal the pipeline list answered — for the
-  // namespace that was active when it did, which is why the id is recorded
-  // rather than just a boolean.
+  // `pipelinesLoading` going true and then false is the signal the pipeline list
+  // answered — for the namespace that was active when it did, which is why the
+  // id is recorded rather than just a boolean. The true half matters: on the
+  // render that switches into a just-joined workspace `pipelinesLoading` is
+  // still false (the fetch starts in an effect), and taking that for an answer
+  // would end the invitation dialog's "Syncing…" before the node was asked.
   const [listedForNs, setListedForNs] = useState<string | null>(null);
+  const readingNs = useRef<string | null>(null);
   useEffect(() => {
-    if (!activeNs || pipelinesLoading) return;
-    setListedForNs(activeNs);
+    if (!activeNs) return;
+    if (pipelinesLoading) {
+      readingNs.current = activeNs;
+      return;
+    }
+    if (readingNs.current === activeNs) setListedForNs(activeNs);
   }, [activeNs, pipelinesLoading]);
 
+  // While the workspace is just-joined an EMPTY list is not an answer: the node
+  // may simply not hold its pipelines yet, so only a list with something in it
+  // settles the gate. An empty list keeps it `active`, which holds it open up
+  // to its ceiling; once it gives up, empty is the ordinary empty state again.
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
     namespaceId: activeNs,
-    settled: listedForNs === activeNs,
+    settled: listedForNs === activeNs && contexts.length > 0,
+    active: contexts.length === 0,
   });
+
+  // `useGroupContexts` reads once per namespace; nothing tells this node when
+  // the pipelines arrive. Keep asking while the gate is up.
+  useEffect(() => {
+    if (!isSyncing) return;
+    const timer = setInterval(() => void refetchContexts(), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, refetchContexts]);
 
   const clearPersisted = useCallback(() => clearPersistedWorkspace(), []);
 

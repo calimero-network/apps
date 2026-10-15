@@ -19,6 +19,7 @@ import {
   setIdentityDisplayName,
 } from "../../utils/messengerName";
 import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
+import { createChannel, GENERAL_CHANNEL } from "../../utils/createChannel";
 import {
   AppNotInstalledError,
   installConfiguredApp,
@@ -493,6 +494,23 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       await api.current.setGroupMetadata(groupId, trimmedNs).catch(() => {});
 
       await api.current.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES }).catch(() => {});
+
+      // Every workspace starts with #general: someone who joins from an
+      // invitation lands in a channel rather than an empty workspace, and the
+      // join can wait for a channel to arrive instead of taking an empty list
+      // (not synced yet) for an empty workspace. The workspace stands without
+      // it, so a failure here is said, not fatal.
+      const general = await createChannel(groupId, GENERAL_CHANNEL, true).catch(
+        (err: unknown) => ({ error: err instanceof Error ? err.message : String(err) }),
+      );
+      if ("error" in general) {
+        addToast({
+          title: "Workspace created without #general",
+          message: `Create a channel before inviting anyone: ${general.error}`,
+          type: "channel",
+          duration: 12000,
+        });
+      }
 
       const idRes = await api.current.resolveCurrentMemberIdentity(groupId);
       if (idRes.data?.memberIdentity) {

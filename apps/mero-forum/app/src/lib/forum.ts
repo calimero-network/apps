@@ -131,6 +131,27 @@ export function useFeed(client: ForumClient | null, sort: Sort) {
     setError(null);
   }, []);
 
+  /**
+   * Read the first page again, replacing what is shown. For a feed whose first
+   * read came back empty, or failed, before the node had the forum's state:
+   * `reset` alone does not re-run that read when nothing it keys on changes.
+   */
+  const reload = useCallback(async () => {
+    if (!client || inFlight.current) return;
+    inFlight.current = true;
+    try {
+      const page = await client.listPosts({ sort, cursor: null, limit: 20 });
+      setItems(page.items);
+      setCursor(page.next_cursor ?? null);
+      setHasMore(page.next_cursor != null);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      inFlight.current = false;
+    }
+  }, [client, sort]);
+
   // Changing the sort restarts the feed: a cursor from one ordering means
   // nothing in the other.
   useEffect(() => {
@@ -142,7 +163,7 @@ export function useFeed(client: ForumClient | null, sort: Sort) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, items.length, hasMore]);
 
-  return { items, loadMore, hasMore, loading, error, reset, setItems };
+  return { items, loadMore, hasMore, loading, error, reset, reload, setItems };
 }
 
 /** Comments on one post, same paging contract as the feed. */

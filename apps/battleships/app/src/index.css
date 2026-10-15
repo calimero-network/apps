@@ -2131,13 +2131,3 @@ html, body {
   :root { --cell-size: 26px; }
   .nav-brand-text { display: none; }
 }
-
-/* The invitation prompt floats above every route: a link can land on any page. */
-.invite-prompt {
-  position: fixed;
-  top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(32rem, calc(100% - 2rem));
-  z-index: 1000;
-}

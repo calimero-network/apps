@@ -27,8 +27,12 @@
  *    `InvitationPrompt` once an opened link is accepted; `landJoined` is the
  *    half of a join that needs this hook's state.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
+  JOIN_SYNC_POLL_MS,
+  isNamespaceJustJoined,
+  subscribeJustJoined,
+  useJoinSync,
   useMero,
   useNamespacesForApplication,
   useGroupContexts,
@@ -46,7 +50,6 @@ import {
   type AcceptedInvite,
   type SpreadsheetRow,
 } from '../lib/workspaces';
-import { markNamespaceJustJoined, useJoinSync } from '@calimero-apps/join-sync';
 
 export interface Workspace {
   contextId: string;
@@ -119,8 +122,15 @@ export function useWorkspace(): UseWorkspaceReturn {
     refetch: refetchNamespaces,
   } = useNamespacesForApplication(applicationId || null);
 
-  // The app's namespace (first one bound to this application). null on first run.
-  const namespace = namespaces[0] ?? null;
+  // A workspace joined by invitation this session, once the node lists it.
+  const [joinedNsId, setJoinedNsId] = useState<string | null>(null);
+
+  // The app's namespace: the one just joined, else the first one bound to this
+  // application. null on first run. Preferring the joined one is what lands an
+  // invited person who already had a workspace in the one they were invited
+  // to, and what lets the join-sync gate below see that workspace's list.
+  const namespace =
+    namespaces.find((n) => n.namespaceId === joinedNsId) ?? namespaces[0] ?? null;
   const namespaceId = namespace?.namespaceId ?? null;
   const namespaceName = namespace
     ? namespaceLabel(namespace, APP_DISPLAY_NAME)
@@ -169,8 +179,8 @@ export function useWorkspace(): UseWorkspaceReturn {
       (rows: SpreadsheetRow[]) => {
         if (cancelled) return;
         setWorkspaces(rows);
-        // Settled means "a real read came back", including an empty one — a
-        // workspace with no spreadsheets yet is an answer, not a pending state.
+        // A real read came back. Whether an EMPTY one settles the join-sync
+        // gate is decided there, not here: see `settled` below.
         setListedForNs(namespaceId);
       },
     );
@@ -327,9 +337,12 @@ export function useWorkspace(): UseWorkspaceReturn {
   const landJoined = useCallback(
     async (landed: Pick<AcceptedInvite, 'namespaceId' | 'contextId'>) => {
       // The join has returned; the workspace's own state has not arrived yet.
-      // Without this the joiner lands on an empty spreadsheet list that looks
-      // exactly like a workspace with nothing in it.
-      if (landed.namespaceId) markNamespaceJustJoined(landed.namespaceId);
+      // The redemption has marked it just-joined, and the gate below holds the
+      // dialog until its spreadsheets are read. Not marked again here: a page
+      // already showing this workspace settles and clears the mark at once, and
+      // a second mark in the same render went unseen by useJoinSync, so nothing
+      // cleared it and the dialog sat on "Syncing…".
+      if (landed.namespaceId) setJoinedNsId(landed.namespaceId);
       await refresh();
       // The code can name a spreadsheet to open. It is an unsigned hint, so
       // the node still decides whether to admit us — `openWorkspace` goes
@@ -339,10 +352,59 @@ export function useWorkspace(): UseWorkspaceReturn {
     [refresh, openWorkspace],
   );
 
+  // Whether this namespace's context list has come back from the node. The
+  // spreadsheet list alone cannot say: it is rebuilt the moment `namespaceId`
+  // changes, from whatever contexts are on hand (none, or the previous
+  // namespace's), so it would "settle" a just-joined workspace before reading
+  // it at all. Same in-flight-then-ended test as `namespaceKnown` above, for
+  // the same reason.
+  const ctxReadStartedFor = useRef<string | null>(null);
+  const [ctxSettledFor, setCtxSettledFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!namespaceId) return;
+    if (ctxLoading) ctxReadStartedFor.current = namespaceId;
+    else if (ctxReadStartedFor.current === namespaceId) setCtxSettledFor(namespaceId);
+  }, [namespaceId, ctxLoading]);
+
+  // An empty list is a settled answer only once the namespace is no longer
+  // just-joined. Before that it is what a node that has not synced the
+  // workspace yet returns, and settling on it closed the invitation dialog onto
+  // an empty picker that nothing ever re-read. The watchdog clears the flag, so
+  // a workspace that really has no spreadsheets still settles.
+  //
+  // The gate watches the namespace just joined even before the node lists it.
+  // Until then `namespaceId` is whichever workspace this node already had (or
+  // none): watching that one left the joined namespace's flag with no one to
+  // clear it and, since that one was never just-joined, nothing re-reading the
+  // node, so the dialog sat on "Syncing…" until its ceiling.
+  const watchedNs = joinedNsId ?? namespaceId;
+  const onWatched = namespaceId === watchedNs;
+  const listed = onWatched && ctxSettledFor === namespaceId && listedForNs === namespaceId;
+  // useJoinSync reads the just-joined flag only when its namespace changes. A
+  // join of the workspace this page already shows (a new spreadsheet in a
+  // workspace this node joined before) marks it without changing it, so the
+  // gate gets the namespace only while it is flagged: the mark is then a change.
+  const watchedJustJoined = useSyncExternalStore(
+    subscribeJustJoined,
+    () => !!watchedNs && isNamespaceJustJoined(watchedNs),
+    () => false,
+  );
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
-    namespaceId,
-    settled: listedForNs === namespaceId,
+    namespaceId: watchedJustJoined ? watchedNs : null,
+    settled: listed && (workspaces.length > 0 || !isNamespaceJustJoined(namespaceId)),
+    // Not listed yet, or still empty: let the gate wait up to its ceiling
+    // rather than the base window, since the spreadsheets may be on their way.
+    active: !onWatched || workspaces.length === 0,
   });
+
+  // While the gate is up, keep re-reading: the context list only moves when
+  // asked, and the node gains the workspace's spreadsheets on its own schedule.
+  // A read that fails because the node has not synced yet is retried here too.
+  useEffect(() => {
+    if (!isSyncing) return;
+    const timer = setInterval(() => void refresh(), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, refresh]);
 
   return {
     isSyncing,

@@ -5,7 +5,6 @@
   "type": "module",
   "dependencies": {
     "@calimero-apps/glass": "workspace:*",
-    "@calimero-apps/invite": "workspace:*",
     "@calimero-apps/names": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",

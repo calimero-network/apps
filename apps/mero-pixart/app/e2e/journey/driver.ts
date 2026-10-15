@@ -409,14 +409,15 @@ export const driver: AppDriver = {
   async joined(actor) {
     track(actor);
     const page = actor.page;
-    const landed = expect(page.getByTestId("toast").filter({ hasText: /Joined team|already in this team/ }))
-      .toBeVisible({ timeout: SYNC })
-      .then(() => page.waitForURL(new RegExp(`${teamPath()}$`), { timeout: 30_000 }));
+    // The invitation dialog has already seen the join through (it closes once
+    // the team's projects have been read); what is left is that it landed in
+    // the team.
+    const landed = page.waitForURL(new RegExp(`${teamPath()}$`), { timeout: SYNC });
     const failed = page
-      .locator('[data-testid="invite-status"][data-stage="failed"]')
+      .locator('[data-testid="invite-prompt"][data-stage="failed"]')
       .waitFor({ state: "visible", timeout: SYNC })
       .then(async () => {
-        throw new Error(`join refused: ${await page.getByTestId("invite-status").innerText()}`);
+        throw new Error(`join refused: ${await page.getByTestId("invite-prompt").innerText()}`);
       });
     landed.catch(() => undefined);
     failed.catch(() => undefined);

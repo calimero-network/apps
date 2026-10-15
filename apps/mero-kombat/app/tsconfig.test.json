@@ -15,7 +15,6 @@
     "src/generated",
     "src/useJoinFromInvitation.ts",
     "src/useCornerNames.ts",
-    "src/JoinCard.tsx",
     "src/utils"
   ],
   "exclude": ["src/game"]

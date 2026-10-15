@@ -2,7 +2,7 @@
  * Redeeming a workspace invitation: read the token a link carried, join once,
  * and say what happened.
  *
- * The two halves `useInviteRedemption` (from `@calimero-apps/invite`) asks an
+ * The two halves `useInviteRedemption` (from mero-react) asks an
  * app for: `parseInviteToken` reads the token without touching the node, so the
  * prompt can name the workspace before anyone clicks; `inviteRedeemer` is the
  * pair of node calls. The join-and-decide part is the package's
@@ -15,7 +15,10 @@
  * Kept free of React so the whole path — decode, join, classify — is testable
  * against a fake admin client.
  */
-import type { InviteRedeemer, ParsedInvitation } from "@calimero-apps/invite";
+import type {
+  InviteRedeemer,
+  ParsedInvitation,
+} from "@calimero-network/mero-react";
 import type { AdminApiClient } from "@calimero-network/mero-js";
 import { decodeInvitation } from "./invitation";
 import {

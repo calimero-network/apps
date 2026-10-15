@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 /**
  * Build for the screenshot harness (see ../shots.mjs).
@@ -13,6 +14,13 @@ import { fileURLToPath } from "node:url";
  * var is set" is one misconfigured deploy away from shipping the mock.
  */
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+
+// The real mero-react ESM build, for the mock to take the invitation dialog
+// from: the dialog is production UI and is what the "invitation" shot is of.
+// Resolved by path because the bare name is aliased to the mock below.
+const realMeroReact = createRequire(import.meta.url)
+  .resolve("@calimero-network/mero-react")
+  .replace(/\.cjs$/, ".js");
 
 export default defineConfig({
   root: here("."),
@@ -41,9 +49,9 @@ export default defineConfig({
         find: /.*\/lib\/inviteCodec$/,
         replacement: here("./inviteCodec.mock.ts"),
       },
-      { find: "@calimero-apps/invite", replacement: here("./invite.mock.ts") },
+      { find: /^mero-react-real$/, replacement: realMeroReact },
       {
-        find: "@calimero-network/mero-react",
+        find: /^@calimero-network\/mero-react$/,
         replacement: here("./meroReact.mock.ts"),
       },
     ],

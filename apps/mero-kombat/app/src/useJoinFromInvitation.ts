@@ -1,12 +1,17 @@
 import { useRef } from "react";
-import { setContextId, useMero } from "@calimero-network/mero-react";
-import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
 import {
+  redeemInvitation,
+  setContextId,
   useInviteRedemption,
-  type InviteRedeemer,
+  useMero,
   type InviteRedemption,
   type ParsedInvitation,
-} from "@calimero-apps/invite";
+  type RedeemOutcome,
+} from "@calimero-network/mero-react";
+import type {
+  InviteRedeemer,
+  SignedGroupOpenInvitation,
+} from "@calimero-network/mero-js";
 import {
   decodeInvitationPayload,
   parseInvitationPayload,
@@ -16,9 +21,7 @@ import {
 export type KombatInvitation = ParsedInvitation & { contextId: string };
 
 /** The redemption, with `parsed` carrying the context this app's links name. */
-export type JoinFromInvitation = Omit<InviteRedemption, "parsed"> & {
-  parsed: KombatInvitation | null;
-};
+export type JoinFromInvitation = InviteRedemption<KombatInvitation>;
 
 /** Read a link's token into what the join needs, or `null` if it is not one. */
 export function readInvitation(token: string): KombatInvitation | null {
@@ -44,16 +47,17 @@ export function readInvitation(token: string): KombatInvitation | null {
  *
  * The invitation is acked — permanently dropped — on success, or on a failure
  * that can never succeed; anything else is kept and offered again on the next
- * load. `@calimero-apps/invite` decides which, and treats "the request failed
+ * load. mero-js decides which, and treats "the request failed
  * but the namespace is now listed" as success: the desktop proxy aborts at 30s
  * while a join can take ~95s and land anyway.
+ *
+ * Once in, `open` is handed the context the link names. The app opens it in
+ * place rather than reloading: a reload would take down the invitation dialog
+ * while it is still waiting on the context's data.
  */
-export function useJoinFromInvitation({
-  landingPath,
-}: {
-  /** Where the joined context opens, for an app whose landing page is elsewhere. */
-  landingPath?: string;
-} = {}): JoinFromInvitation {
+export function useJoinFromInvitation(
+  open: (contextId: string) => void,
+): JoinFromInvitation {
   // `admin`, NOT `mero.admin`. `mero` is the raw client, and on a delegated
   // (account) session its transport is the relay: `mero.admin.joinNamespace`
   // became `POST {relay}/admin-api/namespaces/{ns}/join` with the account's
@@ -79,14 +83,6 @@ export function useJoinFromInvitation({
       await admin.joinNamespace(namespaceId, {
         invitation: invitation as SignedGroupOpenInvitation,
       });
-      // A node joins the context explicitly. An account does not: a namespace
-      // member follows its contexts (core auto-follow), and this app's contexts
-      // live directly in the namespace, so there is no further group to join —
-      // and the `admin` this closure holds may predate the relay the join just
-      // moved the session onto, so a read through it here would fail after a
-      // join that succeeded.
-      if (!isDelegated && contextId.current)
-        await admin.joinContext(contextId.current);
     },
     memberships: async () => {
       if (!admin) throw new Error("Not connected.");
@@ -100,31 +96,67 @@ export function useJoinFromInvitation({
     },
   };
 
-  const redemption = useInviteRedemption({
+  // The namespace, then the context. A node joins the context explicitly. An
+  // account does not: a namespace member follows its contexts (core
+  // auto-follow), and this app's contexts live directly in the namespace, so
+  // there is no further group to join — and the `admin` this closure holds may
+  // predate the relay the join just moved the session onto.
+  //
+  // The context join is its own step after the namespace's, not part of it,
+  // and it is retried: right after the namespace join the node may not hold
+  // the context yet and refuses it. Inside `join`, that refusal read as "the
+  // namespace is listed, so already a member": the invitation was spent and
+  // the app opened a context this node never joined. A namespace join that
+  // landed without answering (the desktop proxy's 30s) skipped it outright.
+  const redeem = async (parsed: KombatInvitation): Promise<RedeemOutcome> => {
+    const outcome = await redeemInvitation(parsed, redeemer);
+    if (outcome.status === "failed" || isDelegated || !admin) return outcome;
+    const failure = await joinContextWithRetry(() => admin.joinContext(parsed.contextId));
+    if (failure === null) return outcome;
+    // Kept, so "Try again" goes round once more: the namespace join is then
+    // already-member and only the context is retried.
+    return {
+      status: "failed",
+      namespaceId: parsed.namespaceId,
+      message: `You joined the namespace, but this node could not join its arena yet: ${failure}`,
+      reason: "unknown",
+      retryable: true,
+    };
+  };
+
+  return useInviteRedemption<KombatInvitation>({
     parse: (token) => {
       const parsed = readInvitation(token);
       contextId.current = parsed?.contextId ?? null;
       return parsed;
     },
-    redeemer,
+    redeem,
     enabled: isAuthenticated,
     // `already-member` lands here too: a link followed twice, or a join the
-    // proxy gave up on that landed anyway. The invitation is already acked, so
-    // the reload cannot replay it; reloading is what makes the provider pick up
-    // the new context (see `ContextPicker.select`).
+    // proxy gave up on that landed anyway. Stored as well as opened, so the
+    // next load comes back to the same context.
     onJoined: () => {
-      if (contextId.current) setContextId(contextId.current);
-      if (landingPath && window.location.pathname !== landingPath) {
-        window.location.assign(landingPath);
-      } else {
-        window.location.reload();
-      }
+      if (!contextId.current) return;
+      setContextId(contextId.current);
+      open(contextId.current);
     },
   });
+}
 
-  // `parse` is ours, so what the hook holds is a `KombatInvitation`.
-  return {
-    ...redemption,
-    parsed: redemption.parsed as KombatInvitation | null,
-  };
+/** How long to keep asking the node to join the context once the namespace is joined. */
+export const CONTEXT_JOIN_MS = 90_000;
+const CONTEXT_RETRY_MS = 3_000;
+
+/** Join until the node accepts; null once it has, else the last error's words. */
+async function joinContextWithRetry(join: () => Promise<unknown>): Promise<string | null> {
+  const deadline = Date.now() + CONTEXT_JOIN_MS;
+  for (;;) {
+    try {
+      await join();
+      return null;
+    } catch (e) {
+      if (Date.now() > deadline) return e instanceof Error ? e.message : String(e);
+    }
+    await new Promise((resolve) => setTimeout(resolve, CONTEXT_RETRY_MS));
+  }
 }

@@ -38,7 +38,7 @@ import {
   VideoIcon,
 } from "../components/icons";
 import styles from "./Manage.module.css";
-import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
+import { JoinSyncBanner, useJoinSync } from "@calimero-network/mero-react";
 
 /**
  * Rooms inside one stream (namespace). A room is a SUBGROUP plus the context bound

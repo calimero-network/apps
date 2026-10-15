@@ -34,7 +34,7 @@ import {
   UsersIcon,
 } from "../components/icons";
 import styles from "./AudiencesPage.module.css";
-import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
+import { JoinSyncBanner, useJoinSync } from "@calimero-network/mero-react";
 
 /**
  * Audiences inside one space (namespace). An audience is a SUBGROUP plus the context bound

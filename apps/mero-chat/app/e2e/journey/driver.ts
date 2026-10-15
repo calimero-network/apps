@@ -401,7 +401,7 @@ export const driver: AppDriver = {
     // has goes straight into it. A refused join stays on the prompt, failed.
     const nameStep = page.getByPlaceholder("e.g. Alice");
     const home = page.getByText("Browse Channels", { exact: true }).first();
-    const failed = page.locator('[data-testid="invite-status"][data-stage="failed"]');
+    const failed = page.locator('[data-testid="invite-prompt"][data-stage="failed"]');
     await expect(nameStep.or(home).or(failed).first()).toBeVisible({
       timeout: SYNC,
     });
@@ -412,6 +412,13 @@ export const driver: AppDriver = {
       await enterName(page, actor.name === "alice" ? "Alice" : "Bob");
     }
     await readyHome(page);
+    // Every workspace starts with #general, and someone who joins lands in
+    // it: in the sidebar, with no Browse Channels, no reload. A join that
+    // left the sidebar empty looked joined and showed no data.
+    await expect(
+      channelItem(page, "general").first(),
+      "the joined workspace's #general is in the sidebar without browsing",
+    ).toBeVisible({ timeout: SYNC });
   },
 
   async afterReload(actor) {

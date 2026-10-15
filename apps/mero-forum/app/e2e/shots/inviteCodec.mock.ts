@@ -13,3 +13,7 @@ export function decodeInvite(): ForumInvitePayload | null {
     groupAlias: "Design review",
   };
 }
+
+export function groupIdOfInvite(): string {
+  return "ns-1";
+}

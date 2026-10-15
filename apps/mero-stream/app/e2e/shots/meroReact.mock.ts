@@ -66,3 +66,12 @@ export function useSubscription() {
 export function readDelegatedCredential() {
   return null;
 }
+
+// RoomsPage and CallPage gate on a just-joined namespace; the shots never join.
+export function useJoinSync() {
+  return { isSyncing: false, dismiss: () => {} };
+}
+
+export function JoinSyncBanner() {
+  return null;
+}

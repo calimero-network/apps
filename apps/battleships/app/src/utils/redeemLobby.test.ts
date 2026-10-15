@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { describeInviteFailure, redeemInvitation, shouldRetain } from '@calimero-apps/invite';
+import { describeInviteFailure, redeemInvitation, shouldRetain } from '@calimero-network/mero-react';
 import { lobbyRedeemer, type LobbyAdmin } from './redeemLobby';
 
-/** What the prompt's banner shows for a failure, in this app's noun. */
+/** What the invitation dialog shows for a failure, in this app's noun. */
 const lobbyJoinFailureMessage = (outcome: { reason: Parameters<typeof describeInviteFailure>[0]; message: string }) =>
   describeInviteFailure(outcome.reason, 'lobby') ?? outcome.message;
 

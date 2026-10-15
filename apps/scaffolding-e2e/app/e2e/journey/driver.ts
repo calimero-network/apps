@@ -179,10 +179,10 @@ export const driver: AppDriver = {
   async joined(actor) {
     const page = actor.page;
     if (!invitedContextId) throw new Error("no invitation has been created");
-    // The prompt joins the namespace, then the context, and makes it active:
+    // The dialog joins the namespace, then the context, and makes it active:
     // the context bar shows it without a reload.
     const active = page.getByRole("button", { name: new RegExp(`^ctx: ${invitedContextId.slice(0, 16)}`) });
-    const failed = page.getByTestId("invite-error").or(page.locator('[data-testid="invite-status"][data-stage="failed"]'));
+    const failed = page.locator('[data-testid="invite-prompt"][data-stage="failed"]');
     const landed = active.waitFor({ state: "visible", timeout: SYNC * 2 });
     const refused = failed
       .first()
@@ -193,7 +193,6 @@ export const driver: AppDriver = {
     landed.catch(() => undefined);
     refused.catch(() => undefined);
     await Promise.race([landed, refused]);
-    await expect(page.getByTestId("invite-context")).toHaveAttribute("data-stage", "joined");
   },
 
   async afterReload(actor) {

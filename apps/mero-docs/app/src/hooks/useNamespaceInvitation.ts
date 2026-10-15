@@ -45,7 +45,7 @@
 // on the other node's screen, and it needs no app-level replication.
 
 import { useCallback } from 'react';
-import { buildInviteLink } from '@calimero-apps/invite';
+import { buildInviteLink } from '@calimero-network/mero-react';
 import { PACKAGE_NAME } from '@/constants/config';
 import {
   useMero,

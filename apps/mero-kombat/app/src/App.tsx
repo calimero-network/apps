@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -7,9 +7,12 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { ConnectButton, useMero } from "@calimero-network/mero-react";
+import {
+  ConnectButton,
+  InvitationDialog,
+  useMero,
+} from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
-import { JoinCard } from "./JoinCard";
 import { ArenaPage } from "./ArenaPage";
 import { PracticePage } from "./PracticePage";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
@@ -70,8 +73,17 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
  * The three states are exactly the three things that can be missing — a
  * session, a context, and then nothing.
  */
-function PlayPage() {
-  const { isAuthenticated, isLoading, applicationId, contextId } = useMero();
+function PlayPage({ joinedContextId }: { joinedContextId: string | null }) {
+  const {
+    isAuthenticated,
+    isLoading,
+    applicationId,
+    contextId: storedContextId,
+  } = useMero();
+  // An arena an invitation just joined wins over the stored one: it is opened
+  // in place (see `InvitationPrompt`), and is the stored one too from the next
+  // load.
+  const contextId = joinedContextId ?? storedContextId;
 
   if (isLoading) {
     return (
@@ -113,32 +125,64 @@ function PlayPage() {
     return <ContextPicker applicationId={applicationId} />;
   }
 
-  return <ArenaPage contextId={contextId} />;
+  // Keyed, so joining another arena starts from a fresh read rather than
+  // counting the previous arena's view as the joined one's.
+  return <ArenaPage key={contextId} contextId={contextId} />;
+}
+
+/** `head…tail`, so two ids can be told apart without the full 44 characters. */
+function shortId(id: string) {
+  return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
 }
 
 /**
- * The invitation prompt, above every route.
+ * The invitation prompt, above every route: mero-react's `InvitationDialog`.
  *
  * Mounted once, outside `<Routes>`, so it is never unmounted by navigation and
  * a link opened on any page — the landing page, practice, mid-fight — reaches
- * it. Shown only once there is a session to join with; until then the captured
- * invitation waits (it survives the login round-trip). Joining lands on
- * `/play`, where the joined arena opens.
+ * it. The hook joins only once there is a session; until then the captured
+ * invitation waits (it survives the login round-trip).
+ *
+ * Joining opens the arena in place on `/play`, rather than storing it and
+ * reloading: a reload would take the dialog down while it is still on
+ * "Syncing…", which lasts until `ArenaPage` has read the joined arena.
  */
-function InvitationPrompt() {
-  const { isAuthenticated } = useMero();
-  const join = useJoinFromInvitation({ landingPath: "/play" });
-  if (!isAuthenticated || join.state.stage === "idle") return null;
+function InvitationPrompt({ onOpen }: { onOpen: (contextId: string) => void }) {
+  const navigate = useNavigate();
+  const join = useJoinFromInvitation(
+    useCallback(
+      (contextId: string) => {
+        onOpen(contextId);
+        navigate("/play");
+      },
+      [onOpen, navigate],
+    ),
+  );
+  const invited = join.parsed;
   return (
-    // `shell` for the app's control styles, which are scoped to it so they
-    // stay off the landing page; the prompt can float over either.
-    <div className="shell join-float">
-      <JoinCard join={join} />
-    </div>
+    <InvitationDialog
+      redemption={join}
+      noun="arena"
+      appName="Mero Kombat"
+      // The ids, because following a link must not act on the player's
+      // behalf: joining binds their identity to a namespace someone else chose
+      // and switches the arena they are in.
+      detail={
+        invited
+          ? `Joining adds this node to namespace ${shortId(invited.namespaceId)} and opens its arena ${shortId(invited.contextId)}.`
+          : undefined
+      }
+    />
   );
 }
 
-function AppShell({ children }: { children?: ReactNode }) {
+function AppShell({
+  children,
+  joinedContextId = null,
+}: {
+  children?: ReactNode;
+  joinedContextId?: string | null;
+}) {
   const { isAuthenticated, nodeUrl, logout } = useMero();
   const navigate = useNavigate();
   return (
@@ -169,15 +213,16 @@ function AppShell({ children }: { children?: ReactNode }) {
           )}
         </div>
       </header>
-      <main className="wrap">{children ?? <PlayPage />}</main>
+      <main className="wrap">{children ?? <PlayPage joinedContextId={joinedContextId} />}</main>
     </div>
   );
 }
 
 export function App() {
+  const [joinedContextId, setJoinedContextId] = useState<string | null>(null);
   return (
     <BrowserRouter basename="/">
-      <InvitationPrompt />
+      <InvitationPrompt onOpen={setJoinedContextId} />
       <Routes>
         {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
             are real URLs so they can be shared and opened cold, which needs a
@@ -201,7 +246,10 @@ export function App() {
             }
           />
         ))}
-        <Route path="/play" element={<AppShell />} />
+        <Route
+          path="/play"
+          element={<AppShell joinedContextId={joinedContextId} />}
+        />
         {/* Practice needs no node: the CPU lives in this tab. */}
         <Route
           path="/practice"

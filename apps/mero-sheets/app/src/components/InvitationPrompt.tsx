@@ -1,14 +1,23 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import styled, { keyframes } from 'styled-components';
-import { useMero } from '@calimero-network/mero-react';
-import { C } from '../theme';
-import { primaryPill, secondaryPill } from './glass';
-import { decodeInvite, type SheetsInvitePayload } from '../lib/inviteCodec';
-import { onInvitation, type CapturedInvitation } from '@calimero-apps/invite';
-import { acceptInvite, keepsInvitation, type AcceptedInvite } from '../lib/workspaces';
+import { useCallback, useRef, useState } from 'react';
+import {
+  InvitationDialog,
+  useInviteRedemption,
+  useMero,
+  type ParsedInvitation,
+  type RedeemOutcome,
+} from '@calimero-network/mero-react';
+import { APP_DISPLAY_NAME } from '../config';
+import {
+  decodeInvite,
+  namespaceIdOfInvite,
+  type SheetsInvitePayload,
+} from '../lib/inviteCodec';
+import { acceptInvite, InviteRedeemError, type AcceptedInvite } from '../lib/workspaces';
 
 /**
- * "You have been invited to X" — for an invitation that arrived as a link.
+ * "Join X?" for an invitation that arrived as a link: mero-react's
+ * `InvitationDialog`, which asks, joins, and stays up on "Syncing…" until the
+ * workspace's spreadsheet list has reached this node.
  *
  * ── Why this is mounted at the APP level, not on a page ──────────────────────
  *
@@ -26,14 +35,18 @@ import { acceptInvite, keepsInvitation, type AcceptedInvite } from '../lib/works
  * silently. Decoding is pure and local, so the scope can be shown first and the
  * join needs a click.
  *
- * ── Why both buttons ack ─────────────────────────────────────────────────────
- *
- * The platform store keeps an intent until the app says it is handled. "Not now"
- * IS handled — without the ack the same prompt returns on every load, which
- * reads as the app nagging rather than as durability.
+ * The join is this app's own (`acceptInvite`, which walks a chain if the code
+ * carries one). The syncing stage ends when `useWorkspace`'s `useJoinSync` sees
+ * the joined workspace's spreadsheets come back from the node, or its watchdog
+ * decides an empty workspace really is empty.
  */
+interface SheetsInvitation extends ParsedInvitation {
+  payload: SheetsInvitePayload;
+}
+
 export default function InvitationPrompt({
   onJoined,
+  enabled,
 }: {
   /**
    * Called once a join lands, with whatever the code asked us to open. The
@@ -41,149 +54,87 @@ export default function InvitationPrompt({
    * reports rather than navigates.
    */
   onJoined: (landed: Pick<AcceptedInvite, 'namespaceId' | 'contextId'>) => void;
+  /** Whether there is a session to join with; the invitation waits until there is. */
+  enabled: boolean;
 }) {
   const { mero } = useMero();
-  const [pending, setPending] = useState<{
-    captured: CapturedInvitation;
-    payload: SheetsInvitePayload;
-  } | null>(null);
-  const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  /** What the last join landed in, for `reportJoined`. */
+  const landedRef = useRef<Pick<AcceptedInvite, 'namespaceId' | 'contextId'> | null>(null);
 
-  useEffect(
-    () =>
-      onInvitation((captured) => {
-        const payload = decodeInvite(captured.token);
-        if (!payload) {
-          setError('That invitation could not be read. Ask for a new link.');
-          // Acked anyway: a payload that will not decode now will not decode
-          // later either, and leaving it unacked replays the error every load.
-          captured.resolve();
-          return;
-        }
-        setPending({ captured, payload });
-      }),
-    [],
+  const parse = useCallback((token: string): SheetsInvitation | null => {
+    const payload = decodeInvite(token);
+    if (!payload) return null;
+    return {
+      namespaceId: namespaceIdOfInvite(payload),
+      invitation: payload.invitation,
+      teamName: payload.groupAlias,
+      payload,
+    };
+  }, []);
+
+  const redeem = useCallback(
+    async ({ payload }: SheetsInvitation): Promise<RedeemOutcome> => {
+      if (!mero) {
+        return {
+          status: 'failed',
+          namespaceId: null,
+          message: 'No node connection yet. Reconnect and try again.',
+          reason: 'node-unreachable',
+          retryable: true,
+        };
+      }
+      try {
+        const landed = await acceptInvite(mero.admin, payload, setStatus);
+        // The workspace `useWorkspace` will show and watch: it prefers the one
+        // just joined, so its `useJoinSync` clears the flag this dialog waits on.
+        const namespaceId = landed.namespaceId ?? namespaceIdOfInvite(payload);
+        // Reported from `onJoined` below, not here: the redemption marks the
+        // namespace just-joined only after this returns. A workspace the page
+        // already shows settles at once, and a mark after that settle was never
+        // cleared, leaving the dialog on "Syncing…".
+        landedRef.current = { namespaceId, contextId: landed.contextId };
+        return { status: 'joined', namespaceId, teamName: payload.groupAlias };
+      } catch (e) {
+        // A refused or unanswered join already says whether to keep the
+        // invitation; anything else is read as unknown and kept for a retry.
+        if (e instanceof InviteRedeemError) return e.outcome;
+        throw e;
+      } finally {
+        setStatus(null);
+      }
+    },
+    [mero],
   );
 
-  const accept = useCallback(async () => {
-    if (!pending || !mero) return;
-    const { captured, payload } = pending;
-    setBusy(true);
-    setError(null);
-    try {
-      const landed = await acceptInvite(mero.admin, payload, setStatus);
-      // Acked only once the join actually returned. Acking first would drop the
-      // invitation on a transient network failure, leaving nothing to retry with.
-      captured.resolve();
-      setPending(null);
-      onJoined({ namespaceId: landed.namespaceId, contextId: landed.contextId });
-    } catch (e) {
-      // NOT acked when a later try could work (no online member yet, a flaky
-      // node): the store exists precisely so the invitation survives to be
-      // retried on the next load, and the Join button stays up for it. A join
-      // the node refused for good IS acked, or the dead link replays every
-      // load; its reason stays on screen.
-      setError(e instanceof Error ? e.message : 'Could not accept the invitation.');
-      if (!keepsInvitation(e)) {
-        captured.resolve();
-        setPending(null);
-      }
-    } finally {
-      setBusy(false);
-      setStatus(null);
-    }
-  }, [pending, mero, onJoined]);
+  const reportJoined = useCallback(
+    (namespaceId: string) => {
+      const landed = landedRef.current;
+      landedRef.current = null;
+      onJoined(landed?.namespaceId === namespaceId ? landed : { namespaceId, contextId: null });
+    },
+    [onJoined],
+  );
 
-  const decline = useCallback(() => {
-    pending?.captured.resolve();
-    setPending(null);
-    setError(null);
-  }, [pending]);
-
-  if (!pending) {
-    // An undecodable invitation still deserves to be reported, even though there
-    // is nothing to accept.
-    return error ? (
-      <Wrap>
-        <Prompt $bad data-testid="invite-error">
-          <Text>{error}</Text>
-          <Ghost onClick={() => setError(null)} aria-label="Dismiss">
-            ✕
-          </Ghost>
-        </Prompt>
-      </Wrap>
-    ) : null;
-  }
-
-  const name = pending.payload.groupAlias ?? 'a mero-sheets workspace';
-  // A failure worth retrying keeps the prompt up, with its reason in place of
-  // the description; `invite-error` marks it either way.
-  const failed = !status && !!error;
+  const redemption = useInviteRedemption({
+    parse,
+    redeem,
+    onJoined: reportJoined,
+    enabled: enabled && !!mero,
+  });
+  const payload = redemption.parsed?.payload;
 
   return (
-    <Wrap>
-      <Prompt data-testid="invite-prompt">
-        <Text>
-          <strong>You have been invited to {name}</strong>
-          <Sub data-testid={failed ? 'invite-error' : undefined}>
-            {status ??
-              error ??
-              (pending.payload.projectName
-                ? `Joining opens “${pending.payload.projectName}” and every other spreadsheet in it.`
-                : 'Joining gives you every spreadsheet in this workspace.')}
-          </Sub>
-        </Text>
-        <Accept
-          onClick={() => void accept()}
-          disabled={busy || !mero}
-          data-testid="invite-accept"
-        >
-          {busy ? 'Joining…' : 'Join'}
-        </Accept>
-        <Ghost onClick={decline} disabled={busy} data-testid="invite-decline">
-          Not now
-        </Ghost>
-      </Prompt>
-    </Wrap>
+    <InvitationDialog
+      redemption={redemption}
+      noun="workspace"
+      appName={APP_DISPLAY_NAME}
+      status={status}
+      detail={
+        payload?.projectName
+          ? `Joining opens “${payload.projectName}” and every other spreadsheet in it.`
+          : 'Joining gives you every spreadsheet in this workspace.'
+      }
+    />
   );
 }
-
-const slideIn = keyframes`from{opacity:0;transform:translateY(-12px);}to{opacity:1;transform:none;}`;
-
-const Wrap = styled.div`
-  position: fixed; top: 0; left: 0; right: 0; z-index: 200;
-  display: flex; justify-content: center; padding: 12px 16px;
-  pointer-events: none;
-`;
-
-const Prompt = styled.div<{ $bad?: boolean }>`
-  pointer-events: auto;
-  display: flex; align-items: center; gap: 14px;
-  max-width: 720px; width: 100%;
-  padding: 12px 12px 12px 18px;
-  font-family: var(--glass-font);
-  background: var(--glass-surface-solid); border-radius: 20px;
-  border: 1px solid ${(p) => (p.$bad ? C.danger : 'var(--glass-edge)')};
-  box-shadow: var(--glass-shadow-float);
-  animation: ${slideIn} 0.2s cubic-bezier(0.22,1,0.36,1) both;
-`;
-
-const Text = styled.span`
-  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;
-  font-size: 13.5px; color: ${C.ink};
-  strong { font-weight: 700; }
-`;
-
-const Sub = styled.span`font-size: 12.5px; color: ${C.muted};`;
-
-const Accept = styled.button`
-  ${primaryPill}
-  flex-shrink: 0;
-`;
-
-const Ghost = styled.button`
-  ${secondaryPill}
-  flex-shrink: 0;
-`;

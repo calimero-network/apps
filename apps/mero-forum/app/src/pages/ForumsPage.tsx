@@ -47,7 +47,13 @@ function focusCreate() {
     el.focus();
   }
 }
-import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
+import {
+  JOIN_SYNC_MAX_MS,
+  JOIN_SYNC_POLL_MS,
+  JoinSyncBanner,
+  isNamespaceJustJoined,
+  useJoinSync,
+} from "@calimero-network/mero-react";
 
 /**
  * Forums inside one space (namespace). A forum is a SUBGROUP plus the context bound
@@ -137,6 +143,10 @@ export default function ForumsPage() {
     [],
   );
 
+  // Whether the last forum read failed, so the next good one clears its error
+  // and only its error — not one an action on this page has since reported.
+  const listFailed = useRef(false);
+
   const load = useCallback(
     async (showSpinner = true) => {
       if (!mero || !namespaceId) return;
@@ -155,9 +165,13 @@ export default function ForumsPage() {
           setTee({ id: namespaceId, mode }),
         );
         setForums(await listForums(mero.admin, namespaceId));
-        // A real answer, empty or not — that is what ends the sync gate.
+        // A real answer. Whether an EMPTY one ends the sync gate is decided
+        // there, not here: see `settled` below.
         setListedForNs(namespaceId);
+        if (listFailed.current) setError(null);
+        listFailed.current = false;
       } catch (e) {
+        listFailed.current = true;
         setError(e instanceof Error ? e.message : "Could not load forums.");
       } finally {
         setListing(false);
@@ -173,10 +187,37 @@ export default function ForumsPage() {
   // A space joined this session whose forums have not replicated yet. Without
   // this the branch below tells a brand-new member "No forums yet. Create one
   // above." about a space that may be full of them.
+  //
+  // So an EMPTY list settles only once the space is no longer just-joined:
+  // until then it is what a node that has not synced the space returns. The
+  // watchdog clears the flag, after which a space with no forums reads as empty.
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
     namespaceId: namespaceId || null,
-    settled: listedForNs === namespaceId,
+    settled:
+      listedForNs === namespaceId &&
+      (forums.length > 0 || !isNamespaceJustJoined(namespaceId || null)),
+    // Still empty: let the gate wait up to its ceiling, not the base window.
+    active: forums.length === 0,
   });
+
+  // Nothing else re-reads the list, so while the gate is up keep asking — and
+  // that covers a read that failed because the space had not synced yet. A
+  // forum can also be listed before its context arrives (the row says
+  // "Syncing to this node"), so keep asking while one is missing, for as long
+  // as the gate would wait at most.
+  const awaitingContext = forums.some((f) => !f.contextId);
+  useEffect(() => {
+    if (!isSyncing && !awaitingContext) return;
+    const since = Date.now();
+    const timer = setInterval(() => {
+      if (!isSyncing && Date.now() - since >= JOIN_SYNC_MAX_MS) {
+        clearInterval(timer);
+        return;
+      }
+      void load(false);
+    }, JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, awaitingContext, load]);
 
   const create = useCallback(() => {
     const forumName = name.trim();

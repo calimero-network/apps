@@ -5,7 +5,7 @@ import {
   namespaceIdOfInvite,
   WorldInvitePayload,
 } from "../src/net/inviteCodec";
-import { shouldRetain } from "@calimero-apps/invite";
+import { shouldRetain } from "@calimero-network/mero-react";
 import { acceptWorldInvite, createWorldInvite, WorldInviteError } from "../src/net/admin";
 import { getSession, resetSession, updateSession } from "../src/net/session";
 import { resetTransport } from "../src/net/transport";

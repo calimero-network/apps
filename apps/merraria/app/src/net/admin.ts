@@ -10,7 +10,7 @@ import {
   describeInviteFailure,
   redeemInvitation,
   type RedeemOutcome,
-} from "@calimero-apps/invite";
+} from "@calimero-network/mero-react";
 import { HTTPError, type SignedGroupOpenInvitation as MeroSignedInvitation } from "@calimero-network/mero-js";
 import { getSession, sessionKind, updateSession } from "./session";
 import { getTransport } from "./transport";
@@ -32,7 +32,7 @@ export interface ContextInfo {
 
 /**
  * An admin request that failed, carrying the HTTP status (`0` when the node
- * was never reached) so `@calimero-apps/invite` can tell a refused invitation
+ * was never reached) so mero-js `redeemInvitation` can tell a refused invitation
  * from a node that is only busy.
  */
 export class AdminError extends Error {

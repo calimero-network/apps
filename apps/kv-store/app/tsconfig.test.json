@@ -13,7 +13,8 @@
     "src/test",
     "src/generated",
     "src/useJoinFromInvitation.ts",
-    "src/JoinCard.tsx",
+    "src/KvPanel.tsx",
+    "src/useKvStore.ts",
     "src/ContextPicker.tsx",
     "src/utils"
   ]

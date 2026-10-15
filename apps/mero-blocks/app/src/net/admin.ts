@@ -8,7 +8,7 @@ import {
   describeInviteFailure,
   redeemInvitation,
   type RedeemOutcome,
-} from "@calimero-apps/invite";
+} from "@calimero-network/mero-react";
 import { getSession, updateSession } from "./session";
 import {
   decodeInvite,

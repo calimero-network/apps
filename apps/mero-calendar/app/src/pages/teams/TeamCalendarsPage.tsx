@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useJoinSync, useMero } from "@calimero-network/mero-react";
 import {
   listContextsForApplication,
   listGroupContexts,
@@ -58,6 +58,11 @@ export default function TeamCalendarsPage() {
   const [names, setNames] = useState<Record<string, string>>({});
   const [membersOpen, setMembersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  /**
+   * The team whose calendar list has come back from the node, empty or not.
+   * Not `!loading`: a failed load also ends loading, and that is no answer.
+   */
+  const [listedFor, setListedFor] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -144,6 +149,7 @@ export default function TeamCalendarsPage() {
     setCalendars(visible);
     setNames(found);
     setLoading(false);
+    setListedFor(teamId);
 
     // ── Backfill ───────────────────────────────────────────────────────────
     // Calendars created before names were replicated have one only in the
@@ -164,6 +170,10 @@ export default function TeamCalendarsPage() {
       }
     }
   }, [ensureAppId, isDelegated, requireAdmin, teamGroupIds, teamId]);
+
+  // A team just joined from an invitation link holds the invitation dialog on
+  // "Syncing…" until this page has read its calendars once.
+  useJoinSync({ namespaceId: teamId || null, settled: listedFor === teamId });
 
   /** Best label for a calendar: replicated name → cached name → id stub. */
   const nameOf = useCallback(

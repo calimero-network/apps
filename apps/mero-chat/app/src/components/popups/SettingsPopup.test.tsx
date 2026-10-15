@@ -14,7 +14,8 @@ const {
   mockNavigate: vi.fn(),
 }));
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ logout: mockLogout }),
   getNodeUrl: vi.fn(),
   getContextId: vi.fn(),

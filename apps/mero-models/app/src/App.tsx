@@ -1,4 +1,4 @@
-import { Suspense, lazy, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useState, type ReactNode } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -7,8 +7,11 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { ConnectButton, useMero } from "@calimero-network/mero-react";
-import { JoinCard } from "./JoinCard";
+import {
+  ConnectButton,
+  InvitationDialog,
+  useMero,
+} from "@calimero-network/mero-react";
 import { ScenePicker } from "./ScenePicker";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
 import LandingPage from "./pages/landing/LandingPage";
@@ -57,10 +60,18 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** A scene opened in this page, ahead of the one the provider read from storage. */
+interface OpenedScene {
+  contextId: string;
+  namespaceId: string;
+}
+
 /** Connect, pick a scene, model. Three states — exactly the three things that can be missing. */
-function StudioPage() {
-  const { isAuthenticated, isLoading, applicationId, contextId } = useMero();
+function StudioPage({ opened }: { opened: OpenedScene | null }) {
+  const { isAuthenticated, isLoading, applicationId, contextId: stored } =
+    useMero();
   const navigate = useNavigate();
+  const contextId = opened?.contextId ?? stored;
 
   if (isLoading) {
     return (
@@ -115,27 +126,48 @@ function StudioPage() {
         </div>
       }
     >
-      <Studio contextId={contextId} />
+      {/* Keyed, so a scene opened in place starts from nothing of the last one's. */}
+      <Studio
+        key={contextId}
+        contextId={contextId}
+        namespaceId={opened?.contextId === contextId ? opened.namespaceId : null}
+      />
     </Suspense>
   );
 }
 
 /**
- * The invitation prompt, above every route.
+ * The invitation prompt, above every route: mero-react's `InvitationDialog`.
  *
  * Mounted once, outside `<Routes>`, so navigation never unmounts it and a link
  * opened on any page — the landing page, the picker, an open scene — reaches
  * it. Shown once there is a session to join with; until then the captured
- * invitation waits. Joining lands in the studio, on the joined scene.
+ * invitation waits. Joining opens the joined scene in the studio, and the
+ * dialog holds "Syncing…" until the studio has read it (`useJoinSync` there).
  */
-function InvitationPrompt() {
-  const { isAuthenticated } = useMero();
-  const join = useJoinFromInvitation({ landingPath: "/studio" });
-  if (!isAuthenticated || join.state.stage === "idle") return null;
+function InvitationPrompt({
+  onOpen,
+}: {
+  onOpen: (contextId: string, namespaceId: string) => void;
+}) {
+  const navigate = useNavigate();
+  const join = useJoinFromInvitation({
+    landingPath: "/studio",
+    onOpen: (contextId, namespaceId) => {
+      onOpen(contextId, namespaceId);
+      navigate("/studio");
+    },
+  });
   return (
-    <div className="join-float">
-      <JoinCard join={join} />
-    </div>
+    <InvitationDialog
+      redemption={join}
+      noun="scene"
+      appName="Mero Models"
+      // The grant is the namespace, not just the scene the link names: one
+      // invitation opens every scene in it, and the person accepting should
+      // know that before they click.
+      detail="Joining makes this node a member of the studio this scene belongs to, so every scene in it syncs here from the other members."
+    />
   );
 }
 
@@ -165,9 +197,15 @@ function TopBar({ onHome }: { onHome: () => void }) {
 }
 
 export function App() {
+  const [opened, setOpened] = useState<OpenedScene | null>(null);
+  const open = useCallback(
+    (contextId: string, namespaceId: string) =>
+      setOpened({ contextId, namespaceId }),
+    [],
+  );
   return (
     <BrowserRouter basename="/">
-      <InvitationPrompt />
+      <InvitationPrompt onOpen={open} />
       <Routes>
         {LANDING_PATHS.map((path) => (
           <Route
@@ -186,7 +224,7 @@ export function App() {
             }
           />
         ))}
-        <Route path="/studio" element={<StudioPage />} />
+        <Route path="/studio" element={<StudioPage opened={opened} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

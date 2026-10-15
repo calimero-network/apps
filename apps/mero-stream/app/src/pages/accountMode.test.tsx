@@ -9,7 +9,6 @@ import {
   type Mock,
 } from "vitest";
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -17,7 +16,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import type { CapturedInvitation } from "@calimero-apps/invite";
 import { ToastProvider } from "../contexts/ToastContext";
 import { clearHostingState } from "../lib/hosting";
 import { clearApplicationIdCache } from "../hooks/useApplicationId";
@@ -25,6 +23,9 @@ import { getExecutorPublicKey, getContextId } from "../lib/session";
 import StreamsPage from "./StreamsPage";
 import RoomsPage from "./RoomsPage";
 import InvitationPrompt from "../components/InvitationPrompt";
+
+const { resetInvitationCaptureForTests } =
+  await import("@calimero-network/mero-react");
 
 // ── The transport switch, as a test ──────────────────────────────────────────
 //
@@ -95,23 +96,13 @@ const rpcExecute = fn(() => []);
 const isDisabled = (el: HTMLElement) => (el as HTMLButtonElement).disabled;
 const navigate = vi.fn();
 
-/** The app-level prompt's subscription, so a test can hand it an opened link. */
-const captured = vi.hoisted(() => ({
-  listener: null as null | ((c: CapturedInvitation) => void),
-}));
-vi.mock("@calimero-apps/invite", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@calimero-apps/invite")>()),
-  onInvitation: (listener: (c: CapturedInvitation) => void) => {
-    captured.listener = listener;
-    return () => {};
-  },
-}));
 vi.mock("react-router-dom", async (importOriginal) => {
   const mod = await importOriginal<typeof import("react-router-dom")>();
   return { ...mod, useNavigate: () => navigate };
 });
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     isAuthenticated: true,
     isDelegated: true,
@@ -153,6 +144,8 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  resetInvitationCaptureForTests();
+  window.history.replaceState(null, "", "/");
   clearHostingState();
   clearApplicationIdCache();
   sessionStorage.clear();
@@ -244,20 +237,14 @@ describe("StreamsPage on an account session", () => {
       kind: "namespace",
       groupId: "ns-joined",
     });
+    // Opened as the links page would: the query on this app's URL.
+    window.history.replaceState(null, "", `/?invitation=${code}`);
     render(
       <MemoryRouter initialEntries={["/streams"]}>
         <InvitationPrompt />
       </MemoryRouter>,
     );
-    act(() =>
-      captured.listener?.({
-        token: code,
-        params: { invitation: code },
-        resolve: () => {},
-        autoJoin: false,
-      }),
-    );
-    fireEvent.click(screen.getByTestId("invite-accept"));
+    fireEvent.click(await screen.findByTestId("invite-accept"));
 
     await waitFor(() =>
       expect(navigate).toHaveBeenCalledWith("/streams/ns-joined"),

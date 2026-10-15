@@ -17,7 +17,8 @@ const { mockGetNodeIdentity } = vi.hoisted(() => ({
   mockGetNodeIdentity: vi.fn(),
 }));
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getContextIdentity: () => "",
 }));
 // The session admin is the only thing identity reads. No node URL, no token:

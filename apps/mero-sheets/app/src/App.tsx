@@ -70,8 +70,7 @@ function AppInvitations() {
   // Nothing to join into without a node session, and prompting before login
   // would ask a question the user cannot answer yet. The intent is durable, so
   // it is still here after they sign in.
-  if (isLoading || !isAuthenticated) return null;
-  return <InvitationPrompt onJoined={onJoined} />;
+  return <InvitationPrompt onJoined={onJoined} enabled={!isLoading && isAuthenticated} />;
 }
 
 export default function App() {

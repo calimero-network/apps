@@ -1,6 +1,7 @@
-// This app's wiring into @calimero-apps/invite: the link it shares parses, the
-// prompt asks before joining, and accepting joins the namespace and then the
-// context the link names, which becomes the active one.
+// This app's wiring into mero-react's invitation dialog: the link it shares
+// parses, the dialog asks before joining, and accepting joins the namespace and
+// then the context the link names, which becomes the active one. The dialog
+// holds "Syncing…" until that context's state has answered a read.
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +12,7 @@ const joinContextById = vi.fn();
 const getContextIdentities = vi.fn();
 const setContextId = vi.fn();
 const setContextIdentity = vi.fn();
+const rpcRaw = vi.fn();
 
 vi.mock("../api/adminApi", () => ({
   joinNamespace: (...a: unknown[]) => joinNamespace(...a),
@@ -18,14 +20,16 @@ vi.mock("../api/adminApi", () => ({
   joinContextById: (...a: unknown[]) => joinContextById(...a),
   getContextIdentities: (...a: unknown[]) => getContextIdentities(...a),
 }));
+vi.mock("../api/rpc", () => ({
+  rpcRaw: (...a: unknown[]) => rpcRaw(...a),
+}));
 vi.mock("../lib/mero", () => ({
   setContextId: (...a: unknown[]) => setContextId(...a),
   setContextIdentity: (...a: unknown[]) => setContextIdentity(...a),
 }));
 
-const { primeInvitationCapture, resetInvitationCaptureForTests } = await import(
-  "@calimero-apps/invite"
-);
+const { peekInvitation, primeInvitationCapture, resetInvitationCaptureForTests } =
+  await import("@calimero-network/mero-react");
 const { APP_SLUG, inviteLink } = await import("../lib/invite");
 const { InvitationPrompt } = await import("./InvitationPrompt");
 
@@ -45,6 +49,7 @@ describe("InvitationPrompt", () => {
   beforeEach(() => {
     resetInvitationCaptureForTests();
     localStorage.clear();
+    sessionStorage.clear();
     for (const m of [
       joinNamespace,
       listNamespaces,
@@ -52,6 +57,7 @@ describe("InvitationPrompt", () => {
       getContextIdentities,
       setContextId,
       setContextIdentity,
+      rpcRaw,
     ]) {
       m.mockReset();
     }
@@ -67,7 +73,10 @@ describe("InvitationPrompt", () => {
       inviteLink({ namespaceId: NS, invitation: INVITATION, contextId: CTX }),
     );
     render(<InvitationPrompt onContextJoined={vi.fn()} />);
-    expect(await screen.findByTestId("invite-accept")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("dialog", { name: "Join this namespace?" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("invite-accept")).toBeInTheDocument();
     expect(screen.getByTestId("invite-decline")).toBeInTheDocument();
     expect(joinNamespace).not.toHaveBeenCalled();
     expect(joinContextById).not.toHaveBeenCalled();
@@ -75,8 +84,12 @@ describe("InvitationPrompt", () => {
     expect(window.location.search).toBe("");
   });
 
-  it("on accept joins the namespace, then the context, and makes it active", async () => {
+  it("on accept joins the namespace, then the context, makes it active, and waits for its state", async () => {
     joinNamespace.mockResolvedValue(undefined);
+    // Not readable at first: the context's state has not reached this node.
+    rpcRaw
+      .mockResolvedValueOnce({ error: { code: -1, message: "uninitialized" } })
+      .mockResolvedValue({ result: { output: 0 } });
     listNamespaces.mockResolvedValue([{ namespaceId: NS }]);
     joinContextById.mockResolvedValue(undefined);
     getContextIdentities.mockResolvedValue(["ef".repeat(32)]);
@@ -93,10 +106,54 @@ describe("InvitationPrompt", () => {
     expect(joinContextById).toHaveBeenCalledWith(CTX);
     expect(setContextId).toHaveBeenCalledWith(CTX);
     expect(setContextIdentity).toHaveBeenCalledWith("ef".repeat(32));
-    expect(screen.getByTestId("invite-context")).toHaveAttribute(
+    expect(peekInvitation()).toBeNull();
+    expect(screen.getByTestId("invite-prompt")).toHaveAttribute(
       "data-stage",
-      "joined",
+      "syncing",
     );
+
+    // Once a read of the context answers, empty or not, the join is done.
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("invite-prompt")).toHaveAttribute(
+          "data-stage",
+          "ready",
+        ),
+      { timeout: 4_000 },
+    );
+    expect(rpcRaw).toHaveBeenCalledWith("len", {}, CTX);
+  });
+
+  it("keeps the invitation when the context cannot be joined, and retries it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      joinNamespace.mockResolvedValue(undefined);
+      listNamespaces.mockResolvedValue([{ namespaceId: NS }]);
+      joinContextById.mockRejectedValue(new Error("not a member yet"));
+      rpcRaw.mockResolvedValue({ result: { output: 0 } });
+      getContextIdentities.mockResolvedValue(["ef".repeat(32)]);
+      const onContextJoined = vi.fn();
+      open(
+        inviteLink({ namespaceId: NS, invitation: INVITATION, contextId: CTX }),
+      );
+      render(<InvitationPrompt onContextJoined={onContextJoined} />);
+
+      fireEvent.click(await screen.findByTestId("invite-accept"));
+      await vi.advanceTimersByTimeAsync(100_000);
+
+      expect(await screen.findByTestId("invite-error")).toHaveTextContent(
+        /Joined the namespace, but not context .*not a member yet/,
+      );
+      expect(peekInvitation()).not.toBeNull();
+      expect(onContextJoined).not.toHaveBeenCalled();
+
+      joinContextById.mockResolvedValue(undefined);
+      fireEvent.click(screen.getByTestId("invite-retry"));
+      await waitFor(() => expect(onContextJoined).toHaveBeenCalledWith(CTX));
+      expect(peekInvitation()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("offers a desktop deep link for this app, and drops one for another app", async () => {

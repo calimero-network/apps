@@ -11,8 +11,10 @@ import { defineConfig } from 'vitest/config';
 // request body, so pretending otherwise would be worse than the gap.
 export default defineConfig({
   test: {
+    // `node` by default; a page test opts into `jsdom` with a
+    // `// @vitest-environment jsdom` comment of its own.
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     server: {
       deps: {
         // `@calimero-network/mero-platform@0.1.0` ships an ESM entry that does

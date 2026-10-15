@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setStoredGroupAlias } from "../../constants/config";
 import NamespaceEntryPopup from "./NamespaceEntryPopup";
@@ -11,6 +11,18 @@ import NamespaceEntryPopup from "./NamespaceEntryPopup";
 const h = vi.hoisted(() => ({
   listGroups: vi.fn(),
   resolveCurrentMemberIdentity: vi.fn(),
+  createGroup: vi.fn(),
+  createChannel: vi.fn(),
+}));
+
+vi.mock("../../utils/installedApps", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveInstalledAppId: (id: string) => Promise.resolve(id),
+}));
+
+vi.mock("../../utils/createChannel", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  createChannel: h.createChannel,
 }));
 
 vi.mock("@calimero-network/mero-ui", () => ({
@@ -32,7 +44,8 @@ vi.mock("@calimero-network/mero-ui", () => ({
   ),
 }));
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getNodeUrl: () => "http://localhost:2428",
 }));
 
@@ -53,6 +66,8 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
     listGroups = h.listGroups;
     resolveCurrentMemberIdentity = h.resolveCurrentMemberIdentity;
+    createGroup = h.createGroup;
+    setDefaultCapabilities = () => Promise.resolve({ data: null, error: null });
     setGroupMetadata = () => Promise.resolve({ data: null, error: null });
     setMemberMetadata = () => Promise.resolve({ data: null, error: null });
     syncGroup = () => Promise.resolve({ data: null, error: null });
@@ -69,6 +84,12 @@ beforeEach(() => {
   h.resolveCurrentMemberIdentity
     .mockReset()
     .mockResolvedValue({ data: { memberIdentity: "me", members: [] } });
+  h.createGroup
+    .mockReset()
+    .mockResolvedValue({ data: { groupId: "ns-new" }, error: null });
+  h.createChannel
+    .mockReset()
+    .mockResolvedValue({ contextId: "ctx-general", memberKey: "key" });
 });
 
 function open() {
@@ -106,5 +127,21 @@ describe("NamespaceEntryPopup", () => {
     expect(
       screen.queryByText("Join existing workspace"),
     ).not.toBeInTheDocument();
+  });
+
+  // Every workspace starts with #general, so someone who joins from an
+  // invitation lands in a channel instead of an empty workspace, and the join
+  // has something to wait for that tells "synced" from "not arrived yet".
+  it("creates #general, public, in a new workspace", async () => {
+    h.listGroups.mockResolvedValue({ data: [], error: null });
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "Create workspace" }));
+    fireEvent.change(screen.getByPlaceholderText("e.g. My Team"), {
+      target: { value: "Design team" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(h.createChannel).toHaveBeenCalledWith("ns-new", "general", true),
+    );
   });
 });

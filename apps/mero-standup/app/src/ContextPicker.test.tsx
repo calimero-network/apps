@@ -12,7 +12,8 @@ let namespaceError: Error | null = null;
 const createContext = vi.fn();
 const createNamespace = vi.fn();
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   setContextId: vi.fn(),
   useMero: () => ({ mero: null }),
   useApplicationContexts: () => ({

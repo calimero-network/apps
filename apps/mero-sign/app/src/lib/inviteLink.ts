@@ -26,7 +26,7 @@
 // `calimero://` link, no raw code, and nowhere to paste either.
 //
 // Pure functions only — no DOM, no session. The capture side is
-// `primeInvitationCapture` in `@calimero-apps/invite`, primed in `main.tsx`.
+// `primeInvitationCapture` in `@calimero-network/mero-react`, primed in `main.tsx`.
 
 import { createLink } from '@calimero-network/mero-platform';
 import { PACKAGE_NAME } from '../constants/config';

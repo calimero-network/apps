@@ -315,7 +315,7 @@ test.describe("world picker (web auth, no context yet)", () => {
     expect(state.methods).toContain("world_meta");
   });
 
-  test("an opened invite link asks first, then joins the friend's world (prompt locks while joining)", async ({ page }) => {
+  test("an opened invite link asks first, joins the friend's world, and syncs until it has loaded", async ({ page }) => {
     await seedAuthOnly(page);
     const state = freshState();
     await mockNode(page, state);
@@ -345,16 +345,20 @@ test.describe("world picker (web auth, no context yet)", () => {
 
     // how the links page opens the app
     await page.goto(`/?invitation=${code}`);
-    await expect(page.getByTestId("invite-status")).toContainText("You've been invited to e2e world");
+    const prompt = page.getByTestId("invite-prompt");
+    await expect(page.getByRole("dialog", { name: "Join “e2e world”?" })).toBeVisible();
     // nothing joins until the player says so
     await page.waitForTimeout(500);
     expect(joined).toEqual([]);
     await page.getByTestId("invite-accept").click();
-    // while the join is in flight the prompt is locked: no re-click, no dismiss
-    await expect(page.getByTestId("invite-accept")).toBeDisabled();
-    await expect(page.getByTestId("invite-decline")).toBeDisabled();
+    // while the join is in flight the dialog is locked: no re-click, no dismiss
+    await expect(prompt).toHaveAttribute("data-stage", "joining");
+    await expect(page.getByTestId("invite-accept")).toHaveCount(0);
+    await expect(page.getByTestId("invite-decline")).toHaveCount(0);
     await page.waitForFunction(() => "__mb" in window);
     await expect(page.getByTestId("debug")).toContainText("online");
+    // the world has loaded from the node, so the dialog lets go by itself
+    await expect(prompt).toBeHidden({ timeout: 10_000 });
     expect(joined).toEqual([
       "/admin-api/namespaces/abcd/join",
       "/admin-api/groups/grp-e2e/join-via-inheritance",

@@ -7,12 +7,12 @@ import { BrowserRouter } from "react-router-dom";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
+  primeInvitationCapture,
   setApplicationId,
 } from "@calimero-network/mero-react";
 import "@calimero-network/mero-ui/styles.css";
 
 import App from "./App";
-import { primeInvitationCapture } from "@calimero-apps/invite";
 import { APP_SLUG } from "./utils/invitation";
 import "./styles/theme.css";
 import "./index.module.scss";

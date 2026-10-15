@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  JOIN_SYNC_POLL_MS,
+  useContextGroup,
+  useJoinSync,
+} from "@calimero-network/mero-react";
 import { useKvStore } from "./useKvStore";
 
 type Result = { ok: unknown } | { err: string } | null;
@@ -47,11 +52,18 @@ export function KvPanel({ contextId }: { contextId: string }) {
   // other call, so it cannot stay armed by accident.
   const [confirmClear, setConfirmClear] = useState(false);
 
+  // Whether a read of the entries has come back at all, empty or not. That is
+  // the answer the invitation dialog waits on after a join: an empty map is a
+  // settled one, and waiting for a non-empty read would hold a genuinely empty
+  // context on "Syncing…" forever.
+  const [loaded, setLoaded] = useState(false);
+
   const refresh = useCallback(async () => {
     if (!kv) return;
     try {
       setEntries(await kv.entries());
       setListErr(null);
+      setLoaded(true);
     } catch (e) {
       setListErr(e instanceof Error ? e.message : String(e));
     }
@@ -60,6 +72,21 @@ export function KvPanel({ contextId }: { contextId: string }) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // The joined namespace's flag is what the dialog watches, and these contexts
+  // live directly in their namespace (see `ContextPicker`), so the context's
+  // group is that namespace.
+  const { groupId: namespaceId } = useContextGroup(contextId);
+  const sync = useJoinSync({ namespaceId, settled: loaded });
+
+  // Right after a join the node may not hold the context's state yet, and the
+  // read fails rather than coming back empty. Keep reading while that lasts;
+  // the first read that answers ends the wait.
+  useEffect(() => {
+    if (!sync.isSyncing || loaded) return;
+    const timer = setInterval(() => void refresh(), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [sync.isSyncing, loaded, refresh]);
 
   // Every call refreshes the listing afterwards. A KV store where the table
   // disagrees with the contract is worse than one that reloads too often.
@@ -217,7 +244,9 @@ export function KvPanel({ contextId }: { contextId: string }) {
         <h2>Entries</h2>
         {listErr && <pre className="err">{listErr}</pre>}
         {rows.length === 0 ? (
-          <p className="empty">Empty.</p>
+          <p className="empty">
+            {sync.isSyncing ? "Syncing from the other members…" : "Empty."}
+          </p>
         ) : (
           <table>
             <thead>

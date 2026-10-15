@@ -1,19 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
-import { redeemFailureMessage, redeemInvite } from "../lib/groups";
-import { decodeInvite, type AudienceInvitePayload } from "../lib/inviteCodec";
 import {
-  onInvitation,
-  shouldRetain,
-  type CapturedInvitation,
-} from "@calimero-apps/invite";
+  InvitationDialog,
+  useInviteRedemption,
+  useMero,
+  type ParsedInvitation,
+  type RedeemOutcome,
+} from "@calimero-network/mero-react";
+import { invitedNamespaceOf, redeemInvite } from "../lib/groups";
+import { decodeInvite, type AudienceInvitePayload } from "../lib/inviteCodec";
 import { setActiveAudience, setAudienceName } from "../lib/session";
-import styles from "./InvitationPrompt.module.css";
-import { AlertIcon, LayersIcon, XIcon } from "./icons";
 
 /**
- * "You have been invited to X" — for an invitation that arrived as a link.
+ * "Join X?" for an invitation that arrived as a link: mero-react's
+ * `InvitationDialog`, which asks, joins, and stays up on "Syncing…" until the
+ * joined company's data has reached this node.
  *
  * ── Why this is mounted at the APP level, not on a page ──────────────────────
  *
@@ -31,162 +32,95 @@ import { AlertIcon, LayersIcon, XIcon } from "./icons";
  * forwarded link, or a background tab that refreshes, join silently. Decoding is
  * pure and local, so the scope can be shown first and the join needs a click.
  *
- * ── Why both buttons ack ─────────────────────────────────────────────────────
- *
- * The platform store keeps an intent until the app says it is handled. "Not now"
- * IS handled — without the ack the same prompt returns on every load, which reads
- * as the app nagging rather than as durability.
+ * The join is this app's own (`redeemInvite`): an audience invitation also
+ * enters the audience's context. The syncing stage ends when the page it lands
+ * on has read the company: AudiencesPage's audience list, or UpdatesPage's
+ * feed for an audience invitation, each through `useJoinSync`.
  */
+interface UpdatesInvitation extends ParsedInvitation {
+  payload: AudienceInvitePayload;
+}
+
 export default function InvitationPrompt() {
   // The session-aware admin: on an account the raw client's join route is the
   // relay's node route and answers 403. `redeemInvite` takes only the admin.
   const { admin } = useMero();
   const navigate = useNavigate();
-  const [pending, setPending] = useState<{
-    captured: CapturedInvitation;
-    payload: AudienceInvitePayload;
-  } | null>(null);
-  const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(
-    () =>
-      onInvitation((captured) => {
-        const payload = decodeInvite(captured.token);
-        if (!payload) {
-          setError("That invitation could not be read. Ask for a new link.");
-          // Acked anyway: a payload that will not decode now will not decode
-          // later either, and leaving it unacked replays the error every load.
-          captured.resolve();
-          return;
+  const parse = useCallback((token: string): UpdatesInvitation | null => {
+    const payload = decodeInvite(token);
+    if (!payload) return null;
+    return {
+      namespaceId: invitedNamespaceOf(payload),
+      invitation: payload.invitation,
+      teamName: payload.audienceName ?? payload.groupAlias,
+      payload,
+    };
+  }, []);
+
+  const redeem = useCallback(
+    async ({
+      payload,
+      namespaceId,
+    }: UpdatesInvitation): Promise<RedeemOutcome> => {
+      if (!admin) {
+        return {
+          status: "failed",
+          namespaceId: null,
+          message: "No node connection yet. Reconnect and try again.",
+          reason: "node-unreachable",
+          retryable: true,
+        };
+      }
+      try {
+        const { outcome, landed } = await redeemInvite(
+          admin,
+          payload,
+          setStatus,
+        );
+        if (!landed) return outcome;
+        let joinedId = namespaceId;
+        if (landed.kind === "audience") {
+          if (landed.audienceName)
+            setAudienceName(landed.contextId, landed.audienceName);
+          // The audience's company becomes the active one, which is what
+          // UpdatesPage's `useJoinSync` watches.
+          joinedId = landed.namespaceId ?? namespaceId;
+          setActiveAudience(landed.contextId, landed.identity, joinedId);
+          navigate("/a");
+        } else if (landed.kind === "namespace") {
+          joinedId = landed.namespaceId;
+          navigate(`/companies/${landed.namespaceId}`);
+        } else {
+          navigate("/companies");
         }
-        setPending({ captured, payload });
-      }),
-    [],
+        return {
+          status: "joined",
+          namespaceId: joinedId,
+          teamName: payload.audienceName ?? payload.groupAlias,
+        };
+      } finally {
+        setStatus(null);
+      }
+    },
+    [admin, navigate],
   );
 
-  const accept = useCallback(async () => {
-    if (!pending || !admin) return;
-    const { captured, payload } = pending;
-    setBusy(true);
-    setError(null);
-    try {
-      const { outcome, landed } = await redeemInvite(admin, payload, setStatus);
-      if (!landed) {
-        setError(redeemFailureMessage(outcome));
-        // A failure that could pass (no online member yet, a flaky node) is NOT
-        // acked: the store exists precisely so the invitation survives to be
-        // retried on the next load. One that cannot is, or it replays every load.
-        if (!shouldRetain(outcome)) {
-          captured.resolve();
-          setPending(null);
-        }
-        return;
-      }
-      // Acked only once the redeem actually returned. Acking first would drop the
-      // invitation on a transient network failure, leaving nothing to retry with.
-      captured.resolve();
-      setPending(null);
-      if (landed.kind === "audience") {
-        if (landed.audienceName)
-          setAudienceName(landed.contextId, landed.audienceName);
-        setActiveAudience(
-          landed.contextId,
-          landed.identity,
-          landed.namespaceId,
-        );
-        navigate("/a");
-      } else if (landed.kind === "namespace") {
-        navigate(`/companies/${landed.namespaceId}`);
-      } else {
-        navigate("/companies");
-      }
-    } catch (e) {
-      // NOT acked: a failure here is usually transient (no online member yet, a
-      // flaky node), and the store exists precisely so the invitation survives to
-      // be retried on the next load.
-      setError(e instanceof Error ? e.message : "Could not accept the invite.");
-    } finally {
-      setBusy(false);
-      setStatus(null);
-    }
-  }, [pending, admin, navigate]);
-
-  const decline = useCallback(() => {
-    pending?.captured.resolve();
-    setPending(null);
-    setError(null);
-  }, [pending]);
-
-  if (!pending) {
-    // An undecodable invitation still deserves to be reported, even though there
-    // is nothing to accept.
-    return error ? (
-      <div className={styles.wrap}>
-        <div
-          className={`${styles.prompt} ${styles.promptError}`}
-          data-testid="invite-error"
-        >
-          <span className={`${styles.tile} ${styles.tileError}`} aria-hidden>
-            <AlertIcon size={18} />
-          </span>
-          <span className={styles.text}>{error}</span>
-          <button
-            type="button"
-            className={styles.iconClose}
-            onClick={() => setError(null)}
-            aria-label="Dismiss"
-          >
-            <XIcon size={16} />
-          </button>
-        </div>
-      </div>
-    ) : null;
-  }
-
-  const name =
-    pending.payload.audienceName ?? pending.payload.groupAlias ?? "a space";
+  const redemption = useInviteRedemption({ parse, redeem, enabled: !!admin });
+  const payload = redemption.parsed?.payload;
 
   return (
-    <div className={styles.wrap}>
-      <div className={styles.prompt} data-testid="invite-prompt">
-        <span className={styles.tile} aria-hidden>
-          <LayersIcon size={18} />
-        </span>
-        <span className={styles.text}>
-          <span className={styles.eyebrow}>Invitation</span>
-          <strong>You have been invited to {name}</strong>
-          <span className={styles.sub}>
-            {status ??
-              error ??
-              (pending.payload.audienceName
-                ? "Joining takes you straight into that audience."
-                : "Joining gives you access to the space and every audience in it.")}
-          </span>
-        </span>
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.ghost}
-            onClick={decline}
-            disabled={busy}
-            data-testid="invite-decline"
-          >
-            Not now
-          </button>
-          <button
-            type="button"
-            className={styles.accept}
-            onClick={() => void accept()}
-            disabled={busy || !admin}
-            data-testid="invite-accept"
-          >
-            {busy && <span className={styles.spinner} aria-hidden />}
-            {busy ? "Joining…" : "Join"}
-          </button>
-        </div>
-      </div>
-    </div>
+    <InvitationDialog
+      redemption={redemption}
+      noun="company"
+      appName="Mero Updates"
+      status={status}
+      detail={
+        payload?.audienceName
+          ? "Joining takes you straight into that audience."
+          : "Joining gives you access to the space and every audience in it."
+      }
+    />
   );
 }

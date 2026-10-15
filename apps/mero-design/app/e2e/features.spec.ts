@@ -453,8 +453,28 @@ test.describe("TeamsPage – Joining by invitation", () => {
     });
     await page.goto(`/?invitation=${token}`);
     await expect(page.getByTestId("invite-accept")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/invited to .Design./)).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Join “Design”?" })).toBeVisible();
+    await expect(page.getByTestId("invite-prompt")).toHaveAttribute(
+      "data-stage",
+      "awaiting-confirmation",
+    );
     expect(joinRequests, "nothing joins before Join is clicked").toBe(0);
+  });
+
+  test("“Not now” puts the invitation away without joining", async ({ page }) => {
+    const groupId = Array.from({ length: 32 }, (_, i) => i);
+    const token = invitationToken({
+      invitation: { invitation: { group_id: groupId }, inviterSignature: "sig" },
+      __teamName: "Design",
+    });
+    await page.goto(`/?invitation=${token}`);
+    await page.getByTestId("invite-decline").click({ timeout: 10_000 });
+    await expect(page.getByTestId("invite-prompt")).toHaveCount(0);
+    // Acked: a reload does not ask again.
+    await page.reload();
+    await expect(page.getByText("open an invitation link someone sent you")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId("invite-prompt")).toHaveCount(0);
+    expect(joinRequests, "declining joins nothing").toBe(0);
   });
 });
 

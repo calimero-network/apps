@@ -1,4 +1,4 @@
-import type { Browser, Page } from '@playwright/test';
+import { expect, type Browser, type Page } from '@playwright/test';
 import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -132,7 +132,7 @@ export async function enterCell(page: Page, row: number, col: number, value: str
 /**
  * Invites `guest` (logged in to `node`) into the workbook open in `owner`:
  * the owner copies an invitation link, the guest opens it (the links page
- * appends its query to the app's URL), accepts the prompt and names
+ * appends its query to the app's URL), accepts the invitation dialog and names
  * themselves, and the call returns once the guest sees the grid.
  */
 export async function shareWorkbook(
@@ -147,6 +147,9 @@ export async function shareWorkbook(
   await loginViaHash(guest, node);
   await guest.goto(`/${new URL(link).search}`);
   await guest.getByTestId('invite-accept').click({ timeout: 60_000 });
+  // The invitation dialog covers the page until the workspace's spreadsheets
+  // have reached the guest's node, then closes by itself.
+  await expect(guest.getByTestId('invite-prompt')).toBeHidden({ timeout: 90_000 });
   await chooseNickname(guest, nickname);
   await cell(guest, 0, 0).waitFor({ timeout: 90_000 });
 }

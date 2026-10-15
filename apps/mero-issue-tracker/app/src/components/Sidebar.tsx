@@ -13,7 +13,7 @@ import {
   IconAllIssues, IconMyIssues, IconBoard, IconMembers, IconLogout, IconPlus, IconRepo,
 } from './icons';
 import { useSignOut } from '../auth/signOut';
-import { JoinSyncBanner } from '@calimero-apps/join-sync';
+import { JoinSyncBanner } from '@calimero-network/mero-react';
 
 export interface SidebarProps {
   totalIssues: number;

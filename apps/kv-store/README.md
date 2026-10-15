@@ -65,8 +65,10 @@ namespace and context ids.
 InviteCard   createNamespaceInvitation → payload → deflate → base58 → createLink
              → https://links.calimero.network/com.calimero.kv-store/join?invitation=…
 
-main.tsx     primeInvitationCapture() (@calimero-apps/invite), BEFORE createRoot
-JoinCard     the prompt: names what the link joins, Join / Not now
+main.tsx     primeInvitationCapture() (mero-react), BEFORE createRoot
+App          mero-react's <InvitationDialog>: names what the link joins, Join / Not now,
+             then joins, opens the context in place and shows "Syncing…"
+KvPanel      useJoinSync: the first read of the entries (empty included) ends "Syncing…"
 ```
 
 Four things here are deliberate, and each exists because the naive version

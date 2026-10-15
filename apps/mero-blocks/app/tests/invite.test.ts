@@ -6,7 +6,7 @@ import {
   WorldInvitePayload,
 } from "../src/net/inviteCodec";
 import { APP_SLUG, inviteLink } from "../src/net/inviteLink";
-import { shouldRetain } from "@calimero-apps/invite";
+import { shouldRetain } from "@calimero-network/mero-react";
 import { acceptWorldInvite, createWorldInvite, WorldInviteError } from "../src/net/admin";
 import { getSession, resetSession, updateSession } from "../src/net/session";
 

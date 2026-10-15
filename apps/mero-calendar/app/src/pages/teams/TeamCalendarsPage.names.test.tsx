@@ -17,7 +17,8 @@ const stub = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (orig) => ({
+  ...(await orig<typeof import("@calimero-network/mero-react")>()),
   useMero: () => ({
     admin: stub.admin,
     isDelegated: false,

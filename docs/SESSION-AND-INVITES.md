@@ -19,7 +19,7 @@ All three flows have a canonical shape supplied by `@calimero-network/mero-react
 |---|---|
 | Login | `<ConnectButton>` renders the button and owns `<LoginModal>`, which scans `DEFAULT_LOCAL_NODE_PORTS` = `[2428, 2429, 2528, 2529]` with `discoverLocalNodes`, pre-selects the first node that answers, and otherwise offers a URL field validated against `admin-api/is-authed`. That *is* the "click a button, get a popup offering a live localhost or your own URL" flow. |
 | Desktop hand-off | `MeroProvider` parses the auth callback out of the URL fragment and adopts the tokens through `resolveTokenAdoption`, provided node trust is anchored. |
-| Invitations | `@calimero-apps/invite`: `buildInviteLink` to share, `primeInvitationCapture` + `useInviteRedemption` (on mero-platform's `DeepLinkController` + `PendingIntentStore`) to capture an opened link across the login reload and ask before joining. |
+| Invitations | `@calimero-network/mero-react`: `buildInviteLink` to share, `primeInvitationCapture` + `useInviteRedemption` (on mero-platform's `DeepLinkController` + `PendingIntentStore`) to capture an opened link across the login reload, and `InvitationDialog` to ask, join and wait for the data. |
 
 An app that uses those gets the same behaviour for free. An app that
 reimplements one gets its own behaviour, and nothing notices.
@@ -150,7 +150,7 @@ https://links.calimero.network/<slug>/join?invitation=<token>[&…]
 
 `<slug>` is the app's deep-link handler, which in this repo is always its
 package id (`slug` in `logic/Cargo.toml`). Apps build it with
-`buildInviteLink(slug, token, extra?)` from `@calimero-apps/invite`; there is no
+`buildInviteLink(slug, token, extra?)` from `@calimero-network/mero-react`; there is no
 `calimero://` variant and no raw code to share. The token's encoding stays the
 app's own (most apps: deflate + base58 of a small JSON envelope; mero-docs and
 scaffolding-e2e: base64url JSON), because links already in the wild must keep
@@ -167,8 +167,10 @@ desktop launcher that already has the app open sends a `deep-link` event on
   mounts (a router would otherwise rewrite the URL first). It strips the token
   from the address bar, keeps the invitation in localStorage until the app acks
   it, and drops a `join` addressed to another app's slug.
-- `onInvitation(cb)` / `useInviteRedemption({ parse, redeemer })` deliver it to
-  the app's prompt, mounted app-wide so a link opened on any page works.
+- `useInviteRedemption({ parse, redeemer })` delivers it to the app's
+  `InvitationDialog`, mounted once at the app root so a link opened on any page
+  works. An app whose join does more than join the namespace passes
+  `redeem(parsed)` instead of `redeemer`.
   `useInviteRedemption` asks first by default (`awaiting-confirmation` →
   `accept()`), and still asks once the automatic attempts are spent, since the
   link is the only way in.
@@ -177,9 +179,18 @@ desktop launcher that already has the app open sends a `deep-link` event on
   invitation a later attempt could redeem (no member online) and drops one that
   cannot (expired, invalid, refused); `describeInviteFailure` words the reason.
 
-Every prompt carries the same test ids — `invite-accept`, `invite-decline`, and
-`invite-error` / `invite-retry` on failure — and the journey harness relies on
-them.
+Every app shows the same prompt, mero-react's `InvitationDialog`: ask (Join /
+Not now) → joining → **syncing** → ready (closes by itself), or already a
+member, or failed (the reason, with Try again when a retry can help). Syncing
+is the stage that matters most: a join returns before the namespace's data has
+arrived, and an empty page then looks like an empty workspace. It lasts while
+the namespace's just-joined flag is set, which redemption sets and the page
+showing that namespace's data clears with `useJoinSync({ namespaceId, settled })`
+once a read has come back (an empty one counts).
+
+Its test ids are `invite-prompt` (with `data-stage`), `invite-accept`,
+`invite-decline`, `invite-continue`, `invite-done`, `invite-retry` and
+`invite-error`; the journey harness relies on them.
 
 ### What CI proves
 
@@ -196,7 +207,10 @@ Every app with invitations has a two-node journey (`e2e/journey/`,
    feature reaches him.
 
 The driver says only how to tell the actor has landed (`joined()`, optionally
-`beforeJoin()`); the harness opens the link and clicks `invite-accept`.
+`beforeJoin()`); the harness opens the link, clicks `invite-accept`, and then
+requires the dialog to pass through joining, never fail, and close by itself
+once the data has arrived, well under the dialog's 2-minute ceiling. An app
+whose page never reports its data settled fails the journey.
 
 ---
 

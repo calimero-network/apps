@@ -120,7 +120,7 @@ app/src/DecisionLog.tsx     log, supersede, tags, people, timeline
 app/src/App.tsx             top bar, team name, account menu, first run, tabs
 app/src/lib/                pure, unit-tested: days, carry-forward, digest, rich text, tags
 app/src/useTeam.ts          the generated client + re-read on sync events
-app/src/{ContextPicker,InviteCard,JoinCard,useJoinFromInvitation}.tsx, utils/
+app/src/{ContextPicker,InviteCard,useJoinFromInvitation}.tsx, utils/
                             login, team selection and invites, from kv-store
 app/e2e/                    Playwright against a native merod
 ```

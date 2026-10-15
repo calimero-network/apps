@@ -1,13 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
-import { decodeInvite, type PassInvitePayload } from '../lib/inviteCodec';
-import { onInvitation, type CapturedInvitation } from '@calimero-apps/invite';
-import { useRedeemInvitation } from '../hooks/useRedeemInvitation';
-import { CloseIcon } from './icons';
-import styles from './InvitationPrompt.module.css';
+import { useCallback, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  InvitationDialog,
+  useInviteRedemption,
+  useMero,
+  type ParsedInvitation,
+  type RedeemOutcome,
+} from '@calimero-network/mero-react';
+import {
+  decodeInvite,
+  groupIdOfInvite,
+  type PassInvitePayload,
+} from '../lib/inviteCodec';
+import { destinationFor } from '../lib/redeemFlow';
+import { InviteRedeemError, redeemInvite } from '../lib/vaults';
 
 /**
- * "You have been invited to X" — for an invitation that arrived as a link.
+ * "Join X?" for an invitation that arrived as a link: mero-react's
+ * `InvitationDialog`, which asks, joins, and stays up on "Syncing…" until the
+ * team's data has reached this node.
  *
  * ── Why this is mounted at the APP level, not on a page ──────────────────────
  *
@@ -23,131 +34,83 @@ import styles from './InvitationPrompt.module.css';
  * link, or a background tab that refreshes, join silently. Decoding is pure and
  * local, so the scope can be shown first and the join needs a click.
  *
- * ── Why both buttons ack ─────────────────────────────────────────────────────
- *
- * The platform store keeps an intent until the app says it is handled. "Not
- * now" IS handled — without the ack the same prompt returns on every load,
- * which reads as the app nagging rather than as durability.
+ * The join is this app's own (`redeemInvite`): a vault invitation also enters
+ * the vault's context, and `destinationFor` picks where it lands. The syncing
+ * stage ends when TeamPage's `useJoinSync` sees the team's vaults arrive.
  */
-export default function InvitationPrompt() {
-  // Only to know whether there is a session to redeem against; the redeem
-  // itself goes through `useRedeemInvitation`, on the session-aware admin.
-  const { admin } = useMero();
-  const [pending, setPending] = useState<{
-    captured: CapturedInvitation;
-    payload: PassInvitePayload;
-  } | null>(null);
-  // Shared with the paste field on the teams screen. It also owns WHERE a
-  // redeemed invitation lands, which is what this component used to get wrong:
-  // it navigated to `/team/<id>`, singular, a path with no route. See
-  // `lib/redeemFlow`.
-  const { busy, status, error, setError, redeem } = useRedeemInvitation();
+interface PassInvitation extends ParsedInvitation {
+  payload: PassInvitePayload;
+}
 
-  useEffect(
-    () =>
-      onInvitation((captured) => {
-        const payload = decodeInvite(captured.token);
-        if (!payload) {
-          setError('That invitation could not be read. Ask for a new link.');
-          // Acked anyway: a payload that will not decode now will not decode
-          // later either, and leaving it unacked replays the error every load.
-          captured.resolve();
-          return;
-        }
-        setPending({ captured, payload });
-      }),
-    // `setError` is a `useState` setter and therefore stable, but it now
-    // arrives through a custom hook, where the linter cannot see that. Listed
-    // rather than silenced: re-subscribing on a value that never changes costs
-    // nothing, and a disable comment here would also hide a real dependency
-    // added later.
-    [setError],
+export default function InvitationPrompt() {
+  // `admin`, the session-aware client: on an account the raw client's admin
+  // is the node route, which a delegated session cannot use.
+  const { admin } = useMero();
+  const navigate = useNavigate();
+  const [status, setStatus] = useState<string | null>(null);
+
+  const parse = useCallback((token: string): PassInvitation | null => {
+    const payload = decodeInvite(token);
+    if (!payload) return null;
+    return {
+      namespaceId: groupIdOfInvite(payload),
+      invitation: payload.invitation,
+      teamName: payload.vaultName ?? payload.groupAlias,
+      payload,
+    };
+  }, []);
+
+  const redeem = useCallback(
+    async ({ payload }: PassInvitation): Promise<RedeemOutcome> => {
+      if (!admin) {
+        return {
+          status: 'failed',
+          namespaceId: null,
+          message: 'No node connection yet. Reconnect and try again.',
+          reason: 'node-unreachable',
+          retryable: true,
+        };
+      }
+      try {
+        const landed = await redeemInvite(admin, payload, setStatus);
+        navigate(destinationFor(landed));
+        // The TEAM's namespace, which TeamPage's `useJoinSync` watches. For a
+        // vault invitation the signed group is the vault's subgroup, so the
+        // payload alone would name a flag nothing ever clears.
+        const namespaceId =
+          ('namespaceId' in landed && landed.namespaceId) || groupIdOfInvite(payload);
+        return {
+          status: 'joined',
+          namespaceId,
+          teamName: payload.vaultName ?? payload.groupAlias,
+        };
+      } catch (e) {
+        if (e instanceof InviteRedeemError) return e.outcome;
+        throw e;
+      } finally {
+        setStatus(null);
+      }
+    },
+    [admin, navigate],
   );
 
-  const accept = useCallback(async () => {
-    if (!pending) return;
-    const { captured, payload } = pending;
-    // ⚠️ Acked only once the invitation is SETTLED: joined, or refused for
-    // good. Acking first would drop it on a transient failure (no online
-    // member yet, a flaky node), and the platform store exists precisely so it
-    // survives to be retried on the next load — the Join button stays up for
-    // that retry. A final refusal is acked, and its reason stays on screen.
-    // `redeem` reports rather than throws for exactly this decision.
-    const { retain } = await redeem(payload);
-    if (!retain) {
-      captured.resolve();
-      setPending(null);
-    }
-  }, [pending, redeem]);
-
-  const decline = useCallback(() => {
-    pending?.captured.resolve();
-    setPending(null);
-    setError(null);
-  }, [pending, setError]);
-
-  if (!pending) {
-    // An undecodable invitation still deserves to be reported, even though
-    // there is nothing to accept.
-    return error ? (
-      <div className={styles.wrap}>
-        <div
-          className={`${styles.prompt} ${styles.promptError}`}
-          data-testid="invite-error"
-        >
-          <span className={styles.text}>{error}</span>
-          <button
-            type="button"
-            className={styles.ghost}
-            onClick={() => setError(null)}
-            aria-label="Dismiss"
-          >
-            <CloseIcon size={18} />
-          </button>
-        </div>
-      </div>
-    ) : null;
-  }
-
-  const name =
-    pending.payload.vaultName ?? pending.payload.groupAlias ?? 'a team';
+  const redemption = useInviteRedemption({ parse, redeem, enabled: !!admin });
+  const payload = redemption.parsed?.payload;
 
   return (
-    <div className={styles.wrap}>
-      <div className={styles.prompt} data-testid="invite-prompt">
-        <span className={styles.text}>
-          <strong>You have been invited to {name}</strong>
-          <span className={styles.sub}>
-            {status ??
-              error ??
-              // Deliberately explicit about the real grant. A vault invitation
-              // is a SPACE invitation underneath, because vault access is
-              // inherited, and the person being asked to accept is entitled to
-              // know that before they click.
-              (pending.payload.vaultName
-                ? 'Joining gives you this vault and the rest of the team it belongs to.'
-                : 'Joining gives you access to the team and every vault in it.')}
-          </span>
-        </span>
-        <button
-          type="button"
-          className={styles.accept}
-          onClick={() => void accept()}
-          disabled={busy || !admin}
-          data-testid="invite-accept"
-        >
-          {busy ? 'Joining…' : 'Join'}
-        </button>
-        <button
-          type="button"
-          className={styles.ghost}
-          onClick={decline}
-          disabled={busy}
-          data-testid="invite-decline"
-        >
-          Not now
-        </button>
-      </div>
-    </div>
+    <InvitationDialog
+      redemption={redemption}
+      noun="team"
+      appName="Mero Pass"
+      status={status}
+      // Deliberately explicit about the real grant. A vault invitation is a
+      // SPACE invitation underneath, because vault access is inherited, and the
+      // person being asked to accept is entitled to know that before they click.
+      detail={
+        payload?.vaultName
+          ? 'Joining gives you this vault and the rest of the team it belongs to.'
+          : 'Joining gives you access to the team and every vault in it.'
+      }
+    />
   );
 }

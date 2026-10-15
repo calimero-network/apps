@@ -368,7 +368,8 @@ async function main() {
 
     // The link no longer joins on its own, and that is the point: joining is a
     // state change, so a forwarded link or a refreshed background tab must not
-    // do it silently. It shows what you are about to join and waits for a click.
+    // do it silently. The invitation dialog shows what you are about to join and
+    // waits for a click.
     const prompt = peerB.page.locator('[data-testid="invite-prompt"]');
     await prompt.waitFor({ state: "visible", timeout: 60_000 });
     check(
@@ -400,6 +401,9 @@ async function main() {
       .locator('[data-testid="join-state"][data-joined="true"]')
       .waitFor({ timeout: 60_000 });
     c.ok("peerB is joined to the room's context on its OWN node");
+    // The invitation dialog covers the call until that join lands (the room's
+    // state has synced), then closes by itself; the clicks below need it gone.
+    await prompt.waitFor({ state: "hidden", timeout: 90_000 });
 
     const joinSeen = await readStatuses(peerB.page);
     // Each join step names itself. This is what turns a 20-second wait from

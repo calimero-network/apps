@@ -530,7 +530,21 @@ export async function createAgreement(
   };
 }
 
-/** Enter an agreement's context, joining by inheritance if needed. */
+/** How long to keep trying to enter an agreement, and how often to look. */
+const ENTER_TIMEOUT_MS = 90_000;
+const ENTER_POLL_MS = 2_000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Enter an agreement's context, joining by inheritance if needed.
+ *
+ * ⚠️ RETRIED, not asked once. Right after a namespace join — which is exactly
+ * when the invitation path calls this — the node has not projected the
+ * membership or replicated the agreement yet: the inheritance join is refused
+ * and no identity is held, and a moment later both work. So keep asking until
+ * the identity lands or the window passes, and only then say so.
+ */
 export async function enterAgreement(
   admin: AdminLike,
   opts: { namespaceId: string; agreementId: string; contextId: string },
@@ -540,20 +554,32 @@ export async function enterAgreement(
   if (existing) return existing;
 
   onStatus('Joining the agreement…');
-  await admin.joinSubgroupInheritance(opts.agreementId).catch(() => {
-    // A 403 here means the subgroup is restricted, which `createAgreement`
-    // prevents for anything it makes. Left non-fatal so an older agreement
-    // still surfaces the clearer error from the identity read below.
-  });
+  const deadline = Date.now() + ENTER_TIMEOUT_MS;
+  let admitted = false;
+  for (let attempt = 1; ; attempt += 1) {
+    if (!admitted) {
+      // A 403 here is a membership that has not projected yet, or a subgroup
+      // left restricted, which `createAgreement` prevents for anything it
+      // makes. Either way the identity read below is what decides.
+      admitted = await admin.joinSubgroupInheritance(opts.agreementId).then(
+        () => true,
+        () => false,
+      );
+    }
 
-  const identity = await ownedIdentity(admin, opts.contextId);
-  if (!identity) {
-    throw new Error(
-      'This node holds no identity in that agreement. If you were just ' +
-        'invited, the workspace may still be replicating — try again shortly.',
-    );
+    const identity = await ownedIdentity(admin, opts.contextId);
+    if (identity) return identity;
+    if (Date.now() >= deadline) break;
+    if (attempt === 1) {
+      onStatus('Waiting for the agreement to reach this node…');
+    }
+    await sleep(ENTER_POLL_MS);
   }
-  return identity;
+
+  throw new Error(
+    'This node holds no identity in that agreement. If you were just ' +
+      'invited, the workspace may still be replicating — try again shortly.',
+  );
 }
 
 /**

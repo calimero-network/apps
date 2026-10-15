@@ -9,7 +9,7 @@ import { AIR, HOTBAR, STARTING_INVENTORY } from "./engine/tiles";
 import { TileStore } from "./engine/world";
 import { acceptWorldInvite, createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { APP_SLUG, inviteLink } from "./net/inviteLink";
-import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/invite";
+import { primeInvitationCapture as primeInviteCapture } from "@calimero-network/mero-react";
 import { GameClient, type WorldMeta } from "./net/client";
 import {
   captureSessionFromHash,
@@ -25,7 +25,7 @@ import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
 import { WheelSteps } from "./input/wheel";
 import { Hud } from "./ui/hud";
-import { invitePromptOpen, setInviteJoiner } from "./ui/invitePrompt";
+import { invitePromptOpen, reportWorldLoaded, setInviteJoiner } from "./ui/invitePrompt";
 import { Landing, LaunchChoice } from "./ui/landing";
 import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu } from "./ui/overlays";
@@ -38,7 +38,7 @@ import { PauseMenu } from "./ui/overlays";
 // connected survives the web-login redirect and is replayed once the world
 // picker can act on it. A running desktop app hands a link over as a
 // `deep-link` event instead, which this also hears — in the game too. Either
-// way ui/invitePrompt.ts asks before joining. A link addressed to another app
+// way ui/invitePrompt.tsx asks before joining. A link addressed to another app
 // is dropped, not offered.
 primeInviteCapture("merraria", { slug: APP_SLUG });
 
@@ -60,6 +60,8 @@ function takeEnterJoinedWorld(): boolean {
 }
 
 const SAVE_MS = 5000;
+/** How often a world the node has not synced yet is asked again (see `SyncEngine.connect`). */
+const CONNECT_RETRY_MS = 2000;
 const WORLD_READY_MS = 60_000;
 
 async function fetchWorldMetaWhenReady(client: GameClient): Promise<WorldMeta> {
@@ -237,13 +239,17 @@ async function boot(): Promise<void> {
     // anything still pending — the same reconcile as joining.
     () => { void sync?.reconcile().catch(() => {}); },
   );
-  try {
-    await sync.join(choice.name);
-    await sync.reconcile();
+  // Joined and read, retrying while the node has not synced the world yet (a
+  // world just joined from an invite answers `Uninitialized` until it has).
+  // The world's meta and its edits have both come back from the node, so a
+  // world just joined from an invite is really here: the invite prompt's
+  // "Syncing…" ends on this, not on the join returning. Not awaited: the game
+  // runs meanwhile, and its edits queue until the join goes through.
+  void sync.connect(choice.name, CONNECT_RETRY_MS).then((connected) => {
+    if (!connected) return;
+    reportWorldLoaded(worldId);
     hud.toast("Connected to shared world");
-  } catch {
-    hud.toast("Sync failed — edits will retry in the background");
-  }
+  });
 
   // ---- input -----------------------------------------------------------
   const keys = new Set<string>();
@@ -346,11 +352,8 @@ async function boot(): Promise<void> {
   // then save and leave like "Save & leave world", and reload into it.
   setInviteJoiner({
     join: async (code, payload) => {
-      if (payload.contextId === worldId) {
-        hud.toast("You're already in this world");
-        return;
-      }
-      await acceptWorldInvite(code);
+      if (payload.contextId === worldId) return { contextId: worldId, already: true };
+      const contextId = await acceptWorldInvite(code);
       save();
       void sync?.leave();
       try {
@@ -358,7 +361,10 @@ async function boot(): Promise<void> {
       } catch {
         /* no session storage: the picker shows the joined world as the current one */
       }
-      window.location.reload();
+      // After the prompt has acked the invitation, which happens once this
+      // returns; a reload in the same task could leave it to replay.
+      setTimeout(() => window.location.reload(), 0);
+      return { contextId };
     },
     onShow: () => {
       keys.clear();

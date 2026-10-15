@@ -5,7 +5,7 @@ import ReactDOM from 'react-dom/client';
 import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
-import { primeInvitationCapture } from '@calimero-apps/invite';
+import { primeInvitationCapture } from '@calimero-network/mero-react';
 import { PACKAGE_NAME } from './constants/config';
 
 // Unregister stale service workers from previous builds / sibling apps

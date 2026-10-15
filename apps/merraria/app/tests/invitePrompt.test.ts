@@ -1,17 +1,27 @@
+import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  onInvitation,
+  peekInvitation,
   primeInvitationCapture,
   resetInvitationCaptureForTests,
-} from "@calimero-apps/invite";
+} from "@calimero-network/mero-react";
 import { WorldInviteError } from "../src/net/admin";
 import { encodeInvite } from "../src/net/inviteCodec";
 import { APP_SLUG } from "../src/net/inviteLink";
 import {
   invitePromptOpen,
+  reportWorldLoaded,
   resetInvitePromptForTests,
   setInviteJoiner,
+  type InviteJoiner,
 } from "../src/ui/invitePrompt";
+
+// ── The invite prompt, as the game drives it ────────────────────────────────
+//
+// The real capture hears a real `?invitation=` link, and the real
+// mero-react dialog renders it into the page; only the screen's join is faked.
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const CODE = encodeInvite({
   invitation: {
@@ -25,8 +35,17 @@ const CODE = encodeInvite({
 
 const byId = (id: string) =>
   document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
-const click = (id: string) => byId(id)!.click();
-const settle = () => new Promise((r) => setTimeout(r, 0));
+const stage = () => byId("invite-prompt")?.dataset.stage ?? null;
+const click = (id: string) => act(async () => byId(id)!.click());
+
+/** Poll until `check` holds, letting React and the join's promises run. */
+async function until(check: () => boolean, ms = 3_000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > end) throw new Error(`timed out; dialog stage: ${stage()}`);
+    await act(() => new Promise((r) => setTimeout(r, 20)));
+  }
+}
 
 /** The app opened by a link carrying CODE, as the links page opens it. */
 function openLink(): void {
@@ -34,13 +53,13 @@ function openLink(): void {
   primeInvitationCapture("merraria-test", { slug: APP_SLUG });
 }
 
-/** Whether the capture still holds the invitation (it is not acked). */
-function stillCaptured(): boolean {
-  resetInvitationCaptureForTests();
-  const seen: string[] = [];
-  onInvitation((i) => seen.push(i.token));
-  return seen.includes(CODE);
+/** Install a screen's joiner, and let the dialog mount and read the capture. */
+async function install(joiner: InviteJoiner | null): Promise<void> {
+  await act(async () => setInviteJoiner(joiner));
 }
+
+/** Whether the capture still holds the invitation for another attempt. */
+const held = () => peekInvitation() !== null;
 
 function failed(retryable: boolean): WorldInviteError {
   return new WorldInviteError({
@@ -55,93 +74,119 @@ function failed(retryable: boolean): WorldInviteError {
 describe("invite prompt", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     resetInvitationCaptureForTests();
     resetInvitePromptForTests();
     window.history.replaceState(null, "", "/");
   });
   afterEach(() => {
-    resetInvitePromptForTests();
+    act(() => resetInvitePromptForTests());
     resetInvitationCaptureForTests();
   });
 
-  it("asks before joining, naming the world, and joins only on Join", async () => {
-    const join = vi.fn().mockResolvedValue(undefined);
+  it("asks first, joins on Join, and syncs until the joined world has loaded", async () => {
+    const join = vi.fn().mockResolvedValue({ contextId: "ctx-1" });
     openLink();
-    setInviteJoiner({ join });
+    await install({ join });
 
-    expect(byId("invite-status")!.textContent).toContain("Overworld");
+    expect(byId("invite-prompt")!.textContent).toContain("Join “Overworld”?");
+    expect(invitePromptOpen()).toBe(true);
     expect(join).not.toHaveBeenCalled();
 
-    click("invite-accept");
-    await settle();
+    await click("invite-accept");
+    await until(() => stage() === "syncing");
     expect(join).toHaveBeenCalledWith(
       CODE,
       expect.objectContaining({ contextId: "ctx-1" }),
     );
+    expect(held()).toBe(false); // acked: it does not come back
+
+    // Another world loading is not this one arriving.
+    act(() => reportWorldLoaded("ctx-other"));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(stage()).toBe("syncing");
+
+    act(() => reportWorldLoaded("ctx-1"));
+    await until(() => stage() === "ready");
+    await until(() => stage() === null);
     expect(invitePromptOpen()).toBe(false);
-    expect(stillCaptured()).toBe(false); // acked: it does not come back
   });
 
-  it("holds a link until a screen that can join is up", () => {
+  it("holds a link until a screen that can join is up", async () => {
     openLink();
-    expect(invitePromptOpen()).toBe(false);
-    setInviteJoiner({ join: vi.fn() });
+    await install(null);
+    expect(byId("invite-prompt")).toBeNull();
+    expect(held()).toBe(true);
+    await install({ join: vi.fn() });
     expect(byId("invite-accept")).not.toBeNull();
   });
 
-  it("offers an unanswered invitation again on the next screen", () => {
+  it("asks again on the next screen about an invitation left unanswered", async () => {
+    const onShow = vi.fn();
     openLink();
-    setInviteJoiner({ join: vi.fn() });
-    setInviteJoiner(null); // e.g. the picker handed over to the game
+    await install({ join: vi.fn() });
+    await install(null); // e.g. the picker handed over to the game
+    expect(byId("invite-prompt")).toBeNull();
     expect(invitePromptOpen()).toBe(false);
-    setInviteJoiner({ join: vi.fn() });
+    await install({ join: vi.fn(), onShow });
     expect(byId("invite-accept")).not.toBeNull();
+    expect(onShow).toHaveBeenCalled(); // the game drops held keys under it
   });
 
-  it("Not now joins nothing and stops offering the link", () => {
+  it("Not now joins nothing and stops offering the link", async () => {
     const join = vi.fn();
     openLink();
-    setInviteJoiner({ join });
-    click("invite-decline");
+    await install({ join });
+    await click("invite-decline");
     expect(join).not.toHaveBeenCalled();
-    expect(invitePromptOpen()).toBe(false);
-    expect(stillCaptured()).toBe(false);
+    expect(byId("invite-prompt")).toBeNull();
+    expect(held()).toBe(false);
   });
 
   it("shows a final failure and lets the link go", async () => {
     openLink();
-    setInviteJoiner({ join: vi.fn().mockRejectedValue(failed(false)) });
-    click("invite-accept");
-    await settle();
+    await install({ join: vi.fn().mockRejectedValue(failed(false)) });
+    await click("invite-accept");
+    await until(() => stage() === "failed");
     expect(byId("invite-error")!.textContent).toContain("expired");
     expect(byId("invite-retry")).toBeNull();
-    expect(stillCaptured()).toBe(false);
+    expect(held()).toBe(false);
   });
 
-  it("offers Try again after a failure that may pass, and keeps the link", async () => {
+  it("shows the node's own words for a failure past the namespace join", async () => {
+    openLink();
+    await install({
+      join: vi.fn().mockRejectedValue(new Error("the invite does not reference a world")),
+    });
+    await click("invite-accept");
+    await until(() => stage() === "failed");
+    expect(byId("invite-error")!.textContent).toContain("does not reference a world");
+    expect(byId("invite-retry")).not.toBeNull();
+  });
+
+  it("offers Try again after a failure that may pass, which joins without asking again", async () => {
     const join = vi
       .fn()
       .mockRejectedValueOnce(failed(true))
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce({ contextId: "ctx-1" });
     openLink();
-    setInviteJoiner({ join });
-    click("invite-accept");
-    await settle();
-    expect(byId("invite-error")!.textContent).toMatch(
-      /No one in this world is online/,
-    );
+    await install({ join });
+    await click("invite-accept");
+    await until(() => stage() === "failed");
+    expect(byId("invite-error")!.textContent).toMatch(/No one in this world is online/);
+    expect(held()).toBe(true); // kept for the next load if left unanswered
 
-    click("invite-retry");
-    await settle();
+    await click("invite-retry");
+    await until(() => stage() === "syncing");
     expect(join).toHaveBeenCalledTimes(2);
-    expect(invitePromptOpen()).toBe(false);
+    expect(held()).toBe(false);
   });
 
-  it("keeps a link whose transient failure was left unanswered", async () => {
+  it("says so when the link names the world already being played", async () => {
     openLink();
-    setInviteJoiner({ join: vi.fn().mockRejectedValue(failed(true)) });
-    click("invite-accept");
-    await settle();
-    expect(stillCaptured()).toBe(true);
+    await install({ join: vi.fn().mockResolvedValue({ contextId: "ctx-1", already: true }) });
+    await click("invite-accept");
+    await until(() => stage() === "already-member");
+    expect(held()).toBe(false);
   });
 });

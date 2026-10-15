@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CAPABILITIES } from '@calimero-network/mero-js';
@@ -12,6 +12,7 @@ import {
   createWorkspace,
   displayName,
   ensurePersonalWorkspace,
+  enterAgreement,
   initParamsFor,
   isPersonalRecord,
   listAgreements,
@@ -66,6 +67,7 @@ function fakeAdmin(over: Record<string, (...a: never[]) => unknown> = {}) {
       getContextIdentitiesOwned: rec('getContextIdentitiesOwned', () => ({
         identities: [],
       })),
+      joinSubgroupInheritance: rec('joinSubgroupInheritance'),
     } as unknown as AdminLike,
   };
 }
@@ -562,5 +564,88 @@ describe('pickInvitedAgreement', () => {
   it('skips an agreement that has not replicated a context yet', () => {
     const pending = { contextId: null };
     expect(pickInvitedAgreement([pending, a], undefined)).toBe(a);
+  });
+});
+
+// ── Entering an agreement right after joining its workspace ─────────────────
+//
+// The invitation path joins the namespace and enters the agreement back to
+// back, so it lands in the window where the node has not yet projected the
+// membership or replicated the agreement: the inheritance join is refused and
+// no identity is held. That is "not yet", not "no" — one look and a "try again
+// shortly" stranded the joiner outside the agreement they were invited to.
+
+describe('enterAgreement', () => {
+  const opts = { namespaceId: 'ns-1', agreementId: 'sg-1', contextId: 'ctx-1' };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps asking while the node catches up, then returns the identity', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let joins = 0;
+    const { admin } = fakeAdmin({
+      // Refused twice while the membership projects, admitted on the third.
+      joinSubgroupInheritance: () => {
+        joins += 1;
+        if (joins < 3) throw new Error('403 Forbidden: not eligible');
+      },
+      getContextIdentitiesOwned: () => ({
+        identities: joins >= 3 ? ['id-1'] : [],
+      }),
+    });
+
+    const entered = enterAgreement(admin, opts).then(
+      (identity) => ({ identity }),
+      (error: unknown) => ({ error }),
+    );
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    expect(await entered).toEqual({ identity: 'id-1' });
+    expect(joins).toBe(3);
+  });
+
+  it('does not ask to join again once admitted, only for the identity', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let reads = 0;
+    const { admin, calls } = fakeAdmin({
+      // The context's identity lands a few reads after the admission.
+      getContextIdentitiesOwned: () => {
+        reads += 1;
+        return { identities: reads >= 4 ? ['id-1'] : [] };
+      },
+    });
+
+    const entered = enterAgreement(admin, opts).then(
+      (identity) => ({ identity }),
+      (error: unknown) => ({ error }),
+    );
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    expect(await entered).toEqual({ identity: 'id-1' });
+    expect(
+      methodsOf(calls).filter((m) => m === 'joinSubgroupInheritance'),
+    ).toHaveLength(1);
+  });
+
+  it('gives up, with the same words, once the wait is over', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { admin } = fakeAdmin();
+
+    let outcome: { error: unknown } | null = null;
+    void enterAgreement(admin, opts).catch((error: unknown) => {
+      outcome = { error };
+    });
+
+    // Still waiting a minute in: the node has not been given long enough.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(outcome).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(outcome).not.toBeNull();
+    expect(String((outcome as unknown as { error: Error }).error)).toMatch(
+      /holds no identity in that agreement/,
+    );
   });
 });

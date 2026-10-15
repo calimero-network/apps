@@ -34,7 +34,13 @@ import {
 } from '../../lib/vaults';
 import type { VaultRow } from '../../lib/vaults';
 import styles from '../../styles/shell.module.css';
-import { JoinSyncBanner, useJoinSync } from '@calimero-apps/join-sync';
+import {
+  JOIN_SYNC_MAX_MS,
+  JOIN_SYNC_POLL_MS,
+  JoinSyncBanner,
+  isNamespaceJustJoined,
+  useJoinSync,
+} from '@calimero-network/mero-react';
 import { describeError } from '../../lib/errors';
 
 type Tab = 'vaults' | 'people';
@@ -106,29 +112,59 @@ export default function TeamPage() {
   // A team joined this session whose vaults have not replicated yet. Without
   // this a brand-new member is told "No vaults in this team yet" about a team
   // whose vaults are still on their way — and invited to create a duplicate.
+  //
+  // So an EMPTY list settles only once the team is no longer just-joined: until
+  // then it is what a node that has not synced the team returns. The watchdog
+  // clears the flag, after which a team with no vaults reads as empty again.
+  const listed = !!teamId && listedForTeam === teamId;
   const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
     namespaceId: teamId ?? null,
-    settled: !!teamId && listedForTeam === teamId,
+    settled:
+      listed && (vaults.length > 0 || !isNamespaceJustJoined(teamId ?? null)),
+    // Still empty: let the gate wait up to its ceiling, not the base window.
+    active: vaults.length === 0,
   });
 
-  const load = useCallback(async () => {
-    if (!admin || !teamId) return;
-    setLoading(true);
-    try {
-      setVaults(await listVaults(admin, teamId));
-      // A real answer, empty or not — that is what ends the sync gate.
-      setListedForTeam(teamId);
-      setError(null);
-    } catch (e) {
-      setError(describeError(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [admin, teamId]);
+  // `quiet` re-reads without the "Loading…" swap, for the polls below.
+  const load = useCallback(
+    async (quiet = false) => {
+      if (!admin || !teamId) return;
+      if (!quiet) setLoading(true);
+      try {
+        setVaults(await listVaults(admin, teamId));
+        setListedForTeam(teamId);
+        setError(null);
+      } catch (e) {
+        setError(describeError(e));
+      } finally {
+        if (!quiet) setLoading(false);
+      }
+    },
+    [admin, teamId],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Nothing else re-reads the list, so while the gate is up keep asking — and
+  // that covers a read that failed because the team had not synced yet. A
+  // vault can also be listed before its context arrives (it cannot be opened
+  // until then), so keep asking while one is missing, for as long as the gate
+  // would wait at most: an invite-only vault's context may never show here.
+  const awaitingContext = vaults.some((v) => !v.contextId);
+  useEffect(() => {
+    if (!isSyncing && !awaitingContext) return;
+    const since = Date.now();
+    const timer = setInterval(() => {
+      if (!isSyncing && Date.now() - since >= JOIN_SYNC_MAX_MS) {
+        clearInterval(timer);
+        return;
+      }
+      void load(true);
+    }, JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, awaitingContext, load]);
 
   useEffect(() => {
     if (!admin || !appId || !teamId) return;

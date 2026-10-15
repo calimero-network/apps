@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
 import {
-  InviteStatusBanner,
+  InvitationDialog,
   useInviteRedemption,
+  useMero,
   type InviteRedeemer,
   type ParsedInvitation,
-} from '@calimero-apps/invite';
+} from '@calimero-network/mero-react';
 import { readLobbyInvitation, type LobbyInvitation } from '../utils/invitation';
 import { lobbyRedeemer } from '../utils/redeemLobby';
 import { setStoredLobbyName } from '../utils/lobbyName';
@@ -17,9 +17,6 @@ export interface JoinedLobbyState {
   joinedLobbyId: string;
 }
 
-/** How long a successful join stays on screen before the banner clears. */
-const JOINED_BANNER_MS = 4_000;
-
 /** Never called: the hook is disabled until there is a client to join with. */
 const NO_CLIENT: InviteRedeemer = {
   join: () => Promise.reject(new Error('Not connected to a node')),
@@ -27,7 +24,9 @@ const NO_CLIENT: InviteRedeemer = {
 };
 
 /**
- * "You have been invited to <lobby>" — for an invitation that arrived as a link.
+ * "Join <lobby>?" for an invitation that arrived as a link: mero-react's
+ * `InvitationDialog`, which asks, joins, and stays up on "Syncing…" until the
+ * lobby's data has reached this node.
  *
  * An invitation reaches Battleships only by its link being opened: the links
  * page appends `?invitation=…` to this app's URL, and a running desktop sends a
@@ -40,7 +39,8 @@ const NO_CLIENT: InviteRedeemer = {
  *
  * After the join it lands on the lobby page with router state naming the lobby:
  * the page re-reads its list until the lobby is there, then enters it. Without
- * that it would not re-read a list that is already on screen.
+ * that it would not re-read a list that is already on screen. The syncing stage
+ * ends when that page's `useJoinSync` sees the lobby's match list come back.
  */
 export default function InvitationPrompt() {
   const { mero, isAuthenticated } = useMero();
@@ -85,35 +85,14 @@ export default function InvitationPrompt() {
     [navigate],
   );
 
-  const { state, accept, decline, retry, dismiss } = useInviteRedemption({
+  const redemption = useInviteRedemption({
     parse,
     redeemer,
     onJoined,
     enabled: isAuthenticated && !!mero,
   });
 
-  useEffect(() => {
-    if (state.stage !== 'joined' && state.stage !== 'already-member')
-      return undefined;
-    const timer = setTimeout(dismiss, JOINED_BANNER_MS);
-    return () => clearTimeout(timer);
-  }, [state.stage, dismiss]);
-
-  if (state.stage === 'idle') return null;
   return (
-    <div className="invite-prompt">
-      <InviteStatusBanner
-        state={state}
-        noun="lobby"
-        onAccept={accept}
-        onDecline={decline}
-        onRetry={retry}
-        onDismiss={dismiss}
-        style={{
-          background: 'var(--bg-card)',
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.18)',
-        }}
-      />
-    </div>
+    <InvitationDialog redemption={redemption} noun="lobby" appName="Battleships" />
   );
 }

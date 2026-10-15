@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useJoinSync, useMero } from "@calimero-network/mero-react";
 import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import { useMeroStream } from "../hooks/useMeroStream";
 import { useLiveStream } from "../hooks/useLiveStream";
@@ -143,6 +143,12 @@ export default function CallPage() {
     });
     if (m) setJoined(true);
   }, []);
+
+  // A room invitation lands here, not on the room list, so this is the page
+  // that knows the stream's data has arrived: `join` is refused until the
+  // room's state has synced to this node, so a landed join is that read. That
+  // ends the invitation dialog's "Syncing…".
+  useJoinSync({ namespaceId, settled: joined });
 
   useEffect(() => {
     if (joinAttempted.current) return;

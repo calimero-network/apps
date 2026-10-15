@@ -20,7 +20,7 @@
  *     token blob) for BOTH token-less and token-bearing hashes: token-less
  *     pre-fills the connect screen, and token-bearing needs node_url seeded
  *     so mero-react ≥4.2.0 trusts the callback's node (see persistAuthHash).
- *  2. Invitation capture: starting the shared capture (`@calimero-apps/invite`),
+ *  2. Invitation capture: starting mero-react's shared capture,
  *     which covers the cold-open URL, the launcher's warm `deep-link` event and
  *     the PWA launch queue. Opening the link is the only way an invitation
  *     reaches the app; `components/InvitationHost` offers it.
@@ -31,8 +31,11 @@
  *
  * Both are best-effort and never throw into the render path.
  */
-import { setNodeUrl, setApplicationId } from "@calimero-network/mero-react";
-import { primeInvitationCapture as ensureInvitationCapture } from "@calimero-apps/invite";
+import {
+  primeInvitationCapture as ensureInvitationCapture,
+  setApplicationId,
+  setNodeUrl,
+} from "@calimero-network/mero-react";
 import { APP_PACKAGE as APP_SLUG } from "../config";
 
 /** True when running inside the Calimero desktop (Tauri) shell. */

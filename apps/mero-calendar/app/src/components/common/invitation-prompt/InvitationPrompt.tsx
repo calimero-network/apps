@@ -1,15 +1,14 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  InviteStatusBanner,
+  InvitationDialog,
   useInviteRedemption,
+  useMero,
   type ParsedInvitation,
-} from '@calimero-apps/invite';
-import { useMero } from '@calimero-network/mero-react';
+} from '@calimero-network/mero-react';
 import type { SignedGroupOpenInvitation } from '@calimero-network/mero-js';
 import { listNamespaces } from '../../../api/admin';
 import { useEnsureAppId } from '../../../hooks/useEnsureAppId';
-import { useToast } from '../../../contexts/ToastContext';
 import { decodeInvitationObject } from '../../../utils/invitation';
 import { setStoredTeamName } from '../../../utils/teamName';
 
@@ -48,11 +47,12 @@ function parseTeamInvitation(raw: string): ParsedInvitation | null {
  * Capture is primed in `index.tsx` and buffers the invitation until the
  * session can join, so arriving before login loses nothing. It asks first:
  * joining puts this node into someone else's team, which a forwarded link must
- * not do on its own. Once joined it opens the team's calendars.
+ * not do on its own. Once joined it opens the team's calendars, and the dialog
+ * stays on "Syncing…" until that page's `useJoinSync` has read the team's
+ * calendar list.
  */
 export default function InvitationPrompt() {
   const navigate = useNavigate();
-  const { showToast } = useToast();
   // `admin`, NOT `mero.admin`: the session-aware one. On an account it redeems
   // the invitation through the admitter's route; the raw client's node route
   // is a 403 there.
@@ -64,7 +64,7 @@ export default function InvitationPrompt() {
     return admin;
   }, [admin]);
 
-  /** The two calls @calimero-apps/invite needs from this app. */
+  /** The two calls a standard join needs from this app. */
   const redeemer = useMemo(
     () => ({
       // `join` has to THROW on refusal — the redeemer reads the outcome off the
@@ -91,44 +91,5 @@ export default function InvitationPrompt() {
     onJoined: (namespaceId) => navigate(`/teams/${namespaceId}`),
   });
 
-  // Landed: the team is on screen now, so the banner hands over to a toast
-  // rather than sitting over the page with nothing left to ask.
-  const { stage } = invite.state;
-  const { dismiss } = invite;
-  useEffect(() => {
-    if (stage !== 'joined' && stage !== 'already-member') return;
-    showToast(
-      stage === 'joined'
-        ? 'Joined team. Syncing calendar…'
-        : 'You are already in this team.',
-      'success',
-    );
-    dismiss();
-  }, [stage, dismiss, showToast]);
-
-  if (stage === 'idle') return null;
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: '1rem',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: 'min(36rem, calc(100% - 2rem))',
-        zIndex: 1000,
-        borderRadius: '0.5rem',
-        background: 'var(--bg-2)',
-        boxShadow: 'var(--shadow-sm)',
-      }}
-    >
-      <InviteStatusBanner
-        state={invite.state}
-        noun="team"
-        onAccept={invite.accept}
-        onDecline={invite.decline}
-        onRetry={invite.retry}
-        onDismiss={invite.dismiss}
-      />
-    </div>
-  );
+  return <InvitationDialog redemption={invite} noun="team" appName="Mero Calendar" />;
 }

@@ -32,7 +32,8 @@ const admin = {
   ) => setMemberCapabilities(groupId, identity, req.capabilities),
   getGroupInfo: vi.fn(async () => ({ defaultCapabilities: 0 })),
 };
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ admin, isDelegated: false }),
 }));
 vi.mock("../../contexts/ToastContext", () => ({

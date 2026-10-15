@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useContextGroup, useMero } from "@calimero-network/mero-react";
+import { useContextGroup, useJoinSync, useMero } from "@calimero-network/mero-react";
 import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import type { Member, PollSummary } from "./generated/MeroVoteClient";
 import { CreatePoll } from "./CreatePoll";
@@ -35,7 +35,16 @@ export function PhaseBadge({ phase }: { phase: PollSummary["phase"] }) {
  * It owns the two columns: the polls in the main one, and who you are, who
  * else is here and `side` (the invite card) beside them.
  */
-export function VotePanel({ contextId, side }: { contextId: string; side?: ReactNode }) {
+export function VotePanel({
+  contextId,
+  joinedNamespace = null,
+  side,
+}: {
+  contextId: string;
+  /** The namespace, when the context was just joined in this page. */
+  joinedNamespace?: string | null;
+  side?: ReactNode;
+}) {
   const client = useMeroVote(contextId);
   const { admin } = useMero();
   // `ContextPicker` creates contexts directly in the namespace, so the
@@ -68,6 +77,13 @@ export function VotePanel({ contextId, side }: { contextId: string; side?: React
 
   useEffect(() => void refresh(), [refresh]);
   useLiveRefresh(contextId, () => void refresh());
+
+  // Ends the invitation dialog's "Syncing…" for a context just joined: `tick`
+  // moves on the first read of the polls that came back, none included. A
+  // context whose state has not arrived yet fails the read, and every event
+  // re-reads it. This app's contexts live directly in the namespace (see
+  // ContextPicker), so the context's group is the namespace that was joined.
+  useJoinSync({ namespaceId: joinedNamespace ?? namespaceId, settled: tick > 0 });
 
   const names = new Map(roster.map((m) => [m.account, m.name]));
   const myName = me ? names.get(me) : undefined;

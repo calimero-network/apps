@@ -42,14 +42,17 @@ import {
   enterAgreement,
   listAgreements,
   pickInvitedAgreement,
+  type AdminLike,
+  type AgreementRow,
 } from '../lib/agreements';
 import { setActiveWorkspace } from '../lib/activeWorkspace';
-import { markNamespaceJustJoined } from '@calimero-apps/join-sync';
 import {
+  JOIN_SYNC_POLL_MS,
   describeInviteFailure,
+  markNamespaceJustJoined,
   redeemInvitation,
   type RedeemOutcome,
-} from '@calimero-apps/invite';
+} from '@calimero-network/mero-react';
 
 /**
  * The `app` handle `useCalimero()` returns.
@@ -206,6 +209,54 @@ async function registerSelf(
       console.warn('Error registering as participant:', error);
     }
     await sleep(2000);
+  }
+}
+
+/**
+ * How long to look for the agreement inside a just-joined workspace: the one
+ * the link names, or any at all when it names none.
+ *
+ * The shorter wait for an unnamed one is because a workspace with no agreement
+ * yet is a real thing to be invited to, and the workspace screen keeps looking
+ * once the joiner is on it (see AgreementsPage); a named one is worth holding
+ * the dialog for, since landing anywhere else misses the point of the link.
+ */
+const NAMED_AGREEMENT_TIMEOUT_MS = 90_000;
+const ANY_AGREEMENT_TIMEOUT_MS = 20_000;
+
+/**
+ * The agreement an invitation should land you in, waiting for it to replicate.
+ *
+ * Right after the namespace join the node holds the workspace but not yet its
+ * subgroups, so the first listing is routinely empty or fails. Concluding "no
+ * agreement" from it put the joiner on the workspace screen, outside the
+ * agreement they were invited to sign. So keep listing, bounded:
+ *
+ *   * the link names one → until THAT one is listed with a context. Another
+ *     agreement that arrived first is not a stand-in for it.
+ *   * it names none → until any agreement is listed with a context, and then
+ *     the ordinary rule decides (one is opened, several are left to pick).
+ *
+ * At the deadline the ordinary rule decides on whatever is listed by then.
+ */
+async function findInvitedAgreement(
+  admin: AdminLike,
+  workspaceId: string,
+  hintedContextId: string | undefined,
+): Promise<AgreementRow | null> {
+  const deadline =
+    Date.now() +
+    (hintedContextId ? NAMED_AGREEMENT_TIMEOUT_MS : ANY_AGREEMENT_TIMEOUT_MS);
+  for (;;) {
+    const agreements = await listAgreements(admin, workspaceId).catch(
+      (): AgreementRow[] => [],
+    );
+    const target = pickInvitedAgreement(agreements, hintedContextId);
+    const found = hintedContextId
+      ? target?.contextId === hintedContextId
+      : agreements.some((a) => !!a.contextId);
+    if (found || Date.now() >= deadline) return target;
+    await sleep(JOIN_SYNC_POLL_MS);
   }
 }
 
@@ -372,8 +423,11 @@ export async function joinWorkspaceFromInvitation(
   ).trim();
 
   onStage?.('entering');
-  const agreements = await listAgreements(admin, workspaceId).catch(() => []);
-  const target = pickInvitedAgreement(agreements, contextIdOfInvite(parsed));
+  const target = await findInvitedAgreement(
+    admin,
+    workspaceId,
+    contextIdOfInvite(parsed) || undefined,
+  );
 
   if (!target || !target.contextId) {
     // In the workspace, not in an agreement. A real and unremarkable state.

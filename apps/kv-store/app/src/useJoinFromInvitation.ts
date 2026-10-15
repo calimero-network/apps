@@ -1,12 +1,15 @@
 import { useRef } from "react";
-import { setContextId, useMero } from "@calimero-network/mero-react";
-import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
 import {
+  setContextId,
   useInviteRedemption,
-  type InviteRedeemer,
+  useMero,
   type InviteRedemption,
   type ParsedInvitation,
-} from "@calimero-apps/invite";
+} from "@calimero-network/mero-react";
+import type {
+  InviteRedeemer,
+  SignedGroupOpenInvitation,
+} from "@calimero-network/mero-js";
 import {
   decodeInvitationPayload,
   parseInvitationPayload,
@@ -16,9 +19,7 @@ import {
 export type ContextInvitation = ParsedInvitation & { contextId: string };
 
 /** The redemption, with `parsed` carrying the context this app's links name. */
-export type JoinFromInvitation = Omit<InviteRedemption, "parsed"> & {
-  parsed: ContextInvitation | null;
-};
+export type JoinFromInvitation = InviteRedemption<ContextInvitation>;
 
 /** Read a link's token into what the join needs, or `null` if it is not one. */
 export function readInvitation(token: string): ContextInvitation | null {
@@ -43,11 +44,17 @@ export function readInvitation(token: string): ContextInvitation | null {
  *
  * The invitation is acked — permanently dropped — on success, or on a failure
  * that can never succeed; anything else is kept and offered again on the next
- * load. `@calimero-apps/invite` decides which, and treats "the request failed
+ * load. mero-js decides which, and treats "the request failed
  * but the namespace is now listed" as success: the desktop proxy aborts at 30s
  * while a join can take ~95s and land anyway.
+ *
+ * Once in, `open` is handed the context the link names. The app opens it in
+ * place rather than reloading: a reload would take down the invitation dialog
+ * while it is still waiting on the context's data.
  */
-export function useJoinFromInvitation(): JoinFromInvitation {
+export function useJoinFromInvitation(
+  open: (contextId: string) => void,
+): JoinFromInvitation {
   // `admin`, NOT `mero.admin`. `mero` is the raw client, and on a delegated
   // (account) session its transport is the relay: `mero.admin.joinNamespace`
   // became `POST {relay}/admin-api/namespaces/{ns}/join` with the account's
@@ -94,7 +101,7 @@ export function useJoinFromInvitation(): JoinFromInvitation {
     },
   };
 
-  const redemption = useInviteRedemption({
+  return useInviteRedemption<ContextInvitation>({
     parse: (token) => {
       const parsed = readInvitation(token);
       contextId.current = parsed?.contextId ?? null;
@@ -103,18 +110,12 @@ export function useJoinFromInvitation(): JoinFromInvitation {
     redeemer,
     enabled: isAuthenticated,
     // `already-member` lands here too: a link followed twice, or a join the
-    // proxy gave up on that landed anyway. The invitation is already acked, so
-    // the reload cannot replay it; reloading is what makes the provider pick up
-    // the new context (see `ContextPicker.select`).
+    // proxy gave up on that landed anyway. Stored as well as opened, so the
+    // next load comes back to the same context.
     onJoined: () => {
-      if (contextId.current) setContextId(contextId.current);
-      window.location.reload();
+      if (!contextId.current) return;
+      setContextId(contextId.current);
+      open(contextId.current);
     },
   });
-
-  // `parse` is ours, so what the hook holds is a `ContextInvitation`.
-  return {
-    ...redemption,
-    parsed: redemption.parsed as ContextInvitation | null,
-  };
 }

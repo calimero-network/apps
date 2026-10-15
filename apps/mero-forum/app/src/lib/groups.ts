@@ -32,12 +32,11 @@ import {
   type SignedInvitation,
   type ForumInvitePayload,
 } from "./inviteCodec";
-import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
 import {
-  describeInviteFailure,
+  markNamespaceJustJoined,
   redeemInvitation,
   type RedeemOutcome,
-} from "@calimero-apps/invite";
+} from "@calimero-network/mero-react";
 
 /** The admin client, as `useMero().mero.admin` provides it. */
 export type AdminLike = MeroJs["admin"];
@@ -327,13 +326,6 @@ export type RedeemResult =
       outcome: Exclude<RedeemOutcome, { status: "failed" }>;
       landed: Redeemed;
     };
-
-/** What to tell the user about a failed join, in this app's noun. */
-export function redeemFailureMessage(
-  outcome: Extract<RedeemOutcome, { status: "failed" }>,
-): string {
-  return describeInviteFailure(outcome.reason, "space") ?? outcome.message;
-}
 
 /** The namespace an invitation grants: the same signed id `acceptInvite` joins. */
 function invitedNamespaceOf(payload: ForumInvitePayload): string {

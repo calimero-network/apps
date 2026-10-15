@@ -495,3 +495,21 @@ code {
   font-family: 'Courier New', monospace;
   font-size: 0.9em;
 }
+
+/* mero-react's InvitationDialog in this app's own dark tokens, so the invitation prompt looks
+   like part of this app rather than mero-react's default theme.
+   `body > .mero-invite-overlay` outranks mero-react's own rule, which is
+   injected at runtime after this file. */
+body > .mero-invite-overlay {
+  --mero-overlay: rgba(5, 7, 10, 0.6);
+  --mero-bg-secondary: var(--color-bg-card);
+  --mero-bg-tertiary: var(--color-bg-input);
+  --mero-text: var(--color-text-primary);
+  --mero-text-secondary: var(--color-text-muted);
+  --mero-accent: var(--color-brand-600);
+  --mero-accent-hover: var(--color-brand-700);
+  --mero-on-primary: var(--color-neutral-900);
+  --mero-border: var(--color-border);
+  --mero-error: var(--color-error);
+  font-family: inherit;
+}

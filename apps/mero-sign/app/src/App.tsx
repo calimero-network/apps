@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Routes, Route, BrowserRouter, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Routes, Route, BrowserRouter } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import AgreementsPage from './pages/app/AgreementsPage';
 import WorkspacesPage from './pages/app/WorkspacesPage';
@@ -12,7 +12,6 @@ import ConnectPopup from './pages/landing/ConnectPopup';
 import InvitationHandlerPopup from './components/InvitationHandlerPopup';
 import { useCalimero } from './lib/useCalimero';
 import { ROUTES, type Screen } from './routes';
-import { onInvitation, type CapturedInvitation } from '@calimero-apps/invite';
 
 /**
  * The single screen renderer.
@@ -85,57 +84,7 @@ function Screenful({
 
 function AppContent() {
   const { isAuthenticated } = useCalimero();
-  const [invitation, setInvitation] = useState<CapturedInvitation | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
-  const navigate = useNavigate();
-
-  // Invitations are captured at APP level, not per page: a link can land on any
-  // route. Subscribed unconditionally, outside any auth branch — capture starts
-  // in main.tsx before React mounts, so an invitation survives the login
-  // redirect. The prompt asks before it joins.
-  useEffect(() => onInvitation(setInvitation), []);
-
-  const handleInvitationSuccess = useCallback(
-    (agreement: {
-      contextId: string | null;
-      namespaceId: string | null;
-      name: string;
-    }) => {
-      invitation?.resolve();
-      setInvitation(null);
-      // ⚠️ An invitation grants membership of a WORKSPACE. It resolves to a
-      // single agreement only when the workspace holds exactly one, or when
-      // the link named one that is in it. With none or several — both ordinary
-      // — the workspace is where the person belongs, and
-      // `/agreements/undefined` is where they used to end up.
-      if (agreement.contextId) {
-        navigate(`/agreements/${agreement.contextId}`, { replace: true });
-      } else if (agreement.namespaceId) {
-        navigate(`/workspaces/${agreement.namespaceId}`, { replace: true });
-      } else {
-        navigate('/workspaces', { replace: true });
-      }
-    },
-    [invitation, navigate],
-  );
-
-  const handleInvitationError = useCallback(
-    (retain: boolean) => {
-      // Acked on decline too, or the store replays it on every reload and the
-      // prompt becomes impossible to dismiss — unless the join failed for a
-      // reason a later load can get past (nobody online to let them in). That
-      // one is kept, and the capture's attempt cap bounds the replays.
-      if (!retain) invitation?.resolve();
-      setInvitation(null);
-    },
-    [invitation],
-  );
-
-  // A final refusal (expired, invalid, refused) is finished with the moment
-  // it happens, whether or not the prompt is dismissed.
-  const handleInvitationFinalFailure = useCallback(() => {
-    invitation?.resolve();
-  }, [invitation]);
 
   return (
     <>
@@ -159,15 +108,11 @@ function AppContent() {
         isOpen={connectOpen && !isAuthenticated}
         onClose={() => setConnectOpen(false)}
       />
-      {invitation && isAuthenticated && (
-        <InvitationHandlerPopup
-          key={invitation.token}
-          invitation={invitation.token}
-          onSuccess={handleInvitationSuccess}
-          onFinalFailure={handleInvitationFinalFailure}
-          onError={handleInvitationError}
-        />
-      )}
+      {/* Invitations are captured at APP level, not per page: a link can land
+          on any route. Mounted outside any auth branch — capture starts in
+          main.tsx before React mounts, so an invitation survives the login
+          redirect, and the prompt waits for a session before it asks. */}
+      <InvitationHandlerPopup />
     </>
   );
 }

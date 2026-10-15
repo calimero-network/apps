@@ -2,7 +2,7 @@ import "@calimero-apps/glass/glass.css";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { AppMode, MeroProvider } from "@calimero-network/mero-react";
-import { primeInvitationCapture } from "@calimero-apps/invite";
+import { primeInvitationCapture } from "@calimero-network/mero-react";
 import { App } from "./App";
 import { applyStoredTheme } from "./ui";
 import { adoptDesktopSession } from "./utils/desktopSso";
