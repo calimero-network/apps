@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useMero } from '@calimero-network/mero-react';
+import { publishMemberName, useMemberNames } from '@calimero-apps/names';
 import {
   CheckCircle2,
   Clock,
@@ -53,7 +55,8 @@ import {
   isAdmin,
   isHexId,
   levelChangesFor,
-  shortId,
+  participantInitials,
+  participantName,
   toHexId,
 } from '../../lib/participants';
 import { AppShell } from '../../components/shell/AppShell';
@@ -224,6 +227,16 @@ export default function AgreementPage() {
   const [mintingInvite, setMintingInvite] = useState(false);
   // ⚠️ An invitation is to the WORKSPACE, not to this agreement. See below.
   const workspaceId = useActiveWorkspace();
+  // People by the name they set for the workspace (namespace member metadata,
+  // shared by every app on it), not by account id.
+  const { admin } = useMero();
+  const { nameOf } = useMemberNames(admin, workspaceId);
+  const personName = useCallback(
+    (id: string) => participantName(id, nameOf),
+    [nameOf],
+  );
+  const [myName, setMyName] = useState('');
+  const [savingName, setSavingName] = useState(false);
   const [inviteeId, setInviteeId] = useState('');
   // Defaults to Signer because that is what inviting somebody to an agreement
   // ordinarily means, and the picker states the consequence rather than
@@ -331,13 +344,13 @@ export default function AgreementPage() {
           setError(res.error.message || 'Could not change that role.');
           return;
         }
-        flash(`${shortId(userId)} is now ${level}.`);
+        flash(`${personName(userId)} is now ${level}.`);
         await loadDetails();
       } finally {
         setRoleBusyFor(null);
       }
     },
-    [clientApi, contextId, executorKey, flash, loadDetails],
+    [clientApi, contextId, executorKey, flash, loadDetails, personName],
   );
 
   const remove = useCallback(
@@ -353,14 +366,30 @@ export default function AgreementPage() {
           setError(res.error.message || 'Could not remove that person.');
           return;
         }
-        flash(`${shortId(userId)} removed.`);
+        flash(`${personName(userId)} removed.`);
         await loadDetails();
       } finally {
         setRoleBusyFor(null);
       }
     },
-    [clientApi, contextId, executorKey, flash, loadDetails],
+    [clientApi, contextId, executorKey, flash, loadDetails, personName],
   );
+
+  // Publish the name every app on this workspace shows for this account.
+  const saveMyName = useCallback(async () => {
+    const name = myName.trim();
+    if (!admin || !workspaceId || !selfAccountId || !name) return;
+    setSavingName(true);
+    try {
+      await publishMemberName(admin, workspaceId, selfAccountId, name);
+      setMyName('');
+      flash(`Everyone in this workspace now sees you as ${name}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save your name.');
+    } finally {
+      setSavingName(false);
+    }
+  }, [admin, workspaceId, selfAccountId, myName, flash]);
 
   // ── invitations ───────────────────────────────────────────────────────────
   const mintLink = useCallback(async () => {
@@ -710,6 +739,30 @@ export default function AgreementPage() {
             <div className={styles.toolbar}>
               <h2 className={styles.sectionTitle}>People</h2>
             </div>
+            {workspaceId && selfAccountId && (
+              <div className={styles.createRow}>
+                <input
+                  className={styles.input}
+                  placeholder={
+                    nameOf(selfAccountId) ??
+                    'Your name — how others in this workspace see you'
+                  }
+                  aria-label="Your name"
+                  value={myName}
+                  onChange={(e) => setMyName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && void saveMyName()}
+                  data-testid="my-name"
+                />
+                <button
+                  className={styles.btn}
+                  onClick={() => void saveMyName()}
+                  disabled={savingName || !myName.trim()}
+                  data-testid="my-name-save"
+                >
+                  {nameOf(selfAccountId) ? 'Rename' : 'Set name'}
+                </button>
+              </div>
+            )}
             {roster.length === 0 ? (
               <div className={styles.emptyState}>
                 <span className={styles.emptyIcon}>
@@ -724,6 +777,7 @@ export default function AgreementPage() {
                 {roster.map((entry) => {
                   const changes = levelChangesFor(entry.level);
                   const busy = roleBusyFor === entry.id;
+                  const name = nameOf(entry.id);
                   return (
                     <div
                       className={styles.row}
@@ -737,14 +791,15 @@ export default function AgreementPage() {
                             : ''
                         }`}
                       >
-                        {entry.id.slice(0, 2).toUpperCase()}
+                        {participantInitials(entry.id, name)}
                       </span>
                       <span className={styles.rowMain}>
-                        {/* HEX, not base58. This panel used to render
-                            `bs58.encode(user_id)`, so every id on screen was in
-                            an encoding the contract rejects. */}
-                        <span className={styles.rowName}>
-                          {shortId(entry.id)}
+                        {/* The name they set for the workspace, else a short
+                            id. The tooltip keeps the full HEX id (not base58:
+                            this panel used to render `bs58.encode(user_id)`,
+                            an encoding the contract rejects). */}
+                        <span className={styles.rowName} title={entry.id}>
+                          {personName(entry.id)}
                           {entry.isSelf && (
                             <span className={styles.rowYou}> (you)</span>
                           )}

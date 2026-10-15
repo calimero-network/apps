@@ -17,7 +17,8 @@ export function Outliner({ peers }: { peers: Peer[] }) {
   const locks = useEditor((s) => s.locks);
   const memberNames = useEditor((s) => s.memberNames);
   const me = useEditor((s) => s.me);
-  const names = { memberNames, me };
+  const spaceNameOf = useEditor((s) => s.spaceNameOf);
+  const names = { memberNames, me, spaceNameOf };
   const index = useMemo(() => childrenIndex(objects), [objects]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [renaming, setRenaming] = useState<string | null>(null);

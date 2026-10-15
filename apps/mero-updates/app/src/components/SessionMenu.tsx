@@ -2,7 +2,7 @@ import { useMero } from "@calimero-network/mero-react";
 
 import { useSignOut } from "../auth/signOut";
 import type { MeView } from "../generated/UpdatesClient";
-import { personLabel } from "../lib/updates";
+import { usePersonLabel } from "../lib/updates";
 import { Avatar } from "./bits";
 import styles from "./SessionMenu.module.css";
 import { LogOutIcon } from "./icons";
@@ -20,6 +20,7 @@ import { LogOutIcon } from "./icons";
  * "which node am I on" is the first question when something looks empty.
  */
 export default function SessionMenu({ me, roleLabel }: { me: MeView | null; roleLabel: string | null }) {
+  const personLabel = usePersonLabel();
   const { nodeUrl } = useMero();
   const signOut = useSignOut();
 

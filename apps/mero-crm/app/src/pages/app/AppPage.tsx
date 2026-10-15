@@ -57,6 +57,7 @@ export default function AppPage(): React.ReactElement | null {
         ws.refetchMembers,
         ws.membersLoading,
         ws.membersLoaded,
+        ws.members,
       ),
     [
       ws.memberNames,
@@ -64,6 +65,7 @@ export default function AppPage(): React.ReactElement | null {
       ws.refetchMembers,
       ws.membersLoading,
       ws.membersLoaded,
+      ws.members,
     ],
   );
 
@@ -135,14 +137,25 @@ export default function AppPage(): React.ReactElement | null {
   }, [showNew, showInvite, showCreateNs, showAddPipeline]);
 
   const myName = selfMember ? aliases.resolve(selfMember) : "";
+  // `owner` stores the member's ACCOUNT and is named at display time
+  // (`aliases.ownerName`), so a member who sets a name later is not frozen
+  // as a truncated key on every deal they were given.
   const ownerOptions = useMemo(() => {
-    const names = new Set<string>();
-    for (const m of ws.members) names.add(aliases.resolve(m));
-    // Owners already on deals stay pickable even if that member left.
-    for (const d of data.deals) if (d.owner) names.add(d.owner);
-    if (myName) names.add(myName);
-    return [...names].sort((a, b) => a.localeCompare(b));
-  }, [ws.members, aliases, data.deals, myName]);
+    const owners = new Set<string>(ws.members);
+    if (selfMember) owners.add(selfMember);
+    const labels = new Set([...owners].map(aliases.ownerName));
+    // Owners already on deals stay pickable even if that member left; an old
+    // deal that stored a member's name is that member, already listed.
+    for (const d of data.deals) {
+      if (d.owner && !owners.has(d.owner) && !labels.has(aliases.ownerName(d.owner))) {
+        owners.add(d.owner);
+        labels.add(aliases.ownerName(d.owner));
+      }
+    }
+    return [...owners].sort((a, b) => aliases.ownerName(a).localeCompare(aliases.ownerName(b)));
+  }, [ws.members, selfMember, aliases, data.deals]);
+  /** The owner filter holds a label, so it matches old (named) and new (account) owners alike. */
+  const ownerLabels = useMemo(() => [...new Set(ownerOptions.map(aliases.ownerName))], [ownerOptions, aliases]);
 
   const createDeal = useCallback(
     async (input: NewDealInput) => {
@@ -182,7 +195,7 @@ export default function AppPage(): React.ReactElement | null {
     (a) =>
       !a.done &&
       a.due_at < new Date().setHours(0, 0, 0, 0) &&
-      (!ownerFilter || a.owner === ownerFilter),
+      (!ownerFilter || aliases.ownerName(a.owner) === ownerFilter),
   ).length;
   const membersCount = Math.max(ws.members.length, 1);
   const activePipelineName =
@@ -192,6 +205,7 @@ export default function AppPage(): React.ReactElement | null {
     data,
     currentUser,
     myName,
+    myOwner: selfMember,
     ownerOptions,
     members: ws.members,
     aliases,
@@ -275,7 +289,7 @@ export default function AppPage(): React.ReactElement | null {
     <AliasGate
       namespaceId={ws.activeNs}
       identity={ws.selfIdentity}
-      hasName={!!ws.selfIdentity && ws.memberNames.has(ws.selfIdentity)}
+      hasName={!!ws.selfIdentity && aliases.hasAlias(ws.selfIdentity)}
       membersLoaded={ws.membersLoaded}
       onSave={ws.setMemberName}
     />
@@ -287,7 +301,7 @@ export default function AppPage(): React.ReactElement | null {
       pipelineName={activePipelineName}
       onNewDeal={() => openNewDeal()}
       ownerFilter={ownerFilter}
-      ownerOptions={ownerOptions}
+      ownerOptions={ownerLabels}
       myName={myName}
       onOwnerFilterChange={setOwnerFilter}
       searchQuery={searchQuery}
@@ -330,7 +344,8 @@ export default function AppPage(): React.ReactElement | null {
           stages={data.stages}
           contacts={data.contacts}
           owners={ownerOptions}
-          defaultOwner={myName}
+          ownerName={aliases.ownerName}
+          defaultOwner={selfMember}
           defaultStageId={newDeal.stageId}
           defaultContactId={newDeal.contactId}
           currency={data.settings.currency}

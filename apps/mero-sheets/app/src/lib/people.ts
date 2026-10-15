@@ -71,6 +71,20 @@ export function memberLabel(
 }
 
 /**
+ * Fill a blank workbook nickname with the name the member set for the whole
+ * workspace (namespace member metadata), so someone named in every other app
+ * is not a short id here. A nickname picked in this workbook still wins.
+ */
+export function withNamespaceNames<M extends Pick<Member, 'id' | 'nickname'>>(
+  members: readonly M[],
+  namespaceNameOf: (memberId: string) => string | undefined,
+): M[] {
+  return members.map((m) =>
+    (m.nickname ?? '').trim() ? m : { ...m, nickname: namespaceNameOf(m.id) ?? '' },
+  );
+}
+
+/**
  * Label a whole roster: self first, then named members, then placeholders.
  *
  * Self first because "am I in here" is the question the list answers most often.

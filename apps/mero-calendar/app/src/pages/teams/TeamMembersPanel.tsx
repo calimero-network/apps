@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
+import { useMemberNames } from "@calimero-apps/names";
 
 import {
   fallbackCapabilities,
@@ -51,6 +52,11 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
   // `admin`, not `mero.admin`: the session-aware client, which on an account
   // governs through the relay as the account (see TeamsPage).
   const { admin } = useMero();
+  // The name each person set on the team (namespace member metadata), shared
+  // with every app on it — including one this session just published — and a
+  // short id, never a raw prefix, for someone who never set one.
+  const { displayName } = useMemberNames(admin, teamId);
+  const short = (row: GroupMemberRow) => displayName(row.identity, row.name);
   const [rows, setRows] = useState<Row[]>([]);
   const [teeMembers, setTeeMembers] = useState<GroupMemberRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -205,7 +211,7 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
                   </span>
                   <span className={styles.memberInfo}>
                     <span className={styles.memberName}>
-                      {row.name?.trim() || `${row.identity.slice(0, 10)}…`}
+                      {short(row)}
                       {isMe && <span className={styles.memberYou}>you</span>}
                     </span>
                     <code className={styles.memberId}>
@@ -218,7 +224,7 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
                     value={row.role}
                     disabled={busy === row.identity}
                     onChange={(e) => changeRole(row, e.target.value as Role)}
-                    aria-label={`Role for ${row.name ?? row.identity}`}
+                    aria-label={`Role for ${short(row)}`}
                     data-testid={`role-${row.identity}`}
                   >
                     <option value="member">{roleLabel("member")}</option>
@@ -232,8 +238,4 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
       </div>
     </div>
   );
-}
-
-function short(row: GroupMemberRow): string {
-  return row.name?.trim() || `${row.identity.slice(0, 10)}…`;
 }

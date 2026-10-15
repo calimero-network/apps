@@ -10,7 +10,6 @@ import type { ArenaState, Slice } from "./game/controller";
 import type { MoveKind } from "./game/sim";
 import type { FighterId } from "./game/fighters";
 
-const NAME_KEY = "mero-kombat:name";
 const FIGHTER_KEY = "mero-kombat:fighter";
 
 function read(key: string): string {
@@ -29,8 +28,6 @@ function write(key: string, value: string) {
   }
 }
 
-export const storedName = () => read(NAME_KEY);
-export const rememberName = (name: string) => write(NAME_KEY, name);
 export const storedFighter = (): FighterId => (read(FIGHTER_KEY) as FighterId) || "kinetic";
 export const rememberFighter = (id: FighterId) => write(FIGHTER_KEY, id);
 

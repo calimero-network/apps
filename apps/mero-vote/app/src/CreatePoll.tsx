@@ -14,12 +14,15 @@ type Mode = "single" | "multi";
 export function CreatePoll({
   contextId,
   me,
+  selfName,
   roster,
   onCancel,
   onCreated,
 }: {
   contextId: string;
   me: string;
+  /** Your namespace name, for when you are not on the roster yet. */
+  selfName?: string;
   roster: Member[];
   onCancel: () => void;
   onCreated: (pollId: string) => void;
@@ -39,7 +42,7 @@ export function CreatePoll({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const people = roster.some((m) => m.account === me) ? roster : [{ account: me, name: "You" }, ...roster];
+  const people = roster.some((m) => m.account === me) ? roster : [{ account: me, name: selfName || "You" }, ...roster];
   const filled = options.map((o) => o.trim()).filter(Boolean);
   const maxC = Math.min(Math.max(1, maxChoices), Math.max(filled.length, 1));
   const nT = trustees.size;

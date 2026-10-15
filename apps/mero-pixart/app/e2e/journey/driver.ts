@@ -1,6 +1,6 @@
 import { deflateSync } from "node:zlib";
 import { expect, type Locator, type Page } from "@playwright/test";
-import type { Actor, AppDriver, Feature } from "@calimero-apps/e2e-node/journey";
+import { answeredNamePrompt, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
 
 const SYNC = 90_000;
 
@@ -115,6 +115,7 @@ async function nameIfAsked(actor: Actor, waitMs: number): Promise<void> {
   const deadline = Date.now() + waitMs;
   do {
     if (await input.isVisible().catch(() => false)) {
+      answeredNamePrompt(actor, new URL(page.url()).pathname);
       await input.fill(`${actor.name}-${actor.run}`);
       await page.getByTestId("username-submit").click();
       await expect(input).toBeHidden({ timeout: 30_000 });

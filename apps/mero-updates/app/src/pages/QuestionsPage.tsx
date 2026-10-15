@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAudience } from "../components/AudienceShell";
 import { Avatar, Empty } from "../components/bits";
 import { ChevronRightIcon, HelpCircleIcon, MessageIcon } from "../components/icons";
-import { personLabel, timeAgo, useLive, useRevision, useUpdatesClient } from "../lib/updates";
+import { usePersonLabel, timeAgo, useLive, useRevision, useUpdatesClient } from "../lib/updates";
 
 /**
  * Q&A: the investor-initiated half of the conversation.
@@ -16,6 +16,7 @@ import { personLabel, timeAgo, useLive, useRevision, useUpdatesClient } from "..
  * does not get asked eight times.
  */
 export default function QuestionsPage() {
+  const personLabel = usePersonLabel();
   const client = useUpdatesClient();
   const navigate = useNavigate();
   const { me, reload: reloadShell } = useAudience();

@@ -6,8 +6,9 @@ import {
   getContextIdentity,
   useMero,
 } from "@calimero-network/mero-react";
+import { useMyName } from "@calimero-apps/names";
 
-import { loadAccountId } from "../../api/identity";
+import { accountId, loadAccountId } from "../../api/identity";
 import { bindSession } from "../../api/session";
 import { ClientApiDataSource } from "../../api/dataSource/ClientApiDataSource";
 import Calendar from "../../components/calendar/Calendar";
@@ -118,19 +119,36 @@ export default function CalendarPage() {
       } catch {
         /* best-effort */
       }
+      // And as this person's name on the team, so every calendar and every
+      // other app on it shows the name too. Best-effort: the calendar name
+      // above is already set either way.
+      if (trimmed !== myName.name) void myName.setName(trimmed).catch(() => {});
     }
     setAskUsername(false);
   }
 
-  // Default a name suggestion from the active identity (short pubkey).
+  // Someone who already named themselves on the team is not asked again on
+  // every new calendar: the team name becomes their calendar username.
+  // One name per TEAM: asked for only when the team has none for you, and
+  // only once the team's names have loaded.
+  const myName = useMyName(admin, teamId, accountId());
+  const myTeamName = myName.name;
+  useEffect(() => {
+    if (askUsername && myTeamName) void handleUsernameSubmit(myTeamName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askUsername, myTeamName]);
+
+  // Default a name suggestion: the team name, else the active identity (short
+  // pubkey).
   const defaultName = (() => {
+    if (myTeamName) return myTeamName;
     const pk = getContextIdentity() ?? "";
     return pk ? `user-${pk.slice(0, 6)}` : "";
   })();
 
   return (
     <div data-testid="calendar-container">
-      {askUsername && (
+      {askUsername && myName.ready && !myTeamName && (
         <UsernameModal
           defaultName={defaultName}
           onSubmit={handleUsernameSubmit}

@@ -50,6 +50,7 @@ function isMultiline(kind: string, key: string): boolean {
 export default function ItemDetail({
   secret,
   me,
+  nameOf,
   canWrite,
   onBack,
   onCopy,
@@ -61,6 +62,8 @@ export default function ItemDetail({
 }: {
   secret: Secret;
   me?: string;
+  /** The team name of an account, for the "by" lines (`useMemberNames`). */
+  nameOf?: (account: string) => string | undefined;
   canWrite: boolean;
   onBack: () => void;
   onCopy: (value: string, what: string) => void;
@@ -230,10 +233,10 @@ export default function ItemDetail({
 
       <div className={styles.meta}>
         Modified {asDate(secret.updatedAt).toLocaleString()} by{' '}
-        {who(secret.updatedBy, me)}
+        {who(secret.updatedBy, me, nameOf)}
         <br />
         Created {asDate(secret.createdAt).toLocaleString()} by{' '}
-        {who(secret.createdBy, me)}
+        {who(secret.createdBy, me, nameOf)}
       </div>
 
       <div className={styles.detailActions} style={{ marginTop: '1.25rem' }}>
@@ -269,7 +272,7 @@ export default function ItemDetail({
                   <span className={styles.historyMeta}>
                     {r.field.replace(/_/g, ' ')} ·{' '}
                     {asDate(r.replacedAt).toLocaleString()} ·{' '}
-                    {who(r.replacedBy, me)}
+                    {who(r.replacedBy, me, nameOf)}
                   </span>
                   <span className={styles.fieldMono}>
                     {r.unreadable

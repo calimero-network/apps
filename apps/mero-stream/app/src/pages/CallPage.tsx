@@ -6,6 +6,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { useMero } from "@calimero-network/mero-react";
+import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import { useMeroStream } from "../hooks/useMeroStream";
 import { useLiveStream } from "../hooks/useLiveStream";
 import { fmt } from "../lib/format";
@@ -83,6 +85,10 @@ export default function CallPage() {
   const [namespaceId] = useState(() => getActiveNamespaceId());
   const stream = useMeroStream();
   const s = useLiveStream(true);
+  // Names people set for the whole stream (namespace member metadata), for
+  // anyone the contract has no nickname for — see @calimero-apps/names.
+  const { admin } = useMero();
+  const { nameOf } = useMemberNames(admin, namespaceId);
 
   // The STORED nickname — "" when never set, which is a state worth knowing:
   // it is what makes the identity control worth pointing at on first run.
@@ -160,9 +166,33 @@ export default function CallPage() {
     (next: string) => {
       setNickname(next);
       void join(next);
+      // The stream-wide name too, so every room and every other app on the
+      // namespace shows it. Best-effort: the room nickname is what was asked
+      // for, and a refusal here must not undo it. Published as the EXECUTOR
+      // (the account, or the node's identity), which is who the namespace
+      // knows — not the device key the contract records.
+      const trimmed = next.trim();
+      if (admin && namespaceId && stream.executorId && trimmed) {
+        void publishMemberName(
+          admin,
+          namespaceId,
+          stream.executorId,
+          trimmed,
+        ).catch(() => {});
+      }
     },
-    [join],
+    [join, admin, namespaceId, stream.executorId],
   );
+
+  // Adopt the name this person already set for the stream. A blank nickname
+  // would otherwise join as "guest" even though everyone on the namespace
+  // already knows them by name.
+  const spaceName = stream.executorId ? nameOf(stream.executorId) : undefined;
+  useEffect(() => {
+    if (getUsername() || !spaceName) return;
+    setNickname(spaceName);
+    void join(spaceName);
+  }, [spaceName, join]);
 
   // Refresh names when the participant set changes, plus a slow tick for someone
   // who renames themselves. Keyed on peer COUNT rather than "is any name
@@ -260,8 +290,9 @@ export default function CallPage() {
         me,
         selfName: effectiveName,
         selfLive: s.running,
+        nameOf,
       }),
-    [members, me, effectiveName, liveIds, s.running],
+    [members, me, effectiveName, liveIds, s.running, nameOf],
   );
 
   const roomName = stream.contextId ? getRoomName(stream.contextId) : "";
@@ -516,7 +547,9 @@ export default function CallPage() {
               >
                 <VideoIcon size={14} className={styles.tileIcon} />
                 <span className={styles.tileName}>
-                  {names[peer.from] ?? shortId(peer.from)}
+                  {names[peer.from]?.trim() ||
+                    nameOf(peer.from) ||
+                    shortId(peer.from)}
                 </span>
               </figcaption>
             </figure>

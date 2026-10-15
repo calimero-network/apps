@@ -39,6 +39,8 @@ import {
   RevisionContext,
   useAudienceContextId,
   useLive,
+  usePublishSpaceName,
+  useSpaceName,
   useUpdatesClient,
 } from "../lib/updates";
 import { getActiveNamespaceId, getAudienceName, setUsername } from "../lib/session";
@@ -288,10 +290,18 @@ function ShellBody() {
  */
 function ProfilePrompt({ me, onSaved }: { me: MeView; onSaved: () => void }) {
   const client = useUpdatesClient();
+  const publishSpaceName = usePublishSpaceName();
   const [name, setName] = useState("");
   const [firm, setFirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Offer the name this person already set for the company, so someone who
+  // named themselves in another audience or app only has to confirm it.
+  const spaceName = useSpaceName(me.account);
+  useEffect(() => {
+    if (spaceName) setName((cur) => cur || spaceName);
+  }, [spaceName]);
 
   const save = async () => {
     if (!client || !name.trim()) return;
@@ -300,6 +310,7 @@ function ProfilePrompt({ me, onSaved }: { me: MeView; onSaved: () => void }) {
     try {
       await client.setProfile({ name: name.trim(), firm: firm.trim() });
       setUsername(name.trim());
+      publishSpaceName(me.account, name);
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

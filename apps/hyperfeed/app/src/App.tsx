@@ -96,7 +96,13 @@ function NodeFeedApp({
   const base = useFeed(node.backend, node.nudge);
   // Each chat a task touched, named from the chat ("#launch", "DM with Ronit"), read in its own context.
   const nameLink = useMemo(() => linkNamer(node.hostFor), [node.hostFor]);
-  const feed = useMemo(() => ({ ...base, nameLink }), [base, nameLink]);
+  // A person by name, read as a lens reads one: from namespace member metadata.
+  const { hostFor } = node;
+  const namePerson = useCallback(
+    (identity: string) => hostFor(contextId)?.name(identity) ?? Promise.resolve(""),
+    [hostFor, contextId],
+  );
+  const feed = useMemo(() => ({ ...base, nameLink, namePerson }), [base, nameLink, namePerson]);
   const [query, setQuery] = useState("");
   const { mero, admin } = useMero();
   // A row's app, signed in to this node, at the row's context.

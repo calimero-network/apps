@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { peopleRows } from './PeoplePanel';
+import { peopleRows, rowName } from './PeoplePanel';
 import type { Member } from '../hooks/useSpreadsheet';
 
 const member = (id: string, account: string) => ({ id, account, role: 'editor', nickname: '' }) as unknown as Member;
@@ -25,5 +25,22 @@ describe('peopleRows', () => {
     const { rows, tees } = peopleRows([], [{ identity: 'acc-bob', role: 'Member' }]);
     expect(rows.map((r) => r.key)).toEqual(['acc-bob']);
     expect(tees).toBe(0);
+  });
+});
+
+// A workspace member who has not opened this workbook used to be listed as
+// `5926f2d2…` even when they had a workspace name.
+describe('rowName', () => {
+  const names: Record<string, string> = { 'acc-bob': 'Bob', 'm-ann': 'Ann' };
+  const nameOf = (id: string) => names[id] ?? `${id}?`;
+
+  it('names a group person who has not opened the workbook by their account', () => {
+    const { rows } = peopleRows([], [{ identity: 'acc-bob', role: 'Member' }]);
+    expect(rowName(rows[0], nameOf)).toBe('Bob');
+  });
+
+  it('names a workbook member by their member id', () => {
+    const { rows } = peopleRows([member('m-ann', 'acc-ann')], [{ identity: 'acc-ann', role: 'Admin' }]);
+    expect(rowName(rows[0], nameOf)).toBe('Ann');
   });
 });

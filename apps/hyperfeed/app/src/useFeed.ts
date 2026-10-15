@@ -89,6 +89,8 @@ export interface Feed {
   loadLinks?: (chain: string) => Promise<LinkView[]>;
   /** A link's name from the thing itself ("#launch", "DM with Ronit"), `""` when it cannot say; absent off a node. */
   nameLink?: NameLink;
+  /** A person's name from their namespace member metadata, `""` when nobody named them; absent off a node. */
+  namePerson?: (identity: string) => Promise<string>;
   /** Link a thing to a task by hand; absent when the feed predates links. */
   addLink?: (chain: string, subject: string, label: string) => Promise<void>;
   /** Take a link off a task. */

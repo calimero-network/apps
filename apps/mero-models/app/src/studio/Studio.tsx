@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { clearContextId, useMero } from "@calimero-network/mero-react";
 import * as cmd from "../editor/commands";
-import { rememberName, storedName, useJoin, usePresence, useSceneSync } from "../editor/hooks";
+import { rememberName, storedName, useJoin, usePresence, useSceneSync, useSpaceNames } from "../editor/hooks";
 import { IMPORT_ACCEPT, download, exportScene, importFile, type ExportFormat } from "../editor/io";
 import { EXAMPLES } from "../editor/examples";
 import { LIGHTS, PRIMITIVES, isSolid, type Environment, type ObjectKind } from "../editor/model";
@@ -50,7 +50,16 @@ export function Studio({ contextId }: { contextId: string }) {
     return () => textures?.dispose();
   }, [textures]);
   const services = useMemo(() => ({ sync, textures }), [sync, textures]);
-  const [name, setName] = useState(storedName);
+  const [storedOwn, setName] = useState(storedName);
+  const me = useEditor((s) => s.me);
+  const { nameOf: spaceNameOf, publish } = useSpaceNames(contextId);
+  // The check-out and history labels read namespace names through the store.
+  useEffect(() => {
+    useEditor.setState({ spaceNameOf });
+  }, [spaceNameOf]);
+  // Someone who never named themselves here joins under the name they set for
+  // the namespace rather than as "Guest".
+  const name = storedOwn || spaceNameOf(me) || "";
   useJoin(contextId, name);
   const { peers, publishCamera } = usePresence(contextId, name);
   const viewport = useRef<Viewport | null>(null);
@@ -74,10 +83,15 @@ export function Studio({ contextId }: { contextId: string }) {
     [sync],
   );
 
-  const onName = useCallback((next: string) => {
-    setName(next);
-    rememberName(next);
-  }, []);
+  const onName = useCallback(
+    (next: string) => {
+      setName(next);
+      rememberName(next);
+      // The namespace-wide name too, so every app on it shows this name.
+      if (next) publish(useEditor.getState().me, next);
+    },
+    [publish],
+  );
 
   // ── file actions ──
   async function onImport(file: File) {

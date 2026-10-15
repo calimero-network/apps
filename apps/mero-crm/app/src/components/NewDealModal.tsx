@@ -22,7 +22,10 @@ export interface NewDealInput {
 interface Props {
   stages: StageView[];
   contacts: ContactView[];
+  /** Stored owner values (member accounts, or a legacy stored name). */
   owners: string[];
+  /** Label for an owner value; defaults to the value itself. */
+  ownerName?: (owner: string) => string;
   defaultOwner: string;
   defaultStageId?: string;
   defaultContactId?: string;
@@ -40,7 +43,7 @@ const SOURCES = ['Inbound', 'Outbound', 'Referral', 'Event', 'Partner', 'Existin
  * default — the first stage, you as owner, a close date a month out.
  */
 export default function NewDealModal({
-  stages, contacts, owners, defaultOwner, defaultStageId, defaultContactId, currency, onCreate, onClose,
+  stages, contacts, owners, ownerName = (o) => o, defaultOwner, defaultStageId, defaultContactId, currency, onCreate, onClose,
 }: Props): React.ReactElement {
   const [title, setTitle] = useState('');
   const [value, setValue] = useState('');
@@ -170,7 +173,7 @@ export default function NewDealModal({
               Owner
               <Select data-testid="deal-owner-select" value={owner} onChange={(e) => setOwner(e.target.value)}>
                 <option value="">— Unassigned —</option>
-                {owners.map((o) => <option key={o} value={o}>{o}</option>)}
+                {owners.map((o) => <option key={o} value={o}>{ownerName(o)}</option>)}
               </Select>
             </Label>
             <Label>

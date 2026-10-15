@@ -94,3 +94,26 @@ describe("summariseMembers", () => {
     expect(summariseMembers([])).toBe("");
   });
 });
+
+describe("memberLabel – stream-wide names", () => {
+  const nameOf = (id: string) => (id === ALICE ? "Alice" : undefined);
+
+  it("uses the stream-wide name before a short id", () => {
+    const l = memberLabel(member(ALICE, ""), "", nameOf);
+    expect(l.label).toBe("Alice");
+    expect(l.anonymous).toBe(false);
+  });
+
+  it("keeps the room nickname when there is one", () => {
+    expect(memberLabel(member(ALICE, "fran1"), "", nameOf).label).toBe("fran1");
+  });
+
+  it("sorts a stream-named member with the named ones", () => {
+    const labels = labelMembers(
+      [member(BOB, ""), member(ALICE, ""), member(CAROL, "Carol")],
+      "",
+      nameOf,
+    );
+    expect(labels.map((l) => l.label)).toEqual(["Alice", "Carol", "bbbbbbbb…"]);
+  });
+});
