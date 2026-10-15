@@ -1,15 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useJoinSync, useMero } from "@calimero-network/mero-react";
+import {
+  JOIN_SYNC_POLL_MS,
+  JoinSyncBanner,
+  isNamespaceJustJoined,
+  useJoinSync,
+  useMero,
+} from "@calimero-network/mero-react";
 import {
   listContextsForApplication,
   listGroupContexts,
+  listNamespaces,
   listSubgroupIds,
   setContextName,
 } from "../../api/admin";
 import {
   contextId as readContextId,
   contextName as readContextName,
+  namespaceId as readNamespaceId,
 } from "../../api/appScope";
 import TeamMembersPanel from "./TeamMembersPanel";
 import { useEnsureAppId } from "../../hooks/useEnsureAppId";
@@ -103,6 +111,15 @@ export default function TeamCalendarsPage() {
    * Taking either alone is how the two bugs this page replaces happened — a
    * node-wide list shows other applications' contexts, and a per-group list
    * shows whatever else someone created inside the same team.
+   *
+   * Except when the team is one of this application's own namespaces: core
+   * runs every context in a namespace on its target application (a create
+   * naming another one is overridden, and subgroups inherit the root's
+   * target), so there everything its groups hold IS a calendar. That case has
+   * to skip the intersection, because `/contexts/for-application` lists only
+   * the contexts this node has joined — none, for a member who has just
+   * joined the team — and a calendar missing from the list can't be opened,
+   * which is what joins it.
    */
   const load = useCallback(async () => {
     const appId = await ensureAppId();
@@ -113,11 +130,20 @@ export default function TeamCalendarsPage() {
     // the relay answers — everything the team's groups hold IS a calendar.
     let calendarIds: Set<string> | null = null;
     if (!isDelegated) {
+      let teamIsOurs = false;
       try {
-        const appContexts = await listContextsForApplication(client, appId);
-        calendarIds = new Set(appContexts.map(readContextId).filter(Boolean));
+        const ours = await listNamespaces(client, appId);
+        teamIsOurs = ours.some((ns) => readNamespaceId(ns) === teamId);
       } catch {
-        calendarIds = new Set();
+        /* unknown — fall back to the calendars this node holds */
+      }
+      if (!teamIsOurs) {
+        try {
+          const appContexts = await listContextsForApplication(client, appId);
+          calendarIds = new Set(appContexts.map(readContextId).filter(Boolean));
+        } catch {
+          calendarIds = new Set();
+        }
       }
     }
 
@@ -172,8 +198,18 @@ export default function TeamCalendarsPage() {
   }, [ensureAppId, isDelegated, requireAdmin, teamGroupIds, teamId]);
 
   // A team just joined from an invitation link holds the invitation dialog on
-  // "Syncing…" until this page has read its calendars once.
-  useJoinSync({ namespaceId: teamId || null, settled: listedFor === teamId });
+  // "Syncing…" until this page has read its calendars. An EMPTY read settles
+  // only once the team is no longer just-joined: until then it is what a node
+  // that has not synced the team returns. The watchdog clears the flag, after
+  // which a team with no calendars reads as empty again.
+  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
+    namespaceId: teamId || null,
+    settled:
+      listedFor === teamId &&
+      (calendars.length > 0 || !isNamespaceJustJoined(teamId || null)),
+    // Still empty: let the gate wait up to its ceiling, not the base window.
+    active: calendars.length === 0,
+  });
 
   /** Best label for a calendar: replicated name → cached name → id stub. */
   const nameOf = useCallback(
@@ -195,12 +231,14 @@ export default function TeamCalendarsPage() {
       }
     }
     run();
-    const timer = setInterval(run, 30_000);
+    // While the join-sync gate is up the team's calendars are on their way, so
+    // re-read at its pace rather than every 30 s.
+    const timer = setInterval(run, isSyncing ? JOIN_SYNC_POLL_MS : 30_000);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [admin, load]);
+  }, [admin, load, isSyncing]);
 
   async function createCalendar() {
     const name = newName.trim() || teamName;
@@ -370,7 +408,9 @@ export default function TeamCalendarsPage() {
           </button>
         </div>
 
-        {loading ? (
+        {isSyncing && calendars.length === 0 ? (
+          <JoinSyncBanner show what="calendars" onDismiss={dismissSyncing} />
+        ) : loading ? (
           <p className={styles.empty}>Loading calendars…</p>
         ) : calendars.length === 0 ? (
           <p className={styles.empty} data-testid="empty-calendars">
