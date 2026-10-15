@@ -65,8 +65,8 @@ namespace and context ids.
 InviteCard   createNamespaceInvitation → payload → deflate → base58 → createLink
              → https://links.calimero.network/com.calimero.kv-store/join?invitation=…
 
-main.tsx     primeDeepLinkCapture() — an IIFE at module scope, BEFORE createRoot
-JoinCard     paste path, for a link that arrived some other way
+main.tsx     primeInvitationCapture() (@calimero-apps/invite), BEFORE createRoot
+JoinCard     the prompt: names what the link joins, Join / Not now
 ```
 
 Four things here are deliberate, and each exists because the naive version
@@ -77,9 +77,9 @@ breaks:
   until after the auth reload — by which point the URL is gone. A component
   effect is always too late.
 - **The intent is durable and only acked on success.** `PendingIntentStore`
-  keeps it in localStorage across the login reload, and
-  `isTerminalInvitationError` discards it *only* for errors that can never
-  succeed (expired, invalid, bad signature, already a member). Anything
+  keeps it in localStorage across the login reload, and the shared
+  `shouldRetain` discards it *only* for errors that can never succeed (expired,
+  invalid, refused); already being a member counts as joined. Anything
   unrecognised — a timeout, "no online member" — is kept and retried. The
   asymmetry is the point: a dropped invitation is unrecoverable for the user, a
   retried one costs a round trip.
@@ -94,8 +94,8 @@ breaks:
 
 ### ⚠️ The launcher path needs the frontend actually deployed
 
-The code is complete, and the **paste** path works now. Opening a link from a
-browser or Calimero Desktop additionally needs the *published bundle* to declare
+Opening the link is the only way in: there is no paste field. Opening it from a
+browser or Calimero Desktop needs the *published bundle* to declare
 `links.frontend`: the launcher resolves the link to an installed app, reads that
 field, and **forgets the link** when it is missing — `"app has no frontend URL;
 cannot open"`.

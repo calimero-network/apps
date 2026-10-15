@@ -29,7 +29,7 @@ all without centralized servers or intermediaries.
     `https://links.calimero.network/com.calimero.mero-sign/join?invitation=<code>`.
     It opens the desktop app on a device that has it and the web app otherwise. A `calimero://` deep link and the bare code are offered alongside it for the desktop and for pasting into another mero app.
   - **Invite one person** — a targeted invitation minted for a named Calimero identity, with a permission assigned up front.
-- **Join Agreement**: open the link, or paste the link/code into *Join Agreement*. The joiner is **not** asked to name the agreement: the name comes from the agreement's replicated contract state, so every node shows what the creator typed.
+- **Join Agreement**: open the link someone sent you; the app asks before it joins. The joiner is **not** asked to name the agreement: the name comes from the agreement's replicated contract state, so every node shows what the creator typed.
 
 ### Shared Context Workflow
 
@@ -140,7 +140,7 @@ _Note: This feature is currently under development and will be available in a fu
 | Private Context            | Local workspace per user for signature library and agreement list.                 |
 | Agreement Creation         | Create a shared context; you become its administrator.                             |
 | Invitation System          | Shareable Calimero invite links, plus targeted payloads tied to an identity.       |
-| Join Agreement             | Open the link, or paste it; the agreement keeps the name its creator gave it.      |
+| Join Agreement             | Open the link; the app asks first, and the agreement keeps its creator's name.     |
 | Roles                      | Read / Sign / Admin, keyed by account; admins can promote and remove.              |
 | Signing                    | The signer is the caller's account; no client can name who signed.                 |
 | Collaborative PDF Workflow | Users upload, view, and sign PDFs based on assigned roles in context.              |

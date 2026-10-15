@@ -138,12 +138,13 @@ suite passed at 480p.
    **Create stream** — and must land on that stream's **room list**, not in a call.
    Namespace and room are different things and the route has to say so.
 2. node1 types a room name, clicks **Create room** — must land on `/live`, joined.
-3. node1 goes back, clicks **Invite** on the room, and the code must be **one
-   pasteable base58 token**: no JSON, no whitespace, none of base64's `+/=`. The
-   UI must also state what the code opens, and **Copy** must confirm.
-4. node2 — a *different node*, its own tokens — pastes that code and clicks
-   **Join**. One paste must carry it through the namespace join, the room, and the
-   context, landing in the call.
+3. node1 goes back, clicks **Invite** on the room, and gets **one link**,
+   `https://links.calimero.network/com.calimero.mero-stream/join?invitation=…`,
+   whose token is base58: no JSON, no whitespace, none of base64's `+/=`. The
+   UI must also state what the link opens, and **Copy** must confirm.
+4. node2 — a *different node*, its own tokens — opens that link and clicks
+   **Join** on the prompt. One link must carry it through the namespace join,
+   the room, and the context, landing in the call. There is no paste field.
 5. Both start capture. Each must show **exactly one** remote tile, 640×480, with
    non-uniform pixels that *advance*, **labelled with the other person's name**.
 

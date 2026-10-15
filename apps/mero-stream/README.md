@@ -198,9 +198,9 @@ approach 1 removes the storage wall as well; what is left on approach 1 is a
 - **Two people getting into a call — ✅ IN THE UI, AND CLICKED IN A TEST.**
   `/streams` lists **namespaces** (a "stream"), `/streams/:namespaceId` lists that
   stream's **rooms** — a room being a subgroup plus the context that is the call.
-  Invite mints a code at either scope; Join accepts either. `make e2e-ui` drives
-  exactly that by clicking — create stream → create room → mint code → paste on
-  **node2** → both peers see each other at 640×480 — which is the one path
+  Invite mints a link at either scope; opening it on another node asks, then
+  joins. `make e2e-ui` drives that by clicking — create stream → create room →
+  mint link → open it on **node2** → both peers see each other at 640×480 — which is the one path
   `e2e-call` (types `/live` directly) and `e2e-suite` (curl) both structurally miss.
 - **P3 — Load curve — 🚧 TOOLING READY, RUN PENDING.** `scripts/load-curve.py`
   ramps fps × geometry and emits the CSV (achieved fps, encode RTT p50/p95,
