@@ -40,6 +40,17 @@ describe("invitation capture", () => {
     expect(seen[0]!.token).toBe("TOKEN123");
   });
 
+  it("captures an invitation on a deeper page of the app, not only at its root", () => {
+    const seen = (() => {
+      resetInvitationCaptureForTests();
+      openAt("/teams/t1/projects?invitation=DEEP");
+      const got: string[] = [];
+      onInvitation((i) => got.push(i.token));
+      return got;
+    })();
+    expect(seen).toEqual(["DEEP"]);
+  });
+
   it("replays to a listener that subscribes after the link was opened", () => {
     openAt("/?invitation=LATE");
     primeInvitationCapture(); // capture before any listener exists

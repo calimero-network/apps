@@ -236,7 +236,17 @@ function ensureController(): void {
     // `join`, or no action at all — the launcher can append `?invitation=…` to
     // this app's own frontend URL, which parses to a null action with the
     // params intact. Anything else is somebody else's intent.
-    if (intent.action !== null && intent.action !== JOIN_ACTION) return;
+    //
+    // An app page opened with an invitation on it (`/teams/t?invitation=…`)
+    // parses as slug `teams`, action `t`: not a deep link at all, but still the
+    // app's own URL carrying an invitation, so the parameter decides, not the path.
+    if (
+      intent.action !== null &&
+      intent.action !== JOIN_ACTION &&
+      !intent.params[INVITATION_PARAM]
+    ) {
+      return;
+    }
 
     // A join addressed to another app. The launcher routes by slug, so this
     // takes a misrouted event or a link for app A opened inside app B — and
