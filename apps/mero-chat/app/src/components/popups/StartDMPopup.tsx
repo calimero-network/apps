@@ -3,8 +3,7 @@ import BaseModal from "../common/popups/BaseModal";
 import Loader from "../loader/Loader";
 import { styled } from "styled-components";
 import { usePersistentState } from "../../hooks/usePersistentState";
-import { Button } from "@calimero-network/mero-ui";
-import { Input } from "../common/Input";
+import { Button, Input } from "@calimero-network/mero-ui";
 
 // ─── Animations ────────────────────────────────────────────────────────────────
 

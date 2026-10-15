@@ -2,8 +2,7 @@ import { styled, keyframes } from "styled-components";
 
 import { useEffect, useRef, useState } from "react";
 import BaseModal from "../common/popups/BaseModal";
-import { Button } from "@calimero-network/mero-ui";
-import { Input } from "../common/Input";
+import { Button, Input } from "@calimero-network/mero-ui";
 import {
   getChannelVisibilityOptionLabel,
   type ChannelVisibilityOption,
