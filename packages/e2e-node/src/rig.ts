@@ -173,6 +173,12 @@ function initNode(merod: string, node: Omit<RigNode, "pid" | "adminToken" | "app
       "--auth-storage", "persistent",
       "--admin-user", ADMIN_USER,
       "--admin-password-file", passwordFile,
+      // A host without IPv6 (some containers) cannot bind merod's default `::`
+      // listeners, and the node exits before it is healthy. Opt-in, so CI keeps
+      // the defaults it has always run with.
+      ...(process.env["JOURNEY_IPV4_ONLY"] === "1"
+        ? ["--swarm-host", "0.0.0.0", "--server-host", "127.0.0.1"]
+        : []),
     ],
     { stdio: "pipe", env: nodeEnv() },
   );
