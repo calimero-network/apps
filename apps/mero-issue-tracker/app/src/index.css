@@ -70,3 +70,21 @@ body {
   width: 100%;
   padding: 1rem;
 }
+
+/* mero-react's InvitationDialog in this app's own tokens (light and dark both, since they switch these), so the invitation prompt looks
+   like part of this app rather than mero-react's default theme.
+   `body > .mero-invite-overlay` outranks mero-react's own rule, which is
+   injected at runtime after this file. */
+body > .mero-invite-overlay {
+  --mero-overlay: rgba(14, 20, 15, 0.4);
+  --mero-bg-secondary: var(--c-paper);
+  --mero-bg-tertiary: var(--c-paper2);
+  --mero-text: var(--c-ink);
+  --mero-text-secondary: var(--c-muted);
+  --mero-accent: var(--c-green);
+  --mero-accent-hover: var(--c-green-hover);
+  --mero-on-primary: var(--c-on-accent);
+  --mero-border: var(--c-line);
+  --mero-error: var(--c-danger);
+  font-family: inherit;
+}

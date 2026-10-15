@@ -63,6 +63,38 @@ const subscribe = (l: () => void) => {
   return () => void listeners.delete(l);
 };
 
+/**
+ * The dialog in this game's own look: the dark in-game panel, pale text and
+ * green action the old prompt had. mero-react styles the dialog through
+ * `--mero-*` variables; `body > .mero-invite-overlay` outranks its rule.
+ */
+const GAME_DIALOG_CSS = `
+body > .mero-invite-overlay {
+  --mero-overlay: rgba(0, 0, 0, 0.6);
+  --mero-bg-secondary: rgba(10, 13, 18, 0.97);
+  --mero-bg-tertiary: rgba(255, 255, 255, 0.08);
+  --mero-text: #ffffff;
+  --mero-text-secondary: #cfd9e4;
+  --mero-accent: #3f9950;
+  --mero-accent-hover: #4aad5c;
+  --mero-on-primary: #ffffff;
+  --mero-border: rgba(255, 255, 255, 0.18);
+  --mero-error: #ff8686;
+  --mero-radius: 5px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+body > .mero-invite-overlay .mero-invite-icon { color: #8fe0a0; }
+body > .mero-invite-overlay .mero-invite-button {
+  border: 2px solid rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.22), inset 0 -3px 0 rgba(0, 0, 0, 0.3);
+}
+body > .mero-invite-overlay .mero-invite-secondary { background: #6e6e6e; }
+body > .mero-invite-overlay .mero-invite-button:hover { filter: brightness(1.12); }
+`;
+
 let root: Root | null = null;
 let host: HTMLElement | null = null;
 
@@ -74,6 +106,10 @@ let host: HTMLElement | null = null;
 export function setInviteJoiner(next: InviteJoiner | null): void {
   joiner = next;
   if (next && !root) {
+    const style = document.createElement("style");
+    style.dataset.role = "invite-style";
+    style.textContent = GAME_DIALOG_CSS;
+    document.head.appendChild(style);
     host = document.createElement("div");
     host.dataset.role = "invite-root";
     document.body.appendChild(host);

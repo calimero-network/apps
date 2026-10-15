@@ -131,3 +131,21 @@ button.ghost.danger-text:hover:not(:disabled) {
   color: var(--text);
   word-break: break-all;
 }
+
+/* mero-react's InvitationDialog in this app's own dark tokens, so the invitation prompt looks
+   like part of this app rather than mero-react's default theme.
+   `body > .mero-invite-overlay` outranks mero-react's own rule, which is
+   injected at runtime after this file. */
+body > .mero-invite-overlay {
+  --mero-overlay: rgba(5, 8, 10, 0.6);
+  --mero-bg-secondary: var(--surface);
+  --mero-bg-tertiary: var(--surface-2);
+  --mero-text: var(--text);
+  --mero-text-secondary: var(--text-dim);
+  --mero-accent: var(--accent);
+  --mero-accent-hover: var(--accent);
+  --mero-on-primary: var(--bg);
+  --mero-border: var(--border);
+  --mero-error: var(--danger);
+  font-family: inherit;
+}

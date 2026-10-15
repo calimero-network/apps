@@ -192,3 +192,88 @@
   background-clip: text;
   color: transparent;
 }
+
+/* ── The invitation dialog ──────────────────────────────────────────────────
+   mero-react's InvitationDialog ships in its own dark-green look, styled
+   through `--mero-*` variables. Here it takes the glass look instead: a solid
+   floating surface (it floats over content), ink for the primary action, pill
+   buttons, Figtree, and the app's own tint on the spinner and progress bar,
+   so the prompt reads as part of whichever app it opens in. The values point
+   at glass tokens, so the app's dark switch carries over by itself.
+
+   `body > .mero-invite-overlay` and the compound selectors outrank
+   mero-react's single-class rules whichever stylesheet loads last: mero-react
+   injects its styles at runtime, after this file. */
+body > .mero-invite-overlay {
+  --mero-overlay: rgba(10, 13, 25, 0.36);
+  --mero-bg-secondary: var(--glass-surface-solid);
+  --mero-bg-tertiary: var(--glass-sunken);
+  --mero-text: var(--glass-ink);
+  --mero-text-secondary: var(--glass-muted);
+  --mero-accent: var(--glass-ink);
+  --mero-accent-hover: var(--glass-ink-2);
+  --mero-on-primary: var(--glass-on-ink);
+  --mero-border: var(--glass-line-strong);
+  --mero-error: var(--glass-bad-ink);
+  --mero-radius: var(--glass-radius-sm);
+  font-family: var(--glass-font);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
+body > .mero-invite-overlay .mero-invite-dialog {
+  border: 1px solid var(--glass-edge);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow-float);
+}
+
+body > .mero-invite-overlay .mero-invite-button {
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font: 600 14.5px/1 var(--glass-font);
+}
+
+body > .mero-invite-overlay .mero-invite-secondary {
+  border: 0;
+  background: var(--glass-surface-solid);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+}
+
+body > .mero-invite-overlay .mero-invite-primary {
+  border: 0;
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
+}
+
+body > .mero-invite-overlay .mero-invite-button:focus-visible {
+  outline-color: var(--glass-tint);
+}
+
+body > .mero-invite-overlay .mero-invite-icon {
+  background: color-mix(in srgb, var(--glass-tint) 14%, transparent);
+  color: var(--glass-tint);
+}
+
+body > .mero-invite-overlay .mero-invite-icon-error {
+  background: var(--glass-bad-bg);
+  color: var(--glass-bad-ink);
+}
+
+body > .mero-invite-overlay .mero-invite-spinner {
+  border-color: color-mix(in srgb, var(--glass-tint) 18%, transparent);
+  border-top-color: var(--glass-tint);
+  background: none;
+}
+
+body > .mero-invite-overlay .mero-invite-progress {
+  background: var(--glass-sunken);
+}
+
+body > .mero-invite-overlay .mero-invite-progress-bar {
+  background: var(--glass-tint);
+}
+
+body > .mero-invite-overlay .mero-invite-app {
+  color: var(--glass-muted);
+  letter-spacing: 0.08em;
+}
