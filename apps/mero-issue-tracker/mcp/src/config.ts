@@ -12,8 +12,6 @@ export interface Config {
   /** TRACKER_REPO - default repo (context alias) within the namespace. */
   repoDefault?: string;
   authToken?: string;
-  /** TRACKER_EXECUTOR override; when unset the executor is resolved via admin API. */
-  executorOverride?: string;
   /** TRACKER_SERVICE - the app service name used by add_repo's createContext call. */
   serviceName: string;
 }
@@ -36,7 +34,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     namespaceRaw,
     repoDefault: env.TRACKER_REPO?.trim() || undefined,
     authToken: env.CALIMERO_AUTH_TOKEN?.trim() || undefined,
-    executorOverride: env.TRACKER_EXECUTOR?.trim() || undefined,
     serviceName: env.TRACKER_SERVICE?.trim() || DEFAULT_SERVICE_NAME,
   };
 }

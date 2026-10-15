@@ -30,7 +30,7 @@ import {
 } from './index.ts';
 
 const cfg: Config = { nodeUrl: 'http://localhost:2428', contextRaw: 'ctx', serviceName: 'issue-tracker' };
-const target: ResolvedTarget = { contextId: 'ctx-1', executorPublicKey: 'exec-1' };
+const target: ResolvedTarget = { contextId: 'ctx-1' };
 
 function withFetch<T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> {
   const original = globalThis.fetch;
@@ -278,7 +278,7 @@ test('deleteIssue calls delete_issue with issue_id', async () => {
 
 test('deleteIssue resolves against the repo passed in target (repo override)', async () => {
   let params: any;
-  const otherTarget: ResolvedTarget = { contextId: 'ctx-2', executorPublicKey: 'exec-2' };
+  const otherTarget: ResolvedTarget = { contextId: 'ctx-2' };
   await withFetch(
     (async (_url: string | URL, init?: RequestInit) => {
       params = JSON.parse(String(init?.body)).params;
@@ -287,7 +287,6 @@ test('deleteIssue resolves against the repo passed in target (repo override)', a
     () => deleteIssue(cfg, otherTarget, { issue_id: 'issue-9' }),
   );
   assert.equal(params.contextId, 'ctx-2');
-  assert.equal(params.executorPublicKey, 'exec-2');
 });
 
 test('getFixPrompt fetches the issue then builds the filled prompt', async () => {
@@ -376,10 +375,6 @@ test('listRepos fetches repo_url per repo via get_repo_info on each repo\'s own 
   const result = await withFetch(
     (async (url: string | URL, init?: RequestInit) => {
       const u = String(url);
-      if (u.includes('/identities-owned')) {
-        const identity = u.includes('ctx-1') ? 'exec-1' : 'exec-2';
-        return new Response(JSON.stringify({ data: { identities: [identity] } }), { status: 200 });
-      }
       const { contextId } = JSON.parse(String(init?.body)).params;
       const repoUrl = contextId === 'ctx-1' ? 'https://github.com/acme/frontend' : 'https://github.com/acme/backend';
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: { repo_url: repoUrl } } }), {
@@ -438,7 +433,7 @@ function addRepoFetch(
   return { impl, calls };
 }
 
-test('addRepo creates the context, sets repo_url as the returned memberPublicKey, aliases it, and returns the new repo', async () => {
+test('addRepo creates the context, sets repo_url, aliases it, and returns the new repo', async () => {
   const { impl, calls } = addRepoFetch();
   let setRepoUrlParams: any;
   const wrapped = (async (url: string | URL, init?: RequestInit) => {
@@ -454,7 +449,7 @@ test('addRepo creates the context, sets repo_url as the returned memberPublicKey
   assert.equal(setRepoUrlParams.method, 'set_repo_url');
   assert.deepEqual(setRepoUrlParams.argsJson, { url: 'https://github.com/acme/frontend' });
   assert.equal(setRepoUrlParams.contextId, 'ctx-new');
-  assert.equal(setRepoUrlParams.executorPublicKey, 'member-key');
+  assert.deepEqual(Object.keys(setRepoUrlParams).sort(), ['argsJson', 'contextId', 'method']);
   assert.ok(calls.some((c) => c === 'POST http://localhost:2428/admin-api/contexts'));
   assert.ok(calls.some((c) => c.endsWith('/admin-api/alias/create/context')));
 });
@@ -495,7 +490,7 @@ test('addRepo succeeds even when alias creation fails (best-effort)', async () =
 
 // ---- Server construction ----
 
-test('createServer builds without resolving context/executor (no network call)', () => {
+test('createServer builds without resolving context (no network call)', () => {
   let fetchCalled = false;
   const original = globalThis.fetch;
   globalThis.fetch = (async () => {
