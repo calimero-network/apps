@@ -10,6 +10,7 @@ import {
 import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
 import { primeInvitationCapture } from "@calimero-apps/invite";
+import { APP_SLUG } from "./utils/invitation";
 import "./index.css";
 
 // ── Inbound invitation links ──────────────────────────────────────────────────
@@ -18,8 +19,11 @@ import "./index.css";
 // `?invitation=…` to its own frontend URL, and React Router replaces the URL on
 // the first navigation — child effects fire before parent effects, so there is
 // no component early enough to read it reliably. Capture is durable, so an
-// invitation that arrives before login survives the auth round-trip.
-primeInvitationCapture("mero-design");
+// invitation that arrives before login survives the auth round-trip. A running
+// desktop hands a link over as a `deep-link` event instead, and a link
+// addressed to another app is dropped, not offered (`slug`).
+// `components/InvitationPrompt` asks before joining.
+primeInvitationCapture("mero-design", { slug: APP_SLUG });
 
 // ── Tauri desktop SSO ─────────────────────────────────────────────────────────
 //

@@ -1,26 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
-import { createNamespace, deleteNamespace, joinNamespace, listNamespaces } from "../api/rpc";
+import { createNamespace, deleteNamespace, listNamespaces } from "../api/rpc";
 import { useApplicationId } from "../hooks/useApplicationId";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
-import { decodeInvitationObject, invitationTokenFrom } from "../utils/invitation";
-import {
-  describeInviteFailure,
-  InviteStatusBanner,
-  redeemInvitation,
-  useInviteRedemption,
-} from "@calimero-apps/invite";
-import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
 import { setStoredTeamName, teamLabel } from "../utils/teamName";
 import type { Team } from "../types";
 import ThemeToggle from "../components/ThemeToggle";
 import { EmptyTeamsArt } from "../components/Artwork";
 import { initialsOf, tileGradient } from "../utils/artwork";
-import { IconLink, IconPlus } from "../components/HomeIcons";
+import { IconPlus } from "../components/HomeIcons";
 import { truncateMiddle } from "../utils/format";
 import styles from "./Home.module.css";
 
@@ -34,9 +26,6 @@ export default function TeamsPage() {
   const [newName, setNewName] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [settingsTeam, setSettingsTeam] = useState<Team | null>(null);
-  const [joinCode, setJoinCode] = useState("");
-  const [joining, setJoining] = useState(false);
-  const [joinError, setJoinError] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
 
   // MeroDesign's own application id — see hooks/useApplicationId.
@@ -112,115 +101,6 @@ export default function TeamsPage() {
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
   }
 
-  /**
-   * Read a raw invitation token into the parts the join needs.
-   *
-   * Invitation shape:
-   *   { invitation: { invitation: { group_id: [...] }, inviterSignature,
-   *     applicationId }, __teamName? }
-   * The join body must wrap the invitation struct (`outer`), NOT the whole
-   * decoded token.
-   */
-  const parseInvitation = useCallback((raw: string) => {
-    // Use the shared UTF-8-safe decoder so a Unicode __teamName (emoji,
-    // accents) round-trips correctly.
-    const invObj = decodeInvitationObject<Record<string, unknown>>(raw);
-    const outer = (invObj.invitation as Record<string, unknown>) ?? invObj;
-    const inner = (outer?.invitation as Record<string, unknown>) ?? outer;
-    const rawGroupId =
-      inner?.group_id ?? inner?.groupId ?? outer?.group_id ?? outer?.groupId;
-    const namespaceId = Array.isArray(rawGroupId)
-      ? (rawGroupId as number[]).map((b) => b.toString(16).padStart(2, "0")).join("")
-      : String(rawGroupId ?? "");
-    if (!namespaceId) return null;
-
-    // The inviter embeds the human team name so the joiner doesn't render a raw ID.
-    const teamName =
-      typeof invObj.__teamName === "string" ? invObj.__teamName.trim() : "";
-    if (teamName) setStoredTeamName(namespaceId, teamName);
-
-    return { namespaceId, invitation: outer, teamName: teamName || undefined };
-  }, []);
-
-  /** The two calls @calimero-apps/invite needs from this app. */
-  const redeemer = useMemo(
-    () => ({
-      join: async (namespaceId: string, invitation: unknown) => {
-        await joinNamespace(namespaceId, invitation);
-      },
-      memberships: async () => {
-        const items = await listNamespaces(await ensureAppId());
-        return items.map((n) => n.namespaceId);
-      },
-    }),
-    [ensureAppId],
-  );
-
-  const refreshTeams = useCallback(async () => {
-    const items = await listNamespaces(await ensureAppId()).catch(() => null);
-    if (!items) return;
-    setTeams(items.map((n) => ({ groupId: n.namespaceId, name: (n.name ?? "").trim() })));
-  }, [ensureAppId]);
-
-  // ── An invitation link opened this app ──────────────────────────────────────
-  //
-  // Capture, redemption and the attempt cap all live in @calimero-apps/invite;
-  // this page supplies the codec and the two calls, and renders the result.
-  // `invite.state` drives the banner below: joining → joined / already in it /
-  // the node's own error.
-  const invite = useInviteRedemption({
-    parse: parseInvitation,
-    redeemer,
-    onJoined: (namespaceId) => {
-      setJoinCode("");
-      void refreshTeams();
-      navigate(`/teams/${namespaceId}/projects`);
-    },
-  });
-
-  // Keep the manual field in step, so a link that could not be joined
-  // automatically is one click away rather than lost.
-  useEffect(() => {
-    if (invite.token) setJoinCode(invite.token);
-  }, [invite.token]);
-
-  /** The manual "paste a code and press Join" path. */
-  async function joinTeam(codeOverride?: string): Promise<boolean> {
-    const raw = invitationTokenFrom(codeOverride ?? joinCode);
-    if (!raw) return false;
-    setJoining(true);
-    setJoinError("");
-    try {
-      const parsed = parseInvitation(raw);
-      if (!parsed) throw new Error("no namespace id in invitation");
-
-      const outcome = await redeemInvitation(parsed, redeemer);
-      if (outcome.status === "failed") {
-        throw new Error(
-          describeInviteFailure(outcome.reason, "team") ?? outcome.message,
-        );
-      }
-
-      markNamespaceJustJoined(outcome.namespaceId);
-      await refreshTeams();
-      setJoinCode("");
-      showToast(
-        outcome.status === "already-member"
-          ? "You are already in this team."
-          : "Joined team. Syncing projects…",
-        "success",
-      );
-      return true;
-    } catch (err) {
-      const msg = extractErrorMessage(err, "Could not join. Check the invitation code.");
-      setJoinError(msg);
-      showToast(msg);
-      return false;
-    } finally {
-      setJoining(false);
-    }
-  }
-
   function handleLogout() {
     logout();
     navigate("/");
@@ -240,34 +120,6 @@ export default function TeamsPage() {
         Create
       </button>
     </div>
-  );
-
-  const joinCard = (
-    <section className={`${styles.panel} ${styles.actionCard}`}>
-      <div className={styles.actionHead}>
-        <span className={`${styles.actionIcon} ${styles.actionIconAlt}`} aria-hidden="true">
-          <IconLink />
-        </span>
-        <span>
-          <span className={styles.actionTitle}>Got an invitation? Join your team!</span>
-          <span className={styles.actionHint}>Paste the link or code a teammate sent you.</span>
-        </span>
-      </div>
-      <div className={styles.field}>
-        <input
-          className={styles.input}
-          placeholder="Paste invitation code…"
-          aria-label="Invitation code"
-          value={joinCode}
-          onChange={(e) => setJoinCode(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && joinTeam()}
-        />
-        <button className={styles.btn} onClick={() => void joinTeam()} disabled={joining || !joinCode.trim()}>
-          {joining ? "Joining…" : "Join"}
-        </button>
-      </div>
-      {joinError && <p className={styles.errorText}>{joinError}</p>}
-    </section>
   );
 
   return (
@@ -292,33 +144,20 @@ export default function TeamsPage() {
           </div>
         </div>
 
-        {/* Following an invite link used to land here with nothing on screen
-            for as long as the join took — up to 95s when no member of the
-            namespace was online. */}
-        <InviteStatusBanner
-          state={invite.state}
-          noun="team"
-          onRetry={invite.retry}
-          onDismiss={invite.dismiss}
-          style={{ marginBottom: "1.5rem" }}
-        />
-
         {loading ? (
           <div className={styles.grid} aria-busy="true" aria-label="Loading teams">
             {[0, 1, 2].map((i) => <div key={i} className={styles.skeleton} />)}
           </div>
         ) : teams.length === 0 ? (
-          <>
-            <section className={`${styles.panel} ${styles.empty}`}>
-              <EmptyTeamsArt />
-              <h2 className={styles.emptyTitle}>Start your first team</h2>
-              <p className={styles.emptyText}>
-                No teams yet. Name one and create it, then invite people from its page.
-              </p>
-              <div className={styles.emptyField}>{createField}</div>
-            </section>
-            {joinCard}
-          </>
+          <section className={`${styles.panel} ${styles.empty}`}>
+            <EmptyTeamsArt />
+            <h2 className={styles.emptyTitle}>Start your first team</h2>
+            <p className={styles.emptyText}>
+              No teams yet. Name one and create it, then invite people from its page —
+              or open an invitation link someone sent you.
+            </p>
+            <div className={styles.emptyField}>{createField}</div>
+          </section>
         ) : (
           <>
             <div className={styles.actions}>
@@ -332,7 +171,6 @@ export default function TeamsPage() {
                 </div>
                 {createField}
               </section>
-              {joinCard}
             </div>
 
             <div className={styles.sectionHead}>

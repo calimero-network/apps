@@ -234,12 +234,6 @@
   background: linear-gradient(135deg, #ecfccb, #bef264);
   box-shadow: inset 0 0 0 1px rgba(54, 83, 20, 0.12);
 }
-.actionIconAlt {
-  color: #3451d1;
-  background: linear-gradient(135deg, #e0e7ff, #f5d0fe);
-  box-shadow: inset 0 0 0 1px rgba(52, 81, 209, 0.12);
-}
-
 .actionTitle {
   display: block;
   font-size: 15px;

@@ -7,6 +7,7 @@ import ProjectsPage from "./pages/ProjectsPage";
 import CanvasPage from "./pages/CanvasPage";
 import { ToastProvider } from "./contexts/ToastContext";
 import { ApiBinder } from "./api/ApiBinder";
+import InvitationPrompt from "./components/InvitationPrompt";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
@@ -47,6 +48,8 @@ export default function App() {
     // plain-function data layer in src/api — see api/client.tsx.
     <ApiBinder>
     <ToastProvider>
+      {/* Above the routes: an invitation link can open this app on any page. */}
+      <InvitationPrompt />
       <Routes>
         {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
             real URLs so they can be shared and opened cold, which needs a route
