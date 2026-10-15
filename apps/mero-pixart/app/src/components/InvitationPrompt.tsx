@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
 import {
   InvitationDialog,
+  InvitationGate,
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
@@ -75,5 +76,11 @@ export default function InvitationPrompt() {
     onJoined: (namespaceId) => navigate(`/teams/${namespaceId}/projects`),
   });
 
-  return <InvitationDialog redemption={redemption} noun="team" appName="Mero PixArt" />;
+  return (
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={parseTeamInvitation} noun="team" appName="Mero PixArt" />
+      <InvitationDialog redemption={redemption} noun="team" appName="Mero PixArt" />
+    </>
+  );
 }
