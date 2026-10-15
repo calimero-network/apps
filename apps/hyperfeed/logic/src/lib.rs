@@ -104,6 +104,12 @@ pub use watches::{
 mod prs;
 pub use prs::{PrInput, PrSeen, PrView, CHECK_STATES, MAX_FAILING, MAX_PRS, PR_STATES};
 
+mod memo;
+pub use memo::{
+    Memo, MemoHits, MemoInput, MemoView, HEAT_HALF_LIFE_MS, MAX_MEMOS, MAX_MEMO_BATCH,
+    MAX_MEMO_BYTES, MAX_MEMO_VALUE, MEMO_CLASSES,
+};
+
 mod actions;
 pub use actions::{
     ActionDef, ActionModeView, ActionRule, ActionSet, ActionSetView, ACTION_MODES, MAX_ACTIONS,
@@ -1599,6 +1605,9 @@ pub struct Hyperfeed {
     /// The PRs your tasks link to, as your agent's runtime last saw them on
     /// GitHub, by `owner/name#number`. See [`prs`].
     prs: UnorderedMap<String, PrSeen>,
+    /// Your agent's query cache: what it read, by a hash of where, which tool
+    /// and its arguments. See [`memo`].
+    memos: UnorderedMap<String, Memo>,
     /// What each action touched, by the action's id.
     action_subjects: UnorderedMap<String, Subject>,
     /// The chain that last touched each subject, by its key.
@@ -1690,6 +1699,13 @@ pub enum Event<'a> {
     PrChanged {
         key: &'a str,
     },
+    /// Your agent's runtime wrote or dropped cached reads: re-read `memos`
+    /// after the newest `updated_at` you have.
+    MemosChanged {
+        count: u32,
+    },
+    /// You cleared your agent's query cache: forget every cached read.
+    MemosCleared,
     /// A task's links changed: re-read `links`.
     LinksChanged {
         chain: &'a str,
@@ -1738,6 +1754,7 @@ impl Hyperfeed {
             rule_proposals: UnorderedMap::new(),
             checkpoints: UnorderedMap::new(),
             prs: UnorderedMap::new(),
+            memos: UnorderedMap::new(),
             action_subjects: UnorderedMap::new(),
             subject_chains: UnorderedMap::new(),
             links: UnorderedMap::new(),
@@ -4217,6 +4234,34 @@ impl Hyperfeed {
     /// recently seen first.
     pub fn prs(&self, chain: String) -> app::Result<Vec<PrView>> {
         self.pr_list(&chain)
+    }
+
+    // ── Query cache: what your agent read, so the next turn need not ask again ─
+
+    /// Your agent's runtime keeps reads worth keeping, as `agent` (an added
+    /// agent only as itself): up to [`MAX_MEMO_BATCH`] a call, each replacing
+    /// its row unless the row was fetched later, while every agent's hits are
+    /// kept. The least used rows are dropped past [`MAX_MEMOS`] or
+    /// [`MAX_MEMO_BYTES`]. Returns how many rows it wrote.
+    pub fn put_memos(&mut self, agent: String, memos: Vec<MemoInput>) -> app::Result<u32> {
+        self.memo_put(&agent, memos)
+    }
+
+    /// Your agent's runtime drops cached reads it knows are wrong now (it
+    /// wrote there, or the app changed). Returns how many it dropped.
+    pub fn drop_memos(&mut self, agent: String, keys: Vec<String>) -> app::Result<u32> {
+        self.memo_drop(&agent, keys)
+    }
+
+    /// Forget every cached read. Yours only. Returns how many were dropped.
+    pub fn clear_memos(&mut self) -> app::Result<u32> {
+        self.memo_clear()
+    }
+
+    /// The cached reads written after `since` (the feed's clock, ms; 0 for
+    /// all), oldest write first.
+    pub fn memos(&self, since: u64) -> app::Result<Vec<MemoView>> {
+        self.memo_list(since)
     }
 
     /// Link a thing in another app to the task in `chain`: `subject` as

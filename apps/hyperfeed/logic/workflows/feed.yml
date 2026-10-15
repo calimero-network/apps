@@ -1744,6 +1744,96 @@ steps:
     statements:
       - "is_set({{intruder_pr_error}})"
 
+  # ── The query cache: the runtime keeps reads, node-2 sees them, you clear them ──
+
+  - name: The runtime keeps two reads
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: put_memos
+    args:
+      agent: "mero-bot@studio"
+      memos:
+        - { key: "00000000000000000000000000000000000000000000000000000000000000a1", scope: "node", tool: "list_contexts", args: "{}", value: "[{\"id\":\"ctx\"}]", class: "slow", ttl_ms: 600000, fetched_at: 1, unchanged: 0, hits: 3, last_hit_at: 1, attested: false }
+        - { key: "00000000000000000000000000000000000000000000000000000000000000a2", scope: "chat:ctx", tool: "chat_get_messages", args: "{\"limit\":20}", value: "[]", class: "fast", ttl_ms: 30000, fetched_at: 1, unchanged: 0, hits: 1, last_hit_at: 1, attested: false }
+    outputs:
+      memos_stored: result
+
+  - name: Let the cache reach node-2
+    type: wait
+    seconds: 6
+
+  - name: node-2 reads the cache
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: memos
+    args: { since: 0 }
+    outputs:
+      memo_first_2: result.output.0
+      memo_second_2: result.output.1
+
+  - name: node-2 cannot write to the cache
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: put_memos
+    args:
+      agent: "mero-bot@studio"
+      memos:
+        - { key: "00000000000000000000000000000000000000000000000000000000000000ff", scope: "node", tool: "list_contexts", args: "{}", value: "[]", class: "slow", ttl_ms: 1, fetched_at: 1, unchanged: 0, hits: 1, last_hit_at: 1, attested: false }
+    expected_failure: true
+    outputs:
+      intruder_memo_error: error
+
+  - name: The runtime drops a read it knows is wrong
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: drop_memos
+    args: { agent: "mero-bot@studio", keys: ["00000000000000000000000000000000000000000000000000000000000000a2"] }
+    outputs:
+      memos_dropped: result
+
+  - name: You clear the cache
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: clear_memos
+    args: {}
+    outputs:
+      memos_cleared: result
+
+  - name: The cache is empty
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: memos
+    args: { since: 0 }
+    outputs:
+      memos_after: result
+
+  - name: Assert the cache
+    type: json_assert
+    statements:
+      - 'json_equal({{memos_stored}}, {"output": 2})'
+      - 'json_subset({{memo_first_2}}, {"tool": "list_contexts", "agent": "mero-bot@studio", "class": "slow"})'
+      - 'json_subset({{memo_second_2}}, {"tool": "chat_get_messages", "scope": "chat:ctx"})'
+      - 'json_equal({{memos_dropped}}, {"output": 1})'
+      - 'json_equal({{memos_cleared}}, {"output": 1})'
+      - 'json_equal({{memos_after}}, {"output": []})'
+
+  - name: Assert the refused cache write
+    type: assert
+    statements:
+      - "is_set({{intruder_memo_error}})"
+
   # ── One thread per task: a teammate's comment joins the task that touched the issue ──
 
   - name: The agent starts a task

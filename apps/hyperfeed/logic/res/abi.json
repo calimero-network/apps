@@ -1192,6 +1192,17 @@
         }
       ]
     },
+    "Event_MemosChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
     "Event_MessageChanged": {
       "kind": "record",
       "fields": [
@@ -2190,6 +2201,20 @@
           "doc": "The PRs your tasks link to, as your agent's runtime last saw them on\nGitHub, by `owner/name#number`. See [`prs`]."
         },
         {
+          "name": "memos",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Memo"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your agent's query cache: what it read, by a hash of where, which tool\nand its arguments. See [`memo`]."
+        },
+        {
           "name": "action_subjects",
           "type": {
             "kind": "map",
@@ -2622,6 +2647,296 @@
             "kind": "u64"
           },
           "doc": "The latest of them (ms); 0 with none."
+        }
+      ]
+    },
+    "Memo": {
+      "kind": "record",
+      "doc": "One read as the agent last saw it, kept by its key.",
+      "fields": [
+        {
+          "name": "scope",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tool",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "class",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ttl_ms",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "fetched_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "unchanged",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "hits",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "MemoHits"
+            }
+          },
+          "doc": "Per agent, each only ever growing: merged by max, so two agents never\nlose each other's counts."
+        },
+        {
+          "name": "last_hit_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attested",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When the feed last took a write to it (the feed's clock): what\n[`crate::Hyperfeed::memos`] reads after."
+        }
+      ]
+    },
+    "MemoHits": {
+      "kind": "record",
+      "doc": "How often one agent used a row.",
+      "fields": [
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "hits",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MemoInput": {
+      "kind": "record",
+      "doc": "One row as [`crate::Hyperfeed::put_memos`] takes it.",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A hex hash of scope, tool and arguments: the runtime's key for the read."
+        },
+        {
+          "name": "scope",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What the read is about: `<app>:<context>`, `node`, `gh:<owner>/<name>`."
+        },
+        {
+          "name": "tool",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The tool, without its server's prefix: `chat_get_messages`, `gh`."
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Its arguments, as canonical JSON or a command line."
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What it returned, at most [`MAX_MEMO_VALUE`]."
+        },
+        {
+          "name": "class",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`MEMO_CLASSES`]."
+        },
+        {
+          "name": "ttl_ms",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "How long the value counts as fresh, as the runtime last judged it."
+        },
+        {
+          "name": "fetched_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When it was read (ms)."
+        },
+        {
+          "name": "unchanged",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Refetches in a row that found the same value."
+        },
+        {
+          "name": "hits",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "This agent's hits on it, in total: the feed keeps the largest it saw."
+        },
+        {
+          "name": "last_hit_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When this agent last used it (ms)."
+        },
+        {
+          "name": "attested",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Read by an agent whose every model is attested: never shown to one that is not."
+        }
+      ]
+    },
+    "MemoView": {
+      "kind": "record",
+      "doc": "A row as [`crate::Hyperfeed::memos`] returns it.",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "scope",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tool",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "class",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ttl_ms",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "fetched_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "unchanged",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "hits",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "MemoHits"
+            }
+          }
+        },
+        {
+          "name": "last_hit_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attested",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
         }
       ]
     },
@@ -4934,6 +5249,15 @@
       "intent": "mutating"
     },
     {
+      "name": "clear_memos",
+      "doc": "Forget every cached read. Yours only. Returns how many were dropped.",
+      "params": [],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "complete_action",
       "doc": "The agent reports what happened after you approved, asked for a retry,\nor asked for an undo. For a draft you send (one with a `reply_call`),\nyour client reports instead, once it sent it or the app refused.",
       "params": [
@@ -5058,6 +5382,31 @@
       ],
       "returns": {
         "$ref": "RuleProposalView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "drop_memos",
+      "doc": "Your agent's runtime drops cached reads it knows are wrong now (it\nwrote there, or the app changed). Returns how many it dropped.",
+      "params": [
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "keys",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
       },
       "intent": "mutating"
     },
@@ -5229,6 +5578,25 @@
       "intent": "mutating"
     },
     {
+      "name": "memos",
+      "doc": "The cached reads written after `since` (the feed's clock, ms; 0 for\nall), oldest write first.",
+      "params": [
+        {
+          "name": "since",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MemoView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "open_questions",
       "doc": "Your messages your agent has not answered yet, oldest first: what an\nagent that was away picks up when it starts.",
       "params": [],
@@ -5378,6 +5746,31 @@
         "$ref": "PushKeyView"
       },
       "intent": "read_only"
+    },
+    {
+      "name": "put_memos",
+      "doc": "Your agent's runtime keeps reads worth keeping, as `agent` (an added\nagent only as itself): up to [`MAX_MEMO_BATCH`] a call, each replacing\nits row unless the row was fetched later, while every agent's hits are\nkept. The least used rows are dropped past [`MAX_MEMOS`] or\n[`MAX_MEMO_BYTES`]. Returns how many rows it wrote.",
+      "params": [
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "memos",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "MemoInput"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
     },
     {
       "name": "record_action",
@@ -6057,6 +6450,17 @@
         "$ref": "Event_LinksChanged"
       },
       "doc": "A task's links changed: re-read `links`."
+    },
+    {
+      "name": "MemosChanged",
+      "payload": {
+        "$ref": "Event_MemosChanged"
+      },
+      "doc": "Your agent's runtime wrote or dropped cached reads: re-read `memos`\nafter the newest `updated_at` you have."
+    },
+    {
+      "name": "MemosCleared",
+      "doc": "You cleared your agent's query cache: forget every cached read."
     },
     {
       "name": "MessageChanged",

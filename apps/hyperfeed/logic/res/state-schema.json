@@ -1061,6 +1061,20 @@
           "doc": "The PRs your tasks link to, as your agent's runtime last saw them on\nGitHub, by `owner/name#number`. See [`prs`]."
         },
         {
+          "name": "memos",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Memo"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your agent's query cache: what it read, by a hash of where, which tool\nand its arguments. See [`memo`]."
+        },
+        {
           "name": "action_subjects",
           "type": {
             "kind": "map",
@@ -1316,6 +1330,113 @@
         },
         {
           "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Memo": {
+      "kind": "record",
+      "doc": "One read as the agent last saw it, kept by its key.",
+      "fields": [
+        {
+          "name": "scope",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tool",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "class",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ttl_ms",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "fetched_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "unchanged",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "hits",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "MemoHits"
+            }
+          },
+          "doc": "Per agent, each only ever growing: merged by max, so two agents never\nlose each other's counts."
+        },
+        {
+          "name": "last_hit_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attested",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When the feed last took a write to it (the feed's clock): what\n[`crate::Hyperfeed::memos`] reads after."
+        }
+      ]
+    },
+    "MemoHits": {
+      "kind": "record",
+      "doc": "How often one agent used a row.",
+      "fields": [
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "hits",
           "type": {
             "kind": "u64"
           }

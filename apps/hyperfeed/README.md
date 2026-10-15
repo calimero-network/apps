@@ -47,6 +47,7 @@ same warrant path it uses everywhere else.
 | **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (what it serves, model, attested or not, folders, shell, web), written with `agent_reach` (see [the loop](#api-for-agents)). Settings → Agents shows it beside your Access. An agent whose every line is attested is a **private** agent |
 | **Assignment** | you | per app: which of your agents works in it, by the name it reports in with. Last-writer-wins; an empty agent gives the app back. Only that agent takes the app's work (new items, your decisions on its rows, your messages in a chat about it) and calls the app. An app with none is your private agents', or any agent's while none reports in. Code is the app `mero-bot` (the tools on a computer), and it has no default: nothing runs on a computer until you give Code to an agent that has one, such as your local mero-bot. The agent's runtime enforces it and refuses `set_assignment` to the agent |
 | **Link** | your agent, or you | per task: a subject it works on (`<app>:<context>[:<id>]`) with a label, shown as a chip on the task's post. Your agent's writes add them; you add one from its address or take one off, and a link you took off stays off. A chip with no label is named from the thing itself where the app says: a chat link reads `#launch`, or `DM with Ronit` for a DM, read from the chat in its own context. The chip counts and groups what teammates did there, and opens it in its app beside the feed |
+| **Memo** | your agent's runtime | what your agent read (a node listing, an app's read, a `gh` read), how long it counts as fresh, and how much each agent used it: its query cache, kept within 500 rows and 2 MB, least used dropped first (see [the API](#api-for-agents)). You clear it with `clear_memos` |
 | **Subject** | your agent | what an action touched in another app, as `<app>:<context>[:<id>]` (the id from its `issue_id`, `doc_id` or `thread_id` arg), kept beside the action by id, and the chain that last touched each subject. A typed notification whose reply call goes to the same subject, recorded with no chain of its own, joins that chain unless you put it away: one thread per task, teammates' comments included |
 
 Every record merges deterministically:
@@ -379,6 +380,27 @@ card then shows (waiting with Cancel, merging, merged, or not merged and why). A
 another PR's branch has no Merge: "Base merged: retarget to main" once that PR merged (asked of
 your agent), or a line saying it is stacked and can't merge into the default branch. The row is
 advisory: the runtime checks GitHub again when the watch fires.
+
+**Your agent's query cache: what it read, so the next turn need not ask again.** Every agent turn
+starts cold, so each would re-read the node's contexts, an app's messages, a PR's checks. The
+agent's runtime keeps what it read and writes here, in batches of at most 50 a minute, the reads
+worth keeping (used twice, or slow to change), one row per read, keyed by a hash of where it read,
+which tool and its arguments. They survive a restart and reach your other agents.
+
+| Method | Args | Returns |
+| --- | --- | --- |
+| `put_memos` | `agent: string, memos: MemoInput[] { key, scope, tool, args, value, class, ttl_ms, fetched_at, unchanged, hits, last_hit_at, attested }` | `u32`, rows written; you, or an added agent as itself |
+| `drop_memos` | `agent: string, keys: string[]` | `u32`, rows dropped: reads it knows are wrong now |
+| `clear_memos` | none | `u32`, rows dropped; yours only |
+| `memos` | `since: u64` (the feed's clock; `0` for all) | `MemoView[]` written after it, oldest write first |
+
+`class` is `immutable`, `slow` or `fast`; the runtime lengthens `ttl_ms` while refetches find the
+value unchanged and shortens it when they find it changed. A row fetched earlier than the one kept
+only adds its hits. Hits are kept per agent and merge by the larger count, so two agents never lose
+each other's. At most 500 rows and 2 MB, 16 kB a value: past either, the least used go first (hits,
+halved for every 6 hours since the last). A row an attested agent read (`attested`) is never shown
+to one that is not. Each write emits `MemosChanged { count }`, a clear `MemosCleared`. A row is a
+cache, never a record: losing one costs a read. Turns cannot write here: only mero-bot's runtime does.
 
 `ActionInput`, every field required (use `""` when there is nothing to say):
 
