@@ -23,7 +23,11 @@ export function InviteCard({ contextId }: { contextId: string }) {
   // in — and `ContextPicker` creates contexts directly in the namespace, so that
   // group IS the namespace. (Put a context in a subgroup instead and this would
   // hand `createNamespaceInvitation` a subgroup id.)
-  const { groupId, loading: groupLoading, error: groupError } = useContextGroup(contextId);
+  const {
+    groupId,
+    loading: groupLoading,
+    error: groupError,
+  } = useContextGroup(contextId);
   const { createNamespaceInvitation } = useCreateNamespaceInvitation();
 
   const [link, setLink] = useState<string | null>(null);
@@ -92,13 +96,21 @@ export function InviteCard({ contextId }: { contextId: string }) {
       </div>
       <p className="hint">
         One link. Opens the web app, or hands off to Calimero Desktop on a
-        machine that has it. Whoever opens it joins this group and sees its polls.
+        machine that has it. Whoever opens it joins this group and sees its
+        polls.
       </p>
 
-      {groupLoading && <p className="empty">Resolving this context&apos;s namespace…</p>}
+      {groupLoading && (
+        <p className="empty">Resolving this context&apos;s namespace…</p>
+      )}
       {groupError && <pre className="err">{groupError.message}</pre>}
 
-      <button className={link ? "ghost" : ""} onClick={mint} disabled={busy || !namespaceId} style={{ width: "100%" }}>
+      <button
+        className={link ? "ghost" : ""}
+        onClick={mint}
+        disabled={busy || !namespaceId}
+        style={{ width: "100%" }}
+      >
         <LinkIcon size={16} />
         {busy ? "Creating…" : link ? "Create another" : "Create invite link"}
       </button>
@@ -137,10 +149,10 @@ export function InviteCard({ contextId }: { contextId: string }) {
             `links.frontend`; with that field absent it forgets the link.
           */}
           <p className="help" style={{ marginTop: 10 }}>
-            The link carries the invitation and works when pasted into this app.
-            Opening it in a browser or the desktop app additionally needs this
-            app&apos;s published bundle to declare a <code>links.frontend</code>{" "}
-            origin — see <code>logic/Cargo.toml</code>.
+            Send it to whoever you are inviting; opening it is how they join.
+            The links page opens this app through its published bundle&apos;s{" "}
+            <code>links.frontend</code> origin — see{" "}
+            <code>logic/Cargo.toml</code>.
           </p>
         </>
       )}

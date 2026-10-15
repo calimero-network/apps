@@ -1,5 +1,9 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import type { Actor, AppDriver, Feature } from "@calimero-apps/e2e-node/journey";
+import type {
+  Actor,
+  AppDriver,
+  Feature,
+} from "@calimero-apps/e2e-node/journey";
 
 const SYNC = 90_000;
 const OPTIONS = ["Yes", "No"] as const;
@@ -11,7 +15,10 @@ let pollTitle = "";
 
 function card(page: Page, heading: string | RegExp): Locator {
   return page.locator(".card", {
-    has: page.getByRole("heading", { name: heading, exact: typeof heading === "string" }),
+    has: page.getByRole("heading", {
+      name: heading,
+      exact: typeof heading === "string",
+    }),
   });
 }
 
@@ -20,7 +27,9 @@ function btn(page: Page, name: string): Locator {
 }
 
 async function waitForPanel(page: Page): Promise<void> {
-  await expect(page.getByRole("heading", { name: "Polls", exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(
+    page.getByRole("heading", { name: "Polls", exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
 }
 
 async function toList(page: Page): Promise<void> {
@@ -31,7 +40,9 @@ async function toList(page: Page): Promise<void> {
 
 async function refreshList(page: Page): Promise<void> {
   await toList(page);
-  await card(page, "Polls").getByRole("button", { name: "Refresh", exact: true }).click();
+  await card(page, "Polls")
+    .getByRole("button", { name: "Refresh", exact: true })
+    .click();
 }
 
 function pollRow(page: Page, title: string): Locator {
@@ -46,7 +57,11 @@ async function openPoll(page: Page, title: string): Promise<void> {
   await expect(heading).toBeVisible({ timeout: 30_000 });
 }
 
-async function eventually(page: Page, title: string | null, check: () => Promise<boolean>): Promise<void> {
+async function eventually(
+  page: Page,
+  title: string | null,
+  check: () => Promise<boolean>,
+): Promise<void> {
   await expect
     .poll(
       async () => {
@@ -90,8 +105,12 @@ const setName: Feature = {
     const name = names[by.name];
     if (!name) throw new Error(`${by.name} has not set a name yet`);
     const page = actor.page;
-    await eventually(page, null, async () =>
-      (await page.getByTestId("member").filter({ hasText: name }).count()) > 0,
+    await eventually(
+      page,
+      null,
+      async () =>
+        (await page.getByTestId("member").filter({ hasText: name }).count()) >
+        0,
     );
   },
 };
@@ -104,24 +123,40 @@ const createPoll: Feature = {
     await toList(page);
     pollTitle = `Poll ${actor.run}`;
     await btn(page, "New poll").click();
-    await page.getByPlaceholder("Where do we hold the offsite?").fill(pollTitle);
-    await page.getByRole("textbox", { name: "Option 1", exact: true }).fill(OPTIONS[0]);
-    await page.getByRole("textbox", { name: "Option 2", exact: true }).fill(OPTIONS[1]);
+    await page
+      .getByPlaceholder("Where do we hold the offsite?")
+      .fill(pollTitle);
+    await page
+      .getByRole("textbox", { name: "Option 1", exact: true })
+      .fill(OPTIONS[0]);
+    await page
+      .getByRole("textbox", { name: "Option 2", exact: true })
+      .fill(OPTIONS[1]);
     await btn(page, "Create poll").click();
-    await expect(page.getByRole("heading", { name: pollTitle, exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByRole("heading", { name: pollTitle, exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
     await btn(page, "Publish my transport key").click();
-    await expect(page.getByText("Transport key published.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Transport key published.")).toBeVisible({
+      timeout: 30_000,
+    });
     await btn(page, "Deal my key shares").click({ timeout: 30_000 });
-    await expect(page.getByText("Shares dealt.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Shares dealt.")).toBeVisible({
+      timeout: 30_000,
+    });
     await btn(page, "Open voting").click({ timeout: 30_000 });
-    await expect(page.getByText("Voting is open.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Voting is open.")).toBeVisible({
+      timeout: 30_000,
+    });
   },
   async seen(actor: Actor) {
     const page = actor.page;
     const t = title();
     await eventually(page, null, async () => {
       const row = pollRow(page, t);
-      return (await row.count()) > 0 && /voting/i.test(await row.first().innerText());
+      return (
+        (await row.count()) > 0 && /voting/i.test(await row.first().innerText())
+      );
     });
   },
 };
@@ -133,18 +168,31 @@ const castBallot: Feature = {
     const t = title();
     const option = actor.name === "alice" ? OPTIONS[0] : OPTIONS[1];
     ballots[actor.name] = option;
-    await eventually(page, t, async () => page.getByRole("radio", { name: option, exact: true }).isVisible());
+    await eventually(page, t, async () =>
+      page.getByRole("radio", { name: option, exact: true }).isVisible(),
+    );
     await page.getByRole("radio", { name: option, exact: true }).check();
-    await page.getByRole("button", { name: /^(Encrypt & cast ballot|Replace my ballot)$/ }).click();
-    await expect(page.getByText("Ballot cast.")).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText(/Your receipt/)).toBeVisible({ timeout: 30_000 });
+    await page
+      .getByRole("button", {
+        name: /^(Encrypt & cast ballot|Replace my ballot)$/,
+      })
+      .click();
+    await expect(page.getByText("Ballot cast.")).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.getByText(/Your receipt/)).toBeVisible({
+      timeout: 30_000,
+    });
   },
   async seen(actor: Actor, by: Actor) {
     const name = names[by.name];
     if (!name) throw new Error(`${by.name} has no display name`);
     const page = actor.page;
-    await eventually(page, title(), async () =>
-      (await page.getByTestId("voter").filter({ hasText: name }).count()) > 0,
+    await eventually(
+      page,
+      title(),
+      async () =>
+        (await page.getByTestId("voter").filter({ hasText: name }).count()) > 0,
     );
   },
 };
@@ -170,11 +218,17 @@ const tally: Feature = {
     const page = actor.page;
     await openPoll(page, title());
     await btn(page, "Close poll").click({ timeout: 30_000 });
-    await expect(page.getByText("Poll closed to new ballots.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Poll closed to new ballots.")).toBeVisible({
+      timeout: 30_000,
+    });
     await btn(page, "Seal the count").click({ timeout: 30_000 });
-    await expect(page.getByText("Count sealed.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Count sealed.")).toBeVisible({
+      timeout: 30_000,
+    });
     await btn(page, "Publish my decryption share").click({ timeout: 30_000 });
-    await expect(page.getByText("Decryption share published.")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("Decryption share published.")).toBeVisible({
+      timeout: 60_000,
+    });
     await expect.poll(() => tallyShown(page), { timeout: 30_000 }).toBe(true);
   },
   async seen(actor: Actor) {
@@ -187,8 +241,15 @@ export const driver: AppDriver = {
   app: "mero-vote",
 
   async createNamespace(actor) {
+    // Each journey test begins here, in a new group: forget the last one's.
+    for (const record of [names, ballots])
+      for (const key of Object.keys(record)) delete record[key];
+    renames = 0;
+    pollTitle = "";
     const page = actor.page;
-    await expect(page.getByRole("heading", { name: "Choose a context", exact: true })).toBeVisible({
+    await expect(
+      page.getByRole("heading", { name: "Choose a context", exact: true }),
+    ).toBeVisible({
       timeout: 60_000,
     });
     await btn(page, "Create namespace + context").click({ timeout: 30_000 });
@@ -197,19 +258,37 @@ export const driver: AppDriver = {
 
   async invite(actor) {
     const inviteCard = card(actor.page, "Invite someone");
-    await inviteCard.getByRole("button", { name: "Create invite link", exact: true }).click({ timeout: 30_000 });
+    await inviteCard
+      .getByRole("button", { name: "Create invite link", exact: true })
+      .click({ timeout: 30_000 });
     const link = inviteCard.locator("code.invite-link");
     await expect(link).toBeVisible({ timeout: 30_000 });
     return (await link.getAttribute("title")) ?? (await link.innerText());
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    const join = card(page, "Join with an invitation");
-    await expect(join).toBeVisible({ timeout: 60_000 });
-    await join.getByLabel("invitation", { exact: true }).fill(link);
-    await join.getByRole("button", { name: "Join", exact: true }).first().click();
-    await expect(page.getByRole("heading", { name: "Polls", exact: true })).toBeVisible({ timeout: 120_000 });
+    // The prompt was accepted; a join reloads into the group it names, where the
+    // invitation card is gone. Waiting for that, not just for the group view,
+    // matters when the actor was already inside another group. A refusal stays
+    // on screen with the reason, so fail with that, not a timeout.
+    const inside = page.getByRole("heading", { name: "Polls", exact: true });
+    const prompt = page.getByRole("heading", {
+      name: "Join with an invitation",
+      exact: true,
+    });
+    const refused = page.getByTestId("invite-error");
+    const where = async () =>
+      (await refused.isVisible())
+        ? "refused"
+        : (await inside.isVisible()) && !(await prompt.isVisible())
+          ? "in"
+          : "waiting";
+    await expect
+      .poll(where, { timeout: 120_000, intervals: [500, 1_000] })
+      .not.toBe("waiting");
+    if ((await where()) === "refused")
+      throw new Error(`join refused: ${await refused.innerText()}`);
   },
 
   async afterReload(actor) {
