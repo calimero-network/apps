@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import styled from "styled-components";
 import BaseModal from "./BaseModal";
 import Loader from "../../loader/Loader";
-import { Avatar, Button, Input } from "@calimero-network/mero-ui";
+import { Avatar, Button } from "@calimero-network/mero-ui";
+import { Input } from "../Input";
 import type { UserId } from "../../../api/clientApi";
 
 interface MultipleInputPopupProps {

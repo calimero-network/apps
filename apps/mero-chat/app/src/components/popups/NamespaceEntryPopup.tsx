@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { styled, keyframes } from "styled-components";
-import { Button, Input } from "@calimero-network/mero-ui";
+import { Button } from "@calimero-network/mero-ui";
+import { Input } from "../common/Input";
 import { getNodeUrl } from "@calimero-network/mero-react";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";

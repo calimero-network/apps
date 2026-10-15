@@ -5,7 +5,8 @@ import {
   nodeApi as apiClientNode,
   type LegacyNodeIdentity as NodeIdentity,
 } from "../../api/meroJsClient";
-import { Button, Input } from "@calimero-network/mero-ui";
+import { Button } from "@calimero-network/mero-ui";
+import { Input } from "../common/Input";
 
 const TabContent = styled.div`
   display: flex;
