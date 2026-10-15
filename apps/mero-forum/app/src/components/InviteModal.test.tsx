@@ -95,4 +95,23 @@ describe("InviteModal", () => {
       "Whole space · Test",
     );
   });
+
+  it("offers the link and nothing else to share", () => {
+    // An invitation reaches the app only by its link being opened, so there is
+    // no desktop link or raw code to hand out instead.
+    render(
+      <InviteModal
+        open
+        code="abc123"
+        scope="Whole space · Test"
+        onClose={() => {}}
+      />,
+    );
+    const modal = screen.getByTestId("invite-modal");
+    expect(screen.queryByTestId("invite-more")).toBeNull();
+    expect(modal.textContent).not.toContain("calimero://");
+    expect(screen.getByTestId("invite-link").getAttribute("title")).toMatch(
+      /^https:\/\/links\.calimero\.network\/com\.calimero\.mero-forum\/join\?invitation=abc123$/,
+    );
+  });
 });
