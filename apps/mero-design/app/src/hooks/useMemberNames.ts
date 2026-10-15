@@ -19,9 +19,16 @@ export function shortIdentity(identity: string): string {
 
 export type NameResolver = (identity: string) => string;
 
-export function resolveName(members: Member[], identity: string): string {
+/**
+ * The team-wide name for an account (namespace member metadata), when one is
+ * known. A board username is per board; this is the name the person set once
+ * for every app on the team, so it names someone who never joined this board.
+ */
+export type TeamNameLookup = (account: string) => string | undefined;
+
+export function resolveName(members: Member[], identity: string, teamName?: TeamNameLookup): string {
   const found = members.find((m) => m.id === identity);
-  return found?.username?.trim() || shortIdentity(identity);
+  return found?.username?.trim() || teamName?.(identity) || shortIdentity(identity);
 }
 
 export function useMemberNames(members: Member[]): NameResolver {

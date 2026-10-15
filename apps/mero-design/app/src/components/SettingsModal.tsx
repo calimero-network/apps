@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
+import { useMemberNames } from "@calimero-apps/names";
 import { ShieldCheck } from "@calimero-network/mero-icons";
 import { getNodeIdentity, listGroupMembers, rpcCall, updateMemberRole, type GroupMemberInfo } from "../api/rpc";
 import { listTeamContexts } from "../api/teamContexts";
@@ -37,11 +38,18 @@ interface Props {
    */
   groupId?: string;
   name: string;
+  /**
+   * The team (namespace) this belongs to. People's names live on the namespace
+   * — the one group everyone is in — so a project's member rows read them from
+   * here. Defaults to `id` for a team.
+   */
+  namespaceId?: string;
   onClose: () => void;
 }
 
-export default function SettingsModal({ type, id, groupId, name, onClose }: Props) {
-  const { applicationId } = useMero();
+export default function SettingsModal({ type, id, groupId, name, namespaceId, onClose }: Props) {
+  const { applicationId, admin } = useMero();
+  const { nameOf } = useMemberNames(admin, namespaceId ?? (type === "team" ? id : undefined));
   const { showToast } = useToast();
   const membersGroupId = groupId || id;
   const [members, setMembers] = useState<MemberEntry[]>([]);
@@ -305,10 +313,11 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
               {members.map((m) => {
                 const isAdmin = m.role === "Admin";
                 const isSelf = m.identity === selfIdentity;
-                // item 12: prefer the username from the contract over the raw id.
+                // item 12: prefer the username from the contract over the raw id,
+                // then the name the person set on the team, which every app shares.
                 // Keyed by account — `m.identity` IS an account id here.
                 const canvasName = canvasNames[m.identity];
-                const shownName = canvasName || m.name;
+                const shownName = canvasName || m.name || nameOf(m.identity);
                 const initial = (shownName?.[0] ?? m.identity[0] ?? "?").toUpperCase();
                 const canModerate = type === "team" && selfIsAdmin && !isSelf;
                 const busy = pendingRole === m.identity;

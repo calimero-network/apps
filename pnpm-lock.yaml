@@ -994,6 +994,9 @@ importers:
       '@calimero-apps/join-sync':
         specifier: workspace:*
         version: link:../../../packages/join-sync
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1296,6 +1299,9 @@ importers:
       '@calimero-apps/join-sync':
         specifier: workspace:*
         version: link:../../../packages/join-sync
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -2675,6 +2681,34 @@ importers:
         version: 4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
 
   packages/join-sync:
+    devDependencies:
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/react':
+        specifier: ^19.2.18
+        version: 19.2.18
+      jsdom:
+        specifier: 'catalog:'
+        version: 25.0.1
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
+
+  packages/names:
+    dependencies:
+      bs58:
+        specifier: 'catalog:'
+        version: 6.0.0
     devDependencies:
       '@testing-library/react':
         specifier: 'catalog:'

@@ -1,3 +1,4 @@
+import type { TeamNameLookup } from "../hooks/useMemberNames";
 import type { CursorState, Member } from "../types";
 import styles from "./CursorsOverlay.module.css";
 
@@ -21,10 +22,12 @@ interface Props {
   cursors: CursorState[];
   myIdentity: string;
   members: Member[];
+  /** Team-wide names, for people with no board username. */
+  teamName?: TeamNameLookup;
   viewport: { zoom: number; panX: number; panY: number };
 }
 
-export default function CursorsOverlay({ cursors, myIdentity, members }: Props) {
+export default function CursorsOverlay({ cursors, myIdentity, members, teamName }: Props) {
   const now = Date.now();
   const active = cursors.filter((c) => c.identity !== myIdentity && now - c.updatedAt < 10_000);
 
@@ -34,7 +37,8 @@ export default function CursorsOverlay({ cursors, myIdentity, members }: Props) 
         const color = colorForIdentity(c.identity);
         // Members are keyed by account; a cursor by device, with its account.
         const member = members.find((m) => m.id === (c.account ?? c.identity));
-        const label = member?.username ?? shortLabel(c.identity);
+        const label =
+          member?.username?.trim() || teamName?.(c.account ?? c.identity) || shortLabel(c.identity);
         return (
           <div
             key={c.identity}

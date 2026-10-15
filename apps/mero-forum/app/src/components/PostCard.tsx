@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 import type { PostView } from "../generated/ForumClient";
 import { fullDate, timeAgo } from "../lib/forum";
-import { authorLabel, shortAccount } from "../lib/nickname";
+import { authorLabel, shortAccount, useAuthorName } from "../lib/nickname";
 import { Avatar, Menu } from "./chrome";
 import {
   ArrowDownIcon,
@@ -72,7 +72,7 @@ export function Byline({
   authorName: string;
   selfAccount: string | null;
 }) {
-  const a = authorLabel(account, authorName, selfAccount);
+  const a = authorLabel(account, useAuthorName(account, authorName), selfAccount);
   return (
     <span className="author" data-anonymous={a.anonymous} title={account}>
       {a.label}
@@ -111,7 +111,7 @@ export function AuthorAvatar({
   authorName: string;
   size?: number;
 }) {
-  const a = authorLabel(account, authorName, null);
+  const a = authorLabel(account, useAuthorName(account, authorName), null);
   return (
     <Avatar
       label={a.label}

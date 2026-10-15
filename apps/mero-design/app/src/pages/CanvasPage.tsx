@@ -7,6 +7,7 @@ import { getElementsByIds } from "../api/elementBatch";
 import { collectBoardChanges } from "../utils/boardEvents";
 import { useGroupActions } from "../hooks/useGroupActions";
 import { useMero } from "@calimero-network/mero-react";
+import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
@@ -35,7 +36,9 @@ export default function CanvasPage() {
   countRender("CanvasPage");
   const { teamId, projectId } = useParams<{ teamId: string; projectId: string }>();
   const navigate = useNavigate();
-  const { logout } = useMero();
+  const { logout, admin } = useMero();
+  // The name each person set once for the whole team, shared by every app on it.
+  const teamNames = useMemberNames(admin, teamId);
   // Selector, not the bare store. `useCanvasStore()` subscribes to every field,
   // so selecting a shape — which touches nothing this page renders — used to
   // re-render CanvasPage and, through it, the canvas, the toolbar and the whole
@@ -373,11 +376,25 @@ export default function CanvasPage() {
     }).catch(() => {});
     // Cache locally for convenience (pre-fill on future sessions)
     setUsername(myIdentity, username);
+    // And as this person's name on the team, so every board and every other
+    // app on it shows the name too, not just this board. Best-effort: the
+    // board name above is already set either way.
+    if (teamId && myAccount && admin && username !== teamNames.nameOf(myAccount)) {
+      void publishMemberName(admin, teamId, myAccount, username).catch(() => {});
+    }
     setShowUsernameModal(false);
     rpcCall<Member[]>(projectId, "get_members", {})
       .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
       .catch(() => {});
   }
+
+  // Someone who already named themselves on the team is not asked again on
+  // every new board: the team name becomes their board username.
+  const myTeamName = teamNames.nameOf(myAccount);
+  useEffect(() => {
+    if (showUsernameModal && myTeamName) void handleUsernameSubmit(myTeamName);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showUsernameModal, myTeamName]);
 
   // Resolve this identity's role. Viewers get a read-only canvas; only the
   // admin/owner may run board-replace ops (import). Re-checked when the roster
@@ -675,7 +692,7 @@ export default function CanvasPage() {
       {showUsernameModal && (
         <UsernameModal
           onSubmit={handleUsernameSubmit}
-          initialValue={getUsername(myIdentity)}
+          initialValue={getUsername(myIdentity) || myTeamName || ""}
         />
       )}
       <Toolbar
@@ -695,6 +712,7 @@ export default function CanvasPage() {
         readOnly={!canEdit}
         canImport={isAdmin}
         memberList={members}
+        teamName={teamNames.nameOf}
         onOpenStarter={handleOpenStarter}
         boardHasContent={elements.length > 0}
       />
@@ -707,9 +725,16 @@ export default function CanvasPage() {
             readOnly={!canEdit}
             onViewportChange={(z, px, py) => setViewport({ zoom: z, panX: px, panY: py })}
           />
-          <CursorsOverlay cursors={cursors} myIdentity={myIdentity} members={members} viewport={viewport} />
+          <CursorsOverlay
+            cursors={cursors}
+            myIdentity={myIdentity}
+            members={members}
+            teamName={teamNames.nameOf}
+            viewport={viewport}
+          />
           <CommentsOverlay
             members={members}
+            teamName={teamNames.nameOf}
             contextId={projectId ?? ""}
             comments={comments}
             myIdentity={myAccount}
