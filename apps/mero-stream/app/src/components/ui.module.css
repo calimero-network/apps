@@ -126,3 +126,23 @@
   background: var(--info-soft);
   border: 1px solid color-mix(in srgb, var(--info) 20%, transparent);
 }
+
+/* "TEE enabled": a hardware-attested node backs this namespace or room. */
+.tee {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--info-soft);
+  color: var(--info);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.teeMode {
+  color: var(--text-dim);
+}

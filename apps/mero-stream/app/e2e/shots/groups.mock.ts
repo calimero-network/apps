@@ -38,6 +38,7 @@ const ROOMS: RoomRow[] = [
     name: "Daily",
     contextId: "7Hs2Qk9vLxTnR4mZbA1cWpYeUf3gJd6NqSvXhKrM8tBz",
     memberCount: 7,
+    teeMode: null,
     joined: true,
     // The room's roster is keyed by the identity this node holds, so without it
     // a member list cannot mark which row is you.
@@ -48,6 +49,7 @@ const ROOMS: RoomRow[] = [
     name: "Pairing",
     contextId: "2FgW8nQmT3xKp9vLzRbA4aY1cWeUf6gJd5NqSvXhKrM8",
     memberCount: 2,
+    teeMode: null,
     joined: false,
     identity: null,
   },
@@ -58,6 +60,7 @@ const ROOMS: RoomRow[] = [
     name: "Incident room",
     contextId: null,
     memberCount: 4,
+    teeMode: null,
     joined: false,
     identity: null,
   },
@@ -75,6 +78,10 @@ export async function listStreamNamespaces(): Promise<NamespaceRow[]> {
 
 export async function listRooms(): Promise<RoomRow[]> {
   return ROOMS;
+}
+
+export async function namespaceTeeMode(): Promise<null> {
+  return null;
 }
 
 export async function namespaceName(): Promise<string> {
