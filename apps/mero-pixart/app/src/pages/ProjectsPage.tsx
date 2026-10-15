@@ -10,6 +10,7 @@ import { extractErrorMessage, humanizeError } from "../utils/errorMessage";
 import { encodeInvitationObject, invitationLink } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
 import { getStoredTeamName, teamLabel } from "../utils/teamName";
+import { splitTeeMembers } from "../utils/teeMembers";
 import { SHOWCASE_PROJECTS } from "../showcase";
 import type { Project, DocumentInfo } from "../types";
 import styles from "./ProjectsPage.module.css";
@@ -104,7 +105,8 @@ export default function ProjectsPage() {
               let memberCount: number | undefined = doc?.memberCount;
               try {
                 const m = await admin.listGroupMembers(sgId);
-                if (Array.isArray(m?.members)) memberCount = m.members.length;
+                // People only: a Born Open subgroup admits the TEE node too.
+                if (Array.isArray(m?.members)) memberCount = splitTeeMembers(m.members).members.length;
               } catch { /* keep the doc fallback */ }
               resolved.push({
                 contextId,

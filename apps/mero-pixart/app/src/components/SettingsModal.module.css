@@ -27,6 +27,19 @@
 .dimTimes { color: var(--text-faint); }
 .dimUnit { color: var(--text-faint); font-size: 12px; margin-right: auto; }
 
+.labelRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* A TEE node backs this group: infrastructure, shown here, never as a member. */
+.teeBadge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 9px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok);
+  font-size: 11px; font-weight: 600;
+  white-space: nowrap;
+}
+
 .copyRow {
   display: flex; align-items: center; gap: 8px;
   background: var(--bg-0);
