@@ -185,8 +185,32 @@ member, or failed (the reason, with Try again when a retry can help). Syncing
 is the stage that matters most: a join returns before the namespace's data has
 arrived, and an empty page then looks like an empty workspace. It lasts while
 the namespace's just-joined flag is set, which redemption sets and the page
-showing that namespace's data clears with `useJoinSync({ namespaceId, settled })`
-once a read has come back (an empty one counts).
+showing that namespace's data clears with
+`useJoinSync({ namespaceId, settled, active })` once that data has arrived.
+The gate gives up after 30 s unless `active` holds it open, and never waits
+past `JOIN_SYNC_MAX_MS` (2 minutes). What counts as arrived depends on what the
+page reads:
+
+- **A context's state** (kv-store, battleships' lobby `useLobbyJoinSync`,
+  mero-vote's `VotePanel`): a node that has not synced the context fails the
+  read (`Uninitialized`), it does not come back empty, so any read that
+  succeeds settles, an empty one included. No live event follows the state
+  landing, so while syncing the page re-reads every `JOIN_SYNC_POLL_MS` (2 s).
+- **A list from the namespace** (mero-stream's `RoomsPage`, mero-updates'
+  `UpdatesPage` and `AudiencesPage`, mero-calendar's `TeamCalendarsPage`): an
+  unsynced node returns the list empty, so while the namespace is just-joined
+  an empty list does not settle. The page passes `active: empty` and re-reads
+  every `JOIN_SYNC_POLL_MS`. The cost: a workspace that really is empty when
+  the invite is accepted holds the dialog until the 2-minute ceiling.
+
+A read or join that the page makes after the gate has cleared can still beat
+the data, so those retry: mero-pixart's `readProjectWithJoinRetry`
+(`api/loadProject.ts`) and mero-calendar's `joinCalendarWithRetry`
+(`api/joinCalendar.ts`, opening a calendar) retry every 3 s for up to 90 s
+while the namespace is just-joined, else 20 s; mero-docs' `redeemInvite`
+retries a folder join every 3 s for up to 90 s, stopping at once on a final
+refusal (expired, revoked, a 4xx); mero-chess's `joinContextWithRetry` is the
+same pattern for its game context.
 
 Its test ids are `invite-prompt` (with `data-stage`), `invite-accept`,
 `invite-decline`, `invite-continue`, `invite-done`, `invite-retry` and
