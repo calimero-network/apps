@@ -352,6 +352,7 @@
 
 .memberRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 11px;
   padding: 10px 12px;
@@ -414,6 +415,13 @@
   font-family: inherit;
   font-size: 12.5px;
   cursor: pointer;
+}
+/* The read-only role, for anyone who cannot change it. */
+span.memberRole {
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+  color: var(--text-2, var(--text));
 }
 .memberRole:disabled {
   opacity: 0.5;

@@ -240,6 +240,31 @@ export async function setMemberCapabilities(
 }
 
 /**
+ * Move a member's CORE role (Admin / Member). `identity` is the ACCOUNT.
+ *
+ * Core's Admin is the role the node itself checks for governance; a mask that
+ * merely holds the admin bits is not the same thing, and a list that only ever
+ * wrote the mask could not make anybody an admin of the team.
+ */
+export async function updateMemberRole(
+  admin: AdminApiClient,
+  groupId: string,
+  identity: string,
+  role: "Admin" | "Member",
+): Promise<void> {
+  await admin.updateMemberRole(groupId, identity, { role });
+}
+
+/** Remove members by ACCOUNT, never by signing key (see `getMemberCapabilities`). */
+export async function removeGroupMembers(
+  admin: AdminApiClient,
+  groupId: string,
+  accounts: string[],
+): Promise<void> {
+  await admin.removeGroupMembers(groupId, { members: accounts });
+}
+
+/**
  * The capabilities a member gets when their own row cannot be read.
  *
  * An account's read of a member's capabilities can still 403 on today's relay
