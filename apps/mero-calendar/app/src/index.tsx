@@ -13,6 +13,7 @@ import "@calimero-network/mero-ui/styles.css";
 
 import App from "./App";
 import { primeInvitationCapture } from "@calimero-apps/invite";
+import { APP_SLUG } from "./utils/invitation";
 import "./styles/theme.css";
 import "./index.module.scss";
 import { Provider as StoreProvider } from "react-redux";
@@ -27,8 +28,11 @@ import { ThemeProvider } from "./providers/ThemeProvider";
 // `?invitation=…` to its own frontend URL, and Router replaces the URL on the
 // first navigation — child effects fire before parent effects, so there is no
 // component early enough to read it reliably. Capture is durable, so an
-// invitation arriving before login survives the auth round-trip.
-primeInvitationCapture("mero-calendar");
+// invitation arriving before login survives the auth round-trip. A running
+// desktop hands a link over as a `deep-link` event instead, and a link
+// addressed to another app is dropped, not offered (`slug`).
+// `components/common/invitation-prompt` asks before joining.
+primeInvitationCapture("mero-calendar", { slug: APP_SLUG });
 
 // ── Tauri desktop SSO ─────────────────────────────────────────────────────────
 //
