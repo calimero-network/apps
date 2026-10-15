@@ -288,11 +288,11 @@ export const APPS = {
     trust: ['Teams are namespaces', 'Private events never sync', 'Light and dark'],
     explainer: [
       'A shared calendar for a team that does not want its schedule sitting in someone else’s cloud. A team is a Calimero namespace, so the people in it are exactly the people you invited, and the calendar lives on their nodes and yours.',
-      'Shared events are owner-gated, so a member sees what they own or were invited to rather than everything. Private events use node-local storage and never replicate at all — they exist on your machine and nowhere else.',
+      'Shared events are owner-gated: only the person who created an event can change or delete it, and every node enforces that. Your calendar shows what you own or were invited to, but every shared event replicates to the whole team, so anything confidential belongs in a private event. Private events use node-local storage and never replicate at all — they exist on your machine and nowhere else.',
     ],
     features: [
       { icon: 'Grid', title: 'Teams are namespaces', body: 'Everyone in the namespace syncs the same calendar. Membership is the access model.' },
-      { icon: 'Shield', title: 'Owner-gated shared events', body: 'Members see events they own or were invited to, not the whole team’s diary by default.' },
+      { icon: 'Shield', title: 'Owner-gated shared events', body: 'Only an event’s owner can edit or delete it, on every node. Your view shows what you own or were invited to; the team can still read every shared event.' },
       { icon: 'EyeOff', title: 'Genuinely private events', body: 'Node-local storage that never replicates. Not "private" as a flag on a shared record.' },
       { icon: 'Moon', title: 'Light and dark themes', body: 'With an accessible palette, because a calendar is something people stare at all day.' },
       { icon: 'HeartCheck', title: 'Readable identities', body: 'Display names instead of key hashes, so a shared calendar reads like one.' },
@@ -728,7 +728,8 @@ export const APPS = {
     e2eDir: 'e2e',
     // This app ships its own light/dark switch; the landing toggle writes the
     // same key so the choice carries through sign-in instead of resetting.
-    themeStorageKey: 'app:theme',
+    // The app's own key: it reads the old `app:theme` only while this is unset.
+    themeStorageKey: 'mero-sheets:theme',
     availability: 'web+desktop',
     trust: ['Live collaboration', 'Formulas recompute for all peers', 'Sheet on your node'],
     explainer: [
@@ -738,7 +739,7 @@ export const APPS = {
     features: [
       { icon: 'Lock', title: 'Truly private sheets', body: 'The data lives in a context you control. It never passes through a central server.' },
       { icon: 'Zap', title: 'Live collaboration', body: 'Every collaborator’s cursor in their own colour, and their edits on your screen as they make them.' },
-      { icon: 'BarChart', title: 'Formulas that always compute', body: 'SUM, AVERAGE, MIN, MAX, COUNT and IF, re-evaluated per peer whenever a referenced cell changes.' },
+      { icon: 'BarChart', title: 'Formulas that always compute', body: '94 functions, from SUMIFS and XLOOKUP to TEXT and EOMONTH, re-evaluated per peer whenever a referenced cell changes.' },
       { icon: 'Table', title: 'Multiple sheet tabs', body: 'Split a workbook the way you would expect, with tabs that sync like everything else.' },
       { icon: 'FileText', title: 'Formula autocomplete', body: 'With a built-in function reference, so you do not have to remember the argument order.' },
       { icon: 'Download', title: 'Download your data', body: 'Export whenever you want. Nothing here is designed to keep your numbers hostage.' },

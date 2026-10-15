@@ -1363,7 +1363,7 @@ export default function AppPage() {
               <ButtonRow>
                 <PrimaryBtn
                   data-testid="action-init_project"
-                  disabled={!projectName.trim() || ws.loading}
+                  disabled={!projectName.trim() || !ws.canCreate}
                   onClick={() => void ws.createWorkspace(projectName.trim())}
                 >
                   Create spreadsheet

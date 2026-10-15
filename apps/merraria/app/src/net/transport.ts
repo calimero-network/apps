@@ -78,12 +78,31 @@ export interface Transport {
 const TOKENS_KEY = "mero-tokens";
 
 /**
+ * The `node_origin` mero-js binds a token bundle to: the node's origin plus
+ * its path prefix (see `TokenData.node_origin`).
+ */
+function nodeOriginOf(nodeUrl: string): string {
+  try {
+    const { origin, pathname } = new URL(nodeUrl);
+    return origin === "null" ? nodeUrl : origin + pathname.replace(/\/+$/, "");
+  } catch {
+    return nodeUrl;
+  }
+}
+
+/**
  * mero-js's token store over the `mero-tokens` bundle session.ts writes.
  * mero-js's own `LocalStorageTokenStore` refuses a bundle without a refresh
  * token; a desktop SSO hand-over can carry an access token alone, and that is
  * still a login. `expires_at` may be a string ("" or a stamp) in our format.
+ *
+ * mero-js (>= 25.0.7) reads a bundle as signed out unless its `node_origin`
+ * names `nodeUrl`. One that mero-js persisted keeps the node it names. One
+ * session.ts wrote carries none, and is this node's: session.ts writes the
+ * bundle together with the session's node, which is the node this store is
+ * built for.
  */
-export function merrariaTokenStore(): TokenStore {
+export function merrariaTokenStore(nodeUrl: string): TokenStore {
   return {
     getTokens(): TokenData | null {
       try {
@@ -98,6 +117,7 @@ export function merrariaTokenStore(): TokenStore {
           access_token: parsed.access_token,
           refresh_token: parsed.refresh_token ?? "",
           expires_at: exp,
+          node_origin: parsed.node_origin ?? nodeOriginOf(nodeUrl),
         };
       } catch {
         return null;
@@ -187,7 +207,7 @@ function nodeTransport(nodeUrl: string): Transport {
   const client: MeroClient = createMeroClient({
     transport: "node",
     baseUrl: nodeUrl,
-    tokenStore: merrariaTokenStore(),
+    tokenStore: merrariaTokenStore(nodeUrl),
     // A revoked token family (single-use refresh token replayed, or an
     // explicit revocation) is terminal: nothing we hold is live.
     onAuthRevoked: () => {

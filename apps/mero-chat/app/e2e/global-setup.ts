@@ -109,6 +109,11 @@ export default async function globalSetup(_config: FullConfig) {
       access_token: accessToken,
       refresh_token: refreshToken,
       expires_at: Date.now() + 3600_000,
+      // mero-js reads a bundle as signed out unless it names the node that
+      // issued it: the node's origin plus its path prefix.
+      ...(NODE_URL && {
+        node_origin: new URL(NODE_URL).origin + new URL(NODE_URL).pathname.replace(/\/+$/, ""),
+      }),
     });
     const state = {
       cookies: [],
