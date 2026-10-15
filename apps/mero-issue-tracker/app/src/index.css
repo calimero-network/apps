@@ -4,49 +4,84 @@
   box-sizing: border-box;
 }
 
-/* ── App theme tokens (light default). The landing page does NOT use these. ──
-   `--c-on-accent` is text on the bright green accent — stays dark in both
-   themes. `--c-green-ink`/`--c-green-deep` are accent TEXT, so they lighten in
-   dark mode for contrast on dark surfaces. */
+/* ── App theme tokens: the fleet's light glass (@calimero-apps/glass). ──────
+   index.tsx imports glass.css first; everything here maps this app's own
+   names (`tokens` in src/theme.ts) onto its `--glass-*` values, tinted with
+   this app's icon colour. Light is the default; `<html data-theme="dark">`
+   (the person's choice, see theme.ts) switches glass.css to smoked glass and
+   the dark block below follows it. The landing page does NOT use these. */
 :root {
-  --c-green: #a4ff11;
-  --c-green-hover: #93e60c;
-  --c-green-deep: #4e7a06;
-  --c-green-ink: #37610a;
-  --c-on-accent: #0e140f;
-  --c-ink: #0e140f;
-  --c-paper: #ffffff;
-  --c-paper2: #f5f8f1;
-  --c-line: #e7ece2;
-  --c-muted: #5d6b60;
-  --c-muted-soft: #93a394;
-  --c-off: #c4ccbf;
-  --c-disabled: #e2e8da;
-  --c-danger: #d23b2f;
+  --glass-tint: #84cc16;
+
+  --it-bg: var(--glass-ground);
+  --it-panel: var(--glass-surface-solid);
+  --it-glass: var(--glass-surface);
+  --it-raised: var(--glass-surface-solid);
+  --it-raised2: var(--glass-sunken);
+  --it-hover: var(--glass-sunken);
+  --it-border: var(--glass-line);
+  --it-border-strong: var(--glass-line-strong);
+  --it-edge: var(--glass-edge);
+  --it-text: var(--glass-ink);
+  --it-text2: var(--glass-ink-2);
+  --it-text3: var(--glass-muted);
+  --it-accent: var(--glass-ink);
+  --it-accent-hover: #262b3d;
+  --it-accent-text: var(--glass-accent);
+  --it-accent-dim: rgba(52, 81, 209, 0.09);
+  --it-accent-border: rgba(52, 81, 209, 0.32);
+  --it-on-accent: var(--glass-on-ink);
+  --it-scrim: rgba(14, 18, 34, 0.28);
+  /* Status and priority marks: readable on the white card in light, on the
+     smoked card in dark. */
+  --it-open: #7a8094;
+  --it-urgent: #d0384d;
+  --it-high: #b86e0f;
+  --it-medium: #4f6fa3;
+  --it-low: var(--glass-muted);
+  --it-done: #1f9a5b;
+  --it-good-bg: var(--glass-good-bg);
+  --it-bad-bg: var(--glass-bad-bg);
+  --it-log-bg: var(--glass-sunken);
+  --it-danger: var(--glass-bad-ink);
+  --it-danger-border: rgba(162, 25, 75, 0.28);
+  --it-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+  --it-shadow-float: var(--glass-shadow-float);
+  --it-lane: rgba(255, 255, 255, 0.44);
+  --it-shadow-card: 0 1px 2px rgba(14, 18, 34, 0.04), 0 10px 24px -16px rgba(40, 50, 110, 0.42), 0 0 0 1px var(--glass-line);
+  --it-shadow-lift: 0 2px 4px rgba(14, 18, 34, 0.05), 0 18px 34px -18px rgba(40, 50, 110, 0.5), 0 0 0 1px var(--glass-line-strong);
+  --it-focus: rgba(52, 81, 209, 0.22);
+  color-scheme: light;
 }
 
 :root[data-theme='dark'] {
-  --c-green: #a4ff11;
-  --c-green-hover: #b4ff3d;
-  --c-green-deep: #bdf76a;
-  --c-green-ink: #cdf78a;
-  --c-on-accent: #0e140f;
-  --c-ink: #e7edf2;
-  --c-paper: #14181d;
-  --c-paper2: #1b2027;
-  --c-line: #2b313a;
-  --c-muted: #9aa6ad;
-  --c-muted-soft: #6d7884;
-  --c-off: #3a414b;
-  --c-disabled: #2a2f37;
-  --c-danger: #ff6b6b;
+  --it-accent-hover: #ffffff;
+  --it-accent-dim: rgba(154, 175, 255, 0.14);
+  --it-accent-border: rgba(154, 175, 255, 0.36);
+  --it-scrim: rgba(4, 6, 12, 0.6);
+  --it-open: #a3aabd;
+  --it-urgent: #f07a86;
+  --it-high: #e8a64e;
+  --it-medium: #8fa8d6;
+  --it-done: #7fe0b0;
+  --it-danger-border: rgba(247, 139, 176, 0.32);
+  --it-shadow: var(--glass-shadow);
+  --it-lane: rgba(28, 33, 52, 0.42);
+  --it-shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 26px -18px rgba(0, 0, 0, 0.9), 0 0 0 1px var(--glass-line);
+  --it-shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 20px 36px -18px rgba(0, 0, 0, 0.95), 0 0 0 1px var(--glass-line-strong);
+  --it-focus: rgba(154, 175, 255, 0.28);
+  color-scheme: dark;
 }
 
+/* The page: the glass ground with the tinted fields over it. */
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--c-paper);
-  color: var(--c-ink);
+  font-family: var(--glass-font);
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
+  color: var(--glass-ink);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
@@ -69,22 +104,4 @@ body {
   margin: 0 auto;
   width: 100%;
   padding: 1rem;
-}
-
-/* mero-react's InvitationDialog in this app's own tokens (light and dark both, since they switch these), so the invitation prompt looks
-   like part of this app rather than mero-react's default theme.
-   `body > .mero-invite-overlay` outranks mero-react's own rule, which is
-   injected at runtime after this file. */
-body > .mero-invite-overlay {
-  --mero-overlay: rgba(14, 20, 15, 0.4);
-  --mero-bg-secondary: var(--c-paper);
-  --mero-bg-tertiary: var(--c-paper2);
-  --mero-text: var(--c-ink);
-  --mero-text-secondary: var(--c-muted);
-  --mero-accent: var(--c-green);
-  --mero-accent-hover: var(--c-green-hover);
-  --mero-on-primary: var(--c-on-accent);
-  --mero-border: var(--c-line);
-  --mero-error: var(--c-danger);
-  font-family: inherit;
 }

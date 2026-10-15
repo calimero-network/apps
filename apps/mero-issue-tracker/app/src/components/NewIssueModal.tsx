@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { tokens as t, PRIORITIES } from '../theme';
 import { SelectMenu } from './Dropdown';
-import { APP_DISPLAY_NAME } from '../config';
+import { IconRepo } from './icons';
 
 interface Props {
   onCreate: (
@@ -15,13 +15,15 @@ interface Props {
     labels: string[],
   ) => Promise<void>;
   onClose: () => void;
+  /** The repository the issue is filed in, named in the header. */
+  repoName?: string | null;
 }
 
 /**
  * New-issue modal with the four required sections (Summary / Impact / Repro /
  * Resolution criteria), each stored as its own field.
  */
-export default function NewIssueModal({ onCreate, onClose }: Props): React.ReactElement {
+export default function NewIssueModal({ onCreate, onClose, repoName }: Props): React.ReactElement {
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [impact, setImpact] = useState('');
@@ -58,7 +60,7 @@ export default function NewIssueModal({ onCreate, onClose }: Props): React.React
       <Modal onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="New issue">
         <Head>
           <h3>New issue</h3>
-          <span className="ws-tag"><span className="dot" />{APP_DISPLAY_NAME}</span>
+          {repoName && <span className="ws-tag" title="Filed in this repository"><IconRepo />{repoName}</span>}
           <button className="close" onClick={onClose} aria-label="Close">×</button>
         </Head>
         <Body>
@@ -132,7 +134,7 @@ export default function NewIssueModal({ onCreate, onClose }: Props): React.React
           </Grid2>
         </Body>
         <Foot>
-          <span className="note">All four sections are required - issues filed via MCP follow the same format.</span>
+          <span className="note">All four sections are required. Issues filed through MCP follow the same format.</span>
           <span className="spacer" />
           <button className="ghost" onClick={onClose}>Cancel</button>
           <button
@@ -156,76 +158,107 @@ function Section({ eyebrow, required, children }: { eyebrow: string; required?: 
   );
 }
 
+const fadeIn = keyframes`from{opacity:0;}to{opacity:1;}`;
+const pop = keyframes`from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}`;
+
 const Overlay = styled.div`
   position: fixed; inset: 0; z-index: 50;
-  background: rgba(6,7,9,0.6);
+  background: ${t.color.scrim};
+  /* The overlay is fixed itself and holds only its dialog, so this blur
+     cannot trap anything. */
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   display: flex; align-items: flex-start; justify-content: center;
-  padding: 64px 20px; overflow-y: auto;
+  padding: 56px 20px; overflow-y: auto;
+  animation: ${fadeIn} 0.15s ease both;
+  @media (max-width: 720px) { padding: 10px; }
 `;
 const Modal = styled.div`
-  width: 640px; max-width: 100%;
-  background: ${t.color.panel}; border: 1px solid ${t.color.borderStrong};
+  width: 680px; max-width: 100%;
+  background: ${t.color.panel}; border: 1px solid ${t.color.edge};
   border-radius: ${t.radiusModal};
-  box-shadow: 0 20px 60px rgba(0,0,0,0.55), 0 4px 14px rgba(0,0,0,0.4);
+  box-shadow: ${t.shadowFloat};
   display: flex; flex-direction: column;
-  animation: modalin 150ms ease-out;
-  @keyframes modalin { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  animation: ${pop} 0.18s ease both;
   @media (prefers-reduced-motion: reduce) { animation: none; }
 `;
 const Head = styled.div`
   display: flex; align-items: center; gap: 10px;
-  padding: 15px 18px; border-bottom: 1px solid ${t.color.border};
-  h3 { font-size: 14px; font-weight: 600; margin: 0; }
-  .ws-tag { font-size: 11.5px; color: ${t.color.text2}; display: flex; align-items: center; gap: 6px; }
-  .ws-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: ${t.color.accent}; }
+  padding: 20px 22px 6px;
+  h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.03em; margin: 0; }
+  .ws-tag {
+    display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+    font-size: 12px; font-weight: 600; color: ${t.color.text2};
+    padding: 3px 10px 3px 8px; border-radius: ${t.radiusPill}; background: ${t.color.raised2};
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    svg { color: ${t.color.text3}; flex: 0 0 auto; }
+  }
   .close {
-    margin-left: auto; background: none; border: none; color: ${t.color.text3};
-    font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 4px;
-    &:hover { color: ${t.color.text}; background: rgba(255,255,255,0.05); }
+    margin-left: auto; width: 32px; height: 32px; display: grid; place-items: center; flex: 0 0 auto;
+    background: none; border: none; color: ${t.color.text3}; cursor: pointer;
+    font-size: 20px; line-height: 1; border-radius: ${t.radiusPill};
+    &:hover { color: ${t.color.text}; background: ${t.color.hover}; }
   }
 `;
-const Body = styled.div`padding: 16px 18px; display: flex; flex-direction: column; gap: 16px;`;
+const Body = styled.div`
+  padding: 10px 22px 18px; display: flex; flex-direction: column; gap: 14px;
+  @media (max-width: 720px) { padding: 8px 16px 16px; }
+`;
 const FieldWrap = styled.div`
-  display: flex; flex-direction: column; gap: 6px;
+  display: flex; flex-direction: column; gap: 7px;
   .eyebrow {
-    font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase;
-    color: ${t.color.text3}; font-weight: 600;
+    font-size: 12px; font-weight: 650; color: ${t.color.text2};
     display: flex; align-items: center; gap: 6px;
   }
-  .req { color: ${t.color.accent}; font-size: 10px; }
+  .req { color: ${t.color.accentText}; font-size: 7px; }
   .ftext, .finput {
-    background: ${t.color.raised}; border: 1px solid ${t.color.border};
-    border-radius: ${t.radius}; padding: 9px 11px; color: ${t.color.text};
-    font-family: inherit; font-size: 13px; outline: none; resize: vertical; width: 100%;
-    transition: border-color 150ms ease-out;
+    background: ${t.color.raised}; border: 1px solid ${t.color.borderStrong};
+    border-radius: 14px; padding: 10px 13px; color: ${t.color.text};
+    font-family: inherit; font-size: 13.5px; outline: none; resize: vertical; width: 100%;
+    transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
     &::placeholder { color: ${t.color.text3}; }
-    &:focus { border-color: ${t.color.accentBorder}; }
+    &:focus { border-color: ${t.color.accentBorder}; box-shadow: 0 0 0 3px ${t.focus}; }
   }
-  .ftext { min-height: 62px; line-height: 1.5; }
-  .mono-field { font-family: ${t.font.mono}; font-size: 12px; min-height: 92px; }
+  .finput { min-height: 40px; }
+  .ftext { min-height: 66px; line-height: 1.5; }
+  .mono-field { font-family: ${t.font.mono}; font-size: 12.5px; min-height: 92px; background: ${t.color.logBg}; }
   .ctl { display: flex; width: 100%; }
-  .ctl > button { padding: 9px 11px; font-size: 13px; border-radius: ${t.radius}; }
+  .ctl > button { min-height: 40px; padding: 0 13px; font-size: 13.5px; border-radius: 14px; border-color: ${t.color.borderStrong}; }
   .cap .tv, .cap [role="option"] { text-transform: capitalize; }
 `;
 const Field = styled(FieldWrap)`
   .title-input {
     background: none; border: none; outline: none;
-    font-size: 17px; font-weight: 600; color: ${t.color.text};
-    font-family: inherit; padding: 2px 0; letter-spacing: -0.01em;
+    font-size: 19px; font-weight: 650; color: ${t.color.text};
+    font-family: inherit; padding: 6px 0 8px; letter-spacing: -0.02em;
+    border-bottom: 1px solid ${t.color.border};
     &::placeholder { color: ${t.color.text3}; }
+    &:focus { border-bottom-color: ${t.color.accentBorder}; }
   }
 `;
-const Grid2 = styled.div`display: grid; grid-template-columns: 1fr 1fr; gap: 16px;`;
+const Grid2 = styled.div`
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  @media (max-width: 520px) { grid-template-columns: 1fr; }
+`;
 const Foot = styled.div`
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 18px; border-top: 1px solid ${t.color.border};
-  .note { font-size: 11.5px; color: ${t.color.text3}; max-width: 340px; line-height: 1.4; }
-  .spacer { flex: 1; }
-  button { border-radius: ${t.radius}; font-size: 12.5px; font-weight: 500; padding: 6px 11px; border: 1px solid ${t.color.border}; }
-  .ghost { background: none; color: ${t.color.text}; &:hover { background: rgba(255,255,255,0.05); } }
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 14px 22px 18px; border-top: 1px solid ${t.color.border};
+  .note { font-size: 12px; color: ${t.color.text3}; max-width: 340px; line-height: 1.45; flex: 1 1 220px; }
+  .spacer { flex: 0 0 0; }
+  button {
+    font-family: inherit; border-radius: ${t.radiusPill}; font-size: 13.5px; font-weight: 600;
+    min-height: 40px; padding: 0 18px; border: 1px solid ${t.color.borderStrong}; cursor: pointer;
+  }
+  .ghost { background: ${t.color.raised}; color: ${t.color.text}; margin-left: auto; &:hover { background: ${t.color.hover}; } }
   .primary {
-    background: ${t.color.accent}; color: ${t.color.onAccent}; border-color: transparent; font-weight: 600;
-    &:hover:not(:disabled) { background: #b6ff5e; }
-    &:disabled { opacity: 0.5; cursor: default; }
+    background: ${t.color.accent}; color: ${t.color.onAccent}; border-color: transparent; font-weight: 650;
+    box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
+    &:hover:not(:disabled) { background: ${t.color.accentHover}; }
+    &:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+  }
+  @media (max-width: 720px) {
+    padding: 12px 16px 16px;
+    .note { flex-basis: 100%; max-width: none; }
+    .ghost { margin-left: 0; }
+    .ghost, .primary { flex: 1 1 0; }
   }
 `;

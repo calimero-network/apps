@@ -23,7 +23,7 @@ export const CONFIG: LandingConfig = {
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   tint: "#84cc16",
-  themeStorageKey: "app:theme",
+  themeStorageKey: "mero-issue-tracker:theme",
   trust: ["Structured issues", "MCP server included", "Private to your team"],
   explainer: [
     "A real-time issue board for a small engineering team. Issues are structured around what actually makes a bug actionable — a summary, who it affects, how to reproduce it, and what \"fixed\" has to satisfy — rather than a free-text box and a pile of labels.",

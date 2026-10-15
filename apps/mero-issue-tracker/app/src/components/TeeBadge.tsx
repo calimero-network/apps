@@ -46,11 +46,11 @@ function ShieldIcon(): React.ReactElement {
 }
 
 const Shield = styled.span`
-  display: inline-flex; align-items: center; flex: 0 0 auto; color: ${t.color.accent};
+  display: inline-flex; align-items: center; flex: 0 0 auto; color: ${t.color.accentText};
 `;
 const Badge = styled.span`
   display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
-  border-radius: 999px; font-size: 11.5px; font-weight: 600;
-  color: ${t.color.accent}; background: ${t.color.accentDim};
+  border-radius: ${t.radiusPill}; font-size: 11.5px; font-weight: 600;
+  color: ${t.color.accentText}; background: ${t.color.accentDim};
   .mode { font-weight: 500; color: ${t.color.text2}; }
 `;
