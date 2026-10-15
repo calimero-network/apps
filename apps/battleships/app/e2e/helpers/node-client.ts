@@ -34,6 +34,9 @@ export async function injectMeroAuth(target: InitScriptTarget, opts: InjectAuthO
       access_token: data.accessToken,
       refresh_token: data.refreshToken,
       expires_at: expiresAt,
+      // mero-js reads a bundle as signed out unless it names the node that
+      // issued it: the node's origin plus its path prefix.
+      node_origin: new URL(data.nodeUrl).origin + new URL(data.nodeUrl).pathname.replace(/\/+$/, ''),
     }));
     // The non-token mero-react state (node URL, ids) does use the
     // namespaced keys.

@@ -272,6 +272,9 @@ export async function injectRealTokens(
         access_token: accessToken,
         refresh_token: refreshToken,
         expires_at: Date.now() + 3600_000,
+        // mero-js reads a bundle as signed out unless it names the node that
+        // issued it: the node's origin plus its path prefix.
+        node_origin: new URL(nodeUrl).origin + new URL(nodeUrl).pathname.replace(/\/+$/, ""),
       }),
     );
   }, withApp);
