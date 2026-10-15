@@ -7,8 +7,8 @@ import { dayFactor } from "./engine/sim";
 import { generateWorld, spawnPoint } from "./engine/terrain";
 import { AIR, HOTBAR, STARTING_INVENTORY } from "./engine/tiles";
 import { TileStore } from "./engine/world";
-import { createWorldInvite, ownedContextIdentity } from "./net/admin";
-import { inviteLink } from "./net/inviteLink";
+import { acceptWorldInvite, createWorldInvite, ownedContextIdentity } from "./net/admin";
+import { APP_SLUG, inviteLink } from "./net/inviteLink";
 import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/invite";
 import { GameClient, type WorldMeta } from "./net/client";
 import {
@@ -25,6 +25,7 @@ import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
 import { WheelSteps } from "./input/wheel";
 import { Hud } from "./ui/hud";
+import { invitePromptOpen, setInviteJoiner } from "./ui/invitePrompt";
 import { Landing, LaunchChoice } from "./ui/landing";
 import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu } from "./ui/overlays";
@@ -35,8 +36,28 @@ import { PauseMenu } from "./ui/overlays";
 // `?invitation=…` to its own frontend URL, and the landing flow rewrites the URL
 // as it goes. Capture is durable, so an invite arriving before a node is
 // connected survives the web-login redirect and is replayed once the world
-// picker can act on it.
-primeInviteCapture("merraria");
+// picker can act on it. A running desktop app hands a link over as a
+// `deep-link` event instead, which this also hears — in the game too. Either
+// way ui/invitePrompt.ts asks before joining. A link addressed to another app
+// is dropped, not offered.
+primeInviteCapture("merraria", { slug: APP_SLUG });
+
+/**
+ * Set for one reload by an invite accepted in-game: the session already names
+ * the invited world, so the next boot goes straight into it instead of
+ * stopping at the world picker.
+ */
+const ENTER_JOINED_WORLD = "mt-enter-joined-world";
+
+function takeEnterJoinedWorld(): boolean {
+  try {
+    const set = sessionStorage.getItem(ENTER_JOINED_WORLD) === "1";
+    sessionStorage.removeItem(ENTER_JOINED_WORLD);
+    return set;
+  } catch {
+    return false;
+  }
+}
 
 const SAVE_MS = 5000;
 const WORLD_READY_MS = 60_000;
@@ -94,8 +115,10 @@ async function boot(): Promise<void> {
 
   // Desktop SSO auto-enter: a full hash (tokens + context) means the desktop
   // already authenticated us — zero clicks, straight into the shared world.
+  // Likewise a world just joined from an invite accepted in-game.
   let choice: LaunchChoice;
-  if (captured === "full" && hasConnection()) {
+  const enterJoined = takeEnterJoinedWorld();
+  if ((captured === "full" && hasConnection()) || (enterJoined && hasConnection() && getSession().contextId)) {
     choice = { name: defaults.name };
   } else {
     // The marketing landing page sits in front of the launcher. It skips
@@ -251,6 +274,7 @@ async function boot(): Promise<void> {
   };
 
   window.addEventListener("keydown", (e) => {
+    if (invitePromptOpen()) return; // the invite prompt is answered by clicking
     if (e.code === "Escape" || e.code === "KeyO") return toggleMenu();
     if (menu.open) return; // menu swallows gameplay keys
     if (!e.repeat && (e.code === "Space" || e.code === "KeyW" || e.code === "ArrowUp")) {
@@ -272,7 +296,7 @@ async function boot(): Promise<void> {
   // wheel's ~100px notch still steps immediately).
   const wheelSteps = new WheelSteps();
   window.addEventListener("wheel", (e) => {
-    if (menu.open) return;
+    if (menu.open || invitePromptOpen()) return;
     const steps = wheelSteps.push(e.deltaY, e.deltaMode);
     if (steps === 0) return;
     sel = (((sel + steps) % HOTBAR.length) + HOTBAR.length) % HOTBAR.length;
@@ -283,7 +307,7 @@ async function boot(): Promise<void> {
     mouseY = e.clientY;
   });
   window.addEventListener("mousedown", (e) => {
-    if (menu.open) return;
+    if (menu.open || invitePromptOpen()) return;
     if (e.button === 0) digHeld = true;
     if (e.button === 2) placeHeld = true;
   });
@@ -313,6 +337,36 @@ async function boot(): Promise<void> {
   window.addEventListener("beforeunload", () => {
     save();
     void sync?.leave();
+  });
+
+  // ---- invite links opened while playing ---------------------------------
+  // A running desktop app hands a link to this page as it is. Joining another
+  // world means leaving this one: join first (the session moves to the invited
+  // world only once that succeeded, so a refusal leaves the game untouched),
+  // then save and leave like "Save & leave world", and reload into it.
+  setInviteJoiner({
+    join: async (code, payload) => {
+      if (payload.contextId === worldId) {
+        hud.toast("You're already in this world");
+        return;
+      }
+      await acceptWorldInvite(code);
+      save();
+      void sync?.leave();
+      try {
+        sessionStorage.setItem(ENTER_JOINED_WORLD, "1");
+      } catch {
+        /* no session storage: the picker shows the joined world as the current one */
+      }
+      window.location.reload();
+    },
+    onShow: () => {
+      keys.clear();
+      jumpPressed = false;
+      digHeld = false;
+      placeHeld = false;
+      menu.hide();
+    },
   });
 
   // ---- frame/tick loop ---------------------------------------------------
@@ -453,7 +507,7 @@ async function boot(): Promise<void> {
     sync,
     editTile,
     getOverrides: () => world.overridesToJSON(),
-    input: () => ({ digHeld, placeHeld, uiOpen: menu.open }),
+    input: () => ({ digHeld, placeHeld, uiOpen: menu.open || invitePromptOpen() }),
   };
 }
 

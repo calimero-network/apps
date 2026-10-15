@@ -225,7 +225,7 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
         )}
 
         {!loading && applicationId && contexts.length === 0 && (
-          <p className="empty">No teams on this node yet. Start one, or join with an invitation.</p>
+          <p className="empty">No teams on this node yet. Start one, or open an invitation link someone sent you.</p>
         )}
 
         {contexts.length > 0 && (

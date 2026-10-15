@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   MAX_AUTO_JOIN_ATTEMPTS,
+  buildInviteLink,
   onInvitation,
   primeInvitationCapture,
   resetInvitationCaptureForTests,
@@ -37,6 +38,17 @@ describe("invitation capture", () => {
     const seen = openWith("TOKEN123");
     expect(seen).toHaveLength(1);
     expect(seen[0]!.token).toBe("TOKEN123");
+  });
+
+  it("captures an invitation on a deeper page of the app, not only at its root", () => {
+    const seen = (() => {
+      resetInvitationCaptureForTests();
+      openAt("/teams/t1/projects?invitation=DEEP");
+      const got: string[] = [];
+      onInvitation((i) => got.push(i.token));
+      return got;
+    })();
+    expect(seen).toEqual(["DEEP"]);
   });
 
   it("replays to a listener that subscribes after the link was opened", () => {
@@ -122,5 +134,57 @@ describe("invitation capture", () => {
     } finally {
       if (original) Object.defineProperty(window, "localStorage", original);
     }
+  });
+
+  describe("links from the desktop launcher", () => {
+    type Handler = (payload: unknown) => void;
+    function installBridge(): (raw: string) => void {
+      const handlers: Handler[] = [];
+      (window as unknown as Record<string, unknown>)["__calimero_platform__"] = {
+        version: 1,
+        capabilities: ["deepLink"],
+        invoke: async () => null,
+        on: (event: string, h: Handler) => {
+          if (event === "deep-link") handlers.push(h);
+          return () => undefined;
+        },
+      };
+      return (raw) => handlers.forEach((h) => h({ raw }));
+    }
+    afterEach(() => {
+      delete (window as unknown as Record<string, unknown>)["__calimero_platform__"];
+    });
+
+    it("joins a link for this app that arrives while it is open", () => {
+      const fire = installBridge();
+      primeInvitationCapture("app", { slug: "com.calimero.docs" });
+      const seen: string[] = [];
+      onInvitation((i) => seen.push(i.token));
+      fire("calimero://com.calimero.docs/join?invitation=WARM");
+      expect(seen).toEqual(["WARM"]);
+    });
+
+    it("drops a link addressed to another app, and does not replay it", () => {
+      const fire = installBridge();
+      primeInvitationCapture("app", { slug: "com.calimero.docs" });
+      const seen: string[] = [];
+      onInvitation((i) => seen.push(i.token));
+      fire("calimero://com.calimero.chat/join?invitation=FOREIGN");
+      fire("https://links.calimero.network/com.calimero.chat/join?invitation=FOREIGN2");
+      expect(seen).toEqual([]);
+
+      resetInvitationCaptureForTests();
+      primeInvitationCapture("app", { slug: "com.calimero.docs" });
+      onInvitation((i) => seen.push(i.token));
+      expect(seen).toEqual([]);
+    });
+  });
+
+  it("builds the one shareable link shape, carrying extra parameters beside the token", () => {
+    expect(buildInviteLink("com.calimero.docs", "a+b/c")).toBe(
+      "https://links.calimero.network/com.calimero.docs/join?invitation=a%2Bb%2Fc",
+    );
+    const link = new URL(buildInviteLink("com.calimero.docs", "T", { name: "Q3 plan", id: undefined }));
+    expect(Object.fromEntries(link.searchParams)).toEqual({ invitation: "T", name: "Q3 plan" });
   });
 });

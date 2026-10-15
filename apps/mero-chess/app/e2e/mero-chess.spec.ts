@@ -12,7 +12,15 @@
  * `logic/workflows/play-a-game.yml`.
  */
 import { expect, test } from "@playwright/test";
-import { btn, login, move, square, status, waitForBoard, watchForErrors } from "./helpers";
+import {
+  btn,
+  login,
+  move,
+  square,
+  status,
+  waitForBoard,
+  watchForErrors,
+} from "./helpers";
 
 test.describe("Mero Chess", () => {
   test("opens a table, seats a player, plays a game to mate and starts a rematch", async ({
@@ -28,7 +36,9 @@ test.describe("Mero Chess", () => {
     await expect(square(page, "e1")).toHaveAccessibleName("e1, white king");
     await expect(square(page, "d8")).toHaveAccessibleName("d8, black queen");
     await expect(square(page, "e4")).toHaveAccessibleName("e4");
-    await expect(status(page)).toHaveText("Waiting for both players to sit down.");
+    await expect(status(page)).toHaveText(
+      "Waiting for both players to sit down.",
+    );
 
     // ── sitting down ─────────────────────────────────────────────────────
     await page.getByLabel("your name").fill("Ada");
@@ -36,7 +46,9 @@ test.describe("Mero Chess", () => {
     await expect(page.getByTestId("seat-white")).toContainText("Ada");
     // One seat is not a game: the contract refuses a move until both chairs are
     // taken, and the UI says so rather than offering one.
-    await expect(status(page)).toHaveText("Waiting for both players to sit down.");
+    await expect(status(page)).toHaveText(
+      "Waiting for both players to sit down.",
+    );
 
     // The second chair is offered to the same player on purpose — pass-and-play.
     await page.getByTestId("sit-black").click();
@@ -87,7 +99,9 @@ test.describe("Mero Chess", () => {
     errors.assertClean();
   });
 
-  test("a move is only offered where the contract says it is legal", async ({ page }) => {
+  test("a move is only offered where the contract says it is legal", async ({
+    page,
+  }) => {
     await login(page);
     await waitForBoard(page);
 
@@ -121,13 +135,27 @@ test.describe("Mero Chess", () => {
     await expect(link).toContainText("invitation=");
   });
 
-  test("offers the table picker when the session names no context", async ({ page }) => {
+  test("offers the table picker when the session names no context", async ({
+    page,
+  }) => {
     await login(page, { withContext: false });
-    await expect(page.getByRole("heading", { name: "Choose a table" })).toBeVisible({
+    await expect(
+      page.getByRole("heading", { name: "Choose a table" }),
+    ).toBeVisible({
       timeout: 30_000,
     });
-    // The join card is on the same screen, because an invitation that arrived
-    // by some other channel has to be redeemable without one.
-    await expect(page.getByRole("heading", { name: "Join with an invitation" })).toBeVisible();
+    // The join card is on the same screen: with no invitation open it says
+    // where one comes from — a link, opened, never pasted.
+    await expect(
+      page.getByRole("heading", { name: "Join with an invitation" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Open an invitation link someone sent you.", {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "invitation" })).toHaveCount(
+      0,
+    );
   });
 });

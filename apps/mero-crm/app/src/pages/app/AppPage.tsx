@@ -1,23 +1,26 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Outlet } from 'react-router-dom';
-import styled from 'styled-components';
-import { useToast } from '@calimero-network/mero-ui';
-import { shouldRetain } from '@calimero-apps/invite';
-import { tokens as t } from '../../theme';
-import { useWorkspace } from '../../hooks/useWorkspace';
-import { useCrm } from '../../hooks/useCrm';
-import { makeAliases } from '../../hooks/useAliases';
-import { describeError } from '../../utils/errors';
-import Shell from '../../components/Shell';
-import NewDealModal, { type NewDealInput } from '../../components/NewDealModal';
-import InviteModal from '../../components/InviteModal';
-import JoinModal from '../../components/JoinModal';
-import NamespaceCreateDialog from '../../components/NamespaceCreateDialog';
-import AddPipelineDialog from '../../components/AddPipelineDialog';
-import NsEmptyState from '../../components/NsEmptyState';
-import AliasGate from '../../components/AliasGate';
-import { usePendingInvitation } from '../../hooks/usePendingInvitation';
-import type { AppCtx, NewDealDefaults } from './appContext';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Outlet } from "react-router-dom";
+import styled from "styled-components";
+import { useToast } from "@calimero-network/mero-ui";
+import { tokens as t } from "../../theme";
+import { useWorkspace } from "../../hooks/useWorkspace";
+import { useCrm } from "../../hooks/useCrm";
+import { makeAliases } from "../../hooks/useAliases";
+import { describeError } from "../../utils/errors";
+import Shell from "../../components/Shell";
+import NewDealModal, { type NewDealInput } from "../../components/NewDealModal";
+import InviteModal from "../../components/InviteModal";
+import NamespaceCreateDialog from "../../components/NamespaceCreateDialog";
+import AddPipelineDialog from "../../components/AddPipelineDialog";
+import NsEmptyState from "../../components/NsEmptyState";
+import AliasGate from "../../components/AliasGate";
+import type { AppCtx, NewDealDefaults } from "./appContext";
 
 /**
  * CRM root: owns workspace resolution (namespace + pipeline), the pipeline
@@ -37,40 +40,39 @@ export default function AppPage(): React.ReactElement | null {
   // it, so every authorship and "is this mine" gate must use this one. It is
   // the same account `selfMember` names (one person, every device), not the
   // context executor key, which is per device.
-  const currentUser = ws.selfIdentity ?? '';
+  const currentUser = ws.selfIdentity ?? "";
   // `selfMember` is the namespace-member id, which is an ACCOUNT. Member
   // metadata - the display names behind `aliases` - is stored and keyed by it,
   // so every name lookup must use this one. It used to be safe to resolve a
   // name from the executor key because the two coincided; rc.21 rekeyed group
   // members from a signing PublicKey to an AccountId and they no longer do, so
   // resolving the executor key just returns a truncated key forever.
-  const selfMember = ws.selfIdentity ?? '';
+  const selfMember = ws.selfIdentity ?? "";
 
   const aliases = useMemo(
-    () => makeAliases(ws.memberNames, ws.setMemberName, ws.refetchMembers, ws.membersLoading, ws.membersLoaded, ws.members),
-    [ws.memberNames, ws.setMemberName, ws.refetchMembers, ws.membersLoading, ws.membersLoaded, ws.members],
+    () =>
+      makeAliases(
+        ws.memberNames,
+        ws.setMemberName,
+        ws.refetchMembers,
+        ws.membersLoading,
+        ws.membersLoaded,
+        ws.members,
+      ),
+    [
+      ws.memberNames,
+      ws.setMemberName,
+      ws.refetchMembers,
+      ws.membersLoading,
+      ws.membersLoaded,
+      ws.members,
+    ],
   );
 
-  const [ownerFilter, setOwnerFilter] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState("");
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // An invitation captured from a link — however it arrived (cold-open URL, the
-  // launcher's warm `deep-link` event, the PWA launch queue). Capture happens
-  // before React mounts; it is REDEEMED here, because joining needs an
-  // authenticated session and the workspace hook.
-  //
-  // The capture is sticky until acked, so this sees it whenever AppPage mounts,
-  // including long after the link was opened. `resolve()` is the ack, called on
-  // a join (or finding we are already a member), a failure no retry can fix, or
-  // an explicit cancel — never on a transient failure, so that one stays
-  // retryable across a reload.
-  const pendingInvitation = usePendingInvitation();
-  const pendingInvite = pendingInvitation?.token ?? null;
-  const forgetPendingInvite = useCallback(() => {
-    pendingInvitation?.resolve();
-  }, [pendingInvitation]);
 
   const data = useCrm({
     contextId: ws.contextId,
@@ -91,45 +93,50 @@ export default function AppPage(): React.ReactElement | null {
   // does, so the same failure recurring after a recovery is reported again.
   const lastToastRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!data.error) { lastToastRef.current = null; return; }
+    if (!data.error) {
+      lastToastRef.current = null;
+      return;
+    }
     const description = describeError(data.error);
     if (description === lastToastRef.current) return;
     lastToastRef.current = description;
-    toast.show({ variant: 'error', description });
+    toast.show({ variant: "error", description });
   }, [data.error, toast]);
 
   const [newDeal, setNewDeal] = useState<NewDealDefaults | null>(null);
   const [showInvite, setShowInvite] = useState(false);
-  const [showJoin, setShowJoin] = useState(false);
   const [showCreateNs, setShowCreateNs] = useState(false);
   const [showAddPipeline, setShowAddPipeline] = useState(false);
   const showNew = newDeal !== null;
 
-  const openNewDeal = useCallback((defaults?: NewDealDefaults) => setNewDeal(defaults ?? {}), []);
+  const openNewDeal = useCallback(
+    (defaults?: NewDealDefaults) => setNewDeal(defaults ?? {}),
+    [],
+  );
   const openInvite = useCallback(() => setShowInvite(true), []);
 
   // `N` opens New deal; `/` focuses search. Ignored while typing or when any
   // other modal/gate is open (the modals own their own Escape).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const anyModal = showNew || showInvite || showJoin || showCreateNs || showAddPipeline;
+      const anyModal = showNew || showInvite || showCreateNs || showAddPipeline;
       const tag = (e.target as HTMLElement)?.tagName;
-      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
       if (anyModal || typing || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === 'n' || e.key === 'N') {
+      if (e.key === "n" || e.key === "N") {
         e.preventDefault();
         setNewDeal({});
       }
-      if (e.key === '/') {
+      if (e.key === "/") {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [showNew, showInvite, showJoin, showCreateNs, showAddPipeline]);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showNew, showInvite, showCreateNs, showAddPipeline]);
 
-  const myName = selfMember ? aliases.resolve(selfMember) : '';
+  const myName = selfMember ? aliases.resolve(selfMember) : "";
   // `owner` stores the member's ACCOUNT and is named at display time
   // (`aliases.ownerName`), so a member who sets a name later is not frozen
   // as a truncated key on every deal they were given.
@@ -159,9 +166,9 @@ export default function AppPage(): React.ReactElement | null {
             contactId = await c.createContact({
               name: input.newContact.name,
               email: input.newContact.email,
-              phone: '',
+              phone: "",
               organization: input.organization,
-              job_title: '',
+              job_title: "",
             });
           }
           return c.createDeal({
@@ -176,23 +183,39 @@ export default function AppPage(): React.ReactElement | null {
           });
         });
       } catch (err) {
-        toast.show({ variant: 'error', description: describeError(err) });
+        toast.show({ variant: "error", description: describeError(err) });
         throw err;
       }
     },
     [data, toast],
   );
 
-  const openDeals = data.deals.filter((d) => d.status === 'open').length;
+  const openDeals = data.deals.filter((d) => d.status === "open").length;
   const overdueActivities = data.activities.filter(
-    (a) => !a.done && a.due_at < new Date().setHours(0, 0, 0, 0) && (!ownerFilter || aliases.ownerName(a.owner) === ownerFilter),
+    (a) =>
+      !a.done &&
+      a.due_at < new Date().setHours(0, 0, 0, 0) &&
+      (!ownerFilter || aliases.ownerName(a.owner) === ownerFilter),
   ).length;
   const membersCount = Math.max(ws.members.length, 1);
-  const activePipelineName = ws.pipelines.find((r) => r.contextId === ws.activePipeline)?.name ?? null;
+  const activePipelineName =
+    ws.pipelines.find((r) => r.contextId === ws.activePipeline)?.name ?? null;
 
   const ctx: AppCtx = {
-    data, currentUser, myName, myOwner: selfMember, ownerOptions, members: ws.members, aliases, ownerFilter, setOwnerFilter,
-    searchQuery, setSearchQuery, openNewDeal, openInvite, ws,
+    data,
+    currentUser,
+    myName,
+    myOwner: selfMember,
+    ownerOptions,
+    members: ws.members,
+    aliases,
+    ownerFilter,
+    setOwnerFilter,
+    searchQuery,
+    setSearchQuery,
+    openNewDeal,
+    openInvite,
+    ws,
   };
 
   const sidebar = {
@@ -202,13 +225,12 @@ export default function AppPage(): React.ReactElement | null {
     membersCount,
     teeMode: ws.teeMode,
     currentUser,
-    currentUserLabel: selfMember ? aliases.resolve(selfMember) : '',
+    currentUserLabel: selfMember ? aliases.resolve(selfMember) : "",
     currentUserHasAlias: selfMember ? aliases.hasAlias(selfMember) : false,
     namespaces: ws.namespaces,
     activeNs: ws.activeNs,
     onSelectNamespace: ws.selectNamespace,
     onNewNamespace: () => setShowCreateNs(true),
-    onJoinNamespace: () => setShowJoin(true),
     pipelines: ws.pipelines,
     pipelinesSyncing: ws.isSyncing,
     onDismissPipelinesSyncing: ws.dismissSyncing,
@@ -223,30 +245,16 @@ export default function AppPage(): React.ReactElement | null {
   const dialogs = (
     <>
       {showCreateNs && (
-        <NamespaceCreateDialog onCreate={ws.createNamespace} onClose={() => setShowCreateNs(false)} />
-      )}
-      {(showJoin || pendingInvite) && (
-        <JoinModal
-          initialCode={pendingInvite ?? ''}
-          autoSubmit={!!pendingInvite}
-          onJoin={async (code) => {
-            const outcome = await ws.join(code);
-            // Joined, already in it, or a failure no retry can fix: the invitation
-            // is finished with. A transient failure keeps it for the next load.
-            if (!shouldRetain(outcome)) {
-              // The ack clears the captured link this dialog was open for; keep
-              // it open to say why a final failure failed.
-              if (outcome.status === 'failed') setShowJoin(true);
-              forgetPendingInvite();
-            }
-            if (outcome.status !== 'failed') setShowJoin(false);
-            return outcome;
-          }}
-          onClose={() => { forgetPendingInvite(); setShowJoin(false); }}
+        <NamespaceCreateDialog
+          onCreate={ws.createNamespace}
+          onClose={() => setShowCreateNs(false)}
         />
       )}
       {showAddPipeline && (
-        <AddPipelineDialog onAdd={ws.addPipeline} onClose={() => setShowAddPipeline(false)} />
+        <AddPipelineDialog
+          onAdd={ws.addPipeline}
+          onClose={() => setShowAddPipeline(false)}
+        />
       )}
     </>
   );
@@ -257,7 +265,8 @@ export default function AppPage(): React.ReactElement | null {
   //    looked up, right before the desktop handoff lands;
   //  - `resolvingApplicationId`: the node has not yet said which installed
   //    application this app is, and the namespace list is scoped by it.
-  if (!ws.activeNs && (ws.resolvingCallback || ws.resolvingApplicationId)) return null;
+  if (!ws.activeNs && (ws.resolvingCallback || ws.resolvingApplicationId))
+    return null;
 
   // No active namespace (none yet, or a stale/invalid prior choice): never
   // silently enter one, and never fall through to the Shell either - that
@@ -270,7 +279,6 @@ export default function AppPage(): React.ReactElement | null {
           namespaces={ws.namespaces}
           onSelect={ws.selectNamespace}
           onCreate={() => setShowCreateNs(true)}
-          onJoin={() => setShowJoin(true)}
         />
         {dialogs}
       </>
@@ -310,13 +318,19 @@ export default function AppPage(): React.ReactElement | null {
             <h2>No pipeline yet</h2>
             <p>Add a pipeline to this workspace to start tracking its deals.</p>
             {ws.roles.canAddPipeline ? (
-              <button className="primary" data-testid="pipeline-add-cta" onClick={() => setShowAddPipeline(true)}>Add a pipeline</button>
+              <button
+                className="primary"
+                data-testid="pipeline-add-cta"
+                onClick={() => setShowAddPipeline(true)}
+              >
+                Add a pipeline
+              </button>
             ) : (
               // Honest dead end rather than a button that 403s: the person
               // cannot fix this themselves, so say who can.
               <p className="gated" data-testid="pipeline-add-denied">
-                Ask a workspace admin to add one, or to give you permission to add
-                pipelines.
+                Ask a workspace admin to add one, or to give you permission to
+                add pipelines.
               </p>
             )}
           </div>
@@ -339,7 +353,12 @@ export default function AppPage(): React.ReactElement | null {
           onClose={() => setNewDeal(null)}
         />
       )}
-      {showInvite && <InviteModal onInvite={ws.invite} onClose={() => setShowInvite(false)} />}
+      {showInvite && (
+        <InviteModal
+          onInvite={ws.invite}
+          onClose={() => setShowInvite(false)}
+        />
+      )}
     </Shell>
   );
 }
@@ -347,22 +366,58 @@ export default function AppPage(): React.ReactElement | null {
 // Fills the main column and carries the workspace-ready marker the e2e harness
 // waits on.
 const Ready = styled.div`
-  display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 `;
 const PipelineGate = styled.div`
-  flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
   .panel {
-    max-width: 420px; text-align: center; padding: 36px 32px;
-    background: ${t.color.glass}; border: 1px solid ${t.color.edge}; border-radius: ${t.radiusModal};
-    -webkit-backdrop-filter: ${t.blur}; backdrop-filter: ${t.blur}; box-shadow: ${t.shadow};
-    h2 { font-size: 21px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 8px; }
-    p { font-size: 13.5px; color: ${t.color.text2}; margin: 0 0 22px; line-height: 1.55; }
-    p.gated { margin: 0; font-style: italic; }
+    max-width: 420px;
+    text-align: center;
+    padding: 36px 32px;
+    background: ${t.color.glass};
+    border: 1px solid ${t.color.edge};
+    border-radius: ${t.radiusModal};
+    -webkit-backdrop-filter: ${t.blur};
+    backdrop-filter: ${t.blur};
+    box-shadow: ${t.shadow};
+    h2 {
+      font-size: 21px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 0 0 8px;
+    }
+    p {
+      font-size: 13.5px;
+      color: ${t.color.text2};
+      margin: 0 0 22px;
+      line-height: 1.55;
+    }
+    p.gated {
+      margin: 0;
+      font-style: italic;
+    }
     .primary {
-      background: ${t.color.accent}; color: ${t.color.onAccent}; border: 1px solid transparent;
-      border-radius: ${t.radiusPill}; font-family: inherit; font-size: 13.5px; font-weight: 600; min-height: 40px; padding: 0 20px; cursor: pointer;
+      background: ${t.color.accent};
+      color: ${t.color.onAccent};
+      border: 1px solid transparent;
+      border-radius: ${t.radiusPill};
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 600;
+      min-height: 40px;
+      padding: 0 20px;
+      cursor: pointer;
       box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
-      &:hover { background: ${t.color.accentHover}; }
+      &:hover {
+        background: ${t.color.accentHover};
+      }
     }
   }
 `;

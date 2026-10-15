@@ -330,6 +330,8 @@ export const driver: AppDriver = {
   app: "mero-sheets",
 
   async createNamespace(actor, name) {
+    // A new lifecycle: nobody has a spreadsheet open from the last one.
+    for (const key of Object.keys(current)) delete current[key];
     await createSpreadsheet(actor, name);
   },
 
@@ -354,14 +356,18 @@ export const driver: AppDriver = {
     return text.trim();
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    await expect(picker(page)).toBeVisible({ timeout: 60_000 });
-    await page.getByRole("button", { name: "Join with invitation" }).click();
-    await page.getByTestId("field-invitation").fill(link);
-    await page.getByTestId("action-join-workspace").click();
-    await expect(page.getByTestId("join-modal")).toHaveCount(0, { timeout: 60_000 });
-    await waitForGrid(actor);
+    const grid = waitForGrid(actor, SYNC);
+    const failed = page
+      .getByTestId("invite-error")
+      .waitFor({ state: "visible", timeout: SYNC })
+      .then(async () => {
+        throw new Error(`join refused: ${await page.getByTestId("invite-error").innerText()}`);
+      });
+    grid.catch(() => undefined);
+    failed.catch(() => undefined);
+    await Promise.race([grid, failed]);
     await settleNickname(actor);
   },
 

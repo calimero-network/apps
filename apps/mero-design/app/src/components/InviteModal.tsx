@@ -47,8 +47,7 @@ export default function InviteModal({ teamId, onClose }: Props) {
   async function copy() {
     if (!invitation || copying) return;
     // Share the link, not the bare token: it opens the desktop app where
-    // installed and the published web build otherwise, and the join box still
-    // accepts either form.
+    // installed and the published web build otherwise.
     await navigator.clipboard.writeText(invitationLink(invitation));
     showToast("Invitation link copied to clipboard.", "success");
     // Brief loader, then reset to the "generate" state so each share is fresh.
@@ -74,8 +73,8 @@ export default function InviteModal({ teamId, onClose }: Props) {
 
         <p className={styles.desc}>
           Generate an invitation link and share it with your teammate. Opening it
-          launches the desktop app where installed, and the web build otherwise —
-          or they can paste it into their node to join this team.
+          launches the desktop app where installed, and the web build otherwise,
+          and asks them to join this team.
         </p>
 
         {invitation ? (

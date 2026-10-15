@@ -5,8 +5,8 @@ share, read out of the code rather than from the READMEs, plus what CI does and
 does not hold in place afterwards.
 
 The short version: **login is consistent, the desktop hand-off is now consistent
-and gated, and invitations are not consistent in any sense** — five separate
-implementations of the same job, and four apps with no invitation flow at all.
+and gated, and invitations are one system** — one link shape, one capture, ask
+before joining, and no paste field anywhere (§4).
 
 ---
 
@@ -19,7 +19,7 @@ All three flows have a canonical shape supplied by `@calimero-network/mero-react
 |---|---|
 | Login | `<ConnectButton>` renders the button and owns `<LoginModal>`, which scans `DEFAULT_LOCAL_NODE_PORTS` = `[2428, 2429, 2528, 2529]` with `discoverLocalNodes`, pre-selects the first node that answers, and otherwise offers a URL field validated against `admin-api/is-authed`. That *is* the "click a button, get a popup offering a live localhost or your own URL" flow. |
 | Desktop hand-off | `MeroProvider` parses the auth callback out of the URL fragment and adopts the tokens through `resolveTokenAdoption`, provided node trust is anchored. |
-| Invitations | `useCreateNamespaceInvitation` to mint, `useJoinNamespace` to redeem, and — for the nine apps on it — `@calimero-network/mero-platform`'s `DeepLinkController` + `PendingIntentStore` to capture a link across the login reload. |
+| Invitations | `@calimero-apps/invite`: `buildInviteLink` to share, `primeInvitationCapture` + `useInviteRedemption` (on mero-platform's `DeepLinkController` + `PendingIntentStore`) to capture an opened link across the login reload and ask before joining. |
 
 An app that uses those gets the same behaviour for free. An app that
 reimplements one gets its own behaviour, and nothing notices.
@@ -138,72 +138,65 @@ Two details that matter:
 
 ## 4. Invitations and joining
 
-This is where the fleet is not one thing. Two independent axes diverge: **the
-node calls** and **the link format**.
+**One rule for every app: an invitation reaches an app only by its link being
+opened.** No app has a field to paste a link or code into, and every app asks
+before it joins.
 
-| app | mint / redeem | deep-link plumbing | link codec family |
-|---|---|---|---|
-| battleships | `createNamespaceInvitation` + `joinNamespace` | — | *(none — no shareable link)* |
-| kv-store | `createNamespaceInvitation` + `joinNamespace` + `admit` | mero-platform | `encodeInvitationPayload` |
-| mero-blocks | raw `/admin-api/*` `fetch` | mero-platform | `encodeInvite` |
-| mero-calendar | app-local `generateInvite` | mero-platform | `encodeInvitation` |
-| mero-design | app-local `generateInvite`, `joinGroup` | mero-platform | `encodeInvitation` |
-| mero-docs | `createNamespaceInvitation`, `joinNamespace`, `joinGroup` | - | own `useNamespaceInvitation` |
-| mero-forum | **none** | — | **none** |
-| mero-crm | `createNamespaceInvitation` + `joinNamespace` | mero-platform | `encodeInvitationPayload` |
-| mero-issue-tracker | `createNamespaceInvitation` + `joinNamespace` | mero-platform | `encodeInvitationPayload` |
-| mero-pass | **none** | — | **none** |
-| mero-pixart | app-local `generateInvite` | mero-platform | `encodeInvitation` |
-| mero-sheets | `createNamespaceInvitation` + `joinNamespace` | — | `encodeInvitation` (2.3 KB stub) |
-| mero-sign | **none** (baked `CONTEXT_ID`) | — | `saveInvitationToStorage` |
-| mero-standup | `createNamespaceInvitation` + `joinNamespace` | mero-platform | `encodeInvitationPayload` |
-| mero-stream | `createNamespaceInvitation`, `joinNamespace`, `joinGroup`, `admit` | mero-platform | `encodeInvite` |
-| merraria | raw `/admin-api/*` `fetch` | mero-platform | `encodeInvite` |
-| scaffolding-e2e | `createNamespaceInvitation` + `joinNamespace` | — | *(none)* |
+### The link
 
-### Five codec families for one job
+```
+https://links.calimero.network/<slug>/join?invitation=<token>[&…]
+```
 
-Same purpose, five different exported surfaces:
+`<slug>` is the app's deep-link handler, which in this repo is always its
+package id (`slug` in `logic/Cargo.toml`). Apps build it with
+`buildInviteLink(slug, token, extra?)` from `@calimero-apps/invite`; there is no
+`calimero://` variant and no raw code to share. The token's encoding stays the
+app's own (most apps: deflate + base58 of a small JSON envelope; mero-docs and
+scaffolding-e2e: base64url JSON), because links already in the wild must keep
+working. mero-docs carries `kind`, `id` and `name` beside the token.
 
-| family | exports | apps |
-|---|---|---|
-| `encodeInvitation` | `encodeInvitation` / `decodeInvitation` / `invitationLink` / `invitationFromRaw` / `urlWithoutInvitation` | mero-calendar, mero-design, mero-pixart |
-| `encodeInvite` | `encodeInvite` / `decodeInvite` / `inviteLink` / `inviteFromRaw` / `urlWithoutInvite` | mero-blocks, merraria, mero-stream |
-| `encodeInvitationPayload` | `encodeInvitationPayload` / `decodeInvitationPayload` / `generateInvitationUrl` / `generateInvitationDeepLink` | kv-store, mero-issue-tracker, mero-standup |
-| stub | `encodeInvitation` / `decodeInvitation` only | mero-sheets |
-| legacy | `saveInvitationToStorage` / `generateInvitationUrl` / `extractInvitationFromUrl` | mero-sign |
+### How an opened link reaches the app
 
-They are copy-paste descendants that have drifted, and the byte counts show it —
-`invitation.ts` is 7552 B in mero-calendar, 7494 in mero-design and 7548 in
-mero-pixart; `invitationIntents.ts` is 5877 / 5873 / 5873 /
-5870 / 5816 / 5810 / 5743 B across seven apps. Nothing keeps them in step, and no test
-crosses an app boundary.
+The links page opens the app's frontend with the link's query string appended
+(`/?invitation=…`) — on the web, as a PWA, or on a cold desktop start. A
+desktop launcher that already has the app open sends a `deep-link` event on
+`window.__calimero_platform__` instead. Both arrive through one capture:
 
-The one thing that *is* uniform is the URL surface: `?invitation=<payload>` with
-`JOIN_ACTION = "join"`, in every app that has a link at all. mero-stream also
-accepts a legacy `?invite=`. So links are at least addressed the same way, even
-where the payload codec differs.
+- `primeInvitationCapture(appKey, { slug })` runs once at boot, before the UI
+  mounts (a router would otherwise rewrite the URL first). It strips the token
+  from the address bar, keeps the invitation in localStorage until the app acks
+  it, and drops a `join` addressed to another app's slug.
+- `onInvitation(cb)` / `useInviteRedemption({ parse, redeemer })` deliver it to
+  the app's prompt, mounted app-wide so a link opened on any page works.
+  `useInviteRedemption` asks first by default (`awaiting-confirmation` →
+  `accept()`), and still asks once the automatic attempts are spent, since the
+  link is the only way in.
+- `redeemInvitation` joins once, then checks membership: a join that timed out
+  but landed is `already-member`, not a failure. `shouldRetain` keeps an
+  invitation a later attempt could redeem (no member online) and drops one that
+  cannot (expired, invalid, refused); `describeInviteFailure` words the reason.
 
-### Four apps cannot invite or be invited
+Every prompt carries the same test ids — `invite-accept`, `invite-decline`, and
+`invite-error` / `invite-retry` on failure — and the journey harness relies on
+them.
 
-- **mero-pass** — no invitation code, no `joinNamespace`, no namespace UI. Its
-  registry description is *"keep credentials in a vault on your own nodes and
-  **share them with namespace members**"*, and `VaultList.tsx` tells the user
-  *"Vaults are created when you join contexts. Ask someone to invite you to a
-  vault!"* while `VaultDashboard.tsx:232` renders
+### What CI proves
 
-  ```tsx
-  <Button variant="secondary">Invite Member</Button>
-  ```
+Every app with invitations has a two-node journey (`e2e/journey/`,
+`packages/e2e-node`). The harness never pastes: it opens the link itself.
 
-  with **no `onClick`**. A dead button, and the app's headline capability is
-  unimplemented.
-- **mero-forum** — no invite, no join, no context picker. Whole `src/` is eleven
-  files.
-- **mero-sign** — bakes `CONTEXT_ID` at build time, so there is nothing to
-  invite anyone into.
-- **battleships / scaffolding-e2e** can mint and redeem but have no link codec,
-  so an invitation cannot leave the app as a shareable URL.
+1. **Lifecycle:** alice creates a namespace and copies the link (which must be a
+   `links.calimero.network/…/join` link); bob, on the second node, opens it as
+   the links page would (`/?invitation=…`), accepts the prompt, and every
+   feature then syncs both ways.
+2. **Desktop:** on fresh nodes, bob's app is already open inside a stand-in
+   launcher. A link for another app must be ignored; then his own arrives as a
+   `deep-link` event and must join without a reload, after which the first
+   feature reaches him.
+
+The driver says only how to tell the actor has landed (`joined()`, optionally
+`beforeJoin()`); the harness opens the link and clicks `invite-accept`.
 
 ---
 
@@ -246,10 +239,10 @@ about 4.6.1 separately.
 | every MeroProvider app can adopt a desktop hand-off | `scripts/check-desktop-sso.py` |
 | **login uses the shared `ConnectButton` / `LoginModal`** | *nothing* |
 | **`registryUrl` is passed alongside `packageName`** | *nothing* |
-| **an app that can be shared has an invite + join path** | *nothing* |
-| **the invitation link format is interoperable across apps** | *nothing* |
+| **an app that can be shared has an invite + join path** | the two-node journey (`packages/e2e-node`): invite, open the link on node 2, accept |
+| **the invitation link format is interoperable across apps** | the journey asserts a `links.calimero.network/<slug>/join` link; capture drops another app's |
 | **Calimero deps come from the catalog** | *nothing* |
 
-The bottom five are all checkable statically in the shape of the two scripts
+The three still marked *nothing* are all checkable statically in the shape of the two scripts
 above. They are deliberately not added here: each one reds at least one app
 today, and which way to resolve that is a product call, not a lint rule.

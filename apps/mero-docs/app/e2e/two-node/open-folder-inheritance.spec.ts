@@ -5,7 +5,7 @@
 //
 //   - Alice creates namespace + Open folder + doc (ordering fix:
 //     setSubgroupVisibility before setGroupMetadata, useFolderOperations).
-//   - Alice generates a namespace invite; Bob accepts via /join.
+//   - Alice generates a namespace invite; Bob opens it and accepts.
 //   - core gossips the namespace governance op to Bob's node
 //     (its inheritance walk recognises Bob as eligible).
 //   - core auto-follow on Bob's node joins the Open folder's docs

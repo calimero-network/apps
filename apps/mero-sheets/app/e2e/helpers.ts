@@ -90,7 +90,6 @@ export async function clearAuth(page: Page) {
         'mero:access_token', 'mero:refresh_token', 'mero:expires_at',
         'mero:node_url', 'mero:application_id', 'mero:context_id',
         'mero:context_identity',
-        'pending-invitation',
       ].forEach((k) => localStorage.removeItem(k));
     });
   } catch { /* page may be closed */ }
@@ -132,7 +131,8 @@ export async function enterCell(page: Page, row: number, col: number, value: str
 
 /**
  * Invites `guest` (logged in to `node`) into the workbook open in `owner`:
- * the owner copies an invitation link, the guest joins with it and names
+ * the owner copies an invitation link, the guest opens it (the links page
+ * appends its query to the app's URL), accepts the prompt and names
  * themselves, and the call returns once the guest sees the grid.
  */
 export async function shareWorkbook(
@@ -145,9 +145,8 @@ export async function shareWorkbook(
   await owner.keyboard.press('Escape');
 
   await loginViaHash(guest, node);
-  await guest.getByText('Join with invitation').click();
-  await guest.getByTestId('field-invitation').fill(link);
-  await guest.getByTestId('action-join-workspace').click();
+  await guest.goto(`/${new URL(link).search}`);
+  await guest.getByTestId('invite-accept').click({ timeout: 60_000 });
   await chooseNickname(guest, nickname);
   await cell(guest, 0, 0).waitFor({ timeout: 90_000 });
 }

@@ -17,8 +17,6 @@ import {
   deleteGroup,
   listGroups,
   createNamespaceInvitation,
-  joinNamespace,
-  joinContextById,
   type ContextRecord,
   type NamespaceRecord,
   type GroupRecord,
@@ -27,6 +25,7 @@ import { currentApplicationId, namespacesForThisApp, resolveApplicationId } from
 import { wsInit, wsGetInfo, type WorkspaceInfo } from "../api/kvStore";
 import { FieldHelp } from "../components/FieldHelp";
 import { isHexId } from "../api/ids";
+import { inviteLink } from "../lib/invite";
 
 const C = {
   card: "var(--color-bg-card)",
@@ -38,64 +37,6 @@ const C = {
   warning: "var(--color-warning)",
   error: "var(--color-error)",
 };
-
-// ─── Compact encoding (base64url) ─────────────────────────────────────────────
-// btoa/atob are native and reliable; custom base58 bignum had rounding bugs.
-
-function invToCompact(inv: object): string {
-  const json = JSON.stringify(inv);
-  let binary = "";
-  for (const b of new TextEncoder().encode(json)) binary += String.fromCharCode(b);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-}
-
-function compactToInv(s: string): object {
-  const pad = (4 - (s.length % 4)) % 4;
-  const b64 = (s + "=".repeat(pad)).replace(/-/g, "+").replace(/_/g, "/");
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return JSON.parse(new TextDecoder().decode(bytes));
-}
-
-// Compact JSON: arrays stay on one line, objects expand one key per line
-function compactJson(val: unknown, depth = 0): string {
-  if (Array.isArray(val)) return "[" + val.map((v) => JSON.stringify(v)).join(", ") + "]";
-  if (val !== null && typeof val === "object") {
-    const entries = Object.entries(val as Record<string, unknown>);
-    if (!entries.length) return "{}";
-    const pad = "  ".repeat(depth + 1);
-    const lines = entries.map(([k, v]) => `${pad}"${k}": ${compactJson(v, depth + 1)}`);
-    return `{\n${lines.join(",\n")}\n${"  ".repeat(depth)}}`;
-  }
-  return JSON.stringify(val);
-}
-
-// ─── Shared tab component ──────────────────────────────────────────────────────
-
-function Tabs({ tabs, active, onSelect }: { tabs: string[]; active: string; onSelect: (t: string) => void }) {
-  return (
-    <div style={{ display: "flex", gap: 0, marginBottom: 0, borderBottom: `1px solid ${C.border}` }}>
-      {tabs.map((t) => (
-        <button
-          key={t}
-          type="button"
-          onClick={() => onSelect(t)}
-          style={{
-            background: active === t ? C.surface : "transparent",
-            border: "none",
-            borderBottom: active === t ? `2px solid ${C.brand}` : "2px solid transparent",
-            color: active === t ? C.text : C.muted,
-            fontSize: 12, fontWeight: active === t ? 600 : 400,
-            padding: "7px 16px", cursor: "pointer",
-            transition: "color 0.15s, border-color 0.15s",
-            marginBottom: -1,
-          }}
-        >{t}</button>
-      ))}
-    </div>
-  );
-}
 
 function extractOutput<T>(res: unknown): T | null {
   return (res as { result?: { output?: T } })?.result?.output ?? null;
@@ -220,7 +161,7 @@ function FlowDiagram() {
         <div style={{ ...boxBase, background: "rgba(59,130,246,0.08)", border: "1.5px solid #3b82f680", color: "#93c5fd" }}>
           Node B<br /><span style={{ fontSize: 10, fontWeight: 400 }}>(joiner)</span>
         </div>
-        {arrow("pastes invitation →")}
+        {arrow("opens invitation link →")}
         <div style={{ ...boxBase, background: "rgba(139,92,246,0.08)", border: "1.5px solid #8b5cf680", color: "#c4b5fd" }}>
           joins Namespace
         </div>
@@ -839,9 +780,9 @@ function OwnerStep3Invite({
   namespaceId, onDone,
 }: { namespaceId: string; onDone: () => void }) {
   const [nsId, setNsId] = useState(namespaceId);
-  const [invObj, setInvObj] = useState<object | null>(null);
-  const [tab, setTab] = useState<"JSON" | "Compact">("Compact");
-  const [copiedTab, setCopiedTab] = useState<"JSON" | "Compact" | null>(null);
+  const [link, setLink] = useState<string | null>(null);
+  const [withContext, setWithContext] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -849,30 +790,31 @@ function OwnerStep3Invite({
 
   async function generate() {
     if (!nsId.trim()) return;
-    setLoading(true); setErr(null); setInvObj(null);
+    setLoading(true); setErr(null); setLink(null);
     try {
-      const inv = await createNamespaceInvitation(nsId.trim());
-      setInvObj(inv as object);
+      const invitation = await createNamespaceInvitation(nsId.trim());
+      // The active context rides along, so Node B joins it too without being
+      // told its id.
+      const contextId = getContextId() || undefined;
+      setWithContext(contextId ?? null);
+      setLink(inviteLink({ namespaceId: nsId.trim(), invitation, contextId }));
     } catch (e) { setErr(String(e)); } finally { setLoading(false); }
   }
 
-  function copyAs(format: "JSON" | "Compact") {
-    if (!invObj) return;
-    const text = format === "JSON" ? compactJson(invObj) : invToCompact(invObj);
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedTab(format);
+  function copy() {
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(true);
       onDone();
-      setTimeout(() => setCopiedTab(null), 1500);
+      setTimeout(() => setCopied(false), 1500);
     });
   }
-
-  const b58 = invObj ? invToCompact(invObj) : "";
 
   return (
     <>
       <Intro>
-        Generate a signed invitation token that authorizes Node B to join this namespace.
-        Share it via the Setup Wizard on Node B (Joiner mode → Step 1).
+        Generate a signed invitation and share it as one link. Node B opens the link —
+        the app asks first, then joins the namespace and the active context in it.
         Each invitation is single-use — regenerate if Node B needs to rejoin.
       </Intro>
 
@@ -882,50 +824,28 @@ function OwnerStep3Invite({
         <button className="btn-calimero" onClick={generate} disabled={loading || !nsId.trim()}>{loading ? "Generating…" : "Generate Invitation"}</button>
       </div>
 
-      {invObj && (
+      {link && (
         <>
-          <div style={{ background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 7, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: C.muted, lineHeight: 1.65 }}>
-            <strong style={{ color: C.text }}>JSON vs Compact — same token, different packaging.</strong>{" "}
-            The invitation is a signed cryptographic object. Both formats carry identical data — Compact is just the JSON bytes encoded as a compact string.
-            It's purely aesthetic: Compact is easier to copy in one click and less likely to be mangled by chat apps or email.
-            Node B's Setup Wizard accepts either format.
-          </div>
-
-          <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", marginBottom: 12 }}>
-            <div style={{ padding: "0 4px", background: C.card }}>
-              <Tabs tabs={["Compact", "JSON"]} active={tab} onSelect={(t) => setTab(t as "JSON" | "Compact")} />
-            </div>
-            <div style={{ padding: "12px 14px", background: C.surface }}>
-              {tab === "JSON" ? (
-                <>
-                  <pre style={{ margin: 0, fontSize: 11, color: C.text, fontFamily: "'Courier New', monospace", lineHeight: 1.6, whiteSpace: "pre-wrap" as const, wordBreak: "break-all" as const, maxHeight: 240, overflowY: "auto" as const }}>
-                    {compactJson(invObj)}
-                  </pre>
-                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                    <button type="button" onClick={() => copyAs("JSON")} style={{ background: C.brand, border: "none", borderRadius: 4, color: "#000", fontSize: 11, padding: "4px 12px", cursor: "pointer", fontWeight: 600 }}>
-                      {copiedTab === "JSON" ? "Copied ✓" : "Copy JSON"}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <code style={{ display: "block", fontSize: 11, color: C.brand, wordBreak: "break-all" as const, lineHeight: 1.7 }}>{b58}</code>
-                  <p style={{ margin: "8px 0 0", fontSize: 11, color: C.muted }}>Compact-encoded — one string, no braces, no whitespace.</p>
-                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                    <button type="button" onClick={() => copyAs("Compact")} style={{ background: C.brand, border: "none", borderRadius: 4, color: "#000", fontSize: 11, padding: "4px 12px", cursor: "pointer", fontWeight: 600 }}>
-                      {copiedTab === "Compact" ? "Copied ✓" : "Copy Compact"}
-                    </button>
-                  </div>
-                </>
-              )}
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", background: C.surface, marginBottom: 12 }}>
+            <Label>Invitation link</Label>
+            <code data-testid="invite-link" style={{ display: "block", fontSize: 11, color: C.brand, wordBreak: "break-all" as const, lineHeight: 1.7 }}>{link}</code>
+            <p style={{ margin: "8px 0 0", fontSize: 11, color: C.muted }}>
+              {withContext
+                ? <>Joins the namespace and context <code>{withContext.slice(0, 16)}…</code>.</>
+                : <>No context is active, so this link joins the namespace only.</>}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+              <button type="button" onClick={copy} style={{ background: C.brand, border: "none", borderRadius: 4, color: "#000", fontSize: 11, padding: "4px 12px", cursor: "pointer", fontWeight: 600 }}>
+                {copied ? "Copied ✓" : "Copy link"}
+              </button>
             </div>
           </div>
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
-              On Node B: Joiner mode → Step 1 → paste either format.
+              On Node B: open the link.
             </p>
-            <button type="button" onClick={() => { setInvObj(null); onDone(); }} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 4, color: C.muted, fontSize: 11, padding: "3px 10px", cursor: "pointer" }}>
+            <button type="button" onClick={() => { setLink(null); onDone(); }} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 4, color: C.muted, fontSize: 11, padding: "3px 10px", cursor: "pointer" }}>
               Done
             </button>
           </div>
@@ -938,131 +858,19 @@ function OwnerStep3Invite({
 
 // ─── JOINER FLOW (Node B) ─────────────────────────────────────────────────────
 
-function JoinerStep1Namespace({ onDone }: { onDone: (nsId: string) => void }) {
-  const [nsId, setNsId] = useState("");
-  const [invInput, setInvInput] = useState("");
-  const [tab, setTab] = useState<"Compact" | "JSON">("Compact");
-  const [loading, setLoading] = useState(false);
-  const [ok, setOk] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  function parseInvitation(raw: string): object {
-    const s = raw.trim();
-    if (s.startsWith("{")) return JSON.parse(s);
-    return compactToInv(s);
-  }
-
-  async function join() {
-    if (!nsId.trim() || !invInput.trim()) return;
-    setLoading(true); setErr(null); setOk(false);
-    try {
-      const invObj = parseInvitation(invInput);
-      await joinNamespace(nsId.trim(), invObj);
-      setOk(true);
-      onDone(nsId.trim());
-    } catch (e) { setErr(String(e)); } finally { setLoading(false); }
-  }
-
-  const canJoin = !!nsId.trim() && !!invInput.trim();
-
+function JoinerOpenLink() {
   return (
     <>
       <Intro>
-        Node A (the owner) generated an invitation. Enter the namespace ID and paste the invitation — either format works.
+        Node A shares one invitation link. Open it — in this browser, or with the desktop app running.
+        This app shows who invited you and asks first; once you accept, it joins the namespace and
+        then the context in it, and makes that context active.
       </Intro>
-
-      <div style={{ background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 7, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: C.muted, lineHeight: 1.65 }}>
-        <strong style={{ color: C.text }}>Compact or JSON — your choice.</strong>{" "}
-        Both carry the same signed token. Compact is a single compact string; JSON is the raw object.
-        Switch tabs to match what Node A sent you — the result is identical.
+      <div style={{ background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 7, padding: "10px 14px", fontSize: 12, color: C.muted, lineHeight: 1.65 }}>
+        <strong style={{ color: C.text }}>Nothing to paste.</strong>{" "}
+        The link carries the namespace ID, the signed invitation and the context ID.
+        If it was opened before you signed in, the prompt appears as soon as you do.
       </div>
-
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-          <Label>Namespace ID</Label>
-          <FieldHelp text="The hex-encoded namespace ID from Node A's Setup Wizard Step 1. It's a 64-character hex string." />
-        </div>
-        <input className="form-control" value={nsId} onChange={(e) => setNsId(e.target.value)} placeholder="Namespace ID (hex, 64 chars)" />
-      </div>
-
-      <div style={{ marginBottom: 14 }}>
-        <Label>Invitation from Node A</Label>
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
-          <div style={{ padding: "0 4px", background: C.card }}>
-            <Tabs tabs={["Compact", "JSON"]} active={tab} onSelect={(t) => { setTab(t as "Compact" | "JSON"); setInvInput(""); }} />
-          </div>
-          <div style={{ padding: "12px 14px", background: C.surface }}>
-            {tab === "Compact" ? (
-              <>
-                <input
-                  className="form-control"
-                  value={invInput}
-                  onChange={(e) => setInvInput(e.target.value)}
-                  placeholder="Paste Compact invitation string from Node A…"
-                  style={{ fontFamily: "'Courier New', monospace", fontSize: 11 }}
-                />
-                <p style={{ margin: "6px 0 0", fontSize: 11, color: C.muted }}>A single compact string — no braces, no spaces.</p>
-              </>
-            ) : (
-              <>
-                <textarea
-                  className="form-control"
-                  value={invInput}
-                  onChange={(e) => setInvInput(e.target.value)}
-                  rows={6}
-                  placeholder='Paste the full invitation JSON from Node A…'
-                  style={{ width: "100%", boxSizing: "border-box" as const, fontFamily: "'Courier New', monospace", fontSize: 11, resize: "vertical" as const }}
-                />
-                <p style={{ margin: "6px 0 0", fontSize: 11, color: C.muted }}>Paste the full JSON object including the outer braces.</p>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <button className="btn-calimero" onClick={join} disabled={loading || !canJoin}>{loading ? "Joining…" : "Join Namespace"}</button>
-      {ok && <OK>Successfully joined the namespace. Now join the context in Step 2.</OK>}
-      {err && <Err>{err}</Err>}
-    </>
-  );
-}
-
-function JoinerStep2Context({ onDone }: { onDone: (ctxId: string) => void }) {
-  const [ctxId, setCtxId] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [ok, setOk] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function join() {
-    if (!ctxId.trim()) return;
-    setLoading(true); setErr(null); setOk(false);
-    try {
-      await joinContextById(ctxId.trim());
-      const identities = await getContextIdentities(ctxId.trim());
-      setContextId(ctxId.trim());
-      if (identities[0]) setContextIdentity(identities[0]);
-      setOk(true);
-      onDone(ctxId.trim());
-    } catch (e) { setErr(String(e)); } finally { setLoading(false); }
-  }
-
-  return (
-    <>
-      <Intro>
-        After joining the namespace, join the specific context. The context ID was shared by Node A.
-      </Intro>
-
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-          <Label>Context ID</Label>
-          <FieldHelp text="The hex context ID from Node A's Step 2. Both nodes must join the same context ID to share CRDT state." />
-        </div>
-        <input className="form-control" value={ctxId} onChange={(e) => setCtxId(e.target.value)} placeholder="Context ID (hex)" />
-      </div>
-
-      <button className="btn-calimero" onClick={join} disabled={loading || !ctxId.trim()}>{loading ? "Joining…" : "Join Context"}</button>
-      {ok && <OK>Joined and active. CRDT state will sync from Node A.</OK>}
-      {err && <Err>{err}</Err>}
     </>
   );
 }
@@ -1143,7 +951,7 @@ function ModeSelector({ onSelect }: { onSelect: (m: "owner" | "joiner") => void 
           mode="joiner"
           emoji="🔗"
           title="I'm Joining"
-          description="Join an existing namespace and context using an invitation from Node A."
+          description="Open the invitation link Node A sent you to join their namespace and context."
           onClick={() => onSelect("joiner")}
         />
       </div>
@@ -1286,8 +1094,8 @@ export function SetupWizard() {
         <strong style={{ color: C.brand }}>How access works in Calimero:</strong>
         <div style={{ marginTop: 6 }}>
           All namespaces require an invitation — there are no public groups.
-          Node A (the owner) creates a namespace and generates a signed invitation token.
-          Node B pastes that token to join. Without a valid invitation, Node B cannot access any
+          Node A (the owner) creates a namespace and shares a signed invitation as a link.
+          Node B opens that link to join. Without a valid invitation, Node B cannot access any
           data in the context.
           Think of the invitation as a private key to the group.
         </div>
@@ -1345,14 +1153,11 @@ export function SetupWizard() {
       {/* Joiner flow */}
       {mode === "joiner" && (
         <>
-          <StepCard num={1} title="Join Namespace" status={status(1)} open={openStep === 1} onToggle={() => toggle(1)}>
-            <JoinerStep1Namespace onDone={(id) => { setNsId(id); markDone(1); }} />
+          <StepCard num={1} title="Open the invitation link" status={status(1)} open={openStep === 1} onToggle={() => toggle(1)}>
+            <JoinerOpenLink />
           </StepCard>
-          <StepCard num={2} title="Join Context" status={status(2)} open={openStep === 2} onToggle={() => toggle(2)}>
-            <JoinerStep2Context onDone={() => markDone(2)} />
-          </StepCard>
-          <StepCard num={3} title="Initialize Workspace (optional)" status={status(3)} open={openStep === 3} onToggle={() => toggle(3)}>
-            <StepWorkspace onDone={() => markDone(3)} />
+          <StepCard num={2} title="Initialize Workspace (optional)" status={status(2)} open={openStep === 2} onToggle={() => toggle(2)}>
+            <StepWorkspace onDone={() => markDone(2)} />
           </StepCard>
         </>
       )}

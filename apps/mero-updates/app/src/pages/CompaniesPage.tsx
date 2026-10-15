@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { useApplicationId } from "../hooks/useApplicationId";
 import { useToast } from "../contexts/ToastContext";
-import { setActiveAudience, setAudienceName } from "../lib/session";
-import { decodeInvite } from "../lib/inviteCodec";
 import {
   createSpaceNamespace,
   deleteSpace,
   listSpaceNamespaces,
   mintNamespaceInvite,
-  redeemInvite,
   type NamespaceRow,
 } from "../lib/groups";
 import InviteModal from "../components/InviteModal";
-import { invitationFromRaw } from "../lib/inviteLink";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { hostingProblem } from "../lib/hosting";
 import AppHeader from "../components/AppHeader";
@@ -25,7 +21,6 @@ import {
   CopyIcon,
   InfoIcon,
   LayersIcon,
-  LinkIcon,
   MoreIcon,
   PlusIcon,
   TrashIcon,
@@ -44,16 +39,13 @@ import styles from "./CompaniesPage.module.css";
  *   Namespace ("space")  ← you invite people HERE
  *     └── Subgroup ("audience") + Context   ← one board   → /companies/:id
  *
- * So: this page creates namespaces, invites to namespaces, and accepts any invite
- * code. Audiences live on AudiencesPage.
- *
- * Invite codes are the SAME format mero-chat and mero-blocks use — one base58
- * token of deflated JSON (lib/inviteCodec) — so a code minted by any of them
- * decodes here, and a code from here pastes into a chat window without being
- * mangled.
+ * So: this page creates namespaces and invites to namespaces. Audiences live on
+ * AudiencesPage. Joining is not done here: an invitation reaches the app only as
+ * an opened link, and the app-level `InvitationPrompt` takes it from there.
  */
 export default function CompaniesPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   // `admin`, never `mero.admin`: the session-aware admin. On a node login it is
   // the node's own client; on an account (delegated) session it is the account
   // admin, which carries creates and joins through the relay. The raw client's
@@ -87,11 +79,10 @@ export default function CompaniesPage() {
   const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
   const [listing, setListing] = useState(true);
   const [name, setName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
 
-  // One key names the action in flight ("create", "join", `invite:<id>`), instead
-  // of a single `busy` boolean. With a boolean, clicking Invite disabled Create,
-  // Join and every row, and all of them read "Working…" — indistinguishable from
+  // One key names the action in flight ("create", `invite:<id>`), instead of a
+  // single `busy` boolean. With a boolean, clicking Invite disabled Create and
+  // every row, and all of them read "Working…" — indistinguishable from
   // the page having locked up.
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -151,9 +142,13 @@ export default function CompaniesPage() {
     [admin, appId],
   );
 
+  // Keyed on the navigation too. Accepting an invitation whose company cannot
+  // be placed yet lands on `/companies` — possibly this page, which React
+  // Router does not remount — so without the key the joined company would be
+  // missing from the list until a full reload.
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, location.key]);
 
   // Close an open card menu on an outside click. The ref is attached to the
   // OPEN card only (see the grid below), so this compares against one node
@@ -190,7 +185,11 @@ export default function CompaniesPage() {
         // The space exists and the founder can use it; what will NOT work is
         // inviting, and the person is told now — on this screen, right after
         // creating — rather than by a failed Invite on the next page.
-        showToast(created.haError ?? "This company is not hosted yet — nobody can be invited to it.", "error");
+        showToast(
+          created.haError ??
+            "This company is not hosted yet — nobody can be invited to it.",
+          "error",
+        );
       }
       // Straight into the new namespace: it has no audiences yet, and making one is
       // the only useful next step.
@@ -226,64 +225,13 @@ export default function CompaniesPage() {
       if (!admin) return;
       setPendingDelete(null);
       void run(`delete:${ns.namespaceId}`, async (onStatus) => {
-        await deleteSpace(
-          admin,
-          { namespaceId: ns.namespaceId },
-          onStatus,
-        );
+        await deleteSpace(admin, { namespaceId: ns.namespaceId }, onStatus);
         onStatus("Refreshing your companies…");
         await load(false);
         showToast(`Deleted \u201c${ns.name}\u201d.`);
       });
     },
     [admin, run, load, showToast],
-  );
-
-  /**
-   * Accept any code: a namespace invite, or an audience invite (which carries the
-   * namespace invitation too, so someone with no prior membership gets both joins
-   * from one paste). An audience code that names its context takes you into the audience.
-   */
-  const acceptCode = useCallback(
-    (raw: string) => {
-      if (!admin) return;
-      // Accept a LINK pasted into the code field, not just a code. People paste
-      // whatever they were sent, and the two are indistinguishable to them —
-      // rejecting a link here would be the app refusing its own invitation.
-      // Accepts a platform link, a `calimero://` deep link, this app's older
-      // `?invite=` link, or the bare code — people paste whatever they were sent.
-      const candidate = invitationFromRaw(raw) ?? raw;
-      const payload = decodeInvite(candidate);
-      if (!payload) {
-        setError(
-          "That invite is not valid. If you pasted a code, paste the whole thing — it is one long line with no spaces.",
-        );
-        return;
-      }
-      void run("join", async (onStatus) => {
-        // Shared with the app-level link prompt, so the two cannot drift. An audience
-        // invitation needs BOTH joins — the namespace grant and the audience's
-        // context — and this sequence is where that lives.
-        const landed = await redeemInvite(admin, payload, onStatus);
-        setJoinCode("");
-        onStatus("Refreshing your companies…");
-        await load(false);
-
-        if (landed.kind === "audience") {
-          if (landed.audienceName)
-            setAudienceName(landed.contextId, landed.audienceName);
-          setActiveAudience(landed.contextId, landed.identity, landed.namespaceId);
-          navigate("/a");
-          return;
-        }
-        if (landed.kind === "namespace") {
-          navigate(`/companies/${landed.namespaceId}`);
-          return;
-        }
-        showToast("Joined. Your companies are listed below.");
-      });
-    },
-    [admin, run, load, navigate, showToast],
   );
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
@@ -317,8 +265,8 @@ export default function CompaniesPage() {
           <div>
             <h1 className={styles.title}>Your companies</h1>
             <p className={styles.sub}>
-              A company is a private space for investor relations. Invite someone once and they can read every
-              audience inside it.
+              A company is a private space for investor relations. Invite
+              someone once and they can read every audience inside it.
             </p>
           </div>
         </div>
@@ -374,7 +322,9 @@ export default function CompaniesPage() {
 
         <div className={styles.sectionHead}>
           <h2 className={styles.sectionTitle}>Companies</h2>
-          {!listing && namespaces.length > 0 && <span className={styles.count}>{namespaces.length}</span>}
+          {!listing && namespaces.length > 0 && (
+            <span className={styles.count}>{namespaces.length}</span>
+          )}
         </div>
 
         {listing || resolvingAppId ? (
@@ -391,7 +341,8 @@ export default function CompaniesPage() {
               </span>
               <strong>No companies yet</strong>
               <span>
-                Founders: create yours above. Investors: paste the invitation a founder sent you below.
+                Founders: create yours above. Investors: open the invitation
+                link a founder sent you.
               </span>
             </div>
           )
@@ -414,8 +365,9 @@ export default function CompaniesPage() {
                   <span className={styles.cardText}>
                     <span className={styles.cardName}>{ns.name}</span>
                     <span className={styles.cardSub}>
-                      {ns.audienceCount} audience{ns.audienceCount === 1 ? "" : "s"} ·{" "}
-                      {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
+                      {ns.audienceCount} audience
+                      {ns.audienceCount === 1 ? "" : "s"} · {ns.memberCount}{" "}
+                      member{ns.memberCount === 1 ? "" : "s"}
                     </span>
                   </span>
                   <ChevronRightIcon size={16} className={styles.cardChevron} />
@@ -455,7 +407,9 @@ export default function CompaniesPage() {
                       data-testid="invite-btn"
                     >
                       <UserPlusIcon size={15} />
-                      {hostingNote(ns.namespaceId) ? "Invite (not hosted yet)" : "Invite"}
+                      {hostingNote(ns.namespaceId)
+                        ? "Invite (not hosted yet)"
+                        : "Invite"}
                     </button>
                     <button
                       className={styles.dropdownItem}
@@ -495,37 +449,6 @@ export default function CompaniesPage() {
             ))}
           </div>
         )}
-
-        <section className={styles.joinSection}>
-          <span className={styles.joinTile} aria-hidden>
-            <LinkIcon size={18} />
-          </span>
-          <div className={styles.joinBody}>
-            <h2 className={styles.joinTitle}>Join with an invitation</h2>
-            <p className={styles.joinLabel}>Invited by a founder? Paste the link to join their updates.</p>
-            <div className={styles.joinRow}>
-              <input
-                className={styles.input}
-                aria-label="Invitation link or code"
-                placeholder="Paste an invitation link or code…"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
-                data-testid="join-input"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && joinCode.trim()) acceptCode(joinCode);
-                }}
-              />
-              <button
-                className={`${styles.btn} ${styles.btnSecondary}`}
-                onClick={() => acceptCode(joinCode)}
-                disabled={pending === "join" || !joinCode.trim()}
-                data-testid="join-btn"
-              >
-                {pending === "join" ? "Joining…" : "Join"}
-              </button>
-            </div>
-          </div>
-        </section>
       </main>
 
       {/* A confirm step rather than `window.confirm`: deleting a space deletes
@@ -548,9 +471,9 @@ export default function CompaniesPage() {
             {pendingDelete?.audienceCount ?? 0} audience
             {pendingDelete?.audienceCount === 1 ? "" : "s"}
           </strong>{" "}
-          inside it will be deleted, with every update, reply and ask in them. This
-          happens for everyone in the company, not just on this node, and it
-          cannot be undone.
+          inside it will be deleted, with every update, reply and ask in them.
+          This happens for everyone in the company, not just on this node, and
+          it cannot be undone.
         </p>
         <div className={styles.confirmRow}>
           <button

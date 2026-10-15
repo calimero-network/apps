@@ -102,7 +102,7 @@ export function parseInvitation() {
   return null;
 }
 export const PARTICIPANT_FIXTURE = PARTICIPANTS;
-/** The workspace picker's Join box; never pressed in a shot. */
+/** The invitation prompt's join; never accepted in a shot. */
 export async function joinWorkspaceFromInvitation() {
   return { namespaceId: 'ns-1', contextId: null };
 }

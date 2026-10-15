@@ -19,7 +19,6 @@ const {
   mockSetStoredGroupAlias,
   mockSetMessengerDisplayName,
   mockClearStoredSession,
-  mockParseInvitationInput,
   mockParseGroupInvitationPayload,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
@@ -36,14 +35,14 @@ const {
   mockSetStoredGroupAlias: vi.fn(),
   mockSetMessengerDisplayName: vi.fn(),
   mockClearStoredSession: vi.fn(),
-  mockParseInvitationInput: vi.fn(),
   mockParseGroupInvitationPayload: vi.fn(),
 }));
 
 vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual<typeof import("react-router-dom")>(
-    "react-router-dom",
-  );
+  const actual =
+    await vi.importActual<typeof import("react-router-dom")>(
+      "react-router-dom",
+    );
 
   return {
     ...actual,
@@ -83,7 +82,6 @@ vi.mock("../../utils/session", () => ({
 }));
 
 vi.mock("../../utils/invitation", () => ({
-  parseInvitationInput: mockParseInvitationInput,
   parseGroupInvitationPayload: mockParseGroupInvitationPayload,
 }));
 
@@ -101,11 +99,7 @@ function makeGroup(groupId: string, alias?: string) {
 function renderChatTab(props?: Partial<ComponentProps<typeof ChatTab>>) {
   return render(
     <MemoryRouter>
-      <ChatTab
-        isAuthenticated={true}
-        isConfigSet={true}
-        {...props}
-      />
+      <ChatTab isAuthenticated={true} isConfigSet={true} {...props} />
     </MemoryRouter>,
   );
 }
@@ -126,7 +120,6 @@ describe("ChatTab", () => {
     mockSetStoredGroupAlias.mockReset();
     mockSetMessengerDisplayName.mockReset();
     mockClearStoredSession.mockReset();
-    mockParseInvitationInput.mockReset();
     mockParseGroupInvitationPayload.mockReset();
 
     mockGetGroupId.mockReturnValue("");
@@ -199,7 +192,10 @@ describe("ChatTab", () => {
     renderChatTab();
 
     await waitFor(() => {
-      expect(mockResolveCurrentMemberIdentity).toHaveBeenCalledWith("group-1", "");
+      expect(mockResolveCurrentMemberIdentity).toHaveBeenCalledWith(
+        "group-1",
+        "",
+      );
     });
 
     expect(screen.getByPlaceholderText(/enter your name/i)).toHaveValue(
@@ -224,9 +220,14 @@ describe("ChatTab", () => {
     renderChatTab();
 
     await waitFor(() => {
-      expect(mockResolveCurrentMemberIdentity).toHaveBeenCalledWith("group-1", "");
+      expect(mockResolveCurrentMemberIdentity).toHaveBeenCalledWith(
+        "group-1",
+        "",
+      );
     });
 
-    expect(screen.getByPlaceholderText(/enter your name/i)).toHaveValue("Ronit");
+    expect(screen.getByPlaceholderText(/enter your name/i)).toHaveValue(
+      "Ronit",
+    );
   });
 });

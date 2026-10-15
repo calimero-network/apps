@@ -145,12 +145,12 @@ export class WorkspaceDriver {
       .click();
   }
 
-  // Open the invite like the deep-link landing does, accept, land on
-  // /app. Invite URLs are links.calimero.network deep links; the landing
-  // forwards the full query string to the frontend ROOT, where
-  // InviteRedirect funnels it to /join. We reproduce that hand-off
-  // against the local dev server (auth tokens are already injected, so
-  // the page renders the accept CTA directly, no ConnectButton detour).
+  // Open the invite like the links page does, accept, land on /app. Invite
+  // URLs are links.calimero.network links; the links page opens the frontend
+  // ROOT with the link's query appended, the app captures it at boot and
+  // shows its invitation prompt. We reproduce that hand-off against the
+  // local dev server (auth tokens are already injected, so the prompt shows
+  // directly, no sign-in detour).
   async joinNamespace(inviteUrl: string): Promise<void> {
     await this.joinNamespaceKeepGate(inviteUrl);
     await this.dismissNameGateIfPresent();
@@ -161,7 +161,15 @@ export class WorkspaceDriver {
   async joinNamespaceKeepGate(inviteUrl: string): Promise<void> {
     const parsed = new URL(inviteUrl, 'http://placeholder');
     await this.page.goto(`/${parsed.search}`);
-    await this.page.getByRole('button', { name: /Accept & join/i }).click();
+    await this.page.getByTestId('invite-accept').click();
+    // Wait for the prompt to close, which it does only once the join is done.
+    // The URL alone proves nothing: `/` sends a signed-in visitor to /app at
+    // once, while the prompt (above the routes) is still joining. On a node
+    // that already holds a workspace, the name gate's settled marker is up
+    // too, so moving on here would race the join and its name gate.
+    await expect(this.page.getByTestId('invite-prompt')).toBeHidden({
+      timeout: 60_000,
+    });
     await expect(this.page).toHaveURL(/\/app/, { timeout: 30_000 });
   }
 
@@ -981,7 +989,7 @@ export class SettingsDriver {
 
   // Open the namespace InviteDialog (path: Settings → MembersPanel →
   // "Invite" button → "Generate invite link" → read input), return
-  // the produced /join URL. Caller responsible for opening Settings
+  // the produced https link. Caller responsible for opening Settings
   // first.
   async copyNamespaceInvite(): Promise<string> {
     await this.page.getByRole('button', { name: /^Invite$/ }).click();

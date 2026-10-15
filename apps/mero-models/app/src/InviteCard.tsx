@@ -21,7 +21,11 @@ export function InviteCard({ contextId }: { contextId: string }) {
   // in — and `ScenePicker` creates scenes directly in the namespace, so that
   // group IS the namespace. (Put a context in a subgroup instead and this would
   // hand `createNamespaceInvitation` a subgroup id.)
-  const { groupId, loading: groupLoading, error: groupError } = useContextGroup(contextId);
+  const {
+    groupId,
+    loading: groupLoading,
+    error: groupError,
+  } = useContextGroup(contextId);
   const { createNamespaceInvitation } = useCreateNamespaceInvitation();
 
   const [link, setLink] = useState<string | null>(null);
@@ -83,11 +87,13 @@ export function InviteCard({ contextId }: { contextId: string }) {
         <h3>Invite someone</h3>
       </div>
       <p className="hint">
-        One link. Whoever opens it joins this scene and every other scene in
-        its namespace.
+        One link. Whoever opens it joins this scene and every other scene in its
+        namespace.
       </p>
 
-      {groupLoading && <p className="empty">Resolving this context&apos;s namespace…</p>}
+      {groupLoading && (
+        <p className="empty">Resolving this context&apos;s namespace…</p>
+      )}
       {groupError && <pre className="err">{groupError.message}</pre>}
 
       {link && (
@@ -117,7 +123,11 @@ export function InviteCard({ contextId }: { contextId: string }) {
       )}
 
       <div className="row">
-        <button className={link ? "ghost small" : ""} onClick={mint} disabled={busy || !namespaceId}>
+        <button
+          className={link ? "ghost small" : ""}
+          onClick={mint}
+          disabled={busy || !namespaceId}
+        >
           {busy ? "Creating…" : link ? "Create another" : "Create invite link"}
         </button>
       </div>
@@ -130,9 +140,10 @@ export function InviteCard({ contextId }: { contextId: string }) {
           `links.frontend`; with that field absent it forgets the link.
         */
         <p className="hint">
-          The link works when pasted into this app. Opening it in a browser or
-          the desktop app also needs the published bundle to declare a{" "}
-          <code>links.frontend</code> origin — see <code>logic/Cargo.toml</code>.
+          Send it to whoever you are inviting; they join by opening it. It opens
+          in a browser or the desktop app once the published bundle declares a{" "}
+          <code>links.frontend</code> origin — see <code>logic/Cargo.toml</code>
+          .
         </p>
       )}
       {failed && <pre className="err">{failed}</pre>}

@@ -6,7 +6,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { defaultLogin, rig } from "@calimero-apps/e2e-node/journey";
-import { acceptInvite, brawl, createArena, mintInvite, status, takeCorner } from "../arena";
+import { brawl, createArena, joinByOpeningLink, mintInvite, status, takeCorner } from "../arena";
 
 const SIZE = { width: 1440, height: 900 };
 const ROUND_LIMIT_MS = Number(process.env["DUEL_LIMIT_MS"]) || 6 * 60_000;
@@ -34,10 +34,10 @@ test("two nodes fight a full match, side by side", async ({ browser }, info) => 
   await createArena(pa);
   const link = await mintInvite(pa);
 
-  // ── node 2: log in, redeem it ──────────────────────────────────────────
+  // ── node 2: log in, open the link ──────────────────────────────────────
   await pb.goto("/play");
   await defaultLogin(actor(pb, n2, "bob"));
-  await acceptInvite(pb, link);
+  await joinByOpeningLink(pb, link);
 
   // ── corners ────────────────────────────────────────────────────────────
   await takeCorner(pa, "p1", "Alice", "kinetic");

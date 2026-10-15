@@ -41,51 +41,31 @@ describe("invitation utilities", () => {
 
 import {
   generateInvitationUrl,
-  generateInvitationDeepLink,
   decodeInvitationPayload,
-  parseInvitationInput,
   APP_SLUG,
 } from "./invitation";
 
-describe("shareable invitation links (platform SDK)", () => {
+describe("shareable invitation links", () => {
   const payload = JSON.stringify(signedInvitation);
 
   it("uses the com.calimero.chat package as the deep-link slug", () => {
     // The desktop resolves links by Application.package; this must match the
     // .mpk manifest `package` and the deeplinks resolver FRONTENDS key.
     expect(APP_SLUG).toBe("com.calimero.chat");
-    expect(new URL(generateInvitationUrl(payload)).pathname).toBe("/com.calimero.chat/join");
+    expect(new URL(generateInvitationUrl(payload)).pathname).toBe(
+      "/com.calimero.chat/join",
+    );
   });
 
-  it("generateInvitationUrl builds a canonical HTTPS links.calimero.network URL via createLink", () => {
+  it("generateInvitationUrl builds the one links.calimero.network link every app shares", () => {
     const url = generateInvitationUrl(payload);
-    const parsed = new URL(url);
-
-    expect(parsed.protocol).toBe("https:");
-    expect(parsed.host).toBe("links.calimero.network");
-    expect(parsed.pathname).toBe(`/${APP_SLUG}/join`);
+    expect(url).toMatch(
+      /^https:\/\/links\.calimero\.network\/com\.calimero\.chat\/join\?invitation=[^&#]+$/,
+    );
 
     // The invitation param round-trips back to the original payload.
-    const enc = parsed.searchParams.get("invitation");
+    const enc = new URL(url).searchParams.get("invitation");
     expect(enc).toBeTruthy();
     expect(decodeInvitationPayload(enc as string)).toBe(payload);
-  });
-
-  it("generateInvitationDeepLink builds a calimero:// device link with the package slug", () => {
-    const link = generateInvitationDeepLink(payload);
-    expect(link.startsWith(`calimero://${APP_SLUG}/join?invitation=`)).toBe(true);
-
-    const enc = link.split("invitation=")[1];
-    expect(decodeInvitationPayload(enc)).toBe(payload);
-  });
-
-  it("parseInvitationInput reads the invitation back out of a generated HTTPS link", () => {
-    const url = generateInvitationUrl(payload);
-    expect(parseInvitationInput(url)).toBe(payload);
-  });
-
-  it("parseInvitationInput reads the invitation back out of a generated calimero:// link", () => {
-    const link = generateInvitationDeepLink(payload);
-    expect(parseInvitationInput(link)).toBe(payload);
   });
 });

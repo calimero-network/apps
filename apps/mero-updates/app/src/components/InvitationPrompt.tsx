@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
-import { redeemInvite } from "../lib/groups";
+import { redeemFailureMessage, redeemInvite } from "../lib/groups";
 import { decodeInvite, type AudienceInvitePayload } from "../lib/inviteCodec";
 import {
   onInvitation,
+  shouldRetain,
   type CapturedInvitation,
 } from "@calimero-apps/invite";
 import { setActiveAudience, setAudienceName } from "../lib/session";
@@ -71,14 +72,30 @@ export default function InvitationPrompt() {
     setBusy(true);
     setError(null);
     try {
-      const landed = await redeemInvite(admin, payload, setStatus);
+      const { outcome, landed } = await redeemInvite(admin, payload, setStatus);
+      if (!landed) {
+        setError(redeemFailureMessage(outcome));
+        // A failure that could pass (no online member yet, a flaky node) is NOT
+        // acked: the store exists precisely so the invitation survives to be
+        // retried on the next load. One that cannot is, or it replays every load.
+        if (!shouldRetain(outcome)) {
+          captured.resolve();
+          setPending(null);
+        }
+        return;
+      }
       // Acked only once the redeem actually returned. Acking first would drop the
       // invitation on a transient network failure, leaving nothing to retry with.
       captured.resolve();
       setPending(null);
       if (landed.kind === "audience") {
-        if (landed.audienceName) setAudienceName(landed.contextId, landed.audienceName);
-        setActiveAudience(landed.contextId, landed.identity, landed.namespaceId);
+        if (landed.audienceName)
+          setAudienceName(landed.contextId, landed.audienceName);
+        setActiveAudience(
+          landed.contextId,
+          landed.identity,
+          landed.namespaceId,
+        );
         navigate("/a");
       } else if (landed.kind === "namespace") {
         navigate(`/companies/${landed.namespaceId}`);
@@ -107,7 +124,10 @@ export default function InvitationPrompt() {
     // is nothing to accept.
     return error ? (
       <div className={styles.wrap}>
-        <div className={`${styles.prompt} ${styles.promptError}`}>
+        <div
+          className={`${styles.prompt} ${styles.promptError}`}
+          data-testid="invite-error"
+        >
           <span className={`${styles.tile} ${styles.tileError}`} aria-hidden>
             <AlertIcon size={18} />
           </span>

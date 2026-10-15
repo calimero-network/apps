@@ -3,7 +3,7 @@ import { shareableInvitation } from "../lib/inviteLink";
 import { useToast } from "../contexts/ToastContext";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import styles from "./InviteModal.module.css";
-import { ChevronDownIcon, CopyIcon, LinkIcon, UserPlusIcon, XIcon } from "./icons";
+import { CopyIcon, LinkIcon, UserPlusIcon, XIcon } from "./icons";
 
 /**
  * An invitation, as a modal you copy and dismiss.
@@ -18,9 +18,10 @@ import { ChevronDownIcon, CopyIcon, LinkIcon, UserPlusIcon, XIcon } from "./icon
  *   * it offered link / desktop link / raw code at equal weight, so the choice
  *     was yours to make every single time, and the answer is the link ~always.
  *
- * So: the link is the primary action, copying it closes the dialog, and the
- * other two forms stay behind a disclosure for the cases that genuinely need
- * them. Matches the invite shape in mero-design, mero-pixart and mero-calendar.
+ * So: one link, and copying it closes the dialog. It is the only form there
+ * is: the links page opens it in the web app or hands it to an installed
+ * desktop, so there is no desktop variant or raw code to pick between, and
+ * nowhere to paste either.
  */
 export default function InviteModal({
   open,
@@ -70,21 +71,6 @@ export default function InviteModal({
     }
   }, [share, showToast, onClose]);
 
-  const copyQuietly = useCallback(
-    async (value: string, label: string) => {
-      try {
-        await navigator.clipboard.writeText(value);
-        showToast(`${label} copied.`, "success");
-      } catch {
-        showToast(
-          "Could not reach the clipboard — select it and copy.",
-          "error",
-        );
-      }
-    },
-    [showToast],
-  );
-
   // After the hooks, never before: an early return above them would change the
   // hook order between renders.
   if (!share) return null;
@@ -124,18 +110,18 @@ export default function InviteModal({
         </header>
 
         <span className={styles.fieldLabel}>Invitation link</span>
-        {/* One line by default; `showRaw` is also the "clipboard failed" state,
+        {/* One line by default; `showRaw` is the "clipboard failed" state,
             where the characters have to be selectable. */}
         <div className={styles.linkField}>
-        <LinkIcon size={14} className={styles.linkIcon} />
-        <code
-          className={styles.link}
-          title={share.link}
-          data-full={showRaw ? "true" : "false"}
-          data-testid="invite-link"
-        >
-          {share.link}
-        </code>
+          <LinkIcon size={14} className={styles.linkIcon} />
+          <code
+            className={styles.link}
+            title={share.link}
+            data-full={showRaw ? "true" : "false"}
+            data-testid="invite-link"
+          >
+            {share.link}
+          </code>
         </div>
 
         <button
@@ -149,60 +135,6 @@ export default function InviteModal({
         </button>
 
         {hint && <p className={styles.hint}>{hint}</p>}
-
-        <button
-          type="button"
-          className={styles.disclosure}
-          onClick={() => setShowRaw((v) => !v)}
-          aria-expanded={showRaw}
-          data-testid="invite-more"
-        >
-          {showRaw ? "Fewer options" : "Other ways to send this"}
-          <ChevronDownIcon size={14} className={styles.disclosureChevron} />
-        </button>
-
-        {showRaw && (
-          <div className={styles.more}>
-            <label className={styles.moreLabel}>
-              Desktop link
-              <span className={styles.moreNote}>
-                Hands the invitation straight to an installed desktop app. Does
-                not survive being pasted into most chat windows.
-              </span>
-            </label>
-            <div className={styles.moreRow}>
-              <code className={styles.moreValue}>{share.deepLink}</code>
-              <button
-                type="button"
-                className={styles.secondary}
-                onClick={() => void copyQuietly(share.deepLink, "Desktop link")}
-                data-testid="invite-copy-deep"
-              >
-                <CopyIcon size={14} />
-                Copy
-              </button>
-            </div>
-
-            <label className={styles.moreLabel}>
-              Raw code
-              <span className={styles.moreNote}>
-                The cross-app format mero-chat and mero-blocks also read.
-              </span>
-            </label>
-            <div className={styles.moreRow}>
-              <code className={styles.moreValue}>{share.code}</code>
-              <button
-                type="button"
-                className={styles.secondary}
-                onClick={() => void copyQuietly(share.code, "Code")}
-                data-testid="invite-copy-code"
-              >
-                <CopyIcon size={14} />
-                Copy
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </dialog>
   );

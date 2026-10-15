@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import type { Actor, AppDriver, Feature } from "@calimero-apps/e2e-node/journey";
-import { acceptInvite, createArena, mintInvite, status, takeCorner, waitForArena } from "../arena";
+import { createArena, mintInvite, status, takeCorner, waitForArena, waitForJoined } from "../arena";
 
 const SYNC = 90_000;
 
@@ -61,8 +61,8 @@ export const driver: AppDriver = {
     return mintInvite(actor.page);
   },
 
-  async acceptInvite(actor, link) {
-    await acceptInvite(actor.page, link);
+  async joined(actor) {
+    await waitForJoined(actor.page);
   },
 
   async afterReload(actor) {

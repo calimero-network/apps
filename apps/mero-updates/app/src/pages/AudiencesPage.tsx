@@ -69,8 +69,11 @@ export default function AudiencesPage() {
   // Whether anyone can be invited to this space — see lib/hosting. Re-read
   // after every mint, since a refused one is where the answer may change.
   const [hostingVersion, setHostingVersion] = useState(0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const hostingNote = useMemo(() => hostingProblem(namespaceId), [namespaceId, hostingVersion]);
+  const hostingNote = useMemo(
+    () => hostingProblem(namespaceId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [namespaceId, hostingVersion],
+  );
 
   const [audiences, setAudiences] = useState<AudienceRow[]>([]);
   /** The space whose audience list has come back at least once. */
@@ -236,11 +239,12 @@ export default function AudiencesPage() {
           scope: `Opens ${audience.name}`,
           hint: (
             <>
-              One paste puts them straight into <strong>{audience.name}</strong>.
-              Note what it grants: joining <strong>{nsName}</strong>, which
-              makes every audience in it reachable — access is inherited from
-              the company, so this is <em>not</em> narrower than the company
-              link. It just lands them in this audience instead of the list.
+              Opening the link puts them straight into{" "}
+              <strong>{audience.name}</strong>. Note what it grants: joining{" "}
+              <strong>{nsName}</strong>, which makes every audience in it
+              reachable — access is inherited from the company, so this is{" "}
+              <em>not</em> narrower than the company link. It just lands them in
+              this audience instead of the list.
             </>
           ),
         });
@@ -265,9 +269,9 @@ export default function AudiencesPage() {
         hint: (
           <>
             This link joins <strong>{nsName}</strong> and every audience in it,
-            including audiences made later. It lands them on the audience list — to
-            drop someone straight into one audience, use <strong>Invite</strong> on
-            that audience.
+            including audiences made later. It lands them on the audience list —
+            to drop someone straight into one audience, use{" "}
+            <strong>Invite</strong> on that audience.
           </>
         ),
       });
@@ -322,7 +326,11 @@ export default function AudiencesPage() {
     <div className={styles.root}>
       <AppHeader
         crumbs={[
-          { label: "Companies", onClick: () => navigate("/companies"), icon: <LayersIcon size={14} /> },
+          {
+            label: "Companies",
+            onClick: () => navigate("/companies"),
+            icon: <LayersIcon size={14} />,
+          },
           { label: nsName || "Company" },
         ]}
         right={<LogoutButton />}
@@ -408,7 +416,9 @@ export default function AudiencesPage() {
 
         <div className={styles.sectionHead}>
           <h2 className={styles.sectionTitle}>Audiences</h2>
-          {!listing && audiences.length > 0 && <span className={styles.count}>{audiences.length}</span>}
+          {!listing && audiences.length > 0 && (
+            <span className={styles.count}>{audiences.length}</span>
+          )}
         </div>
 
         {isSyncing ? (
@@ -440,7 +450,11 @@ export default function AudiencesPage() {
                   disabled={!audience.contextId}
                   onClick={() => enter(audience)}
                 >
-                  <span className={styles.cardTile} data-joined={audience.joined} aria-hidden>
+                  <span
+                    className={styles.cardTile}
+                    data-joined={audience.joined}
+                    aria-hidden
+                  >
                     <HashIcon size={18} />
                   </span>
                   <span className={styles.cardText}>
@@ -450,7 +464,9 @@ export default function AudiencesPage() {
                         <>
                           <UsersIcon size={13} />
                           {`${audience.memberCount} member${audience.memberCount === 1 ? "" : "s"}`}
-                          {!audience.joined && <span className={styles.tag}>not joined</span>}
+                          {!audience.joined && (
+                            <span className={styles.tag}>not joined</span>
+                          )}
                         </>
                       ) : (
                         <>
@@ -463,7 +479,10 @@ export default function AudiencesPage() {
                   {pending === `enter:${audience.audienceId}` ? (
                     <span className={styles.spinner} aria-hidden />
                   ) : (
-                    <ChevronRightIcon size={16} className={styles.cardChevron} />
+                    <ChevronRightIcon
+                      size={16}
+                      className={styles.cardChevron}
+                    />
                   )}
                 </button>
                 <button
@@ -475,7 +494,9 @@ export default function AudiencesPage() {
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpenId(
-                      menuOpenId === audience.audienceId ? null : audience.audienceId,
+                      menuOpenId === audience.audienceId
+                        ? null
+                        : audience.audienceId,
                     );
                   }}
                 >
@@ -531,7 +552,10 @@ export default function AudiencesPage() {
                         </button>
                       </>
                     )}
-                    <div className={styles.dropdownMeta} title={audience.audienceId}>
+                    <div
+                      className={styles.dropdownMeta}
+                      title={audience.audienceId}
+                    >
                       Group <code>{audience.audienceId}</code>
                     </div>
                   </div>

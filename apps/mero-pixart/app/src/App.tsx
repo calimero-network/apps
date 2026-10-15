@@ -5,6 +5,7 @@ import LandingPage from "./pages/landing/LandingPage";
 import TeamsPage from "./pages/TeamsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import EditorPage from "./pages/EditorPage";
+import InvitationPrompt from "./components/InvitationPrompt";
 import { ToastProvider } from "./contexts/ToastContext";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
@@ -43,6 +44,8 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <ToastProvider>
+      {/* Above the routes: an invitation link can open this app on any page. */}
+      <InvitationPrompt />
       <Routes>
         {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
             real URLs so they can be shared and opened cold, which needs a route

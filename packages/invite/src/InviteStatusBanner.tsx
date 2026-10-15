@@ -62,6 +62,8 @@ export function InviteStatusBanner({
     <div
       role="status"
       aria-live="polite"
+      data-testid="invite-status"
+      data-stage={state.stage}
       className={className}
       style={{
         display: "flex",
@@ -94,17 +96,17 @@ export function InviteStatusBanner({
       )}
       <span style={{ flex: 1, minWidth: 0 }}>{text}</span>
       {state.stage === "awaiting-confirmation" && onAccept ? (
-        <button type="button" onClick={onAccept} style={linkButton}>
+        <button type="button" onClick={onAccept} style={linkButton} data-testid="invite-accept">
           Join
         </button>
       ) : null}
       {state.stage === "awaiting-confirmation" && onDecline ? (
-        <button type="button" onClick={onDecline} style={linkButton}>
+        <button type="button" onClick={onDecline} style={linkButton} data-testid="invite-decline">
           Not now
         </button>
       ) : null}
       {failed && state.retryable && onRetry ? (
-        <button type="button" onClick={onRetry} style={linkButton}>
+        <button type="button" onClick={onRetry} style={linkButton} data-testid="invite-retry">
           Try again
         </button>
       ) : null}

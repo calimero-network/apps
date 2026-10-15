@@ -6,12 +6,11 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   Copy,
   Layers,
-  Link2,
   MoreHorizontal,
   Plus,
   Server,
@@ -34,7 +33,6 @@ import { invitationUrl } from '../../lib/inviteLink';
 import { hueOf, initials } from '../../lib/monogram';
 import { adminApi, apiClient } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
-import { joinWorkspaceFromInvitation } from '../../api/invitationJoin';
 import styles from './AgreementsPage.module.css';
 
 // ── The workspace picker ─────────────────────────────────────────────────────
@@ -70,6 +68,10 @@ interface Banner {
 
 export default function WorkspacesPage() {
   const navigate = useNavigate();
+  // Changes on every navigation, including one to the URL already showing —
+  // which is what an accepted invitation that resolved to no single workspace
+  // does. See the load effect.
+  const { key: navigationKey } = useLocation();
   const { app } = useCalimero();
   const {
     applicationId,
@@ -84,9 +86,6 @@ export default function WorkspacesPage() {
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState('');
-
-  const [joinCode, setJoinCode] = useState('');
-  const [joining, setJoining] = useState(false);
 
   const [inviteFor, setInviteFor] = useState<WorkspaceRow | null>(null);
   const [inviteLink, setInviteLink] = useState('');
@@ -119,9 +118,12 @@ export default function WorkspacesPage() {
     }
   }, [applicationId]);
 
+  // Keyed on the navigation too: the invitation prompt lives above the routes
+  // and lands the joiner by navigating, so a join that lands here has to
+  // reload the list someone may already be looking at.
   useEffect(() => {
     if (app && !idLoading) void load();
-  }, [app, idLoading, load]);
+  }, [app, idLoading, load, navigationKey]);
 
   useEffect(() => {
     function onOutside(e: MouseEvent) {
@@ -230,37 +232,6 @@ export default function WorkspacesPage() {
     }
   }, []);
 
-  const join = useCallback(async () => {
-    const raw = joinCode.trim();
-    if (!raw) return;
-    setJoining(true);
-    setBanner(null);
-    try {
-      const result = await joinWorkspaceFromInvitation(raw, app);
-      setJoinCode('');
-      if (result.contextId) {
-        navigate(`/agreements/${result.contextId}`);
-      } else if (result.namespaceId) {
-        // Joined the workspace, but it holds no single agreement to open —
-        // none yet, or several. Both are ordinary, so land on the workspace.
-        setActiveWorkspace(result.namespaceId);
-        navigate(`/workspaces/${result.namespaceId}`);
-      } else {
-        await load();
-      }
-    } catch (error) {
-      setBanner({
-        kind: 'error',
-        text:
-          error instanceof Error
-            ? error.message
-            : 'Could not join with that invitation.',
-      });
-    } finally {
-      setJoining(false);
-    }
-  }, [app, joinCode, load, navigate]);
-
   const body = useMemo(() => {
     if (notInstalled) {
       return (
@@ -292,7 +263,8 @@ export default function WorkspacesPage() {
           </span>
           <p className={styles.emptyTitle}>No workspaces yet</p>
           <p className={styles.empty} data-testid="workspaces-empty">
-            No workspaces yet. Create one above, or paste an invitation below.
+            No workspaces yet. Create one above, or open an invitation link
+            someone sent you.
           </p>
         </div>
       );
@@ -463,43 +435,6 @@ export default function WorkspacesPage() {
             )}
           </div>
           {body}
-        </section>
-
-        <section className={styles.panel}>
-          <div className={styles.panelHead}>
-            <span className={styles.panelIcon}>
-              <Link2 size={20} />
-            </span>
-            <div>
-              <h2 className={styles.panelTitle}>
-                Got an invitation? Join a workspace.
-              </h2>
-              <p className={styles.panelText}>
-                Opening the link works too — you only need this if it arrived
-                as text.
-              </p>
-            </div>
-          </div>
-          <div className={styles.joinRow}>
-            <input
-              className={styles.input}
-              placeholder="Paste the link or code you were sent…"
-              aria-label="Invitation link or code"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void join()}
-              data-testid="join-code"
-            />
-            <button
-              className={styles.btn}
-              onClick={() => void join()}
-              disabled={joining || !joinCode.trim()}
-              data-testid="join-workspace"
-            >
-              {joining ? <span className={styles.spinner} /> : null}
-              {joining ? 'Joining…' : 'Join'}
-            </button>
-          </div>
         </section>
 
         {/* ⚠️ NO SIGNATURE LIBRARY HERE. It used to sit on this screen, which

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import inviteModalSrc from "../components/InviteModal.tsx?raw";
 import projectsPageSrc from "../pages/ProjectsPage.tsx?raw";
+import mainSrc from "../main.tsx?raw";
 
 // ── Invite surfaces share LINKS, never bare tokens ───────────────────────────
 //
@@ -44,5 +45,16 @@ describe("invite surfaces", () => {
 
   it.each(INVITE_SURFACES)("%s calls its share surface a link", (_name, src) => {
     expect(src).toMatch(/invitation link/i);
+  });
+});
+
+describe("invitation capture at boot", () => {
+  // Without the slug, a link addressed to another app — opened inside this
+  // one, or a misrouted desktop event — is offered here, and accepting it puts
+  // this node into a namespace of an app it cannot run.
+  it("is primed for this app's slug only", () => {
+    expect(mainSrc).toMatch(
+      /primeInvitationCapture\(\s*"mero-pixart",\s*\{\s*slug:\s*APP_SLUG\s*\}\s*\)/,
+    );
   });
 });

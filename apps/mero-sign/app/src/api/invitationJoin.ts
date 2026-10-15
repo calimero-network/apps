@@ -1,11 +1,9 @@
 // ── Redeeming an invitation, whichever kind it is ────────────────────────────
 //
-// One routine, called from two places: the app-level popup that fires when an
-// invitation link is opened, and the "paste what you were sent" box on the
-// dashboard. They used to be two near-identical 150-line blocks that had already
-// drifted — the popup read the agreement's real name out of the contract and the
-// dashboard asked the joiner to type one — which is how the same invitation
-// produced two different names depending on which door you came through.
+// One routine, called from one place: the app-level prompt that appears when an
+// invitation link is opened, once the person has said yes. It used to be shared
+// with a "paste what you were sent" box on the dashboard; that box is gone — an
+// invitation reaches the app only as an opened link.
 //
 // What an invitation grants, and what it does NOT:
 //
@@ -39,7 +37,6 @@ import {
   namespaceIdOfInvite,
   type MeroSignInvitePayload,
 } from '../lib/inviteCodec';
-import { invitationFromRaw } from '../lib/inviteLink';
 import { resolveAgreementName } from '../lib/agreementName';
 import {
   enterAgreement,
@@ -131,15 +128,13 @@ function isSyncing(message: string | undefined): boolean {
 }
 
 /**
- * Parse a link / code / pasted payload into something redeemable.
+ * Decode the token the shared capture took out of an opened link.
  *
- * Exported because both entry points want to validate before they show a
- * "joining…" spinner, and because it is the seam the tests use.
+ * Exported because the prompt reads the name it carries before asking, and
+ * because it is the seam the tests use.
  */
-export function parseInvitation(raw: string): MeroSignInvitePayload | null {
-  const code = invitationFromRaw(raw);
-  if (!code) return null;
-  return decodeInvite(code);
+export function parseInvitation(token: string): MeroSignInvitePayload | null {
+  return decodeInvite(token);
 }
 
 /**
@@ -277,14 +272,14 @@ async function joinByTargetedPayload(
  * a failure.
  */
 export async function joinWorkspaceFromInvitation(
-  raw: string,
+  token: string,
   app: CalimeroAppLike,
   onStage?: (stage: RedeemStage) => void,
 ): Promise<RedeemResult> {
-  const parsed = parseInvitation(raw);
+  const parsed = parseInvitation(token);
   if (!parsed) {
     throw new Error(
-      'That does not look like a MeroSign invitation. Paste the link or the code you were sent.',
+      'That link does not carry a Mero Sign invitation. Ask for a new one.',
     );
   }
 

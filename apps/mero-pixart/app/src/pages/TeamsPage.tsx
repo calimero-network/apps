@@ -1,20 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  describeInviteFailure,
-  InviteStatusBanner,
-  redeemInvitation,
-  useInviteRedemption,
-} from "@calimero-apps/invite";
-import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
-import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
 import { useMero } from "@calimero-network/mero-react";
 import { useApi } from "../api/useApi";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
-import { decodeInvitationObject, invitationTokenFrom } from "../utils/invitation";
 import { setStoredTeamName, teamLabel } from "../utils/teamName";
 import type { Team } from "../types";
 import styles from "./TeamsPage.module.css";
@@ -37,21 +28,7 @@ export default function TeamsPage() {
   const [newName, setNewName] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [settingsTeam, setSettingsTeam] = useState<Team | null>(null);
-  const [joinCode, setJoinCode] = useState("");
-  const [joining, setJoining] = useState(false);
-  const [joinError, setJoinError] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
-
-  const refreshTeams = useCallback(async () => {
-    const items = await api.listNamespaces(await api.ensureAppId()).catch(() => null);
-    if (!Array.isArray(items)) return;
-    setTeams(
-      items.map((n) => ({
-        groupId: n.namespaceId ?? "",
-        name: (n.name ?? "").trim(),
-      })),
-    );
-  }, [api]);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,107 +106,6 @@ export default function TeamsPage() {
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
   }
 
-  /** Read a raw invitation token into the parts the join needs. */
-  const parseInvitation = useCallback((raw: string) => {
-    const invObj = decodeInvitationObject<Record<string, unknown>>(raw);
-    const outer = (invObj.invitation as Record<string, unknown>) ?? invObj;
-    const inner = (outer?.invitation as Record<string, unknown>) ?? outer;
-    const rawGroupId =
-      inner?.group_id ?? inner?.groupId ?? outer?.group_id ?? outer?.groupId;
-    const namespaceId = Array.isArray(rawGroupId)
-      ? (rawGroupId as number[])
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("")
-      : String(rawGroupId ?? "");
-    if (!namespaceId) return null;
-
-    const teamName =
-      typeof invObj.__teamName === "string" ? invObj.__teamName.trim() : "";
-    if (teamName) setStoredTeamName(namespaceId, teamName);
-
-    return { namespaceId, invitation: outer, teamName: teamName || undefined };
-  }, []);
-
-  /** The two calls @calimero-apps/invite needs from this app. */
-  const redeemer = useMemo(
-    () => ({
-      // `admin.joinNamespace`, the session-aware one: on an account it redeems
-      // through the admitter's route and moves the session onto that relay;
-      // the raw node route is a 403 for an account.
-      join: async (namespaceId: string, invitation: unknown) => {
-        await admin.joinNamespace(namespaceId, {
-          invitation: invitation as SignedGroupOpenInvitation,
-        });
-      },
-      memberships: async () => {
-        const items = await api.listNamespaces(await api.ensureAppId());
-        return items.map((n) => n.namespaceId ?? "");
-      },
-    }),
-    [api, admin],
-  );
-
-  // ── An invitation link opened this app ──────────────────────────────────────
-  //
-  // Capture, redemption and the attempt cap all live in @calimero-apps/invite;
-  // this page supplies the codec and the two calls, and renders the result.
-  const invite = useInviteRedemption({
-    parse: parseInvitation,
-    redeemer,
-    onJoined: (namespaceId) => {
-      setJoinCode("");
-      void refreshTeams();
-      navigate(`/teams/${namespaceId}/projects`);
-    },
-  });
-
-  // Keep the manual field in step, so a link that could not be joined
-  // automatically is one click away rather than lost.
-  useEffect(() => {
-    if (invite.token) setJoinCode(invite.token);
-  }, [invite.token]);
-
-  /** The manual "paste a code and press Join" path. */
-  async function joinTeam(codeOverride?: string): Promise<boolean> {
-    const raw = invitationTokenFrom(codeOverride ?? joinCode);
-    if (!raw) return false;
-    setJoining(true);
-    setJoinError("");
-    try {
-      const parsed = parseInvitation(raw);
-      if (!parsed) throw new Error("no namespace id in invitation");
-
-      const outcome = await redeemInvitation(parsed, redeemer);
-      if (outcome.status === "failed") {
-        throw new Error(
-          describeInviteFailure(outcome.reason, "team") ?? outcome.message,
-        );
-      }
-
-      markNamespaceJustJoined(outcome.namespaceId);
-      await refreshTeams();
-      setJoinCode("");
-      showToast(
-        outcome.status === "already-member"
-          ? "You are already in this team."
-          : "Joined team. Syncing artwork…",
-        "success",
-      );
-      return true;
-    } catch (err) {
-      const msg = extractErrorMessage(
-        err,
-        "Could not join. Check the invitation code.",
-      );
-      setJoinError(msg);
-      showToast(msg);
-      return false;
-    } finally {
-      setJoining(false);
-    }
-  }
-
-
   function handleLogout() {
     logout();
     navigate("/");
@@ -247,15 +123,6 @@ export default function TeamsPage() {
       <main className={styles.main}>
         <h1 className={styles.title}>Your Teams</h1>
 
-        {/* Following an invite link used to land here with nothing on screen
-            for as long as the join took. */}
-        <InviteStatusBanner
-          state={invite.state}
-          noun="team"
-          onRetry={invite.retry}
-          onDismiss={invite.dismiss}
-          style={{ marginBottom: "1rem" }}
-        />
         <p className={styles.subtitle}>Teams are shared workspaces. Each holds image projects you edit together.</p>
 
         <div className={styles.createRow}>
@@ -280,7 +147,7 @@ export default function TeamsPage() {
         {loading ? (
           <p className={styles.empty}>Loading…</p>
         ) : teams.length === 0 ? (
-          <p className={styles.empty} data-testid="empty-teams">No teams yet. Create one above.</p>
+          <p className={styles.empty} data-testid="empty-teams">No teams yet. Create one above, or open an invitation link someone sent you.</p>
         ) : (
           <div className={styles.grid}>
             {teams.map((t) => (
@@ -315,29 +182,6 @@ export default function TeamsPage() {
             ))}
           </div>
         )}
-
-        <div className={styles.joinSection}>
-          <p className={styles.joinLabel}>Got an invitation? Join a team.</p>
-          <div className={styles.joinRow}>
-            <input
-              className={`mp-input ${styles.createInput}`}
-              placeholder="Paste invitation code…"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void joinTeam(); }}
-              data-testid="join-code-input"
-            />
-            <button
-              className="mp-btn"
-              onClick={() => void joinTeam()}
-              disabled={joining || !joinCode.trim()}
-              data-testid="join-team-btn"
-            >
-              {joining ? "Joining…" : "Join"}
-            </button>
-          </div>
-          {joinError && <p className={styles.joinError}>{joinError}</p>}
-        </div>
       </main>
 
       {settingsTeam && (

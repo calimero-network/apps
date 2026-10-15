@@ -13,7 +13,8 @@ import { AppMode, MeroProvider } from '@calimero-network/mero-react';
 import { LoginGate } from './lib/loginGate';
 import { MeroBridge } from './lib/MeroBridge';
 import { PACKAGE_NAME, REGISTRY_URL } from './constants/config';
-import { primeInvitationCapture as startInvitationCapture } from "@calimero-apps/invite";
+import { primeInvitationCapture } from '@calimero-apps/invite';
+import { APP_SLUG } from './lib/inviteLink';
 import { bootstrapDesktopSession, hashNodeUrl } from './auth/desktopBootstrap';
 
 // Disable StrictMode in production to avoid double-rendering
@@ -40,13 +41,14 @@ const trustedNodeUrl = hashNodeUrl();
 
 // ── Invitations, captured before anything renders ─────────────────────────────
 //
-// An invitation link is a capability sitting in the URL, and the URL does not
-// survive the login redirect. Capturing here — at module scope, before React and
-// before `<CalimeroProvider>` decides to send a signed-out visitor to the auth
-// frontend — puts the intent in the platform's durable store first, so it is
-// still there when they come back logged in. `App.tsx` subscribes and shows the
-// prompt; see `lib/invitationIntents.ts`.
-startInvitationCapture("mero-sign");
+// An invitation reaches this app only as an opened link: the links page (or a
+// cold desktop start) appends `?invitation=…` to this URL, and a running
+// desktop sends a `deep-link` event. Capturing here — at module scope, before
+// React and before the provider can send a signed-out visitor to log in — puts
+// the intent in the platform's durable store first, so it is still there when
+// they come back logged in. A link addressed to another app is dropped, not
+// offered. `App.tsx` subscribes and shows the prompt.
+primeInvitationCapture('mero-sign', { slug: APP_SLUG });
 
 createRoot(document.getElementById('root')!).render(
   <AppWrapper>

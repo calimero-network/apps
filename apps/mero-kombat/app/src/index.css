@@ -428,7 +428,16 @@ body {
 }
 
 /* ── join / invite ──────────────────────────────────────────────────────── */
-.input-row { margin-top: 2px; }
+/* The invitation prompt floats above every page, so a link opened anywhere is
+   answerable where it landed. */
+.join-float {
+  position: fixed;
+  z-index: 50;
+  right: 16px;
+  bottom: 24px;
+  width: min(440px, calc(100vw - 32px));
+}
+.join-float .card { margin-bottom: 0; box-shadow: 0 12px 32px rgba(19, 18, 21, 0.18); }
 .confirm {
   margin-top: 16px;
   padding: 14px;

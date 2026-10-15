@@ -21,7 +21,6 @@ import {
   parseInviteUrl,
 } from '../useNamespaceInvitation';
 
-
 const joinNamespace = vi.fn();
 const joinGroup = vi.fn();
 const createGroupInvitation = vi.fn();
@@ -42,7 +41,6 @@ vi.mock('@calimero-network/mero-react', () => ({
 
 vi.mock('@/constants/config', () => ({
   PACKAGE_NAME: 'com.calimero.mero-drive-docs',
-  DEEP_LINK_BASE: 'https://links.calimero.network',
 }));
 
 const INV = { inviter_signature: 'sig' } as never;

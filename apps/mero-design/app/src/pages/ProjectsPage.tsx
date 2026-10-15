@@ -201,8 +201,7 @@ export default function ProjectsPage() {
   async function copyInvite() {
     if (!invitation || inviteCopying) return;
     // Share the canonical link, not the bare token: it opens the desktop app
-    // where installed and the published web build otherwise. The join box on
-    // the Teams page still accepts either form, so links already shared work.
+    // where installed and the published web build otherwise.
     await navigator.clipboard.writeText(invitationLink(invitation));
     showToast("Invitation link copied to clipboard.", "success");
     // Show a brief loader, then reset back to the "Generate invitation" state so
@@ -365,8 +364,8 @@ export default function ProjectsPage() {
               <h2 className={styles.inviteTitle}>Invite people to {teamName}</h2>
               <p className={styles.inviteDesc}>
                 Generate an invitation link and share it with teammates. Opening it launches
-                the desktop app where installed, and the web build otherwise — or they can
-                paste it on the Teams page to join.
+                the desktop app where installed, and the web build otherwise, and asks
+                them to join.
               </p>
               <ol className={styles.inviteSteps}>
                 <li><b>1</b> Generate</li>

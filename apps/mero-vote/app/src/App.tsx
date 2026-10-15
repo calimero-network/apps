@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ConnectButton, clearContextId, useMero } from "@calimero-network/mero-react";
+import {
+  ConnectButton,
+  clearContextId,
+  useMero,
+} from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { InviteCard } from "./InviteCard";
 import { JoinCard } from "./JoinCard";
@@ -24,16 +28,18 @@ import {
 import { IdField, shortId } from "./ui";
 
 export function App() {
-  const { isAuthenticated, isLoading, applicationId, contextId, nodeUrl, logout } = useMero();
+  const {
+    isAuthenticated,
+    isLoading,
+    applicationId,
+    contextId,
+    nodeUrl,
+    logout,
+  } = useMero();
   // Mounted at the root, unconditionally: an invitation captured before login
   // has to be redeemed as soon as the session exists, which means this cannot
   // live inside a branch that only renders once a context is chosen.
-  const {
-    state: joinState,
-    redeemPasted,
-    confirmJoin,
-    declineJoin,
-  } = useJoinFromInvitation();
+  const join = useJoinFromInvitation();
 
   // Drop the stored context and re-render at the picker. A reload rather than
   // local state, for the same reason `ContextPicker.select` reloads: the
@@ -79,9 +85,26 @@ export function App() {
             </nav>
           )}
           <div className="topbar-right">
-            <span className="status-pill" title={isAuthenticated ? "Connected" : isLoading ? "Connecting" : "Not connected"}>
-              <span className={`dot ${isAuthenticated ? "live" : isLoading ? "wait" : ""}`} />
-              <span className="label">{isAuthenticated ? "Connected" : isLoading ? "Connecting" : "Not connected"}</span>
+            <span
+              className="status-pill"
+              title={
+                isAuthenticated
+                  ? "Connected"
+                  : isLoading
+                    ? "Connecting"
+                    : "Not connected"
+              }
+            >
+              <span
+                className={`dot ${isAuthenticated ? "live" : isLoading ? "wait" : ""}`}
+              />
+              <span className="label">
+                {isAuthenticated
+                  ? "Connected"
+                  : isLoading
+                    ? "Connecting"
+                    : "Not connected"}
+              </span>
             </span>
             {isAuthenticated && contextId && (
               /*
@@ -92,7 +115,12 @@ export function App() {
                 contexts, and comparing two of them is the normal way to watch
                 a CRDT converge.
               */
-              <button className="ghost sm collapse" onClick={switchContext} aria-label="Change context" title="Change context">
+              <button
+                className="ghost sm collapse"
+                onClick={switchContext}
+                aria-label="Change context"
+                title="Change context"
+              >
                 <SwitchIcon size={15} />
                 <span className="btn-label">Change context</span>
               </button>
@@ -140,25 +168,41 @@ export function App() {
                 Secret ballot · public audit
               </span>
               <p className="welcome-title">
-                Private polls with <span className="glass-grad-text">verifiable tallies</span>.
+                Private polls with{" "}
+                <span className="glass-grad-text">verifiable tallies</span>.
               </p>
               <p className="welcome-lead">
-                Ballots are encrypted in your browser and proven well-formed in zero
-                knowledge; no node — yours included — ever sees a vote. Everyone can
-                re-run the count.
+                Ballots are encrypted in your browser and proven well-formed in
+                zero knowledge; no node — yours included — ever sees a vote.
+                Everyone can re-run the count.
               </p>
               <ul className="welcome-points">
                 <li>
-                  <span className="icon-tile accent"><LockIcon size={18} /></span>
-                  <span><strong>Encrypted here</strong>Your choice leaves this tab as ciphertext and a proof.</span>
+                  <span className="icon-tile accent">
+                    <LockIcon size={18} />
+                  </span>
+                  <span>
+                    <strong>Encrypted here</strong>Your choice leaves this tab
+                    as ciphertext and a proof.
+                  </span>
                 </li>
                 <li>
-                  <span className="icon-tile"><KeyIcon size={18} /></span>
-                  <span><strong>Shared key</strong>Trustees hold the decryption key together; no one holds all of it.</span>
+                  <span className="icon-tile">
+                    <KeyIcon size={18} />
+                  </span>
+                  <span>
+                    <strong>Shared key</strong>Trustees hold the decryption key
+                    together; no one holds all of it.
+                  </span>
                 </li>
                 <li>
-                  <span className="icon-tile"><BarChartIcon size={18} /></span>
-                  <span><strong>Audited by everyone</strong>Every member&apos;s node recomputes the tally from the frozen ballots.</span>
+                  <span className="icon-tile">
+                    <BarChartIcon size={18} />
+                  </span>
+                  <span>
+                    <strong>Audited by everyone</strong>Every member&apos;s node
+                    recomputes the tally from the frozen ballots.
+                  </span>
                 </li>
               </ul>
             </div>
@@ -168,9 +212,9 @@ export function App() {
               </span>
               <h2>Connect a node</h2>
               <p>
-                Sign in to your Calimero node to see your voting groups. The login
-                modal discovers nodes on the usual local ports and accepts a URL
-                directly.
+                Sign in to your Calimero node to see your voting groups. The
+                login modal discovers nodes on the usual local ports and accepts
+                a URL directly.
               </p>
               <ConnectButton />
             </div>
@@ -184,12 +228,7 @@ export function App() {
                 Have an invitation?
               </h3>
             </div>
-            <JoinCard
-              state={joinState}
-              onSubmit={redeemPasted}
-              onConfirm={confirmJoin}
-              onDecline={declineJoin}
-            />
+            <JoinCard join={join} />
           </>
         ) : (
           <>
@@ -198,17 +237,15 @@ export function App() {
               to be reachable then too — otherwise an invitation received mid-session
               waits silently until the user happens to log out.
             */}
-            {joinState.status !== "idle" && (
+            {join.state.stage !== "idle" && (
               <div style={{ marginBottom: 16 }}>
-                <JoinCard
-                  state={joinState}
-                  onSubmit={redeemPasted}
-                  onConfirm={confirmJoin}
-                  onDecline={declineJoin}
-                />
+                <JoinCard join={join} />
               </div>
             )}
-            <VotePanel contextId={contextId} side={<InviteCard contextId={contextId} />} />
+            <VotePanel
+              contextId={contextId}
+              side={<InviteCard contextId={contextId} />}
+            />
           </>
         )}
       </main>
@@ -241,7 +278,8 @@ function SessionMenu({
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
@@ -272,15 +310,34 @@ function SessionMenu({
           <dl className="kv">
             <dt>Node</dt>
             <dd>
-              <code className="mono" title={nodeUrl ?? ""}>{nodeUrl ?? "—"}</code>
+              <code className="mono" title={nodeUrl ?? ""}>
+                {nodeUrl ?? "—"}
+              </code>
             </dd>
             <dt>Application</dt>
-            <dd>{applicationId ? <IdField value={applicationId} label="application id" /> : "—"}</dd>
+            <dd>
+              {applicationId ? (
+                <IdField value={applicationId} label="application id" />
+              ) : (
+                "—"
+              )}
+            </dd>
             <dt>Context</dt>
-            <dd>{contextId ? <IdField value={contextId} label="context id" /> : <span className="empty">not selected</span>}</dd>
+            <dd>
+              {contextId ? (
+                <IdField value={contextId} label="context id" />
+              ) : (
+                <span className="empty">not selected</span>
+              )}
+            </dd>
           </dl>
           <div className="menu-sep" />
-          <button className="menu-item danger" role="menuitem" onClick={onLogout} data-testid="menu-logout-btn">
+          <button
+            className="menu-item danger"
+            role="menuitem"
+            onClick={onLogout}
+            data-testid="menu-logout-btn"
+          >
             <LogOutIcon size={16} />
             Log out
           </button>

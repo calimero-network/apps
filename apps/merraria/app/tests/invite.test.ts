@@ -145,7 +145,7 @@ describe("acceptWorldInvite", () => {
     expect(err).toBeInstanceOf(WorldInviteError);
     const { outcome, message } = err as WorldInviteError;
     expect(outcome.reason).toBe("expired");
-    expect(shouldRetain(outcome)).toBe(false); // the modal acks the captured link
+    expect(shouldRetain(outcome)).toBe(false); // the prompt acks the captured link
     expect(message).toBe("This invitation has expired. Ask for a new link.");
     expect(calls.some((c) => c.url.includes("join-via-inheritance"))).toBe(false);
     expect(getSession().contextId).toBeNull();
@@ -160,7 +160,7 @@ describe("acceptWorldInvite", () => {
     expect(err).toBeInstanceOf(WorldInviteError);
     const { outcome, message } = err as WorldInviteError;
     expect(outcome.reason).toBe("no-one-online");
-    expect(shouldRetain(outcome)).toBe(true); // the modal leaves the link captured
+    expect(shouldRetain(outcome)).toBe(true); // the prompt leaves the link captured
     expect(message).toMatch(/No one in this world is online/);
     expect(getSession().contextId).toBeNull();
   });

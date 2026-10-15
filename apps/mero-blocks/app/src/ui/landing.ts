@@ -25,9 +25,7 @@ import {
   rememberWorldName,
   resolveApplicationId,
   worldNameOf,
-  WorldInviteError,
 } from "../net/admin";
-import { onInvitation as onInvite, shouldRetain } from "@calimero-apps/invite";
 import { beginAccountEnrolment } from "../net/account";
 import { beginWebLogin } from "../net/auth";
 import { inviteLink } from "../net/inviteLink";
@@ -41,6 +39,7 @@ import {
 } from "../net/session";
 import { showLandingAgain } from "../pages/landing/mount";
 import { deleteWorld } from "../state/persistence";
+import { setInviteJoiner } from "./invitePrompt";
 import { Panorama } from "./panorama";
 
 export interface LaunchChoice {
@@ -148,8 +147,6 @@ const css = `
 .mbl-card-menu button { background: none; border: none; color: #dfe7ee; padding: 9px 12px;
   text-align: left; font-size: 12px; cursor: pointer; }
 .mbl-card-menu button:hover { background: rgba(255,255,255,0.08); }
-.mbl-row2 { display: flex; gap: 8px; }
-.mbl-row2 .mbl-btn { flex: 1; }
 .mbl-world button { padding: 6px 14px; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
   background: #4f8cff; color: #fff; font-weight: 700; cursor: pointer; }
 .mbl-nodes { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
@@ -206,10 +203,6 @@ export const LOGO_SVG = `
 
 export class Landing {
   private root: HTMLElement;
-  /** Unsubscribe for the invite-link listener, so re-rendering does not stack them. */
-  private unsubscribeInvite: (() => void) | null = null;
-  /** Codes already tried this session — stops a failed link reopening the modal. */
-  private attemptedInvites = new Set<string>();
   private panorama: Panorama;
 
   constructor(parent: HTMLElement) {
@@ -236,6 +229,7 @@ export class Landing {
       if (opts.chromeless) this.root.classList.add("is-chromeless");
       this.cloudReturn = opts.cloud ?? null;
       this.render(defaults, (choice) => {
+        setInviteJoiner(null); // the game takes invitations from here on
         this.panorama.destroy();
         this.root.remove();
         resolve(choice);
@@ -296,6 +290,11 @@ export class Landing {
     // world list) — quitting a world always brings you back to the full list
     if (hasConnection() || isAuthenticated()) this.renderWorldPicker(defaults, done);
     else this.renderAnonymous(defaults, done);
+    // Remembered as it is typed: opening an invite link reloads the page, and
+    // the name a player chose before clicking it should still be theirs after.
+    this.root.querySelector<HTMLInputElement>("#mbl-name")?.addEventListener("input", (e) => {
+      localStorage.setItem("mb-name", (e.target as HTMLInputElement).value);
+    });
   }
 
   private commonInputs(defaults: { name: string }): string {
@@ -317,8 +316,9 @@ export class Landing {
 
   // states 2+3: logged into a node — the Minecraft world list. The current
   // world (if any) renders first, synchronously, with one-click Enter; the
-  // rest of the node's worlds load as cards below it. Create / invite-join
-  // live in popups so the card itself stays clean.
+  // rest of the node's worlds load as cards below it. Creating a world lives in
+  // a popup so the card itself stays clean; joining a friend's is the invite
+  // prompt, raised by opening their link (ui/invitePrompt.ts).
   private renderWorldPicker(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     const connected = hasConnection();
@@ -334,10 +334,7 @@ export class Landing {
       <div class="mbl-account-note" data-testid="account-note">${escapeHtml(note)}</div>
       <div class="mbl-worlds" data-testid="world-list"></div>
       <div class="mbl-error" data-testid="join-error"></div>
-      <div class="mbl-row2">
-        <button class="mbl-btn green" data-testid="create-world-open-btn">Create world</button>
-        <button class="mbl-btn primary" data-testid="join-invite-open-btn">Join with invite</button>
-      </div>
+      <button class="mbl-btn green" data-testid="create-world-open-btn">Create world</button>
       ${connected ? `<button class="mbl-btn ghost" data-testid="invite-btn">Invite friends</button>` : ""}
       <button class="mbl-link" data-testid="disconnect-btn">${leave}</button>
     `;
@@ -351,20 +348,16 @@ export class Landing {
     el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () =>
       this.openCreateWorldModal(defaults, done),
     );
-    el.querySelector("[data-testid=join-invite-open-btn]")!.addEventListener("click", () =>
-      this.openInviteModal(done),
-    );
 
-    // An invite LINK opened the app. This is the first state where joining is
-    // possible (a node is connected), and the captured intent is replayed to us
+    // An opened invite link is offered from here: this is the first state where
+    // joining is possible (a node is connected), and the capture holds the link
     // however long ago it arrived — including from before the web-login
-    // redirect. `attemptedInvites` keeps a failed one from reopening the modal
-    // on every re-render of this card.
-    this.unsubscribeInvite?.();
-    this.unsubscribeInvite = onInvite(({ token, resolve }) => {
-      if (this.attemptedInvites.has(token)) return;
-      this.attemptedInvites.add(token);
-      this.openInviteModal(done, { code: token, resolve });
+    // redirect. Joining starts the game in the invited world.
+    setInviteJoiner({
+      join: async (code) => {
+        await acceptWorldInvite(code);
+        done(this.readChoice());
+      },
     });
 
     const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]");
@@ -374,8 +367,8 @@ export class Landing {
       inviteBtn.textContent = "Creating invite…";
       try {
         // Share the link, not the bare code: it opens the desktop app where
-        // installed and the published web build otherwise, and the paste box
-        // still accepts either form.
+        // installed and the published web build otherwise, and opening it is
+        // the only way an invite gets in.
         const code = await createWorldInvite();
         await navigator.clipboard.writeText(inviteLink(code));
         inviteBtn.textContent = "Invite copied!";
@@ -417,7 +410,7 @@ export class Landing {
         const others = worlds.filter((w) => w.contextId !== current);
         if (!current && others.length === 0) {
           listEl.innerHTML = account
-            ? `<div class="mbl-note">No worlds for this account yet — create one, or join a friend's with an invite.</div>`
+            ? `<div class="mbl-note">No worlds for this account yet — create one, or open an invite link a friend sent you.</div>`
             : `<div class="mbl-note">No worlds on this node yet — create the first one!</div>`;
           return;
         }
@@ -591,89 +584,13 @@ export class Landing {
     });
   }
 
-  /** popup: join with a pasted invite. Locks (incl. close) while joining. */
-  /**
-   * `prefill` is set when an invite LINK opened the app rather than the user
-   * pasting a code. The modal opens with the code in place and submits itself,
-   * so following a link joins the world instead of asking the recipient to
-   * re-enter what the link already carried. The intent is acked only on success.
-   */
-  private openInviteModal(
-    done: (c: LaunchChoice) => void,
-    prefill?: { code: string; resolve: () => void },
-  ): void {
-    const shade = document.createElement("div");
-    shade.className = "mbl-modal-shade";
-    shade.dataset.testid = "invite-modal";
-    shade.innerHTML = `
-      <div class="mbl-modal">
-        <div class="mbl-modal-head">
-          <h3>Join with invite</h3>
-          <button class="mbl-modal-close" data-testid="invite-close" aria-label="Close">✕</button>
-        </div>
-        <label>invite code</label>
-        <input id="mbl-invite" data-testid="invite-input" placeholder="paste an invite code" />
-        <button class="mbl-btn primary" data-testid="join-invite-btn">Join world</button>
-        <div class="mbl-error" data-testid="picker-error"></div>
-      </div>
-    `;
-    this.root.appendChild(shade);
-    let busy = false;
-    // Set only for a link-opened invite; called once the join actually succeeds,
-    // or once the node has refused the invitation for good (expired, invalid,
-    // not allowed), so only a transient failure leaves the intent in the store
-    // to retry next load.
-    let prefillAck: (() => void) | null = null;
-    const closeBtn = shade.querySelector<HTMLButtonElement>("[data-testid=invite-close]")!;
-    const joinBtn = shade.querySelector<HTMLButtonElement>("[data-testid=join-invite-btn]")!;
-    const errEl = shade.querySelector<HTMLElement>("[data-testid=picker-error]")!;
-    shade.addEventListener("click", (e) => {
-      if (e.target === shade && !busy) shade.remove();
-    });
-    closeBtn.addEventListener("click", () => {
-      if (!busy) shade.remove();
-    });
-    joinBtn.addEventListener("click", async () => {
-      if (busy) return;
-      errEl.textContent = "";
-      const code = shade.querySelector<HTMLInputElement>("#mbl-invite")?.value ?? "";
-      if (!code.trim()) {
-        errEl.textContent = "Paste the invite code a friend sent you.";
-        return;
-      }
-      busy = true;
-      joinBtn.disabled = true;
-      closeBtn.disabled = true;
-      joinBtn.textContent = "Joining…";
-      try {
-        await acceptWorldInvite(code);
-        prefillAck?.();
-        shade.remove();
-        done(this.readChoice());
-      } catch (e) {
-        if (e instanceof WorldInviteError && !shouldRetain(e.outcome)) prefillAck?.();
-        errEl.textContent = `Could not join with invite: ${errText(e)}`;
-        busy = false;
-        joinBtn.disabled = false;
-        closeBtn.disabled = false;
-        joinBtn.textContent = "Join world";
-      }
-    });
-
-    if (prefill) {
-      const input = shade.querySelector<HTMLInputElement>("#mbl-invite");
-      if (input) input.value = prefill.code;
-      prefillAck = prefill.resolve;
-      joinBtn.click();
-    }
-  }
-
   // state 1: anonymous — the game is online-only, so the only path forward is
   // connecting a node. Nothing is probed on page load (no surprise browser
   // local-network prompt): the "Connect a node" button opens a popup that
   // pings the well-known local endpoints on demand.
   private renderAnonymous(defaults: { name: string; seed: number }, _done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
+    setInviteJoiner(null); // nothing to join with yet; a link waits for the picker
     el.innerHTML = `
       ${this.commonInputs(defaults)}
       <button class="mbl-btn green" data-testid="connect-open-btn">Connect a node</button>

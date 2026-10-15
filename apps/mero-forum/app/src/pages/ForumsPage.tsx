@@ -248,11 +248,12 @@ export default function ForumsPage() {
           scope: `Opens ${forum.name}`,
           hint: (
             <>
-              One paste puts them straight into <strong>{forum.name}</strong>.
-              Note what it grants: joining <strong>{nsName}</strong>, which is
-              what makes any forum in it reachable — forum access is inherited
-              from the space, so this is <em>not</em> narrower than the space
-              code. It just lands them in this forum instead of the forum list.
+              Opening the link puts them straight into{" "}
+              <strong>{forum.name}</strong>. Note what it grants: joining{" "}
+              <strong>{nsName}</strong>, which is what makes any forum in it
+              reachable — forum access is inherited from the space, so this is{" "}
+              <em>not</em> narrower than the space link. It just lands them in
+              this forum instead of the forum list.
             </>
           ),
         });

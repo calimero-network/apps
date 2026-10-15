@@ -1,5 +1,9 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import type { Actor, AppDriver, Feature } from "@calimero-apps/e2e-node/journey";
+import type {
+  Actor,
+  AppDriver,
+  Feature,
+} from "@calimero-apps/e2e-node/journey";
 
 const SYNC = 90_000;
 
@@ -42,17 +46,28 @@ async function press(actor: Actor, target: Locator): Promise<void> {
 
 async function waitForShell(actor: Actor): Promise<void> {
   const page = actor.page;
-  await expect(page.getByTestId("ns-switcher").or(page.getByTestId("ns-empty-state")).first()).toBeVisible({
+  await expect(
+    page
+      .getByTestId("ns-switcher")
+      .or(page.getByTestId("ns-empty-state"))
+      .first(),
+  ).toBeVisible({
     timeout: 60_000,
   });
 }
 
 async function waitForBoard(actor: Actor): Promise<void> {
-  await expect(actor.page.getByTestId("workspace-ready")).toBeVisible({ timeout: 60_000 });
+  await expect(actor.page.getByTestId("workspace-ready")).toBeVisible({
+    timeout: 60_000,
+  });
   await settleAliasGate(actor, 3_000);
 }
 
-async function eventually(actor: Actor, check: () => Promise<boolean>, message: string): Promise<void> {
+async function eventually(
+  actor: Actor,
+  check: () => Promise<boolean>,
+  message: string,
+): Promise<void> {
   let refreshed = Date.now();
   await expect
     .poll(
@@ -71,7 +86,9 @@ async function eventually(actor: Actor, check: () => Promise<boolean>, message: 
 }
 
 function allIssuesLink(page: Page): Locator {
-  return page.getByRole("navigation").getByRole("link", { name: /^All Issues/ });
+  return page
+    .getByRole("navigation")
+    .getByRole("link", { name: /^All Issues/ });
 }
 
 async function openList(actor: Actor): Promise<void> {
@@ -99,7 +116,10 @@ async function openIssue(actor: Actor, title: string): Promise<void> {
 async function onIssue(actor: Actor, title: string): Promise<boolean> {
   const page = actor.page;
   const heading = issueHeading(page);
-  if ((await heading.isVisible()) && (await heading.innerText()).trim() === title) {
+  if (
+    (await heading.isVisible()) &&
+    (await heading.innerText()).trim() === title
+  ) {
     await page.getByTestId("action-back").click();
   } else {
     await press(actor, allIssuesLink(page));
@@ -110,6 +130,9 @@ async function onIssue(actor: Actor, title: string): Promise<boolean> {
   await expect(heading).toHaveText(title, { timeout: 10_000 });
   return true;
 }
+
+/** The workspace this test created; `joined()` waits to be inside it. Re-set per test. */
+let workspace = "";
 
 const issues: Record<string, { title: string }> = {};
 const statuses: Record<string, { title: string; status: string }> = {};
@@ -125,12 +148,18 @@ const createIssue: Feature = {
     await openList(actor);
     await press(actor, page.getByTestId("open-new-issue-btn"));
     await page.getByTestId("field-title").fill(title);
-    await page.getByTestId("field-description").fill(`summary by ${actor.name}`);
+    await page
+      .getByTestId("field-description")
+      .fill(`summary by ${actor.name}`);
     await page.getByTestId("field-impact").fill(`impact by ${actor.name}`);
     await page.getByTestId("field-repro").fill(`repro by ${actor.name}`);
-    await page.getByTestId("field-resolution_criteria").fill(`resolved when ${actor.name} says so`);
+    await page
+      .getByTestId("field-resolution_criteria")
+      .fill(`resolved when ${actor.name} says so`);
     await page.getByTestId("action-create_issue").click();
-    await expect(page.getByTestId("action-create_issue")).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.getByTestId("action-create_issue")).toHaveCount(0, {
+      timeout: 30_000,
+    });
     await expect(issueRow(page, title)).toBeVisible({ timeout: 30_000 });
   },
   async seen(actor, by) {
@@ -158,7 +187,10 @@ const changeStatus: Feature = {
     await openIssue(actor, target.title);
     const control = page.getByTestId("action-set_status");
     await press(actor, control);
-    await page.getByRole("listbox").getByRole("option", { name: status, exact: true }).click();
+    await page
+      .getByRole("listbox")
+      .getByRole("option", { name: status, exact: true })
+      .click();
     await expect(control).toContainText(status, { timeout: 30_000 });
   },
   async seen(actor, by) {
@@ -168,7 +200,9 @@ const changeStatus: Feature = {
       actor,
       async () =>
         (await onIssue(actor, s.title)) &&
-        (await actor.page.getByTestId("action-set_status").innerText()).includes(s.status),
+        (
+          await actor.page.getByTestId("action-set_status").innerText()
+        ).includes(s.status),
       `${actor.name} sees ${by.name}'s status ${s.status}`,
     );
   },
@@ -185,7 +219,9 @@ const addComment: Feature = {
     await openIssue(actor, target.title);
     await page.getByTestId("field-body").fill(body);
     await page.getByTestId("action-add_comment").click();
-    await expect(page.getByTestId("item-comment").filter({ hasText: body })).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByTestId("item-comment").filter({ hasText: body }),
+    ).toBeVisible({ timeout: 30_000 });
   },
   async seen(actor, by) {
     const c = comments[by.name];
@@ -194,7 +230,10 @@ const addComment: Feature = {
       actor,
       async () =>
         (await onIssue(actor, c.title)) &&
-        (await actor.page.getByTestId("item-comment").filter({ hasText: c.body }).count()) > 0,
+        (await actor.page
+          .getByTestId("item-comment")
+          .filter({ hasText: c.body })
+          .count()) > 0,
       `${actor.name} sees ${by.name}'s comment`,
     );
   },
@@ -212,7 +251,9 @@ const addLabel: Feature = {
     await press(actor, page.getByTestId("action-add_label"));
     await page.getByTestId("field-label").fill(label);
     await page.getByTestId("field-label").press("Enter");
-    await expect(page.getByLabel(`Remove ${label}`, { exact: true })).toHaveCount(1, { timeout: 30_000 });
+    await expect(
+      page.getByLabel(`Remove ${label}`, { exact: true }),
+    ).toHaveCount(1, { timeout: 30_000 });
   },
   async seen(actor, by) {
     const l = labels[by.name];
@@ -221,7 +262,9 @@ const addLabel: Feature = {
       actor,
       async () =>
         (await onIssue(actor, l.title)) &&
-        (await actor.page.getByLabel(`Remove ${l.label}`, { exact: true }).count()) > 0,
+        (await actor.page
+          .getByLabel(`Remove ${l.label}`, { exact: true })
+          .count()) > 0,
       `${actor.name} sees ${by.name}'s label`,
     );
   },
@@ -232,12 +275,20 @@ export const driver: AppDriver = {
 
   async createNamespace(actor, name) {
     const page = actor.page;
+    workspace = name;
+    for (const record of [issues, statuses, comments, labels]) {
+      for (const key of Object.keys(record)) delete record[key];
+    }
     await waitForShell(actor);
     await press(actor, page.getByTestId("ns-create-btn").first());
     await page.getByTestId("ns-create-name").fill(name);
     await page.getByTestId("ns-create-submit").click();
-    await expect(page.getByTestId("ns-create-name")).toHaveCount(0, { timeout: 30_000 });
-    await expect(page.getByTestId("ns-switcher")).toContainText(name, { timeout: 30_000 });
+    await expect(page.getByTestId("ns-create-name")).toHaveCount(0, {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("ns-switcher")).toContainText(name, {
+      timeout: 30_000,
+    });
     await settleAliasGate(actor);
   },
 
@@ -245,19 +296,31 @@ export const driver: AppDriver = {
     const page = actor.page;
     await press(actor, page.getByTestId("repo-add-btn"));
     await page.getByTestId("repo-add-name").fill(name);
-    await page.getByTestId("repo-add-url").fill(`https://github.com/journey/${name}`);
+    await page
+      .getByTestId("repo-add-url")
+      .fill(`https://github.com/journey/${name}`);
     await page.getByTestId("repo-add-submit").click();
-    await expect(page.getByTestId("repo-add-name")).toHaveCount(0, { timeout: 30_000 });
-    await expect(page.getByTestId("repo-header-name")).toHaveText(name, { timeout: 30_000 });
+    await expect(page.getByTestId("repo-add-name")).toHaveCount(0, {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("repo-header-name")).toHaveText(name, {
+      timeout: 30_000,
+    });
     await waitForBoard(actor);
   },
 
   async openSpace(actor, name) {
     const page = actor.page;
     const item = page.getByTestId("repo-list-item").filter({ hasText: name });
-    await eventually(actor, async () => (await item.count()) > 0, `${actor.name} sees the repo ${name}`);
+    await eventually(
+      actor,
+      async () => (await item.count()) > 0,
+      `${actor.name} sees the repo ${name}`,
+    );
     await press(actor, item.first());
-    await expect(page.getByTestId("repo-header-name")).toHaveText(name, { timeout: 30_000 });
+    await expect(page.getByTestId("repo-header-name")).toHaveText(name, {
+      timeout: 30_000,
+    });
     await waitForBoard(actor);
   },
 
@@ -265,7 +328,12 @@ export const driver: AppDriver = {
     const page = actor.page;
     await press(actor, page.getByTestId("nav-members"));
     const nudge = page.getByTestId("alias-input");
-    if (await nudge.waitFor({ state: "visible", timeout: 5_000 }).then(() => true, () => false)) {
+    if (
+      await nudge.waitFor({ state: "visible", timeout: 5_000 }).then(
+        () => true,
+        () => false,
+      )
+    ) {
       await page.keyboard.press("Escape");
       await expect(nudge).toHaveCount(0, { timeout: 5_000 });
     }
@@ -282,14 +350,23 @@ export const driver: AppDriver = {
     return link;
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    await waitForShell(actor);
-    await press(actor, page.getByTestId("ns-join-btn").first());
-    await page.getByTestId("join-code-input").fill(link);
-    await page.getByTestId("join-submit-btn").click();
-    await expect(page.getByTestId("join-code-input")).toHaveCount(0, { timeout: 60_000 });
-    await expect(page.getByTestId("ns-switcher")).toBeVisible({ timeout: 30_000 });
+    const landed = expect(page.getByTestId("ns-switcher")).toContainText(
+      workspace,
+      { timeout: SYNC },
+    );
+    const failed = page
+      .locator('[data-testid="invite-status"][data-stage="failed"]')
+      .waitFor({ state: "visible", timeout: SYNC })
+      .then(async () => {
+        throw new Error(
+          `join refused: ${await page.getByTestId("invite-status").innerText()}`,
+        );
+      });
+    landed.catch(() => undefined);
+    failed.catch(() => undefined);
+    await Promise.race([landed, failed]);
     await settleAliasGate(actor);
   },
 

@@ -10,7 +10,6 @@ const tracked = new WeakSet<Page>();
 const boards: Record<string, string> = {};
 const named = new Set<string>();
 let teamId = "";
-let teamName = "";
 let mainBoard = "";
 let granted = false;
 
@@ -353,7 +352,12 @@ export const driver: AppDriver = {
   async createNamespace(actor, name) {
     track(actor);
     const page = actor.page;
-    teamName = name;
+    // A fresh namespace per test: nothing from the previous test's team may
+    // leak into this one.
+    for (const key of Object.keys(boards)) delete boards[key];
+    named.clear();
+    mainBoard = "";
+    granted = false;
     await expect(page.getByRole("heading", { name: "Your Teams" })).toBeVisible({ timeout: 60_000 });
     await page.getByPlaceholder("New team name").fill(name);
     await page.getByRole("button", { name: "Create", exact: true }).click();
@@ -414,19 +418,21 @@ export const driver: AppDriver = {
     return (await token.getAttribute("title")) ?? (await token.innerText());
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     track(actor);
     const page = actor.page;
-    await expect(page.getByRole("heading", { name: "Your Teams" })).toBeVisible({ timeout: 60_000 });
-    await page.getByPlaceholder("Paste invitation code").fill(link);
-    await page.getByRole("button", { name: "Join", exact: true }).click();
-    await expect(page.getByTestId("toast").filter({ hasText: /Joined team|already in this team/ })).toBeVisible({
-      timeout: SYNC,
-    });
-    const card = page.locator("button", { hasText: teamName });
-    await expect(card).toBeVisible({ timeout: 60_000 });
-    await card.click();
-    await page.waitForURL(/\/teams\/[^/]+\/projects$/, { timeout: 30_000 });
+    const landed = expect(page.getByTestId("toast").filter({ hasText: /Joined team|already in this team/ }))
+      .toBeVisible({ timeout: SYNC })
+      .then(() => page.waitForURL(new RegExp(`${teamPath()}$`), { timeout: 30_000 }));
+    const failed = page
+      .locator('[data-testid="invite-status"][data-stage="failed"]')
+      .waitFor({ state: "visible", timeout: SYNC })
+      .then(async () => {
+        throw new Error(`join refused: ${await page.getByTestId("invite-status").innerText()}`);
+      });
+    landed.catch(() => undefined);
+    failed.catch(() => undefined);
+    await Promise.race([landed, failed]);
     await expect(projectsTab(page)).toBeVisible({ timeout: 30_000 });
   },
 

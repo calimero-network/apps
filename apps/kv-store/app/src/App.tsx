@@ -1,4 +1,8 @@
-import { ConnectButton, clearContextId, useMero } from "@calimero-network/mero-react";
+import {
+  ConnectButton,
+  clearContextId,
+  useMero,
+} from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { InviteCard } from "./InviteCard";
 import { JoinCard } from "./JoinCard";
@@ -6,16 +10,18 @@ import { KvPanel } from "./KvPanel";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
 
 export function App() {
-  const { isAuthenticated, isLoading, applicationId, contextId, nodeUrl, logout } = useMero();
+  const {
+    isAuthenticated,
+    isLoading,
+    applicationId,
+    contextId,
+    nodeUrl,
+    logout,
+  } = useMero();
   // Mounted at the root, unconditionally: an invitation captured before login
   // has to be redeemed as soon as the session exists, which means this cannot
   // live inside a branch that only renders once a context is chosen.
-  const {
-    state: joinState,
-    redeemPasted,
-    confirmJoin,
-    declineJoin,
-  } = useJoinFromInvitation();
+  const join = useJoinFromInvitation();
 
   // Drop the stored context and re-render at the picker. A reload rather than
   // local state, for the same reason `ContextPicker.select` reloads: the
@@ -31,9 +37,10 @@ export function App() {
       <header>
         <h1>KV Store</h1>
         <p className="sub">
-          The reference Calimero app. An <code>UnorderedMap&lt;String,
-          LwwRegister&lt;String&gt;&gt;</code> in a WASM contract, driven from a
-          client generated out of that contract&apos;s own ABI.
+          The reference Calimero app. An{" "}
+          <code>UnorderedMap&lt;String, LwwRegister&lt;String&gt;&gt;</code> in
+          a WASM contract, driven from a client generated out of that
+          contract&apos;s own ABI.
         </p>
       </header>
 
@@ -53,12 +60,7 @@ export function App() {
       ) : !contextId ? (
         <>
           <ContextPicker applicationId={applicationId} />
-          <JoinCard
-            state={joinState}
-            onSubmit={redeemPasted}
-            onConfirm={confirmJoin}
-            onDecline={declineJoin}
-          />
+          <JoinCard join={join} />
         </>
       ) : (
         <>
@@ -67,14 +69,7 @@ export function App() {
             to be reachable then too — otherwise an invitation received mid-session
             waits silently until the user happens to log out.
           */}
-          {joinState.status !== "idle" && (
-            <JoinCard
-              state={joinState}
-              onSubmit={redeemPasted}
-              onConfirm={confirmJoin}
-              onDecline={declineJoin}
-            />
-          )}
+          {join.state.stage !== "idle" && <JoinCard join={join} />}
           <div className="card context-bar">
             <div className="row" style={{ justifyContent: "space-between" }}>
               <span className="empty">

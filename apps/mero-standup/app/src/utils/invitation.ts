@@ -1,6 +1,6 @@
 import bs58 from "bs58";
 import { deflateSync, inflateSync } from "fflate";
-import { createLink } from "@calimero-network/mero-platform";
+import { buildInviteLink } from "@calimero-apps/invite";
 import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
 
 /**
@@ -46,12 +46,16 @@ export interface TeamInvitationPayload {
   contextId: string;
 }
 
-export function serializeInvitationPayload(payload: TeamInvitationPayload): string {
+export function serializeInvitationPayload(
+  payload: TeamInvitationPayload,
+): string {
   return JSON.stringify(payload);
 }
 
 /** Parse a payload JSON string, returning null rather than throwing. */
-export function parseInvitationPayload(json: string): TeamInvitationPayload | null {
+export function parseInvitationPayload(
+  json: string,
+): TeamInvitationPayload | null {
   try {
     const v = JSON.parse(json) as unknown;
     if (!v || typeof v !== "object") return null;
@@ -102,7 +106,9 @@ const MAX_DECODED_BYTES = 64 * 1024;
  * byte, a bomb would silently arrive as a valid-looking MAX-byte payload.
  */
 function inflateBounded(bytes: Uint8Array): Uint8Array | null {
-  const out = inflateSync(bytes, { out: new Uint8Array(MAX_DECODED_BYTES + 1) });
+  const out = inflateSync(bytes, {
+    out: new Uint8Array(MAX_DECODED_BYTES + 1),
+  });
   return out.length > MAX_DECODED_BYTES ? null : out;
 }
 
@@ -179,31 +185,7 @@ export function decodeInvitationPayload(encoded: string): string | null {
 }
 
 /**
- * Accept whatever the user pasted: a full https or `calimero://` link, a bare
- * encoded blob, or raw JSON. Returns the payload JSON string, or null.
- */
-export function parseInvitationInput(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  try {
-    if (
-      trimmed.startsWith("http://") ||
-      trimmed.startsWith("https://") ||
-      trimmed.startsWith("calimero://")
-    ) {
-      const parsed = new URL(trimmed);
-      const invitation = parsed.searchParams.get("invitation");
-      return invitation ? decodeInvitationPayload(invitation) : null;
-    }
-    if (trimmed.startsWith("{") && trimmed.endsWith("}")) return trimmed;
-    return decodeInvitationPayload(trimmed);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The canonical shareable link — HTTPS, built by the platform SDK:
+ * The one link an inviter shares — HTTPS, the shape every app in this repo uses:
  * `https://links.calimero.network/com.calimero.mero-standup/join?invitation=…`
  *
  * ⚠️ This only opens anything once the published bundle declares
@@ -212,24 +194,10 @@ export function parseInvitationInput(input: string): string | null {
  * ("app has no frontend URL; cannot open"). So shipping this code is necessary
  * but not sufficient: the app also has to have a deployed frontend whose origin
  * is in the bundle.
+ *
+ * It is the only form offered: no `calimero://` variant, no raw code. Opening
+ * it is how the invitation reaches the app (see `primeInvitationCapture`).
  */
 export function generateInvitationUrl(payloadJson: string): string {
-  return createLink(APP_SLUG, "join", {
-    invitation: encodeInvitationPayload(payloadJson),
-  });
-}
-
-/**
- * Device-local link. Kept separate and NOT offered in the UI.
- *
- * The HTTPS link above already hands off to the desktop on a machine that has
- * it, so showing both asks the user to make a choice they cannot evaluate —
- * mero-chat-pwa dropped its second link for exactly this reason (its PR #9).
- * This stays exported for a "copy desktop link" affordance if one is ever
- * genuinely needed, and because the platform SDK is HTTPS-only by design.
- */
-export const CALIMERO_JOIN_DEEP_LINK = `calimero://${APP_SLUG}/join`;
-
-export function generateInvitationDeepLink(payloadJson: string): string {
-  return `${CALIMERO_JOIN_DEEP_LINK}?invitation=${encodeInvitationPayload(payloadJson)}`;
+  return buildInviteLink(APP_SLUG, encodeInvitationPayload(payloadJson));
 }
