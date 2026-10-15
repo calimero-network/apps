@@ -510,12 +510,20 @@ test('people edit one document live: formatted, restructured, undone, apart, the
       const runs = ['a', 'b', 'c'].map((letter) =>
         `${letter}${round}`.repeat(3),
       );
-      await Promise.all(
-        everyone.map(async (w, i) => {
-          await caretToEnd(w.page, 0);
-          await typeLive(w.page, runs[i]);
-        }),
-      );
+      // Every caret must be at the end before anyone types. A window that
+      // still shows the last round's text, or a caret placed after a peer's
+      // first keystrokes arrived, starts the run part-way along another one:
+      // a legitimate split the CRDT is right to keep, not the bug this hunts.
+      for (const w of everyone) {
+        await expect
+          .poll(async () => (await shownLines(w.page))[0], {
+            message: `round ${round}: every window shows the text before it`,
+            timeout: 30_000,
+          })
+          .toBe(before.trim());
+      }
+      await Promise.all(everyone.map((w) => caretToEnd(w.page, 0)));
+      await Promise.all(everyone.map((w, i) => typeLive(w.page, runs[i])));
       // `settle` alone can agree on a moment before a slower window has sent
       // its last keystrokes. Wait for every typed character first; a run that
       // never lands still fails here, by count.
