@@ -32,7 +32,6 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
   };
 });
 vi.mock('../pages/landing/LandingPage', () => ({ default: () => null }));
-vi.mock('../pages/join', () => ({ default: () => null }));
 vi.mock('../pages/workspace', async () => {
   const { useDriveWorkspace } = await import('@/hooks/useDriveWorkspace');
   const Name = () => <b>{(useDriveWorkspace() as unknown as { name: string }).name}</b>;

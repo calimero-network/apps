@@ -1,8 +1,10 @@
-// Top-bar workspace switcher: the app's namespaces plus the create / join actions.
+// Top-bar workspace switcher: the app's namespaces plus the create action.
+// There is no join action: an invitation is joined by opening its link
+// (InvitationPrompt), never by pasting it.
 // namespaceId doubles as the root groupId under the current admin API.
 
 import React, { useRef, useState } from 'react';
-import { ChevronsUpDown, Link, Plus } from 'lucide-react';
+import { ChevronsUpDown, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -17,7 +19,6 @@ import {
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { namespaceLabel } from '@/lib/namespaceLabel';
 import { NamespaceCreateDialog } from './NamespaceCreateDialog';
-import { NamespaceJoinDialog } from './NamespaceJoinDialog';
 
 export function NamespaceSwitcher() {
   const {
@@ -35,7 +36,6 @@ export function NamespaceSwitcher() {
   // Clicking"). The dialog returns focus to the trigger itself on close, so
   // skip the menu's own hand-back when an item opens one.
   const openingDialog = useRef(false);
-  const [showJoin, setShowJoin] = useState(false);
 
   if (loading && namespaces.length === 0) {
     return (
@@ -57,9 +57,7 @@ export function NamespaceSwitcher() {
   }
 
   const current = namespaces.find((n) => n.namespaceId === selectedNamespaceId);
-  const currentLabel = current
-    ? namespaceLabel(current.name)
-    : null;
+  const currentLabel = current ? namespaceLabel(current.name) : null;
 
   return (
     <>
@@ -95,7 +93,7 @@ export function NamespaceSwitcher() {
               <DropdownMenuLabel className="px-2 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Workspaces
               </DropdownMenuLabel>
-              {/* Only the list scrolls, so the create / join actions stay reachable. */}
+              {/* Only the list scrolls, so the create action stays reachable. */}
               <DropdownMenuRadioGroup
                 value={selectedNamespaceId ?? ''}
                 onValueChange={selectNamespace}
@@ -133,30 +131,12 @@ export function NamespaceSwitcher() {
             <Plus className="h-4 w-4 text-muted-foreground" />
             New workspace
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className="gap-2.5"
-            onSelect={() => {
-              openingDialog.current = true;
-              setShowJoin(true);
-            }}
-          >
-            <Link className="h-4 w-4 text-muted-foreground" />
-            Join with invite link
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       {showCreate && (
         <NamespaceCreateDialog
           onClose={() => setShowCreate(false)}
           onCreated={async () => {
-            await refetch();
-          }}
-        />
-      )}
-      {showJoin && (
-        <NamespaceJoinDialog
-          onClose={() => setShowJoin(false)}
-          onJoined={async () => {
             await refetch();
           }}
         />

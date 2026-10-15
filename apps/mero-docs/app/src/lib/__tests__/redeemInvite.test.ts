@@ -107,6 +107,38 @@ describe('redeemInvite', () => {
     expect(inviteFailureCopy(outcome, 'workspace')).toBe('something odd');
   });
 
+  // Both are 409s, which read as a generic refusal; the node's message is
+  // the only thing that says which one, and they need different people.
+  it('names a spent link, from the node message, after the general line', async () => {
+    const c = calls({
+      joinNamespace: vi.fn(() =>
+        Promise.reject(
+          httpError(
+            409,
+            'identity ab has already used this invitation to join group cd; a new invitation is required',
+          ),
+        ),
+      ),
+    });
+    const outcome = failed(await redeemInvite(workspace, c));
+    expect(shouldRetain(outcome)).toBe(false);
+    expect(inviteFailureCopy(outcome, 'workspace')).toBe(
+      "You can't join this workspace with this invitation. Ask an admin to invite you again. You've already used this link — ask for a new one.",
+    );
+  });
+
+  it('names a removal, from the node message', async () => {
+    const c = calls({
+      joinNamespace: vi.fn(() =>
+        Promise.reject(httpError(409, 'RemovedFromGroup { group_id: cd }')),
+      ),
+    });
+    const outcome = failed(await redeemInvite(workspace, c));
+    expect(inviteFailureCopy(outcome, 'workspace')).toMatch(
+      /An admin removed you — ask to be re-added\.$/,
+    );
+  });
+
   it('joins a folder through the folder call, never consulting the namespace list', async () => {
     const c = calls();
     const outcome = await redeemInvite(folder, c);

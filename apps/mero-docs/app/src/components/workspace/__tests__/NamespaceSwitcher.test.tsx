@@ -21,9 +21,6 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
 vi.mock('../NamespaceCreateDialog', () => ({
   NamespaceCreateDialog: () => <div role="dialog" aria-label="create dialog" />,
 }));
-vi.mock('../NamespaceJoinDialog', () => ({
-  NamespaceJoinDialog: () => <div role="dialog" aria-label="join dialog" />,
-}));
 
 // Radix DropdownMenu opens on pointerdown in jsdom.
 function openMenu() {
@@ -67,15 +64,19 @@ describe('NamespaceSwitcher', () => {
     expect(selectNamespace).toHaveBeenCalledWith('ns-solo');
   });
 
-  it('opens the create and join dialogs from the menu', () => {
+  it('opens the create dialog from the menu', () => {
     render(<NamespaceSwitcher />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /New workspace/i }));
     expect(screen.getByRole('dialog', { name: 'create dialog' })).toBeTruthy();
+  });
+
+  // An invitation is joined by opening its link; there is nowhere to paste one.
+  it('offers no way to join by pasting a link', () => {
+    render(<NamespaceSwitcher />);
     openMenu();
-    fireEvent.click(
-      screen.getByRole('menuitem', { name: /Join with invite link/i }),
-    );
-    expect(screen.getByRole('dialog', { name: 'join dialog' })).toBeTruthy();
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+      'New workspace',
+    ]);
   });
 });

@@ -83,7 +83,7 @@ describe('JoinInviteCard secondary action', () => {
       <JoinInviteCard
         parsed={parsed}
         onJoined={vi.fn()}
-        secondaryAction={{ label: 'Back to invite link', onClick: onSecondary }}
+        secondaryAction={{ label: 'Not now', onClick: onSecondary }}
       />,
     );
 
@@ -91,7 +91,7 @@ describe('JoinInviteCard secondary action', () => {
     await screen.findByRole('button', { name: /joining/i });
 
     const back = screen.getByRole('button', {
-      name: /back to invite link/i,
+      name: /not now/i,
     }) as HTMLButtonElement;
     expect(back.disabled).toBe(true);
 

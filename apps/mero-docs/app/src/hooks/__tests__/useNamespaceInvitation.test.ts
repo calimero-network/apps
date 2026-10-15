@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   buildInviteUrl,
-  extractInviteParams,
   inviteExpiryMs,
   isInviteExpired,
   parseInviteUrl,
@@ -13,7 +12,6 @@ import type { SignedGroupOpenInvitation } from '@calimero-network/mero-react';
 // deterministically (vitest may or may not load .env.local).
 vi.mock('@/constants/config', () => ({
   PACKAGE_NAME: 'com.calimero.mero-drive-docs',
-  DEEP_LINK_BASE: 'https://links.calimero.network',
 }));
 
 // The namespace display name rides the invite URL (`&name=`) so a
@@ -39,9 +37,9 @@ describe('buildInviteUrl - canonical deep link', () => {
     expect(params.get('invitation')).toBeTruthy();
   });
 
-  it('appends the name param, percent-encoded, when provided', () => {
+  it('appends the name param, encoded, when provided', () => {
     const url = buildInviteUrl('namespace', 'ns1', INV, 'My Space');
-    expect(url).toContain('&name=My%20Space');
+    expect(new URL(url).searchParams.get('name')).toBe('My Space');
   });
 
   it('omits the name param when no name is provided', () => {
@@ -77,80 +75,40 @@ describe('buildInviteUrl - canonical deep link', () => {
   });
 });
 
-describe('extractInviteParams', () => {
+// Links already shared keep working: they arrive through the shared capture
+// as plain query params, in whichever shape they were minted.
+describe('parseInviteUrl - links already out there', () => {
   const canonical = buildInviteUrl('namespace', 'ns-1', INV, 'Test');
+  const payload = new URL(canonical).searchParams.get('invitation')!;
 
-  it('extracts params from a canonical deep link', () => {
-    const params = extractInviteParams(canonical);
-    expect(params).not.toBeNull();
-    expect(params!.get('kind')).toBe('namespace');
-    expect(params!.get('id')).toBe('ns-1');
-    expect(params!.has('invitation')).toBe(true);
-  });
-
-  it('extracts params from a legacy invite= URL (links in the wild)', () => {
-    const legacy =
-      'https://mero-docs.vercel.app/join?kind=namespace&id=ns-legacy&invite=eyJ0ZXN0Ijp0cnVlfQ';
-    const params = extractInviteParams(legacy);
-    expect(params).not.toBeNull();
-    expect(params!.get('id')).toBe('ns-legacy');
-  });
-
-  it('extracts params from a bare query string with a leading ?', () => {
-    const params = extractInviteParams(
-      '?kind=namespace&id=ns-3&invitation=eyJ0ZXN0Ijp0cnVlfQ',
+  it('reads the legacy invite= payload and ns= id', () => {
+    const parsed = parseInviteUrl(
+      new URLSearchParams(`invite=${payload}&ns=ns-1`),
     );
-    expect(params).not.toBeNull();
-    expect(params!.get('id')).toBe('ns-3');
-  });
-
-  it('extracts params from a bare legacy query string without a leading ?', () => {
-    const params = extractInviteParams(
-      'kind=namespace&id=ns-4&invite=eyJ0ZXN0Ijp0cnVlfQ',
-    );
-    expect(params).not.toBeNull();
-    expect(params!.get('id')).toBe('ns-4');
-  });
-
-  it('tolerates surrounding whitespace and newlines', () => {
-    const padded = `  \n  ${canonical}  \n`;
-    const params = extractInviteParams(padded);
-    expect(params).not.toBeNull();
-    expect(params!.get('id')).toBe('ns-1');
-  });
-
-  it('returns null for empty or whitespace-only input', () => {
-    expect(extractInviteParams('')).toBeNull();
-    expect(extractInviteParams('   \n  ')).toBeNull();
-  });
-
-  it('returns null for a URL that has no invite param', () => {
-    expect(
-      extractInviteParams('https://mero-docs.vercel.app/app?foo=bar'),
-    ).toBeNull();
-  });
-
-  it('returns null for a raw base64 payload (no surrounding params)', () => {
-    // Just the payload value without `invitation=` and the other
-    // required params is not enough - parseInviteUrl needs `id` too.
-    expect(extractInviteParams('eyJpbnZpdGF0aW9uIjp7fX0')).toBeNull();
-  });
-
-  it('round-trips through parseInviteUrl', () => {
-    const params = extractInviteParams(canonical);
-    const parsed = parseInviteUrl(params!);
     expect('error' in parsed).toBe(false);
+    expect((parsed as ParsedInvite).kind).toBe('namespace');
     expect((parsed as ParsedInvite).targetId).toBe('ns-1');
-    expect((parsed as ParsedInvite).targetName).toBe('Test');
   });
 
-  it('parses a legacy invite= payload through parseInviteUrl', () => {
-    const params = extractInviteParams(
-      '?kind=group&id=g-1&invite=eyJ0ZXN0Ijp0cnVlfQ',
+  it('falls back to the group the signed invitation names when id is absent', () => {
+    const signed = buildInviteUrl('namespace', 'x', {
+      invitation: { group_id: [0xab, 0x01, 0xff] },
+    } as unknown as SignedGroupOpenInvitation);
+    const token = new URL(signed).searchParams.get('invitation')!;
+    const parsed = parseInviteUrl(new URLSearchParams(`invitation=${token}`));
+    expect((parsed as ParsedInvite).targetId).toBe('ab01ff');
+  });
+
+  it('reports a link with neither an id nor a group in the invitation', () => {
+    const parsed = parseInviteUrl(new URLSearchParams(`invitation=${payload}`));
+    expect(parsed).toEqual({ error: 'Missing target id in invite link.' });
+  });
+
+  it('reports a truncated payload instead of throwing', () => {
+    const parsed = parseInviteUrl(
+      new URLSearchParams('invitation=%%%&kind=namespace&id=ns-1'),
     );
-    const parsed = parseInviteUrl(params!);
-    expect('error' in parsed).toBe(false);
-    expect((parsed as ParsedInvite).kind).toBe('group');
+    expect('error' in parsed && parsed.error).toMatch(/could not be decoded/);
   });
 });
 
@@ -173,7 +131,9 @@ describe('invite expiry', () => {
   // on its own, which is why the snake_case name is now the one under test and
   // the camelCase tolerance is asserted separately, as tolerance.
   const withExpiry = (ts: number) =>
-    ({ invitation: { expiration_timestamp: ts } }) as unknown as SignedGroupOpenInvitation;
+    ({
+      invitation: { expiration_timestamp: ts },
+    }) as unknown as SignedGroupOpenInvitation;
 
   it('flags a past timestamp as expired in any unit', () => {
     const past = Math.floor(NOW / 1000) - 3600; // one hour ago, seconds

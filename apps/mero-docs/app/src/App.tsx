@@ -13,8 +13,11 @@
 //   /app/*     → WorkspacePage (auth-guarded shell, mounts
 //                 WorkspaceLayout; screen URLs in lib/routes)
 //   *          → redirect to /
+//
+// Above the routes: InvitationPrompt, which offers an invitation link that
+// was opened (on any route, or handed to the app while it is open).
 
-import React, { type ReactNode } from 'react';
+import React, { useCallback, useState, type ReactNode } from 'react';
 import {
   BrowserRouter,
   Navigate,
@@ -30,37 +33,18 @@ import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 import { DriveWorkspaceProvider } from '@/hooks/useDriveWorkspace';
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { PACKAGE_NAME } from '@/constants/config';
-import { hasInvitePayload } from '@/hooks/useNamespaceInvitation';
 import { readReturnTo } from '@/lib/routes';
 
 import DevPanel from '@/components/dev/DevPanel';
+import { InvitationPrompt } from '@/components/workspace/InvitationPrompt';
 
 import LandingPage from './pages/landing/LandingPage';
 import WorkspacePage from './pages/workspace';
-import JoinPage from './pages/join';
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
 // Clears EditorStatusBar's bottom bar so a toast never covers "Saved • E2E Encrypted".
 const TOAST_BOTTOM_OFFSET = 64;
-
-
-// Deep-link landings arrive on the frontend ROOT with the forwarded query
-// (links.calimero.network appends the full query string), so an
-// `invitation`/`invite` param on any route funnels into the /join flow.
-// history-replace so refresh/back does not re-trigger the redirect.
-function InviteRedirect() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  React.useEffect(() => {
-    if (location.pathname === '/join') return;
-    const params = new URLSearchParams(location.search);
-    if (hasInvitePayload(params)) {
-      navigate(`/join?${params.toString()}`, { replace: true });
-    }
-  }, [location, navigate]);
-  return null;
-}
 
 // ── Desktop auth-skip ─────────────────────────────────────────────────────────
 //
@@ -112,26 +96,20 @@ const hashNodeUrl =
  * `/login` route. Deleting that page took the redirect with it; the landing
  * routes need the same guard, because they are now where login begins and ends.
  * A visitor bounced here from a deep link goes on to it (see WorkspacePage).
+ *
+ * An invitation link that landed on `/` is not in the URL by now: the shared
+ * capture took it at boot (index.tsx), and InvitationPrompt sits above the
+ * routes, so this redirect cannot lose it.
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
-  const location = useLocation();
-  // ⚠️ An invite link beats this redirect. links.calimero.network forwards the
-  // invite query to the frontend ROOT, so a signed-in person who clicks one
-  // lands on `/` holding an `invitation` param, and two effects then fire in
-  // the same commit: InviteRedirect's `navigate('/join?…')` and this
-  // component's `<Navigate to="/app">`. `Navigate` renders deeper in the tree,
-  // so its effect runs LAST and wins - and `to="/app"` carries no query, so
-  // the invitation is gone. The invite simply vanished for exactly the people
-  // most likely to have one: existing users. Standing down here leaves
-  // InviteRedirect's navigation the only one in flight.
-  if (hasInvitePayload(new URLSearchParams(location.search))) return null;
   if (isLoading) return null; // the auth probe is still in flight
-  if (isAuthenticated) return <Navigate to={readReturnTo() ?? '/app'} replace />;
+  if (isAuthenticated)
+    return <Navigate to={readReturnTo() ?? '/app'} replace />;
   return <>{children}</>;
 }
 
-/** `*` → `/`, keeping the query. See the route comment below. */
+/** `*` → `/`, keeping the query (e.g. `?node=` on a dev window). */
 function CatchAllRedirect() {
   const location = useLocation();
   const search = location.search;
@@ -160,10 +138,78 @@ function AppToaster() {
   );
 }
 
+/**
+ * The routes, under the app-level invitation prompt.
+ *
+ * `joins` keys the workspace: a join accepted while the workspace is already
+ * open (a desktop deep link arriving on /app) must show the new workspace, and
+ * navigating to the route the person is already on does not remount it. A
+ * fresh mount reads the namespace list again and lands on the just-joined
+ * workspace, exactly as arriving from a separate /join page used to.
+ */
+function AppRoutes() {
+  const navigate = useNavigate();
+  const [joins, setJoins] = useState(0);
+  const onJoined = useCallback(() => {
+    setJoins((n) => n + 1);
+    navigate('/app', { replace: true });
+  }, [navigate]);
+
+  return (
+    <>
+      <InvitationPrompt onJoined={onJoined} />
+      <Routes>
+        {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
+              real URLs so they can be shared and opened cold, which needs a route
+              here - otherwise this app's catch-all swallows the deep link before
+              the page ever renders. */}
+        {LANDING_PATHS.map((landingPath) => (
+          <Route
+            key={landingPath}
+            path={landingPath}
+            // Only `/` bounces a signed-in visitor into the app; `/docs` and
+            // `/preview` are reference pages someone signed in may still want.
+            element={
+              landingPath === '/' ? (
+                <RedirectIfAuthed>
+                  <LandingPage />
+                </RedirectIfAuthed>
+              ) : (
+                <LandingPage />
+              )
+            }
+          />
+        ))}
+        {/* The /login PAGE is gone - every app had one, every one looked
+              different, and its whole content was a button the visitor had
+              already pressed to get there. The path stays as a redirect so a
+              bookmark lands on the front door instead of a blank route. */}
+        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route
+          path="/app/*"
+          element={
+            <DriveWorkspaceProvider key={joins}>
+              {/* Inside the workspace: a confirmation's body may name members. */}
+              <ConfirmProvider>
+                <WorkspacePage />
+              </ConfirmProvider>
+            </DriveWorkspaceProvider>
+          }
+        />
+        {/* `/join` included: an invitation link that landed there was
+              taken by the capture at boot, and InvitationPrompt offers it
+              whatever page this sends the visitor to. */}
+        <Route path="*" element={<CatchAllRedirect />} />
+      </Routes>
+    </>
+  );
+}
+
 export default function App() {
   const packageName = PACKAGE_NAME || undefined;
   const registryUrl =
-    import.meta.env.VITE_REGISTRY_URL?.trim() || 'https://apps.calimero.network';
+    import.meta.env.VITE_REGISTRY_URL?.trim() ||
+    'https://apps.calimero.network';
 
   return (
     <ThemeProvider>
@@ -181,53 +227,7 @@ export default function App() {
               v7_relativeSplatPath: true,
             }}
           >
-            <InviteRedirect />
-            <Routes>
-              {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
-                  real URLs so they can be shared and opened cold, which needs a route
-                  here - otherwise this app's catch-all swallows the deep link before
-                  the page ever renders. */}
-              {LANDING_PATHS.map((landingPath) => (
-                <Route
-                  key={landingPath}
-                  path={landingPath}
-                  // Only `/` bounces a signed-in visitor into the app; `/docs` and
-                  // `/preview` are reference pages someone signed in may still want.
-                  element={
-                    landingPath === '/' ? (
-                      <RedirectIfAuthed>
-                        <LandingPage />
-                      </RedirectIfAuthed>
-                    ) : (
-                      <LandingPage />
-                    )
-                  }
-                />
-              ))}
-              {/* The /login PAGE is gone - every app had one, every one looked
-                  different, and its whole content was a button the visitor had
-                  already pressed to get there. The path stays as a redirect so a
-                  bookmark lands on the front door instead of a blank route. */}
-              <Route path="/login" element={<Navigate to="/" replace />} />
-              <Route path="/join" element={<JoinPage />} />
-              <Route
-                path="/app/*"
-                element={
-                  <DriveWorkspaceProvider>
-                    {/* Inside the workspace: a confirmation's body may name members. */}
-                    <ConfirmProvider>
-                      <WorkspacePage />
-                    </ConfirmProvider>
-                  </DriveWorkspaceProvider>
-                }
-              />
-              {/* The catch-all drops the query string, which for an invite
-                  deep link IS the invitation. InviteRedirect has already
-                  run by the time this renders, but its navigation is
-                  applied in an effect - so preserve the search here rather
-                  than racing it. */}
-              <Route path="*" element={<CatchAllRedirect />} />
-            </Routes>
+            <AppRoutes />
           </BrowserRouter>
           {import.meta.env.DEV && <DevPanel />}
         </TooltipProvider>

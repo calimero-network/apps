@@ -23,13 +23,15 @@
 // The landing page requires a non-empty `invitation` param for the join
 // action and forwards the FULL query string to both the desktop scheme
 // bridge and the registry-published web frontend, so the sibling params
-// survive on every path. Without a configured PACKAGE_NAME (dev setups)
-// links fall back to {origin}/join with the same params.
+// survive on every path. It is always this link: the host is a constant,
+// so there is no environment (dev server, desktop shell) without one.
+// Nobody pastes it - opening it is the only way in (see index.tsx).
 //
 // `kind` is either `'namespace'` or `'group'`. Namespace invites drop
 // the invitee into the namespace root group; group invites add them
 // to exactly the named folder subgroup. Back-compat on parse: `invite=`
-// (the pre-deep-link param) and `ns=` (alias for `id=`) are accepted.
+// (the pre-deep-link param) and `ns=` (alias for `id=`) are accepted, and
+// a link with no `id` falls back to the group the signed invitation names.
 //
 // `name=` carries the target's HUMAN NAME, for both kinds. It is not the
 // authority on the name - core's group metadata is, and it replicates - but a
@@ -43,7 +45,8 @@
 // on the other node's screen, and it needs no app-level replication.
 
 import { useCallback } from 'react';
-import { DEEP_LINK_BASE, PACKAGE_NAME } from '@/constants/config';
+import { buildInviteLink } from '@calimero-apps/invite';
+import { PACKAGE_NAME } from '@/constants/config';
 import {
   useMero,
   type SignedGroupOpenInvitation,
@@ -93,7 +96,8 @@ function base64urlEncode(s: string): string {
 }
 
 function base64urlDecode(s: string): string {
-  const padded = s.replace(/-/g, '+').replace(/_/g, '/') +
+  const padded =
+    s.replace(/-/g, '+').replace(/_/g, '/') +
     '='.repeat((4 - (s.length % 4)) % 4);
   const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
@@ -113,56 +117,14 @@ export function buildInviteUrl(
   // readable at all without an identity in that folder.
   name?: string,
 ): string {
-  const payload = base64urlEncode(JSON.stringify(invitation));
-  const base = PACKAGE_NAME
-    ? `${DEEP_LINK_BASE}/${PACKAGE_NAME}/join`
-    : `${window.location.origin}/join`;
-  // Ids are hex today, but an unencoded `&` or `#` would truncate the
-  // link into something that fails at the joiner rather than at build time.
-  let url = `${base}?invitation=${payload}&kind=${kind}&id=${encodeURIComponent(targetId)}`;
-  if (name) url += `&name=${encodeURIComponent(name)}`;
-  return url;
-}
-
-/** True when the params carry an invitation payload under either the
- *  canonical `invitation=` name or the legacy `invite=` one. Exported so
- *  the router-level catcher accepts exactly what the parser does. */
-export function hasInvitePayload(params: URLSearchParams): boolean {
-  return params.has('invitation') || params.has('invite');
-}
-
-/** Pull invite params out of free-form user input. Accepts a full URL
- *  from any host (so links copied from older/staging deployments still
- *  work), a bare query string with or without the leading `?`, and
- *  tolerates surrounding whitespace. Returns `null` when no usable
- *  `invitation=`/`invite=` param is present - the caller should treat
- *  that as "input doesn't contain an invite" and prompt the user. The
- *  returned `URLSearchParams` is suitable for direct hand-off to
- *  `parseInviteUrl`. */
-export function extractInviteParams(input: string): URLSearchParams | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-
-  // Path 1: full URL - works for any host, any path. The dialog's
-  // primary input. We intentionally don't restrict the host so both
-  // links.calimero.network deep links and links copied from the
-  // localhost dev server or a previous Vercel preview domain parse.
-  try {
-    const url = new URL(trimmed);
-    if (hasInvitePayload(url.searchParams)) return url.searchParams;
-  } catch {
-    /* not a URL - fall through to bare-query handling */
-  }
-
-  // Path 2: bare query string. Covers users who copied only the
-  // `?invitation=…&kind=…&id=…` tail of a link.
-  const queryOnly = trimmed.startsWith('?') ? trimmed.slice(1) : trimmed;
-  if (queryOnly.includes('invit')) {
-    const params = new URLSearchParams(queryOnly);
-    if (hasInvitePayload(params)) return params;
-  }
-
-  return null;
+  // Ids are hex today; `buildInviteLink` encodes every param regardless, so
+  // an `&` or `#` cannot truncate the link into something that fails at the
+  // joiner rather than here.
+  return buildInviteLink(
+    PACKAGE_NAME,
+    base64urlEncode(JSON.stringify(invitation)),
+    { kind, id: targetId, name },
+  );
 }
 
 /** Parse an invite URL. Returns null-shape error if the params are
@@ -185,26 +147,43 @@ export function parseInviteUrl(
   // (the only invite shape that existed before the param was added).
   const kind: InviteKind = rawKind === 'group' ? 'group' : 'namespace';
 
-  if (!id) return { error: 'Missing target id in invite link.' };
   if (!raw) return { error: 'Missing invitation payload in invite link.' };
 
   const name = params.get('name');
+  let invitation: SignedGroupOpenInvitation;
   try {
-    const invitation = JSON.parse(
-      base64urlDecode(raw),
-    ) as SignedGroupOpenInvitation;
-    return {
-      kind,
-      targetId: id,
-      invitation,
-      targetName: name ?? undefined,
-    };
+    invitation = JSON.parse(base64urlDecode(raw)) as SignedGroupOpenInvitation;
   } catch {
     return {
       error:
         'Invitation payload could not be decoded. The link may be truncated or corrupted.',
     };
   }
+  // The signed invitation names its group, which for a namespace invite IS
+  // the namespace id (the root group) - so `id` is a convenience, not a need.
+  const targetId = id ?? groupIdOf(invitation);
+  if (!targetId) return { error: 'Missing target id in invite link.' };
+  return {
+    kind,
+    targetId,
+    invitation,
+    targetName: name ?? undefined,
+  };
+}
+
+/** The group a signed invitation names, as hex, or `null` if it names none. */
+function groupIdOf(invitation: SignedGroupOpenInvitation): string | null {
+  const raw = (invitation?.invitation as { group_id?: unknown } | undefined)
+    ?.group_id;
+  if (typeof raw === 'string' && raw) return raw;
+  if (
+    !Array.isArray(raw) ||
+    raw.length === 0 ||
+    !raw.every((b) => Number.isInteger(b) && b >= 0 && b <= 255)
+  ) {
+    return null;
+  }
+  return (raw as number[]).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /** Normalize an invitation `expirationTimestamp` to epoch milliseconds.
@@ -228,7 +207,9 @@ export function inviteExpiryMs(ts: number): number {
  *  "this invitation has expired" card could not appear: an expired link went
  *  to the server and came back as a raw rejection string. Both spellings are
  *  accepted here so a link minted by a node that does rename it still reads. */
-export function isInviteExpired(invitation: SignedGroupOpenInvitation): boolean {
+export function isInviteExpired(
+  invitation: SignedGroupOpenInvitation,
+): boolean {
   const inner = invitation?.invitation as
     | { expiration_timestamp?: number; expirationTimestamp?: number }
     | undefined;
@@ -243,11 +224,12 @@ export function useCreateNamespaceInvite() {
   const create = useCallback(
     async (namespaceId: string): Promise<InviteCreation> => {
       if (!admin) throw new Error('Mero client not ready');
-      const response = await admin.createNamespaceInvitation(
-        namespaceId,
-        { recursive: false },
-      );
-      if ('invitations' in (response as CreateRecursiveInvitationResponseData)) {
+      const response = await admin.createNamespaceInvitation(namespaceId, {
+        recursive: false,
+      });
+      if (
+        'invitations' in (response as CreateRecursiveInvitationResponseData)
+      ) {
         throw new Error(
           'Unexpected recursive invitation response: asked for single',
         );
@@ -319,7 +301,8 @@ export function useCreateFolderInvite() {
         recursive: false,
       });
       if (
-        'invitations' in (response as CreateRecursiveGroupInvitationResponseData)
+        'invitations' in
+        (response as CreateRecursiveGroupInvitationResponseData)
       ) {
         throw new Error(
           'Unexpected recursive invitation response: asked for single',

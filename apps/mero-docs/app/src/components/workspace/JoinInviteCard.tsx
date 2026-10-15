@@ -1,7 +1,10 @@
-// Shared body for the invite-acceptance UI. Both the `/join` route
-// (entered via a deep link or a pasted invite URL) and the in-app
-// `NamespaceJoinDialog` (paste-into-textarea flow) render this so the
-// preview + accept experience stays single-source.
+// The body of the invitation prompt: what is being joined, and one button
+// to join it. Rendered by `InvitationPrompt`, which is fed by the shared
+// capture - an invitation reaches this app only by its link being opened.
+//
+// Test ids are the contract the shared journey drives: `invite-accept` on
+// the join button, `invite-decline` on the dismiss, `invite-error` on a
+// failure's reason.
 
 import React, { useState } from 'react';
 import { ConnectButton, useMero } from '@calimero-network/mero-react';
@@ -24,9 +27,8 @@ interface Props {
   /** Called after a successful join. Use to navigate away, close a
    *  modal, or refetch the namespace list. */
   onJoined: () => void | Promise<void>;
-  /** Optional secondary link (e.g. "Not now" on the route, "Back to
-   *  invite link" inside the dialog). Rendered as an underlined link
-   *  below the primary action. */
+  /** Optional secondary link (the prompt's "Not now"). Rendered as an
+   *  underlined link below the primary action. */
   secondaryAction?: { label: string; onClick: () => void };
   /** Reports join-in-flight so an embedding dialog can refuse to close mid-join. */
   onJoiningChange?: (joining: boolean) => void;
@@ -54,7 +56,7 @@ export function JoinInviteCard({
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Set by a failure no retry can fix (a refused or malformed invitation): the
-  // link is spent, so the accept button is retired rather than offered again.
+  // link is spent, so the accept button is gone rather than offered again.
   const [spent, setSpent] = useState(false);
   const [expiredByServer, setExpiredByServer] = useState(false);
 
@@ -161,10 +163,11 @@ export function JoinInviteCard({
       {showExpired ? (
         <div
           role="alert"
+          data-testid="invite-error"
           className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400"
         >
-          This invitation has expired. Ask the person who invited you for
-          a new link.
+          This invitation has expired. Ask the person who invited you for a new
+          link.
         </div>
       ) : isLoading ? (
         <div className="text-sm text-muted-foreground">
@@ -182,27 +185,31 @@ export function JoinInviteCard({
           <p className="text-sm" role="status">
             You're already a member of this {scopeLabel}.
           </p>
-          <Button className="w-full" onClick={() => void onJoined()}>
+          <Button
+            className="w-full"
+            data-testid="invite-accept"
+            onClick={() => void onJoined()}
+          >
             Open workspace
           </Button>
         </div>
-      ) : (
+      ) : spent ? null : (
         <Button
           className="w-full"
-          disabled={joining || spent}
+          disabled={joining}
           onClick={onJoinClick}
+          data-testid="invite-accept"
         >
-          {joining
-            ? 'Joining…'
-            : error && !spent
-              ? 'Try again'
-              : 'Accept & join'}
+          {joining ? 'Joining…' : error ? 'Try again' : 'Accept & join'}
         </Button>
       )}
 
+      {/* `invite-error` marks a FINAL failure only; one that "Try again" can
+          still fix is a reason, not an answer. */}
       {error && (
         <div
           role="alert"
+          data-testid={spent ? 'invite-error' : 'invite-retry-reason'}
           className="mt-4 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
         >
           {error}
@@ -215,6 +222,7 @@ export function JoinInviteCard({
             type="button"
             className="underline hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
             disabled={joining}
+            data-testid="invite-decline"
             onClick={secondaryAction.onClick}
           >
             {secondaryAction.label}
