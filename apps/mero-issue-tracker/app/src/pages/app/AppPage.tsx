@@ -21,6 +21,7 @@ import NamespaceCreateDialog from "../../components/NamespaceCreateDialog";
 import AddRepoDialog from "../../components/AddRepoDialog";
 import NsEmptyState from "../../components/NsEmptyState";
 import AliasGate from "../../components/AliasGate";
+import { IconPlus, IconRepo } from "../../components/icons";
 import type { AppCtx, Filters } from "./appContext";
 
 const EMPTY_FILTERS: Filters = {
@@ -304,6 +305,9 @@ export default function AppPage(): React.ReactElement | null {
       ) : (
         <RepoGate>
           <div className="panel">
+            <span className="mark">
+              <IconRepo />
+            </span>
             <h2>No repository yet</h2>
             <p>
               Add a repository to this workspace to start tracking its issues.
@@ -314,7 +318,7 @@ export default function AppPage(): React.ReactElement | null {
                 data-testid="repo-add-cta"
                 onClick={() => setShowAddRepo(true)}
               >
-                Add a repository
+                <IconPlus size={13} /> Add a repository
               </button>
             ) : (
               // Honest dead end rather than a button that 403s: the person
@@ -332,6 +336,7 @@ export default function AppPage(): React.ReactElement | null {
       {dialogs}
       {showNew && (
         <NewIssueModal
+          repoName={activeRepoName}
           onCreate={createIssue}
           onClose={() => setShowNew(false)}
         />
@@ -347,54 +352,34 @@ export default function AppPage(): React.ReactElement | null {
 }
 
 // Fills the main column and carries the workspace-ready marker the e2e harness
-// waits on.
+// waits on. Each routed view lays out its own frosted panels and cards on the
+// page ground, under the floating header.
+//
+// ⚠️ No backdrop-filter, filter or transform here: any of them makes this pane
+// the containing block for the position: fixed overlays the routed views
+// render (delete confirm, set alias), shrinking them to the pane.
 const Ready = styled.div`
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
+  display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0;
 `;
 const RepoGate = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+  flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px;
   .panel {
-    max-width: 400px;
-    text-align: center;
-    padding: 32px 28px;
-    background: ${t.color.panel};
-    border: 1px solid ${t.color.border};
-    border-radius: 12px;
-    h2 {
-      font-size: 18px;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      margin: 0 0 8px;
+    max-width: 420px; text-align: center; padding: 36px 32px;
+    background: ${t.color.glass}; border: 1px solid ${t.color.edge}; border-radius: ${t.radiusModal};
+    -webkit-backdrop-filter: ${t.blur}; backdrop-filter: ${t.blur}; box-shadow: ${t.shadow};
+    .mark {
+      display: inline-grid; place-items: center; width: 48px; height: 48px; margin-bottom: 16px;
+      border-radius: 16px; background: ${t.color.panel}; color: ${t.color.accentText}; box-shadow: ${t.shadowCard};
     }
-    p {
-      font-size: 13.5px;
-      color: ${t.color.text2};
-      margin: 0 0 22px;
-      line-height: 1.55;
-    }
-    p.gated {
-      margin: 0;
-      font-style: italic;
-    }
+    h2 { font-size: 21px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 8px; }
+    p { font-size: 13.5px; color: ${t.color.text2}; margin: 0 0 22px; line-height: 1.55; }
+    p.gated { margin: 0; font-style: italic; }
     .primary {
-      background: ${t.color.accent};
-      color: ${t.color.onAccent};
-      border: 1px solid transparent;
-      border-radius: ${t.radius};
-      font-size: 13px;
-      font-weight: 600;
-      padding: 10px 16px;
-      cursor: pointer;
-      &:hover {
-        background: #b6ff5e;
-      }
+      display: inline-flex; align-items: center; gap: 6px;
+      background: ${t.color.accent}; color: ${t.color.onAccent}; border: 1px solid transparent;
+      border-radius: ${t.radiusPill}; font-family: inherit; font-size: 13.5px; font-weight: 600; min-height: 40px; padding: 0 20px; cursor: pointer;
+      box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.6);
+      &:hover { background: ${t.color.accentHover}; }
     }
   }
 `;

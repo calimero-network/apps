@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { APP_ROUTE } from '../../config';
 import FilterBar from '../../components/FilterBar';
 import IssueList from '../../components/IssueList';
+import { Page } from '../../components/ui';
 import { matchesQuery } from '../../utils/search';
 import { useAppCtx } from './appContext';
 
@@ -18,8 +19,8 @@ export default function IssuesView(): React.ReactElement {
     .filter((i) => matchesQuery(i, searchQuery));
 
   return (
-    <>
-      <FilterBar />
+    <Page>
+      <FilterBar shown={issues.length} />
       <IssueList
         issues={issues}
         aliases={aliases}
@@ -27,6 +28,6 @@ export default function IssuesView(): React.ReactElement {
         warmingUp={data.warmingUp}
         onOpen={(id) => navigate(`${APP_ROUTE}/issues/${id}`)}
       />
-    </>
+    </Page>
   );
 }

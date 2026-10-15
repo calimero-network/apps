@@ -46,6 +46,9 @@ export const APP_ROUTE = config.metadata.route;
 export const APP_PACKAGE = config.package;
 export const APP_VERSION = config.appVersion;
 export const APP_DISPLAY_NAME = config.metadata.name;
+/** The product name as people say it (`metadata.name` above is the package
+ *  slug, `mero-issue-tracker`); matches index.html's <title>. */
+export const PRODUCT_NAME = 'Mero Issue Tracker';
 export const APP_DESCRIPTION = config.metadata.description;
 export const THEME = config.theme;
 
