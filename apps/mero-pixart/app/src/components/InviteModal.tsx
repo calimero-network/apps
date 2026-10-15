@@ -78,8 +78,8 @@ export default function InviteModal({ teamId, onClose }: Props) {
 
         <p className={styles.desc}>
           Generate an invitation link and share it with your teammate. Opening it
-          launches the desktop app where installed, and the web build otherwise —
-          or they can paste it into their node to join this team.
+          launches the desktop app where installed, and the web build otherwise,
+          and asks them to join this team.
         </p>
 
         {invitation ? (
