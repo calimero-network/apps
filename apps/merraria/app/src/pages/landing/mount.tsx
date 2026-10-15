@@ -8,10 +8,11 @@
  * clicked; `main.ts` then hands off to the launcher exactly as before.
  *
  * Deliberately skipped when:
- *   - the URL carries `?invitation=` — a join link must never be interrupted;
+ *   - an invite link opened the app — a join link must never be interrupted;
  *   - it has already been shown this session — returning to play should not
  *     pay for the pitch twice.
  */
+import { peekInvitation } from '@calimero-apps/invite';
 import { createRoot } from 'react-dom/client';
 
 import LandingPage from './LandingPage';
@@ -73,7 +74,9 @@ function mount(): Promise<void> {
  */
 export function showLandingOnce(): Promise<boolean> {
   const url = new URL(window.location.href);
-  if (url.searchParams.has('invitation')) return Promise.resolve(false);
+  // The capture strips `?invitation=` from the address bar the moment it reads
+  // it (main.ts primes it first thing), so ask the capture as well.
+  if (url.searchParams.has('invitation') || peekInvitation()) return Promise.resolve(false);
   try {
     if (sessionStorage.getItem(SEEN) === '1') return Promise.resolve(false);
   } catch {

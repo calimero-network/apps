@@ -1,19 +1,23 @@
 import { readFile } from "node:fs/promises";
 import { expect, type Locator, type Page } from "@playwright/test";
-import { completeNodeLogin, readClipboard, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
+import { completeNodeLogin, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
 
 const SYNC = 90_000;
-
-interface Invite {
-  namespaceId: string;
-  contextId: string;
-  invitation: string;
-}
 
 const kvWritten: Record<string, { key: string; value: string }> = {};
 const counted: Record<string, number> = {};
 const uploaded: Record<string, { name: string; body: string }> = {};
-let namespaceId = "";
+/** The context the last invitation names, read off the link it was shared as. */
+let invitedContextId = "";
+
+/** The `contextId` inside an invitation link's token (base64url JSON). */
+function contextIdOf(link: string): string {
+  const token = new URL(link).searchParams.get("invitation") ?? "";
+  const json = Buffer.from(token.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+  const contextId = (JSON.parse(json) as { contextId?: unknown }).contextId;
+  if (typeof contextId !== "string" || !contextId) throw new Error("the invitation link names no context");
+  return contextId;
+}
 
 function card(page: Page, name: string): Locator {
   return page.locator(".method-card").filter({ hasText: name });
@@ -31,23 +35,6 @@ async function openSection(page: Page, label: string, heading: string): Promise<
 
 async function waitForContext(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: /^ctx:/ })).toBeVisible({ timeout: SYNC });
-}
-
-async function retryUntil(page: Page, click: () => Promise<void>, done: Locator, what: string): Promise<void> {
-  const deadline = Date.now() + SYNC;
-  for (;;) {
-    await click();
-    const ok = await done
-      .waitFor({ state: "visible", timeout: 30_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (ok) return;
-    if (Date.now() > deadline) {
-      const shown = await page.locator("main").innerText().catch(() => "");
-      throw new Error(`${what} never succeeded; the page shows:\n${shown.slice(0, 2_000)}`);
-    }
-    await page.waitForTimeout(3_000);
-  }
 }
 
 async function counterValue(page: Page): Promise<number> {
@@ -166,63 +153,47 @@ export const driver: AppDriver = {
 
   async createNamespace(actor) {
     const page = actor.page;
+    invitedContextId = "";
     await openSection(page, "Setup Wizard", "Setup Wizard");
     await page.getByRole("button", { name: /I'm the Owner/ }).click();
     const run = page.getByRole("button", { name: "Set it all up", exact: true });
     await expect(run).toBeEnabled({ timeout: 30_000 });
     await run.click();
     await expect(page.getByText(/Ready\. namespace/)).toBeVisible({ timeout: 60_000 });
-    const nsInput = page.getByPlaceholder("Namespace ID (hex)", { exact: true });
-    await expect(nsInput).not.toHaveValue("", { timeout: 15_000 });
-    namespaceId = await nsInput.inputValue();
+    await expect(page.getByPlaceholder("Namespace ID (hex)", { exact: true })).not.toHaveValue("", { timeout: 15_000 });
   },
 
   async invite(actor) {
     const page = actor.page;
     await page.getByRole("button", { name: "Generate Invitation", exact: true }).click();
-    const copy = page.getByRole("button", { name: "Copy Compact", exact: true });
-    await expect(copy).toBeVisible({ timeout: 30_000 });
-    await copy.click();
+    const shown = page.getByTestId("invite-link");
+    await expect(shown).toBeVisible({ timeout: 30_000 });
+    // Read before copying: copying completes the step, which folds it away.
+    const link = (await shown.innerText()).trim();
+    await page.getByRole("button", { name: "Copy link", exact: true }).click();
     await expect(page.getByRole("button", { name: /✓ Generate Namespace Invitation/ })).toBeVisible({ timeout: 10_000 });
-    await expect.poll(async () => (await readClipboard(page)).trim().length, { timeout: 10_000 }).toBeGreaterThan(20);
-    const invitation = (await readClipboard(page)).trim();
-    await page.reload();
-    await waitForContext(page);
-    await page.getByRole("button", { name: /^ctx:/ }).click();
-    await expect(page.getByRole("button", { name: /^ctx:.*✓/ })).toBeVisible({ timeout: 10_000 });
-    const contextId = (await readClipboard(page)).trim();
-    const payload: Invite = { namespaceId, contextId, invitation };
-    return JSON.stringify(payload);
+    invitedContextId = contextIdOf(link);
+    return link;
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    const invite = JSON.parse(link) as Invite;
-    await openSection(page, "Setup Wizard", "Setup Wizard");
-    await page.getByRole("button", { name: /I'm Joining/ }).click();
-    await page.getByPlaceholder("Namespace ID (hex, 64 chars)").fill(invite.namespaceId);
-    await page.getByPlaceholder("Paste Compact invitation string from Node A…").fill(invite.invitation);
-    const joinNs = page.getByRole("button", { name: "Join Namespace", exact: true });
-    await retryUntil(
-      page,
-      async () => {
-        if (await joinNs.isEnabled().catch(() => false)) await joinNs.click();
-      },
-      page.getByRole("button", { name: /^✓ Join Namespace/ }),
-      "joining the namespace",
-    );
-    await page.getByPlaceholder("Context ID (hex)").fill(invite.contextId);
-    const joinCtx = page.getByRole("button", { name: "Join Context", exact: true });
-    await retryUntil(
-      page,
-      async () => {
-        if (await joinCtx.isEnabled().catch(() => false)) await joinCtx.click();
-      },
-      page.getByRole("button", { name: /^✓ Join Context/ }),
-      "joining the context",
-    );
-    await page.reload();
-    await waitForContext(page);
+    if (!invitedContextId) throw new Error("no invitation has been created");
+    // The prompt joins the namespace, then the context, and makes it active:
+    // the context bar shows it without a reload.
+    const active = page.getByRole("button", { name: new RegExp(`^ctx: ${invitedContextId.slice(0, 16)}`) });
+    const failed = page.getByTestId("invite-error").or(page.locator('[data-testid="invite-status"][data-stage="failed"]'));
+    const landed = active.waitFor({ state: "visible", timeout: SYNC * 2 });
+    const refused = failed
+      .first()
+      .waitFor({ state: "visible", timeout: SYNC * 2 })
+      .then(async () => {
+        throw new Error(`join refused: ${await failed.first().innerText()}`);
+      });
+    landed.catch(() => undefined);
+    refused.catch(() => undefined);
+    await Promise.race([landed, refused]);
+    await expect(page.getByTestId("invite-context")).toHaveAttribute("data-stage", "joined");
   },
 
   async afterReload(actor) {

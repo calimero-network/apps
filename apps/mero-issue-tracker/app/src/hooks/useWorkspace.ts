@@ -21,7 +21,7 @@
  *    treat that context as the active repo and resolve its namespace, skipping
  *    the pickers entirely.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useMero,
   useNamespacesForApplication,
@@ -31,20 +31,24 @@ import {
   useNodeIdentity,
   useSetMemberMetadata,
   type Namespace,
-} from '@calimero-network/mero-react';
-import type { GroupMember } from '@calimero-network/mero-js';
-import { useSubscription } from '@calimero-network/mero-react';
-import { useStreamReconnect } from './useStreamReconnect';
-import { PRIMARY_SERVICE } from '../config';
-import { buildInvitePayload } from '../utils/invitePayload';
-import { redeemInviteCode } from '../utils/redeemInvite';
-import { createWorkspaceContext, foundWorkspace, publishContextName } from '../utils/workspaceOps';
-import { splitTeeMembers, teeMode as teeModeOf, type TeeMode } from '../utils/tee';
-import { IssueTrackerClient } from '../generated/IssueTrackerClient';
-import { useApplicationId } from './useApplicationId';
-import { decideActiveNs, useAnswered } from './activeNamespace';
-import { useMemberRoles, type UseMemberRolesReturn } from './useMemberRoles';
-import { buildAliasMap } from './useAliases';
+} from "@calimero-network/mero-react";
+import type { GroupMember } from "@calimero-network/mero-js";
+import { useSubscription } from "@calimero-network/mero-react";
+import { useStreamReconnect } from "./useStreamReconnect";
+import { PRIMARY_SERVICE } from "../config";
+import { buildInvitePayload } from "../utils/invitePayload";
+import { useJoinedWorkspace } from "./joinedWorkspace";
+import {
+  createWorkspaceContext,
+  foundWorkspace,
+  publishContextName,
+} from "../utils/workspaceOps";
+import { IssueTrackerClient } from "../generated/IssueTrackerClient";
+import { useApplicationId } from "./useApplicationId";
+import { decideActiveNs, useAnswered } from "./activeNamespace";
+import { useMemberRoles, type UseMemberRolesReturn } from "./useMemberRoles";
+import { buildAliasMap } from "./useAliases";
+import { splitTeeMembers, teeMode as teeModeOf, type TeeMode } from "../utils/tee";
 import {
   readActiveNs,
   writeActiveNs,
@@ -52,9 +56,8 @@ import {
   readActiveRepo,
   writeActiveRepo,
   clearPersistedWorkspace,
-} from './workspacePersistence';
-import { markNamespaceJustJoined, useJoinSync } from '@calimero-apps/join-sync';
-import type { RedeemOutcome } from '@calimero-apps/invite';
+} from "./workspacePersistence";
+import { markNamespaceJustJoined, useJoinSync } from "@calimero-apps/join-sync";
 
 export interface RepoEntry {
   contextId: string;
@@ -100,8 +103,6 @@ export interface UseWorkspaceReturn {
   createNamespace: (name: string) => Promise<CreateWorkspaceResult>;
   createNamespaceLoading: boolean;
   createNamespaceError: Error | null;
-  /** Redeems an invite code; never throws for an ordinary failure. */
-  join: (code: string) => Promise<RedeemOutcome>;
   /** Mints an invitation and returns the JSON payload to wrap in a share link. */
   invite: () => Promise<string>;
   inviteLoading: boolean;
@@ -172,7 +173,8 @@ export function useWorkspace(): UseWorkspaceReturn {
   // answer: this app is not installed there under its package (a raw-wasm dev
   // install). That is strictly the old behaviour, and only where the old
   // behaviour was all there was.
-  const { appId: nodeApplicationId, resolving: resolvingApplicationId } = useApplicationId();
+  const { appId: nodeApplicationId, resolving: resolvingApplicationId } =
+    useApplicationId();
   // Null while the node is still answering, NOT the session id. Scoping the
   // namespace list to a possibly-wrong id for one render is how a stale pick
   // gets auto-selected and then persisted; `resolvingApplicationId` lets the
@@ -189,19 +191,24 @@ export function useWorkspace(): UseWorkspaceReturn {
   } = useNamespacesForApplication(applicationId);
   // The list reads `[]` until the node answers, and again on every scope change.
   const nsListed = useAnswered(nsLoading, nsError, [mero, applicationId]);
-  const { createNamespaceInvitation, loading: inviteLoading } = useCreateNamespaceInvitation();
+  const { createNamespaceInvitation, loading: inviteLoading } =
+    useCreateNamespaceInvitation();
   const { setMemberMetadata } = useSetMemberMetadata();
 
   // Drop the pre-versioning key on load; it is never read for a value, only
   // ever explicit selections (below) populate the versioned one.
-  useEffect(() => { dropLegacyActiveNs(); }, []);
+  useEffect(() => {
+    dropLegacyActiveNs();
+  }, []);
 
   // --- Active namespace (persisted; SSO callback context resolves its own) ---
   const [activeNs, setActiveNs] = useState<string | null>(() => readActiveNs());
   // True while an SSO-callback context is present but its namespace hasn't
   // resolved yet - the caller holds off on the empty-state picker during this
   // window so it doesn't flash in right before the desktop handoff lands.
-  const [resolvingCallback, setResolvingCallback] = useState(() => !!callbackContextId);
+  const [resolvingCallback, setResolvingCallback] = useState(
+    () => !!callbackContextId,
+  );
   const userSelectedNs = useRef(false);
 
   // Resolve the namespace of the SSO callback context (a context's group IS
@@ -209,8 +216,14 @@ export function useWorkspace(): UseWorkspaceReturn {
   // - a separate "apply the resolved id" effect would let resolvingCallback
   // clear a render before activeNs catches up, flashing the empty state.
   useEffect(() => {
-    if (!callbackContextId) { setResolvingCallback(false); return; }
-    if (!admin) { setResolvingCallback(true); return; }
+    if (!callbackContextId) {
+      setResolvingCallback(false);
+      return;
+    }
+    if (!admin) {
+      setResolvingCallback(true);
+      return;
+    }
     let cancelled = false;
     setResolvingCallback(true);
     (async () => {
@@ -230,7 +243,9 @@ export function useWorkspace(): UseWorkspaceReturn {
         if (!cancelled) setResolvingCallback(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [admin, callbackContextId]);
 
   // Pick a workspace to show on load. A valid persisted/current selection wins;
@@ -246,7 +261,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       pinned: userSelectedNs.current,
       resolvingCallback,
     });
-    if (decision.kind === 'keep') return;
+    if (decision.kind === "keep") return;
     if (decision.dropPersisted) writeActiveNs(null);
     setActiveNs(decision.id);
   }, [namespaces, nsListed, activeNs, resolvingCallback]);
@@ -258,8 +273,11 @@ export function useWorkspace(): UseWorkspaceReturn {
   }, []);
 
   // --- Contexts (repos) in the active namespace ---
-  const { contexts, loading: reposLoading, refetch: refetchContexts } =
-    useGroupContexts(activeNs);
+  const {
+    contexts,
+    loading: reposLoading,
+    refetch: refetchContexts,
+  } = useGroupContexts(activeNs);
 
   // Repo names, from the REPLICATED context metadata record.
   //
@@ -275,13 +293,18 @@ export function useWorkspace(): UseWorkspaceReturn {
   // returns a fresh array on every poll and would otherwise re-fetch metadata
   // for every repo on every refetch.
   const contextIdsKey = useMemo(
-    () => contexts.map((c) => c.contextId).join(','),
+    () => contexts.map((c) => c.contextId).join(","),
     [contexts],
   );
-  const [repoMetaNames, setRepoMetaNames] = useState<Map<string, string>>(new Map());
+  const [repoMetaNames, setRepoMetaNames] = useState<Map<string, string>>(
+    new Map(),
+  );
   useEffect(() => {
-    const ids = contextIdsKey ? contextIdsKey.split(',') : [];
-    if (!admin || !activeNs || ids.length === 0) { setRepoMetaNames(new Map()); return; }
+    const ids = contextIdsKey ? contextIdsKey.split(",") : [];
+    if (!admin || !activeNs || ids.length === 0) {
+      setRepoMetaNames(new Map());
+      return;
+    }
     let cancelled = false;
     (async () => {
       const entries = await Promise.all(
@@ -296,9 +319,13 @@ export function useWorkspace(): UseWorkspaceReturn {
         }),
       );
       if (cancelled) return;
-      setRepoMetaNames(new Map(entries.filter((e): e is [string, string] => e !== null)));
+      setRepoMetaNames(
+        new Map(entries.filter((e): e is [string, string] => e !== null)),
+      );
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [admin, activeNs, contextIdsKey]);
 
   const repos = useMemo<RepoEntry[]>(
@@ -316,7 +343,9 @@ export function useWorkspace(): UseWorkspaceReturn {
   );
 
   // --- Active repo (a contextId; persisted per namespace) ---
-  const [activeRepo, setActiveRepo] = useState<string | null>(callbackContextId);
+  const [activeRepo, setActiveRepo] = useState<string | null>(
+    callbackContextId,
+  );
   const userSelectedRepo = useRef(false);
 
   // On a namespace switch, drop the previous namespace's repo so a stale
@@ -331,9 +360,19 @@ export function useWorkspace(): UseWorkspaceReturn {
   // Prefer the SSO callback context; otherwise auto-select the persisted repo
   // if it still exists, else the first repo, else none (add-repo empty state).
   useEffect(() => {
-    if (callbackContextId) { setActiveRepo(callbackContextId); return; }
-    if (!activeNs) { setActiveRepo(null); return; }
-    if (userSelectedRepo.current && activeRepo && repos.some((r) => r.contextId === activeRepo)) {
+    if (callbackContextId) {
+      setActiveRepo(callbackContextId);
+      return;
+    }
+    if (!activeNs) {
+      setActiveRepo(null);
+      return;
+    }
+    if (
+      userSelectedRepo.current &&
+      activeRepo &&
+      repos.some((r) => r.contextId === activeRepo)
+    ) {
       return;
     }
     const persisted = readActiveRepo(activeNs);
@@ -345,11 +384,14 @@ export function useWorkspace(): UseWorkspaceReturn {
     setActiveRepo(repos[0]?.contextId ?? null);
   }, [callbackContextId, activeNs, repos, activeRepo]);
 
-  const selectRepo = useCallback((contextId: string) => {
-    userSelectedRepo.current = true;
-    setActiveRepo(contextId);
-    if (activeNs) writeActiveRepo(activeNs, contextId);
-  }, [activeNs]);
+  const selectRepo = useCallback(
+    (contextId: string) => {
+      userSelectedRepo.current = true;
+      setActiveRepo(contextId);
+      if (activeNs) writeActiveRepo(activeNs, contextId);
+    },
+    [activeNs],
+  );
 
   // --- Executor identity for the active repo context (for RPC) ---
   const [executorPublicKey, setExecutorPublicKey] = useState<string | null>(
@@ -369,15 +411,22 @@ export function useWorkspace(): UseWorkspaceReturn {
     // the node's own client on a node login, and on an account the account
     // admin, whose `joinContext` joins the context's group as the account and
     // whose `getContextIdentitiesOwned` answers with the account itself.
-    if (!mero || !admin || !activeRepo) { setExecutorPublicKey(callbackContextIdentity); return; }
+    if (!mero || !admin || !activeRepo) {
+      setExecutorPublicKey(callbackContextIdentity);
+      return;
+    }
     if (activeRepo === callbackContextId && callbackContextIdentity) return;
     let cancelled = false;
     setExecutorPublicKey(null);
     (async () => {
       try {
-        const { identities } = await admin.getContextIdentitiesOwned(activeRepo);
+        const { identities } =
+          await admin.getContextIdentitiesOwned(activeRepo);
         if (cancelled) return;
-        if (identities.length > 0) { setExecutorPublicKey(identities[0]); return; }
+        if (identities.length > 0) {
+          setExecutorPublicKey(identities[0]);
+          return;
+        }
 
         // No identity in this context yet. Auto-follow enrols a member in
         // contexts created AFTER they joined the namespace and in no others, so
@@ -394,7 +443,9 @@ export function useWorkspace(): UseWorkspaceReturn {
         /* leave null - useItems stays not-ready until an identity resolves */
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [mero, admin, activeRepo, callbackContextId, callbackContextIdentity]);
 
   // --- Namespace members (people names live here) ---
@@ -411,7 +462,8 @@ export function useWorkspace(): UseWorkspaceReturn {
   // Both ids are 32 bytes and neither the client nor the node rejects the
   // wrong one (it just names a principal that exists nowhere), so this has to
   // be the account and never `publicKey`.
-  const { identity: nodeIdentity, refetch: refetchNodeIdentity } = useNodeIdentity();
+  const { identity: nodeIdentity, refetch: refetchNodeIdentity } =
+    useNodeIdentity();
   // useNodeIdentity takes no key, so it resolves once on mount - and on the
   // onboarding path the node has no account yet at that point, because it is
   // creating/joining the namespace that enrols it. Re-ask on every namespace
@@ -420,7 +472,9 @@ export function useWorkspace(): UseWorkspaceReturn {
   // identity) and leaves every member lookup unresolved.
   const refetchNodeIdentityRef = useRef(refetchNodeIdentity);
   refetchNodeIdentityRef.current = refetchNodeIdentity;
-  useEffect(() => { if (activeNs) void refetchNodeIdentityRef.current(); }, [activeNs]);
+  useEffect(() => {
+    if (activeNs) void refetchNodeIdentityRef.current();
+  }, [activeNs]);
   const selfIdentity = nodeIdentity?.accountId ?? null;
   const [membersLoaded, setMembersLoaded] = useState(false);
   useEffect(() => {
@@ -433,12 +487,13 @@ export function useWorkspace(): UseWorkspaceReturn {
   // Live member list: the node emits a GroupMembership event on the namespace
   // group id when someone joins/leaves, so refetch instead of making the user
   // reload. Group events carry `groupId` (context events carry `contextId`).
-  useSubscription(
-    { groupIds: activeNs ? [activeNs] : [] },
-    (ev) => { if ('groupId' in ev && ev.groupId) void refetchMembers(); },
-  );
+  useSubscription({ groupIds: activeNs ? [activeNs] : [] }, (ev) => {
+    if ("groupId" in ev && ev.groupId) void refetchMembers();
+  });
   // A join or leave during a stream outage sends no event we will ever see.
-  useStreamReconnect(() => { if (activeNs) void refetchMembers(); });
+  useStreamReconnect(() => {
+    if (activeNs) void refetchMembers();
+  });
 
   // A TEE node is a member row on the node, but not a person: split out here,
   // once, so no member list, count, assignee picker, name map or role control
@@ -448,19 +503,32 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   const members = useMemo(() => nsMembers.map((m) => m.identity), [nsMembers]);
   const memberNames = useMemo(
-    () => buildAliasMap(nsMembers.filter((m) => m.name).map((m) => ({ name: m.name as string, value: m.identity }))),
+    () =>
+      buildAliasMap(
+        nsMembers
+          .filter((m) => m.name)
+          .map((m) => ({ name: m.name as string, value: m.identity })),
+      ),
     [nsMembers],
   );
 
   // Roles + capabilities for this workspace. Keyed by ACCOUNT throughout —
   // `nsMembers[].identity` and `selfIdentity` are accounts; `executorPublicKey`
   // is a context executor key and is NOT interchangeable with them.
-  const roles = useMemberRoles(activeNs, nsMembers, selfIdentity, refetchMembers);
+  const roles = useMemberRoles(
+    activeNs,
+    nsMembers,
+    selfIdentity,
+    refetchMembers,
+  );
 
   const setMemberName = useCallback(
     async (name: string) => {
-      if (!activeNs || !selfIdentity) throw new Error('Workspace not ready');
-      await setMemberMetadata(activeNs, selfIdentity, { name: name.trim(), data: {} });
+      if (!activeNs || !selfIdentity) throw new Error("Workspace not ready");
+      await setMemberMetadata(activeNs, selfIdentity, {
+        name: name.trim(),
+        data: {},
+      });
       await refetchMembers();
     },
     [activeNs, selfIdentity, setMemberMetadata, refetchMembers],
@@ -474,24 +542,29 @@ export function useWorkspace(): UseWorkspaceReturn {
         : null,
     [mero, activeRepo, executorPublicKey],
   );
-  const [repoUrl, setRepoUrlState] = useState('');
+  const [repoUrl, setRepoUrlState] = useState("");
   useEffect(() => {
-    if (!repoClient) { setRepoUrlState(''); return; }
+    if (!repoClient) {
+      setRepoUrlState("");
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
         const info = await repoClient.getRepoInfo();
-        if (!cancelled) setRepoUrlState(info?.repo_url ?? '');
+        if (!cancelled) setRepoUrlState(info?.repo_url ?? "");
       } catch {
-        if (!cancelled) setRepoUrlState('');
+        if (!cancelled) setRepoUrlState("");
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [repoClient]);
 
   const setRepoUrl = useCallback(
     async (url: string) => {
-      if (!repoClient) throw new Error('Workspace not ready');
+      if (!repoClient) throw new Error("Workspace not ready");
       await repoClient.setRepoUrl({ url });
       setRepoUrlState(url);
     },
@@ -500,14 +573,18 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   // --- Mutations: create namespace / add repo / join / invite ---
   const [createNamespaceLoading, setCreateNamespaceLoading] = useState(false);
-  const [createNamespaceError, setCreateNamespaceError] = useState<Error | null>(null);
+  const [createNamespaceError, setCreateNamespaceError] =
+    useState<Error | null>(null);
   const createNamespace = useCallback(
     async (name: string): Promise<CreateWorkspaceResult> => {
-      const failed: CreateWorkspaceResult = { namespaceId: null, haError: null };
+      const failed: CreateWorkspaceResult = {
+        namespaceId: null,
+        haError: null,
+      };
       if (!admin || !applicationId) return failed;
       const trimmed = name.trim();
       if (!trimmed) {
-        setCreateNamespaceError(new Error('Workspace name is required'));
+        setCreateNamespaceError(new Error("Workspace name is required"));
         return failed;
       }
       setCreateNamespaceLoading(true);
@@ -526,7 +603,9 @@ export function useWorkspace(): UseWorkspaceReturn {
         selectNamespace(namespaceId);
         return { namespaceId, haError };
       } catch (err) {
-        setCreateNamespaceError(err instanceof Error ? err : new Error(String(err)));
+        setCreateNamespaceError(
+          err instanceof Error ? err : new Error(String(err)),
+        );
         return failed;
       } finally {
         setCreateNamespaceLoading(false);
@@ -543,7 +622,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       const trimmedName = name.trim();
       const trimmedUrl = url.trim();
       if (!trimmedName) {
-        setAddRepoError(new Error('Repo name is required'));
+        setAddRepoError(new Error("Repo name is required"));
         return null;
       }
       setAddRepoLoading(true);
@@ -577,7 +656,15 @@ export function useWorkspace(): UseWorkspaceReturn {
         setAddRepoLoading(false);
       }
     },
-    [mero, admin, isDelegated, applicationId, activeNs, refetchContexts, selectRepo],
+    [
+      mero,
+      admin,
+      isDelegated,
+      applicationId,
+      activeNs,
+      refetchContexts,
+      selectRepo,
+    ],
   );
 
   /**
@@ -593,41 +680,45 @@ export function useWorkspace(): UseWorkspaceReturn {
    * at join time.
    */
   const invite = useCallback(async (): Promise<string> => {
-    if (!activeNs) throw new Error('No workspace yet - create one first.');
+    if (!activeNs) throw new Error("No workspace yet - create one first.");
     // Non-recursive: this app invites to the WORKSPACE, and the recursive form
     // returns a different envelope for no extra grant. Old recursive codes are
     // still decoded on the way in.
     const res = await createNamespaceInvitation(activeNs, {});
     const namespaceName =
       namespaces.find((n) => n.namespaceId === activeNs)?.name?.trim() || null;
-    const payload = buildInvitePayload(res, { namespaceId: activeNs, namespaceName });
+    const payload = buildInvitePayload(res, {
+      namespaceId: activeNs,
+      namespaceName,
+    });
     if (!payload) {
-      throw new Error('The node returned an invitation with no signature.');
+      throw new Error("The node returned an invitation with no signature.");
     }
     return JSON.stringify(payload);
   }, [activeNs, namespaces, createNamespaceInvitation]);
 
-  const join = useCallback(async (code: string): Promise<RedeemOutcome> => {
-    // `admin`, not `mero.admin` (apps#348): on an account `joinNamespace` is
-    // the account admin's claim through the relay; the node route is a 403.
-    const outcome = await redeemInviteCode(code, admin);
-    if (outcome.status === 'failed') return outcome;
-    const nsId = outcome.namespaceId;
-    // Joined (or already in it); this workspace's repos have not replicated yet.
-    // Flagged so the sidebar says "syncing" rather than "No repos yet" — which
-    // is what a joiner currently reads about a workspace full of them.
-    markNamespaceJustJoined(nsId);
-    // The refresh is not the join: a refresh that throws must not turn a real
-    // join into a reported failure.
-    try {
-      await refetchNamespaces();
-      selectNamespace(nsId);
-      await refetchContexts();
-    } catch {
-      selectNamespace(nsId);
-    }
-    return outcome;
-  }, [admin, refetchNamespaces, refetchContexts, selectNamespace]);
+  const enterJoined = useCallback(
+    async (nsId: string): Promise<void> => {
+      // Joined (or already in it); this workspace's repos have not replicated yet.
+      // Flagged so the sidebar says "syncing" rather than "No repos yet" — which
+      // is what a joiner currently reads about a workspace full of them.
+      markNamespaceJustJoined(nsId);
+      // The refresh is not the join: a refresh that throws must not turn a real
+      // join into a reported failure.
+      try {
+        await refetchNamespaces();
+        selectNamespace(nsId);
+        await refetchContexts();
+      } catch {
+        selectNamespace(nsId);
+      }
+    },
+    [refetchNamespaces, refetchContexts, selectNamespace],
+  );
+
+  // An invitation link was accepted (see components/InvitationHost): land in
+  // what was joined, with a list that already shows it.
+  useJoinedWorkspace((nsId) => void enterJoined(nsId));
 
   // `reposLoading` going false is the signal the repo list answered — for the
   // namespace that was active when it did, which is why the id is recorded
@@ -657,7 +748,6 @@ export function useWorkspace(): UseWorkspaceReturn {
     createNamespace,
     createNamespaceLoading,
     createNamespaceError,
-    join,
     invite,
     inviteLoading,
     repos,

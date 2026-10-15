@@ -2566,6 +2566,9 @@ importers:
 
   apps/scaffolding-e2e/app:
     dependencies:
+      '@calimero-apps/invite':
+        specifier: workspace:*
+        version: link:../../../packages/invite
       '@calimero-network/mero-js':
         specifier: ^25.2.0
         version: 25.2.0

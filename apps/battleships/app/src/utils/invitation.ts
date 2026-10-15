@@ -1,6 +1,8 @@
 import bs58 from 'bs58';
 import { deflateSync, inflateSync } from 'fflate';
-import { createLink } from '@calimero-network/mero-platform';
+import { buildInviteLink } from '@calimero-apps/invite';
+import { embeddedInviterKey } from './knownPlayers';
+import { embeddedLobbyName } from './lobbyName';
 
 /**
  * Shareable invitations and deep links for Battleships.
@@ -11,7 +13,7 @@ import { createLink } from '@calimero-network/mero-platform';
  *
  * kv-store models its payload (`{ invitation, namespaceId, contextId }`)
  * because it has to open a specific context after joining. Battleships does
- * not — `joinLobby` already accepts both shapes the lobby emits (a single
+ * not — the join already accepts both shapes the lobby emits (a single
  * `{ invitation, inviterSignature }` and the recursive
  * `{ invitations: [...] }`), and the SDK's own docs warn that re-modelling an
  * invitation through a client's own type drops unknown fields and invalidates
@@ -118,31 +120,83 @@ export function decodeInvitationPayload(encoded: string): string | null {
   }
 }
 
+/** A group id as the node lists it: hex, whether it arrived as bytes or a string. */
+function groupIdHex(gid: unknown): string | null {
+  if (Array.isArray(gid)) {
+    return gid.length > 0
+      ? gid.map((b: number) => Number(b).toString(16).padStart(2, '0')).join('')
+      : null;
+  }
+  return typeof gid === 'string' && gid ? gid : null;
+}
+
+/** What an opened invitation link carries, read out of its token. */
+export interface LobbyInvitation {
+  namespaceId: string;
+  /** The signed invitation, exactly as the inviter's node produced it. */
+  invitation: unknown;
+  /** The group alias the node put in a recursive invitation, if any. */
+  groupAlias?: string;
+  /** The lobby's human name the inviter embedded beside the invitation. */
+  lobbyName?: string;
+  /** The inviter's player key, so the joiner has someone to challenge. */
+  inviterKey?: string;
+}
+
 /**
- * Accept whatever the user pasted: a full https or `calimero://` link, a bare
- * encoded blob, or raw JSON. Returns the payload JSON string, or null.
+ * Read the token of an opened invitation link into what a join needs.
  *
- * Raw JSON stays accepted on purpose. Every invitation this app issued before
- * links existed was a pretty-printed JSON blob, and people have them saved.
+ * Both shapes the lobby has emitted are accepted — the recursive
+ * `{ invitations: [{ groupId, invitation, groupAlias }] }` and the single
+ * `{ invitation: { groupId: number[], … }, inviterSignature }` — and the
+ * invitation itself is handed on untouched (see the top of this file). Returns
+ * null for anything that names no namespace.
  */
-export function parseInvitationInput(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
+export function readLobbyInvitation(token: string): LobbyInvitation | null {
+  const json = decodeInvitationPayload(token);
+  if (!json) return null;
+  let parsed: Record<string, unknown>;
   try {
-    if (
-      trimmed.startsWith('http://') ||
-      trimmed.startsWith('https://') ||
-      trimmed.startsWith('calimero://')
-    ) {
-      const parsed = new URL(trimmed);
-      const invitation = parsed.searchParams.get('invitation');
-      return invitation ? decodeInvitationPayload(invitation) : null;
-    }
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
-    return decodeInvitationPayload(trimmed);
+    const value: unknown = JSON.parse(json);
+    if (!value || typeof value !== 'object') return null;
+    parsed = value as Record<string, unknown>;
   } catch {
     return null;
   }
+
+  let namespaceId: string | null = null;
+  let invitation: unknown = parsed;
+  let groupAlias: string | undefined;
+  const list = parsed.invitations;
+  const single = parsed.invitation as { groupId?: unknown } | undefined;
+  if (Array.isArray(list) && list.length > 0) {
+    const first = list[0] as {
+      groupId?: unknown;
+      invitation?: unknown;
+      groupAlias?: unknown;
+    };
+    namespaceId = groupIdHex(first?.groupId);
+    invitation = first?.invitation;
+    groupAlias =
+      typeof first?.groupAlias === 'string' && first.groupAlias
+        ? first.groupAlias
+        : undefined;
+  } else if (single?.groupId) {
+    namespaceId = groupIdHex(single.groupId);
+    groupAlias =
+      typeof parsed.groupAlias === 'string' && parsed.groupAlias
+        ? parsed.groupAlias
+        : undefined;
+  }
+  if (!namespaceId) return null;
+
+  return {
+    namespaceId,
+    invitation,
+    groupAlias,
+    lobbyName: embeddedLobbyName(parsed) || groupAlias || undefined,
+    inviterKey: embeddedInviterKey(parsed) || undefined,
+  };
 }
 
 /**
@@ -157,19 +211,5 @@ export function parseInvitationInput(input: string): string | null {
  * the bundle.
  */
 export function generateInvitationUrl(payloadJson: string): string {
-  return createLink(APP_SLUG, 'join', {
-    invitation: encodeInvitationPayload(payloadJson),
-  });
-}
-
-/**
- * Device-local link. Kept separate and NOT offered in the UI.
- *
- * The HTTPS link above already hands off to the desktop on a machine that has
- * it, so showing both asks the user to make a choice they cannot evaluate.
- */
-export const CALIMERO_JOIN_DEEP_LINK = `calimero://${APP_SLUG}/join`;
-
-export function generateInvitationDeepLink(payloadJson: string): string {
-  return `${CALIMERO_JOIN_DEEP_LINK}?invitation=${encodeInvitationPayload(payloadJson)}`;
+  return buildInviteLink(APP_SLUG, encodeInvitationPayload(payloadJson));
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { styled } from 'styled-components';
 import { useCalimero } from '../lib/useCalimero';
 import { shouldRetain } from '@calimero-apps/invite';
@@ -15,11 +15,12 @@ import {
 // on any route — `/`, `/docs`, a deep link the launcher rewrote, a path that
 // does not exist — and the prompt has to be there wherever it lands.
 //
-// The join itself lives in `api/invitationJoin.ts`, shared with the dashboard's
-// paste box. What used to be here was a 400-line component that owned the whole
-// redemption: two nested retry ladders, a sync poll reading a field it could not
-// see, and its own copy of the name resolution that the dashboard had a
-// different copy of.
+// It ASKS FIRST. Opening a link is not consent to join: the prompt names what
+// the invitation is for and joins only on "Join". It used to start the join
+// the moment it mounted, so any page that could get a link opened in your
+// browser could put your node into a workspace.
+//
+// The join itself lives in `api/invitationJoin.ts`.
 
 // The glass dialog look, from the `--sign-*` tokens (src/index.css), so the
 // prompt follows the light/dark switch like the rest of the app.
@@ -81,7 +82,16 @@ const Pill = styled.button<{ $primary?: boolean }>`
     $primary
       ? 'var(--sign-primary-shadow)'
       : 'inset 0 0 0 1px var(--sign-line-strong)'};
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
 `;
+
+const ASK_COPY =
+  'You were invited to a Mero Sign workspace. Joining adds your node to it, ' +
+  'and its agreements sync to you.';
 
 const STAGE_COPY: Record<RedeemStage, { title: string; body: string }> = {
   joining: {
@@ -113,7 +123,7 @@ const ButtonGroup = styled.div`
 `;
 
 interface InvitationHandlerPopupProps {
-  /** The captured invitation — a link, a code, or a pasted payload. */
+  /** The token the shared capture took out of the opened link. */
   invitation: string;
   /**
    * ⚠️ `contextId` IS NULLABLE. An invitation grants membership of a workspace,
@@ -132,7 +142,7 @@ interface InvitationHandlerPopupProps {
    */
   onFinalFailure: () => void;
   /**
-   * Dismissed. `retain` is true after a failure worth another attempt on a
+   * Declined or dismissed. `retain` is true after a failure worth another attempt on a
    * later load (nobody online to let them in, node unreachable), so the caller
    * keeps the invitation instead of acking it.
    */
@@ -146,7 +156,8 @@ export default function InvitationHandlerPopup({
   onError,
 }: InvitationHandlerPopupProps) {
   const { app } = useCalimero();
-  const [stage, setStage] = useState<RedeemStage>('joining');
+  // Null until the person says yes; then the join's progress.
+  const [stage, setStage] = useState<RedeemStage | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   // Whether "Try again" can do anything. False once the node has refused the
   // invitation itself — a new link is the only way forward then.
@@ -154,10 +165,11 @@ export default function InvitationHandlerPopup({
   const [retain, setRetain] = useState(false);
   const attempted = useRef(false);
 
-  // The invitation's own name, shown while the join is in flight so the prompt
-  // can say WHAT you are joining. Untrusted — it is outside the signature — and
-  // superseded by the contract's name the moment the join completes.
-  const previewName = parseInvitation(invitation)?.contextName;
+  // The invitation's own name, so the prompt can say WHAT you are joining.
+  // Untrusted — it is outside the signature — and superseded by the contract's
+  // name the moment the join completes.
+  const parsed = parseInvitation(invitation);
+  const previewName = parsed?.contextName || parsed?.workspaceName;
 
   const run = useCallback(async () => {
     if (attempted.current) return;
@@ -191,30 +203,61 @@ export default function InvitationHandlerPopup({
     }
   }, [app, invitation, onSuccess, onFinalFailure]);
 
-  useEffect(() => {
-    // `app` is created asynchronously by the provider. Starting without it puts
-    // every call on the apiClient fallback path, which is why the old component
-    // had a twenty-attempt polling loop waiting for it; waiting for the value to
-    // exist is the same thing without the loop.
-    if (!app) return;
-    void run();
-  }, [app, run]);
-
   if (errorMessage) {
     return (
       <Overlay>
         <PopupContainer>
           <Title>Could not join</Title>
-          <Message type="error">{errorMessage}</Message>
+          <Message type="error" data-testid="invite-error">
+            {errorMessage}
+          </Message>
           <ButtonGroup>
             <Pill type="button" onClick={() => onError(retain)}>
               Cancel
             </Pill>
             {retryable && (
-              <Pill type="button" $primary onClick={() => void run()}>
+              <Pill
+                type="button"
+                $primary
+                onClick={() => void run()}
+                data-testid="invite-retry"
+              >
                 Try again
               </Pill>
             )}
+          </ButtonGroup>
+        </PopupContainer>
+      </Overlay>
+    );
+  }
+
+  if (stage === null) {
+    return (
+      <Overlay>
+        <PopupContainer role="dialog" aria-modal="true">
+          <Title>
+            {previewName ? `Join “${previewName}”?` : 'Join this workspace?'}
+          </Title>
+          <Message type="info">{ASK_COPY}</Message>
+          <ButtonGroup>
+            <Pill
+              type="button"
+              onClick={() => onError(false)}
+              data-testid="invite-decline"
+            >
+              Not now
+            </Pill>
+            <Pill
+              type="button"
+              $primary
+              // `app` is created asynchronously by the provider; joining
+              // without it puts every call on the apiClient fallback path.
+              disabled={!app}
+              onClick={() => void run()}
+              data-testid="invite-accept"
+            >
+              Join
+            </Pill>
           </ButtonGroup>
         </PopupContainer>
       </Overlay>

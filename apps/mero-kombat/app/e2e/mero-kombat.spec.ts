@@ -53,7 +53,8 @@ test.describe("Mero Kombat", () => {
   test("offers the arena picker when the session names no context", async ({ page }) => {
     await login(page, { withContext: false });
     await expect(page.getByRole("heading", { name: "Choose an arena" })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("heading", { name: "Join with an invitation" })).toBeVisible();
+    // An invitation arrives only by its link being opened: nothing to paste one into.
+    await expect(page.getByRole("textbox", { name: /invitation/i })).toHaveCount(0);
   });
 
   test("practice needs no node: the CPU fights back", async ({ page }) => {

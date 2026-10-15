@@ -39,6 +39,7 @@ import { TestRunner } from "./sections/TestRunner";
 import { SyncTest } from "./sections/SyncTest";
 import { FileShareDemo } from "./sections/FileShareDemo";
 import { TutorialButton } from "./components/Tutorial";
+import { InvitationPrompt } from "./components/InvitationPrompt";
 
 type SectionId =
   | "concepts"
@@ -608,6 +609,20 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
+  // An opened invitation link joined a context: make it the active one, and
+  // re-read the list so the switcher and the "no context" notice agree.
+  const adoptContext = useCallback(async (id: string) => {
+    setContextIdState(id);
+    try {
+      const all = await listContexts();
+      const mine = contextsForThisApp(all);
+      setContexts(mine);
+      setForeignContextCount(all.length - mine.length);
+    } catch (err) {
+      console.error("Failed to reload contexts:", err);
+    }
+  }, []);
+
   if (!isAuthenticated) return <ConnectScreen />;
 
   return (
@@ -724,6 +739,8 @@ export default function App() {
             </select>
           )}
         </ContextBar>
+
+        <InvitationPrompt onContextJoined={(id) => void adoptContext(id)} />
 
         {/*
           Said out loud rather than left as an empty screen. "This app has no

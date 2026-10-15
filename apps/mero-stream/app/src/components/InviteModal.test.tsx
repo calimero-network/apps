@@ -38,7 +38,12 @@ describe("InviteModal", () => {
   it("renders nothing, and does not throw, with no invitation yet", () => {
     expect(() =>
       render(
-        <InviteModal open={false} code="" scope="Whole stream · Test" onClose={() => {}} />,
+        <InviteModal
+          open={false}
+          code=""
+          scope="Whole stream · Test"
+          onClose={() => {}}
+        />,
       ),
     ).not.toThrow();
     expect(screen.queryByTestId("invite-modal")).toBeNull();
@@ -49,7 +54,12 @@ describe("InviteModal", () => {
     // not be able to crash the page either.
     expect(() =>
       render(
-        <InviteModal open code="" scope="Whole stream · Test" onClose={() => {}} />,
+        <InviteModal
+          open
+          code=""
+          scope="Whole stream · Test"
+          onClose={() => {}}
+        />,
       ),
     ).not.toThrow();
     expect(screen.queryByTestId("invite-modal")).toBeNull();
@@ -58,7 +68,12 @@ describe("InviteModal", () => {
   it("treats a whitespace-only code as no code", () => {
     expect(() =>
       render(
-        <InviteModal open code="   " scope="Whole stream · Test" onClose={() => {}} />,
+        <InviteModal
+          open
+          code="   "
+          scope="Whole stream · Test"
+          onClose={() => {}}
+        />,
       ),
     ).not.toThrow();
     expect(screen.queryByTestId("invite-modal")).toBeNull();
@@ -78,6 +93,25 @@ describe("InviteModal", () => {
     expect(link.textContent).toMatch(/^https?:\/\//);
     expect(screen.getByTestId("invite-scope").textContent).toBe(
       "Whole stream · Test",
+    );
+  });
+
+  it("offers the link and nothing else to share", () => {
+    // An invitation reaches the app only by its link being opened, so there is
+    // no desktop link or raw code to hand out instead.
+    render(
+      <InviteModal
+        open
+        code="abc123"
+        scope="Whole stream · Test"
+        onClose={() => {}}
+      />,
+    );
+    const modal = screen.getByTestId("invite-modal");
+    expect(screen.queryByTestId("invite-more")).toBeNull();
+    expect(modal.textContent).not.toContain("calimero://");
+    expect(screen.getByTestId("invite-link").getAttribute("title")).toMatch(
+      /^https:\/\/links\.calimero\.network\/com\.calimero\.mero-stream\/join\?invitation=abc123$/,
     );
   });
 });

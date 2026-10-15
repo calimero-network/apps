@@ -16,13 +16,13 @@
  * Panels (functions, comments, …) float in from the right as overlays.
  *
  * Three states:
- *  1. Workspace picker (!ws.contextId) — open / create / join a workspace
+ *  1. Workspace picker (!ws.contextId) — open / create a workspace
  *  2. Opening (ws.contextId set, !ws.ready) — identity resolving
  *  3. Workspace open — full spreadsheet UI (with ← back to the picker)
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useGroupMembers, useMero } from '@calimero-network/mero-react';
 import { C } from '../../theme';
 import ThemeToggle from '../../components/ThemeToggle';
@@ -44,7 +44,6 @@ import SpreadsheetGrid from '../../components/SpreadsheetGrid';
 import SheetTabs from '../../components/SheetTabs';
 import FunctionHelpPanel from '../../components/FunctionHelpPanel';
 import InviteModal from '../../components/InviteModal';
-import JoinModal from '../../components/JoinModal';
 import NicknameModal from '../../components/NicknameModal';
 import ContextMenu from '../../components/ContextMenu';
 import NamesModal from '../../components/NamesModal';
@@ -92,6 +91,21 @@ export default function AppPage() {
   });
   const navigate = useNavigate();
 
+  // An invitation the app-level prompt just joined arrives as navigation state
+  // (see `AppInvitations` in App.tsx): this page is usually already showing,
+  // so the state — not a remount — is what makes it re-read the node and open
+  // what was joined. Cleared once handled, so a reload does not replay it.
+  const location = useLocation();
+  const joined = (location.state as {
+    joined?: Parameters<typeof ws.landJoined>[0];
+  } | null)?.joined;
+  const { landJoined } = ws;
+  useEffect(() => {
+    if (!joined) return;
+    void landJoined(joined);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [joined, landJoined, navigate, location.pathname]);
+
   // Log out: mero-react drops this browser's node session (tokens and all),
   // and the front door is where a signed-out visitor belongs.
   const signOut = useCallback(() => {
@@ -119,7 +133,6 @@ export default function AppPage() {
 
   // ── Workspace modals ────────────────────────────────────────────
   const [showInvite, setShowInvite] = useState(false);
-  const [showJoin, setShowJoin] = useState(false);
   // The minted code lives here rather than inside InviteModal, because minting
   // is a network call against the namespace and the modal is a presentation of
   // its result — keeping them together made the dialog either mint on every open
@@ -288,8 +301,18 @@ export default function AppPage() {
       !selfCreatedRef.current.has(ws.contextId) &&
       ensuredDefaultSheetRef.current !== ws.contextId
     ) {
-      ensuredDefaultSheetRef.current = ws.contextId;
-      void ss.createSheet('Sheet 1');
+      const contextId = ws.contextId;
+      ensuredDefaultSheetRef.current = contextId;
+      // A joiner can land here before the shared state has replicated: the
+      // node answers `Uninitialized`, and the inviter's sheets are on their
+      // way. Nothing to create yet — free the guard so a later change retries —
+      // and never let it escape as an unhandled rejection.
+      ss.createSheet('Sheet 1').catch((err: unknown) => {
+        if (ensuredDefaultSheetRef.current === contextId) ensuredDefaultSheetRef.current = null;
+        if (!/uninitiali[sz]ed/i.test(String((err as { message?: string })?.message ?? err))) {
+          console.warn('[mero-sheets] could not create the default sheet', err);
+        }
+      });
     }
   }, [ss.ready, ss.loaded, ss.sheets.length, ss.cells.length, ss, ws.contextId]);
 
@@ -1281,8 +1304,9 @@ export default function AppPage() {
             <Eyebrow>Workspace</Eyebrow>
             <h1>{ws.namespaceName}</h1>
             <p>
-              Open a spreadsheet, create a new one, or join a workspace you&rsquo;ve
-              been invited to. All data lives on your node — no central server.
+              Open a spreadsheet or create a new one. To join someone else&rsquo;s,
+              open the invitation link they sent you. All data lives on your node —
+              no central server.
             </p>
           </PickerHero>
 
@@ -1336,7 +1360,7 @@ export default function AppPage() {
                 <EmptyList>
                   <RowIcon aria-hidden="true"><SheetGlyph size={20} /></RowIcon>
                   <strong>No spreadsheets yet</strong>
-                  <span>Create the first one, or join one you&rsquo;ve been invited to.</span>
+                  <span>Create the first one, or open an invitation link someone sent you.</span>
                 </EmptyList>
               )}
               {ws.notInstalled && (
@@ -1368,9 +1392,6 @@ export default function AppPage() {
                 >
                   Create spreadsheet
                 </PrimaryBtn>
-                <SecondaryBtn onClick={() => setShowJoin(true)}>
-                  Join with invitation
-                </SecondaryBtn>
               </ButtonRow>
 
               {ws.status && <StatusLine>{ws.status}</StatusLine>}
@@ -1379,12 +1400,6 @@ export default function AppPage() {
           </PickerGrid>
         </PickerMain>
 
-        {showJoin && (
-          <JoinModal
-            onJoin={async (code) => { await ws.join(code); setShowJoin(false); }}
-            onClose={() => setShowJoin(false)}
-          />
-        )}
       </PickerShell>
     );
   }
@@ -1549,14 +1564,6 @@ export default function AppPage() {
       {/* ── Tool dock: file, history and the side panels ─────────────── */}
       <ToolDock role="toolbar" aria-label="Spreadsheet tools">
         <ToolGroup>
-          <ToolBtn onClick={() => setShowJoin(true)} aria-label="Join workspace">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-              <polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" />
-            </svg>
-            <span>Join</span>
-          </ToolBtn>
           <ToolBtn
             data-testid="action-export_all"
             onClick={handleDownload}
@@ -1802,12 +1809,6 @@ export default function AppPage() {
           loading={ws.inviteLoading && !inviteCode}
           error={inviteError}
           onClose={() => setShowInvite(false)}
-        />
-      )}
-      {showJoin && (
-        <JoinModal
-          onJoin={async (code) => { await ws.join(code); setShowJoin(false); }}
-          onClose={() => setShowJoin(false)}
         />
       )}
       {needsNickname && (

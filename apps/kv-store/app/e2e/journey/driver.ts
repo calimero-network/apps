@@ -1,10 +1,16 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import type { Actor, AppDriver, Feature } from "@calimero-apps/e2e-node/journey";
+import type {
+  Actor,
+  AppDriver,
+  Feature,
+} from "@calimero-apps/e2e-node/journey";
 
 const SYNC_TIMEOUT = 90_000;
 
 function card(page: Page, heading: string): Locator {
-  return page.locator(".card", { has: page.getByRole("heading", { name: heading, exact: true }) });
+  return page.locator(".card", {
+    has: page.getByRole("heading", { name: heading, exact: true }),
+  });
 }
 
 function entryRow(page: Page, key: string): Locator {
@@ -14,7 +20,9 @@ function entryRow(page: Page, key: string): Locator {
 }
 
 async function waitForPanel(page: Page): Promise<void> {
-  await expect(page.getByRole("heading", { name: "Write", exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(
+    page.getByRole("heading", { name: "Write", exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
 }
 
 async function setEntry(page: Page, key: string, value: string): Promise<void> {
@@ -25,19 +33,31 @@ async function setEntry(page: Page, key: string, value: string): Promise<void> {
   await expect(entryRow(page, key)).toContainText(value, { timeout: 30_000 });
 }
 
-async function seeEntry(page: Page, key: string, value: string | null): Promise<void> {
+async function seeEntry(
+  page: Page,
+  key: string,
+  value: string | null,
+): Promise<void> {
   await expect
     .poll(
       async () => {
-        await card(page, "Entries").getByRole("button", { name: "Refresh", exact: true }).click();
+        await card(page, "Entries")
+          .getByRole("button", { name: "Refresh", exact: true })
+          .click();
         const row = entryRow(page, key);
         if (value === null) return (await row.count()) === 0;
-        return (await row.count()) > 0 && (await row.first().innerText()).includes(value);
+        return (
+          (await row.count()) > 0 &&
+          (await row.first().innerText()).includes(value)
+        );
       },
       { timeout: SYNC_TIMEOUT, intervals: [1_000, 2_000, 3_000] },
     )
     .toBe(true);
 }
+
+/** The namespace `createNamespace` made, matched by the id its note shows. */
+let created: RegExp | null = null;
 
 type Entry = { key: string; value: string };
 const written: Record<string, Entry> = {};
@@ -96,38 +116,67 @@ export const driver: AppDriver = {
 
   async createNamespace(actor) {
     const page = actor.page;
-    await expect(page.getByRole("heading", { name: "Choose a context" })).toBeVisible({ timeout: 60_000 });
-    await page.getByRole("button", { name: "Create namespace", exact: true }).click();
-    await expect(page.getByText(/Namespace .* created/)).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByRole("heading", { name: "Choose a context" }),
+    ).toBeVisible({ timeout: 60_000 });
+    await page
+      .getByRole("button", { name: "Create namespace", exact: true })
+      .click();
+    const note = page.getByText(/Namespace .* created/);
+    await expect(note).toBeVisible({
+      timeout: 30_000,
+    });
+    // The note shortens the id to `head…tail`. Kept so the context goes into
+    // THIS namespace: a node reused by a later test lists earlier ones too.
+    const id = /Namespace (\w+)…(\w+) created/.exec(await note.innerText());
+    if (!id) throw new Error(`unexpected note: ${await note.innerText()}`);
+    created = new RegExp(`^${id[1]}\\w*${id[2]}$`);
   },
 
   async createSpace(actor) {
     const page = actor.page;
-    const namespaces = card(page, "Namespaces");
-    await namespaces.getByRole("button", { name: "Add context" }).first().click();
+    if (!created) throw new Error("no namespace has been created yet");
+    const row = card(page, "Namespaces").locator("tr", {
+      has: page.locator("td.mono", { hasText: created }),
+    });
+    await row.getByRole("button", { name: "Add context" }).click();
     await waitForPanel(page);
   },
 
   async invite(actor) {
     const page = actor.page;
     const inviteCard = card(page, "Invite someone");
-    await inviteCard.getByRole("button", { name: "Create invite link" }).click();
+    await inviteCard
+      .getByRole("button", { name: "Create invite link" })
+      .click();
     const link = inviteCard.locator("code.invite-link");
     await expect(link).toBeVisible({ timeout: 30_000 });
     return (await link.getAttribute("title")) ?? (await link.innerText());
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    const join = card(page, "Join with an invitation");
-    await expect(join).toBeVisible({ timeout: 60_000 });
-    await join.getByLabel("invitation").fill(link);
-    await join.getByRole("button", { name: "Join", exact: true }).first().click();
-    const panel = page.getByRole("heading", { name: "Write", exact: true });
-    const waiting = join.getByText("An invitation is waiting");
-    await expect(panel.or(waiting)).toBeVisible({ timeout: 60_000 });
-    if (await waiting.isVisible()) await join.getByRole("button", { name: "Join", exact: true }).last().click();
-    await waitForPanel(page);
+    // The prompt was accepted; a join reloads into the context it names, where the
+    // invitation card is gone. Waiting for that, not just for the context view,
+    // matters when the actor was already inside another context. A refusal stays
+    // on screen with the reason, so fail with that, not a timeout.
+    const inside = page.getByRole("heading", { name: "Write", exact: true });
+    const prompt = page.getByRole("heading", {
+      name: "Join with an invitation",
+      exact: true,
+    });
+    const refused = page.getByTestId("invite-error");
+    const where = async () =>
+      (await refused.isVisible())
+        ? "refused"
+        : (await inside.isVisible()) && !(await prompt.isVisible())
+          ? "in"
+          : "waiting";
+    await expect
+      .poll(where, { timeout: 120_000, intervals: [500, 1_000] })
+      .not.toBe("waiting");
+    if ((await where()) === "refused")
+      throw new Error(`join refused: ${await refused.innerText()}`);
   },
 
   async afterReload(actor) {

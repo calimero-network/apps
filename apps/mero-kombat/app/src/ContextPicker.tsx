@@ -44,7 +44,7 @@ export function ContextPicker({
   children,
 }: {
   applicationId: string | null;
-  /** Drawn in the side column — the join-by-invitation card. */
+  /** Drawn at the top of the side column. */
   children?: ReactNode;
 }) {
   const {
@@ -224,7 +224,7 @@ export function ContextPicker({
             <div className="empty-state">
               <Portrait id="kinetic" size={64} className="empty-piece" />
               <p>No arenas on this node yet.</p>
-              <p className="hint">Start one with New arena, or join one with an invitation.</p>
+              <p className="hint">Start one with New arena, or open an invitation link someone sent you.</p>
             </div>
           )}
 

@@ -6,7 +6,6 @@ import {
   encodeInvitationObject,
   decodeInvitationObject,
   invitationLink,
-  invitationTokenFrom,
 } from "./invitation";
 
 describe("encodeInvitation", () => {
@@ -121,11 +120,5 @@ describe("shareable invitation links", () => {
     // and the landing page asks the registry for that package's frontend.
     expect(url.pathname).toBe(`/${APP_SLUG}/join`);
     expect(url.searchParams.get("invitation")).toBe(token);
-  });
-
-  it("reads the token back out of a link, and leaves a bare token alone", () => {
-    const token = encodeInvitationObject({ invitation: { group_id: "g1" } });
-    expect(invitationTokenFrom(invitationLink(token))).toBe(token);
-    expect(invitationTokenFrom(`  ${token}  `)).toBe(token);
   });
 });

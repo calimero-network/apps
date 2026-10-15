@@ -7,8 +7,8 @@ import { markNamespaceJustJoined } from '@/hooks/useDriveWorkspace';
 
 // The card's one decision worth pinning: what a join's outcome does. A join,
 // or a failed request for a workspace the node now lists, lands the user; a
-// failure no retry can fix retires the button; one that could pass offers it
-// again.
+// failure no retry can fix removes the button and says why (`invite-error`);
+// one that could pass offers it again.
 
 const h = vi.hoisted(() => ({
   admin: {} as Record<string, (...a: unknown[]) => Promise<unknown>>,
@@ -88,18 +88,31 @@ describe('JoinInviteCard redeem', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('says why a refused invitation failed, and retires the button', async () => {
+  it('says why a refused invitation failed, and offers no retry', async () => {
     const onJoined = setup({
       joinNamespace: () => Promise.reject(httpError(409, 'member was removed')),
     });
-    await screen.findByText(
+    expect((await screen.findByTestId('invite-error')).textContent).toContain(
       "You can't join this workspace with this invitation. Ask an admin to invite you again.",
     );
-    const button = screen.getByRole('button', {
-      name: /accept & join/i,
-    }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    expect(screen.queryByTestId('invite-accept')).toBeNull();
     expect(onJoined).not.toHaveBeenCalled();
+  });
+
+  it('names a spent link when the node says so', async () => {
+    setup({
+      joinNamespace: () =>
+        Promise.reject(
+          httpError(
+            409,
+            'identity ab has already used this invitation to join group cd; a new invitation is required',
+          ),
+        ),
+    });
+    expect((await screen.findByTestId('invite-error')).textContent).toContain(
+      "You've already used this link. Ask for a new one.",
+    );
+    expect(screen.queryByTestId('invite-accept')).toBeNull();
   });
 
   it('offers another attempt when no one is online to let you in', async () => {
@@ -111,6 +124,9 @@ describe('JoinInviteCard redeem', () => {
       name: /try again/i,
     })) as HTMLButtonElement;
     expect(retry.disabled).toBe(false);
+    expect(retry.dataset.testid).toBe('invite-accept');
+    // Not final, so not the journey's "join refused" marker.
+    expect(screen.queryByTestId('invite-error')).toBeNull();
     expect(onJoined).not.toHaveBeenCalled();
   });
 

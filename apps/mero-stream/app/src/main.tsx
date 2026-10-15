@@ -7,11 +7,13 @@ import {
   AppMode as MeroAppMode,
 } from "@calimero-network/mero-react";
 import "@calimero-network/mero-ui/styles.css";
+import { primeInvitationCapture } from "@calimero-apps/invite";
 import App from "./App";
 import { ToastProvider } from "./contexts/ToastContext";
 import { APP_ENABLED, IS_TAURI } from "./lib/tauri";
 import WebOnlyNotice from "./components/WebOnlyNotice";
 import { captureSessionFromHash } from "./lib/session";
+import { APP_SLUG } from "./lib/inviteLink";
 import "./index.css";
 
 // ── Tauri desktop SSO ─────────────────────────────────────────────────────────
@@ -62,28 +64,35 @@ if (IS_TAURI) {
     </StrictMode>,
   );
 } else {
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <MeroProvider
-      mode={MeroAppMode.MultiContext}
-      // ⚠️ `?.trim() ||`, never `??`. Vercel inlines a defined-but-EMPTY env
-      // var as `""`, which `??` happily keeps — and an empty packageName makes
-      // `buildAuthLoginUrl` drop the `package-name` param entirely. Without it
-      // auth-frontend cannot look the app up in the registry to authorize the
-      // callback origin, so a hosted login dies on "Login callback destination
-      // is not allowed". That is exactly what shipped on mero-design.
-      packageName={
-        import.meta.env.VITE_APPLICATION_PACKAGE?.trim() || "com.calimero.mero-stream"
-      }
-      registryUrl="https://apps.calimero.network"
-      allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
-    >
-      <BrowserRouter>
-        <ToastProvider>
-          <App />
-        </ToastProvider>
-      </BrowserRouter>
-    </MeroProvider>
-  </StrictMode>,
-);
+  // An invitation reaches this app only as an opened link: the links page (or a
+  // cold desktop start) appends `?invitation=…` to this URL, and a running
+  // desktop sends a `deep-link` event. Captured before the router can rewrite
+  // the URL; a link addressed to another app is dropped, not offered. Not in the
+  // desktop window above: nothing there could redeem it.
+  primeInvitationCapture("mero-stream", { slug: APP_SLUG });
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <MeroProvider
+        mode={MeroAppMode.MultiContext}
+        // ⚠️ `?.trim() ||`, never `??`. Vercel inlines a defined-but-EMPTY env
+        // var as `""`, which `??` happily keeps — and an empty packageName makes
+        // `buildAuthLoginUrl` drop the `package-name` param entirely. Without it
+        // auth-frontend cannot look the app up in the registry to authorize the
+        // callback origin, so a hosted login dies on "Login callback destination
+        // is not allowed". That is exactly what shipped on mero-design.
+        packageName={
+          import.meta.env.VITE_APPLICATION_PACKAGE?.trim() ||
+          "com.calimero.mero-stream"
+        }
+        registryUrl="https://apps.calimero.network"
+        allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
+      >
+        <BrowserRouter>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </BrowserRouter>
+      </MeroProvider>
+    </StrictMode>,
+  );
 }

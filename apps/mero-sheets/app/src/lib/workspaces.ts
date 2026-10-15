@@ -317,9 +317,9 @@ export interface AcceptedInvite {
  * A workspace join the node did not let through, as `redeemInvitation` read it.
  *
  * The message is already the sentence to show (in this app's word,
- * "workspace"), so a caller that only renders `e.message` — the paste modal —
- * says the right thing; `outcome` is there for the one that must also decide
- * whether to keep the invitation (see `keepsInvitation`).
+ * "workspace"), so the invitation prompt can render `e.message` as it is;
+ * `outcome` is there to decide whether to keep the invitation (see
+ * `keepsInvitation`).
  */
 export class InviteRedeemError extends Error {
   readonly outcome: Extract<RedeemOutcome, { status: 'failed' }>;

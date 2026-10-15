@@ -1,11 +1,11 @@
-import { createLink, parseIntent } from "@calimero-network/mero-platform";
+import { createLink } from "@calimero-network/mero-platform";
 import bs58 from "bs58";
 import { deflateSync, inflateSync } from "fflate";
 
 // ── Invitation codec ─────────────────────────────────────────────────────────
 //
 // The payload is deflate-compressed and base58-encoded into one compact
-// pasteable string — the same wire format mero-blocks, merraria, mero-stream and
+// string — the same wire format mero-blocks, merraria, mero-stream and
 // mero-chat use.
 //
 // Why compress: the signed invitation is JSON carrying three 32-byte arrays
@@ -112,79 +112,8 @@ export const INVITATION_PARAM = "invitation";
 /**
  * The shareable form of an invitation token: a canonical HTTPS link that opens
  * the desktop app where it is installed and the published web build otherwise.
- *
- * Previously the invite modal copied the bare token, which put the burden of
- * knowing what to do with it on the recipient. {@link invitationTokenFrom}
- * reads a link back, and still accepts a bare token so links already shared
- * keep working.
+ * It is the only form an invitation is shared in — it is opened, never pasted.
  */
 export function invitationLink(token: string): string {
   return createLink(APP_SLUG, JOIN_ACTION, { [INVITATION_PARAM]: token });
-}
-
-/** The token carried by an invitation link, or the input unchanged if it isn't one. */
-export function invitationTokenFrom(input: string): string {
-  const trimmed = input.trim();
-  if (!/^(https?|calimero):\/\//i.test(trimmed)) return trimmed;
-  try {
-    return new URL(trimmed).searchParams.get(INVITATION_PARAM) ?? trimmed;
-  } catch {
-    return trimmed;
-  }
-}
-
-/**
- * Pull an invitation token out of anything that might carry one: a platform
- * HTTPS link, a `calimero://` deep link, a bare query string, or the token
- * itself.
- *
- * Parsing goes through the SDK's `parseIntent` rather than `new URL()`, for one
- * specific reason: `calimero://<slug>/<action>` has to be split by hand,
- * because non-special-scheme host parsing mangles a dotted slug like
- * `com.calimero.mero-pixart`.
- *
- * Returns null when there is no invitation in it — including a link carrying
- * some other app's slug, which is not ours to redeem.
- */
-export function invitationFromRaw(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-
-  const intent = parseIntent(trimmed);
-
-  // Reject another app's invitation — but only when this really is a platform
-  // intent, meaning BOTH a slug and an action. `parseIntent` reports the first
-  // path segment as the slug whatever it is, so this app's own routes
-  // (`/teams?invitation=…`) come back as `{slug: "teams", action: null}` — a
-  // route misread as a slug, which it has no way to know. Rejecting on the slug
-  // alone would throw away our own links.
-  if (intent.slug && intent.action && intent.slug !== APP_SLUG) return null;
-
-  const fromIntent = intent.params[INVITATION_PARAM];
-  if (fromIntent) return fromIntent;
-
-  if (/^(https?|calimero):\/\//i.test(trimmed)) {
-    try {
-      return new URL(trimmed).searchParams.get(INVITATION_PARAM);
-    } catch {
-      return null;
-    }
-  }
-  return trimmed;
-}
-
-/**
- * The current URL with `?invitation=` removed, for tidying the address bar after
- * the intent has been captured. Returns the input unchanged when there is
- * nothing to strip or it cannot be parsed.
- */
-export function urlWithoutInvitation(href: string): string {
-  try {
-    const url = new URL(href);
-    if (!url.searchParams.has(INVITATION_PARAM)) return href;
-    url.searchParams.delete(INVITATION_PARAM);
-    return url.pathname + (url.search ? url.search : "") + url.hash;
-  } catch {
-    return href;
-  }
 }

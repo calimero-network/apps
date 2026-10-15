@@ -29,11 +29,11 @@ import LobbySelect from '../../components/LobbySelect';
 import AppFooter from '../../components/AppFooter';
 import { useToast } from '../../contexts/ToastContext';
 import CopyButton from '../../components/CopyButton';
-import { generateInvitationUrl, parseInvitationInput } from '../../utils/invitation';
+import { generateInvitationUrl } from '../../utils/invitation';
 import { friendlyContractMessage, isMatchFinishedError, isPlayerKeyShaped, isShipsNotPlacedError } from '../../utils/contractError';
 import { EMBEDDED_NAME_KEY, getStoredLobbyName, setStoredLobbyName } from '../../utils/lobbyName';
 import { INVITER_KEY } from '../../utils/knownPlayers';
-import { lobbyJoinFailureMessage } from '../../utils/redeemLobby';
+import type { JoinedLobbyState } from '../../components/InvitationPrompt';
 import LobbyView from '../../components/LobbyView';
 import GameBoard from '../../components/GameBoard';
 import ShotGrid from '../../components/ShotGrid';
@@ -61,6 +61,9 @@ const isNotMemberError = (error: unknown): boolean => {
   const m = errorMessage(error).toLowerCase();
   return m.includes('not a member of group') || m.includes('not a member');
 };
+
+/** How long to keep re-reading the lobby list for one that was just joined. */
+const JOINED_LOBBY_LISTING_MS = 90_000;
 
 export default function MatchPage() {
   const navigate = useNavigate();
@@ -95,7 +98,6 @@ export default function MatchPage() {
   // Lobby creation form
   const [newLobbyName, setNewLobbyName] = useState('');
   const [invitationJson, setInvitationJson] = useState<string | null>(null);
-  const [joinInvitationInput, setJoinInvitationInput] = useState('');
 
   // Lobby API and context
   const [lobbyApi, setLobbyApi] = useState<LobbyClient | null>(null);
@@ -250,6 +252,39 @@ export default function MatchPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- lobby is an object ref that changes every render; we only need the specific fields listed
   }, [view, location.search, lobby.selectedLobby, lobby.lobbyJoined, lobby.lobbyContextId]);
+
+  // An invitation accepted from the app-level prompt lands on `/lobby` with
+  // router state naming the lobby. The list was read before the join, and a
+  // joining node may not list the namespace for this app until its metadata
+  // syncs, so re-read until it does, then hand over to `?id=` — the URL effect
+  // above enters the lobby once its context resolves. Keyed on the navigation,
+  // so a second join refreshes again, whatever screen was showing.
+  const joinedLobbyId = (location.state as JoinedLobbyState | null)?.joinedLobbyId;
+  const lobbyIdsRef = useRef<string[]>([]);
+  lobbyIdsRef.current = lobby.lobbies.map((l) => l.namespaceId);
+  const refetchLobbiesRef = useRef(lobby.refetchLobbies);
+  refetchLobbiesRef.current = lobby.refetchLobbies;
+  useEffect(() => {
+    if (!joinedLobbyId) return undefined;
+    manualLobbySelect.current = false;
+    setView('lobby-select');
+    let cancelled = false;
+    (async () => {
+      const deadline = Date.now() + JOINED_LOBBY_LISTING_MS;
+      while (!cancelled && Date.now() < deadline) {
+        await refetchLobbiesRef.current().catch(() => undefined);
+        // Read after a render has picked the refetch up.
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        if (cancelled) return;
+        if (lobbyIdsRef.current.includes(joinedLobbyId)) {
+          navigate(`/lobby?id=${encodeURIComponent(joinedLobbyId)}`, { replace: true });
+          return;
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per navigation that carries a join
+  }, [location.key, joinedLobbyId]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -1008,22 +1043,6 @@ export default function MatchPage() {
     if (result) { setInvitationJson(generateInvitationUrl(JSON.stringify(payload))); show({ title: 'Invitation link created', variant: 'success' }); }
   }, [lobby, show]);
 
-  const handleJoinLobby = useCallback(async () => {
-    if (!joinInvitationInput.trim()) { show({ title: 'Paste an invitation link', variant: 'error' }); return; }
-    // A link, a bare code, or the raw JSON older invitations were issued as.
-    const payloadJson = parseInvitationInput(joinInvitationInput);
-    if (!payloadJson) { show({ title: 'That does not look like an invitation link', variant: 'error' }); return; }
-    try {
-      const outcome = await lobby.joinLobby(payloadJson);
-      if (!outcome) return;
-      // A failed join keeps the pasted code in the field, to retry or correct.
-      if (outcome.status === 'failed') { show({ title: lobbyJoinFailureMessage(outcome), variant: 'error' }); return; }
-      // `already-member` is a join that landed despite a failed request (or a
-      // code pasted twice): the same success.
-      show({ title: 'Joined namespace', variant: 'success' }); setJoinInvitationInput('');
-    } catch (e) { show({ title: friendlyContractMessage(e, 'Failed to join'), variant: 'error' }); }
-  }, [joinInvitationInput, lobby, show]);
-
   const handleEnterLobby = useCallback(() => {
     if (!lobby.lobbyContextId) { show({ title: 'No namespace context available', variant: 'error' }); return; }
     if (!lobby.namespaceId) { show({ title: 'No namespace selected', variant: 'error' }); return; }
@@ -1080,15 +1099,11 @@ export default function MatchPage() {
               selectedNamespaceId={lobby.selectedLobby?.namespaceId || null}
               lobbyContextId={lobby.lobbyContextId}
               namespaceId={lobby.namespaceId}
-              joinLoading={lobby.joinLoading}
               createLobbyLoading={lobby.createLobbyLoading}
               newLobbyName={newLobbyName}
-              joinInvitationInput={joinInvitationInput}
               onNewLobbyNameChange={setNewLobbyName}
-              onJoinInputChange={setJoinInvitationInput}
               onSelectLobby={lobby.selectLobby}
               onCreateLobby={handleCreateLobby}
-              onJoinLobby={handleJoinLobby}
               onEnter={handleEnterLobby}
             />
             {/* Inside `.page-content`, NOT beside it: `.page-shell` is a flex

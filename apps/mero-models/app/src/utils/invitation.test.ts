@@ -5,9 +5,7 @@ import {
   APP_SLUG,
   decodeInvitationPayload,
   encodeInvitationPayload,
-  generateInvitationDeepLink,
   generateInvitationUrl,
-  parseInvitationInput,
   parseInvitationPayload,
   serializeInvitationPayload,
   type ModelsInvitationPayload,
@@ -21,7 +19,8 @@ import {
 // invalidate the signature.
 const INVITATION = {
   invitation: {
-    group_id: "0a6c060dc434cac50a0e22f504c72f1d6f2327d8d2435ec02165cfe0aabbccdd",
+    group_id:
+      "0a6c060dc434cac50a0e22f504c72f1d6f2327d8d2435ec02165cfe0aabbccdd",
     inviter_identity: "5ZQtUJ3uWQrYH67nuebn688c1XWvKd8PyDHKckDbSYqE",
     expires_at: 1900000000,
   },
@@ -32,15 +31,19 @@ const INVITATION = {
 
 const PAYLOAD: ModelsInvitationPayload = {
   invitation: INVITATION,
-  namespaceId: "0a6c060dc434cac50a0e22f504c72f1d6f2327d8d2435ec02165cfe0aabbccdd",
+  namespaceId:
+    "0a6c060dc434cac50a0e22f504c72f1d6f2327d8d2435ec02165cfe0aabbccdd",
   contextId: "CwLv1UZm8TLagynFscJqNsfvGHUKbjNBbiAXQiJxfTpR",
 };
 
 describe("the payload codec", () => {
   it("round-trips", () => {
     const json = serializeInvitationPayload(PAYLOAD);
-    expect(parseInvitationPayload(decodeInvitationPayload(encodeInvitationPayload(json))!))
-      .toEqual(PAYLOAD);
+    expect(
+      parseInvitationPayload(
+        decodeInvitationPayload(encodeInvitationPayload(json))!,
+      ),
+    ).toEqual(PAYLOAD);
   });
 
   it("compresses — a link has to fit in a chat message", () => {
@@ -53,11 +56,19 @@ describe("the payload codec", () => {
 
   it("rejects a payload missing any required field", () => {
     for (const key of ["namespaceId", "contextId"] as const) {
-      expect(parseInvitationPayload(JSON.stringify({ ...PAYLOAD, [key]: "" }))).toBeNull();
+      expect(
+        parseInvitationPayload(JSON.stringify({ ...PAYLOAD, [key]: "" })),
+      ).toBeNull();
     }
     // An invitation that is not the signed envelope at all.
-    expect(parseInvitationPayload(JSON.stringify({ ...PAYLOAD, invitation: "a string" }))).toBeNull();
-    expect(parseInvitationPayload(JSON.stringify({ ...PAYLOAD, invitation: {} }))).toBeNull();
+    expect(
+      parseInvitationPayload(
+        JSON.stringify({ ...PAYLOAD, invitation: "a string" }),
+      ),
+    ).toBeNull();
+    expect(
+      parseInvitationPayload(JSON.stringify({ ...PAYLOAD, invitation: {} })),
+    ).toBeNull();
     expect(parseInvitationPayload("not json")).toBeNull();
     expect(parseInvitationPayload("[]")).toBeNull();
   });
@@ -67,7 +78,9 @@ describe("the payload codec", () => {
     // outside it. Dropping a field this client does not recognise is how a
     // round-trip silently invalidates an invitation.
     const json = serializeInvitationPayload(PAYLOAD);
-    const back = parseInvitationPayload(decodeInvitationPayload(encodeInvitationPayload(json))!);
+    const back = parseInvitationPayload(
+      decodeInvitationPayload(encodeInvitationPayload(json))!,
+    );
     expect(
       (back!.invitation as unknown as Record<string, unknown>)[
         "extra_field_from_a_newer_node"
@@ -89,29 +102,6 @@ describe("the payload codec", () => {
   });
 });
 
-describe("parseInvitationInput", () => {
-  it("accepts the https link it produced", () => {
-    const json = serializeInvitationPayload(PAYLOAD);
-    expect(parseInvitationInput(generateInvitationUrl(json))).toBe(json);
-  });
-
-  it("accepts the calimero:// link it produced", () => {
-    const json = serializeInvitationPayload(PAYLOAD);
-    expect(parseInvitationInput(generateInvitationDeepLink(json))).toBe(json);
-  });
-
-  it("accepts a bare encoded blob and raw JSON", () => {
-    const json = serializeInvitationPayload(PAYLOAD);
-    expect(parseInvitationInput(encodeInvitationPayload(json))).toBe(json);
-    expect(parseInvitationInput(json)).toBe(json);
-  });
-
-  it("returns null for a link with no invitation param", () => {
-    expect(parseInvitationInput("https://links.calimero.network/x/join")).toBeNull();
-    expect(parseInvitationInput("")).toBeNull();
-  });
-});
-
 describe("the link builders", () => {
   it("build on the package id, because the launcher matches Application.package", () => {
     const json = serializeInvitationPayload(PAYLOAD);
@@ -119,8 +109,18 @@ describe("the link builders", () => {
     // and are silently forgotten — the failure has no error surface at all.
     expect(APP_SLUG).toBe("com.calimero.mero-models");
     expect(generateInvitationUrl(json)).toContain(`/${APP_SLUG}/join`);
-    expect(generateInvitationUrl(json).startsWith("https://")).toBe(true);
-    expect(generateInvitationDeepLink(json)).toContain(`calimero://${APP_SLUG}/join`);
+    expect(
+      generateInvitationUrl(json).startsWith("https://links.calimero.network/"),
+    ).toBe(true);
+  });
+
+  it("round-trips through the token the capture hands over", () => {
+    const json = serializeInvitationPayload(PAYLOAD);
+    const token = new URL(generateInvitationUrl(json)).searchParams.get(
+      "invitation",
+    );
+    expect(token).not.toBeNull();
+    expect(decodeInvitationPayload(token!)).toBe(json);
   });
 });
 
@@ -135,7 +135,9 @@ describe("hostile input", () => {
     // cap this expands in the tab — and `PendingIntentStore` replays the intent
     // from localStorage on every later load, so the tab would die on each visit
     // with nothing obvious for the user to clear.
-    const bomb = bs58.encode(deflateSync(new Uint8Array(1024 * 1024), { level: 9 }));
+    const bomb = bs58.encode(
+      deflateSync(new Uint8Array(1024 * 1024), { level: 9 }),
+    );
     expect(bomb.length).toBeLessThan(8 * 1024); // small enough to pass the input cap
     expect(decodeInvitationPayload(bomb)).toBeNull();
   });

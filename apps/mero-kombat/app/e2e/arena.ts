@@ -3,6 +3,7 @@
  * Everything goes through the UI a player sees — no contract calls from here.
  */
 import { expect, type Locator, type Page } from "@playwright/test";
+import { acceptInvitePrompt, openInviteLink } from "@calimero-apps/e2e-node/journey";
 
 export function card(page: Page, heading: string): Locator {
   return page.locator(".card", { has: page.getByRole("heading", { name: heading, exact: true }) });
@@ -26,12 +27,28 @@ export async function mintInvite(page: Page): Promise<string> {
   return (await link.getAttribute("title")) ?? (await link.innerText());
 }
 
-export async function acceptInvite(page: Page, link: string): Promise<void> {
-  const join = card(page, "Join with an invitation");
-  await expect(join).toBeVisible({ timeout: 60_000 });
-  await join.getByLabel("invitation", { exact: true }).fill(link);
-  await join.getByRole("button", { name: "Join", exact: true }).first().click();
-  await waitForArena(page);
+/**
+ * The invitee is in: the joined arena is on screen. Fails fast with the app's
+ * own words if the join was refused, rather than waiting out the arena timeout.
+ */
+export async function waitForJoined(page: Page): Promise<void> {
+  const landed = waitForArena(page);
+  const refused = page
+    .getByTestId("invite-error")
+    .waitFor({ state: "visible", timeout: 90_000 })
+    .then(async () => {
+      throw new Error(`join refused: ${await page.getByTestId("invite-error").innerText()}`);
+    });
+  landed.catch(() => undefined);
+  refused.catch(() => undefined);
+  await Promise.race([landed, refused]);
+}
+
+/** Join the way a player does: open the link, say yes to the prompt, wait for the arena. */
+export async function joinByOpeningLink(page: Page, link: string): Promise<void> {
+  await openInviteLink(page, link, "url");
+  await acceptInvitePrompt(page);
+  await waitForJoined(page);
 }
 
 /** Name yourself, pick a fighter, take a corner — and wait until it is yours. */

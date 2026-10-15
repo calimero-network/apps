@@ -1,6 +1,8 @@
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import path from "node:path";
+import { expect, test, type Browser, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 import { loginWithModal } from "./auth";
-import { adminApi, readRigState, restartNode, type RigNode, type RigState } from "./rig";
+import { adminApi, freshRig, readRigState, restartNode, type RigNode, type RigState } from "./rig";
+import { acceptInvitePrompt, installDesktopBridge, openInviteLink, type InviteRoute } from "./invite";
 import { TrafficLog } from "./traffic";
 
 export interface Actor {
@@ -24,8 +26,15 @@ export interface AppDriver {
   createNamespace(actor: Actor, name: string): Promise<void>;
   createSpace?(actor: Actor, name: string): Promise<void>;
   openSpace?(actor: Actor, name: string): Promise<void>;
+  /** Mint an invitation and return the link as the inviter copies it. */
   invite(actor: Actor): Promise<string>;
-  acceptInvite(actor: Actor, link: string): Promise<void>;
+  /** Anything the app needs before a link is opened in it, e.g. a player name. */
+  beforeJoin?(actor: Actor): Promise<void>;
+  /**
+   * The link has been opened and the invitation prompt accepted; wait until the actor is
+   * inside what they joined. The journey opens the link itself: no driver pastes one.
+   */
+  joined(actor: Actor): Promise<void>;
   afterReload?(actor: Actor): Promise<void>;
   features: Feature[];
   permissions?: string[];
@@ -65,13 +74,48 @@ export async function openActor(
   traffic: TrafficLog,
   nodeUrls: string[],
   permissions: string[] = [],
+  desktop = false,
 ): Promise<{ actor: Actor; context: BrowserContext }> {
+  const record = process.env["JOURNEY_VIDEO"] === "1";
   const context = await browser.newContext({
     permissions: ["clipboard-read", "clipboard-write", ...permissions],
+    // Opt-in: a context made by hand is outside Playwright's `use.video`, so a
+    // journey records only when asked, one file per actor.
+    ...(record ? { recordVideo: { dir: path.join(rigDataDir(), "videos"), size: { width: 960, height: 540 } } } : {}),
   });
   const page = await context.newPage();
+  if (record) recordings.set(context, { name, page, startedAt: Date.now() });
+  if (desktop) await installDesktopBridge(page);
   await traffic.watch(page, name, nodeUrls);
   return { actor: { name, page, node, run }, context };
+}
+
+const recordings = new WeakMap<BrowserContext, { name: Actor["name"]; page: Page; startedAt: number }>();
+
+/**
+ * Close the actors' contexts. With JOURNEY_VIDEO=1, attach each actor's
+ * recording as `<name>.webm`, plus `video-timing` — when each recording began,
+ * in epoch ms — so the two can be laid side by side on one clock.
+ */
+export async function closeActors(contexts: BrowserContext[], testInfo: TestInfo): Promise<void> {
+  const timing: Record<string, number> = {};
+  for (const context of contexts) {
+    const rec = recordings.get(context);
+    await context.close().catch(() => undefined);
+    const video = rec?.page.video();
+    if (!rec || !video) continue;
+    const out = testInfo.outputPath(`${rec.name}.webm`);
+    try {
+      await video.saveAs(out);
+      await testInfo.attach(rec.name, { path: out, contentType: "video/webm" });
+      timing[rec.name] = rec.startedAt;
+    } catch (e) {
+      console.warn(`[journey] could not save ${rec.name}'s video:`, e);
+    }
+  }
+  if (Object.keys(timing).length) {
+    await testInfo.attach("video-timing", { body: JSON.stringify(timing), contentType: "application/json" });
+  }
 }
 
 export async function defaultLogin(actor: Actor): Promise<void> {
@@ -88,6 +132,35 @@ export async function readClipboard(page: Page): Promise<string> {
 export function extractInvitation(text: string): string {
   const url = text.match(/https?:\/\/\S+/)?.[0];
   return (url ?? text).trim();
+}
+
+/** Every app shares links in one shape; anything else cannot be opened by the links page. */
+export const INVITE_LINK = /^https:\/\/links\.calimero\.network\/[^/?#]+\/join\?(.*&)?invitation=[^&#]+/;
+
+/** Open `link` by `route`, accept the prompt, and wait for the driver to see the actor in. */
+export async function joinByLink(driver: AppDriver, actor: Actor, link: string, route: InviteRoute): Promise<void> {
+  if (driver.beforeJoin) await driver.beforeJoin(actor);
+  await openInviteLink(actor.page, link, route);
+  await acceptInvitePrompt(actor.page);
+  await driver.joined(actor);
+}
+
+/**
+ * Node 2 holds at least one namespace alice created in this test.
+ *
+ * Not all of them: an app can create more than the one it invites to — a
+ * personal namespace made on first login, say — and on fresh nodes that one
+ * can land just after the "before" snapshot. Bob is never invited to it.
+ */
+async function expectJoinedOneOf(node: RigNode, created: NamespaceRow[]): Promise<void> {
+  const wanted = created.map((ns) => ns.id);
+  expect(wanted.length, "alice's node lists a namespace this test created").toBeGreaterThan(0);
+  await expect
+    .poll(async () => (await listNamespaces(node)).some((ns) => wanted.includes(ns.id)), {
+      message: `node 2 has joined one of alice's new namespaces (${wanted.map((id) => id.slice(0, 8)).join(", ")})`,
+      timeout: 60_000,
+    })
+    .toBe(true);
 }
 
 export function defineLifecycle(driver: AppDriver): void {
@@ -138,7 +211,7 @@ export function defineLifecycle(driver: AppDriver): void {
       let link = "";
       await test.step("alice creates an invitation", async () => {
         link = await driver.invite(alice);
-        expect(link.length, "invitation text").toBeGreaterThan(20);
+        expect(link, "the invitation is a shareable link").toMatch(INVITE_LINK);
       });
 
       const b = await openActor(browser, "bob", n2, run, traffic, urls, driver.permissions);
@@ -151,14 +224,9 @@ export function defineLifecycle(driver: AppDriver): void {
         await (driver.login ?? defaultLogin)(bob);
       });
 
-      await test.step("bob redeems the invitation", async () => {
-        await driver.acceptInvite(bob, link);
-        await expect
-          .poll(async () => (await listNamespaces(n2)).map((ns) => ns.id), {
-            message: "node 2 has joined alice's namespace",
-            timeout: 60_000,
-          })
-          .toEqual(expect.arrayContaining(created.map((ns) => ns.id)));
+      await test.step("bob opens the invitation link", async () => {
+        await joinByLink(driver, bob, link, "url");
+        await expectJoinedOneOf(n2, created);
         if (driver.openSpace && driver.createSpace) await driver.openSpace(bob, `first-${run}`);
       });
 
@@ -209,7 +277,80 @@ export function defineLifecycle(driver: AppDriver): void {
       expect(traffic.pageErrors, "uncaught page errors").toEqual([]);
     } finally {
       await traffic.attach(testInfo);
-      for (const c of opened) await c.close().catch(() => undefined);
+      await closeActors(opened, testInfo);
+    }
+  });
+
+  test(`${driver.app}: an invitation opened in the desktop app joins without a reload`, async ({
+    browser,
+  }, testInfo) => {
+    test.setTimeout(Number(process.env["JOURNEY_TIMEOUT_MS"]) || 10 * 60_000);
+    // Fresh nodes, so this test never depends on what the lifecycle left behind:
+    // an app with one namespace per node would otherwise hand alice back the old
+    // one, and bob would already be in it.
+    const state = await freshRig(rig(), "lifecycle");
+    const [n1, n2] = state.nodes;
+    if (!n1 || !n2) throw new Error(`the rig has ${state.nodes.length} node(s); the journey needs 2`);
+    const run = `d${Date.now().toString(36)}`;
+    const traffic = new TrafficLog();
+    const urls = state.nodes.map((n) => n.url);
+    const opened: BrowserContext[] = [];
+
+    try {
+      const a = await openActor(browser, "alice", n1, run, traffic, urls, driver.permissions);
+      opened.push(a.context);
+      const alice = a.actor;
+      // Bob's app runs inside the launcher: the bridge is there before the app boots.
+      const b = await openActor(browser, "bob", n2, run, traffic, urls, driver.permissions, true);
+      opened.push(b.context);
+      const bob = b.actor;
+
+      await test.step("both open the app and log in", async () => {
+        for (const actor of [alice, bob]) {
+          if (driver.open) await driver.open(actor);
+          else await actor.page.goto("/");
+          await (driver.login ?? defaultLogin)(actor);
+        }
+      });
+
+      const before = await listNamespaces(n1);
+      let link = "";
+      await test.step("alice creates a namespace and an invitation", async () => {
+        await driver.createNamespace(alice, `${driver.app}-${run}`);
+        await expect
+          .poll(async () => (await listNamespaces(n1)).length, { timeout: 30_000 })
+          .toBeGreaterThan(before.length);
+        if (driver.createSpace) await driver.createSpace(alice, `first-${run}`);
+        link = await driver.invite(alice);
+        expect(link, "the invitation is a shareable link").toMatch(INVITE_LINK);
+      });
+      const created = (await listNamespaces(n1)).filter((ns) => !before.some((x) => x.id === ns.id));
+
+      await test.step("a link for another app is not this app's to join", async () => {
+        const foreign = link.replace(/(links\.calimero\.network\/)[^/?#]+/, "$1com.calimero.not-this-app");
+        await openInviteLink(bob.page, foreign, "desktop");
+        await bob.page.waitForTimeout(3_000);
+        await expect(bob.page.getByTestId("invite-accept")).toHaveCount(0);
+      });
+
+      await test.step("the launcher hands bob's open app the link, and he joins", async () => {
+        await joinByLink(driver, bob, link, "desktop");
+        await expectJoinedOneOf(n2, created);
+      });
+
+      const first = driver.features[0];
+      if (first) {
+        await test.step(`feature: ${first.name} reaches bob`, async () => {
+          if (driver.openSpace && driver.createSpace) await driver.openSpace(bob, `first-${run}`);
+          await first.do(alice);
+          await first.seen(bob, alice);
+        });
+      }
+
+      expect(traffic.pageErrors, "uncaught page errors").toEqual([]);
+    } finally {
+      await traffic.attach(testInfo);
+      await closeActors(opened, testInfo);
     }
   });
 }

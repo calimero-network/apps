@@ -66,9 +66,7 @@ Object.assign(globalThis, {
   },
 });
 
-const { bootstrapSsoAndInvitation, takePendingInvitation } = await import(
-  './ssoBootstrap'
-);
+const { bootstrapSso } = await import('./ssoBootstrap');
 
 const NODE = 'http://localhost:2528';
 const APP_ID = '9xQe1v2b3c4d5e6f';
@@ -79,13 +77,13 @@ beforeEach(() => {
   locate('');
 });
 
-describe('persistAuthHash (via bootstrapSsoAndInvitation)', () => {
+describe('persistAuthHash (via bootstrapSso)', () => {
   it('seeds the node from a TOKEN-BEARING hash — the desktop cold open', () => {
     locate(
       `#access_token=a.b.c&refresh_token=r&node_url=${encodeURIComponent(NODE)}` +
         `&application_id=${APP_ID}`,
     );
-    bootstrapSsoAndInvitation();
+    bootstrapSso();
     expect(setNodeUrl).toHaveBeenCalledWith(NODE);
     expect(setApplicationId).toHaveBeenCalledWith(APP_ID);
   });
@@ -93,7 +91,7 @@ describe('persistAuthHash (via bootstrapSsoAndInvitation)', () => {
   it('leaves the token-bearing hash in place for MeroProvider to consume', () => {
     const hash = `#access_token=a.b.c&node_url=${encodeURIComponent(NODE)}`;
     locate(hash);
-    bootstrapSsoAndInvitation();
+    bootstrapSso();
     // Stripping it here is the other half of this bug's family: the provider
     // never sees the callback, so `resolveTokenAdoption` never runs and the
     // token is never stored where mero-js reads it.
@@ -102,7 +100,7 @@ describe('persistAuthHash (via bootstrapSsoAndInvitation)', () => {
 
   it('still seeds a TOKEN-LESS hash, which only pre-fills the connect screen', () => {
     locate(`#node_url=${encodeURIComponent(NODE)}`);
-    bootstrapSsoAndInvitation();
+    bootstrapSso();
     expect(setNodeUrl).toHaveBeenCalledWith(NODE);
   });
 
@@ -110,31 +108,34 @@ describe('persistAuthHash (via bootstrapSsoAndInvitation)', () => {
     locate(
       `#access_token=a.b.c&node_url=${encodeURIComponent(NODE)}&app-id=${APP_ID}`,
     );
-    bootstrapSsoAndInvitation();
+    bootstrapSso();
     expect(setApplicationId).toHaveBeenCalledWith(APP_ID);
   });
 
   it('seeds nothing when there is no hash at all (an ordinary web visit)', () => {
     locate('');
-    bootstrapSsoAndInvitation();
+    bootstrapSso();
     expect(setNodeUrl).not.toHaveBeenCalled();
     expect(setApplicationId).not.toHaveBeenCalled();
   });
 });
 
-describe('captureInvitation (via bootstrapSsoAndInvitation)', () => {
-  it('stashes ?invitation= and strips it from the address bar', () => {
+// The bootstrap ran before React and used to take `?invitation=` out of the URL
+// into a key nothing read, so the shared capture primed after it never saw an
+// opened link. It must leave the query alone.
+describe('invitation links (not the bootstrap\'s to touch)', () => {
+  it('leaves ?invitation= in the URL for the shared capture', () => {
     locate('?invitation=PAYLOAD');
-    bootstrapSsoAndInvitation();
-    expect(takePendingInvitation()).toBe('PAYLOAD');
-    expect(location.search).toBe('');
+    bootstrapSso();
+    expect(location.search).toBe('?invitation=PAYLOAD');
+    expect(store.size).toBe(0);
   });
 
-  it('keeps a token-bearing hash while stripping the invitation query', () => {
+  it('leaves it alongside a token-bearing hash, which it still seeds from', () => {
     const hash = `#access_token=a.b.c&node_url=${encodeURIComponent(NODE)}`;
     locate(`?invitation=PAYLOAD${hash}`);
-    bootstrapSsoAndInvitation();
-    expect(location.search).toBe('');
+    bootstrapSso();
+    expect(location.search).toBe('?invitation=PAYLOAD');
     expect(location.hash).toBe(hash);
     expect(setNodeUrl).toHaveBeenCalledWith(NODE);
   });

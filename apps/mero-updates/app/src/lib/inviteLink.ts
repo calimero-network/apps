@@ -12,14 +12,12 @@
 //
 // The SDK is HTTPS-ONLY by design. An HTTPS link works everywhere: it opens the
 // web/PWA app directly, and on a device with the desktop installed and
-// associated, the launcher takes it. `calimero://` is a device-local transport,
-// not something to paste into a chat — it is offered separately, as a secondary
-// "copy desktop link" affordance, exactly as chat-pwa does.
+// associated, the launcher takes it. `calimero://` is a device-local transport
+// between the launcher and the app, never something handed to a person.
 //
 // The `<code>` is unchanged: the same base58(deflate(JSON)) payload
 // `lib/inviteCodec` already produced, which is also what chat-pwa's
-// `encodeInvitationPayload` produces. So a code pasted from any mero app still
-// works, and a link degrades to a code if someone strips the URL.
+// `encodeInvitationPayload` produces.
 //
 // ── What this replaced, and why the SDK version is better ────────────────────
 //
@@ -40,8 +38,8 @@
 //      an intent when the app acks it. All of that was either hand-written here
 //      or, mostly, missing.
 //
-// Pure functions only — no DOM, no session. See `lib/invitationIntents.ts` for
-// the capture side, which does touch the platform.
+// Pure functions only — no DOM, no session. The capture side is
+// `primeInvitationCapture` from `@calimero-apps/invite`, primed in `main.tsx`.
 
 import { createLink, parseIntent } from "@calimero-network/mero-platform";
 
@@ -94,13 +92,12 @@ export function invitationUrl(code: string, host?: string): string {
 }
 
 /**
- * Device-local deep link, for the "copy desktop link" affordance.
+ * Device-local deep link: the form the desktop launcher hands a running app.
  *
  * Kept out of the SDK's remit on purpose — it is HTTPS-only by design, because
  * `calimero://` is a transport between the launcher and an app rather than
- * something that survives being pasted into a chat window. Offered as a
- * secondary action for the case where someone wants to hand the desktop app a
- * link directly.
+ * something that survives being pasted into a chat window. Not shown to anyone;
+ * kept so the parser below is tested against what the launcher sends.
  */
 export function invitationDeepLink(code: string): string {
   const trimmed = code.trim();
@@ -178,7 +175,7 @@ export function urlWithoutInvitation(url: string): string {
  * origin-derived version there is no environment in which a link cannot be
  * built — the desktop shell included, which is exactly where the old code had to
  * fall back to a bare code because `tauri://` is not an origin worth sharing.
- * The raw code remains available as a disclosure for cross-app pasting.
+ * The invite dialog shows only `link`.
  */
 export function shareableInvitation(code: string): {
   link: string;

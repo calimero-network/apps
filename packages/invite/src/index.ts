@@ -4,6 +4,7 @@ export {
   peekInvitation,
   resetInvitationCaptureForTests,
   invitationFromRaw,
+  buildInviteLink,
   urlWithoutInvitation,
   JOIN_ACTION,
   INVITATION_PARAM,

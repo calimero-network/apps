@@ -148,6 +148,10 @@ export const driver: AppDriver = {
   app: "mero-stream",
 
   async createNamespace(actor, name) {
+    // Each lifecycle test starts its own namespace; nothing from the last one applies.
+    for (const state of [rooms, nicknames]) {
+      for (const key of Object.keys(state)) delete state[key as Actor["name"]];
+    }
     const page = actor.page;
     await expect(page.getByTestId("stream-name-input")).toBeVisible({ timeout: 60_000 });
     await page.getByTestId("stream-name-input").fill(name);
@@ -181,14 +185,18 @@ export const driver: AppDriver = {
     return text.trim();
   },
 
-  async acceptInvite(actor, link) {
+  async joined(actor) {
     const page = actor.page;
-    await expect(page.getByTestId("open-join")).toBeVisible({ timeout: 60_000 });
-    await page.getByTestId("open-join").click();
-    await expect(page.getByTestId("join-dialog")).toBeVisible({ timeout: 15_000 });
-    await page.getByTestId("join-code-input").fill(link);
-    await page.getByTestId("join-submit").click();
-    await page.waitForURL((u) => u.pathname === streamPath, { timeout: SYNC });
+    const landed = page.waitForURL((u) => u.pathname === streamPath, { timeout: SYNC });
+    const failed = page
+      .getByTestId("invite-error")
+      .waitFor({ state: "visible", timeout: SYNC })
+      .then(async () => {
+        throw new Error(`join refused: ${await page.getByTestId("invite-error").innerText()}`);
+      });
+    landed.catch(() => undefined);
+    failed.catch(() => undefined);
+    await Promise.race([landed, failed]);
     await waitRooms(page);
   },
 

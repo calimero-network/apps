@@ -3,14 +3,11 @@ import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
 import { getNodeUrl } from "@calimero-network/mero-react";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import { getMeroJs } from "../../api/meroJsClient";
-import { log } from "../../utils/logger";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import type { GroupSummary } from "../../api/groupApi";
 import {
   getApplicationId,
   getGroupId,
-  setGroupId,
   getGroupMemberIdentity,
   setGroupMemberIdentity,
   getStoredGroupAlias,
@@ -18,30 +15,21 @@ import {
 } from "../../constants/config";
 import {
   getMessengerDisplayName,
-  setMessengerDisplayName,
   getIdentityDisplayName,
   setIdentityDisplayName,
 } from "../../utils/messengerName";
-import { clearStoredSession, setNamespaceReady } from "../../utils/session";
 import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
 import {
   AppNotInstalledError,
   installConfiguredApp,
   resolveInstalledAppId,
 } from "../../utils/installedApps";
-import { ensureNotificationPermission } from "../../utils/notificationPermission";
 import { useToast } from "../../contexts/ToastContext";
 import {
-  decodeInvitationPayload,
-  parseGroupInvitationPayload,
-  parseInvitationInput,
-} from "../../utils/invitation";
-import {
-  inviteFailureMessage,
-  redeemGroupInvitation,
-} from "../../utils/redeemInvitation";
-import { shouldRetain } from "@calimero-apps/invite";
-import { useDeepLink } from "@calimero-network/mero-platform-react";
+  enterWorkspace,
+  forgetJoinedAwaitingName,
+  joinedAwaitingName,
+} from "../../utils/enterWorkspace";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,9 +39,7 @@ type Step =
   | "checking"         // resolving identity for selected namespace
   | "enter-name"       // namespace ok, need username
   | "joining"          // submitting username
-  | "invite-join"      // processing an invitation (join + sync + join contexts)
-  | "no-workspace"     // no namespaces: offer create or paste invitation code
-  | "join-invitation"  // manual invitation paste
+  | "no-workspace"     // no namespaces: offer create, or say how to join
   | "create"           // show create workspace form
   | "creating"         // creating namespace
   | "not-installed"    // configured app missing on the node: offer install
@@ -192,30 +178,21 @@ const Err = styled.div`
   overflow-y: auto;
 `;
 
-const Textarea = styled.textarea`
-  width: 100%;
-  min-height: 96px;
-  padding: 0.7rem 0.9rem;
-  background-color: color-mix(in srgb, var(--glass-accent) 4%, transparent);
-  border: 1px solid color-mix(in srgb, var(--glass-accent) 22%, transparent);
-  border-radius: 10px;
-  color: var(--glass-ink);
-  font-size: 0.75rem;
-  font-family: monospace;
-  resize: vertical;
-  box-sizing: border-box;
-  line-height: 1.5;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  &::placeholder { color: color-mix(in srgb, var(--glass-ink) 22%, transparent); }
-  &:hover { border-color: color-mix(in srgb, var(--glass-accent) 45%, transparent); background-color: color-mix(in srgb, var(--glass-accent) 7%, transparent); }
-  &:focus { outline: none; border-color: color-mix(in srgb, var(--glass-accent) 60%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-accent) 12%, transparent); }
-`;
-
 const Info = styled.div`
   color: color-mix(in srgb, var(--glass-ink) 45%, transparent);
   font-size: 0.8rem;
   text-align: center;
   margin-bottom: 1rem;
+`;
+
+// How to join a workspace someone else runs: there is no field for it. An
+// invitation is a link, and opening it brings up the app-level prompt.
+const JoinHint = styled.p`
+  color: color-mix(in srgb, var(--glass-ink) 38%, transparent);
+  font-size: 0.75rem;
+  text-align: center;
+  line-height: 1.5;
+  margin: 0.9rem 0 0;
 `;
 
 const Spinner = styled.div`
@@ -254,23 +231,6 @@ const Divider = styled.div`
   height: 1px;
   background: color-mix(in srgb, var(--glass-ink) 5%, transparent);
   margin: 1rem 0;
-`;
-
-const OrDivider = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin: 0.75rem 0;
-  color: color-mix(in srgb, var(--glass-ink) 25%, transparent);
-  font-size: 0.75rem;
-
-  &::before,
-  &::after {
-    content: "";
-    flex: 1;
-    height: 1px;
-    background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
-  }
 `;
 
 const LogoutBtn = styled.button`
@@ -318,84 +278,16 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
   const api = useRef(new GroupApiDataSource());
   const { addToast } = useToast();
 
-  // The pending deep-link invitation: the decoded JSON payload plus the SDK's
-  // ack callback. Sourced from `useDeepLink` below — the platform SDK's durable
-  // pending-intent store replaces the retired localStorage buffer. `resolve()`
-  // is called only on success or a terminal error, so a transient failure keeps
-  // the intent buffered for the next load (mirrors the old clear-on-success /
-  // clear-on-terminal behavior).
-  const pendingRef = useRef<{ decoded: string; resolve: () => void } | null>(null);
-  const groupsLoadedRef = useRef(false);
-
-  const resolvePending = useCallback(() => {
-    pendingRef.current?.resolve();
-    pendingRef.current = null;
-  }, []);
-
   const [step, setStep] = useState<Step>("loading");
   const [namespaces, setNamespaces] = useState<GroupSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [nameInput, setNameInput] = useState(getMessengerDisplayName());
   const [nsNameInput, setNsNameInput] = useState("");
-  const [inviteStatus, setInviteStatus] = useState("");
-  const [joinInviteInput, setJoinInviteInput] = useState("");
   const [error, setError] = useState("");
 
-  // Final step: commit selection, persist the chosen handle as the
-  // namespace-level member name, then navigate to chat. The user only
-  // gets the channels they explicitly join (self-join for Open subgroups,
-  // admin-add for Restricted) — no force-joining contexts at workspace
-  // entry.
-  const enterChat = useCallback(async (namespaceId: string, username: string, memberIdentity: string) => {
-    setGroupId(namespaceId);
-    setMessengerDisplayName(username);
-    if (memberIdentity) {
-      setGroupMemberIdentity(namespaceId, memberIdentity);
-      setIdentityDisplayName(memberIdentity, username);
-      // Propagate the chosen handle as the namespace-level member name.
-      // Without this, other users' `listMembers(namespaceId)` returns
-      // this member with `name: null` and the channel/DM/admin UIs all
-      // fall through to displaying the raw identity string.
-      if (username) {
-        void api.current
-          .setMemberMetadata(namespaceId, memberIdentity, { name: username })
-          .then((res) => {
-            // Was silently swallowed. That is how this shipped broken: core
-            // rejects a device key with "Invalid account format: expected 64
-            // hex characters", the member stayed nameless, and nothing said so.
-            if (res.error) {
-              log.warn(
-                "NamespaceEntry",
-                `could not publish member name: ${res.error.message}`,
-              );
-            }
-          })
-          .catch((err) => {
-            log.warn("NamespaceEntry", "could not publish member name", err);
-          });
-      }
-    }
-    clearStoredSession();
-    setNamespaceReady();
-    // Ask for OS notification permission once, here: entry is a real user
-    // gesture (Safari requires one) and it covers desktop/browser users who
-    // never trigger the PWA `appinstalled` event. Deliberately not awaited —
-    // entry must not block on the browser prompt.
-    void ensureNotificationPermission();
-    // Hard load, not navigate("/"). App.tsx gates "/" on
-    //   canEnterApp = (isAuthenticated || hasLiveSession()) && isNamespaceReady()
-    // which is read ONCE during render. A client-side navigate can land in the
-    // window where that is still false (mero-react's `isAuthenticated` lags
-    // after a fresh connect), and "/" then renders <Navigate to="/login"> —
-    // bouncing straight back to this picker. Symptom: "Continue" appears to do
-    // nothing and the user has to reload by hand, after which entry works
-    // because the flag and tokens are both readable at first paint.
-    //
-    // A reload re-reads both from storage, so the gate is satisfied on the
-    // first render. WorkspaceSwitcher already enters this way for the same
-    // reason. The real fix is to make the gate reactive rather than
-    // read-once — until then, do what the working path does.
-    window.location.href = "/";
+  // Final step: commit the selection and go into the chat (see enterWorkspace).
+  const enterChat = useCallback((namespaceId: string, username: string, memberIdentity: string) => {
+    enterWorkspace(api.current, namespaceId, username, memberIdentity);
   }, []);
 
   // Check whether this node already has identity + username for a namespace.
@@ -458,127 +350,6 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     setStep("enter-name");
   }, [enterChat]);
 
-  // Process a pending invitation (join namespace → sync → join all contexts)
-  const processInvitation = useCallback(async (payload: string, afterJoin?: string) => {
-    setStep("invite-join");
-    setError("");
-
-    const parsed = parseGroupInvitationPayload(payload);
-    if (!parsed) {
-      resolvePending(); // unparseable → will never succeed
-      setError("Invalid invitation payload.");
-      setStep("error");
-      return;
-    }
-
-    try {
-      setInviteStatus("Joining namespace…");
-      const redeemed = await redeemGroupInvitation(parsed, {
-        joinGroup: (request) => api.current.joinGroup(request),
-        listNamespaces: () => getMeroJs().admin.listNamespaces(),
-      });
-      const { outcome } = redeemed;
-      if (outcome.status === "failed") {
-        // Acked only when no retry can help; a transient failure (no online
-        // member, a timeout) keeps the invitation for the next load.
-        if (!shouldRetain(outcome)) resolvePending();
-        setError(inviteFailureMessage(outcome));
-        setStep("error");
-        return;
-      }
-
-      // `already-member` (the request failed but the node lists the namespace)
-      // goes in exactly like a join. Its join never answered, so ask for the
-      // member identity.
-      const groupId = outcome.namespaceId;
-      const memberIdentity =
-        redeemed.memberIdentity ||
-        (
-          await api.current.resolveCurrentMemberIdentity(
-            groupId,
-            getGroupMemberIdentity(groupId),
-          )
-        ).data?.memberIdentity ||
-        "";
-      setGroupMemberIdentity(groupId, memberIdentity);
-      if (parsed.groupAlias?.trim()) {
-        const alias = parsed.groupAlias.trim();
-        setStoredGroupAlias(groupId, alias);
-        // Also publish it, so the name is the workspace's rather than this
-        // browser's. Best-effort: a joiner usually lacks CAN_MANAGE_METADATA
-        // and the node refuses, which is fine — the local alias still shows,
-        // and whoever can write it will.
-        void api.current.setGroupMetadata(groupId, alias).catch(() => {});
-      }
-
-      setInviteStatus("Syncing…");
-      await api.current.syncGroup(groupId).catch(() => {});
-
-      resolvePending();
-
-      // After joining, show the enter-name step for this namespace
-      setSelectedId(groupId);
-      setNamespaces((prev) => {
-        if (prev.find((g) => g.groupId === groupId)) return prev;
-        return [...prev, {
-          groupId,
-          alias: parsed.groupAlias?.trim() || afterJoin,
-          appKey: "",
-          targetApplicationId: "",
-          upgradePolicy: "Automatic",
-          createdAt: Math.floor(Date.now() / 1000),
-        }];
-      });
-
-      // If user already has a name (same identity from another workspace), go straight in
-      const existingName = getIdentityDisplayName(memberIdentity) || getMessengerDisplayName();
-      if (existingName) {
-        api.current.setMemberMetadata(groupId, memberIdentity, { name: existingName }).catch(() => {});
-        enterChat(groupId, existingName, memberIdentity);
-        return;
-      }
-
-      setStep("enter-name");
-    } catch (err) {
-      // `redeemGroupInvitation` reports a failed join in its outcome, never by
-      // throwing; this is anything else, so keep the invitation.
-      setError(err instanceof Error ? err.message : "Failed to process invitation");
-      setStep("error");
-    }
-  }, [enterChat, resolvePending]);
-
-  // Decide what to do with a pending deep-link invitation against the loaded
-  // namespaces. Returns true when it takes over the flow (kicks off a join),
-  // false when there is nothing to process (no pending, or already a member).
-  const evaluatePending = useCallback((groups: GroupSummary[]): boolean => {
-    const pending = pendingRef.current;
-    if (!pending) return false;
-
-    // No namespaces yet — the invitation is the only way in.
-    if (groups.length === 0) {
-      void processInvitation(pending.decoded);
-      return true;
-    }
-
-    // Only process an invitation for a namespace we're not already in.
-    const parsed = parseGroupInvitationPayload(pending.decoded);
-    if (parsed) {
-      const inv = parsed.invitation.invitation as unknown as Record<string, unknown>;
-      const rawId = inv.group_id ?? inv.groupId;
-      const invNsId = Array.isArray(rawId)
-        ? (rawId as number[]).map((b) => b.toString(16).padStart(2, "0")).join("")
-        : String(rawId ?? "");
-      if (invNsId && !groups.find((g) => g.groupId === invNsId)) {
-        void processInvitation(pending.decoded);
-        return true;
-      }
-    }
-
-    // Already a member (or an unparseable but present intent) — drop it.
-    resolvePending();
-    return false;
-  }, [processInvitation, resolvePending]);
-
   // Initial load
   const loadNamespaces = useCallback(async () => {
     if (!getNodeUrl()) return;
@@ -592,19 +363,8 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       // ⚠️ `listGroups` RETURNS a failure, it does not throw — `catchError`
       // turns every error into `{ data: null, error }`. So `res.data ?? []`
       // read a failed or timed-out listing as an EMPTY one, and an empty
-      // listing is indistinguishable from "a member of nothing".
-      //
-      // That is not a cosmetic difference here, because `evaluatePending`
-      // treats `groups.length === 0` as "the invitation is the only way in"
-      // and joins unconditionally. So: a join that actually landed, whose
-      // response the client gave up waiting for (a namespace join waits for an
-      // admitter to come online — measured at ~95s elsewhere, against a 35s
-      // client budget) leaves the invitation unacked; the next load's listing
-      // is slow too, comes back as `[]`, and the app joins AGAIN. That is the
-      // "it keeps rejoining a link I already used" report.
-      //
-      // A membership check that fails means "could not tell", never "not a
-      // member". It must not be able to demote a join that happened.
+      // listing is indistinguishable from "a member of nothing". A listing
+      // that fails means "could not tell", never "not a member".
       if (res.error) throw new Error(res.error.message);
       groups = (res.data ?? []).map((g) => ({
         ...g,
@@ -616,11 +376,28 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       return;
     }
 
-    setNamespaces(groups);
-    groupsLoadedRef.current = true;
+    // An invitation was just accepted by someone with no display name yet: open
+    // on that workspace's name step, not the list. The node may not list it
+    // yet, so it is added from what this browser knows.
+    const joined = joinedAwaitingName();
+    if (joined) {
+      if (!groups.some((g) => g.groupId === joined)) {
+        groups = [...groups, {
+          groupId: joined,
+          alias: getStoredGroupAlias(joined) || undefined,
+          appKey: "",
+          targetApplicationId: "",
+          upgradePolicy: "Automatic",
+          createdAt: Math.floor(Date.now() / 1000),
+        }];
+      }
+      setNamespaces(groups);
+      setSelectedId(joined);
+      setStep("enter-name");
+      return;
+    }
 
-    // A pending deep-link invitation takes over the flow (join → enter name).
-    if (evaluatePending(groups)) return;
+    setNamespaces(groups);
 
     if (groups.length === 0) {
       setStep("no-workspace");
@@ -631,28 +408,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     const preferred = groups.find((g) => g.groupId === storedId) ?? groups[0];
     setSelectedId(preferred.groupId);
     setStep("select");
-  }, [evaluatePending]);
-
-  // Capture inbound deep-link invitations via the platform SDK. Fires for an
-  // intent buffered before mount (the cold-open invite that survived the
-  // auth/Connect reload in the SDK's pending-intent store) and for warm
-  // deliveries while the app is open. Declared BEFORE the load effect below so
-  // its synchronous replay populates `pendingRef` before `loadNamespaces` runs.
-  useDeepLink((intent) => {
-    const encoded = intent.params.invitation;
-    if (!encoded) {
-      intent.resolve(); // not an invitation intent — ack so it never replays
-      return;
-    }
-    const decoded = decodeInvitationPayload(encoded);
-    if (!decoded) {
-      intent.resolve(); // undecodable → terminally bad, drop it
-      return;
-    }
-    pendingRef.current = { decoded, resolve: intent.resolve };
-    // Warm delivery: if the initial load already ran, act on it immediately.
-    if (groupsLoadedRef.current) evaluatePending(namespaces);
-  });
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated || isConfigSet) {
@@ -794,22 +550,6 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     }
   }, []);
 
-  const handleJoinFromCode = useCallback(async () => {
-    const raw = joinInviteInput.trim();
-    if (!raw) return;
-    setError("");
-    const payload = parseInvitationInput(raw);
-    if (!payload) {
-      setError("Could not parse invitation. Paste the full link or the raw encoded code.");
-      return;
-    }
-    // A user-pasted invite isn't a deep-link intent, so there's no SDK entry to
-    // ack — give processInvitation a no-op resolve so its success/terminal paths
-    // (which clear the pending invite) stay uniform.
-    pendingRef.current = { decoded: payload, resolve: () => {} };
-    await processInvitation(payload);
-  }, [joinInviteInput, processInvitation]);
-
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const isDuplicateNsName =
@@ -826,14 +566,6 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
           <>
             <Spinner />
             <Info>{step === "loading" ? "Connecting to node…" : "Checking identity…"}</Info>
-          </>
-        )}
-
-        {/* Invite join in progress */}
-        {step === "invite-join" && (
-          <>
-            <Spinner />
-            <Info>{inviteStatus || "Processing invitation…"}</Info>
           </>
         )}
 
@@ -875,10 +607,9 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             <CreateLink onClick={() => { setError(""); setNsNameInput(""); setStep("create"); }}>
               + Create new workspace
             </CreateLink>
-            <OrDivider>or</OrDivider>
-            <CreateLink onClick={() => { setError(""); setJoinInviteInput(""); setStep("join-invitation"); }}>
-              Join existing workspace
-            </CreateLink>
+            <JoinHint data-testid="join-hint">
+              To join someone else&apos;s workspace, open the invitation link they sent you.
+            </JoinHint>
             <Divider />
             <LogoutBtn onClick={onLogout}>Disconnect node</LogoutBtn>
           </>
@@ -919,7 +650,11 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
               type="button"
               variant="secondary"
               style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", width: "100%", marginTop: "0.5rem" }}
-              onClick={() => { setError(""); setStep("select"); }}
+              onClick={() => {
+                setError("");
+                forgetJoinedAwaitingName();
+                setStep(namespaces.length > 0 ? "select" : "no-workspace");
+              }}
             >
               ← Back
             </Button>
@@ -928,12 +663,12 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
           </>
         )}
 
-        {/* No workspace: offer create or join via invitation code */}
+        {/* No workspace: offer create, and say how joining one works */}
         {step === "no-workspace" && (
           <>
             <Header>
               <Title>Welcome to MeroChat</Title>
-              <Sub>No servers found on this node. Create one, or join via an invitation link.</Sub>
+              <Sub>No servers found on this node yet. Create one to get started.</Sub>
             </Header>
             {error && <Err>{error}</Err>}
             <Button
@@ -944,49 +679,11 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             >
               Create workspace
             </Button>
-            <OrDivider>or</OrDivider>
-            <CreateLink onClick={() => { setError(""); setJoinInviteInput(""); setStep("join-invitation"); }}>
-              Join existing workspace
-            </CreateLink>
+            <JoinHint data-testid="join-hint">
+              To join someone else&apos;s workspace, open the invitation link they sent you.
+            </JoinHint>
             <Divider />
             <LogoutBtn onClick={onLogout}>Disconnect node</LogoutBtn>
-          </>
-        )}
-
-        {/* Join via invitation code */}
-        {step === "join-invitation" && (
-          <>
-            <Header>
-              <Title>Join workspace</Title>
-              <Sub>Paste an invitation link or code to join an existing workspace.</Sub>
-            </Header>
-            {error && <Err>{error}</Err>}
-            <Field>
-              <Label>Invitation</Label>
-              <Textarea
-                placeholder={"calimero://com.calimero.chat/join?invitation=… or paste the raw encoded code"}
-                value={joinInviteInput}
-                onChange={(e) => { setJoinInviteInput(e.target.value); setError(""); }}
-                autoFocus
-              />
-            </Field>
-            <Button
-              type="button"
-              variant="primary"
-              style={{ width: "100%" }}
-              onClick={() => void handleJoinFromCode()}
-              disabled={!joinInviteInput.trim()}
-            >
-              Join
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", width: "100%", marginTop: "0.5rem" }}
-              onClick={() => { setError(""); setJoinInviteInput(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
-            >
-              ← Back to workspace selection
-            </Button>
           </>
         )}
 

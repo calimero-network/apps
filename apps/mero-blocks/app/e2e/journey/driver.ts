@@ -145,6 +145,10 @@ export const driver: AppDriver = {
   },
 
   async createNamespace(actor, name) {
+    // A new world per test: forget the blocks the last one placed.
+    for (const k of Object.keys(blocks)) delete blocks[k];
+    for (const k of Object.keys(broken)) delete broken[k];
+    placements = 0;
     const page = actor.page;
     await waitForPicker(page);
     await setPlayerName(actor);
@@ -168,32 +172,40 @@ export const driver: AppDriver = {
     return link;
   },
 
-  async acceptInvite(actor, link) {
-    const page = actor.page;
-    await waitForPicker(page);
+  async beforeJoin(actor) {
+    // The name is what the other player sees; the picker remembers it across
+    // the reload that opening the link causes.
+    await waitForPicker(actor.page);
     await setPlayerName(actor);
-    await page.getByTestId("join-invite-open-btn").click();
-    const modal = page.getByTestId("invite-modal");
-    await modal.getByTestId("invite-input").fill(link);
-    const join = modal.getByTestId("join-invite-btn");
-    const error = modal.getByTestId("picker-error");
+  },
+
+  async joined(actor) {
+    const page = actor.page;
+    const retry = page.getByTestId("invite-retry");
+    const error = page.getByTestId("invite-error");
     const deadline = Date.now() + SYNC;
     for (;;) {
-      await join.click();
+      let state = "busy";
       await expect
         .poll(
           async () => {
-            if (await page.evaluate(() => Boolean((window as MbWindow).__mb))) return "game";
-            if (!(await modal.isVisible().catch(() => false))) return "left";
-            const text = (await error.innerText().catch(() => "")).trim();
-            return text && (await join.isEnabled().catch(() => false)) ? "error" : "busy";
+            if (await page.evaluate(() => Boolean((window as MbWindow).__mb))) return (state = "game");
+            if (await retry.isEnabled().catch(() => false)) return (state = "retry");
+            if (await error.isVisible().catch(() => false)) return (state = "refused");
+            return (state = "busy");
           },
           { timeout: SYNC, intervals: [500, 1_000, 2_000] },
         )
         .not.toBe("busy");
-      if (!(await modal.isVisible().catch(() => false))) break;
-      if (Date.now() > deadline) throw new Error(`joining the world failed: ${await error.innerText()}`);
-      await page.waitForTimeout(3_000);
+      if (state === "game") break;
+      // A failure that may pass (no member online yet, world not synced): the
+      // prompt offers Try again, as a player would press it.
+      if (state === "retry" && Date.now() < deadline) {
+        await page.waitForTimeout(3_000);
+        await retry.click();
+        continue;
+      }
+      throw new Error(`joining the world failed: ${await error.innerText()}`);
     }
     await waitForGame(page, SYNC);
   },

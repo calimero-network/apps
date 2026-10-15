@@ -148,6 +148,9 @@ export const driver: AppDriver = {
   },
 
   async createNamespace(actor, name) {
+    // Each lifecycle test starts here; nothing from the previous one carries.
+    for (const m of [docs, bodies, tags])
+      for (const k of Object.keys(m)) delete m[k];
     await waitForShell(actor.page);
     await ws(actor).createNamespace(name);
   },
@@ -170,17 +173,25 @@ export const driver: AppDriver = {
     return link;
   },
 
-  async acceptInvite(actor, link) {
+  // The lifecycle opened the link and clicked `invite-accept` on the prompt.
+  // Bob lands in /app on the workspace he joined; a refused join shows its
+  // reason as `invite-error` and stays put, so fail on that at once.
+  async joined(actor) {
     const page = actor.page;
-    const url = new URL(link, 'http://placeholder');
-    await page.goto(`/${url.search}${url.hash}`);
-    const accept = page.getByRole('button', {
-      name: /^(Accept & join|Open workspace)$/,
-    });
-    await expect(accept).toBeVisible({ timeout: 60_000 });
-    await accept.click();
-    await expect(page).toHaveURL(/\/app/, { timeout: SYNC });
-    await waitForShell(page);
+    const landed = expect(page.getByTestId('invite-prompt'))
+      .toBeHidden({ timeout: SYNC })
+      .then(() => waitForShell(page));
+    const failed = page
+      .getByTestId('invite-error')
+      .waitFor({ state: 'visible', timeout: SYNC })
+      .then(async () => {
+        throw new Error(
+          `join refused: ${await page.getByTestId('invite-error').innerText()}`,
+        );
+      });
+    landed.catch(() => undefined);
+    failed.catch(() => undefined);
+    await Promise.race([landed, failed]);
     await ws(actor).dismissNameGateIfPresent();
   },
 

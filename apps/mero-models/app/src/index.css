@@ -495,11 +495,6 @@ select:focus {
   min-width: 0;
 }
 
-.join-card .input-row input {
-  flex: 1;
-  min-width: 0;
-}
-
 .kv {
   border-collapse: collapse;
   margin: 8px 0;

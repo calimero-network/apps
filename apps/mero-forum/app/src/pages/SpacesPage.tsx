@@ -1,21 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { useApplicationId } from "../hooks/useApplicationId";
 import { useToast } from "../contexts/ToastContext";
-import { setActiveForum, setForumName } from "../lib/session";
-import { decodeInvite } from "../lib/inviteCodec";
 import {
   createSpaceNamespace,
   deleteSpace,
   listSpaceNamespaces,
   mintNamespaceInvite,
-  redeemFailureMessage,
-  redeemInvite,
   type NamespaceRow,
 } from "../lib/groups";
 import InviteModal from "../components/InviteModal";
-import { invitationFromRaw } from "../lib/inviteLink";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import {
   AccountChip,
@@ -57,16 +52,13 @@ function focusCreate() {
  *   Namespace ("space")  ← you invite people HERE
  *     └── Subgroup ("forum") + Context   ← one board   → /spaces/:id
  *
- * So: this page creates namespaces, invites to namespaces, and accepts any invite
- * code. Forums live on ForumsPage.
- *
- * Invite codes are the SAME format mero-chat and mero-blocks use — one base58
- * token of deflated JSON (lib/inviteCodec) — so a code minted by any of them
- * decodes here, and a code from here pastes into a chat window without being
- * mangled.
+ * So: this page creates namespaces and invites to namespaces. Forums live on
+ * ForumsPage. Joining is not done here: an invitation reaches the app only as
+ * an opened link, and the app-level `InvitationPrompt` takes it from there.
  */
 export default function SpacesPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { mero, logout, nodeUrl } = useMero();
   const { showToast } = useToast();
   // Resolved from the NODE by package, not from the session — see lib/appId.
@@ -84,11 +76,10 @@ export default function SpacesPage() {
   const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
   const [listing, setListing] = useState(true);
   const [name, setName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
 
-  // One key names the action in flight ("create", "join", `invite:<id>`), instead
-  // of a single `busy` boolean. With a boolean, clicking Invite disabled Create,
-  // Join and every row, and all of them read "Working…" — indistinguishable from
+  // One key names the action in flight ("create", `invite:<id>`), instead of a
+  // single `busy` boolean. With a boolean, clicking Invite disabled Create and
+  // every row, and all of them read "Working…" — indistinguishable from
   // the page having locked up.
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -148,9 +139,13 @@ export default function SpacesPage() {
     [mero, appId],
   );
 
+  // Keyed on the navigation too. Accepting an invitation whose space cannot be
+  // placed yet lands on `/spaces` — possibly this page, which React Router does
+  // not remount — so without the key the joined space would be missing from
+  // the list until a full reload.
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, location.key]);
 
   // Close an open card menu on an outside click. The ref is attached to the
   // OPEN card only (see the grid below), so this compares against one node
@@ -222,61 +217,6 @@ export default function SpacesPage() {
     [mero, run, load, showToast],
   );
 
-  /**
-   * Accept any code: a namespace invite, or a forum invite (which carries the
-   * namespace invitation too, so someone with no prior membership gets both joins
-   * from one paste). A forum code that names its context takes you into the forum.
-   */
-  const acceptCode = useCallback(
-    (raw: string) => {
-      if (!mero) return;
-      // Accept a LINK pasted into the code field, not just a code. People paste
-      // whatever they were sent, and the two are indistinguishable to them —
-      // rejecting a link here would be the app refusing its own invitation.
-      // Accepts a platform link, a `calimero://` deep link, this app's older
-      // `?invite=` link, or the bare code — people paste whatever they were sent.
-      const candidate = invitationFromRaw(raw) ?? raw;
-      const payload = decodeInvite(candidate);
-      if (!payload) {
-        setError(
-          "That invite is not valid. If you pasted a code, paste the whole thing — it is one long line with no spaces.",
-        );
-        return;
-      }
-      void run("join", async (onStatus) => {
-        // Shared with the app-level link prompt, so the two cannot drift. A forum
-        // invitation needs BOTH joins — the namespace grant and the forum's
-        // context — and this sequence is where that lives.
-        const { outcome, landed } = await redeemInvite(
-          mero.admin,
-          payload,
-          onStatus,
-        );
-        if (!landed) {
-          setError(redeemFailureMessage(outcome));
-          return;
-        }
-        setJoinCode("");
-        onStatus("Refreshing your spaces…");
-        await load(false);
-
-        if (landed.kind === "forum") {
-          if (landed.forumName)
-            setForumName(landed.contextId, landed.forumName);
-          setActiveForum(landed.contextId, landed.identity, landed.namespaceId);
-          navigate("/f");
-          return;
-        }
-        if (landed.kind === "namespace") {
-          navigate(`/spaces/${landed.namespaceId}`);
-          return;
-        }
-        showToast("Joined. Your spaces are listed below.");
-      });
-    },
-    [mero, run, load, navigate, showToast],
-  );
-
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
   return (
@@ -315,34 +255,6 @@ export default function SpacesPage() {
         }
         aside={
           <>
-            <SideCard title="Join a space">
-              <p className="x-sideText">
-                Got an invitation? Paste the link or code you were sent.
-              </p>
-              <div className="x-sideForm">
-                <input
-                  className="ui-input"
-                  placeholder="Paste an invitation link or code…"
-                  aria-label="Invitation link or code"
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
-                  data-testid="join-input"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && joinCode.trim())
-                      acceptCode(joinCode);
-                  }}
-                />
-                <button
-                  className="ui-btn ui-btn-dark ui-btn-block"
-                  onClick={() => acceptCode(joinCode)}
-                  disabled={pending === "join" || !joinCode.trim()}
-                  data-testid="join-btn"
-                  style={{ height: 40 }}
-                >
-                  {pending === "join" ? "Joining…" : "Join"}
-                </button>
-              </div>
-            </SideCard>
             <SideCard title="How it works">
               <ul className={styles.howList}>
                 <li className={styles.howItem}>
@@ -440,7 +352,7 @@ export default function SpacesPage() {
                 icon={<LayersIcon size={26} />}
               />
               <span className={styles.emptyTitle}>No spaces yet</span>
-              Create one above, or join one with an invitation.
+              Create one above, or open an invitation link someone sent you.
               <button
                 type="button"
                 className="ui-btn ui-btn-primary"

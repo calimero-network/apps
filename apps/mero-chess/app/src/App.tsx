@@ -1,10 +1,20 @@
-import type { ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, type ReactNode } from "react";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { ConnectButton, useMero } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { JoinCard } from "./JoinCard";
 import { TablePage } from "./TablePage";
-import { useJoinFromInvitation } from "./useJoinFromInvitation";
+import {
+  useJoinFromInvitation,
+  type JoinFromInvitation,
+} from "./useJoinFromInvitation";
 import LandingPage from "./pages/landing/LandingPage";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
@@ -21,7 +31,12 @@ const LANDING_PATHS = ["/", "/docs", "/preview"];
 function AppLandingPage() {
   const { isAuthenticated } = useMero();
   const navigate = useNavigate();
-  return <LandingPage isAuthenticated={isAuthenticated} onOpenApp={() => navigate("/play")} />;
+  return (
+    <LandingPage
+      isAuthenticated={isAuthenticated}
+      onOpenApp={() => navigate("/play")}
+    />
+  );
 }
 
 /**
@@ -44,7 +59,8 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   // history entry and never survives a fresh document load, so the SSO callback
   // — which arrives as a cold navigation to `/` — cannot carry it even if the
   // URL it returns to was captured from a page that had it.
-  const deliberate = (location.state as { fromApp?: boolean } | null)?.fromApp === true;
+  const deliberate =
+    (location.state as { fromApp?: boolean } | null)?.fromApp === true;
   if (isLoading) return null; // the auth probe is still in flight
   if (isAuthenticated && !deliberate) return <Navigate to="/play" replace />;
   return <>{children}</>;
@@ -56,12 +72,8 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
  * The three states are exactly the three things that can be missing — a
  * session, a context, and then nothing.
  */
-function PlayPage() {
+function PlayPage({ join }: { join: JoinFromInvitation }) {
   const { isAuthenticated, isLoading, applicationId, contextId } = useMero();
-  // Mounted unconditionally: an invitation captured before login has to be
-  // redeemed as soon as the session exists, which means it cannot live inside a
-  // branch that only renders once a table is open.
-  const { state: joinState, redeemPasted, confirmJoin, declineJoin } = useJoinFromInvitation();
 
   if (isLoading) {
     return (
@@ -79,8 +91,8 @@ function PlayPage() {
           <img className="connect-mark" src="/favicon.svg" alt="" />
           <h1>Connect a node</h1>
           <p className="lede">
-            Mero Chess plays through your own Calimero node. The login modal finds
-            one on the usual local ports, and accepts a URL directly.
+            Mero Chess plays through your own Calimero node. The login modal
+            finds one on the usual local ports, and accepts a URL directly.
           </p>
           <ConnectButton />
           <ul className="connect-points">
@@ -96,12 +108,7 @@ function PlayPage() {
   if (!contextId) {
     return (
       <ContextPicker applicationId={applicationId}>
-        <JoinCard
-          state={joinState}
-          onSubmit={redeemPasted}
-          onConfirm={confirmJoin}
-          onDecline={declineJoin}
-        />
+        <JoinCard join={join} />
       </ContextPicker>
     );
   }
@@ -111,20 +118,13 @@ function PlayPage() {
       {/* A link can arrive while a table is already open, and the prompt has to
           be reachable then too — otherwise an invitation received mid-game
           waits silently until the player happens to log out. */}
-      {joinState.status !== "idle" && (
-        <JoinCard
-          state={joinState}
-          onSubmit={redeemPasted}
-          onConfirm={confirmJoin}
-          onDecline={declineJoin}
-        />
-      )}
+      {join.state.stage !== "idle" && <JoinCard join={join} />}
       <TablePage contextId={contextId} />
     </>
   );
 }
 
-function AppShell() {
+function AppShell({ join }: { join: JoinFromInvitation }) {
   const { isAuthenticated, nodeUrl, logout } = useMero();
   const navigate = useNavigate();
   return (
@@ -156,7 +156,7 @@ function AppShell() {
         </div>
       </header>
       <main className="wrap">
-        <PlayPage />
+        <PlayPage join={join} />
       </main>
     </div>
   );
@@ -165,32 +165,51 @@ function AppShell() {
 export function App() {
   return (
     <BrowserRouter basename="/">
-      <Routes>
-        {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
+      <AppRoutes />
+    </BrowserRouter>
+  );
+}
+
+function AppRoutes() {
+  // Above the routes, unconditionally: an invitation captured before login has
+  // to be offered as soon as the session exists, and a link can be opened on
+  // any page — the landing page, the docs, or mid-game.
+  const join = useJoinFromInvitation();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  // The prompt lives on the play page, which is also where a join lands, so an
+  // invitation that surfaces anywhere else takes the player there.
+  const pending = join.state.stage !== "idle";
+  useEffect(() => {
+    if (pending && pathname !== "/play") navigate("/play");
+  }, [pending, pathname, navigate]);
+
+  return (
+    <Routes>
+      {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
             are real URLs so they can be shared and opened cold, which needs a
             route here — otherwise the catch-all below swallows the deep link
             before the page ever renders. */}
-        {LANDING_PATHS.map((path) => (
-          <Route
-            key={path}
-            path={path}
-            // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
-            // `/preview` are reference pages, and somebody already signed in is
-            // exactly the person most likely to want to read them.
-            element={
-              path === "/" ? (
-                <RedirectIfAuthed>
-                  <AppLandingPage />
-                </RedirectIfAuthed>
-              ) : (
+      {LANDING_PATHS.map((path) => (
+        <Route
+          key={path}
+          path={path}
+          // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
+          // `/preview` are reference pages, and somebody already signed in is
+          // exactly the person most likely to want to read them.
+          element={
+            path === "/" ? (
+              <RedirectIfAuthed>
                 <AppLandingPage />
-              )
-            }
-          />
-        ))}
-        <Route path="/play" element={<AppShell />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+              </RedirectIfAuthed>
+            ) : (
+              <AppLandingPage />
+            )
+          }
+        />
+      ))}
+      <Route path="/play" element={<AppShell join={join} />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
