@@ -117,3 +117,75 @@ describe("SyncEngine (merraria)", () => {
     expect((hb[1] as { t: Transform }).t.action).toBe("mining");
   });
 });
+
+describe("SyncEngine.connect (a world just joined from an invite)", () => {
+  // Right after a join the node may not hold the world's state yet, and the
+  // contract answers `Uninitialized`. CI's merraria journey hit exactly this:
+  // the first `join` failed, the game gave up, never reported the world loaded,
+  // and the invitation dialog sat on "Syncing…" until the journey timed out.
+  const uninitialized = () => new Error('{"type":"Uninitialized"}');
+
+  it("keeps trying until the node answers, then resolves", async () => {
+    vi.useFakeTimers();
+    try {
+      let joins = 0;
+      const { sync, exec } = makeSync();
+      exec.mockImplementation(async (method: string) => {
+        if (method === "join" && ++joins < 3) throw uninitialized();
+        return method === "get_overrides" || method === "get_players" ? [] : null;
+      });
+
+      let connected: boolean | undefined;
+      void sync.connect("P", 1_000).then((v) => (connected = v));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(connected).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(connected).toBe(true);
+      expect(joins).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not count a world whose edits could not be read as loaded", async () => {
+    vi.useFakeTimers();
+    try {
+      let reads = 0;
+      const { sync, exec } = makeSync();
+      exec.mockImplementation(async (method: string) => {
+        if (method === "get_overrides" && ++reads === 1) throw uninitialized();
+        return method === "get_overrides" || method === "get_players" ? [] : null;
+      });
+
+      let connected: boolean | undefined;
+      void sync.connect("P", 1_000).then((v) => (connected = v));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(connected).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(connected).toBe(true);
+      expect(reads).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops once the world is no longer the one on screen", async () => {
+    vi.useFakeTimers();
+    try {
+      let current = true;
+      const { sync, exec } = makeSync();
+      exec.mockImplementation(async () => {
+        throw uninitialized();
+      });
+
+      let connected: boolean | undefined;
+      void sync.connect("P", 1_000, () => current).then((v) => (connected = v));
+      await vi.advanceTimersByTimeAsync(0);
+      current = false;
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(connected).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

@@ -69,6 +69,8 @@ function takeEnterJoinedWorld(): boolean {
 const REACH = 6;
 const EDIT_REPEAT_MS = 250;
 const SAVE_MS = 5000;
+/** How often a world the node has not synced yet is asked again (see `SyncEngine.connect`). */
+const CONNECT_RETRY_MS = 2000;
 const RELIGHT_FULL_THRESHOLD = 8;
 const WORLD_READY_MS = 60_000;
 const MEMBERSHIP_CHECK_MS = 8_000;
@@ -264,17 +266,17 @@ async function boot(): Promise<void> {
     // anything still pending — the same reconcile as joining.
     () => { void sync?.reconcile().catch(() => {}); },
   );
-  try {
-    await sync.join(choice.name);
-    await sync.reconcile();
-    // The world's meta and its edits have both come back from the node, so a
-    // world just joined from an invite is really here: the invite prompt's
-    // "Syncing…" ends on this, not on the join returning.
+  // Joined and read, retrying while the node has not synced the world yet (a
+  // world just joined from an invite answers `Uninitialized` until it has).
+  // The world's meta and its edits have both come back from the node, so a
+  // world just joined from an invite is really here: the invite prompt's
+  // "Syncing…" ends on this, not on the join returning. Not awaited: the game
+  // runs meanwhile, and its edits queue until the join goes through.
+  void sync.connect(choice.name, CONNECT_RETRY_MS).then((connected) => {
+    if (!connected) return;
     reportWorldLoaded(worldId);
     hud.toast("Connected to shared world");
-  } catch {
-    hud.toast("Sync failed — edits will retry in the background");
-  }
+  });
   // e.g. the cloud declined to host a world an account just created (HA):
   // playable, but worth knowing before inviting anyone
   if (choice.notice) hud.toast(choice.notice);

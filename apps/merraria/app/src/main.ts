@@ -60,6 +60,8 @@ function takeEnterJoinedWorld(): boolean {
 }
 
 const SAVE_MS = 5000;
+/** How often a world the node has not synced yet is asked again (see `SyncEngine.connect`). */
+const CONNECT_RETRY_MS = 2000;
 const WORLD_READY_MS = 60_000;
 
 async function fetchWorldMetaWhenReady(client: GameClient): Promise<WorldMeta> {
@@ -237,17 +239,17 @@ async function boot(): Promise<void> {
     // anything still pending — the same reconcile as joining.
     () => { void sync?.reconcile().catch(() => {}); },
   );
-  try {
-    await sync.join(choice.name);
-    await sync.reconcile();
-    // The world's meta and its edits have both come back from the node, so a
-    // world just joined from an invite is really here: the invite prompt's
-    // "Syncing…" ends on this, not on the join returning.
+  // Joined and read, retrying while the node has not synced the world yet (a
+  // world just joined from an invite answers `Uninitialized` until it has).
+  // The world's meta and its edits have both come back from the node, so a
+  // world just joined from an invite is really here: the invite prompt's
+  // "Syncing…" ends on this, not on the join returning. Not awaited: the game
+  // runs meanwhile, and its edits queue until the join goes through.
+  void sync.connect(choice.name, CONNECT_RETRY_MS).then((connected) => {
+    if (!connected) return;
     reportWorldLoaded(worldId);
     hud.toast("Connected to shared world");
-  } catch {
-    hud.toast("Sync failed — edits will retry in the background");
-  }
+  });
 
   // ---- input -----------------------------------------------------------
   const keys = new Set<string>();

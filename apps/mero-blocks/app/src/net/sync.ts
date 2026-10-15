@@ -112,19 +112,24 @@ export class SyncEngine {
   /** pull the authoritative override set and apply the diff locally */
   async pullOverrides(): Promise<number> {
     try {
-      const entries = await this.exec<{ k: string; b: number }[]>("get_overrides", {});
-      let applied = 0;
-      for (const { k, b } of entries ?? []) {
-        if (this.pending.has(k)) continue; // our unsent edit is newer locally
-        const [x, y, z] = k.split(",").map(Number);
-        if (this.world.applyOverride(x, y, z, b)) applied++;
-      }
-      if (applied > 0) this.cb.onRemoteEdits?.(applied);
-      return applied;
+      return await this.readOverrides();
     } catch (err) {
       this.cb.onError?.(err);
       return 0;
     }
+  }
+
+  /** `pullOverrides` that throws, for callers that must know the read happened. */
+  private async readOverrides(): Promise<number> {
+    const entries = await this.exec<{ k: string; b: number }[]>("get_overrides", {});
+    let applied = 0;
+    for (const { k, b } of entries ?? []) {
+      if (this.pending.has(k)) continue; // our unsent edit is newer locally
+      const [x, y, z] = k.split(",").map(Number);
+      if (this.world.applyOverride(x, y, z, b)) applied++;
+    }
+    if (applied > 0) this.cb.onRemoteEdits?.(applied);
+    return applied;
   }
 
   async pullPlayers(): Promise<void> {
@@ -152,6 +157,31 @@ export class SyncEngine {
   }
 
   /** initial reconcile: pull world + roster, then push anything pending */
+  /**
+   * Join the world and read its edits, retrying until the node answers both.
+   *
+   * Right after an invitation is accepted the node may not hold the world's
+   * state yet, and the contract answers `Uninitialized` until it has synced
+   * from a peer. Giving up on the first refusal left a joined world unloaded
+   * for good (and the invitation dialog on "Syncing…"). Resolves true once the
+   * world is joined and read, or false if `isCurrent` says it was left first.
+   */
+  async connect(name: string, retryMs: number, isCurrent: () => boolean = () => true): Promise<boolean> {
+    while (isCurrent()) {
+      try {
+        await this.join(name);
+        await this.readOverrides();
+        await this.pullPlayers();
+        await this.flush();
+        return true;
+      } catch (err) {
+        this.cb.onError?.(err);
+        await new Promise((resolve) => setTimeout(resolve, retryMs));
+      }
+    }
+    return false;
+  }
+
   async reconcile(): Promise<void> {
     await this.pullOverrides();
     await this.pullPlayers();
