@@ -639,6 +639,21 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
+  async updateMemberRole(
+    groupId: string,
+    identity: string,
+    role: "Admin" | "Member",
+  ): ApiResponse<void> {
+    try {
+      // The ACCOUNT, as `listMembers` rows are keyed: a signing key is also 32
+      // bytes, and the node would accept it and change nobody's role.
+      await getMeroJs().admin.updateMemberRole(groupId, identity, { role });
+      return ok(undefined as void);
+    } catch (error) {
+      return catchError("updateMemberRole", error);
+    }
+  }
+
   async listGroupContexts(groupId: string): ApiResponse<GroupContextEntry[]> {
     return cachedRequest(`listGroupContexts:${groupId}`, async () => {
     try {
