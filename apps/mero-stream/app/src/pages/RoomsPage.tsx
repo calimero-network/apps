@@ -10,9 +10,11 @@ import {
   listRooms,
   mintNamespaceInvite,
   mintRoomInvite,
+  namespaceTeeMode,
   type RoomRow,
+  type TeeMode,
 } from "../lib/groups";
-import { ActionButton, StatusNote, Spinner } from "../components/ui";
+import { ActionButton, StatusNote, Spinner, TeeBadge } from "../components/ui";
 import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
 import { hostingProblem } from "../lib/hosting";
@@ -78,6 +80,14 @@ export default function RoomsPage() {
   /** The stream whose room list has come back at least once. */
   const [listedForNs, setListedForNs] = useState<string | null>(null);
   const [nsName, setNsName] = useState("");
+  /**
+   * The stream's TEE node, if any, keyed by the namespace it was read for —
+   * shown beside its name, never as a member.
+   */
+  const [tee, setTee] = useState<{
+    id: string;
+    mode: TeeMode | null;
+  } | null>(null);
   const [name, setName] = useState("");
 
   const [pending, setPending] = useState<string | null>(null);
@@ -128,6 +138,10 @@ export default function RoomsPage() {
         const info = await admin.getNamespace(namespaceId).catch(() => null);
         setNsName(
           (info?.name ?? "").trim() || `Stream ${namespaceId.slice(0, 6)}`,
+        );
+        // Never throws: an unreadable member list reads as "no TEE".
+        void namespaceTeeMode(admin, namespaceId).then((mode) =>
+          setTee({ id: namespaceId, mode }),
         );
         setRooms(await listRooms(admin, namespaceId));
         // A real answer, empty or not — that is what ends the sync gate.
@@ -313,6 +327,12 @@ export default function RoomsPage() {
   // the create that learned this navigates here, so a new stream shows it on
   // arrival. Null on a node, always.
   const hostingNote = hostingProblem(namespaceId);
+  // The namespace's own member list says so; a room born Open admitted the same
+  // node, so its rows say so too when the namespace read came back empty.
+  const teeMode =
+    (tee?.id === namespaceId ? tee.mode : null) ??
+    rooms.find((r) => r.teeMode)?.teeMode ??
+    null;
 
   return (
     <div className={styles.page}>
@@ -359,7 +379,8 @@ export default function RoomsPage() {
         <div className={styles.heading}>
           <div className={styles.headingText}>
             <h2 className={styles.title}>
-              {nsName || <span className={styles.muteInline}>Loading…</span>}
+              {nsName || <span className={styles.muteInline}>Loading…</span>}{" "}
+              <TeeBadge mode={teeMode} />
             </h2>
             <p className={styles.subtitle}>
               Each <strong>room</strong> is one video call. Everyone invited to

@@ -51,6 +51,11 @@ const admin = {
   listNamespaces: vi.fn(async () => []),
   getNamespace: vi.fn(async () => ({ namespaceId: "ns1", name: "Acme" })),
   listNamespaceGroups: vi.fn(async () => []),
+  listGroupMembers: vi.fn(
+    async (): Promise<{ members: { identity: string; role: string }[] }> => ({
+      members: [],
+    }),
+  ),
   createGroupInNamespace: vi.fn(async () => ({ groupId: "aud1" })),
   setGroupMetadata: vi.fn(async () => undefined),
   createContext: vi.fn(async () => ({
@@ -260,5 +265,30 @@ describe("an account session (delegated) on the audiences page", () => {
     const invite = screen.getByTestId("invite-space") as HTMLButtonElement;
     expect(invite.disabled).toBe(true);
     expect(invite.title).toMatch(/link this account/);
+  });
+
+  // A TEE node is a member row of the namespace. It is not a person: the
+  // company's header says "TEE enabled" instead.
+  it("shows TEE enabled beside the company name when the namespace has a TEE node", async () => {
+    admin.listGroupMembers.mockResolvedValueOnce({
+      members: [
+        { identity: "aa", role: "Admin" },
+        { identity: "tt", role: "ReadOnlyTee" },
+      ],
+    });
+    renderAudiences();
+    const badge = await screen.findByTestId("tee-badge");
+    expect(badge.textContent).toContain("TEE enabled");
+    expect(badge.textContent).toContain("Replica");
+    expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1");
+  });
+
+  it("shows no TEE indicator when the namespace has no TEE node", async () => {
+    renderAudiences();
+    await screen.findByTestId("audiences-empty");
+    await waitFor(() =>
+      expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1"),
+    );
+    expect(screen.queryByTestId("tee-badge")).toBeNull();
   });
 });

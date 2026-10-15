@@ -24,6 +24,19 @@ describe('useFolderMembership', () => {
     expect(result.current.members).toEqual(rows);
   });
 
+  // A TEE node is admitted to the namespace and its folders as a member row;
+  // it is infrastructure, so no member list may show it as a person.
+  it('keeps TEE nodes out of `members` and reports them as `teeMembers`', async () => {
+    const person = { identity: 'a'.repeat(64), role: 'Admin' };
+    const replica = { identity: 'c'.repeat(64), role: 'ReadOnlyTee' };
+    const relay = { identity: 'd'.repeat(64), role: 'RelayTee' };
+    listGroupMembers.mockResolvedValue({ members: [person, replica, relay] });
+    const { result } = renderHook(() => useFolderMembership('folder-tee'));
+    await waitFor(() => expect(result.current.readFor).toBe('folder-tee'));
+    expect(result.current.members).toEqual([person]);
+    expect(result.current.teeMembers).toEqual([replica, relay]);
+  });
+
   it('reports the failure and keeps the previous read', async () => {
     listGroupMembers.mockRejectedValue(new Error('boom'));
     const { result } = renderHook(() => useFolderMembership('folder-2'));

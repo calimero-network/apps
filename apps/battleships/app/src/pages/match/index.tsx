@@ -1141,6 +1141,7 @@ export default function MatchPage() {
               playerByAccount={lobby.playerByAccount}
               onChallengePlayer={setPlayer2}
               members={lobby.members}
+              teeMembers={lobby.teeMembers}
               selfIdentity={lobby.selfIdentity}
               executorPublicKey={lobby.executorPublicKey}
               inviteLoading={lobby.inviteLoading}

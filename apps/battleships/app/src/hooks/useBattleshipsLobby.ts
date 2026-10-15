@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useNamespacesForApplication,
   useGroupContexts,
@@ -14,6 +14,28 @@ import { getKnownPlayers } from '../utils/knownPlayers';
 import { LobbyClient } from '../generated/lobby/LobbyClient';
 
 const SELECTED_NS_KEY = 'battleships:selectedNamespaceId';
+
+/** A TEE fleet node admitted by hardware attestation (core's `ReadOnlyTee` / `RelayTee`). */
+export const isTeeRole = (role: string | undefined): boolean =>
+  role === 'ReadOnlyTee' || role === 'RelayTee';
+
+/**
+ * Split TEE nodes out of a group member list.
+ *
+ * A TEE node is a member row on the node, but not a person: kept out of
+ * `members` so no roster, count or player-key fallback ever treats it as a
+ * player. It used to make `playerKeyForMember` see two "other" members in a
+ * two-player lobby, which left the opponent's key unresolved and hid their
+ * Challenge button.
+ */
+export function splitTeeMembers<M extends { role: string }>(
+  all: M[],
+): { members: M[]; teeMembers: M[] } {
+  return {
+    members: all.filter((m) => !isTeeRole(m.role)),
+    teeMembers: all.filter((m) => isTeeRole(m.role)),
+  };
+}
 
 export interface LobbyRecord {
   namespaceId: string;
@@ -39,7 +61,10 @@ export interface UseBattleshipsLobbyReturn {
   groupId: string | null;
   groupLoading: boolean;
 
+  /** People only; TEE nodes are split out into `teeMembers`. */
   members: GroupMember[];
+  /** TEE nodes (`ReadOnlyTee` / `RelayTee`) admitted to the lobby's group. */
+  teeMembers: GroupMember[];
   /** Re-read the member list. Someone joining emits no event we can rely on. */
   refetchMembers: () => Promise<void>;
   /** Re-read the lobby's player keys. */
@@ -199,10 +224,14 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
 
   // --- Members of the namespace root group ---
   const {
-    members,
+    members: groupMembers,
     loading: membersLoading,
     refetch: refetchMembers,
   } = useGroupMembers(namespaceId);
+  const { members, teeMembers } = useMemo(
+    () => splitTeeMembers(groupMembers ?? []),
+    [groupMembers],
+  );
 
   // ⚠️ `useGroupMembers` used to return `selfIdentity`; mero-react 6 removed it,
   // and the value it returned was the wrong id anyway. `members[].identity` is
@@ -429,6 +458,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     groupLoading,
 
     members,
+    teeMembers,
     refetchMembers,
     playerKeys,
     playerByAccount,

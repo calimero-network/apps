@@ -113,3 +113,47 @@ export function StatusNote({
     </p>
   );
 }
+
+const TEE_NOTE =
+  "A hardware-attested node keeps this workspace in sync and available when members are offline.";
+
+/**
+ * "TEE enabled", for a namespace or room a TEE node backs. Renders nothing
+ * without one. The node is never counted as a member; this is where it shows.
+ */
+export function TeeBadge({
+  mode,
+  testId = "tee-badge",
+}: {
+  mode: "relay" | "replica" | null;
+  testId?: string;
+}) {
+  if (!mode) return null;
+  const modeLabel = mode === "relay" ? "Relay" : "Replica";
+  return (
+    <span
+      className={styles.tee}
+      title={`${TEE_NOTE} Mode: ${modeLabel}.`}
+      data-testid={testId}
+      data-mode={mode}
+    >
+      <svg
+        width={12}
+        height={12}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+        <path d="m9 12 2 2 4-4" />
+      </svg>
+      TEE enabled
+      <span className={styles.teeMode}>· {modeLabel}</span>
+    </span>
+  );
+}

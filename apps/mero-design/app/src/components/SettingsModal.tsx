@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
-import { getNodeIdentity, listGroupMembers, rpcCall, updateMemberRole } from "../api/rpc";
+import { ShieldCheck } from "@calimero-network/mero-icons";
+import { getNodeIdentity, listGroupMembers, rpcCall, updateMemberRole, type GroupMemberInfo } from "../api/rpc";
 import { listTeamContexts } from "../api/teamContexts";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
@@ -44,6 +45,8 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
   const { showToast } = useToast();
   const membersGroupId = groupId || id;
   const [members, setMembers] = useState<MemberEntry[]>([]);
+  // TEE nodes admitted to the group: not people, so never in `members`.
+  const [teeMembers, setTeeMembers] = useState<GroupMemberInfo[]>([]);
   const [selfIdentity, setSelfIdentity] = useState("");
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -118,12 +121,15 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
     let cancelled = false;
     setLoadingMembers(true);
     listGroupMembers(membersGroupId)
-      .then((arr) => {
+      .then((res) => {
         if (cancelled) return;
-        setMembers(arr.map((m): MemberEntry => ({ identity: m.identity, role: m.role, name: m.name })));
+        setMembers(res.members.map((m): MemberEntry => ({ identity: m.identity, role: m.role, name: m.name })));
+        setTeeMembers(res.teeMembers);
       })
       .catch(() => {
-        if (!cancelled) setMembers([]);
+        if (cancelled) return;
+        setMembers([]);
+        setTeeMembers([]);
       })
       .finally(() => {
         if (!cancelled) setLoadingMembers(false);
@@ -276,9 +282,20 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
         <div className={styles.divider} />
 
         <div className={styles.row}>
-          <span className={styles.label}>
-            Members{members.length > 0 ? ` (${members.length})` : ""}
-          </span>
+          <div className={styles.labelRow}>
+            <span className={styles.label}>
+              Members{members.length > 0 ? ` (${members.length})` : ""}
+            </span>
+            {teeMembers.length > 0 && (
+              <span
+                className={styles.teeBadge}
+                title="A hardware-attested node keeps this workspace in sync and available when members are offline."
+              >
+                <ShieldCheck size={12} aria-hidden />
+                TEE enabled · {teeMembers.some((m) => m.role === "RelayTee") ? "Relay" : "Replica"}
+              </span>
+            )}
+          </div>
           {loadingMembers ? (
             <span className={styles.muted}>Loading…</span>
           ) : members.length === 0 ? (

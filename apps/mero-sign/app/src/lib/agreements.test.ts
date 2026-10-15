@@ -17,6 +17,7 @@ import {
   listAgreements,
   listWorkspaces,
   pickInvitedAgreement,
+  workspaceTeeMode,
   type AdminLike,
 } from './agreements';
 
@@ -290,6 +291,76 @@ describe('listing', () => {
     // able to tell it apart from "you are not a member".
     expect(row.contextId).toBeNull();
     expect(row.joined).toBe(false);
+  });
+
+  // An agreement born Open admits the workspace's TEE node as a member row. It
+  // used to be counted as a person: "2 people" for an agreement with one.
+  it('keeps TEE nodes out of the people count and records the TEE mode', async () => {
+    const { admin } = fakeAdmin({
+      listNamespaceGroups: () =>
+        Promise.resolve([
+          { groupId: 'sg-relay' },
+          { groupId: 'sg-replica' },
+          { groupId: 'sg-plain' },
+        ]),
+      listGroupMembers: (id: unknown) =>
+        Promise.resolve({
+          members: [
+            { identity: 'a', role: 'Admin' },
+            ...(id === 'sg-relay'
+              ? [
+                  { identity: 't1', role: 'ReadOnlyTee' },
+                  { identity: 't2', role: 'RelayTee' },
+                ]
+              : id === 'sg-replica'
+                ? [{ identity: 't1', role: 'ReadOnlyTee' }]
+                : []),
+          ],
+        }),
+    });
+    const rows = await listAgreements(admin, 'ns-1');
+    expect(rows.map((r) => [r.memberCount, r.teeMode])).toEqual([
+      [1, 'relay'],
+      [1, 'replica'],
+      [1, null],
+    ]);
+  });
+});
+
+describe('workspaceTeeMode', () => {
+  const withMembers = (members: { identity: string; role: string }[]) =>
+    fakeAdmin({ listGroupMembers: () => Promise.resolve({ members }) }).admin;
+
+  it('reads Relay when any TEE row is a RelayTee, Replica otherwise', async () => {
+    expect(
+      await workspaceTeeMode(
+        withMembers([
+          { identity: 'a', role: 'Admin' },
+          { identity: 't1', role: 'ReadOnlyTee' },
+          { identity: 't2', role: 'RelayTee' },
+        ]),
+        'ns-1',
+      ),
+    ).toBe('relay');
+    expect(
+      await workspaceTeeMode(
+        withMembers([{ identity: 't1', role: 'ReadOnlyTee' }]),
+        'ns-1',
+      ),
+    ).toBe('replica');
+  });
+
+  it('is null without a TEE row, and when the read fails', async () => {
+    expect(
+      await workspaceTeeMode(
+        withMembers([{ identity: 'a', role: 'Member' }]),
+        'ns-1',
+      ),
+    ).toBeNull();
+    const { admin } = fakeAdmin({
+      listGroupMembers: () => Promise.reject(new Error('403')),
+    });
+    expect(await workspaceTeeMode(admin, 'ns-1')).toBeNull();
   });
 });
 

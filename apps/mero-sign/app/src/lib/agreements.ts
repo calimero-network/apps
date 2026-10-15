@@ -117,6 +117,43 @@ export function displayName(
   return `${fallbackPrefix} ${id.slice(0, 8)}…`;
 }
 
+// ── TEE nodes ───────────────────────────────────────────────────────────────
+//
+// A TEE fleet node is admitted by hardware attestation as a member row with
+// role `ReadOnlyTee` (replica) or `RelayTee` (relay), in the workspace and in
+// every agreement born Open. It is infrastructure, not a person: no people
+// count may include it. Its presence is what "TEE enabled" means.
+
+export const isTeeRole = (role: string | undefined): boolean =>
+  role === 'ReadOnlyTee' || role === 'RelayTee';
+
+/** How a TEE node serves a group: `relay` if any TEE row is a `RelayTee`. */
+export type TeeMode = 'relay' | 'replica';
+
+function teeModeOf(rows: readonly { role?: string }[]): TeeMode | null {
+  const tee = rows.filter((m) => isTeeRole(m.role));
+  if (tee.length === 0) return null;
+  return tee.some((m) => m.role === 'RelayTee') ? 'relay' : 'replica';
+}
+
+/**
+ * Whether a TEE node backs this workspace, read from its own member list.
+ *
+ * Failures read as "no TEE": the indicator is informational and must never
+ * break the page it sits on.
+ */
+export async function workspaceTeeMode(
+  admin: AdminLike,
+  namespaceId: string,
+): Promise<TeeMode | null> {
+  try {
+    const r = await admin.listGroupMembers(namespaceId);
+    return teeModeOf(r.members ?? []);
+  } catch {
+    return null;
+  }
+}
+
 // ── Workspaces (namespaces) ─────────────────────────────────────────────────
 
 export interface WorkspaceRow {
@@ -384,7 +421,10 @@ export interface AgreementRow {
   name: string;
   /** Null while the agreement exists but has not replicated to this node. */
   contextId: string | null;
+  /** People only: TEE node rows are not counted. */
   memberCount: number;
+  /** The agreement's TEE node, if one was admitted (born-Open agreements admit it). */
+  teeMode: TeeMode | null;
   joined: boolean;
   identity: string | null;
 }
@@ -420,7 +460,8 @@ export async function listAgreements(
         agreementId: sg.groupId,
         name: displayName([sg.name, meta?.name], sg.groupId, 'Agreement'),
         contextId,
-        memberCount: members.length,
+        memberCount: members.filter((m) => !isTeeRole(m.role)).length,
+        teeMode: teeModeOf(members),
         joined: !!identity,
         identity,
       };

@@ -15,7 +15,8 @@ import {
   removeTeamMember,
   setMemberRole,
 } from '../lib/vaults';
-import type { TeamMember } from '../lib/vaults';
+import type { TeamMember, TeeMember } from '../lib/vaults';
+import { ShieldIcon } from './icons';
 import styles from '../styles/shell.module.css';
 import { describeError } from '../lib/errors';
 
@@ -54,6 +55,9 @@ export default function MembersPanel({
   // relay's node route and refuses every call here. See `lib/vaults`.
   const { admin } = useMero();
   const [members, setMembers] = useState<TeamMember[]>([]);
+  // TEE nodes admitted to the team. Not people, so never in `members`; they
+  // are what the "TEE enabled" indicator reports.
+  const [teeMembers, setTeeMembers] = useState<TeeMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -67,9 +71,13 @@ export default function MembersPanel({
     if (!admin) return;
     setLoading(true);
     try {
-      setMembers(await listTeamMembers(admin, namespaceId, myAccountId));
+      const roster = await listTeamMembers(admin, namespaceId, myAccountId);
+      setMembers(roster.members);
+      setTeeMembers(roster.teeMembers);
       setError(null);
     } catch (e) {
+      // The indicator is informational: a failed read is "no TEE".
+      setTeeMembers([]);
       setError(describeError(e));
     } finally {
       setLoading(false);
@@ -133,8 +141,24 @@ export default function MembersPanel({
     [admin, namespaceId, teamName, load],
   );
 
+  const teeMode = teeMembers.some((m) => m.rawRole === 'RelayTee')
+    ? 'Relay'
+    : 'Replica';
+
   return (
     <section data-testid="members-panel">
+      {teeMembers.length > 0 && (
+        <p className={styles.sectionHint}>
+          <span
+            className={`${styles.chip} ${styles.chipGood}`}
+            title="A hardware-attested node keeps this workspace in sync and available when members are offline."
+            data-testid="tee-indicator"
+          >
+            <ShieldIcon size={14} />
+            TEE enabled · {teeMode}
+          </span>
+        </p>
+      )}
       <p className={styles.sectionHint}>
         An <strong>Admin</strong> can create vaults, invite people and change
         roles. A <strong>Member</strong> can open every open vault in {teamName}

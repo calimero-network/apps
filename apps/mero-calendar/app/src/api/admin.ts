@@ -181,15 +181,33 @@ export interface GroupMemberRow {
   name?: string;
 }
 
+/**
+ * A TEE fleet node admitted by hardware attestation (core's
+ * `GroupMemberRole::ReadOnlyTee` / `RelayTee`). It is a member row on the node
+ * but infrastructure, not a person.
+ */
+export const isTeeRole = (role: string | undefined): boolean =>
+  role === "ReadOnlyTee" || role === "RelayTee";
+
 export async function listGroupMembers(
   admin: AdminApiClient,
   groupId: string,
-): Promise<GroupMemberRow[]> {
+): Promise<{
+  /** People only; TEE nodes are split out into `teeMembers`. */
+  members: GroupMemberRow[];
+  /** TEE nodes (`ReadOnlyTee` / `RelayTee`) admitted to this group. */
+  teeMembers: GroupMemberRow[];
+}> {
   const raw = (await admin.listGroupMembers(groupId)) as
     | { members?: GroupMemberRow[]; data?: GroupMemberRow[] }
     | GroupMemberRow[];
-  if (Array.isArray(raw)) return raw;
-  return raw?.members ?? raw?.data ?? [];
+  const all = Array.isArray(raw) ? raw : raw?.members ?? raw?.data ?? [];
+  // Split here, once, so no member list, role control or capability read ever
+  // treats the TEE node as a person.
+  return {
+    members: all.filter((m) => !isTeeRole(m.role)),
+    teeMembers: all.filter((m) => isTeeRole(m.role)),
+  };
 }
 
 /**

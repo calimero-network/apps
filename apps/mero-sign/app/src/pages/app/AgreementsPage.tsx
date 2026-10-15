@@ -29,8 +29,11 @@ import {
   enterAgreement,
   listAgreements,
   listWorkspaces,
+  workspaceTeeMode,
   type AgreementRow,
+  type TeeMode,
 } from '../../lib/agreements';
+import { TeeBadge } from '../../components/TeeBadge';
 import { useApplicationId } from '../../hooks/useApplicationId';
 import { adminApi } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
@@ -83,6 +86,14 @@ export default function AgreementsPage() {
   const { app } = useCalimero(workspaceId);
 
   const [rows, setRows] = useState<AgreementRow[]>([]);
+  /**
+   * The workspace's TEE node, if any, keyed by the workspace it was read for —
+   * shown in the header, never as a person.
+   */
+  const [tee, setTee] = useState<{
+    id: string;
+    mode: TeeMode | null;
+  } | null>(null);
   /** The workspace whose agreement list has come back at least once. */
   const [listedForWs, setListedForWs] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,6 +135,10 @@ export default function AgreementsPage() {
     setLoading(true);
     setError(null);
     try {
+      // Never throws: an unreadable member list reads as "no TEE".
+      void workspaceTeeMode(adminApi(), workspaceId).then((mode) =>
+        setTee({ id: workspaceId, mode }),
+      );
       setRows(await listAgreements(adminApi(), workspaceId));
       // A real answer, empty or not — that is what ends the sync gate.
       setListedForWs(workspaceId);
@@ -294,11 +309,22 @@ export default function AgreementsPage() {
     );
   }
 
+  // The workspace's own member list says so; an agreement born Open admitted
+  // the same node, so its rows say so too when the workspace read came back
+  // empty.
+  const teeMode =
+    (tee?.id === workspaceId ? tee.mode : null) ??
+    rows.find((r) => r.teeMode)?.teeMode ??
+    null;
+
   return (
     <AppShell back={{ label: 'Workspaces', to: '/workspaces' }}>
       <main className={styles.main}>
         <header className={styles.pageHead}>
-          <span className={styles.eyebrow}>Workspace</span>
+          <span className={styles.eyebrow}>
+            Workspace
+            <TeeBadge mode={teeMode} />
+          </span>
           <h1 className={styles.title}>Agreements</h1>
           <p className={styles.subtitle}>
             An agreement holds the documents a group of people sign. Everything

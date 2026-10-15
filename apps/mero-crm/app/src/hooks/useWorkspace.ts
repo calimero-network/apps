@@ -32,6 +32,7 @@ import {
   useSetMemberMetadata,
   type Namespace,
 } from "@calimero-network/mero-react";
+import type { GroupMember } from "@calimero-network/mero-js";
 import { useSubscription } from "@calimero-network/mero-react";
 import { useStreamReconnect } from "./useStreamReconnect";
 import { PRIMARY_SERVICE } from "../config";
@@ -46,6 +47,7 @@ import { CrmClient } from "../generated/CrmClient";
 import { useApplicationId } from "./useApplicationId";
 import { useMemberRoles, type UseMemberRolesReturn } from "./useMemberRoles";
 import { buildAliasMap } from "./useAliases";
+import { splitTeeMembers, teeMode as teeModeOf, type TeeMode } from "../utils/tee";
 import {
   readActiveNs,
   writeActiveNs,
@@ -117,8 +119,13 @@ export interface UseWorkspaceReturn {
   contextId: string | null;
   executorPublicKey: string | null;
   selfIdentity: string | null;
+  /** People only: TEE nodes are split out into `teeMembers`. */
   members: string[];
   memberNames: Map<string, string>;
+  /** TEE nodes (`ReadOnlyTee` / `RelayTee`) admitted to the workspace. */
+  teeMembers: GroupMember[];
+  /** Relay / Replica when a TEE node backs the workspace, else null. */
+  teeMode: TeeMode | null;
   /** Namespace roles + capabilities, keyed by ACCOUNT. See utils/roles. */
   roles: UseMemberRolesReturn;
   membersLoading: boolean;
@@ -432,7 +439,7 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   // --- Namespace members (people names live here) ---
   const {
-    members: nsMembers,
+    members: rosterRows,
     loading: membersLoading,
     refetch: refetchMembers,
   } = useGroupMembers(activeNs);
@@ -476,6 +483,12 @@ export function useWorkspace(): UseWorkspaceReturn {
   useStreamReconnect(() => {
     if (activeNs) void refetchMembers();
   });
+
+  // A TEE node is a member row on the node, but not a person: split out here,
+  // once, so no member list, count, owner picker, name map or role control
+  // ever shows it. Its presence is shown as "TEE enabled" instead.
+  const { people: nsMembers, tee: teeMembers } = useMemo(() => splitTeeMembers(rosterRows), [rosterRows]);
+  const teeMode = useMemo(() => teeModeOf(teeMembers), [teeMembers]);
 
   const members = useMemo(() => nsMembers.map((m) => m.identity), [nsMembers]);
   const memberNames = useMemo(
@@ -711,6 +724,8 @@ export function useWorkspace(): UseWorkspaceReturn {
     selfIdentity,
     members,
     memberNames,
+    teeMembers,
+    teeMode,
     roles,
     membersLoading,
     membersLoaded,

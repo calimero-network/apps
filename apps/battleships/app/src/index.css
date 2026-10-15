@@ -225,6 +225,17 @@ html, body {
   border: 1px solid rgba(161, 98, 7, 0.2);
 }
 
+.badge-tee {
+  background: var(--select-cyan-glow);
+  color: var(--select-cyan);
+  border: 1px solid color-mix(in srgb, var(--select-cyan) 22%, transparent);
+}
+
+.badge-tee-mode {
+  opacity: 0.7;
+  font-weight: 550;
+}
+
 .badge-live {
   background: var(--sonar-green-glow);
   color: var(--text-accent);

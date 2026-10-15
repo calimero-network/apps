@@ -6,6 +6,7 @@ import { describeError } from '../../utils/errors';
 import AvatarGlyph from '../../components/AvatarGlyph';
 import SetAliasModal from '../../components/SetAliasModal';
 import MemberRoleControl from '../../components/MemberRoleControl';
+import TeeBadge from '../../components/TeeBadge';
 import { effectiveFor } from '../../hooks/useMemberRoles';
 import {
   CAP,
@@ -123,6 +124,8 @@ export default function MembersPage(): React.ReactElement {
     <Wrap>
       <Head>
         <h2>Members</h2>
+        {/* The TEE node is not listed below; this is where it shows. */}
+        <TeeBadge mode={ws.teeMode} />
         <div className="actions">
           <button
             className="secondary"
