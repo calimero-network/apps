@@ -6,8 +6,9 @@ import {
   getContextIdentity,
   useMero,
 } from "@calimero-network/mero-react";
+import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 
-import { loadAccountId } from "../../api/identity";
+import { accountId, loadAccountId } from "../../api/identity";
 import { bindSession } from "../../api/session";
 import { ClientApiDataSource } from "../../api/dataSource/ClientApiDataSource";
 import Calendar from "../../components/calendar/Calendar";
@@ -28,6 +29,8 @@ export default function CalendarPage() {
   // `getNodeIdentity` is the ACCOUNT and its `getContextIdentitiesOwned` is the
   // account too — where the relay's own routes would name the relay.
   const { admin } = useMero();
+  // The name each person set once for the whole team, shared by every app on it.
+  const { nameOf: teamNameOf } = useMemberNames(admin, teamId);
   const [ready, setReady] = useState(false);
   const [askUsername, setAskUsername] = useState(false);
   const setupDone = useRef(false);
@@ -118,12 +121,29 @@ export default function CalendarPage() {
       } catch {
         /* best-effort */
       }
+      // And as this person's name on the team, so every calendar and every
+      // other app on it shows the name too. Best-effort: the calendar name
+      // above is already set either way.
+      const me = accountId();
+      if (admin && teamId && me && trimmed !== teamNameOf(me)) {
+        void publishMemberName(admin, teamId, me, trimmed).catch(() => {});
+      }
     }
     setAskUsername(false);
   }
 
-  // Default a name suggestion from the active identity (short pubkey).
+  // Someone who already named themselves on the team is not asked again on
+  // every new calendar: the team name becomes their calendar username.
+  const myTeamName = teamNameOf(accountId());
+  useEffect(() => {
+    if (askUsername && myTeamName) void handleUsernameSubmit(myTeamName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askUsername, myTeamName]);
+
+  // Default a name suggestion: the team name, else the active identity (short
+  // pubkey).
   const defaultName = (() => {
+    if (myTeamName) return myTeamName;
     const pk = getContextIdentity() ?? "";
     return pk ? `user-${pk.slice(0, 6)}` : "";
   })();

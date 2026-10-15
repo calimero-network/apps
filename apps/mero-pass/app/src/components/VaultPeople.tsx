@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
+import { useMemberNames } from '@calimero-apps/names';
 
 import type { MeroPassClient } from '../generated/MeroPassClient';
 import { deviceKeeper } from '../lib/deviceKey';
@@ -42,6 +43,8 @@ export default function VaultPeople({
   // admin would answer 403 on an account and every rotation would run with no
   // audience. See `lib/vaults` `AdminLike`.
   const { admin } = useMero();
+  // People by the name they set for the team, not by account key.
+  const { displayName } = useMemberNames(admin, team?.namespaceId);
   const [members, setMembers] = useState<MemberRecord[]>([]);
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +126,7 @@ export default function VaultPeople({
         <div key={m.account} className={shell.row} data-testid="vault-member">
           <div className={shell.rowMain}>
             <div className={shell.rowName}>
-              <span className={shell.mono}>{m.account.slice(0, 16)}…</span>
+              <span title={m.account}>{displayName(m.account)}</span>
               {m.account === me ? ' (you)' : ''}{' '}
               <span
                 className={`${shell.badge} ${m.role === 'admin' ? shell.badgeAccent : ''}`}
@@ -194,7 +197,12 @@ export default function VaultPeople({
                 <span className={shell.mono}>
                   {d.fingerprint.slice(0, 16)}…
                 </span>{' '}
-                · {d.account === me ? 'yours' : `${d.account.slice(0, 10)}…`}
+                ·{' '}
+                {d.account === me ? (
+                  'yours'
+                ) : (
+                  <span title={d.account}>{displayName(d.account)}</span>
+                )}
               </div>
             </div>
             {!d.revoked && (isAdmin || d.account === me) && (

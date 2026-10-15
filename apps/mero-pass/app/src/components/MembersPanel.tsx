@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
+import {
+  publishMemberName,
+  shortAccount,
+  useMemberNames,
+} from '@calimero-apps/names';
 
 import {
   canCreateVault,
@@ -64,8 +69,19 @@ export default function MembersPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+  const [myName, setMyName] = useState('');
 
   const iMayManage = canManageMembers(myCapabilities);
+
+  // The name each person set for the team (namespace member metadata), which
+  // every app on the team shares. Read through the shared directory so a name
+  // this session just published shows before the listing carries it.
+  const { nameOf } = useMemberNames(admin, namespaceId);
+  const nameFor = useCallback(
+    (member: TeamMember) => nameOf(member.accountId) ?? member.name,
+    [nameOf],
+  );
+  const myCurrentName = myAccountId ? nameOf(myAccountId) : undefined;
 
   const load = useCallback(async () => {
     if (!admin) return;
@@ -100,10 +116,11 @@ export default function MembersPanel({
           { namespaceId, accountId: member.accountId, role },
           setBusy,
         );
+        const name = nameFor(member);
         setNotice(
           result.effective
-            ? `${member.name} is now ${roleLabel(role)} — the node confirms the capabilities that go with it.`
-            : `${member.name}'s role is now ${roleLabel(role)}, but the node has not applied ${result.missing.join(', ')} yet. Re-check in a moment; if it persists, the change did not take.`,
+            ? `${name} is now ${roleLabel(role)} — the node confirms the capabilities that go with it.`
+            : `${name}'s role is now ${roleLabel(role)}, but the node has not applied ${result.missing.join(', ')} yet. Re-check in a moment; if it persists, the change did not take.`,
         );
         await load();
         onRolesChanged();
@@ -113,7 +130,7 @@ export default function MembersPanel({
         setBusy(null);
       }
     },
-    [admin, namespaceId, load, onRolesChanged],
+    [admin, namespaceId, load, onRolesChanged, nameFor],
   );
 
   const remove = useCallback(
@@ -122,14 +139,15 @@ export default function MembersPanel({
       setError(null);
       setNotice(null);
       setRemoving(null);
-      setBusy(`Removing ${member.name}…`);
+      const name = nameFor(member);
+      setBusy(`Removing ${name}…`);
       try {
         await removeTeamMember(admin, {
           namespaceId,
           accountId: member.accountId,
         });
         setNotice(
-          `${member.name} is out of ${teamName}. Each vault's key is rotated the next time one of its Admins opens it, and nothing written after that is readable to them. What they already saw cannot be taken back — change those passwords.`,
+          `${name} is out of ${teamName}. Each vault's key is rotated the next time one of its Admins opens it, and nothing written after that is readable to them. What they already saw cannot be taken back — change those passwords.`,
         );
         await load();
       } catch (e) {
@@ -138,8 +156,26 @@ export default function MembersPanel({
         setBusy(null);
       }
     },
-    [admin, namespaceId, teamName, load],
+    [admin, namespaceId, teamName, load, nameFor],
   );
+
+  /** Publish the name every app on this team shows for this account. */
+  const saveMyName = useCallback(async () => {
+    const trimmed = myName.trim();
+    if (!admin || !myAccountId || !trimmed) return;
+    setError(null);
+    setNotice(null);
+    setBusy('Saving your name…');
+    try {
+      await publishMemberName(admin, namespaceId, myAccountId, trimmed);
+      setMyName('');
+      setNotice(`Everyone in ${teamName} now sees you as ${trimmed}.`);
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [admin, namespaceId, myAccountId, myName, teamName]);
 
   const teeMode = teeMembers.some((m) => m.rawRole === 'RelayTee')
     ? 'Relay'
@@ -184,6 +220,31 @@ export default function MembersPanel({
         </p>
       )}
 
+      {myAccountId && (
+        <div className={styles.createRow}>
+          <input
+            className={styles.input}
+            placeholder={
+              myCurrentName ?? 'Your name — how others in this team see you'
+            }
+            value={myName}
+            onChange={(e) => setMyName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void saveMyName()}
+            aria-label="Your name"
+            data-testid="my-name"
+          />
+          <button
+            type="button"
+            className={styles.btn}
+            onClick={() => void saveMyName()}
+            disabled={!!busy || !myName.trim()}
+            data-testid="my-name-save"
+          >
+            {myCurrentName ? 'Rename' : 'Set name'}
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <p className={styles.empty}>Loading people…</p>
       ) : members.length === 0 ? (
@@ -204,7 +265,7 @@ export default function MembersPanel({
               >
                 <div className={styles.rowMain}>
                   <div className={styles.rowName}>
-                    {member.name}
+                    {nameFor(member)}
                     {member.isSelf ? ' (you)' : ''}{' '}
                     <span
                       className={`${styles.badge} ${member.role === 'admin' ? styles.badgeAccent : ''}`}
@@ -212,8 +273,8 @@ export default function MembersPanel({
                       {roleLabel(member.role)}
                     </span>
                   </div>
-                  <div className={styles.mono}>
-                    {member.accountId.slice(0, 16)}…
+                  <div className={styles.mono} title={member.accountId}>
+                    {shortAccount(member.accountId)}
                   </div>
                   <div className={styles.rowSub}>
                     {canCreateVault(member.capabilities)

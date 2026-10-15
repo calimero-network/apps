@@ -21,13 +21,15 @@ interface Props {
   cursors: CursorState[];
   myIdentity: string;
   members: Member[];
+  /** Team-wide names, for people with no project username. */
+  teamName?: (account: string) => string | undefined;
   /** Editor viewport — accepted for layout but not required by the overlay. */
   viewport?: { zoom: number; panX: number; panY: number };
 }
 
 // Generic remote-cursor renderer: given a cursor list and a member map, draws a
 // labelled arrow per peer. Stale cursors (>10s) and the local user are hidden.
-export default function CursorsOverlay({ cursors, myIdentity, members }: Props) {
+export default function CursorsOverlay({ cursors, myIdentity, members, teamName }: Props) {
   const now = Date.now();
   const active = cursors.filter((c) => c.identity !== myIdentity && now - c.updatedAt < 10_000);
 
@@ -36,7 +38,7 @@ export default function CursorsOverlay({ cursors, myIdentity, members }: Props) 
       {active.map((c) => {
         const color = colorForIdentity(c.identity);
         const member = members.find((m) => m.id === c.identity);
-        const label = member?.username ?? shortLabel(c.identity);
+        const label = member?.username?.trim() || teamName?.(c.identity) || shortLabel(c.identity);
         return (
           <div
             key={c.identity}

@@ -8,6 +8,7 @@ import { mapLimit } from "../utils/concurrency";
 import { useSse } from "../hooks/useSse";
 import { useToast } from "../contexts/ToastContext";
 import { useShallow } from "zustand/react/shallow";
+import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import { useEditorStore } from "../store/editorStore";
 import {
   getLayerCanvas, peekLayerCanvas, getMaskCanvas, peekMaskCanvas,
@@ -72,6 +73,8 @@ export default function EditorPage() {
   const rpcCall = api.call;
   const adminUploadBlob = api.uploadBlob;
   const adminGetBlob = api.getBlob;
+  // The name each person set once for the whole team, shared by every app on it.
+  const { nameOf: teamNameOf } = useMemberNames(admin, teamId);
 
   const {
     doc, layers, selectedLayerId, editingMaskOf, showRulers, panels,
@@ -359,13 +362,28 @@ export default function EditorPage() {
       await rpcCall(ctxId, "join", { username, avatar: null, timestamp: ts() });
       setNeedName(false);
       localStorage.setItem("mp-username", username);
+      // And as this person's name on the team, so every project and every
+      // other app on it shows the name too. Best-effort: the project name
+      // above is already set either way.
+      const me = myId.current;
+      if (teamId && me && username !== teamNameOf(me)) {
+        void publishMemberName(admin, teamId, me, username).catch(() => {});
+      }
       const role = await rpcCall<Role>(ctxId, "my_role", {}).catch(() => "viewer" as Role);
       setRole(role);
       refetch();
     } catch (e) {
       showToast(errMsg(e), "error");
     }
-  }, [ctxId, setRole, refetch, showToast, rpcCall]);
+  }, [ctxId, setRole, refetch, showToast, rpcCall, teamId, admin, teamNameOf]);
+
+  // Someone who already named themselves on the team is not asked again on
+  // every new project: the team name becomes their project username.
+  const myTeamName = teamNameOf(myId.current);
+  useEffect(() => {
+    if (needName && myTeamName) void handleJoin(myTeamName);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needName, myTeamName]);
 
   // ── Pixel commit (raster) ───────────────────────────────────────────────
   const commitPixels = useCallback(async (layerId: string) => {
@@ -1427,7 +1445,14 @@ export default function EditorPage() {
               onDeleteLayer={onDelete}
               onCrop={onCrop}
               onCursorMove={onCursorMove}
-              overlay={<CursorsOverlay cursors={screenCursors} myIdentity={myId.current} members={members} />}
+              overlay={
+                <CursorsOverlay
+                  cursors={screenCursors}
+                  myIdentity={myId.current}
+                  members={members}
+                  teamName={teamNameOf}
+                />
+              }
             />
           </div>
         </div>
@@ -1498,13 +1523,14 @@ export default function EditorPage() {
           onClose={() => setShowShowcase(false)}
         />
       )}
-      {needName && <UsernameModal onSubmit={handleJoin} initialValue={localStorage.getItem("mp-username") ?? ""} />}
+      {needName && <UsernameModal onSubmit={handleJoin} initialValue={localStorage.getItem("mp-username") || myTeamName || ""} />}
       {showInvite && teamId && <InviteModal teamId={teamId} onClose={() => setShowInvite(false)} />}
       {showSettings && (
         <SettingsModal
           type="project"
           id={ctxId}
           groupId={subgroupId}
+          namespaceId={teamId}
           name={doc?.name ?? "Project"}
           onClose={() => setShowSettings(false)}
         />
