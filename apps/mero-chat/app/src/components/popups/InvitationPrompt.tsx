@@ -20,6 +20,7 @@ import {
   enterWorkspace,
 } from "../../utils/enterWorkspace";
 import { log } from "../../utils/logger";
+import { DM_CONTEXT_ALIAS_PREFIX } from "../../utils/dmContext";
 
 // ── An invitation link, opened ───────────────────────────────────────────────
 //
@@ -134,12 +135,18 @@ async function prepareJoined(
     log.warn("InvitationPrompt", "post-join bookkeeping failed", err);
   }
 
-  // The workspace's own data: its channel list, as the sidebar reads it. An
-  // empty list is an answer too; only a failed read is retried.
+  // The workspace's own data: its channels, as the sidebar reads them. Every
+  // workspace starts with #general, so an empty list is the node not having
+  // synced yet, not an empty workspace: keep asking until a channel is there.
+  // A workspace from before #general can have none; after the deadline it
+  // goes in anyway.
   const deadline = Date.now() + CHANNELS_READ_MS;
   for (;;) {
     const res = await api.listSubgroups(namespaceId).catch(() => null);
-    if (res && !res.error) {
+    const channels = (res && !res.error ? res.data ?? [] : []).filter(
+      (sg) => !(sg.alias ?? "").startsWith(DM_CONTEXT_ALIAS_PREFIX),
+    );
+    if (channels.length > 0) {
       onChannelsRead();
       break;
     }

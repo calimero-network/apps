@@ -269,8 +269,15 @@ export function useGroupContexts() {
       }
 
       // Mark this group as swept so subsequent fetches in this session
-      // don't auto-join newly created open channels.
-      openChannelSweptGroups.add(groupId);
+      // don't auto-join newly created open channels — but only once the
+      // sweep has seen a channel. Every workspace has #general, so an empty
+      // list means the node has not synced the channels yet (right after an
+      // invitation is accepted), not that there are none; marking it swept
+      // then left the channels that arrived next unjoined, and the sidebar
+      // empty.
+      if ([...subgroupChannelsMap.values()].some((c) => c.length > 0)) {
+        openChannelSweptGroups.add(groupId);
+      }
 
       const allChannels: GroupContextChannel[] = [];
       subgroupChannelsMap.forEach((sgChannels) => allChannels.push(...sgChannels));

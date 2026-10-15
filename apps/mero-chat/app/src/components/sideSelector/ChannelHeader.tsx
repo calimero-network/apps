@@ -1,10 +1,9 @@
 import { styled } from "styled-components";
 import CreateChannelPopup from "../popups/CreateChannelPopup";
 import { isValidChannelName } from "../../utils/validation";
-import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-import { getApplicationId, getGroupId, setContextMemberIdentity } from "../../constants/config";
+import { getGroupId } from "../../constants/config";
+import { createChannel as createChannelInWorkspace } from "../../utils/createChannel";
 import { memo, useCallback, useState } from "react";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
@@ -13,7 +12,6 @@ import {
   getChannelVisibilityOption,
 } from "../../utils/channelVisibility";
 import { buildChannelEntryChat } from "../../utils/channelEntry";
-import { getMessengerDisplayName } from "../../utils/messengerName";
 import type { ActiveChat } from "../../types/Common";
 
 const Container = styled.div<{ $isCollapsed?: boolean }>`
@@ -123,77 +121,10 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
       return { error: "A group with this name already exists" };
     }
 
-    const nodeApi = new ContextApiDataSource();
-    const groupApi = new GroupApiDataSource();
     const namespaceId = props.targetGroupId ?? groupId;
-
-    // 1-group-per-context model (rc.37+): each channel is its own subgroup
-    // under the namespace root, with one context inside. Subgroup visibility
-    // (open|restricted) IS the channel's public/private flag, and is set
-    // deterministically via the SubgroupVisibilitySet op (encrypted to the
-    // subgroup's members). Non-admin members can create+manage their own
-    // channel-groups thanks to the CAN_CREATE_SUBGROUP / CAN_MANAGE_VISIBILITY
-    // namespace caps granted in dev-node.sh.
-
-    // 1) Create the channel's subgroup under the namespace root. For
-    //    user-created channels the alias and the display name are the
-    //    same string (and short — UI input is constrained well under
-    //    the 64-byte cap).
-    // Born with the chosen visibility: a public channel created Restricted
-    // and flipped Open strands every namespace member outside it.
-    const sgResp = await groupApi.createSubgroup(namespaceId, {
-      groupName: channelName,
-      name: channelName,
-      visibility: isPublic ? "open" : "restricted",
-    });
-    if (sgResp.error || !sgResp.data) {
-      const msg = sgResp.error?.message || "A channel with this name may already exist";
-      log.error("ChannelHeader", "Failed to create channel subgroup", sgResp.error);
-      return { error: msg };
-    }
-    const channelGroupId = sgResp.data.groupId;
-
-    // 2) Set the subgroup's visibility from the popup choice.
-    const visResp = await groupApi.setSubgroupVisibility(channelGroupId, {
-      subgroupVisibility: isPublic ? "open" : "restricted",
-    });
-    if (visResp.error) {
-      log.warn("ChannelHeader", "Failed to set subgroup visibility (non-fatal)", visResp.error);
-    }
-
-    // 3) Create the channel's single context inside the new subgroup.
-    const createResp = await nodeApi.createGroupContext({
-      applicationId: getApplicationId(),
-      groupId: channelGroupId,
-      name: channelName,
-      initializationParams: {
-        name: channelName,
-        context_type: "Channel",
-        description: "",
-        created_at: Math.floor(Date.now() / 1000),
-        creator_username: "",
-      },
-    });
-
-    if (createResp.error || !createResp.data) {
-      const msg = createResp.error?.message || "Failed to create channel context";
-      log.error("ChannelHeader", "Failed to create channel context", createResp.error);
-      return { error: msg };
-    }
-
-    const contextIdJustCreated = createResp.data.contextId;
-
-    const contextId = contextIdJustCreated;
-    const memberKey = createResp.data.memberPublicKey ?? "";
-    if (memberKey) {
-      setContextMemberIdentity(contextId, memberKey);
-      const username = getMessengerDisplayName();
-      if (username) {
-        new ClientApiDataSource()
-          .joinChat({ contextId, executorPublicKey: memberKey, username })
-          .catch((e) => log.warn("ChannelHeader", "set_profile failed on new channel", e));
-      }
-    }
+    const created = await createChannelInWorkspace(namespaceId, channelName, isPublic);
+    if ("error" in created) return created;
+    const { contextId, memberKey } = created;
 
     setInputValue("");
     setIsOpen(false);

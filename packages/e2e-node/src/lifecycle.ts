@@ -163,6 +163,39 @@ async function expectJoinedOneOf(node: RigNode, created: NamespaceRow[]): Promis
     .toBe(true);
 }
 
+/**
+ * Alice's node lists bob as a member of the namespace he joined.
+ *
+ * Bob's own node holding the namespace (`expectJoinedOneOf`) is only his
+ * side: his join is a signed op that has to reach alice's node too, or she
+ * never sees him, his writes are not hers, and he gets none of her state. A
+ * join that landed only on the joiner's node looked joined and showed no data.
+ */
+async function expectInviterSeesJoiner(
+  inviter: RigNode,
+  joiner: RigNode,
+  created: NamespaceRow[],
+): Promise<void> {
+  const held = new Set((await listNamespaces(joiner)).map((ns) => ns.id));
+  const joined = created.find((ns) => held.has(ns.id));
+  expect(joined, "node 2 holds one of alice's namespaces").toBeTruthy();
+  await expect
+    .poll(
+      async () => {
+        const body = await adminApi<unknown>(inviter, "GET", `/admin-api/groups/${joined!.id}/members`);
+        const members = Array.isArray(body)
+          ? body
+          : ((body as { members?: unknown[] }).members ?? []);
+        return members.length;
+      },
+      {
+        message: `alice's node lists bob as a member of ${joined!.id.slice(0, 8)} (two members)`,
+        timeout: 90_000,
+      },
+    )
+    .toBeGreaterThanOrEqual(2);
+}
+
 export function defineLifecycle(driver: AppDriver): void {
   test.describe.configure({ mode: "serial" });
 
@@ -227,6 +260,7 @@ export function defineLifecycle(driver: AppDriver): void {
       await test.step("bob opens the invitation link", async () => {
         await joinByLink(driver, bob, link, "url");
         await expectJoinedOneOf(n2, created);
+        await expectInviterSeesJoiner(n1, n2, created);
         if (driver.openSpace && driver.createSpace) await driver.openSpace(bob, `first-${run}`);
       });
 
@@ -336,6 +370,7 @@ export function defineLifecycle(driver: AppDriver): void {
       await test.step("the launcher hands bob's open app the link, and he joins", async () => {
         await joinByLink(driver, bob, link, "desktop");
         await expectJoinedOneOf(n2, created);
+        await expectInviterSeesJoiner(n1, n2, created);
       });
 
       const first = driver.features[0];

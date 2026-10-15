@@ -82,7 +82,10 @@ beforeEach(() => {
   resetInvitationCaptureForTests();
   localStorage.clear();
   sessionStorage.clear();
-  h.listSubgroups.mockReset().mockResolvedValue({ data: [], error: null });
+  // Every workspace has #general.
+  h.listSubgroups
+    .mockReset()
+    .mockResolvedValue({ data: [{ groupId: "sg-general", alias: "general" }], error: null });
   h.joinGroup.mockReset().mockResolvedValue({
     data: { groupId: "ns1", memberIdentity: "me" },
   });
@@ -188,6 +191,21 @@ describe("InvitationPrompt", () => {
     );
     expect(peekInvitation()).toBeNull();
     await waitFor(() => expect(h.listSubgroups).toHaveBeenCalled());
+    expect(h.enterWorkspace).not.toHaveBeenCalled();
+  });
+
+  // Every workspace starts with #general, so an empty channel list right
+  // after the join is the node not having synced yet, not an empty
+  // workspace. Taking it as an answer closed the dialog on "You're in" and
+  // went into a workspace with nothing in it.
+  it("stays on syncing while the channel list comes back empty", async () => {
+    localStorage.setItem("chat-username", "Bob");
+    h.listSubgroups.mockResolvedValue({ data: [], error: null });
+    openLink();
+    fireEvent.click(await screen.findByTestId("invite-accept"));
+    await waitFor(() => expect(h.listSubgroups).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.getByTestId("invite-prompt")).toHaveAttribute("data-stage", "syncing");
     expect(h.enterWorkspace).not.toHaveBeenCalled();
   });
 

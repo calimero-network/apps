@@ -412,6 +412,13 @@ export const driver: AppDriver = {
       await enterName(page, actor.name === "alice" ? "Alice" : "Bob");
     }
     await readyHome(page);
+    // Every workspace starts with #general, and someone who joins lands in
+    // it: in the sidebar, with no Browse Channels, no reload. A join that
+    // left the sidebar empty looked joined and showed no data.
+    await expect(
+      channelItem(page, "general").first(),
+      "the joined workspace's #general is in the sidebar without browsing",
+    ).toBeVisible({ timeout: SYNC });
   },
 
   async afterReload(actor) {
