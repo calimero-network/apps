@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useContextGroup, useJoinSync, useMero } from "@calimero-network/mero-react";
+import {
+  JOIN_SYNC_POLL_MS,
+  isNamespaceJustJoined,
+  useContextGroup,
+  useJoinSync,
+  useMero,
+} from "@calimero-network/mero-react";
 import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import type { Member, PollSummary } from "./generated/MeroVoteClient";
 import { CreatePoll } from "./CreatePoll";
@@ -79,11 +85,27 @@ export function VotePanel({
   useLiveRefresh(contextId, () => void refresh());
 
   // Ends the invitation dialog's "Syncing…" for a context just joined: `tick`
-  // moves on the first read of the polls that came back, none included. A
-  // context whose state has not arrived yet fails the read, and every event
-  // re-reads it. This app's contexts live directly in the namespace (see
-  // ContextPicker), so the context's group is the namespace that was joined.
-  useJoinSync({ namespaceId: joinedNamespace ?? namespaceId, settled: tick > 0 });
+  // moves on every read of the polls that came back. Right after the join an
+  // empty list is what a node that has not synced the context returns, so it
+  // does not settle while the namespace is flagged just-joined; the watchdog
+  // clears the flag, after which a context with no polls reads as empty again.
+  // This app's contexts live directly in the namespace (see ContextPicker), so
+  // the context's group is the namespace that was joined.
+  const syncNamespace = joinedNamespace ?? namespaceId;
+  const { isSyncing } = useJoinSync({
+    namespaceId: syncNamespace,
+    settled: tick > 0 && (polls.length > 0 || !isNamespaceJustJoined(syncNamespace)),
+    // Still empty: let the gate wait up to its ceiling, not the base window.
+    active: polls.length === 0,
+  });
+
+  // Polls that land after the join need not raise an event here, so while the
+  // gate is up, re-read on a timer.
+  useEffect(() => {
+    if (!isSyncing) return;
+    const timer = setInterval(() => void refresh(), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isSyncing, refresh]);
 
   const names = new Map(roster.map((m) => [m.account, m.name]));
   const myName = me ? names.get(me) : undefined;
