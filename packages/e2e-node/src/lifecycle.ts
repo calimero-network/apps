@@ -111,6 +111,24 @@ export async function joinByLink(driver: AppDriver, actor: Actor, link: string, 
   await driver.joined(actor);
 }
 
+/**
+ * Node 2 holds at least one namespace alice created in this test.
+ *
+ * Not all of them: an app can create more than the one it invites to — a
+ * personal namespace made on first login, say — and on fresh nodes that one
+ * can land just after the "before" snapshot. Bob is never invited to it.
+ */
+async function expectJoinedOneOf(node: RigNode, created: NamespaceRow[]): Promise<void> {
+  const wanted = created.map((ns) => ns.id);
+  expect(wanted.length, "alice's node lists a namespace this test created").toBeGreaterThan(0);
+  await expect
+    .poll(async () => (await listNamespaces(node)).some((ns) => wanted.includes(ns.id)), {
+      message: `node 2 has joined one of alice's new namespaces (${wanted.map((id) => id.slice(0, 8)).join(", ")})`,
+      timeout: 60_000,
+    })
+    .toBe(true);
+}
+
 export function defineLifecycle(driver: AppDriver): void {
   test.describe.configure({ mode: "serial" });
 
@@ -174,12 +192,7 @@ export function defineLifecycle(driver: AppDriver): void {
 
       await test.step("bob opens the invitation link", async () => {
         await joinByLink(driver, bob, link, "url");
-        await expect
-          .poll(async () => (await listNamespaces(n2)).map((ns) => ns.id), {
-            message: "node 2 has joined alice's namespace",
-            timeout: 60_000,
-          })
-          .toEqual(expect.arrayContaining(created.map((ns) => ns.id)));
+        await expectJoinedOneOf(n2, created);
         if (driver.openSpace && driver.createSpace) await driver.openSpace(bob, `first-${run}`);
       });
 
@@ -288,12 +301,7 @@ export function defineLifecycle(driver: AppDriver): void {
 
       await test.step("the launcher hands bob's open app the link, and he joins", async () => {
         await joinByLink(driver, bob, link, "desktop");
-        await expect
-          .poll(async () => (await listNamespaces(n2)).map((ns) => ns.id), {
-            message: "node 2 has joined alice's namespace",
-            timeout: 60_000,
-          })
-          .toEqual(expect.arrayContaining(created.map((ns) => ns.id)));
+        await expectJoinedOneOf(n2, created);
       });
 
       const first = driver.features[0];
