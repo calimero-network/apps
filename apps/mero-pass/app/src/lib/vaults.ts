@@ -59,6 +59,7 @@ import {
   ADMIN_CAPABILITIES,
   MEMBER_CAPABILITIES,
   capabilitiesForRole,
+  isTeeRole,
   missingForRole,
   normaliseRole,
   roleLabel,
@@ -548,9 +549,11 @@ export async function listVaults(
     (subgroups ?? []).map(async (sg) => {
       const [contexts, members, meta, visibility] = await Promise.all([
         admin.listGroupContexts(sg.groupId).catch(() => []),
+        // People only: a vault created open admits the team's TEE node too,
+        // and it is not one of the people this count is read as.
         admin
           .listGroupMembers(sg.groupId)
-          .then((r) => r.members ?? [])
+          .then((r) => (r.members ?? []).filter((m) => !isTeeRole(m.role)))
           .catch(() => []),
         // The subgroup listing returns a bare `{groupId}` — `name` is never
         // populated — so a vault's name comes from its metadata record, which
@@ -1423,8 +1426,16 @@ export interface TeamMember {
   isSelf: boolean;
 }
 
+/** A TEE fleet node admitted to a team. Infrastructure, not a `TeamMember`. */
+export interface TeeMember {
+  accountId: string;
+  /** `ReadOnlyTee` (replica) or `RelayTee` (relay). */
+  rawRole: string;
+}
+
 /**
- * The people in a team, each with their ROLE and their real CAPABILITIES.
+ * The people in a team, each with their ROLE and their real CAPABILITIES, and
+ * apart from them the TEE nodes admitted to it.
  *
  * Both, because they can disagree and the disagreement is the bug worth
  * surfacing: a row that says "Admin" next to a mask missing MANAGE_MEMBERS is
@@ -1433,16 +1444,23 @@ export interface TeamMember {
  *
  * A capability read that fails degrades that one row to `null` rather than
  * emptying the list.
+ *
+ * A TEE node is a member row on the node but not a person: it is split out
+ * here, once, so no list, count or role control ever renders it as one.
  */
 export async function listTeamMembers(
   admin: AdminLike,
   namespaceId: string,
   selfAccountId: string | null,
-): Promise<TeamMember[]> {
+): Promise<{ members: TeamMember[]; teeMembers: TeeMember[] }> {
   const res = await admin.listGroupMembers(namespaceId);
-  const members = res.members ?? [];
-  return Promise.all(
-    members.map(async (m) => {
+  const rows = res.members ?? [];
+  const teeMembers = rows
+    .filter((m) => isTeeRole(m.role))
+    .map((m) => ({ accountId: m.identity, rawRole: m.role ?? '' }));
+  const people = rows.filter((m) => !isTeeRole(m.role));
+  const members = await Promise.all(
+    people.map(async (m) => {
       // The mask when the node will say; the role's own mask when it will not
       // (an account's read of member records is refused today — see
       // `myCapabilities`). Without the fallback every row reads as "the node
@@ -1463,6 +1481,7 @@ export async function listTeamMembers(
       };
     }),
   );
+  return { members, teeMembers };
 }
 
 /**

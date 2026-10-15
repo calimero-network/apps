@@ -102,6 +102,18 @@ export function normaliseRole(raw: string | null | undefined): TeamRole {
   return value === 'admin' || value === 'owner' ? 'admin' : 'member';
 }
 
+/**
+ * Is this roster row a TEE fleet node rather than a person?
+ *
+ * Core admits a TEE node by hardware attestation as `ReadOnlyTee` (replica) or
+ * `RelayTee` (relay). `normaliseRole` would read either as a member, so a row
+ * must be checked here first: it is infrastructure, and never listed, counted
+ * or offered role controls as one of the team.
+ */
+export function isTeeRole(raw: string | null | undefined): boolean {
+  return raw === 'ReadOnlyTee' || raw === 'RelayTee';
+}
+
 /** How a role reads in the UI. */
 export function roleLabel(role: TeamRole): string {
   return role === 'admin' ? 'Admin' : 'Member';

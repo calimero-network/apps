@@ -383,6 +383,25 @@ describe('listTeams / listVaults', () => {
     });
   });
 
+  it("leaves a TEE node out of a vault's member count", async () => {
+    // A vault created open admits the namespace's TEE node too; it is not a
+    // person, so "2 members" for one person and the TEE is wrong.
+    const { admin } = fakeAdmin({
+      listNamespaceGroups: () => Promise.resolve([{ groupId: 'sub-1' }]),
+      listGroupContexts: () => Promise.resolve([]),
+      listGroupMembers: () =>
+        Promise.resolve({
+          members: [
+            { identity: 'acct-alice', role: 'Admin' },
+            { identity: 'tee-1', role: 'ReadOnlyTee' },
+            { identity: 'tee-2', role: 'RelayTee' },
+          ],
+        }),
+    });
+    const [row] = await listVaults(admin, 'ns-1');
+    expect(row.memberCount).toBe(1);
+  });
+
   it('degrades a vault row rather than emptying the list', async () => {
     // A vault whose context has not replicated to this node yet is the normal
     // state right after joining, not an error.
@@ -582,7 +601,7 @@ describe('listTeamMembers', () => {
         }),
     });
 
-    const rows = await listTeamMembers(admin, 'ns-1', 'acct-bob');
+    const { members: rows } = await listTeamMembers(admin, 'ns-1', 'acct-bob');
     expect(rows).toEqual([
       {
         accountId: 'acct-alice',
@@ -621,12 +640,38 @@ describe('listTeamMembers', () => {
         }),
       getMemberCapabilities: () => Promise.reject(new Error('not here yet')),
     });
-    const rows = await listTeamMembers(admin, 'ns-1', null);
+    const { members: rows } = await listTeamMembers(admin, 'ns-1', null);
     expect(rows.map((r) => r.capabilities)).toEqual([
       MEMBER_CAPABILITIES,
       ADMIN_CAPABILITIES,
     ]);
     expect(rows[0].name).toBe('Member a…');
+  });
+
+  it('keeps TEE nodes out of the people and reports them as `teeMembers`', async () => {
+    // A TEE fleet node is admitted to the namespace as a `ReadOnlyTee` or
+    // `RelayTee` member row. It used to be listed here as a nameless "Member"
+    // with Promote and Remove buttons; it is infrastructure, not a person.
+    const { admin, calls } = fakeAdmin({
+      listGroupMembers: () =>
+        Promise.resolve({
+          members: [
+            { identity: 'acct-alice', role: 'Admin', name: 'Alice' },
+            { identity: 'tee-replica', role: 'ReadOnlyTee' },
+            { identity: 'tee-relay', role: 'RelayTee' },
+          ],
+        }),
+    });
+    const { members, teeMembers } = await listTeamMembers(admin, 'ns-1', null);
+    expect(members.map((m) => m.accountId)).toEqual(['acct-alice']);
+    expect(teeMembers).toEqual([
+      { accountId: 'tee-replica', rawRole: 'ReadOnlyTee' },
+      { accountId: 'tee-relay', rawRole: 'RelayTee' },
+    ]);
+    // No capability read for a node that is never shown as a person.
+    expect(
+      calls.filter((c) => c.method === 'getMemberCapabilities'),
+    ).toHaveLength(1);
   });
 });
 
