@@ -1,4 +1,5 @@
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import path from "node:path";
+import { expect, test, type Browser, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 import { loginWithModal } from "./auth";
 import { adminApi, freshRig, readRigState, restartNode, type RigNode, type RigState } from "./rig";
 import { acceptInvitePrompt, installDesktopBridge, openInviteLink, type InviteRoute } from "./invite";
@@ -75,13 +76,46 @@ export async function openActor(
   permissions: string[] = [],
   desktop = false,
 ): Promise<{ actor: Actor; context: BrowserContext }> {
+  const record = process.env["JOURNEY_VIDEO"] === "1";
   const context = await browser.newContext({
     permissions: ["clipboard-read", "clipboard-write", ...permissions],
+    // Opt-in: a context made by hand is outside Playwright's `use.video`, so a
+    // journey records only when asked, one file per actor.
+    ...(record ? { recordVideo: { dir: path.join(rigDataDir(), "videos"), size: { width: 960, height: 540 } } } : {}),
   });
   const page = await context.newPage();
+  if (record) recordings.set(context, { name, page, startedAt: Date.now() });
   if (desktop) await installDesktopBridge(page);
   await traffic.watch(page, name, nodeUrls);
   return { actor: { name, page, node, run }, context };
+}
+
+const recordings = new WeakMap<BrowserContext, { name: Actor["name"]; page: Page; startedAt: number }>();
+
+/**
+ * Close the actors' contexts. With JOURNEY_VIDEO=1, attach each actor's
+ * recording as `<name>.webm`, plus `video-timing` — when each recording began,
+ * in epoch ms — so the two can be laid side by side on one clock.
+ */
+export async function closeActors(contexts: BrowserContext[], testInfo: TestInfo): Promise<void> {
+  const timing: Record<string, number> = {};
+  for (const context of contexts) {
+    const rec = recordings.get(context);
+    await context.close().catch(() => undefined);
+    const video = rec?.page.video();
+    if (!rec || !video) continue;
+    const out = testInfo.outputPath(`${rec.name}.webm`);
+    try {
+      await video.saveAs(out);
+      await testInfo.attach(rec.name, { path: out, contentType: "video/webm" });
+      timing[rec.name] = rec.startedAt;
+    } catch (e) {
+      console.warn(`[journey] could not save ${rec.name}'s video:`, e);
+    }
+  }
+  if (Object.keys(timing).length) {
+    await testInfo.attach("video-timing", { body: JSON.stringify(timing), contentType: "application/json" });
+  }
 }
 
 export async function defaultLogin(actor: Actor): Promise<void> {
@@ -243,7 +277,7 @@ export function defineLifecycle(driver: AppDriver): void {
       expect(traffic.pageErrors, "uncaught page errors").toEqual([]);
     } finally {
       await traffic.attach(testInfo);
-      for (const c of opened) await c.close().catch(() => undefined);
+      await closeActors(opened, testInfo);
     }
   });
 
@@ -316,7 +350,7 @@ export function defineLifecycle(driver: AppDriver): void {
       expect(traffic.pageErrors, "uncaught page errors").toEqual([]);
     } finally {
       await traffic.attach(testInfo);
-      for (const c of opened) await c.close().catch(() => undefined);
+      await closeActors(opened, testInfo);
     }
   });
 }
