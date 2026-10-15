@@ -110,7 +110,7 @@ describe('JoinInviteCard redeem', () => {
         ),
     });
     expect((await screen.findByTestId('invite-error')).textContent).toContain(
-      "You've already used this link — ask for a new one.",
+      "You've already used this link. Ask for a new one.",
     );
     expect(screen.queryByTestId('invite-accept')).toBeNull();
   });

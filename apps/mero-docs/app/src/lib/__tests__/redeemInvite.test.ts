@@ -123,7 +123,7 @@ describe('redeemInvite', () => {
     const outcome = failed(await redeemInvite(workspace, c));
     expect(shouldRetain(outcome)).toBe(false);
     expect(inviteFailureCopy(outcome, 'workspace')).toBe(
-      "You can't join this workspace with this invitation. Ask an admin to invite you again. You've already used this link — ask for a new one.",
+      "You can't join this workspace with this invitation. Ask an admin to invite you again. You've already used this link. Ask for a new one.",
     );
   });
 
@@ -135,7 +135,7 @@ describe('redeemInvite', () => {
     });
     const outcome = failed(await redeemInvite(workspace, c));
     expect(inviteFailureCopy(outcome, 'workspace')).toMatch(
-      /An admin removed you — ask to be re-added\.$/,
+      /An admin removed you. Ask to be re-added\.$/,
     );
   });
 

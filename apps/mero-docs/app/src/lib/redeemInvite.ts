@@ -99,11 +99,11 @@ export function redeemInvite(
 const SPECIFIC_REFUSALS: ReadonlyArray<[RegExp, string]> = [
   [
     /InvitationAlreadyConsumed|already used this invitation/i,
-    "You've already used this link — ask for a new one.",
+    "You've already used this link. Ask for a new one.",
   ],
   [
     /RemovedFromGroup|was removed from group|cannot rejoin/i,
-    'An admin removed you — ask to be re-added.',
+    'An admin removed you. Ask to be re-added.',
   ],
 ];
 
