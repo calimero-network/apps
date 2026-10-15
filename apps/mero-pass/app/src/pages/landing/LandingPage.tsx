@@ -53,26 +53,6 @@ const LINKS = {
   x: 'https://x.com/CalimeroNetwork',
 };
 
-/**
- * The node picker in the same language: mero-react's LoginModal takes theme
- * tokens (it sets them as CSS custom properties), so it gets the glass ones —
- * solid, since it floats over the page — and follows light and dark with them.
- */
-const LOGIN_THEME = {
-  primary: 'var(--glass-ink)',
-  primaryHover: 'var(--glass-ink-2)',
-  primaryText: 'var(--glass-on-ink)',
-  background: 'var(--glass-surface-solid)',
-  backgroundSecondary: 'var(--glass-ground)',
-  backgroundTertiary: 'var(--glass-sunken)',
-  border: 'var(--glass-line-strong)',
-  text: 'var(--glass-ink)',
-  textSecondary: 'var(--glass-muted)',
-  error: 'var(--glass-bad-ink)',
-  overlay: 'rgba(14, 18, 34, 0.32)',
-  radius: '18px',
-};
-
 /** The chapters, in page order. The header links to four of them. */
 const NAV = [
   { id: 'difference', label: 'Why' },
@@ -689,10 +669,12 @@ export default function LandingPage() {
         </div>
       </footer>
 
+      {/* The node picker in the same language: glass.css maps mero-react's
+          `--mero-*` variables onto glass tokens, so it is solid glass here and
+          follows light and dark like every other app's connect dialog. */}
       <LoginModal
         isOpen={loginOpen}
         onClose={() => setLoginOpen(false)}
-        theme={LOGIN_THEME}
         onConnect={(url: string) => {
           // Closed first: `connectToNode` navigates away to the node's sign-in,
           // and a modal still mounted over a page that is leaving flashes.
