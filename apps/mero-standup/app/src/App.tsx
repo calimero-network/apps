@@ -17,17 +17,10 @@ export function App() {
   const { isAuthenticated, isLoading, applicationId, contextId, logout } = useMero();
   // Mounted at the root, unconditionally: an invitation captured before login
   // has to be redeemed as soon as the session exists.
-  const { state: joinState, redeemPasted, confirmJoin, declineJoin } = useJoinFromInvitation();
+  const invitation = useJoinFromInvitation();
   const [theme, setTheme] = useTheme();
 
-  const join = (
-    <JoinCard
-      state={joinState}
-      onSubmit={redeemPasted}
-      onConfirm={confirmJoin}
-      onDecline={declineJoin}
-    />
-  );
+  const join = <JoinCard join={invitation} />;
 
   if (isLoading) {
     return (
@@ -71,7 +64,7 @@ export function App() {
   return (
     <TeamView
       contextId={contextId}
-      join={joinState.status !== "idle" ? join : null}
+      join={invitation.state.stage !== "idle" ? join : null}
       theme={theme}
       setTheme={setTheme}
       onLogout={logout}
