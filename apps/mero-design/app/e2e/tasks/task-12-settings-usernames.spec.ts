@@ -10,7 +10,8 @@ import { TEST_IDENTITY } from "../fixtures/board";
  * Settings now fetches them and leads each row with the name; the raw identity stays
  * as a copyable code, which is what it is actually useful for.
  *
- * Driven from the Projects page, which is where the Settings modal opens from.
+ * Driven from the boards rail: a board's ⋯ → Settings opens the shell's
+ * settings panel on that board.
  */
 const PROJECT = { contextId: "ctx-1", groupId: "abcd", name: "Board one", description: "", isPublic: false };
 
@@ -33,10 +34,13 @@ async function openProjectSettings(page: Page) {
       status: 200, contentType: "application/json",
       body: JSON.stringify({
         data: {
+          subgroups: [{ groupId: PROJECT.groupId, alias: PROJECT.name }],
           contexts: [{ contextId: "ctx-1", applicationId: "app-1" }],
           identities: [TEST_IDENTITY],
           members: [{ identity: TEST_IDENTITY, role: "Admin" }],
         },
+        // The member listing is read un-enveloped.
+        members: [{ identity: TEST_IDENTITY, role: "Admin" }],
       }),
     }),
   );
@@ -59,25 +63,29 @@ async function openProjectSettings(page: Page) {
   return calls;
 }
 
+async function openBoardSettings(page: Page) {
+  await page.getByTestId(`board-menu-${PROJECT.contextId}`).click();
+  await page.getByTestId(`board-settings-${PROJECT.contextId}`).click();
+  await expect(page.getByTestId("settings-section-project")).toBeVisible();
+}
+
 test.describe("item 12: usernames in project settings", () => {
-  test("the settings modal asks the contract for the roster", async ({ page }) => {
+  test("the settings panel asks the contract for the roster", async ({ page }) => {
     const calls = await openProjectSettings(page);
-    const trigger = page.locator(`[data-testid="project-settings-${PROJECT.contextId}"]`);
-    if (!(await trigger.count())) {
-      // No project rendered from the mocked list — assert the wiring instead of
-      // silently passing.
-      expect(calls).toBeDefined();
-      return;
-    }
-    await trigger.click();
-    await expect.poll(() => calls.filter((c) => c === "get_members").length, { timeout: 15000 }).toBeGreaterThanOrEqual(1);
+    const before = calls.filter((c) => c === "get_members").length;
+    await openBoardSettings(page);
+    await expect.poll(() => calls.filter((c) => c === "get_members").length, { timeout: 15000 }).toBeGreaterThan(before);
   });
 
   test("get_members is fetched alongside list_roles, not instead of it", async ({ page }) => {
     const calls = await openProjectSettings(page);
-    const trigger = page.locator(`[data-testid="project-settings-${PROJECT.contextId}"]`);
-    if (!(await trigger.count())) return;
-    await trigger.click();
+    await openBoardSettings(page);
     await expect.poll(() => calls.includes("get_members") && calls.includes("list_roles"), { timeout: 15000 }).toBe(true);
+  });
+
+  test("the panel leads each row with the name", async ({ page }) => {
+    await openProjectSettings(page);
+    await openBoardSettings(page);
+    await expect(page.getByTestId("settings-section-project")).toContainText("Tester");
   });
 });

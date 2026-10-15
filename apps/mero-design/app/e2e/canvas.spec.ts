@@ -143,7 +143,7 @@ test.describe("Canvas page", () => {
   });
 });
 
-test.describe("Projects page", () => {
+test.describe("Team home", () => {
   test.beforeEach(async ({ page }) => {
     await injectAuth(page);
     await mockContexts(page);
@@ -161,6 +161,13 @@ test.describe("Projects page", () => {
         body: JSON.stringify({ data: { contexts: [] } }),
       }),
     );
+    await page.route("**/admin-api/namespaces/*/invite", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { invitation: { invitation: { group_id: [1, 2] }, inviterSignature: "s" } } }),
+      }),
+    );
     await page.goto("/teams/team-1/projects");
   });
 
@@ -168,13 +175,15 @@ test.describe("Projects page", () => {
     await expect(page.getByTestId("empty-projects")).toBeVisible({ timeout: 5000 });
   });
 
-  test("Invitations tab is visible", async ({ page }) => {
-    await expect(page.getByRole("button", { name: "Invitations" })).toBeVisible({ timeout: 5000 });
+  test("has no Invitations tab: inviting is the top bar's Invite", async ({ page }) => {
+    await expect(page.getByTestId("invite-btn")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: "Invitations" })).toHaveCount(0);
   });
 
-  test("switching to Invitations tab shows generate button", async ({ page }) => {
-    await page.getByRole("button", { name: "Invitations" }).click();
-    await expect(page.getByTestId("generate-invite")).toBeVisible();
+  test("Invite opens with the link already minted", async ({ page }) => {
+    await page.getByTestId("invite-btn").click();
+    await expect(page.getByTestId("invite-token")).toContainText("http");
+    await expect(page.getByTestId("copy-invite")).toBeEnabled();
   });
 
   test("shows projects when API returns them", async ({ page }) => {
@@ -200,6 +209,8 @@ test.describe("Projects page", () => {
     );
     await page.reload();
     await expect(page.getByTestId("project-card-ctx-1")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("My Design")).toBeVisible();
+    // On the home grid and in the rail.
+    await expect(page.getByTestId("project-card-ctx-1")).toContainText("My Design");
+    await expect(page.getByTestId("rail-board-ctx-1")).toContainText("My Design");
   });
 });

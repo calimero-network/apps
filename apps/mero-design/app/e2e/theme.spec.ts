@@ -23,7 +23,8 @@ async function openTeams(page: Page) {
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) }),
   );
   await page.goto("/teams");
-  await expect(page.getByRole("heading", { name: "Your Teams" })).toBeVisible({ timeout: 8000 });
+  // No teams on this node: the shell's first-team start.
+  await expect(page.getByRole("heading", { name: "Start your first team" })).toBeVisible({ timeout: 8000 });
 }
 
 const htmlTheme = (page: Page) => page.evaluate(() => document.documentElement.getAttribute("data-theme"));
@@ -56,7 +57,7 @@ test.describe("theme switch", () => {
     expect(await htmlTheme(page)).toBeNull();
   });
 
-  test("the board follows the theme, and its toolbar has the switch too", async ({ page }) => {
+  test("the board follows the theme, and the shell's top bar has the switch", async ({ page }) => {
     await openBoard(page);
     const boardPixel = () => page.evaluate(() => {
       const c = document.querySelector('[data-testid="fabric-canvas"]') as HTMLCanvasElement;

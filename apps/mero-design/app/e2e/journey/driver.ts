@@ -69,8 +69,9 @@ function solidPng(size: number): Buffer {
   ]);
 }
 
-function projectsTab(page: Page): Locator {
-  return page.getByRole("button", { name: "Projects", exact: true });
+/** The shell's rail, which every team screen has. */
+function teamHome(page: Page): Locator {
+  return page.getByTestId("rail-team-home");
 }
 
 function projectCard(page: Page, name: string): Locator {
@@ -92,11 +93,27 @@ async function contextIdOf(card: Locator): Promise<string> {
   return testId.slice("project-card-".length);
 }
 
+/** Creating a board opens it; its id is the last segment of the URL. */
+async function createBoardHere(page: Page, name: string): Promise<string> {
+  await page.getByTestId("new-project-input").fill(name);
+  await page.getByTestId("create-project-btn").click();
+  await page.waitForURL(new RegExp(`${teamPath()}/[^/]+$`), { timeout: 60_000 });
+  return new URL(page.url()).pathname.split("/").pop() ?? "";
+}
+
+/** A board's settings, from its ⋯ in the rail: the shell's settings panel. */
+async function boardSettings(page: Page, ctx: string): Promise<Locator> {
+  await page.getByTestId(`board-menu-${ctx}`).click();
+  await page.getByTestId(`board-settings-${ctx}`).click();
+  const panel = page.getByTestId("settings-section-project");
+  await expect(panel).toBeVisible({ timeout: 30_000 });
+  return panel;
+}
+
 async function gotoTeam(actor: Actor): Promise<void> {
   const page = actor.page;
   if (new URL(page.url()).pathname !== teamPath()) await page.goto(teamPath());
-  await expect(projectsTab(page)).toBeVisible({ timeout: 30_000 });
-  await projectsTab(page).click();
+  await expect(teamHome(page)).toBeVisible({ timeout: 30_000 });
 }
 
 async function nameIfAsked(actor: Actor, waitMs: number): Promise<void> {
@@ -198,8 +215,7 @@ async function grantEditor(alice: Actor): Promise<void> {
   await expect
     .poll(
       async () => {
-        await card.locator("xpath=..").getByTitle("More options").click();
-        await page.getByTestId(`project-settings-${ctx}`).click();
+        await boardSettings(page, ctx);
         const make = page.getByRole("button", { name: "Make editor" }).first();
         const found = await make.waitFor({ timeout: 10_000 }).then(
           () => true,
@@ -209,7 +225,7 @@ async function grantEditor(alice: Actor): Promise<void> {
           await make.click();
           await expect(page.getByRole("button", { name: "Make viewer" }).first()).toBeVisible({ timeout: 30_000 });
         }
-        await page.getByRole("button", { name: "✕", exact: true }).click();
+        await page.getByTestId("settings-close").click();
         return found;
       },
       { timeout: SYNC, intervals: [2_000, 5_000] },
@@ -353,15 +369,11 @@ async function openProjectSettings(actor: Actor, name: string): Promise<Locator>
   const card = projectCard(page, name);
   await expect(card).toBeVisible({ timeout: 30_000 });
   const ctx = await contextIdOf(card);
-  await card.locator("xpath=..").getByTitle("More options").click();
-  await page.getByTestId(`project-settings-${ctx}`).click();
-  const modal = page.getByRole("heading", { name: /— Settings$/ }).locator("xpath=../..");
-  await expect(modal).toBeVisible({ timeout: 30_000 });
-  return modal;
+  return boardSettings(page, ctx);
 }
 
 async function closeSettings(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "✕", exact: true }).click();
+  await page.getByTestId("settings-close").click();
 }
 
 /**
@@ -411,12 +423,8 @@ const noPromptOnNewBoard: Feature = {
   async do(actor) {
     const name = `named-${actor.name}-${actor.run}`;
     await gotoTeam(actor);
-    await actor.page.getByTestId("new-project-input").fill(name);
-    await actor.page.getByTestId("create-project-btn").click();
-    const card = projectCard(actor.page, name);
-    await expect(card).toBeVisible({ timeout: 60_000 });
-    boards[name] = await contextIdOf(card);
-    await card.click();
+    // Creating opens the new board.
+    boards[name] = await createBoardHere(actor.page, name);
     await expect(actor.page.getByTestId("fabric-canvas")).toBeVisible({ timeout: SYNC });
     // Long enough for the old behaviour to show its prompt.
     await actor.page.waitForTimeout(8_000);
@@ -458,26 +466,34 @@ export const driver: AppDriver = {
     named.clear();
     mainBoard = "";
     granted = false;
-    await expect(page.getByRole("heading", { name: "Your Teams" })).toBeVisible({ timeout: 60_000 });
-    await page.getByPlaceholder("New team name").fill(name);
-    await page.getByRole("button", { name: "Create", exact: true }).click();
-    const card = page.locator("button", { hasText: name });
-    await expect(card).toBeVisible({ timeout: 30_000 });
-    await card.click();
-    await page.waitForURL(/\/teams\/[^/]+\/projects$/, { timeout: 30_000 });
+    // A node with no team yet asks for the first one in the page; otherwise
+    // the shell has already opened a team, and "New team" is in the switcher.
+    const first = page.getByTestId("first-team-input");
+    const switcher = page.getByTestId("team-switcher");
+    await expect(first.or(teamHome(page))).toBeVisible({ timeout: 60_000 });
+    const before = page.url();
+    if (await first.isVisible()) {
+      await first.fill(name);
+      await first.press("Enter");
+    } else {
+      await switcher.click();
+      await page.getByTestId("new-team-btn").click();
+      await page.getByTestId("new-team-input").fill(name);
+      await page.getByTestId("new-team-input").press("Enter");
+    }
+    // Creating opens the new team.
+    await page.waitForURL((u) => u.href !== before && /\/teams\/[^/]+\/projects$/.test(u.pathname), { timeout: 30_000 });
+    await expect(switcher).toContainText(name, { timeout: 30_000 });
     teamId = new URL(page.url()).pathname.split("/")[2] ?? "";
-    await expect(projectsTab(page)).toBeVisible({ timeout: 30_000 });
+    await expect(teamHome(page)).toBeVisible({ timeout: 30_000 });
   },
 
   async createSpace(actor, name) {
     track(actor);
     const page = actor.page;
     await gotoTeam(actor);
-    await page.getByTestId("new-project-input").fill(name);
-    await page.getByTestId("create-project-btn").click();
-    const card = projectCard(page, name);
-    await expect(card).toBeVisible({ timeout: 60_000 });
-    boards[name] = await contextIdOf(card);
+    // Creating opens the new board.
+    boards[name] = await createBoardHere(page, name);
     if (!mainBoard) mainBoard = name;
   },
 
@@ -511,11 +527,13 @@ export const driver: AppDriver = {
   async invite(actor) {
     const page = actor.page;
     await gotoTeam(actor);
-    await page.getByRole("button", { name: "Invitations", exact: true }).click();
-    await page.getByTestId("generate-invite").click();
+    // Invite mints the link as it opens.
+    await page.getByTestId("invite-btn").click();
     const token = page.getByTestId("invite-token");
     await expect(token).toBeVisible({ timeout: 30_000 });
-    return (await token.getAttribute("title")) ?? (await token.innerText());
+    const link = (await token.getAttribute("title")) ?? (await token.innerText());
+    await page.getByRole("button", { name: "Close" }).click();
+    return link;
   },
 
   async joined(actor) {
@@ -534,7 +552,7 @@ export const driver: AppDriver = {
     landed.catch(() => undefined);
     failed.catch(() => undefined);
     await Promise.race([landed, failed]);
-    await expect(projectsTab(page)).toBeVisible({ timeout: 30_000 });
+    await expect(teamHome(page)).toBeVisible({ timeout: 30_000 });
   },
 
   async afterReload(actor) {

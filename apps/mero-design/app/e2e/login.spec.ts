@@ -42,9 +42,15 @@ test.describe("Tauri SSO auth skip", () => {
     await expect(page).toHaveURL(/\/teams/, { timeout: 8000 });
   });
 
-  test("redirects to canvas when hash includes context_id", async ({ page }) => {
+  test("redirects to the board, under its real team, when hash includes context_id", async ({ page }) => {
     await fakeTauri(page);
     await mockNode(page);
+    // The desktop names the board, never its team: the app looks it up. (It
+    // used to open `/teams/t/projects/…`, with `t` a placeholder team.)
+    const reply = (data: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify({ data }) });
+    await page.route("**/admin-api/namespaces/for-application/**", (r) => r.fulfill(reply([{ namespaceId: "team-9", name: "Nine" }])));
+    await page.route("**/admin-api/groups/team-9/subgroups", (r) => r.fulfill(reply({ subgroups: [{ groupId: "sg-9" }] })));
+    await page.route("**/admin-api/groups/sg-9/contexts", (r) => r.fulfill(reply({ contexts: [{ contextId: "ctx-abc-123" }] })));
     const hash = new URLSearchParams({
       node_url: "http://localhost:2430",
       access_token: "fake-access-token",
@@ -53,7 +59,7 @@ test.describe("Tauri SSO auth skip", () => {
       context_id: "ctx-abc-123",
     }).toString();
     await page.goto(`/#${hash}`);
-    await expect(page).toHaveURL(/\/teams\/t\/projects\/ctx-abc-123/, { timeout: 8000 });
+    await expect(page).toHaveURL(/\/teams\/team-9\/projects\/ctx-abc-123$/, { timeout: 8000 });
   });
 
   test("strips hash from URL after consuming tokens", async ({ page }) => {
