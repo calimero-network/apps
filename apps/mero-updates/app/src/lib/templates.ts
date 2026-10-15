@@ -156,14 +156,17 @@ export function fromPost(post: PostView): ComposerState {
  * of help was accepted since the last update. Public thanks is most of why
  * people offer again.
  */
-export function thanksSection(contributions: ContributionView[]): {
+export function thanksSection(
+  contributions: ContributionView[],
+  label: (name: string, account: string) => string = personLabel,
+): {
   kind: string;
   title: string;
   body: string;
 } | null {
   if (contributions.length === 0) return null;
   const lines = contributions.map((c) => {
-    const who = personLabel(c.name, c.account) + (c.firm ? ` (${c.firm})` : "");
+    const who = label(c.name, c.account) + (c.firm ? ` (${c.firm})` : "");
     return `• ${who} — ${askKind(c.ask_kind).label.toLowerCase()}: ${c.ask_title}`;
   });
   return { kind: "thanks", title: "Thank you", body: lines.join("\n") };

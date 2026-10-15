@@ -56,12 +56,22 @@ export function buildRoster(args: {
   me: string;
   selfName: string;
   selfLive: boolean;
+  /**
+   * The name a member set for the whole namespace (`useMemberNames().nameOf`),
+   * for anyone the contract has no name for. Someone who named themselves in
+   * another app on the stream should not appear here as an id.
+   */
+  nameOf?: (memberId: string) => string | undefined;
 }): Person[] {
-  const { members, liveIds, me, selfName, selfLive } = args;
+  const { members, liveIds, me, selfName, selfLive, nameOf } = args;
+  const fallback = (id: string) => nameOf?.(id) || shortId(id);
 
   const rows: Person[] = members.map((m) => ({
     memberId: m.memberId,
-    name: m.memberId === me ? selfName : m.name,
+    name:
+      m.memberId === me
+        ? selfName
+        : (m.name ?? "").trim() || fallback(m.memberId),
     live: m.memberId === me ? selfLive : liveIds.has(m.memberId),
     isSelf: m.memberId === me,
   }));
@@ -76,7 +86,7 @@ export function buildRoster(args: {
   const known = new Set(rows.map((r) => r.memberId));
   for (const id of liveIds) {
     if (known.has(id)) continue;
-    rows.push({ memberId: id, name: shortId(id), live: true, isSelf: false });
+    rows.push({ memberId: id, name: fallback(id), live: true, isSelf: false });
   }
 
   // Ourselves first, then live, then by name — so the list answers "who is

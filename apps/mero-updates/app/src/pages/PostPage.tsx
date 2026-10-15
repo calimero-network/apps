@@ -11,13 +11,14 @@ import type { MetricSeries, PostView } from "../generated/UpdatesClient";
 import {
   deltaLabel,
   formatDate,
-  personLabel,
+  usePersonLabel,
   useLive,
   useRevision,
   useUpdatesClient,
 } from "../lib/updates";
 
 export default function PostPage() {
+  const personLabel = usePersonLabel();
   const { postId = "" } = useParams();
   const navigate = useNavigate();
   const client = useUpdatesClient();

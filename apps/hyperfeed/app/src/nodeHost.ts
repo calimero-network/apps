@@ -1,3 +1,4 @@
+import { memberNames } from "@calimero-apps/names";
 import type { LensHost } from "./lens/lens";
 import { identitiesOf } from "./collector";
 
@@ -7,8 +8,9 @@ import { identitiesOf } from "./collector";
  *
  * Names are not an app's business: every app on a node lives in a namespace,
  * and a person's name is their member metadata there (what Chat shows too).
- * The node lists members by account, in hex; apps write an account in base58,
- * so both forms are indexed.
+ * The node lists members by account, in hex; apps write an account in base58.
+ * Both are read through `@calimero-apps/names`, which matches either form and
+ * shares one cached listing per namespace with every other view on the page.
  */
 
 /** The slice of mero-js's admin API this needs. */
@@ -23,15 +25,12 @@ export interface NodeRpc {
   execute<T>(params: { contextId: string; method: string; argsJson?: Record<string, unknown> }): Promise<T>;
 }
 
-/** A name read again after this long, so a rename shows up. */
-const NAMES_FRESH_MS = 60_000;
+/** Which groups a context's names come from, asked again after this long. */
+const GROUPS_FRESH_MS = 60_000;
 
 export function nodeLensHosts(rpc: NodeRpc, admin: NodeAdmin, now: () => number = Date.now) {
   let self: Promise<Set<string>> | null = null;
-  const names = new Map<string, string>();
-  let loadedAt = 0;
-  let loading: Promise<void> | null = null;
-  const groupsRead = new Set<string>();
+  const groupsOf = new Map<string, { groups: Promise<string[]>; at: number }>();
 
   const me = () => {
     if (!self) {
@@ -45,44 +44,35 @@ export function nodeLensHosts(rpc: NodeRpc, admin: NodeAdmin, now: () => number 
     return self;
   };
 
-  const readGroup = async (groupId: string) => {
-    const raw = await admin.listGroupMembers(groupId);
-    const members = (Array.isArray(raw) ? raw : ((raw as { members?: unknown[] })?.members ?? [])) as {
-      identity: string;
-      name?: string;
-      alias?: string;
-    }[];
-    for (const m of members) {
-      const name = (m.name ?? m.alias ?? "").trim();
-      if (!name) continue;
-      for (const form of identitiesOf([m.identity])) names.set(form, name);
-    }
-  };
-
-  /** Every namespace's members, plus the context's own group. Once a minute at most. */
-  const load = async (contextId: string) => {
-    if (now() - loadedAt < NAMES_FRESH_MS && groupsRead.has(contextId)) return;
-    loading ??= (async () => {
-      try {
-        const group = await admin.getContextGroup(contextId).catch(() => null);
-        const namespaces = await admin.listNamespaces().catch(() => []);
-        const groups = [...new Set([group, ...namespaces.map((n) => n.namespaceId)].filter(Boolean) as string[])];
-        await Promise.all(groups.map((g) => readGroup(g).catch(() => undefined)));
-        groupsRead.add(contextId);
-        loadedAt = now();
-      } finally {
-        loading = null;
-      }
+  /**
+   * Every namespace, then the context's own group: a person's name is their
+   * namespace member metadata first. Each listing answers from the shared
+   * cache until it goes stale, so a rename shows up on a later read instead of
+   * the first name ever seen being kept.
+   */
+  const groupsFor = (contextId: string): Promise<string[]> => {
+    const hit = groupsOf.get(contextId);
+    if (hit && now() - hit.at < GROUPS_FRESH_MS) return hit.groups;
+    const groups = (async () => {
+      const group = await admin.getContextGroup(contextId).catch(() => null);
+      const namespaces = await admin.listNamespaces().catch(() => []);
+      return [...new Set([...namespaces.map((n) => n.namespaceId), group].filter(Boolean) as string[])];
     })();
-    await loading;
+    groupsOf.set(contextId, { groups, at: now() });
+    return groups;
   };
 
   return (contextId: string): LensHost => ({
     call: <T>(method: string, args: Record<string, unknown>) => rpc.execute<T>({ contextId, method, argsJson: args }),
     me,
     name: async (identity: string) => {
-      if (!names.has(identity)) await load(contextId);
-      return names.get(identity) ?? "";
+      const groups = await groupsFor(contextId);
+      await Promise.all(groups.map((g) => memberNames.load(admin, g)));
+      for (const g of groups) {
+        const name = memberNames.peek(g, identity);
+        if (name) return name;
+      }
+      return "";
     },
   });
 }

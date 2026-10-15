@@ -16,7 +16,7 @@ import {
 } from "../components/icons";
 import type { CategoryView, PostCard } from "../generated/UpdatesClient";
 import { TEMPLATES } from "../lib/templates";
-import { dueLabel, formatDate, personLabel, timeAgo, useLive, useUpdatesClient } from "../lib/updates";
+import { dueLabel, formatDate, usePersonLabel, timeAgo, useLive, useUpdatesClient } from "../lib/updates";
 
 /**
  * The home screen. Same page for both sides, weighted differently:
@@ -103,6 +103,7 @@ export default function UpdatesPage() {
 }
 
 function UpdateRow({ post, categories }: { post: PostCard; categories: CategoryView[] }) {
+  const personLabel = usePersonLabel();
   const cat = categories.find((c) => c.id === post.category_id);
   const reactions = post.reactions.filter((r) => r.count > 0);
   const hasStats =

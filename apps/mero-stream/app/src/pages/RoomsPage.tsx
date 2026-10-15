@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
+import { useMemberNames } from "@calimero-apps/names";
 import { useApplicationId } from "../hooks/useApplicationId";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveRoom, setRoomName } from "../lib/session";
@@ -66,6 +67,8 @@ export default function RoomsPage() {
   // transport shape on both and is what the contract roster is read with.
   const { mero, admin } = useMero();
   const { showToast } = useToast();
+  // Stream-wide names, for members with no room nickname yet.
+  const { nameOf } = useMemberNames(admin, namespaceId);
   // What the contract calls "you" on an ACCOUNT: the certified device key,
   // which is not the identity `identities-owned` reports (the account). Null on
   // a node, where it is the room's own identity instead — see lib/identity.
@@ -75,7 +78,7 @@ export default function RoomsPage() {
 
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   /** Contract roster per room context, so rows can show WHO is in a call. */
-  const [rosters, setRosters] = useState<Record<string, RoomMemberLabel[]>>({});
+  const [rosters, setRosters] = useState<Record<string, Member[]>>({});
   const [listing, setListing] = useState(true);
   /** The stream whose room list has come back at least once. */
   const [listedForNs, setListedForNs] = useState<string | null>(null);
@@ -184,26 +187,21 @@ export default function RoomsPage() {
             method: "get_members",
             argsJson: {},
           });
-          return [
-            room.contextId!,
-            // Self is the CONTRACT's id for this session: the device key on an
-            // account, the room's own identity on a node.
-            labelMembers(members ?? [], accountMyId ?? room.identity ?? ""),
-          ] as const;
+          return [room.contextId!, members ?? []] as const;
         } catch {
           return null;
         }
       }),
     ).then((entries) => {
       if (cancelled) return;
-      const next: Record<string, RoomMemberLabel[]> = {};
+      const next: Record<string, Member[]> = {};
       for (const entry of entries) if (entry) next[entry[0]] = entry[1];
       setRosters(next);
     });
     return () => {
       cancelled = true;
     };
-  }, [mero, rooms, accountMyId]);
+  }, [mero, rooms]);
 
   const create = useCallback(() => {
     const roomName = name.trim();
@@ -316,9 +314,20 @@ export default function RoomsPage() {
     });
   }, [admin, namespaceId, nsName, run, showToast]);
 
-  /** This room's labelled roster, or undefined when we do not have one. */
-  const roomRoster = (room: RoomRow): RoomMemberLabel[] | undefined =>
-    room.contextId ? rosters[room.contextId] : undefined;
+  /**
+   * This room's labelled roster, or undefined when we do not have one.
+   *
+   * Labelled at render, not when fetched, so a stream-wide name that arrives
+   * after the roster still replaces the short id without another RPC. Self is
+   * the CONTRACT's id for this session: the device key on an account, the
+   * room's own identity on a node.
+   */
+  const roomRoster = (room: RoomRow): RoomMemberLabel[] | undefined => {
+    const members = room.contextId ? rosters[room.contextId] : undefined;
+    return members
+      ? labelMembers(members, accountMyId ?? room.identity ?? "", nameOf)
+      : undefined;
+  };
 
   // Why nobody can be invited to this stream, when that is so: an account's
   // namespace the cloud does not host yet (`haError` at creation, or a refused
