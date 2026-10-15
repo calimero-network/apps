@@ -9,6 +9,7 @@ import { useSse } from "../hooks/useSse";
 import { useToast } from "../contexts/ToastContext";
 import { useShallow } from "zustand/react/shallow";
 import { useMemberNames, useMyName } from "@calimero-apps/names";
+import { decideProjectName } from "../utils/projectName";
 import { useEditorStore } from "../store/editorStore";
 import {
   getLayerCanvas, peekLayerCanvas, getMaskCanvas, peekMaskCanvas,
@@ -382,11 +383,14 @@ export default function EditorPage() {
   // not on yet is joined under your team name. Decided only once the team's
   // names have loaded — deciding earlier asked people who already had one.
   useEffect(() => {
-    if (onProject !== false || !myName.ready) return;
-    // A name this browser used before names were per team counts too.
-    const known = myName.name || localStorage.getItem("mp-username") || "";
-    if (known) void handleJoin(known);
-    else setNeedName(true);
+    const action = decideProjectName({
+      onProject,
+      teamReady: myName.ready,
+      teamName: myName.name,
+      legacyName: localStorage.getItem("mp-username") ?? "",
+    });
+    if (action.kind === "join") void handleJoin(action.name);
+    else if (action.kind === "ask") setNeedName(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onProject, myName.ready, myName.name]);
 

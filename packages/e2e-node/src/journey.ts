@@ -5,3 +5,4 @@ export { adminApi, restartNode, waitFor } from "./rig";
 export type { RigNode, RigState } from "./rig";
 export { acceptInvitePrompt, installDesktopBridge, openInviteLink, parseInviteLink } from "./invite";
 export type { InviteRoute } from "./invite";
+export { answeredNamePrompt } from "./names";

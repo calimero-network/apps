@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import { defaultLogin, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
+import { answeredNamePrompt, defaultLogin, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
 
 const SYNC = 90_000;
 
@@ -38,6 +38,7 @@ async function waitForCalendar(actor: Actor): Promise<void> {
   await expect(page.getByTestId("add-event-btn")).toBeVisible({ timeout: 60_000 });
   const modal = page.getByTestId("username-modal");
   if (await modal.isVisible()) {
+    answeredNamePrompt(actor, new URL(page.url()).pathname);
     await page.getByTestId("username-input").fill(username(actor));
     await page.getByTestId("username-submit").click();
     await expect(modal).toBeHidden({ timeout: 15_000 });
