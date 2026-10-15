@@ -4,9 +4,11 @@ import {
   hasLiveSession,
   jwtExpiryMs,
   readStoredTokens,
+  seedTokens,
   shouldSeedTokens,
   tokenExpiryMs,
 } from "./authTokens";
+import { LocalStorageTokenStore, MeroJs } from "@calimero-network/mero-js";
 
 /** Build a JWT-shaped token whose `exp` claim sits at `expMs`. */
 function jwt(expMs: number): string {
@@ -171,5 +173,22 @@ describe("hasLiveSession", () => {
   it("is false when the bundle is missing a token (readStoredTokens rejects it)", () => {
     localStorage.setItem(TOKENS_KEY, JSON.stringify({ access_token: jwt(Date.now() + HOUR) }));
     expect(hasLiveSession()).toBe(false);
+  });
+});
+
+describe("seedTokens", () => {
+  const bundle = { access_token: "a", refresh_token: "r", expires_at: Date.now() + 60_000 };
+  const signedIn = (nodeUrl: string) =>
+    new MeroJs({ baseUrl: nodeUrl, tokenStore: new LocalStorageTokenStore(TOKENS_KEY) }).isAuthenticated();
+
+  it("binds the bundle to its node, so MeroProvider's client for that node is signed in", () => {
+    seedTokens("http://localhost:2428", bundle);
+    expect(signedIn("http://localhost:2428")).toBe(true);
+    expect(readStoredTokens()).toMatchObject({ access_token: "a", refresh_token: "r" });
+  });
+
+  it("is no session for another node", () => {
+    seedTokens("http://localhost:2428", bundle);
+    expect(signedIn("http://localhost:2429")).toBe(false);
   });
 });

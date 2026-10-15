@@ -1,11 +1,13 @@
 import { expect, test } from "./fixtures";
 import { decodeInvite, encodeInvite } from "../src/net/inviteCodec";
 import {
+  APP_ID,
   CTX_ID,
   freshState,
   mockAdmin,
   mockNode,
   NODE_URL,
+  PACKAGE_NAME,
   seedAuthOnly,
   seedSession,
 } from "./helpers";
@@ -456,6 +458,17 @@ test.describe("minting world invites (connected session)", () => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await seedSession(page);
     await mockNode(page, freshState());
+    // The node holds the world's app, as a node with a world in it does. Without
+    // it the session's app id resolved to "" and the invite asked core for the
+    // namespaces of application "" (`/for-application/`), which only this mock
+    // ever answered; mero-js (>= 25.0.5) refuses an empty path segment.
+    await page.route(`${NODE_URL}/admin-api/applications`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { apps: [{ id: APP_ID, package: PACKAGE_NAME }] } }),
+      }),
+    );
     let flipped: Record<string, unknown> | null = null;
     await page.route(`${NODE_URL}/admin-api/contexts/${CTX_ID}/group`, (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: "grp-e2e" }) }),

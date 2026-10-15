@@ -24,6 +24,9 @@ export async function injectMeroAuthTokens(
           // checkAuth treats a null store as unauthenticated.
           refresh_token: refreshToken || "mock-refresh",
           expires_at: Date.now() + 3600_000,
+          // mero-js reads a bundle as signed out unless it names the node that
+          // issued it: the node's origin plus its path prefix.
+          node_origin: new URL(nodeUrl).origin + new URL(nodeUrl).pathname.replace(/\/+$/, ""),
         }),
       );
     },
