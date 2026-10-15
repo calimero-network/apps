@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import { rpcCall, getBlob, getContextIdentitiesOwned, getNodeIdentity, joinContext, uploadBlob } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
 import { getElementsByIds } from "../api/elementBatch";
 import { collectBoardChanges } from "../utils/boardEvents";
 import { useGroupActions } from "../hooks/useGroupActions";
-import { useMero } from "@calimero-network/mero-react";
+import { JoinSyncBanner, useMero } from "@calimero-network/mero-react";
 import { useMemberNames, useMyName } from "@calimero-apps/names";
 import { decideBoardName } from "../utils/boardName";
 import { countRender } from "../utils/renderCount";
@@ -36,8 +36,7 @@ function normalizeCursor(c: CursorState): CursorState {
 export default function CanvasPage() {
   countRender("CanvasPage");
   const { teamId, projectId } = useParams<{ teamId: string; projectId: string }>();
-  const navigate = useNavigate();
-  const { logout, admin } = useMero();
+  const { admin } = useMero();
   // The name each person set once for the whole team, shared by every app on it.
   const teamNames = useMemberNames(admin, teamId);
   // Selector, not the bare store. `useCanvasStore()` subscribes to every field,
@@ -157,9 +156,6 @@ export default function CanvasPage() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
-
-  function handleBack() { navigate(`/teams/${teamId}/projects`); }
-  function handleLogout() { logout(); navigate("/"); }
 
   /**
    * Escape, and the group shortcuts.
@@ -649,33 +645,31 @@ export default function CanvasPage() {
     await rpcCall(projectId, "add_element", { element: el }).catch(() => {});
   }
 
+  // Not readable yet. The first read is usually quick, so "loading" shows an
+  // empty sheet rather than flashing a message; "syncing" (the board was made
+  // on another node and this one is joining it) says so over the shell, with
+  // the rest of the app — the rail, the switcher — still in reach.
   if (syncStatus !== "ready") {
     return (
       <div className={styles.root}>
-        <div className={styles.syncScreen}>
-          <div className={styles.syncSpinner} />
-          <p className={styles.syncTitle}>
-            {syncStatus === "loading" ? "Loading project…" : "Syncing with network…"}
-          </p>
-          {syncStatus === "syncing" && !syncError && (
-            <p className={styles.syncHint}>
-              This project was created on another node. Waiting for context sync to complete.
-            </p>
-          )}
-          {syncError && (
-            <p className={styles.syncError}>
-              {syncError}
-            </p>
-          )}
-          {syncStatus === "syncing" && (
-            <button
-              className={styles.syncRetry}
-              onClick={() => setSyncTrigger((n) => n + 1)}
-            >
-              Retry now
-            </button>
-          )}
-          <button className={styles.syncBack} onClick={handleBack}>← Back to projects</button>
+        <div className={styles.workspace}>
+          <div className={styles.canvasWrap} data-testid="board-pending" aria-busy="true">
+            <div className={styles.syncWrap}>
+              <JoinSyncBanner show={syncStatus === "syncing" || !!syncError} what="this board">
+                {syncError ? (
+                  <span className={styles.syncError} role="alert">{syncError}</span>
+                ) : (
+                  <>
+                    Syncing this board from peers&hellip;{" "}
+                    <span className={styles.syncHint}>It was created on another node; this one is joining it.</span>
+                  </>
+                )}{" "}
+                <button className={styles.syncRetry} onClick={() => setSyncTrigger((n) => n + 1)}>
+                  Retry now
+                </button>
+              </JoinSyncBanner>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -710,8 +704,6 @@ export default function CanvasPage() {
       )}
       <Toolbar
         contextId={projectId ?? ""}
-        onBack={handleBack}
-        onLogout={handleLogout}
         onExportPng={() => canvasRef.current?.exportPng()}
         onExportSvg={() => canvasRef.current?.exportSvg()}
         onPreview={() => setPreviewMode(true)}

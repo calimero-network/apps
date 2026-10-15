@@ -28,8 +28,9 @@
 }
 
 .title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .close {
@@ -41,6 +42,9 @@
   padding: 4px;
 }
 .close:hover { color: var(--glass-ink); }
+
+.art { display: flex; justify-content: center; margin: 4px 0 12px; }
+.art svg { width: 150px; height: auto; }
 
 .desc {
   font-size: 13px;
@@ -57,57 +61,70 @@
   border: 1px solid var(--glass-line-strong);
   border-radius: var(--glass-radius-sm);
   padding: 10px 12px;
+  min-height: 44px;
 }
 
 .token {
   flex: 1;
-  font-size: 11px;
-  font-family: monospace;
-  word-break: break-all;
-  color: var(--glass-ink);
-}
-
-.copyBtn {
-  flex-shrink: 0;
-  padding: 5px 12px;
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 999px;
-  color: var(--glass-ink);
-  background: var(--glass-surface-solid);
+  min-width: 0;
   font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--glass-ink);
+  user-select: all;
 }
-.copyBtn:hover { background: var(--glass-sunken); }
 
-.generateBtn {
-  width: 100%;
-  padding: 10px;
+.muted { font-size: 13px; color: var(--glass-muted); }
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.primaryBtn,
+.secondaryBtn {
+  height: 38px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.primaryBtn {
+  border: none;
   background: var(--glass-ink);
   color: var(--glass-on-ink);
-  border: none;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.7);
 }
-.generateBtn:hover:not(:disabled) { background: var(--glass-ink-2); }
-.generateBtn:disabled { opacity: 0.5; }
+.primaryBtn:hover:not(:disabled) { background: var(--glass-ink-2); }
+.secondaryBtn {
+  border: none;
+  background: var(--glass-surface-solid);
+  color: var(--glass-ink-2);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+}
+.secondaryBtn:hover:not(:disabled) { background: var(--glass-sunken); color: var(--glass-ink); }
+.primaryBtn:disabled,
+.secondaryBtn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
 
 .error {
   font-size: 12px;
-  color: #c0392b;
+  color: var(--glass-bad-ink);
   margin-top: 10px;
 }
-
-.copiedMsg { font-size: 13px; color: #15803d; font-weight: 500; }
 
 .spinner {
   flex-shrink: 0;
   width: 16px;
   height: 16px;
   border: 2px solid var(--glass-line-strong);
-  border-top-color: #15803d;
+  border-top-color: var(--glass-ink);
   border-radius: 50%;
   animation: inviteModalSpin 0.8s linear infinite;
 }

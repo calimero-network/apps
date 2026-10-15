@@ -74,16 +74,20 @@ function readTauriHashContext(): void {
 
   if (applicationId) setApplicationId(applicationId);
 
-  // Deep-link into the specific project/calendar when the desktop said which to
-  // open ("t" is a placeholder teamId — only the Back button uses it).
+  // Deep-link into the board the desktop said to open. The desktop knows the
+  // context, never its team, so this lands on `/boards/:id`, which looks the
+  // team up (pages/BoardResolver). It used to write `/teams/t/projects/:id`
+  // with a placeholder team, which left everything team-shaped around the
+  // board pointing nowhere. With no board named, `/teams` resumes the team and
+  // board open last.
   //
-  // Always land on the app's own route, exactly as before — the desktop opens
-  // this window at `/`, and without this the user sits on the landing route.
+  // Always land on the app's own route — the desktop opens this window at `/`,
+  // and without this the user sits on the landing route.
   //
   // The hash is APPENDED, not dropped: MeroProvider has not read it yet and it
   // is the only copy of the auth callback. It strips the hash itself once it has
   // consumed it, which is what leaves the address bar clean.
-  const target = contextId ? `/teams/t/projects/${contextId}` : "/teams";
+  const target = contextId ? `/boards/${encodeURIComponent(contextId)}` : "/teams";
   window.history.replaceState({}, "", `${target}${hash}`);
 }
 

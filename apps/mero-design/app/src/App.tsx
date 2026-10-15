@@ -1,9 +1,11 @@
 import { type ReactNode } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import LandingPage from "./pages/landing/LandingPage";
-import TeamsPage from "./pages/TeamsPage";
-import ProjectsPage from "./pages/ProjectsPage";
+import DesignShell from "./components/shell/DesignShell";
+import TeamIndex from "./pages/TeamIndex";
+import TeamHome from "./pages/TeamHome";
+import BoardResolver from "./pages/BoardResolver";
 import CanvasPage from "./pages/CanvasPage";
 import { ToastProvider } from "./contexts/ToastContext";
 import { ApiBinder } from "./api/ApiBinder";
@@ -38,8 +40,19 @@ function RequireAuth({ children }: { children: ReactNode }) {
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
   if (isLoading) return null; // the auth probe is still in flight
+  // `/teams` goes on by itself to the team and board open last (TeamIndex).
   if (isAuthenticated) return <Navigate to="/teams" replace />;
   return <>{children}</>;
+}
+
+/**
+ * A board, mounted fresh per board. Switching boards from the rail used to be
+ * impossible without leaving the page (back to the list, into the next one),
+ * which unmounted it; keyed, a switch still starts from a clean canvas.
+ */
+function BoardRoute() {
+  const { projectId } = useParams<{ projectId: string }>();
+  return <CanvasPage key={projectId} />;
 }
 
 export default function App() {
@@ -78,9 +91,21 @@ export default function App() {
             already pressed to get there. The path stays as a redirect so a
             bookmark lands on the front door instead of a blank route. */}
         <Route path="/login" element={<Navigate to="/" replace />} />
-        <Route path="/teams" element={<RequireAuth><TeamsPage /></RequireAuth>} />
-        <Route path="/teams/:teamId/projects" element={<RequireAuth><ProjectsPage /></RequireAuth>} />
-        <Route path="/teams/:teamId/projects/:projectId" element={<RequireAuth><CanvasPage /></RequireAuth>} />
+        {/* Every signed-in screen is one frame (DesignShell): top bar, boards
+            rail, and the team home or a board in the middle. The URLs are the
+            ones the separate pages had, so old links and bookmarks still land:
+              /teams                          → the last team (TeamIndex)
+              /teams/:teamId[/projects]       → that team's boards
+              /teams/:teamId/projects/:id     → a board
+              /boards/:id                     → a board, its team looked up
+            Settings is `?settings=team|board` on any of them. */}
+        <Route element={<RequireAuth><DesignShell /></RequireAuth>}>
+          <Route path="/teams" element={<TeamIndex />} />
+          <Route path="/teams/:teamId" element={<Navigate to="projects" replace />} />
+          <Route path="/teams/:teamId/projects" element={<TeamHome />} />
+          <Route path="/teams/:teamId/projects/:projectId" element={<BoardRoute />} />
+          <Route path="/boards/:projectId" element={<BoardResolver />} />
+        </Route>
       </Routes>
     </ToastProvider>
     </ApiBinder>

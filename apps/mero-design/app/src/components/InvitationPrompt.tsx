@@ -47,13 +47,13 @@ function parseTeamInvitation(raw: string): ParsedInvitation | null {
  * An invitation link opened this app: mero-react's `InvitationDialog`.
  *
  * Mounted once, above the routes, so a link opened on any page — the landing
- * page, a board, the teams list — is offered wherever the person is. Capture
+ * page, a board, a team's home — is offered wherever the person is. Capture
  * is primed in `main.tsx` and buffers the invitation until the session can
  * join, so arriving before login loses nothing. It asks first: joining puts
  * this node into someone else's team, which a forwarded link must not do on
- * its own. Once joined it opens the team, as the teams list would, and stays
- * on "Syncing…" until ProjectsPage's `useJoinSync` sees the team's project
- * list come back from the node.
+ * its own. Once joined it opens the team, as the team switcher would, and stays
+ * on "Syncing…" until the shell's `useJoinSync` (DesignShell) sees the team's
+ * board list come back from the node.
  */
 export default function InvitationPrompt() {
   const navigate = useNavigate();

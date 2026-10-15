@@ -110,7 +110,7 @@ describe("InvitationPrompt – an invite link opened this app", () => {
     // The body is the invitation struct, not the whole decoded token.
     expect(joinNamespace).toHaveBeenCalledWith(NS, OUTER);
     // Acked, and the post-join sync gate is armed: the dialog stays on
-    // "Syncing…" until ProjectsPage has read the team's projects.
+    // "Syncing…" until the shell has read the team's boards.
     expect(peekInvitation()).toBeNull();
     expect(isNamespaceJustJoined(NS)).toBe(true);
     await waitFor(() =>

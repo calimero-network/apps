@@ -1,0 +1,545 @@
+/* The app frame (DesignShell): one floating glass top bar over the tinted
+   ground, a frosted rail of boards at the left, and the main area — the board
+   or the team home — filling the rest. Fills the window exactly; only the
+   parts inside scroll. */
+
+.frame {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  overflow: hidden;
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  font-family: var(--glass-font);
+  color: var(--glass-ink);
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+.topbar {
+  position: relative;
+  /* Above the board's toolbar (300) and the comments overlay: its menus are
+     trapped in its stacking context, so the bar itself has to outrank them. */
+  z-index: 400;
+  flex-shrink: 0;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 20px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glass-shadow);
+  user-select: none;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.sep {
+  width: 1px;
+  height: 22px;
+  margin: 0 4px;
+  background: var(--glass-line-strong);
+  flex-shrink: 0;
+}
+
+.crumbSep { color: var(--glass-muted); font-size: 18px; font-weight: 300; padding: 0 2px; }
+.crumb {
+  min-width: 0;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--glass-ink);
+}
+
+.topbarEnd {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.boardSlot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.boardSlot:empty { display: none; }
+
+.iconBtn {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--glass-ink-2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.iconBtn:hover { color: var(--glass-ink); background: var(--glass-sunken); }
+
+.inviteBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+  color: var(--glass-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.inviteBtn:hover { background: var(--glass-sunken); }
+
+/* ── Menus (team switcher, account) ──────────────────────────────────── */
+.switcher,
+.userWrap { position: relative; min-width: 0; }
+
+.switcherBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  max-width: 260px;
+  padding: 0 10px 0 5px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--glass-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.switcherBtn:hover,
+.switcherBtn[aria-expanded="true"] { background: var(--glass-sunken); }
+.switcherLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.teamTile {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #0e1222;
+  box-shadow: inset 0 0 0 1px rgba(14, 18, 34, 0.08);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 280px;
+  max-height: min(70vh, 520px);
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  /* Floats over the page: solid, never frosted. */
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow-float);
+  z-index: 10;
+}
+.menuRight { left: auto; right: 0; width: 240px; }
+
+.menuLabel {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--glass-muted);
+}
+.menuList { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 1px; }
+.menuSep { height: 1px; margin: 6px 4px; background: var(--glass-line-strong); flex-shrink: 0; }
+.menuNote { padding: 8px 10px; font-size: 13px; color: var(--glass-muted); }
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px 6px 6px;
+  border: none;
+  border-radius: 11px;
+  background: none;
+  color: var(--glass-ink);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+.menuItem:hover { background: var(--glass-sunken); }
+.menuItemActive { font-weight: 700; }
+.menuItemText { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menuIcon {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--glass-ink-2);
+  background: var(--glass-sunken);
+}
+
+.inlineField {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--glass-sunken);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+}
+.inlineInput {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--glass-ink);
+  font: inherit;
+  font-size: 13.5px;
+  outline: none;
+}
+.inlineInput::placeholder { color: var(--glass-muted); }
+.inlineBtn {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 9px;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.inlineBtn:disabled { opacity: 0.35; cursor: default; }
+
+.userBtn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #1a2e05;
+  background: linear-gradient(135deg, #ecfccb, #bef264);
+  box-shadow: inset 0 0 0 1px rgba(54, 83, 20, 0.18);
+  cursor: pointer;
+}
+.userHead { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 4px; min-width: 0; }
+.userName { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.userNode { font-size: 12px; color: var(--glass-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Body: rail | main | settings ────────────────────────────────────── */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 10px;
+  position: relative;
+}
+
+.rail {
+  width: 236px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 20px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+  overflow: hidden;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+}
+
+.syncBanner {
+  flex-shrink: 0;
+  background: var(--glass-surface-solid) !important;
+  border-color: var(--glass-line-strong) !important;
+  border-radius: 14px !important;
+}
+
+/* ── Rail contents ───────────────────────────────────────────────────── */
+.railInner {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  padding: 8px;
+  gap: 4px;
+}
+
+.railHome {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 11px;
+  background: none;
+  color: var(--glass-ink-2);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+  text-align: left;
+}
+.railHome:hover { background: var(--glass-sunken); color: var(--glass-ink); }
+.railHome span:first-of-type { flex: 1; }
+.railCount {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--glass-ink-2);
+  background: var(--glass-sunken);
+}
+
+.railHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 6px 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--glass-muted);
+}
+.railAdd {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  background: var(--glass-surface-solid);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+  color: var(--glass-ink);
+  cursor: pointer;
+}
+.railAdd:hover { background: var(--glass-sunken); }
+
+.railField { composes: inlineField; margin: 2px 0 4px; }
+
+.railList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -4px;
+  padding: 0 4px 8px;
+}
+
+.railItem { display: flex; flex-direction: column; }
+
+.railRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 12px;
+  transition: background 0.12s;
+}
+.railRow:hover { background: var(--glass-sunken); }
+.railRowActive,
+.railRowActive:hover {
+  background: var(--glass-surface-solid);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong), 0 6px 14px -10px rgba(14, 18, 34, 0.45);
+  color: var(--glass-ink);
+}
+
+.railBoard {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border: none;
+  background: none;
+  color: var(--glass-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 12px;
+}
+.railBoard:focus-visible { outline: 2px solid var(--glass-ink); outline-offset: -2px; }
+
+.railThumb {
+  position: relative;
+  flex-shrink: 0;
+  width: 46px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: 7px;
+  background-color: var(--md-board);
+  box-shadow: inset 0 0 0 1px var(--glass-line);
+}
+.railThumb img { position: relative; display: block; width: 100%; height: 100%; object-fit: contain; padding: 2px; }
+.railThumb svg[data-placeholder] { position: absolute; inset: 0; }
+
+.railName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.railMore {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--glass-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.railRow:hover .railMore,
+.railRow:focus-within .railMore,
+.railMore[aria-expanded="true"],
+.railRowActive .railMore { opacity: 1; }
+.railMore:hover { color: var(--glass-ink); background: var(--glass-surface-solid); }
+@media (hover: none) { .railMore { opacity: 1; } }
+
+/* A row's ⋯ opens in place, under the row: the rail scrolls, and a floating
+   menu would be clipped by it. */
+.railActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 6px 8px 8px;
+}
+.railActions button {
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--glass-surface-solid);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+  color: var(--glass-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.railActions button:hover { background: var(--glass-sunken); }
+.railActions .danger { color: var(--glass-bad-ink); }
+.railActions .danger:hover { background: var(--glass-bad-bg); }
+
+.railEmpty { padding: 8px 10px; font-size: 12.5px; line-height: 1.5; color: var(--glass-muted); }
+.railSkeleton {
+  height: 44px;
+  border-radius: 12px;
+  background: var(--glass-sunken);
+  animation: breathe 1.6s ease-in-out infinite;
+}
+@keyframes breathe { 50% { opacity: 0.5; } }
+
+/* ── Mobile drawer ───────────────────────────────────────────────────── */
+.drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(14, 18, 34, 0.32);
+}
+.drawerPanel {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 8px;
+  width: min(300px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-surface-solid);
+  box-shadow: var(--glass-shadow-float);
+  font-family: var(--glass-font);
+  color: var(--glass-ink);
+  overflow: hidden;
+}
+
+/* ── Narrow ──────────────────────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  .crumb { max-width: 160px; }
+}
+@media (max-width: 760px) {
+  .frame { padding: 8px; gap: 8px; }
+  .topbar { height: 52px; padding: 0 6px; gap: 4px; }
+  /* The menu button stands in for the mark; the board's name is in the rail. */
+  .brand, .sep, .inviteLabel, .crumbSep, .crumb { display: none; }
+  .switcherBtn { max-width: 140px; }
+  .inviteBtn { width: 36px; padding: 0; justify-content: center; }
+}

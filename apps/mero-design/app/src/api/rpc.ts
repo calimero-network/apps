@@ -315,6 +315,30 @@ export async function createContext(input: {
   return raw.contextId ?? raw.id ?? "";
 }
 
+/**
+ * Rename a board for everyone: the context's replicated name, and its
+ * subgroup's (older listings read the board name off the subgroup).
+ *
+ * A metadata write replaces the record whole, so the current `data` map is read
+ * back and passed through rather than wiped. The subgroup write is best-effort:
+ * the context record is the one every reader prefers.
+ */
+export async function renameBoard(groupId: string, contextId: string, name: string): Promise<void> {
+  const { admin } = getApi();
+  const current = await admin.getContextMetadata(groupId, contextId).catch(() => null);
+  await admin.setContextMetadata(groupId, contextId, {
+    name,
+    ...(current?.data && Object.keys(current.data).length > 0 ? { data: current.data } : {}),
+  });
+  const group = await admin.getGroupMetadata(groupId).catch(() => null);
+  await admin
+    .setGroupMetadata(groupId, {
+      name,
+      ...(group?.data && Object.keys(group.data).length > 0 ? { data: group.data } : {}),
+    })
+    .catch(() => {});
+}
+
 /** Node-only: an account cannot delete a context. Callers hide the control. */
 export async function deleteContext(contextId: string): Promise<void> {
   await getApi().admin.deleteContext(contextId);
