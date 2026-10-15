@@ -11,9 +11,12 @@ import {
   listAudiences,
   mintNamespaceInvite,
   mintAudienceInvite,
+  namespaceTeeMode,
   type AudienceRow,
+  type TeeMode,
 } from "../lib/groups";
 import InviteModal from "../components/InviteModal";
+import { TeeBadge } from "../components/ui";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { hostingProblem } from "../lib/hosting";
 import AppHeader from "../components/AppHeader";
@@ -75,6 +78,14 @@ export default function AudiencesPage() {
   /** Contract roster per audience context, kept for the member counts on each row. */
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
+  /**
+   * The company's TEE node, if any, keyed by the namespace it was read for —
+   * shown beside its name, never as a member.
+   */
+  const [tee, setTee] = useState<{
+    id: string;
+    mode: TeeMode | null;
+  } | null>(null);
   const [name, setName] = useState("");
 
   const [pending, setPending] = useState<string | null>(null);
@@ -123,6 +134,10 @@ export default function AudiencesPage() {
         const info = await admin.getNamespace(namespaceId).catch(() => null);
         setNsName(
           (info?.name ?? "").trim() || `Space ${namespaceId.slice(0, 6)}`,
+        );
+        // Never throws: an unreadable member list reads as "no TEE".
+        void namespaceTeeMode(admin, namespaceId).then((mode) =>
+          setTee({ id: namespaceId, mode }),
         );
         setAudiences(await listAudiences(admin, namespaceId));
         // A real answer, empty or not — that is what ends the sync gate.
@@ -289,6 +304,13 @@ export default function AudiencesPage() {
     [admin, run, load, showToast],
   );
 
+  // The namespace's own member list says so; an audience born Open admitted the
+  // same node, so its rows say so too when the namespace read came back empty.
+  const teeMode =
+    (tee?.id === namespaceId ? tee.mode : null) ??
+    audiences.find((a) => a.teeMode)?.teeMode ??
+    null;
+
   const copyId = (label: string, id: string) => {
     void navigator.clipboard
       ?.writeText(id)
@@ -313,6 +335,7 @@ export default function AudiencesPage() {
           </span>
           <div className={styles.headText}>
             <h1 className={styles.title}>{nsName || "Company"}</h1>
+            <TeeBadge mode={teeMode} />
             {/* Said on the page because it is the one thing a founder would
                 otherwise assume wrong: an audience here is a FILTER for attention,
                 not a wall. Audiences are open subgroups, so a member of the company
