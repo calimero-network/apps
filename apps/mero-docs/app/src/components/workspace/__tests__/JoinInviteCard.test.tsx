@@ -8,13 +8,21 @@ import type { ParsedInvite } from '@/hooks/useNamespaceInvitation';
 // JoinInviteCard reads useMero + useApplicationId directly; stub both so the
 // accept button is reachable without a real Mero client.
 // Answers like core: one id-ordered page per request, 100 rows unless asked.
-const listNamespacesForApplication = vi.hoisted(() =>
-  vi.fn(async (appIdAndQuery: string) => {
-    const query = new URLSearchParams(appIdAndQuery.split('?')[1] ?? '');
-    const offset = Number(query.get('offset') ?? 0);
-    const limit = Number(query.get('limit') ?? 100);
-    const ids = Array.from({ length: 101 }, (_, i) => `ns-${String(i).padStart(3, '0')}`);
-    return ids.slice(offset, offset + limit).map((namespaceId) => ({ namespaceId }));
+// The session admin reads the first page (no page named); the node's own
+// route serves the pages after it, so a page never rides on the id.
+const nodeIds = Array.from({ length: 101 }, (_, i) => `ns-${String(i).padStart(3, '0')}`);
+const nodePage = (offset: number, limit: number) =>
+  nodeIds.slice(offset, offset + limit).map((namespaceId) => ({ namespaceId }));
+const listNamespacesForApplication = vi.hoisted(() => vi.fn());
+listNamespacesForApplication.mockImplementation(async () => nodePage(0, 100));
+vi.stubGlobal(
+  'fetch',
+  vi.fn(async (input: RequestInfo | URL) => {
+    const query = new URL(String(input)).searchParams;
+    const rows = nodePage(Number(query.get('offset') ?? 0), Number(query.get('limit') ?? 100));
+    return new Response(JSON.stringify({ data: rows }), {
+      headers: { 'content-type': 'application/json' },
+    });
   }),
 );
 
@@ -23,7 +31,8 @@ vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => ({
     // The session-aware admin (`useMero().admin`) is what the card and its
     // membership pre-check read; the raw `mero.admin` must stay untouched.
-    mero: { admin: {} },
+    mero: { admin: {}, getTokenData: () => ({ access_token: 'tok' }) },
+    nodeUrl: 'http://node.test',
     admin: { listNamespacesForApplication },
     isDelegated: false,
     isAuthenticated: true,
