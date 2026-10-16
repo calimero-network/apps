@@ -12,7 +12,7 @@ import { useFeed, type Feed } from "./useFeed";
 import { useNodeFeed } from "./useNodeFeed";
 import { demoPreview, nodePreview, type Preview } from "./preview";
 import { useNewFeed, useOpenFeed } from "./newFeed";
-import { appLink, linkNamer } from "./links";
+import { appHome, appLink, linkNamer } from "./links";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { AGENT_LIVE_MS, useTheme } from "./theme";
 import { useAttention } from "./useAttention";
@@ -21,6 +21,7 @@ import type { NewFeed } from "./FeedView";
 import LandingPage from "./pages/landing/LandingPage";
 import DocsPage from "./pages/landing/DocsPage";
 import { BrandLockup } from "./brand";
+import { AppLauncher } from "./AppLauncher";
 
 /**
  * Two ways in, one set of screens.
@@ -106,25 +107,27 @@ function NodeFeedApp({
   );
   const feed = useMemo(() => ({ ...base, nameLink, namePerson }), [base, nameLink, namePerson]);
   const [query, setQuery] = useState("");
-  const { mero, admin } = useMero();
-  // A row's app, signed in to this node, at the row's context.
+  const { admin } = useMero();
+  // A row's app, at the row's context.
   const openLink = useCallback(
     async (item: FeedItem) => {
-      const tokens = (mero as { getTokenData?: () => { access_token: string; refresh_token: string } | null } | null)?.getTokenData?.();
-      const source = node.watching.find((s) => s.contextId === item.source_context);
       const groupId =
         item.app === "design" && admin
           ? ((await (admin as unknown as { getContextGroup(id: string): Promise<string | null> })
               .getContextGroup(item.source_context)
               .catch(() => null)) ?? undefined)
           : undefined;
-      return appLink(item, {
-        session: tokens && session.nodeUrl ? { nodeUrl: session.nodeUrl, accessToken: tokens.access_token, refreshToken: tokens.refresh_token } : null,
-        applicationId: source?.applicationId,
-        groupId,
-      });
+      return appLink(item, { groupId });
     },
-    [mero, admin, node.watching, session.nodeUrl],
+    [admin],
+  );
+  const navigate = useNavigate();
+  const launcher = (
+    <AppLauncher
+      installed={node.installed}
+      href={appHome}
+      onInstall={node.install ? () => navigate("/settings/controls") : undefined}
+    />
   );
   const watching =
     node.watchError != null
@@ -139,6 +142,7 @@ function NodeFeedApp({
       status={watching}
       query={query}
       onQuery={setQuery}
+      launcher={launcher}
       switcher={<FeedSwitcher applicationId={applicationId} current={contextId} />}
     >
       <Screen
@@ -172,6 +176,7 @@ function DemoApp({ page }: { page: Page }) {
       page={page}
       feed={feed}
       status="Demo · nothing leaves this tab"
+      launcher={<AppLauncher installed={null} href={appHome} />}
       extra={
         <button type="button" className="ghost small" onClick={() => void backend.simulateAgent()}>
           Simulate agent
@@ -325,6 +330,7 @@ function Shell({
   session,
   status,
   extra,
+  launcher,
   query,
   onQuery,
   switcher,
@@ -336,6 +342,8 @@ function Shell({
   session?: { nodeUrl: string | null; logout: () => void };
   status?: string;
   extra?: ReactNode;
+  /** The apps grid, beside the bell. */
+  launcher?: ReactNode;
   query?: string;
   onQuery?: (q: string) => void;
   /** The feed switcher, beside the brand, when a feed on your node is open. */
@@ -401,6 +409,7 @@ function Shell({
             </button>
           )}
           {extra}
+          {feed && launcher}
           {feed && (
             <div className="needs-wrap">
               <button

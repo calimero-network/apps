@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { appLink, canOpen, chatName, linkNamer, subjectFromLink } from "./links";
+import { appHome, appLink, canOpen, chatName, linkNamer, subjectFromLink } from "./links";
 import type { LensHost } from "./lens/lens";
 import { laneOf } from "./format";
 
@@ -13,32 +13,31 @@ const row = (patch: Partial<FeedItem>): FeedItem =>
     reply_to: "", item_type: "", fields: "", reply_call: "", ...patch,
   }) as FeedItem;
 
-const session = { nodeUrl: "http://localhost:2428", accessToken: "acc", refreshToken: "ref" };
-
 describe("appLink", () => {
-  it("opens Chat at the channel, signed in to your node", () => {
-    const url = new URL(appLink(row({}), { session, applicationId: "chat-app" })!);
+  it("opens Chat at the channel, with no session in the address", () => {
+    const url = new URL(appLink(row({}), {})!);
     expect(url.origin).toBe("https://mero-chat-pwa.vercel.app");
     expect(url.searchParams.get("context-id")).toBe("ctx-1");
-    const hash = new URLSearchParams(url.hash.slice(1));
-    expect(Object.fromEntries(hash)).toEqual({
-      access_token: "acc",
-      refresh_token: "ref",
-      node_url: "http://localhost:2428",
-      application_id: "chat-app",
-    });
+    expect(url.hash).toBe("");
   });
 
   it("opens a Design document under its team", () => {
-    const url = appLink(row({ app: "design", source_context: "doc 1" }), { session: null, groupId: "team-9" });
+    const url = appLink(row({ app: "design", source_context: "doc 1" }), { groupId: "team-9" });
     expect(url).toBe("https://mero-design.vercel.app/teams/team-9/projects/doc%201");
   });
 
-  it("never hands your session to an app it does not know", () => {
-    expect(appLink(row({ app: "evil" }), { session })).toBeNull();
+  it("opens nothing for an app it does not know", () => {
+    expect(appLink(row({ app: "evil" }), {})).toBeNull();
     expect(canOpen(row({ app: "evil" }))).toBe(false);
     expect(canOpen(row({ source_context: "" }))).toBe(false);
     expect(canOpen(row({}))).toBe(true);
+  });
+});
+
+describe("appHome", () => {
+  it("opens an app's front page with no session in it, and nothing for an app it does not know", () => {
+    expect(appHome("sheets")).toBe("https://mero-sheets.vercel.app/");
+    expect(appHome("evil")).toBeNull();
   });
 });
 
