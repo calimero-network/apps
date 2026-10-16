@@ -610,9 +610,10 @@ being sent) and **Done**. The row you are on opens in place with its whole threa
 and its actions; nothing is repeated beside it. Done rows archive one at a time (`E`) or all at
 once, and "Later" (`S`) puts a row away for three hours; both show an undo toast (`U`). `J`/`K`
 move between rows. A row from a first-party app has **Open in …** (`O`), which shows that app
-beside the feed at the row's context (Chat at the channel, Design at the document), signed in to
-your node. Its address comes from the app's `frontend` in its Cargo.toml, and only those apps are
-handed your session. The theme follows your system until you switch it.
+beside the feed at the row's context (Chat at the channel, Design at the document). Its address
+comes from the app's `frontend` in its Cargo.toml, and carries no session: the app signs in to your
+node with a key of its own, since two apps sharing one single-use refresh token log each other out.
+The theme follows your system until you switch it.
 
 **Brief** is the feed's first layout and its default (Brief, Lanes, Team; your pick is remembered
 in this browser, and `?view=lanes` opens another from a link): the feed as your agent would hand it

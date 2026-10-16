@@ -3,8 +3,7 @@ import type { LensHost } from "./lens/lens";
 
 /**
  * Where each first-party app lives on the web, by app key: the `frontend` its
- * logic/Cargo.toml declares. Only these get your session handed over, so a
- * row can never send your node's tokens anywhere else.
+ * logic/Cargo.toml declares. Only these are opened from a row or the launcher.
  */
 export const FRONTENDS: Record<string, string> = {
   chat: "https://mero-chat-pwa.vercel.app",
@@ -27,18 +26,8 @@ export const FRONTENDS: Record<string, string> = {
   "kv-store": "https://mero-kv-store.vercel.app",
 };
 
-/** Your session on your node, as the apps' login hash takes it. */
-export interface Session {
-  nodeUrl: string;
-  accessToken: string;
-  refreshToken: string;
-}
-
-/** What opening a row needs beyond the row: who you are, and where its context sits. */
+/** What opening a row needs beyond the row: where its context sits. */
 export interface LinkContext {
-  session: Session | null;
-  /** The application the row's context runs. */
-  applicationId?: string;
   /** The group (namespace) the row's context belongs to: mero-design files documents under it. */
   groupId?: string;
 }
@@ -50,8 +39,12 @@ export function canOpen(item: FeedItem): boolean {
 
 /**
  * The address that shows a row where it happened: Chat at its channel, Design
- * at its document, any other app at its context. Signed in when there is a
- * session, so it opens straight onto the thing instead of a login.
+ * at its document, any other app at its context. It carries no session: the
+ * app signs in to your node itself, with a key of its own. Handing it
+ * Hyperfeed's tokens would share one refresh token between two apps, and the
+ * node lets a refresh token be used once, so the second refresh would log
+ * both out; in a browser Hyperfeed's key is bound to Hyperfeed's application
+ * besides, and refused in the app's contexts.
  */
 export function appLink(item: FeedItem, ctx: LinkContext): string | null {
   const base = FRONTENDS[item.app]?.replace(/\/+$/, "");
@@ -63,7 +56,7 @@ export function appLink(item: FeedItem, ctx: LinkContext): string | null {
         ? `/teams/${encodeURIComponent(ctx.groupId)}/projects/${context}`
         : "/"
       : `/?context-id=${context}`;
-  return signedIn(base + where, ctx.session, ctx.applicationId);
+  return base + where;
 }
 
 /**
@@ -74,18 +67,6 @@ export function appLink(item: FeedItem, ctx: LinkContext): string | null {
 export function appHome(app: string): string | null {
   const base = FRONTENDS[app]?.replace(/\/+$/, "");
   return base ? `${base}/` : null;
-}
-
-/** An address with your session in its login hash, or as it is with none. */
-function signedIn(url: string, session: Session | null, applicationId?: string): string {
-  if (!session) return url;
-  const hash = new URLSearchParams({
-    access_token: session.accessToken,
-    refresh_token: session.refreshToken,
-    node_url: session.nodeUrl,
-    ...(applicationId ? { application_id: applicationId } : {}),
-  });
-  return `${url}#${hash.toString()}`;
 }
 
 /**

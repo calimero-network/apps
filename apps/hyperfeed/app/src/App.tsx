@@ -12,7 +12,7 @@ import { useFeed, type Feed } from "./useFeed";
 import { useNodeFeed } from "./useNodeFeed";
 import { demoPreview, nodePreview, type Preview } from "./preview";
 import { useNewFeed, useOpenFeed } from "./newFeed";
-import { appHome, appLink, linkNamer, type Session } from "./links";
+import { appHome, appLink, linkNamer } from "./links";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { AGENT_LIVE_MS, useTheme } from "./theme";
 import { useAttention } from "./useAttention";
@@ -107,29 +107,19 @@ function NodeFeedApp({
   );
   const feed = useMemo(() => ({ ...base, nameLink, namePerson }), [base, nameLink, namePerson]);
   const [query, setQuery] = useState("");
-  const { mero, admin } = useMero();
-  // Your session on this node now, as the apps' login hash takes it.
-  const appSession = useCallback((): Session | null => {
-    const tokens = (mero as { getTokenData?: () => { access_token: string; refresh_token: string } | null } | null)?.getTokenData?.();
-    return tokens && session.nodeUrl ? { nodeUrl: session.nodeUrl, accessToken: tokens.access_token, refreshToken: tokens.refresh_token } : null;
-  }, [mero, session.nodeUrl]);
-  // A row's app, signed in to this node, at the row's context.
+  const { admin } = useMero();
+  // A row's app, at the row's context.
   const openLink = useCallback(
     async (item: FeedItem) => {
-      const source = node.watching.find((s) => s.contextId === item.source_context);
       const groupId =
         item.app === "design" && admin
           ? ((await (admin as unknown as { getContextGroup(id: string): Promise<string | null> })
               .getContextGroup(item.source_context)
               .catch(() => null)) ?? undefined)
           : undefined;
-      return appLink(item, {
-        session: appSession(),
-        applicationId: source?.applicationId,
-        groupId,
-      });
+      return appLink(item, { groupId });
     },
-    [appSession, admin, node.watching],
+    [admin],
   );
   const navigate = useNavigate();
   const launcher = (
