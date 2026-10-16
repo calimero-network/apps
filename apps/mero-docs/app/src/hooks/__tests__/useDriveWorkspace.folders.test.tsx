@@ -10,6 +10,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { HTTPError } from '@calimero-network/mero-js';
 import {
   DriveWorkspaceProvider,
   useDriveWorkspace,
@@ -23,22 +24,28 @@ const stub = vi.hoisted(() => {
   const reads: Record<string, ((rows: { groupId: string }[]) => void)[]> = {};
   // A folder's own children: none.
   const leaf: Record<string, true> = {};
+  // Set while the node is unreachable: every read fails as a fetch that never got an answer.
+  const outage: { error: unknown } = { error: null };
   return {
     none,
     refetch,
     reads,
     leaf,
+    outage,
     mero: {
       mero: {},
       // The session admin the folder walk reads.
       admin: {
         listSubgroups: (id: string) =>
-          leaf[id]
+          outage.error
+            ? Promise.reject(outage.error)
+            : leaf[id]
             ? Promise.resolve([])
             : new Promise<{ groupId: string }[]>((resolve) => {
                 (reads[id] ??= []).push(resolve);
               }),
         getGroupInfo: async (id: string) => {
+          if (outage.error) throw outage.error;
           leaf[id] = true;
           return { metadata: { name: id }, subgroupVisibility: 'open' };
         },
@@ -136,6 +143,7 @@ afterEach(() => {
   for (const key of Object.keys(stub.leaf)) delete stub.leaf[key];
   for (const key of Object.keys(stub.reads)) delete stub.reads[key];
   captured = null;
+  stub.outage.error = null;
 });
 
 describe('useDriveWorkspace folder reads across a workspace switch', () => {
@@ -167,3 +175,27 @@ describe('useDriveWorkspace folder reads across a workspace switch', () => {
   });
 });
 
+
+describe('useDriveWorkspace folder reads while the node is unreachable', () => {
+  it('keeps the folders it listed when a re-read gets no answer', async () => {
+    render(
+      <MemoryRouter initialEntries={['/app/ns1']}>
+        <DriveWorkspaceProvider>
+          <Probe />
+        </DriveWorkspaceProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(stub.reads['ns1']).toHaveLength(1));
+    await act(async () => stub.reads['ns1'][0]([{ groupId: 'a1' }]));
+    expect(folders()).toBe('a1');
+
+    // The node restarts: a re-read that cannot reach it must not say the
+    // workspace has no folders, or the open document's folder reads as deleted.
+    stub.outage.error = new HTTPError(0, 'Network Error', '/admin-api', new Headers());
+    fireEvent.click(screen.getByRole('button', { name: 'capture' }));
+    await act(async () => {
+      await captured?.();
+    });
+    expect(folders()).toBe('a1');
+  });
+});

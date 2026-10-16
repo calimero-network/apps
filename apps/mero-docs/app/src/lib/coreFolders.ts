@@ -10,6 +10,7 @@
 // Restricted subgroup only to its members and to the admins above it.
 
 import type { AdminApiClient } from '@calimero-network/mero-js';
+import { isTransportFailure } from './rich/transport';
 
 /** Where a folder's colour lives in its subgroup metadata's `data` map. */
 export const FOLDER_COLOR_KEY = 'color';
@@ -43,6 +44,19 @@ export async function folderDocsContext(
   return contexts[0]?.contextId ?? null;
 }
 
+/**
+ * A read's answer when core refuses it; a node that never answered fails the
+ * whole walk instead. Read as "nothing here", an outage would blank the tree
+ * and report the folder of an open document deleted, which closes the
+ * document and drops the edits it has not sent yet.
+ */
+const refusedAs =
+  <T,>(fallback: T) =>
+  (cause: unknown): T => {
+    if (isTransportFailure(cause)) throw cause;
+    return fallback;
+  };
+
 function visibilityOf(raw: string | undefined): CoreFolder['visibility'] {
   if (raw === 'open' || raw === 'Open') return 'Open';
   if (raw === 'restricted' || raw === 'Restricted') return 'Restricted';
@@ -50,6 +64,7 @@ function visibilityOf(raw: string | undefined): CoreFolder['visibility'] {
 }
 
 // A subgroup's description, or null when core refuses it to this caller.
+// A node that does not answer fails it.
 async function describe(
   admin: FolderReader,
   id: string,
@@ -57,8 +72,8 @@ async function describe(
   shared: boolean,
 ): Promise<{ folder: CoreFolder; namespaceId: string | undefined } | null> {
   const [info, context] = await Promise.all([
-    admin.getGroupInfo(id).catch(() => null),
-    folderDocsContext(admin, id).catch(() => null),
+    admin.getGroupInfo(id).catch(refusedAs(null)),
+    folderDocsContext(admin, id).catch(refusedAs(null)),
   ]);
   if (!info) return null;
   const color = info.metadata?.data?.[FOLDER_COLOR_KEY];
@@ -94,6 +109,9 @@ const NAMESPACE_OF = new Map<string, string>();
  * so `namespaceOf` remembers each one described - by default for the page's
  * life, shared by every caller - and another workspace's group is asked about
  * once, not on every refresh.
+ *
+ * Rejects when the node does not answer, so the caller keeps the folders it
+ * last read rather than replacing them with none.
  */
 export async function loadCoreFolders(
   admin: FolderReader,
@@ -110,7 +128,7 @@ export async function loadCoreFolders(
     while (level.length > 0) {
       const children = await Promise.all(
         level.map(async (parent) =>
-          (await admin.listSubgroups(parent).catch(() => [])).map((c) => ({
+          (await admin.listSubgroups(parent).catch(refusedAs([]))).map((c) => ({
             id: c.groupId,
             parent: parent === rootId ? null : parent,
           })),
@@ -139,7 +157,7 @@ export async function loadCoreFolders(
   if (applicationId) {
     const { contexts } = await admin
       .getContextsForApplication(applicationId)
-      .catch(() => ({ contexts: [] }));
+      .catch(refusedAs({ contexts: [] }));
     const candidates = [
       ...new Set(
         contexts

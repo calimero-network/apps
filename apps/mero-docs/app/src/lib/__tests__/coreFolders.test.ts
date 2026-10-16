@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { HTTPError } from '@calimero-network/mero-js';
 import { folderDocsContext, loadCoreFolders, type FolderReader } from '../coreFolders';
 
 const ROOT = 'root';
@@ -109,6 +110,42 @@ describe('loadCoreFolders', () => {
       return g === ROOT ? [{ groupId: 'a' }, { groupId: 'b' }] : [];
     });
     expect((await loadCoreFolders(admin, ROOT, 'app')).map((f) => f.id)).toEqual(['a', 'b']);
+  });
+
+  // A node restarting answers nothing at all. Read as "no folders", that blanks
+  // the tree and closes the document open in it, edits not yet sent included.
+  describe('when the node does not answer', () => {
+    const unreachable = () => new HTTPError(0, 'Network Error', '/admin-api', new Headers());
+    const tree = () =>
+      reader({
+        children: { [ROOT]: ['a'], a: ['b'] },
+        info: { a: { name: 'A' }, b: { name: 'B' } },
+        held: [{ groupId: 'a' }],
+      });
+
+    it('fails the walk instead of listing no folders', async () => {
+      const admin = tree();
+      vi.mocked(admin.listSubgroups).mockRejectedValue(unreachable());
+      await expect(loadCoreFolders(admin, ROOT, 'app')).rejects.toBeInstanceOf(HTTPError);
+    });
+
+    it('fails the walk instead of dropping a folder it could not describe', async () => {
+      const admin = tree();
+      vi.mocked(admin.getGroupInfo).mockRejectedValue(unreachable());
+      await expect(loadCoreFolders(admin, ROOT, 'app')).rejects.toBeInstanceOf(HTTPError);
+    });
+
+    it("fails the walk instead of reading a folder's docs context as none", async () => {
+      const admin = tree();
+      vi.mocked(admin.listGroupContexts).mockRejectedValue(unreachable());
+      await expect(loadCoreFolders(admin, ROOT, 'app')).rejects.toBeInstanceOf(HTTPError);
+    });
+
+    it('fails the walk instead of finding no Shared folders', async () => {
+      const admin = tree();
+      vi.mocked(admin.getContextsForApplication).mockRejectedValue(unreachable());
+      await expect(loadCoreFolders(admin, ROOT, 'app')).rejects.toBeInstanceOf(HTTPError);
+    });
   });
 });
 
