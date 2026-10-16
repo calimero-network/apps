@@ -5,6 +5,7 @@ import { useMero } from '@calimero-network/mero-react';
 import { clearApplicationIdCache } from '../hooks/useApplicationId';
 import { clearCopiedSecretNow } from '../lib/clipboard';
 import { deviceKeeper } from '../lib/deviceKey';
+import { forgetLastVisits } from '../lib/lastVisit';
 
 /**
  * Log out of Mero Pass.
@@ -18,7 +19,9 @@ import { deviceKeeper } from '../lib/deviceKey';
  *   2. clear a copied secret from the clipboard now, rather than when its
  *      30-second timer would have;
  *   3. forget which installed application this browser resolved for the node
- *      (the app selection; the next sign-in may be to another node);
+ *      (the app selection; the next sign-in may be to another node), and the
+ *      team and vault it had open last (`lib/lastVisit`), so the next sign-in
+ *      is not resumed into somebody else's vault;
  *   4. let mero-react drop the session: its token store, the `mero:*` keys and
  *      any delegated account.
  *
@@ -31,6 +34,7 @@ export function signOut(logout: () => void): void {
   deviceKeeper.lock();
   void clearCopiedSecretNow();
   clearApplicationIdCache();
+  forgetLastVisits();
   logout();
 }
 

@@ -44,6 +44,7 @@ import {
   type Secret,
   confirmationCode,
 } from '../../lib/vaultSession';
+import { rememberVault } from '../../lib/lastVisit';
 import { findVaultByContext, mintVaultInvite } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
 import ItemDetail from './ItemDetail';
@@ -108,7 +109,7 @@ function VaultBody() {
   // `admin`, never `mero.admin`: the session-aware client (see `lib/vaults`
   // `AdminLike`). `isDelegated` hides the invitation to an invite-only vault:
   // that needs a subgroup invitation, which only a node can mint today.
-  const { admin, isDelegated } = useMero();
+  const { admin, isDelegated, nodeUrl } = useMero();
   const { closeNav } = useShellNav();
   const { appId } = useApplicationId();
   const client = useVaultClient(contextId);
@@ -156,12 +157,18 @@ function VaultBody() {
     if (!admin || !appId || !contextId) return;
     let cancelled = false;
     findVaultByContext(admin, appId, contextId)
-      .then((f) => !cancelled && setFound(f))
+      .then((f) => {
+        if (cancelled) return;
+        setFound(f);
+        // Where you were last (`lib/lastVisit`): only a vault this node found
+        // in one of its teams, so a stale link is never resumed into.
+        if (f) rememberVault(nodeUrl, f.namespaceId, contextId);
+      })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [admin, appId, contextId]);
+  }, [admin, appId, contextId, nodeUrl]);
 
   const tool = view.type === 'tool' ? view.tool : null;
 
