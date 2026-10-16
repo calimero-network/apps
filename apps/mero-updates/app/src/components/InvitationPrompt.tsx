@@ -45,7 +45,7 @@ interface UpdatesInvitation extends ParsedInvitation {
 export default function InvitationPrompt() {
   // The session-aware admin: on an account the raw client's join route is the
   // relay's node route and answers 403. `redeemInvite` takes only the admin.
-  const { admin } = useMero();
+  const { admin, nodeUrl } = useMero();
   const navigate = useNavigate();
   const [status, setStatus] = useState<string | null>(null);
 
@@ -88,7 +88,12 @@ export default function InvitationPrompt() {
           // The audience's company becomes the active one, which is what
           // UpdatesPage's `useJoinSync` watches.
           joinedId = landed.namespaceId ?? namespaceId;
-          setActiveAudience(landed.contextId, landed.identity, joinedId);
+          setActiveAudience(
+            landed.contextId,
+            landed.identity,
+            joinedId,
+            nodeUrl,
+          );
           navigate("/a");
         } else if (landed.kind === "namespace") {
           joinedId = landed.namespaceId;
@@ -105,7 +110,7 @@ export default function InvitationPrompt() {
         setStatus(null);
       }
     },
-    [admin, navigate],
+    [admin, navigate, nodeUrl],
   );
 
   const redemption = useInviteRedemption({ parse, redeem, enabled: !!admin });
