@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { appLink, canOpen, chatName, linkNamer, subjectFromLink } from "./links";
+import { appHome, appLink, canOpen, chatName, linkNamer, subjectFromLink } from "./links";
 import type { LensHost } from "./lens/lens";
 import { laneOf } from "./format";
 
@@ -39,6 +39,20 @@ describe("appLink", () => {
     expect(canOpen(row({ app: "evil" }))).toBe(false);
     expect(canOpen(row({ source_context: "" }))).toBe(false);
     expect(canOpen(row({}))).toBe(true);
+  });
+});
+
+describe("appHome", () => {
+  it("opens an app's front page signed in, and nothing for an app it does not know", () => {
+    const url = new URL(appHome("sheets", session)!);
+    expect(url.origin + url.pathname).toBe("https://mero-sheets.vercel.app/");
+    expect(Object.fromEntries(new URLSearchParams(url.hash.slice(1)))).toEqual({
+      access_token: "acc",
+      refresh_token: "ref",
+      node_url: "http://localhost:2428",
+    });
+    expect(appHome("sheets", null)).toBe("https://mero-sheets.vercel.app/");
+    expect(appHome("evil", session)).toBeNull();
   });
 });
 

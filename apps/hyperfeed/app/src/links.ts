@@ -63,14 +63,28 @@ export function appLink(item: FeedItem, ctx: LinkContext): string | null {
         ? `/teams/${encodeURIComponent(ctx.groupId)}/projects/${context}`
         : "/"
       : `/?context-id=${context}`;
-  if (!ctx.session) return base + where;
+  return signedIn(base + where, ctx.session, ctx.applicationId);
+}
+
+/**
+ * An app's front page, signed in to your node when there is a session: what
+ * the app launcher opens. null for an app with no known frontend.
+ */
+export function appHome(app: string, session: Session | null): string | null {
+  const base = FRONTENDS[app]?.replace(/\/+$/, "");
+  return base ? signedIn(`${base}/`, session) : null;
+}
+
+/** An address with your session in its login hash, or as it is with none. */
+function signedIn(url: string, session: Session | null, applicationId?: string): string {
+  if (!session) return url;
   const hash = new URLSearchParams({
-    access_token: ctx.session.accessToken,
-    refresh_token: ctx.session.refreshToken,
-    node_url: ctx.session.nodeUrl,
-    ...(ctx.applicationId ? { application_id: ctx.applicationId } : {}),
+    access_token: session.accessToken,
+    refresh_token: session.refreshToken,
+    node_url: session.nodeUrl,
+    ...(applicationId ? { application_id: applicationId } : {}),
   });
-  return `${base}${where}#${hash.toString()}`;
+  return `${url}#${hash.toString()}`;
 }
 
 /**

@@ -4745,3 +4745,111 @@ select {
     0 0 0 2px var(--accent-solid),
     var(--shadow);
 }
+
+/* ── the apps launcher, beside the bell ─────────────────────────────────── */
+.launcher-wrap {
+  position: relative;
+}
+
+.launcher-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: var(--surface-solid);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.launcher-section {
+  padding: 12px 8px 8px;
+  border-radius: 18px;
+  background: var(--sunken);
+}
+
+.launcher-more {
+  background: transparent;
+}
+
+.launcher-section h2 {
+  margin: 0 8px 8px;
+  font-size: 15px;
+}
+
+.launcher-note {
+  margin: 0 8px 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.launcher-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.launcher-tile {
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.launcher-tile:hover,
+.launcher-tile:focus-visible {
+  background: var(--sunken);
+}
+
+.launcher-tile.off .launcher-icon {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+}
+
+.launcher-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.launcher-letters {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.launcher-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.launcher-install {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
