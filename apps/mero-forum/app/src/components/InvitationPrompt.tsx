@@ -47,7 +47,7 @@ interface ForumInvitation extends ParsedInvitation {
 }
 
 export default function InvitationPrompt() {
-  const { mero } = useMero();
+  const { mero, nodeUrl } = useMero();
   const navigate = useNavigate();
   const [status, setStatus] = useState<string | null>(null);
 
@@ -89,7 +89,12 @@ export default function InvitationPrompt() {
         if (landed.kind === "forum") {
           if (landed.forumName)
             setForumName(landed.contextId, landed.forumName);
-          setActiveForum(landed.contextId, landed.identity, landed.namespaceId);
+          setActiveForum(
+            landed.contextId,
+            landed.identity,
+            landed.namespaceId,
+            nodeUrl,
+          );
           namespaceId = landed.namespaceId ?? namespaceId;
           navigate("/f");
         } else if (landed.kind === "namespace") {
@@ -107,7 +112,7 @@ export default function InvitationPrompt() {
         setStatus(null);
       }
     },
-    [mero, navigate],
+    [mero, navigate, nodeUrl],
   );
 
   const redemption = useInviteRedemption({ parse, redeem, enabled: !!mero });
