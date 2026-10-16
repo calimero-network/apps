@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { listNamespaces, selfIsGroupAdmin } from "../../api/admin";
 import { loadAccountId } from "../../api/identity";
@@ -15,11 +15,18 @@ import {
   setStoredTeamName,
   teamLabel,
 } from "../../utils/teamName";
+import {
+  forgetTeam,
+  pickRemembered,
+  readLastVisit,
+  shouldResume,
+} from "../../utils/lastVisit";
 import type { Team } from "../../types/workspace";
 import styles from "./teams.module.scss";
 
 export default function TeamsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { showToast } = useToast();
   // `admin`, NOT `mero.admin`. `mero` is the raw client, and on a delegated
   // (account) session its transport is the relay: `mero.admin.createNamespace`
@@ -28,9 +35,12 @@ export default function TeamsPage() {
   // one: the node's own client on a node login, and on an account the account
   // admin, which founds through the relay and signs invitations as the account
   // (joining is `components/common/invitation-prompt`'s).
-  const { admin, isDelegated } = useMero();
+  const { admin, isDelegated, nodeUrl } = useMero();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
+  // The node has answered the list (empty or not). A failed read has not, and
+  // must not forget a team it simply could not see.
+  const [listed, setListed] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -66,6 +76,7 @@ export default function TeamsPage() {
               name: n.alias ?? n.name ?? "",
             })),
           );
+          setListed(true);
         })
         .catch(() => {
           if (!cancelled) setTeams([]);
@@ -81,6 +92,39 @@ export default function TeamsPage() {
       clearInterval(id);
     };
   }, [admin, ensureAppId, requireAdmin]);
+
+  // Resume the team open last (utils/lastVisit) when this is the default
+  // landing, not a visit you chose, and this node still lists it. Anything
+  // else settles here: a remembered team the node no longer lists is
+  // forgotten, and the entry is replaced so Back or a reload to it is a
+  // plain visit to the list.
+  const resume = shouldResume(location);
+  const remembered = readLastVisit(nodeUrl).team;
+  const resumeTo =
+    resume && listed
+      ? pickRemembered(
+          teams.map((t) => t.groupId),
+          remembered,
+        )
+      : null;
+  useEffect(() => {
+    if (!resume || loading || resumeTo) return;
+    if (listed && remembered) forgetTeam(nodeUrl, remembered);
+    navigate(location.pathname + location.search, {
+      replace: true,
+      state: null,
+    });
+  }, [
+    resume,
+    loading,
+    listed,
+    resumeTo,
+    remembered,
+    nodeUrl,
+    navigate,
+    location.pathname,
+    location.search,
+  ]);
 
   // An Admin deletes a team; anyone else leaves it. Asked of each team's own
   // member listing, by the account this session runs as. Keyed on the ids, so
@@ -165,6 +209,7 @@ export default function TeamsPage() {
       return;
     }
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
+    forgetTeam(nodeUrl, teamId);
   }
 
   /** Not an admin: leave the team. A node and an account can both. */
@@ -177,6 +222,7 @@ export default function TeamsPage() {
       return;
     }
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
+    forgetTeam(nodeUrl, teamId);
   }
 
   /**
@@ -223,6 +269,12 @@ export default function TeamsPage() {
     // where installed and the web build otherwise.
     await navigator.clipboard.writeText(inviteFor.link);
     showToast("Invitation link copied to clipboard.", "success");
+  }
+
+  if (resumeTo) {
+    return (
+      <Navigate to={`/teams/${resumeTo}`} replace state={{ resume: true }} />
+    );
   }
 
   return (
