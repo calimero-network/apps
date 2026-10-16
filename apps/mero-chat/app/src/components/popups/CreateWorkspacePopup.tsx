@@ -19,6 +19,7 @@ import {
   setMessengerDisplayName,
 } from "../../utils/messengerName";
 import { log } from "../../utils/logger";
+import { createChannel, GENERAL_CHANNEL } from "../../utils/createChannel";
 
 const Overlay = styled.div`
   position: fixed;
@@ -189,6 +190,23 @@ export default function CreateWorkspacePopup({
       }
     }
 
+    // Every workspace starts with #general, as one made by the first-run
+    // picker does: without it the creator lands in an empty workspace, and
+    // someone invited has no channel to land in. After the name is set, so
+    // the channel profile carries it. The workspace stands without the
+    // channel, so a failure is said, not fatal.
+    const general = await createChannel(groupId, GENERAL_CHANNEL, true).catch(
+      (err: unknown) => ({ error: err instanceof Error ? err.message : String(err) }),
+    );
+    if ("error" in general) {
+      addToast({
+        title: "Workspace created without #general",
+        message: `Create a channel before inviting anyone: ${general.error}`,
+        type: "channel",
+        duration: 12000,
+      });
+    }
+
     onSuccess(groupId);
   }, [trimmedWorkspaceName, trimmedDisplayName, onSuccess, addToast]);
 
@@ -251,8 +269,9 @@ export default function CreateWorkspacePopup({
           <>
             <Title>Create Namespace</Title>
             <Subtitle>
-              Name your namespace and choose how others will see you. You can
-              create channels and invite members once you enter.
+              Name your namespace and choose how others will see you. It
+              starts with a #general channel, and you can invite members once
+              you enter.
             </Subtitle>
             <InputGroup>
               <Label htmlFor="workspaceName">Namespace name</Label>

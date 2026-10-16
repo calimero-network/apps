@@ -17,6 +17,7 @@ const {
   mockSerializeGroupInvitationPayload,
   mockGetRegistryVersions,
   mockInstallApplication,
+  mockCreateChannel,
 } = vi.hoisted(() => ({
   // What `MeroJsBridge` records about the session; flipped per test.
   session: { isDelegated: false, applicationId: null as string | null },
@@ -33,6 +34,12 @@ const {
   mockSerializeGroupInvitationPayload: vi.fn(),
   mockGetRegistryVersions: vi.fn(),
   mockInstallApplication: vi.fn(),
+  mockCreateChannel: vi.fn(),
+}));
+
+vi.mock("../../utils/createChannel", () => ({
+  GENERAL_CHANNEL: "general",
+  createChannel: mockCreateChannel,
 }));
 
 vi.mock("../../contexts/ToastContext", () => ({
@@ -148,6 +155,8 @@ describe("CreateWorkspacePopup", () => {
     mockSerializeGroupInvitationPayload.mockReset();
     mockGetRegistryVersions.mockReset();
     mockInstallApplication.mockReset();
+    mockCreateChannel.mockReset();
+    mockCreateChannel.mockResolvedValue({ contextId: "ctx-general", memberKey: "key-1" });
 
     mockListApplications.mockResolvedValue({ apps: [{ id: "app-1" }] });
     mockCreateGroup.mockResolvedValue({
@@ -172,10 +181,10 @@ describe("CreateWorkspacePopup", () => {
     mockSerializeGroupInvitationPayload.mockReturnValue("serialized-invite");
   });
 
-  it("describes workspace-only creation without a default general channel", () => {
+  it("says the workspace starts with #general", () => {
     render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
 
-    expect(screen.queryByText(/#general/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/#general/i)).toBeInTheDocument();
     expect(
       screen.getByRole("textbox", { name: /namespace name/i }),
     ).toBeInTheDocument();
@@ -247,6 +256,53 @@ describe("CreateWorkspacePopup", () => {
       onSuccess.mock.invocationCallOrder[0],
     );
     expect(localStorage.getItem("chat-username")).toBe("Ana");
+  });
+
+  it("creates a public #general, after the name, before entering", async () => {
+    const onSuccess = vi.fn();
+    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledWith("group-1");
+    });
+    expect(mockCreateChannel).toHaveBeenCalledWith("group-1", "general", true);
+    // The channel profile takes the name chosen above.
+    expect(mockSetMemberMetadata.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCreateChannel.mock.invocationCallOrder[0],
+    );
+    expect(mockCreateChannel.mock.invocationCallOrder[0]).toBeLessThan(
+      onSuccess.mock.invocationCallOrder[0],
+    );
+    expect(mockAddToast).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["returns an error", () => mockCreateChannel.mockResolvedValue({ error: "exists" })],
+    ["throws", () => mockCreateChannel.mockRejectedValue(new Error("exists"))],
+  ])("still enters the workspace and says so when #general %s", async (_, arrange) => {
+    arrange();
+    const onSuccess = vi.fn();
+    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledWith("group-1");
+    });
+    expect(mockAddToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Workspace created without #general",
+        message: expect.stringContaining("exists"),
+      }),
+    );
   });
 
   it("still enters the workspace when publishing the name fails", async () => {

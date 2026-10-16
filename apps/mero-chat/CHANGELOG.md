@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A workspace created from the side menu starts with a public #general, as one
+  from the first-run picker does. It used to start with no channels, so the
+  creator landed in an empty workspace and an invitee had nowhere to land. If
+  #general cannot be made, a toast says so and the workspace still opens.
+
 - A member with no name gets a person icon instead of the first character of
   their account. The "3" from `3e76…db86` looked like a member count in the
   channel header and the members list. Settings shows the same icon.
