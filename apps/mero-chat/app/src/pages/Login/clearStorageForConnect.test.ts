@@ -5,6 +5,7 @@ import {
   PLATFORM_PENDING_INTENTS_KEY,
 } from "./index";
 import { INVITATION_STORAGE_KEY } from "../../utils/invitation";
+import { NS_ENTERED_KEY } from "../../utils/session";
 
 describe("clearStorageForConnect", () => {
   beforeEach(() => localStorage.clear());
@@ -29,6 +30,16 @@ describe("clearStorageForConnect", () => {
     clearStorageForConnect();
 
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBe("encoded-invite");
+  });
+
+  it("forgets the last-entered workspace, so a fresh login picks one again", () => {
+    localStorage.setItem(NS_ENTERED_KEY, "ns-a");
+    localStorage.setItem("calimero_group_id", "ns-a");
+
+    clearStorageForConnect();
+
+    expect(localStorage.getItem(NS_ENTERED_KEY)).toBeNull();
+    expect(CONNECT_PRESERVE_EXACT.has(NS_ENTERED_KEY)).toBe(false);
   });
 
   it("keeps both the SDK pending-intent key and the legacy key in the preserve whitelist", () => {

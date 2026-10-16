@@ -43,9 +43,11 @@ function App() {
   // Token lifetime is handled underneath us: core's access tokens last an hour,
   // and mero-js silently refreshes them on the first 401.
 
-  // canEnterApp requires both a valid auth session AND explicit namespace selection
-  // in this browser session (sessionStorage flag). This prevents the app from
-  // jumping straight to Home after a fresh login using stale localStorage values.
+  // canEnterApp requires both a valid auth session AND a workspace the user
+  // entered (`isNamespaceReady`: the id last entered, still the current group).
+  // It survives reloads so a returning user lands back in their workspace, but
+  // logout and a fresh Connect clear it, so a fresh login still picks one
+  // rather than jumping straight to Home on stale localStorage values.
   //
   // `isAuthenticated` is reactive from mero-react but lags `false` for a beat
   // right after a fresh connect (its `/auth/validate` can cold-start 503). The
