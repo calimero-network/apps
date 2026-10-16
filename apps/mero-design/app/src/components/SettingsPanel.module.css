@@ -1,0 +1,163 @@
+/* Settings, docked at the side of the shell's body: a solid sheet (it holds
+   forms, so it is never frosted), scrolling on its own. */
+.panel {
+  width: 420px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 20px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-surface-solid);
+  box-shadow: var(--glass-shadow-float);
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
+  overflow: hidden;
+  z-index: 350;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 8px 20px;
+}
+.title { font-size: 17px; font-weight: 750; letter-spacing: -0.02em; }
+.close {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--glass-muted);
+  cursor: pointer;
+}
+.close:hover { background: var(--glass-sunken); color: var(--glass-ink); }
+
+.tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  margin: 0 20px 6px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--glass-sunken);
+}
+.tab {
+  height: 30px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--glass-muted);
+  cursor: pointer;
+}
+.tab:hover { color: var(--glass-ink); }
+.tabActive { background: var(--glass-surface-solid); color: var(--glass-ink); box-shadow: 0 1px 3px rgba(14, 18, 34, 0.12); }
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sectionTitle {
+  font-size: 15px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muted { font-size: 13px; color: var(--glass-muted); }
+
+.nameRow { display: flex; flex-direction: column; gap: 6px; }
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--glass-muted);
+}
+.field {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--glass-sunken);
+  border: 1px solid var(--glass-line-strong);
+}
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--glass-ink);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.saveBtn {
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 9px;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.saveBtn:disabled { opacity: 0.35; cursor: default; }
+
+.danger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--glass-bad-ink) 30%, transparent);
+  background: color-mix(in srgb, var(--glass-bad-bg) 60%, transparent);
+}
+.danger strong { display: block; font-size: 13px; color: var(--glass-bad-ink); }
+.danger span { display: block; font-size: 12px; color: var(--glass-ink-2); margin-top: 2px; }
+.dangerBtn {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--glass-bad-ink);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--glass-bad-ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.dangerBtn:hover { background: var(--glass-bad-bg); }
+
+/* Not enough room beside the board: the panel covers the body instead. */
+@media (max-width: 1100px) {
+  .panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    max-width: 100%;
+  }
+}
+@media (max-width: 760px) {
+  .panel { width: 100%; }
+}

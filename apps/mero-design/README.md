@@ -14,6 +14,29 @@ A collaborative design tool built on the Calimero p2p network. Think Figma — b
 - Real-time sync via SSE (no central server)
 - White-label landing page with team (namespace) selector
 
+## App layout
+
+Every signed-in screen is one frame (`app/src/components/shell/DesignShell.tsx`):
+
+- **Top bar** — team switcher (with "New team" in the menu), the open board's
+  name, who is on the board, Present, Invite, the theme switch, and an account
+  menu with Team settings and Logout.
+- **Boards rail** — the team's boards with live thumbnails, "+" for a new board,
+  and each board's ⋯ (Rename, Settings, Delete). A drawer on a phone.
+- **Main** — the board, or the team's home grid when no board is open.
+- **Settings** — a panel beside the board, addressed by the URL, with Team
+  (members, roles, remove, your name) and Board (name, canvas access) sections.
+
+| URL | Screen |
+|---|---|
+| `/teams` | Resumes the team and board you had open last on this node (else the first team) |
+| `/teams/:teamId/projects` | The team's home grid (`/teams/:teamId` redirects here) |
+| `/teams/:teamId/projects/:contextId` | A board |
+| `/boards/:contextId` | A board, its team looked up (the desktop app's deep link) |
+| `…?settings=team` / `…?settings=board` | Settings open on any of the above |
+
+A new team or board opens as soon as it is created.
+
 ## Architecture
 
 ```

@@ -1,48 +1,12 @@
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(14, 18, 34, 0.32);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: var(--glass-surface-solid);
-  border: 1px solid var(--glass-edge);
-  border-radius: var(--glass-radius-lg);
-  color: var(--glass-ink);
-  font-family: var(--glass-font);
-  padding: 28px;
-  width: 440px;
-  max-width: 95vw;
-  box-shadow: var(--glass-shadow-float);
+/* One section of the settings panel (SettingsPanel): rows stacked, no frame
+   of its own — the panel draws that. */
+.section {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
 }
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.title {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.close {
-  background: none;
-  border: none;
-  font-size: 14px;
-  color: var(--glass-muted);
-  cursor: pointer;
-  padding: 4px;
-}
-.close:hover { color: var(--glass-ink); }
 
 .row {
   display: flex;
@@ -148,8 +112,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 200px;
-  overflow-y: auto;
+  max-height: none;
 }
 
 .member {
@@ -245,3 +208,6 @@
 }
 .roleBtn:hover:not(:disabled) { background: var(--glass-sunken); border-color: var(--glass-muted); }
 .roleBtn:disabled { opacity: 0.5; cursor: default; }
+
+.removeBtn { color: var(--glass-bad-ink); }
+.removeBtn:hover:not(:disabled) { background: var(--glass-bad-bg); border-color: var(--glass-bad-ink); }

@@ -12,6 +12,24 @@ import {
 const schedule = createLimiter(3);
 
 /**
+ * One read of a board serves every picture of it for a moment: the rail and the
+ * team home's grid both show each board, and must not each fetch it.
+ */
+const SHARE_MS = 10_000;
+const recent = new Map<string, { at: number; read: Promise<Element[]> }>();
+
+function readBoard(contextId: string): Promise<Element[]> {
+  const hit = recent.get(contextId);
+  if (hit && Date.now() - hit.at < SHARE_MS) return hit.read;
+  const read = schedule(() => rpcCall<Element[]>(contextId, "get_elements", {}))
+    .then((els) => (Array.isArray(els) ? els : []));
+  // A failure is not shared: the next picture asks again.
+  read.catch(() => recent.delete(contextId));
+  recent.set(contextId, { at: Date.now(), read });
+  return read;
+}
+
+/**
  * The preview for one project: markup to draw, `""` for a white (empty or
  * unreadable) board, or `undefined` while nothing is known yet.
  *
@@ -40,8 +58,8 @@ export function useBoardPreview(contextId: string, visible: boolean, aspect: num
   useEffect(() => {
     if (!visible || !contextId || fetchedFor.current === contextId) return;
     fetchedFor.current = contextId;
-    schedule(() => rpcCall<Element[]>(contextId, "get_elements", {}))
-      .then((els) => buildBoardPreviewSvg(Array.isArray(els) ? els : [], aspect) ?? "")
+    readBoard(contextId)
+      .then((els) => buildBoardPreviewSvg(els, aspect) ?? "")
       .catch(() => {
         // Keep whatever was cached — a board that rendered last time is more
         // useful than white because the node blinked. Nothing cached → white.

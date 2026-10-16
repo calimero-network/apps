@@ -1,5 +1,5 @@
 // A TEE fleet node is a member row on the node, but not a person. The Settings
-// modal must never list or count it, and shows "TEE enabled" instead.
+// panel must never list or count it, and shows "TEE enabled" instead.
 
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,10 +16,11 @@ vi.mock("../api/teamContexts", () => ({ listTeamContexts: vi.fn().mockResolvedVa
 vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ applicationId: "app-1" }),
+  useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn() }),
 }));
 vi.mock("../contexts/ToastContext", () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
-const SettingsModal = (await import("./SettingsModal")).default;
+const SettingsSection = (await import("./SettingsSection")).default;
 
 const ana = { identity: "a".repeat(64), role: "Admin", name: "Ana" };
 const ben = { identity: "b".repeat(64), role: "Member", name: "Ben" };
@@ -27,10 +28,10 @@ const replica = { identity: "c".repeat(64), role: "ReadOnlyTee" };
 const relay = { identity: "d".repeat(64), role: "RelayTee" };
 
 function open() {
-  render(<SettingsModal type="team" id="ns1" name="Design" onClose={vi.fn()} />);
+  render(<SettingsSection type="team" id="ns1" name="Design" />);
 }
 
-describe("SettingsModal – TEE nodes", () => {
+describe("SettingsSection – TEE nodes", () => {
   beforeEach(() => listGroupMembers.mockReset());
 
   it("counts people only and shows TEE enabled (Relay) when a TEE node is admitted", async () => {

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { resolveName, type TeamNameLookup } from "../hooks/useMemberNames";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore, type Background } from "../store/canvasStore";
 import { fileToDataUrl } from "../utils/export";
 import { getImageDimensions } from "../utils/image";
-import Logo from "./Logo";
-import ThemeToggle from "./ThemeToggle";
+import { useOptionalShell } from "./shell/shellContext";
+import { initialsOf } from "../utils/artwork";
 import styles from "./Toolbar.module.css";
 import type { Member, CursorState } from "../types";
 import { validateSnapshot, type ProjectSnapshot } from "../utils/projectFile";
@@ -169,8 +170,6 @@ function colorForIdentity(id: string): string {
 }
 interface Props {
   contextId: string;
-  onBack: () => void;
-  onLogout: () => void;
   onExportPng: () => void;
   onExportSvg: () => void;
   onPreview: () => void;
@@ -199,7 +198,6 @@ interface Props {
 
 export default function Toolbar({
   contextId,
-  onBack, onLogout,
   onExportPng, onExportSvg,
   onPreview,
   onPresent,
@@ -243,6 +241,19 @@ export default function Toolbar({
   const [pendingImport, setPendingImport] = useState<{ name: string; snapshot: ProjectSnapshot } | null>(null);
   const { showToast } = useToast();
   const reportFailure = createMutationReporter((m) => showToast(m, "error"));
+  // The shell's top bar holds who is here and Present, beside Invite. Outside
+  // the shell (a unit test) they stay in this bar.
+  const boardSlot = useOptionalShell()?.boardSlot ?? null;
+  const membersRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!membersOpen) return;
+    function onOutside(e: MouseEvent) {
+      if (membersRef.current && !membersRef.current.contains(e.target as Node)) setMembersOpen(false);
+    }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [membersOpen]);
 
   // Close options on outside click
   useEffect(() => {
@@ -289,13 +300,74 @@ export default function Toolbar({
     setPendingImport({ name: file.name, snapshot: parsed });
   }
 
+  // Who is on the board right now, and Present: the board's part of the top bar.
+  const shown = members.slice(0, 3);
+  const presence = (
+    <>
+      <div className={styles.membersWrap} ref={membersRef}>
+        <button
+          className={styles.membersBtn}
+          onClick={() => setMembersOpen((v) => !v)}
+          title="Online members"
+          aria-label={members.length > 0 ? `${members.length} online` : "Online members"}
+          aria-expanded={membersOpen}
+          data-testid="online-members"
+        >
+          {shown.length === 0 ? (
+            <IconMembers />
+          ) : (
+            <span className={styles.avatarStack}>
+              {shown.map((m) => (
+                <span
+                  key={m.identity}
+                  className={styles.avatar}
+                  style={{ background: colorForIdentity(m.identity) }}
+                  aria-hidden="true"
+                >
+                  {initialsOf(resolveName(memberList, m.account ?? m.identity, teamName))}
+                </span>
+              ))}
+              {members.length > shown.length && (
+                <span className={`${styles.avatar} ${styles.avatarMore}`} aria-hidden="true">+{members.length - shown.length}</span>
+              )}
+            </span>
+          )}
+        </button>
+        {membersOpen && (
+          <div className={styles.membersDropdown}>
+            <p className={styles.membersTitle}>Online now</p>
+            {members.length === 0 ? (
+              <p className={styles.membersEmpty}>Only you</p>
+            ) : (
+              members.map((m) => (
+                <div key={m.identity} className={styles.memberRow}>
+                  <span
+                    className={styles.memberDot}
+                    style={{ background: colorForIdentity(m.identity) }}
+                  />
+                  <span className={styles.memberLabel}>{resolveName(memberList, m.account ?? m.identity, teamName)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+      {onPresent && (
+        <button
+          className={`${styles.previewBtn} ${styles.presentBtn}`}
+          onClick={onPresent}
+          title="Present the board's screens as a slideshow (Esc to exit)"
+          data-testid="toolbar-present"
+          aria-label="Present"
+        >
+          ▶<span className={styles.presentLabel}> Present</span>
+        </button>
+      )}
+    </>
+  );
+
   return (
     <div className={styles.bar}>
-      <button className={styles.backBtn} onClick={onBack} title="Back to projects">←</button>
-      <span className={styles.logo}><Logo size={28} /> <span className={styles.brandText}>Mero Design</span></span>
-
-      <div className={styles.divider} />
-
       <div className={styles.tools}>
         {TOOL_GROUPS.map((group, gi) => (
           <div key={gi} className={styles.toolGroup}>
@@ -421,38 +493,6 @@ export default function Toolbar({
 
       <div className={styles.spacer} />
 
-      {/* Members online */}
-      <div className={styles.membersWrap}>
-        <button
-          className={styles.membersBtn}
-          onClick={() => setMembersOpen((v) => !v)}
-          title="Online members"
-        >
-          <IconMembers />
-          {members.length > 0 && (
-            <span className={styles.membersBadge}>{members.length}</span>
-          )}
-        </button>
-        {membersOpen && (
-          <div className={styles.membersDropdown}>
-            <p className={styles.membersTitle}>Online now</p>
-            {members.length === 0 ? (
-              <p className={styles.membersEmpty}>Only you</p>
-            ) : (
-              members.map((m) => (
-                <div key={m.identity} className={styles.memberRow}>
-                  <span
-                    className={styles.memberDot}
-                    style={{ background: colorForIdentity(m.identity) }}
-                  />
-                  <span className={styles.memberLabel}>{resolveName(memberList, m.account ?? m.identity, teamName)}</span>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-
       {readOnly && (
         <span
           data-testid="view-only-badge"
@@ -479,21 +519,7 @@ export default function Toolbar({
       <button className={`${styles.previewBtn} ${styles.hideNarrow}`} onClick={onPreview} title="Preview canvas (Esc to exit)">
         Preview
       </button>
-      {onPresent && (
-        <button
-          className={`${styles.previewBtn} ${styles.presentBtn}`}
-          onClick={onPresent}
-          title="Present the board's screens as a slideshow (Esc to exit)"
-          data-testid="toolbar-present"
-        >
-          ▶ Present
-        </button>
-      )}
-
-      <div className={`${styles.divider} ${styles.hideNarrow}`} />
-
-      <ThemeToggle className={styles.iconBtn} />
-      <button className={`${styles.logoutBtn} ${styles.hideNarrow}`} onClick={onLogout} title="Logout">Logout</button>
+      {boardSlot ? createPortal(presence, boardSlot) : presence}
 
       <input
         ref={fileInputRef}

@@ -1,17 +1,14 @@
 /* The editor: the board is a rounded sheet over the tinted glass ground, and
    every piece of chrome (toolbar, inspector, zoom) floats over it as frosted
-   glass. The canvas sizes itself to `.canvasWrap` (FabricCanvas measures its
+   glass. The ground and the top bar are the shell's (DesignShell). The canvas sizes itself to `.canvasWrap` (FabricCanvas measures its
    own box), so nothing here has to agree with a number in the script. */
 .root {
-  height: 100vh;
-  height: 100dvh;
+  /* Fills the shell's main area (DesignShell), which owns the window. */
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 10px;
-  overflow: hidden;
-  background-color: var(--glass-ground);
-  background-image: var(--glass-fields);
   font-family: var(--glass-font);
 }
 
@@ -80,7 +77,7 @@
 
 @media (max-width: 760px) {
   .emptyHint { top: 28%; }
-  .root { padding: 8px; gap: 8px; }
+  .root { gap: 8px; }
   .workspace { --md-panel-space: 0px; --md-panel-bottom: calc(42% + 8px); }
   .canvasWrap { border-radius: 18px; }
 }
@@ -113,76 +110,39 @@
 }
 .previewHint:hover { color: #fff; }
 
-.syncScreen {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--glass-ink-2);
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.syncSpinner {
-  width: 36px;
-  height: 36px;
-  border: 3px solid var(--glass-line-strong);
-  border-top-color: var(--glass-ink);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.syncTitle {
-  font-size: 15px;
-  font-weight: 600;
+/* Not readable yet: the sheet stays, with mero-react's JoinSyncBanner on it. */
+.syncWrap {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 32px));
+  z-index: 5;
   color: var(--glass-ink);
-  margin: 0;
+}
+.syncWrap > [role="status"] {
+  background: var(--glass-surface-solid);
+  box-shadow: var(--glass-shadow);
 }
 
-.syncHint {
-  font-size: 13px;
-  color: var(--glass-muted);
-  margin: 0;
-  max-width: 340px;
-  text-align: center;
-}
-
-.syncBack {
-  margin-top: 8px;
-  background: none;
-  border: none;
-  color: var(--glass-ink-2);
-  font-size: 13px;
-  cursor: pointer;
-  text-decoration: underline;
-}
-.syncBack:hover { color: var(--glass-ink); }
+.syncHint { color: var(--glass-muted); }
 
 .syncError {
-  font-size: 12px;
-  color: #c0392b;
-  background: #fdf0ef;
-  border: 1px solid #f5c6c2;
-  border-radius: var(--glass-radius-sm);
-  padding: 8px 12px;
-  margin: 0;
-  max-width: 380px;
-  text-align: center;
-  font-family: monospace;
-  word-break: break-all;
+  color: var(--glass-bad-ink);
+  word-break: break-word;
 }
 
 .syncRetry {
-  padding: 6px 18px;
+  margin-left: 4px;
+  padding: 3px 12px;
   background: var(--glass-ink);
   color: var(--glass-on-ink);
   border: none;
   border-radius: 999px;
-  font-size: 13px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
   cursor: pointer;
+  white-space: nowrap;
 }
 .syncRetry:hover { background: var(--glass-ink-2); }

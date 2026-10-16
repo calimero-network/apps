@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero, useRemoveGroupMembers } from "@calimero-network/mero-react";
 import { useMemberNames, useMyName } from "@calimero-apps/names";
 import { ShieldCheck } from "@calimero-network/mero-icons";
 import { getNodeIdentity, listGroupMembers, rpcCall, updateMemberRole, type GroupMemberInfo } from "../api/rpc";
@@ -7,13 +7,15 @@ import { listTeamContexts } from "../api/teamContexts";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { truncateMiddle } from "../utils/format";
+import { canRemoveMember, keepsAnAdmin } from "../utils/memberGuards";
+import ConfirmDialog from "./ConfirmDialog";
 import {
   adminsMissingCanvasAccess,
   indexBoardMembers,
   type CanvasMemberRow as CanvasMember,
   type ContractRoleRow as ContractRole,
 } from "../utils/boardMembers";
-import styles from "./SettingsModal.module.css";
+import styles from "./SettingsSection.module.css";
 
 type MemberRole = "Admin" | "Member" | string;
 
@@ -44,11 +46,16 @@ interface Props {
    * here. Defaults to `id` for a team.
    */
   namespaceId?: string;
-  onClose: () => void;
 }
 
-export default function SettingsModal({ type, id, groupId, name, namespaceId, onClose }: Props) {
+/**
+ * One section of the settings panel: a team's (`type="team"`, the namespace)
+ * or a board's (`type="project"`, its subgroup and context). Ids, your name in
+ * the team, and the member list with the controls this account may use on it.
+ */
+export default function SettingsSection({ type, id, groupId, name, namespaceId }: Props) {
   const { applicationId, admin } = useMero();
+  const { removeGroupMembers } = useRemoveGroupMembers();
   const teamNamespace = namespaceId ?? (type === "team" ? id : undefined);
   const { nameOf } = useMemberNames(admin, teamNamespace);
   const { showToast } = useToast();
@@ -67,6 +74,9 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
   const [canvasNames, setCanvasNames] = useState<Record<string, string>>({});
   const [myContractRole, setMyContractRole] = useState<string>("");
   const [pendingEditor, setPendingEditor] = useState<string | null>(null);
+  // The member a Remove is waiting on confirmation for, and one in flight.
+  const [confirmRemove, setConfirmRemove] = useState<MemberEntry | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<string | null>(null);
 
   useEffect(() => {
     if (type !== "project") return;
@@ -224,6 +234,13 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
   // Promote (→ Admin) / demote (→ Member). Only namespace (team) members carry
   // governance roles; only admins may change them.
   async function changeRole(identity: string, role: "Admin" | "Member") {
+    if (role === "Member") {
+      const guard = keepsAnAdmin(members, identity);
+      if (!guard.ok) {
+        showToast(guard.reason);
+        return;
+      }
+    }
     setPendingRole(identity);
     try {
       await updateMemberRole(membersGroupId, identity, role);
@@ -251,16 +268,35 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
     }
   }
 
+  /**
+   * Take someone out of the team. `identity` is the member's ACCOUNT — what
+   * the member listing returns and what removal takes (never a signing key:
+   * both are 64 hex, and a key names nobody without an error).
+   */
+  async function removeMember(member: MemberEntry) {
+    setConfirmRemove(null);
+    const guard = canRemoveMember(members, selfIdentity, member.identity);
+    if (!guard.ok) {
+      showToast(guard.reason);
+      return;
+    }
+    setPendingRemove(member.identity);
+    try {
+      await removeGroupMembers(membersGroupId, { members: [member.identity] });
+      setMembers((prev) => prev.filter((m) => m.identity !== member.identity));
+      showToast("Member removed from the team.", "success");
+    } catch (err) {
+      showToast(extractErrorMessage(err, "Could not remove member."));
+    } finally {
+      setPendingRemove(null);
+    }
+  }
+
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.header}>
-          <h2 className={styles.title}>{name} — Settings</h2>
-          <button className={styles.close} onClick={onClose}>✕</button>
-        </div>
+    <div className={styles.section} data-testid={`settings-section-${type}`} aria-label={`${name} settings`}>
 
         <div className={styles.row}>
-          <span className={styles.label}>{type === "project" ? "Context ID" : "Group ID"}</span>
+          <span className={styles.label}>{type === "project" ? "Board (context) ID" : "Team ID"}</span>
           <div className={styles.copyRow}>
             <code className={styles.code}>{id}</code>
             <button className={styles.copyBtn} onClick={() => copyText(id, "id")}>
@@ -327,6 +363,9 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
                 const initial = (shownName?.[0] ?? m.identity[0] ?? "?").toUpperCase();
                 const canModerate = type === "team" && selfIsAdmin && !isSelf;
                 const busy = pendingRole === m.identity;
+                const demoteGuard = keepsAnAdmin(members, m.identity);
+                const removeGuard = canRemoveMember(members, selfIdentity, m.identity);
+                const removeBusy = pendingRemove === m.identity;
                 // Contract canvas role (project boards). Admins are implicitly
                 // editors; a member is shown as an editor if explicitly granted.
                 const contractRole = contractRoles[m.identity];
@@ -368,10 +407,22 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
                     {canModerate && (
                       <button
                         className={styles.roleBtn}
-                        disabled={busy}
+                        disabled={busy || (isAdmin && !demoteGuard.ok)}
+                        title={isAdmin && !demoteGuard.ok ? demoteGuard.reason : undefined}
                         onClick={() => changeRole(m.identity, isAdmin ? "Member" : "Admin")}
                       >
                         {busy ? "…" : isAdmin ? "Demote" : "Promote"}
+                      </button>
+                    )}
+                    {canModerate && (
+                      <button
+                        className={`${styles.roleBtn} ${styles.removeBtn}`}
+                        disabled={removeBusy || !removeGuard.ok}
+                        title={removeGuard.ok ? "Remove from the team" : removeGuard.reason}
+                        onClick={() => setConfirmRemove(m)}
+                        data-testid={`remove-member-${m.identity}`}
+                      >
+                        {removeBusy ? "…" : "Remove"}
                       </button>
                     )}
                     {type === "project" && contractRole && (
@@ -398,7 +449,16 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
             </div>
           )}
         </div>
-      </div>
+      {confirmRemove && (
+        <ConfirmDialog
+          title="Remove member?"
+          message={`${nameOf(confirmRemove.identity) || confirmRemove.name || truncateMiddle(confirmRemove.identity, 10, 6)} will lose access to ${name} and every board in it. They can rejoin only with a new invitation.`}
+          confirmLabel="Remove"
+          destructive
+          onCancel={() => setConfirmRemove(null)}
+          onConfirm={() => void removeMember(confirmRemove)}
+        />
+      )}
     </div>
   );
 }
