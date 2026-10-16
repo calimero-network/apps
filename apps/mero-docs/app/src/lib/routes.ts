@@ -3,6 +3,7 @@
 
 const BLOCK_PARAM = 'b'; // `#b=<blockId>` on a doc URL
 const RETURN_TO_KEY = 'mero-drive:returnTo'; // sessionStorage: survives the sign-in redirect
+const RETURN_OWN_NODE_KEY = 'mero-drive:returnToNode'; // set when returnTo is the user's own page
 
 export type AppRoute = {
   ws: string;
@@ -57,18 +58,39 @@ export function homeUrl(ws: string, search: string): string {
   return `${window.location.origin}${appPath({ ws })}${search ? `?${search}` : ''}`;
 }
 
-export function saveReturnTo(path: string): void {
-  sessionStorage.setItem(RETURN_TO_KEY, path);
+/**
+ * Remember where a signed-out visitor was headed. `ownNode` marks the path as
+ * the visitor's own last page rather than a link, and names the node it was
+ * on (null when unknown): it is only given back after sign-in to that node.
+ * Settings is saved as its workspace's Home: it is not a page to land on.
+ */
+export function saveReturnTo(path: string, ownNode?: string | null): void {
+  let saved = path;
+  try {
+    const url = new URL(path, window.location.origin);
+    const route = parseAppPath(url.pathname, url.hash);
+    if (route?.settings) saved = appPath({ ws: route.ws }) + url.search;
+  } catch {
+    // An unparseable path is refused by readReturnTo anyway.
+  }
+  sessionStorage.setItem(RETURN_TO_KEY, saved);
+  if (ownNode === undefined) sessionStorage.removeItem(RETURN_OWN_NODE_KEY);
+  else sessionStorage.setItem(RETURN_OWN_NODE_KEY, ownNode ?? '');
 }
 
 export function clearReturnTo(): void {
   sessionStorage.removeItem(RETURN_TO_KEY);
+  sessionStorage.removeItem(RETURN_OWN_NODE_KEY);
 }
 
-/** Where a signed-out visitor was headed, if it is a page of this app. */
-export function readReturnTo(): string | null {
+/** Where a signed-out visitor was headed, if it is a page of this app that
+ *  still applies on `nodeUrl`, the node just signed in to. */
+export function readReturnTo(nodeUrl: string | null = null): string | null {
   const raw = sessionStorage.getItem(RETURN_TO_KEY);
   if (!raw) return null;
+  // Another node's own page names a workspace this node may not hold.
+  const ownNode = sessionStorage.getItem(RETURN_OWN_NODE_KEY);
+  if (ownNode !== null && (!ownNode || ownNode !== nodeUrl)) return null;
   let url: URL;
   try {
     url = new URL(raw, window.location.origin);

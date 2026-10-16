@@ -20,12 +20,20 @@ const stub = vi.hoisted(() => {
   return {
     none,
     refetch,
-    mero: { mero: null, admin: null, applicationId: 'app', isAuthenticated: true, isLoading: false },
+    mero: {
+      mero: null,
+      admin: null,
+      applicationId: 'app',
+      isAuthenticated: true,
+      isLoading: false,
+      nodeUrl: 'http://n1',
+    },
+    groupReads: [] as (string | undefined)[],
     contexts: none as { contextId: string; name: string }[],
     namespaces: namespaces(),
     // A list read landing: a new value, so the provider re-renders as in the app.
-    setNamespaces(list: { namespaceId: string }[]) {
-      this.namespaces = { ...this.namespaces, namespaces: list };
+    setNamespaces(list: { namespaceId: string }[], listed = true) {
+      this.namespaces = { ...this.namespaces, namespaces: list, listed };
       listeners.forEach((l) => l());
     },
     subscribe(l: () => void) {
@@ -42,7 +50,10 @@ vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => stub.mero,
   useGroupContexts: () => ({ contexts: stub.contexts, loading: false, refetch: stub.refetch }),
   useGroupInfo: () => ({ groupInfo: null, loading: false }),
-  useGroupMembers: () => ({ members: stub.none, loading: false, refetch: stub.refetch }),
+  useGroupMembers: (id?: string) => {
+    stub.groupReads.push(id);
+    return { members: stub.none, loading: false, refetch: stub.refetch };
+  },
   useGroupMetadata: () => ({ metadata: null, loading: false, refetch: stub.refetch }),
   useSetGroupMetadata: () => ({ setGroupMetadata: stub.refetch }),
   useNodeIdentity: () => ({ identity: null, loading: false }),
@@ -97,6 +108,7 @@ afterEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   stub.contexts = stub.none;
+  stub.groupReads = [];
   stub.resetNamespaces();
 });
 
@@ -105,6 +117,42 @@ describe('useDriveWorkspace and the URL', () => {
     localStorage.setItem('mero-drive:activeNs', JSON.stringify('ns2'));
     renderAt('/app');
     await waitFor(() => expect(url()).toBe('/app/ns2'));
+  });
+
+  const remember = (node: string, ns: string) =>
+    localStorage.setItem('mero-drive:activeNs', JSON.stringify({ node, ns }));
+
+  // The list reads [] until the node answers: nothing to choose from yet.
+  it('waits for the list before opening the remembered workspace', async () => {
+    remember('http://n1', 'ns2');
+    stub.namespaces = { ...stub.namespaces, namespaces: [], listed: false };
+    renderAt('/app');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(url()).toBe('/app');
+    expect(stub.groupReads.filter(Boolean)).toEqual([]);
+    act(() => stub.setNamespaces([{ namespaceId: 'ns1' }, { namespaceId: 'ns2' }]));
+    await waitFor(() => expect(url()).toBe('/app/ns2'));
+  });
+
+  it('opens the first listed workspace and forgets one this node does not list', async () => {
+    remember('http://n1', 'gone');
+    renderAt('/app');
+    await waitFor(() => expect(url()).toBe('/app/ns1'));
+    expect(localStorage.getItem('mero-drive:activeNs')).not.toContain('gone');
+  });
+
+  // Switching node: the last node's workspace is not this one's to open.
+  it('ignores a workspace remembered on another node', async () => {
+    remember('http://n0', 'ns2');
+    renderAt('/app');
+    await waitFor(() => expect(url()).toBe('/app/ns1'));
+  });
+
+  it('never reads the groups of a linked workspace this node does not list', async () => {
+    renderAt('/app/x/settings');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(url()).toBe('/app/x/settings');
+    expect(stub.groupReads).not.toContain('x');
   });
 
   it('re-picking the open workspace keeps the open doc', () => {

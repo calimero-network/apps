@@ -105,7 +105,7 @@ vi.mock('../DisplayNameGate', () => ({
   DisplayNameGate: () => <div data-testid="name-gate" />,
 }));
 vi.mock('../NamespaceSettingsPanel', () => ({
-  NamespaceSettingsPanel: () => null,
+  NamespaceSettingsPanel: () => <div data-testid="settings" />,
 }));
 vi.mock('@/components/docs/DocumentEditor', () => ({
   DocumentEditor: () => <div data-testid="editor" />,
@@ -172,6 +172,14 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     renderAt('/app/ns');
     expect(screen.getByText('You are not in this workspace')).toBeTruthy();
     expect(screen.queryByTestId('home')).toBeNull();
+  });
+
+  // Settings reads the workspace's groups, which a node not in it 404s.
+  it('shows the not-in-workspace card, not settings, for a workspace this node is not in', () => {
+    workspace.namespaces = [{ namespaceId: 'other' }];
+    renderAt('/app/ns/settings');
+    expect(screen.getByText('You are not in this workspace')).toBeTruthy();
+    expect(screen.queryByTestId('settings')).toBeNull();
   });
 
   it('does not treat an empty, not yet listed namespace list as not-in-workspace', () => {
