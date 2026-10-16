@@ -116,5 +116,10 @@ export const CATCH_ALL = '*';
  * cannot exist outside a workspace: rc.41 binds every context to a group, so
  * "your agreements" with no workspace chosen is a screen whose only button
  * cannot work. See `lib/agreements`.
+ *
+ * At `/` (not at `/workspaces`) the picker then resumes the workspace open
+ * last, when this node still lists it — see `pickResumeWorkspace` — or else
+ * settles on `/workspaces`. Either is a single `replace` into a screen that
+ * never navigates on its own, so it cannot cycle.
  */
 export const HOME_SCREEN_WHEN_SIGNED_IN: Screen = 'workspaces';
