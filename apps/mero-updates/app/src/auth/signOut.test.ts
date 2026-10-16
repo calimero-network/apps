@@ -12,7 +12,7 @@ beforeEach(() => {
 
 describe("signOut", () => {
   it("drops the session and the open audience, and keeps the theme", () => {
-    setActiveAudience("ctx-1", "exec-1", "ns-1");
+    setActiveAudience("ctx-1", "exec-1", "ns-1", "http://localhost:2528");
     localStorage.setItem(THEME_STORAGE_KEY, "dark");
     expect(storedAudiences()).toHaveLength(1);
     const logout = vi.fn();
@@ -28,7 +28,7 @@ describe("signOut", () => {
   });
 
   it("forgets the audience before the session goes, so nothing re-enters it", () => {
-    setActiveAudience("ctx-1", "exec-1", "ns-1");
+    setActiveAudience("ctx-1", "exec-1", "ns-1", "http://localhost:2528");
     let audienceAtLogout: string | null = "unset";
     signOut(() => {
       audienceAtLogout = getContextId();

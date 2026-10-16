@@ -66,7 +66,7 @@ export default function AudiencesPage() {
   // `admin`, never `mero.admin`: the session-aware admin (see CompaniesPage).
   // On an account session the raw client's admin is the relay's node route and
   // answers 403 to every create and join.
-  const { admin, isDelegated } = useMero();
+  const { admin, isDelegated, nodeUrl } = useMero();
   const { showToast } = useToast();
   // Resolved from the NODE by package (or the registry, for an account) — see
   // lib/appId and hooks/useApplicationId.
@@ -204,12 +204,12 @@ export default function AudiencesPage() {
       );
       setAudienceName(contextId, audienceName);
       setName("");
-      setActiveAudience(contextId, identity, namespaceId);
+      setActiveAudience(contextId, identity, namespaceId, nodeUrl);
       // Into the audience: the creator is already a member, so there is nothing to wait
       // for. 480p H.264 (/live), not the 64x48 in-WASM comparison route.
       navigate("/a");
     });
-  }, [name, admin, appId, namespaceId, run, navigate]);
+  }, [name, admin, appId, namespaceId, run, navigate, nodeUrl]);
 
   /** Enter an audience: join it if needed, wait for the identity, then open the audience. */
   const enter = useCallback(
@@ -229,11 +229,11 @@ export default function AudiencesPage() {
           onStatus,
         );
         setAudienceName(contextId, audience.name);
-        setActiveAudience(contextId, identity, namespaceId);
+        setActiveAudience(contextId, identity, namespaceId, nodeUrl);
         navigate("/a");
       });
     },
-    [admin, run, navigate, namespaceId],
+    [admin, run, navigate, namespaceId, nodeUrl],
   );
 
   const inviteToAudience = useCallback(

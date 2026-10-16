@@ -9,7 +9,7 @@ import SpacesPage from "./pages/SpacesPage";
 import ForumsPage from "./pages/ForumsPage";
 import InvitationPrompt from "./components/InvitationPrompt";
 import { ToastProvider } from "./contexts/ToastContext";
-import { getContextId } from "./lib/session";
+import { useStoredForum } from "./lib/storedForum";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -32,6 +32,7 @@ const LANDING_PATHS = ["/", "/docs", "/preview"];
 function RequireForum({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
   const location = useLocation();
+  const forum = useStoredForum();
 
   if (isLoading) return null;
   if (!isAuthenticated) {
@@ -41,7 +42,12 @@ function RequireForum({ children }: { children: ReactNode }) {
   // joined. This used to be a `SetupPage` that could make exactly ONE forum,
   // because the app modelled "a namespace with one context inside it" and had
   // no way to express a second. Spaces and forums are separate screens now.
-  if (!getContextId()) return <Navigate to="/spaces" replace />;
+  //
+  // And the stored forum must be one THIS node holds: it is remembered across
+  // reloads and node switches, so it can name a context deleted, left, or on
+  // another node. `checking` renders nothing until the node has answered.
+  if (forum === "checking") return null;
+  if (forum === "none") return <Navigate to="/spaces" replace />;
   return <>{children}</>;
 }
 
@@ -72,9 +78,13 @@ function RequireAuth({ children }: { children: ReactNode }) {
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
+  // Into the remembered forum only once this node has confirmed it holds it.
+  const forum = useStoredForum();
   if (isLoading) return null; // the auth probe is still in flight
-  if (isAuthenticated)
-    return <Navigate to={getContextId() ? "/f" : "/spaces"} replace />;
+  if (isAuthenticated) {
+    if (forum === "checking") return null;
+    return <Navigate to={forum === "open" ? "/f" : "/spaces"} replace />;
+  }
   return <>{children}</>;
 }
 
