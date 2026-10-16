@@ -581,6 +581,15 @@ beside the feed at the row's context (Chat at the channel, Design at the documen
 your node. Its address comes from the app's `frontend` in its Cargo.toml, and only those apps are
 handed your session. The theme follows your system until you switch it.
 
+**Brief** is the first of the feed's three layouts (Brief, Lanes, Team; `?view=brief` opens it
+from a link): the feed as your agent would hand it over. One line says how things stand ("All quiet"
+when nothing waits or moves). Below it are the decisions only you can make, most pressing first
+(something your agent did without asking, then a guard, a failure, a proposal, a notification), three
+at a time with the rest behind "more". Each card shows what happened, your agent's reason, whether
+saying yes can be undone, **Why me?** (the rule or fact that brought it to you) and **Evidence** (its
+whole chain). Then what is in motion, and **Handled quietly**: what was settled today without you,
+folded away, with Undo where it applies. It reads the same rows as Lanes; nothing new is stored.
+
 The feed's id beside the brand switches feeds: it lists every feed this Hyperfeed has on your node
 and opens the one you pick in place, still signed in, and a reload opens it again. **Create a new
 feed** is there too. mero-bot follows you to a feed once you write in it.

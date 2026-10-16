@@ -4321,3 +4321,314 @@ select {
     display: none;
   }
 }
+
+/* ── brief view ──────────────────────────────────────────────────────────── */
+
+/* The feed as an agent hands it over: how things stand, a few ranked decisions, the rest folded away. */
+.brief {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 820px;
+}
+
+.brief-hud {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--wait-bg);
+  color: var(--wait-ink);
+  font-size: 13px;
+  font-weight: 500;
+  align-self: flex-start;
+}
+
+.brief-hud.calm {
+  background: var(--good-bg);
+  color: var(--good-ink);
+}
+
+.brief-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: brief-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes brief-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 40%, transparent);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brief-pulse {
+    animation: none;
+  }
+}
+
+.brief-intro h1 {
+  font-family: var(--display);
+  font-size: 28px;
+  line-height: 1.15;
+  color: var(--ink);
+  margin: 0 0 4px;
+}
+
+.brief-intro p {
+  font-size: 15px;
+  color: var(--ink-2);
+  margin: 0;
+}
+
+.brief-clear {
+  color: var(--good-ink);
+  background: var(--good-bg);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  font-size: 14px;
+  margin: 0;
+}
+
+.brief-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.brief-card {
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 16px 36px -26px color-mix(in srgb, var(--wait-solid) 70%, transparent),
+    0 0 0 1px var(--line);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+}
+
+.brief-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--wait-solid);
+}
+
+.brief-card.hot::before {
+  background: var(--bad-ink);
+}
+
+.brief-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.brief-card-head .pill {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.brief-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.brief-rank {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wait-ink);
+  background: var(--wait-bg);
+}
+
+.brief-card.hot .brief-rank {
+  color: var(--bad-ink);
+  background: var(--bad-bg);
+}
+
+.brief-situation {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-2);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.brief-recommend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--busy-bg);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.brief-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--busy-ink);
+}
+
+.brief-rev {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--good-bg);
+  color: var(--good-ink);
+}
+
+.brief-rev.final {
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+}
+
+.brief-why {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  padding-left: 10px;
+  border-left: 2px solid var(--line-strong);
+}
+
+.brief-evidence {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.brief-evidence li {
+  display: grid;
+  grid-template-columns: minmax(80px, 140px) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.brief-ev-who {
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brief-ev-text {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.brief-more {
+  margin-top: 8px;
+}
+
+.brief-section h2 {
+  font-family: var(--display);
+  font-size: 15px;
+  color: var(--ink);
+  margin: 0;
+}
+
+.brief-section > h2 {
+  margin-bottom: 8px;
+}
+
+.brief-fold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.brief-handled .brief-lines {
+  margin-top: 8px;
+}
+
+.brief-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.brief-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: var(--sunken);
+  font-size: 13px;
+}
+
+.brief-line-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .brief-intro h1 {
+    font-size: 22px;
+  }
+  .brief-evidence li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .brief-ev-text {
+    grid-column: 1 / -1;
+  }
+  .brief-line > .muted.small {
+    display: none;
+  }
+}

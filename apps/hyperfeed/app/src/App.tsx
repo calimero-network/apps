@@ -5,6 +5,7 @@ import { FeedView } from "./FeedView";
 import { SettingsView, settingsSection } from "./SettingsView";
 import { ChatView } from "./ChatView";
 import { TeamView } from "./TeamView";
+import { BriefView } from "./BriefView";
 import { FeedPicker, FeedSwitcher } from "./FeedPicker";
 import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
@@ -265,6 +266,7 @@ function Screen({
       <div className="view-switch" role="group" aria-label="How the feed is laid out">
         {(
           [
+            ["brief", "Brief"],
             ["lanes", "Lanes"],
             ["team", "Team"],
           ] as const
@@ -274,7 +276,9 @@ function Screen({
           </button>
         ))}
       </div>
-      {view === "team" ? (
+      {view === "brief" ? (
+        <BriefView feed={feed} query={query} onChat={openChat} />
+      ) : view === "team" ? (
         <TeamView feed={feed} query={query} onChat={openChat} focus={focus} onFocused={focused} />
       ) : (
         <FeedView feed={feed} query={query} newFeed={newFeed} onChat={openChat} openLink={openLink} focus={focus} onFocused={focused} />
@@ -283,14 +287,21 @@ function Screen({
   );
 }
 
-type FeedLayout = "lanes" | "team";
+type FeedLayout = "brief" | "lanes" | "team";
 const VIEW_KEY = "hyperfeed:view";
+const LAYOUTS: readonly FeedLayout[] = ["brief", "lanes", "team"];
+const layoutOf = (v: string | null): FeedLayout | null => (LAYOUTS.includes(v as FeedLayout) ? (v as FeedLayout) : null);
 
-/** Lanes or Team, remembered in this browser. Lanes until you pick Team. */
+/**
+ * Brief, Lanes or Team, remembered in this browser. `?view=brief` picks one
+ * from a link. Lanes until you pick another.
+ */
 function useFeedView(): [FeedLayout, (v: FeedLayout) => void] {
   const [view, setView] = useState<FeedLayout>(() => {
+    const linked = layoutOf(new URLSearchParams(window.location.search).get("view"));
+    if (linked) return linked;
     try {
-      return localStorage.getItem(VIEW_KEY) === "team" ? "team" : "lanes";
+      return layoutOf(localStorage.getItem(VIEW_KEY)) ?? "lanes";
     } catch {
       return "lanes";
     }
