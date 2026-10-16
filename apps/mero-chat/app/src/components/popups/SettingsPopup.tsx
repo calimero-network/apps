@@ -482,7 +482,18 @@ export default function SettingsPopup({
   const identityShort = identity.length > 16
     ? `${identity.slice(0, 8)}…${identity.slice(-6)}`
     : identity;
-  const avatarInitial = username ? username[0] : identity[0] || "?";
+  // Without a chosen name, the first character of the key ("3") read as a
+  // badge. Show the person glyph instead.
+  const avatarInitial = username ? (
+    username[0]
+  ) : (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
+        fill="currentColor"
+      />
+    </svg>
+  );
 
   // Load current avatar from the active context on open.
   useEffect(() => {

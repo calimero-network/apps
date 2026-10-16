@@ -9,6 +9,7 @@ const {
   mockCreateGroup,
   mockResolveCurrentMemberIdentity,
   mockSetDefaultCapabilities,
+  mockSetMemberMetadata,
   mockCreateInvitation,
   mockCreateGroupContext,
   mockSetGroupId,
@@ -24,6 +25,7 @@ const {
   mockCreateGroup: vi.fn(),
   mockResolveCurrentMemberIdentity: vi.fn(),
   mockSetDefaultCapabilities: vi.fn(),
+  mockSetMemberMetadata: vi.fn(),
   mockCreateInvitation: vi.fn(),
   mockCreateGroupContext: vi.fn(),
   mockSetGroupId: vi.fn(),
@@ -83,6 +85,7 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
     createGroup = mockCreateGroup;
     resolveCurrentMemberIdentity = mockResolveCurrentMemberIdentity;
     setDefaultCapabilities = mockSetDefaultCapabilities;
+    setMemberMetadata = mockSetMemberMetadata;
     createInvitation = mockCreateInvitation;
   },
 }));
@@ -134,6 +137,10 @@ describe("CreateWorkspacePopup", () => {
     mockCreateGroup.mockReset();
     mockResolveCurrentMemberIdentity.mockReset();
     mockSetDefaultCapabilities.mockReset();
+    mockSetMemberMetadata.mockReset();
+    mockSetMemberMetadata.mockResolvedValue({ data: undefined, error: null });
+    // The name chosen in another workspace prefills this one's name field.
+    localStorage.setItem("chat-username", "Sandi");
     mockCreateInvitation.mockReset();
     mockCreateGroupContext.mockReset();
     mockSetGroupId.mockReset();
@@ -187,6 +194,77 @@ describe("CreateWorkspacePopup", () => {
 
     fireEvent.change(nameInput, { target: { value: "Team Space" } });
     expect(createButton).toBeEnabled();
+  });
+
+  it("asks for a display name, prefilled with the one used elsewhere", () => {
+    render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const createButton = screen.getByRole("button", { name: /^create$/i });
+    const displayName = screen.getByRole("textbox", { name: /your display name/i });
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+
+    expect(displayName).toHaveValue("Sandi");
+    expect(createButton).toBeEnabled();
+
+    fireEvent.change(displayName, { target: { value: "   " } });
+    expect(createButton).toBeDisabled();
+  });
+
+  it("starts with an empty display name when none was ever chosen", () => {
+    localStorage.removeItem("chat-username");
+    render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+
+    expect(screen.getByRole("textbox", { name: /your display name/i })).toHaveValue("");
+    expect(screen.getByRole("button", { name: /^create$/i })).toBeDisabled();
+  });
+
+  it("publishes the display name as the new member's name before entering", async () => {
+    const onSuccess = vi.fn();
+    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: /your display name/i }), {
+      target: { value: "  Ana  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledWith("group-1");
+    });
+    expect(mockSetMemberMetadata).toHaveBeenCalledWith("group-1", "member-1", {
+      name: "Ana",
+    });
+    // Published before `onSuccess` reloads the page and would abort it.
+    expect(mockSetMemberMetadata.mock.invocationCallOrder[0]).toBeLessThan(
+      onSuccess.mock.invocationCallOrder[0],
+    );
+    expect(localStorage.getItem("chat-username")).toBe("Ana");
+  });
+
+  it("still enters the workspace when publishing the name fails", async () => {
+    mockSetMemberMetadata.mockResolvedValue({
+      data: null,
+      error: { code: 500, message: "boom" },
+    });
+    const onSuccess = vi.fn();
+    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledWith("group-1");
+    });
   });
 
   it("creates the workspace and calls onSuccess with the group id", async () => {
