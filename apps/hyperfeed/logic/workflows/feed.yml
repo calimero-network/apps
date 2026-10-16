@@ -2229,6 +2229,16 @@ steps:
       - "is_set({{intruder_situation_error}})"
 
   # ── Defaults: a proposal that goes ahead unless you stop it ─────────────
+  # The owner paused the agent near the top, and a paused agent's proposals
+  # never go ahead on their own: resume first.
+  - name: The owner resumes the agent
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_paused
+    args: { paused: false }
+
   - name: The agent proposes a reply it could undo, with a draft
     type: call
     node: feed-node-1
