@@ -26,6 +26,9 @@
  * 4. Invitations are minted here and redeemed by the app-level
  *    `InvitationPrompt` once an opened link is accepted; `landJoined` is the
  *    half of a join that needs this hook's state.
+ * 5. A reload reopens the spreadsheet you had open, once the node confirms it
+ *    still lists it (see `lib/lastWorkspace`), instead of dropping you on the
+ *    picker every time.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
@@ -50,6 +53,14 @@ import {
   type AcceptedInvite,
   type SpreadsheetRow,
 } from '../lib/workspaces';
+import {
+  forgetLastSpreadsheet,
+  forgetLastWorkspace,
+  pickNamespace,
+  pickResume,
+  readLastWorkspace,
+  rememberWorkspace,
+} from '../lib/lastWorkspace';
 
 export interface Workspace {
   contextId: string;
@@ -70,6 +81,11 @@ export interface UseWorkspaceReturn {
   namespaceName: string;
   /** The open spreadsheet's context id — null when showing the picker. */
   contextId: string | null;
+  /**
+   * True while the node is read to decide whether the spreadsheet open before
+   * a reload can be reopened. The picker waits rather than flashing its list.
+   */
+  resuming: boolean;
   /** Executor public key for the open context (the signer for RPC calls). */
   executorPublicKey: string | null;
   /** The open spreadsheet's name, as the picker knows it. */
@@ -110,6 +126,7 @@ export interface UseWorkspaceReturn {
 export function useWorkspace(): UseWorkspaceReturn {
   const {
     mero,
+    nodeUrl,
     contextId: callbackContextId,
     contextIdentity: callbackContextIdentity,
   } = useMero();
@@ -125,12 +142,21 @@ export function useWorkspace(): UseWorkspaceReturn {
   // A workspace joined by invitation this session, once the node lists it.
   const [joinedNsId, setJoinedNsId] = useState<string | null>(null);
 
-  // The app's namespace: the one just joined, else the first one bound to this
-  // application. null on first run. Preferring the joined one is what lands an
-  // invited person who already had a workspace in the one they were invited
-  // to, and what lets the join-sync gate below see that workspace's list.
-  const namespace =
-    namespaces.find((n) => n.namespaceId === joinedNsId) ?? namespaces[0] ?? null;
+  // What was open before this load, on this node. Read once per node: it only
+  // steers startup, and what is open now is written back as it changes.
+  const remembered = useMemo(() => readLastWorkspace(nodeUrl), [nodeUrl]);
+
+  // The app's namespace: the one just joined, else the one open last (while
+  // the node still lists it), else the first one bound to this application.
+  // null on first run. Preferring the joined one is what lands an invited
+  // person who already had a workspace in the one they were invited to, and
+  // what lets the join-sync gate below see that workspace's list.
+  const pickedNsId = pickNamespace(
+    namespaces.map((n) => n.namespaceId),
+    joinedNsId,
+    remembered.namespaceId,
+  );
+  const namespace = namespaces.find((n) => n.namespaceId === pickedNsId) ?? null;
   const namespaceId = namespace?.namespaceId ?? null;
   const namespaceName = namespace
     ? namespaceLabel(namespace, APP_DISPLAY_NAME)
@@ -154,6 +180,11 @@ export function useWorkspace(): UseWorkspaceReturn {
   const [error, setError] = useState<Error | null>(null);
   const [pendingInitName, setPendingInitName] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
+  // Whether startup has decided about reopening the last spreadsheet. Settled
+  // from the start when the SSO callback names one, or nothing is remembered.
+  const [resumeSettled, setResumeSettled] = useState(
+    () => !!callbackContextId || !readLastWorkspace(nodeUrl).contextId,
+  );
 
   // Desktop SSO: the auth callback pins a specific context — open it directly.
   useEffect(() => {
@@ -226,13 +257,17 @@ export function useWorkspace(): UseWorkspaceReturn {
     setContextId(id);
   }, []);
 
+  // Leaving is a choice to be on the picker, so a reload keeps you there: the
+  // spreadsheet is forgotten, the workspace it was in is not.
   const leaveWorkspace = useCallback(() => {
+    forgetLastSpreadsheet(nodeUrl);
+    setResumeSettled(true);
     setContextId(null);
     setExecutorPublicKey(null);
     setPendingInitName(null);
     setStatus(null);
     setError(null);
-  }, []);
+  }, [nodeUrl]);
 
   const clearPendingInit = useCallback(() => setPendingInitName(null), []);
 
@@ -406,6 +441,56 @@ export function useWorkspace(): UseWorkspaceReturn {
     return () => clearInterval(timer);
   }, [isSyncing, refresh]);
 
+  // Reopen the spreadsheet open before the reload — once, and only once the
+  // node has answered: its namespaces for this app, then that namespace's
+  // context list (`ctxSettledFor`, the same in-flight-then-ended test the
+  // join-sync gate uses, so a stale or empty first read cannot decide it).
+  // Anything else opened first (a click, an invitation, a create) wins.
+  // Something no longer listed is forgotten, and the picker shows.
+  useEffect(() => {
+    if (resumeSettled) return;
+    if (contextId) {
+      setResumeSettled(true);
+      return;
+    }
+    // Not installed: the node will never list a namespace to wait for.
+    if (notInstalled) {
+      setResumeSettled(true);
+      return;
+    }
+    if (!namespaceKnown) return;
+    if (namespaceId && ctxSettledFor !== namespaceId) return;
+    setResumeSettled(true);
+    const target = pickResume(
+      namespaceId,
+      nsContexts.map((c) => c.contextId),
+      remembered,
+    );
+    if (target) openWorkspace(target);
+    else if (namespaceId === remembered.namespaceId) forgetLastSpreadsheet(nodeUrl);
+    else forgetLastWorkspace(nodeUrl);
+  }, [
+    resumeSettled,
+    contextId,
+    notInstalled,
+    namespaceKnown,
+    namespaceId,
+    ctxSettledFor,
+    nsContexts,
+    remembered,
+    openWorkspace,
+    nodeUrl,
+  ]);
+
+  // Remember what is open once we are in it, paired with its namespace only
+  // when that namespace lists it — so the pair a reload validates is a real one.
+  useEffect(() => {
+    if (!contextId || !executorPublicKey || !namespaceId) return;
+    if (!nsContexts.some((c) => c.contextId === contextId)) return;
+    rememberWorkspace(nodeUrl, namespaceId, contextId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeUrl, namespaceId, contextId, executorPublicKey, contextKey]);
+
   return {
     isSyncing,
     dismissSyncing,
@@ -413,6 +498,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     namespaceId,
     namespaceName,
     contextId,
+    resuming: !resumeSettled && !contextId,
     executorPublicKey,
     activeName,
     ready: contextId !== null && executorPublicKey !== null,
