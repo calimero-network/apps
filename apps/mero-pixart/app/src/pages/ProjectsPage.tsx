@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useJoinSync, useMero } from "@calimero-network/mero-react";
+import {
+  JOIN_SYNC_POLL_MS,
+  JoinSyncBanner,
+  isNamespaceJustJoined,
+  useJoinSync,
+  useMero,
+} from "@calimero-network/mero-react";
 import { useApi } from "../api/useApi";
 import { listGroupContextRows, listSubgroupRows } from "../api/teamContexts";
 import Logo from "../components/Logo";
@@ -53,6 +59,8 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   // The team whose project list last came back from the node, empty or not.
   const [listedFor, setListedFor] = useState<string | null>(null);
+  // Bumped to re-read the projects while a just-joined team syncs.
+  const [reload, setReload] = useState(0);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [settingsProject, setSettingsProject] = useState<Project | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
@@ -138,13 +146,31 @@ export default function ProjectsPage() {
     loadProjects();
     const id = setInterval(loadProjects, 30_000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [teamId, api, admin]);
+    // `reload` re-runs this read on demand (the join sync below).
+  }, [teamId, api, admin, reload]);
 
-  // A team just joined by invitation has not replicated yet; the invitation
-  // dialog holds "Syncing…" until this page's read of the team's projects has
-  // come back. An empty list counts (a new team has none); a failed read does
-  // not, and the 30s poll above tries again.
-  useJoinSync({ namespaceId: teamId ?? null, settled: !!teamId && listedFor === teamId });
+  // A team just joined by invitation has not replicated yet, and a node that
+  // has not synced it lists none of its projects: the first read comes back
+  // empty. So while the team is just-joined an empty list does not settle the
+  // invitation's "Syncing…" (the page shows the syncing banner, not "No
+  // projects yet"); a list with projects does, and so does any list once the
+  // flag is gone (the watchdog's ceiling, for a team that really has none).
+  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
+    namespaceId: teamId ?? null,
+    settled:
+      !!teamId &&
+      listedFor === teamId &&
+      (projects.length > 0 || !isNamespaceJustJoined(teamId)),
+    // Still empty: let the gate wait up to its ceiling, not the base window.
+    active: projects.length === 0,
+  });
+  // No live event follows the team's data landing, so while the gate is up
+  // re-read on its poll rather than the 30s one.
+  useEffect(() => {
+    if (!isSyncing) return;
+    const id = setInterval(() => setReload((n) => n + 1), JOIN_SYNC_POLL_MS);
+    return () => clearInterval(id);
+  }, [isSyncing]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -373,7 +399,9 @@ export default function ProjectsPage() {
 
         {tab === "projects" && (
           <>
-            {loading ? (
+            {isSyncing && projects.length === 0 ? (
+              <JoinSyncBanner show what="projects" onDismiss={dismissSyncing} />
+            ) : loading ? (
               <p className={styles.empty}>Loading…</p>
             ) : projects.length === 0 ? (
               <div className={styles.emptyState} data-testid="empty-projects">
