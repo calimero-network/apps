@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   JOIN_SYNC_POLL_MS,
   JoinSyncBanner,
@@ -18,6 +18,7 @@ import { encodeInvitationObject, invitationLink } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
 import { getStoredTeamName, useTeamName } from "../utils/teamName";
 import { splitTeeMembers } from "../utils/teeMembers";
+import { clearLastVisit, forgetProject, pickRemembered, readLastVisit, rememberTeam, resumeRequested } from "../utils/lastVisit";
 import { SHOWCASE_PROJECTS } from "../showcase";
 import type { Project, DocumentInfo } from "../types";
 import styles from "./ProjectsPage.module.css";
@@ -48,8 +49,9 @@ interface ProjectCard extends Project {
 export default function ProjectsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { showToast } = useToast();
-  const { logout } = useMero();
+  const { logout, nodeUrl } = useMero();
   // The session-aware API (see api/useApi): contract reads over the session's
   // transport, governance and contexts through `useMero().admin` — the account
   // admin on a delegated session, where the raw node routes are a 403.
@@ -87,6 +89,8 @@ export default function ProjectsPage() {
   const inviteResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function handleLogout() {
+    // Before `logout()`, which drops the node URL the entry is keyed by.
+    clearLastVisit(nodeUrl);
     logout();
     navigate("/");
   }
@@ -159,6 +163,33 @@ export default function ProjectsPage() {
     return () => { cancelled = true; clearInterval(id); };
     // `reload` re-runs this read on demand (the join sync below).
   }, [teamId, api, admin, reload]);
+
+  // Remember this team for the next open (utils/lastVisit). Every read checks
+  // it against what the node lists, so a stale URL is never resumed into.
+  useEffect(() => {
+    if (teamId) rememberTeam(nodeUrl, teamId);
+  }, [teamId, nodeUrl]);
+
+  // Arriving with `state.resume` (the teams list's resume path) goes straight
+  // on to the project last open in this team, once the team has listed it and
+  // only if it still does; a project no longer listed is forgotten. Resolved
+  // either way, once: a later visit to this page is a plain one.
+  const resume = resumeRequested(location);
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (!resume || !teamId || listedFor !== teamId || resumed.current) return;
+    resumed.current = true;
+    const remembered = readLastVisit(nodeUrl).projects?.[teamId];
+    const target = pickRemembered(projects.map((p) => p.contextId), remembered);
+    if (target) {
+      void openProject(target, { replace: true });
+      return;
+    }
+    if (remembered) forgetProject(nodeUrl, teamId, remembered);
+    navigate(location.pathname + location.search, { replace: true, state: null });
+    // `openProject` is a plain function, re-made each render; the ref keeps this to one run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resume, teamId, listedFor, projects, nodeUrl, navigate, location.pathname, location.search]);
 
   // A team just joined by invitation has not replicated yet, and a node that
   // has not synced it lists none of its projects: the first read comes back
@@ -330,17 +361,20 @@ export default function ProjectsPage() {
       return;
     }
     setProjects((prev) => prev.filter((p) => p.contextId !== project.contextId));
+    if (teamId) forgetProject(nodeUrl, teamId, project.contextId);
   }
 
   // Open a project: ensure this node has joined the context (it may have been
   // created on a peer after we joined the team), then navigate into the editor.
   // joinContext is idempotent node-side, so a no-op for projects we created.
-  async function openProject(contextId: string) {
+  async function openProject(contextId: string, opts?: { replace?: boolean }) {
     if (!teamId) return;
     setOpening(contextId);
     try {
       await admin.joinContext(contextId).catch(() => { /* already joined / not required */ });
-      navigate(`/teams/${teamId}/projects/${contextId}`);
+      const to = `/teams/${teamId}/projects/${contextId}`;
+      if (opts?.replace) navigate(to, { replace: true });
+      else navigate(to);
     } finally {
       setOpening(null);
     }
