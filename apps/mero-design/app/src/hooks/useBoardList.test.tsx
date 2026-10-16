@@ -1,8 +1,10 @@
 // A team's boards, as the rail and the team home share them.
 //
-// Deleting a board: it goes only once the node has deleted the context. A
-// refusal used to be swallowed and the card dropped anyway, so a 403 looked
-// like a delete until the next reload brought the project back.
+// Deleting a board: through its subgroup, whose delete cascades to the
+// context. The node-local `deleteContext` is not on the app's token (no
+// `context:delete`), so it answered every app 403. The board goes only once
+// the delete went through: a refusal used to be swallowed and the card dropped
+// anyway, so a 403 looked like a delete until the next reload brought it back.
 //
 // Creating one: the new board comes back (the shell opens it) and is listed.
 
@@ -10,6 +12,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const deleteContext = vi.fn();
+const deleteGroup = vi.fn();
 const createSubgroup = vi.fn();
 const createContext = vi.fn();
 
@@ -20,6 +23,7 @@ vi.mock("../api/rpc", () => ({
   createContext: (...a: unknown[]) => createContext(...a),
   createSubgroup: (...a: unknown[]) => createSubgroup(...a),
   deleteContext: (...a: unknown[]) => deleteContext(...a),
+  deleteGroup: (...a: unknown[]) => deleteGroup(...a),
   listGroupContexts: vi.fn().mockResolvedValue([{ contextId: CTX, name: "Poster" }]),
   listSubgroups: vi.fn().mockResolvedValue([{ groupId: GROUP, name: "Poster" }]),
   renameBoard: vi.fn(),
@@ -44,6 +48,7 @@ async function listed() {
 describe("useBoardList", () => {
   beforeEach(() => {
     deleteContext.mockReset();
+    deleteGroup.mockReset();
     createSubgroup.mockReset();
     createContext.mockReset();
   });
@@ -55,23 +60,33 @@ describe("useBoardList", () => {
     ]);
   });
 
-  it("removes the board once the node deleted the context", async () => {
-    deleteContext.mockResolvedValue(undefined);
+  it("deletes the board through its subgroup, not the context", async () => {
+    deleteGroup.mockResolvedValue(undefined);
     const { result } = await listed();
-    await act(() => result.current.deleteBoard(CTX));
-    expect(deleteContext).toHaveBeenCalledWith(CTX);
+    await act(() => result.current.deleteBoard(result.current.boards[0]!));
+    expect(deleteGroup).toHaveBeenCalledWith(GROUP);
+    expect(deleteContext).not.toHaveBeenCalled();
     expect(result.current.boards).toEqual([]);
   });
 
+  it("falls back to the context for a board created straight in the team", async () => {
+    deleteContext.mockResolvedValue(undefined);
+    const { result } = await listed();
+    const board = { ...result.current.boards[0]!, groupId: "team-1" };
+    await act(() => result.current.deleteBoard(board));
+    expect(deleteContext).toHaveBeenCalledWith(CTX);
+    expect(deleteGroup).not.toHaveBeenCalled();
+  });
+
   it("keeps the board and rejects with the node's reason when it refuses", async () => {
-    deleteContext.mockRejectedValue(
+    deleteGroup.mockRejectedValue(
       Object.assign(new Error("HTTP 403"), {
         explanation: "caller lacks the permissions this route requires",
       }),
     );
     const { result } = await listed();
     await act(async () => {
-      await expect(result.current.deleteBoard(CTX)).rejects.toThrow("HTTP 403");
+      await expect(result.current.deleteBoard(result.current.boards[0]!)).rejects.toThrow("HTTP 403");
     });
     expect(result.current.boards.map((b) => b.contextId)).toEqual([CTX]);
   });

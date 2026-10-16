@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
 import SettingsSection from "./SettingsSection";
+import { useIsGroupAdmin } from "../hooks/useIsGroupAdmin";
 import { IconClose } from "./HomeIcons";
 import type { Project } from "../types";
 import type { SettingsSection as Section } from "./shell/shellContext";
@@ -14,11 +15,16 @@ interface Props {
   board: Project | null;
   /** True while the board's listing has not come back yet. */
   boardPending: boolean;
+  /** Who you are (an account id), to find your row in a member list. */
+  account: string;
+  /** Whether you are an Admin of the team; `null` until known. */
+  isTeamAdmin: boolean | null;
   onSection: (section: Section) => void;
   onClose: () => void;
   onRenameBoard: (board: Project, name: string) => Promise<void>;
   onDeleteBoard: (board: Project) => void;
   onDeleteTeam: () => void;
+  onLeaveTeam: () => void;
 }
 
 /**
@@ -28,6 +34,9 @@ interface Props {
  *
  * Two sections: the team (its members and your name in it) and the board in
  * scope (its name, its canvas access).
+ *
+ * An admin is offered Delete, everyone else Leave — never both, and never
+ * Leave to an admin: an admin leaving would orphan the team or be refused.
  */
 export default function SettingsPanel({
   section,
@@ -35,14 +44,20 @@ export default function SettingsPanel({
   teamName,
   board,
   boardPending,
+  account,
+  isTeamAdmin,
   onSection,
   onClose,
   onRenameBoard,
   onDeleteBoard,
   onDeleteTeam,
+  onLeaveTeam,
 }: Props) {
   const { isDelegated } = useMero();
   const hasBoard = !!board || boardPending;
+  // The board's own admin (its subgroup's creator) may delete it too.
+  const isBoardAdmin = useIsGroupAdmin(board && board.groupId !== teamId ? board.groupId : null, account);
+  const canDeleteBoard = isTeamAdmin === true || isBoardAdmin === true;
   const shown: Section = section === "board" && hasBoard ? "board" : "team";
 
   useEffect(() => {
@@ -96,8 +111,9 @@ export default function SettingsPanel({
             <h3 className={styles.sectionTitle} title={teamName}>{teamName}</h3>
             <SettingsSection key={teamId} type="team" id={teamId} name={teamName} />
             {/* Deleting a namespace is a node's own operation; an account's
-                relay has no form of it. */}
-            {!isDelegated && (
+                relay has no form of it, so an account admin is offered
+                neither. */}
+            {isTeamAdmin === true && !isDelegated && (
               <div className={styles.danger}>
                 <div>
                   <strong>Delete team</strong>
@@ -105,6 +121,17 @@ export default function SettingsPanel({
                 </div>
                 <button type="button" className={styles.dangerBtn} onClick={onDeleteTeam} data-testid="delete-team-btn">
                   Delete
+                </button>
+              </div>
+            )}
+            {isTeamAdmin === false && (
+              <div className={styles.danger}>
+                <div>
+                  <strong>Leave team</strong>
+                  <span>You lose access to the team and its boards.</span>
+                </div>
+                <button type="button" className={styles.dangerBtn} onClick={onLeaveTeam} data-testid="leave-team-btn">
+                  Leave
                 </button>
               </div>
             )}
@@ -120,7 +147,7 @@ export default function SettingsPanel({
               namespaceId={teamId}
               name={board.name || board.contextId.slice(0, 8)}
             />
-            {!isDelegated && (
+            {canDeleteBoard && (
               <div className={styles.danger}>
                 <div>
                   <strong>Delete board</strong>

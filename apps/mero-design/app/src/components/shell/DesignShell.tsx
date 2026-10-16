@@ -5,6 +5,7 @@ import { JoinSyncBanner, useJoinSync, useMero } from "@calimero-network/mero-rea
 import { getNodeIdentity } from "../../api/rpc";
 import { useTeamList } from "../../hooks/useTeamList";
 import { useBoardList } from "../../hooks/useBoardList";
+import { useIsGroupAdmin } from "../../hooks/useIsGroupAdmin";
 import { NARROW_QUERY, useMediaQuery } from "../../hooks/useMediaQuery";
 import { useToast } from "../../contexts/ToastContext";
 import { extractErrorMessage } from "../../utils/errorMessage";
@@ -79,6 +80,7 @@ export default function DesignShell() {
   const [account, setAccount] = useState("");
   const [deleting, setDeleting] = useState<Project | null>(null);
   const [deletingTeam, setDeletingTeam] = useState(false);
+  const [leavingTeam, setLeavingTeam] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +89,8 @@ export default function DesignShell() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  const isTeamAdmin = useIsGroupAdmin(teamId, account);
 
   // Going somewhere closes the drawer; so does widening past it.
   useEffect(() => setDrawerOpen(false), [location.pathname, narrow]);
@@ -156,7 +160,7 @@ export default function DesignShell() {
   async function confirmDeleteBoard(board: Project) {
     setDeleting(null);
     try {
-      await boards.deleteBoard(board.contextId);
+      await boards.deleteBoard(board);
     } catch (err) {
       // The board stays listed: a refusal (e.g. a token without
       // `context:delete` answering 403) must not look like a delete.
@@ -182,6 +186,19 @@ export default function DesignShell() {
     navigate("/teams", { replace: true });
   }
 
+  async function confirmLeaveTeam() {
+    setLeavingTeam(false);
+    if (!teamId) return;
+    try {
+      await teams.leaveTeam(teamId);
+    } catch (err) {
+      showToast(extractErrorMessage(err, "Could not leave team."));
+      return;
+    }
+    showToast(`Left ${teamName}.`, "success");
+    navigate("/teams", { replace: true });
+  }
+
   async function renameBoard(board: Project, name: string) {
     try {
       await boards.renameBoard(board, name);
@@ -197,8 +214,8 @@ export default function DesignShell() {
   }
 
   const value = useMemo<ShellValue>(
-    () => ({ teamId, projectId, teams, boards, openTeam, openBoard, openInvite, openSettings, boardSlot }),
-    [teamId, projectId, teams, boards, openTeam, openBoard, openInvite, openSettings, boardSlot],
+    () => ({ teamId, projectId, teams, boards, isTeamAdmin, openTeam, openBoard, openInvite, openSettings, boardSlot }),
+    [teamId, projectId, teams, boards, isTeamAdmin, openTeam, openBoard, openInvite, openSettings, boardSlot],
   );
 
   const rail = <BoardRail onNavigate={() => setDrawerOpen(false)} onDelete={setDeleting} />;
@@ -278,11 +295,14 @@ export default function DesignShell() {
               teamName={teamName}
               board={settingsBoard}
               boardPending={!settingsBoard && !!settingsBoardId && boards.listedFor !== teamId}
+              account={account}
+              isTeamAdmin={isTeamAdmin}
               onSection={setSection}
               onClose={closeSettings}
               onRenameBoard={renameBoard}
               onDeleteBoard={setDeleting}
               onDeleteTeam={() => setDeletingTeam(true)}
+              onLeaveTeam={() => setLeavingTeam(true)}
             />
           )}
         </div>
@@ -326,6 +346,16 @@ export default function DesignShell() {
           destructive
           onCancel={() => setDeletingTeam(false)}
           onConfirm={() => void confirmDeleteTeam()}
+        />
+      )}
+      {leavingTeam && (
+        <ConfirmDialog
+          title="Leave team?"
+          message={`You will lose access to ${teamName} and its boards. You will need a new invitation to return.`}
+          confirmLabel="Leave team"
+          destructive
+          onCancel={() => setLeavingTeam(false)}
+          onConfirm={() => void confirmLeaveTeam()}
         />
       )}
     </ShellContext.Provider>

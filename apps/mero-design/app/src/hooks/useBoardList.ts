@@ -5,6 +5,7 @@ import {
   createContext,
   createSubgroup,
   deleteContext,
+  deleteGroup,
   listGroupContexts,
   listSubgroups,
   renameBoard as renameBoardOnNode,
@@ -20,8 +21,8 @@ export interface BoardList {
   reload: () => Promise<void>;
   /** A new board in the team; rejects with the node's reason. */
   createBoard: (name: string) => Promise<Project>;
-  /** Node-only. The board stays listed when the node refuses. */
-  deleteBoard: (contextId: string) => Promise<void>;
+  /** Deletes the board for the whole team. It stays listed when refused. */
+  deleteBoard: (board: Project) => Promise<void>;
   renameBoard: (board: Project, name: string) => Promise<void>;
 }
 
@@ -118,13 +119,17 @@ export function useBoardList(teamId: string | null): BoardList {
     return board;
   }, [teamId, ensureAppId]);
 
-  const deleteBoard = useCallback(async (contextId: string) => {
-    // Remove the card only once the node has deleted the context: dropping it
-    // on a refusal (a token without `context:delete` answering 403) hid the
-    // failure until the next reload brought the board back.
-    await deleteContext(contextId);
-    setBoards((prev) => prev.filter((p) => p.contextId !== contextId));
-  }, []);
+  const deleteBoard = useCallback(async (board: Project) => {
+    // Through the board's subgroup, whose delete cascades to its context. A
+    // node's own `deleteContext` is not on the app's token (no
+    // `context:delete`, so it answers 403) and has no account form; it is only
+    // the fallback for a board created straight in the team.
+    if (board.groupId && board.groupId !== teamId) await deleteGroup(board.groupId);
+    else await deleteContext(board.contextId);
+    // Remove the card only once the delete went through: dropping it on a
+    // refusal hid the failure until the next reload brought the board back.
+    setBoards((prev) => prev.filter((p) => p.contextId !== board.contextId));
+  }, [teamId]);
 
   const renameBoard = useCallback(async (board: Project, rawName: string) => {
     const name = rawName.trim();

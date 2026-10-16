@@ -15,6 +15,11 @@ export interface ShellValue {
   projectId: string | null;
   teams: TeamList;
   boards: BoardList;
+  /**
+   * Whether you are an Admin of the current team; `null` until known. An admin
+   * is offered Delete on the team and its boards, everyone else Leave.
+   */
+  isTeamAdmin: boolean | null;
   /** Opens a team (and resumes its last board when `resume`). */
   openTeam: (teamId: string, opts?: { resume?: boolean }) => void;
   openBoard: (contextId: string) => void;

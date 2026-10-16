@@ -721,6 +721,17 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
+  async deleteNamespace(namespaceId: string): ApiResponse<boolean> {
+    try {
+      // A node's own operation: the account admin refuses it by name
+      // (`NotForAccountError`), so callers offer it on a node only.
+      await getMeroJs().admin.deleteNamespace(namespaceId);
+      return ok(true);
+    } catch (error) {
+      return catchError("deleteNamespace", error);
+    }
+  }
+
   async syncGroup(groupId: string): ApiResponse<SyncGroupResponse> {
     try {
       return ok(

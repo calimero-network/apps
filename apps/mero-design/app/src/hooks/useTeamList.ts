@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createNamespace, deleteNamespace, listNamespaces } from "../api/rpc";
+import { createNamespace, deleteNamespace, leaveNamespace, listNamespaces } from "../api/rpc";
 import { useApplicationId } from "./useApplicationId";
 import { setStoredTeamName } from "../utils/teamName";
 import type { Team } from "../types";
@@ -21,6 +21,8 @@ export interface TeamList {
   createTeam: (name: string) => Promise<CreatedTeam>;
   /** Node-only. Rejects with the node's reason; the team stays listed then. */
   deleteTeam: (teamId: string) => Promise<void>;
+  /** What a member who is not an admin does instead. The team stays listed when refused. */
+  leaveTeam: (teamId: string) => Promise<void>;
 }
 
 /**
@@ -80,8 +82,13 @@ export function useTeamList(): TeamList {
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
   }, []);
 
+  const leaveTeam = useCallback(async (teamId: string) => {
+    await leaveNamespace(teamId);
+    setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
+  }, []);
+
   return useMemo(
-    () => ({ teams, listed, error, reload, createTeam, deleteTeam }),
-    [teams, listed, error, reload, createTeam, deleteTeam],
+    () => ({ teams, listed, error, reload, createTeam, deleteTeam, leaveTeam }),
+    [teams, listed, error, reload, createTeam, deleteTeam, leaveTeam],
   );
 }

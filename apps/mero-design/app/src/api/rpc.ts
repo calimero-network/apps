@@ -222,6 +222,14 @@ export async function deleteNamespace(namespaceId: string): Promise<void> {
 }
 
 /**
+ * Leave a team. What a member who is not an admin does instead of deleting it;
+ * works on a node and on an account alike.
+ */
+export async function leaveNamespace(namespaceId: string): Promise<void> {
+  await getApi().admin.leaveNamespace(namespaceId);
+}
+
+/**
  * Mint an invitation to a team. Returned as the raw response object so the
  * token the inviter shares is exactly what the node (or the account) signed;
  * the joiner's parser reads `invitation` out of it.
@@ -339,9 +347,24 @@ export async function renameBoard(groupId: string, contextId: string, name: stri
     .catch(() => {});
 }
 
-/** Node-only: an account cannot delete a context. Callers hide the control. */
+/**
+ * Node-only: an account cannot delete a context. It is also not on an app
+ * token: the token a node hands this app has no `context:delete`, so the node
+ * answers 403. A board is deleted through its subgroup (`deleteGroup`); this is
+ * only the fallback for a board that has none.
+ */
 export async function deleteContext(contextId: string): Promise<void> {
   await getApi().admin.deleteContext(contextId);
+}
+
+/**
+ * Delete a board's subgroup for everyone in the team. The delete cascades: it
+ * unregisters the board's context with it. Core admits a team admin or the
+ * subgroup's owner, and an account has the same op, so this is the board
+ * delete on both kinds of session.
+ */
+export async function deleteGroup(groupId: string): Promise<void> {
+  await getApi().admin.deleteGroup(groupId);
 }
 
 /**

@@ -16,7 +16,7 @@ import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissio
 import { useWorkspaceName } from "../../hooks/useWorkspaceName";
 import { GroupApiDataSource, uploadBlobDirect } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-import { downloadBlob, getMeroJs } from "../../api/meroJsClient";
+import { downloadBlob, getMeroJs, isDelegatedSession } from "../../api/meroJsClient";
 import { useToast } from "../../contexts/ToastContext";
 import { invalidateAvatarCache } from "../../hooks/useAvatarUrl";
 import { useTheme, type Theme } from "../../theme/theme";
@@ -467,9 +467,16 @@ export default function SettingsPopup({
   // alias directly here is what let the two disagree: Settings showed the name
   // while the switcher showed a truncated id.
   const alias = useWorkspaceName(groupId);
-  const { isAdmin, isModerator } = useCurrentGroupPermissions(groupId);
+  const { isAdmin, isModerator, loading: roleLoading, error: roleError, memberIdentity } =
+    useCurrentGroupPermissions(groupId);
+  // `isAdmin` is false before the role is read and when the read fails, so it
+  // alone cannot tell "not an admin" from "not known yet": offering Leave on it
+  // put Leave in front of admins. Neither control shows until the role is known.
+  const roleKnown = !roleLoading && !roleError && !!memberIdentity;
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedWorkspace, setCopiedWorkspace] = useState(false);
   const [avatarObjectUrl, setAvatarObjectUrl] = useState<string | null>(null);
@@ -675,6 +682,33 @@ export default function SettingsPopup({
     navigate("/login");
   };
 
+  const handleDeleteWorkspace = async () => {
+    if (!groupId || deleting) return;
+    setDeleting(true);
+    const result = await new GroupApiDataSource().deleteNamespace(groupId);
+    setDeleting(false);
+    if (result.error) {
+      addToast({
+        title: "Delete workspace",
+        message: result.error.message || "Failed to delete workspace",
+        type: "channel",
+        duration: 5000,
+      });
+      return;
+    }
+    addToast({
+      title: "Workspace deleted",
+      message: "The workspace has been deleted.",
+      type: "channel",
+      duration: 3000,
+    });
+    clearWorkspaceSelection();
+    clearNamespaceReady();
+    setConfirmDelete(false);
+    setIsOpen(false);
+    navigate("/login");
+  };
+
   const popupContent = (
     <Container>
       <Header>
@@ -801,12 +835,37 @@ export default function SettingsPopup({
         </ThemeSwitch>
       </AppearanceCard>
 
-      {/* Leave workspace (danger). Hidden for admins — server-side leave
-          would either fail (last-admin protection) or hand the workspace
-          off to an unintended successor. Admins who want out should
-          transfer ownership / promote a successor first, or delete the
-          namespace via the admin panel. */}
-      {!isAdmin && (
+      {/* An admin deletes the workspace; everyone else leaves it. Leave is
+          never offered to an admin — server-side it would either fail
+          (last-admin protection) or hand the workspace off to an unintended
+          successor. Deleting a namespace is a node's own, local teardown (core
+          replicates no op for it, and an account has no form of it), so an
+          account admin is offered neither. */}
+      {roleKnown && isAdmin && !isDelegatedSession() && (
+        <DangerZone>
+          {confirmDelete ? (
+            <>
+              <DangerLabel>Delete this workspace and its channels from this node? Other members keep their copies.</DangerLabel>
+              <ConfirmActions>
+                <CancelLeaveButton onClick={() => setConfirmDelete(false)} disabled={deleting}>
+                  Cancel
+                </CancelLeaveButton>
+                <LeaveWorkspaceButton onClick={handleDeleteWorkspace} disabled={deleting}>
+                  {deleting ? "Deleting…" : "Confirm delete"}
+                </LeaveWorkspaceButton>
+              </ConfirmActions>
+            </>
+          ) : (
+            <>
+              <DangerLabel>Delete workspace</DangerLabel>
+              <LeaveWorkspaceButton onClick={() => setConfirmDelete(true)}>
+                Delete workspace
+              </LeaveWorkspaceButton>
+            </>
+          )}
+        </DangerZone>
+      )}
+      {roleKnown && !isAdmin && (
         <DangerZone>
           {confirmLeave ? (
             <>
