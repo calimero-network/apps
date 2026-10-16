@@ -1,0 +1,73 @@
+/*
+ * The shared member list's look, in glass tokens so it sits in every app.
+ * Every name is `cm-`-prefixed so nothing collides with an app's own classes,
+ * and every token has a fallback so an app that has not adopted glass yet
+ * still gets a readable list. It is solid, not frosted: the list is content,
+ * and it usually sits inside a dialog that already floats.
+ */
+.cm-members {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--glass-ink, #0e1222);
+  font-family: inherit;
+}
+.cm-members__head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.cm-members__titles { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
+.cm-members__title { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.cm-members__desc { flex-basis: 100%; margin: 0; font-size: 12.5px; color: var(--glass-muted, #6f7589); }
+.cm-members__tee { background: var(--glass-busy-bg, #e3e9ff); color: var(--glass-busy-ink, #3451d1); font-size: 11px; }
+.cm-members__error,
+.cm-members__notice {
+  margin: 0; padding: 8px 12px; border-radius: var(--glass-radius-sm, 10px); font-size: 12.5px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.cm-members__error { background: var(--glass-bad-bg, #ffe4ea); color: var(--glass-bad-ink, #a2194b); }
+.cm-members__notice { background: var(--glass-wait-bg, #fef0b8); color: var(--glass-wait-ink, #6b4e00); }
+.cm-members__empty { margin: 0; padding: 8px 0; font-size: 13px; color: var(--glass-muted, #6f7589); }
+.cm-members__list {
+  list-style: none; margin: 0; padding: 0;
+  border: 1px solid var(--glass-line, rgba(14, 18, 34, 0.08));
+  border-radius: var(--glass-radius, 16px);
+  background: var(--glass-surface-solid, #fff);
+  overflow: hidden;
+}
+.cm-members__row {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  padding: 10px 14px; border-bottom: 1px solid var(--glass-line, rgba(14, 18, 34, 0.08));
+}
+.cm-members__row:last-child { border-bottom: 0; }
+.cm-members__who { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 10rem; }
+.cm-members__name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-members__you {
+  font-size: 11px; font-weight: 650; padding: 1px 7px; border-radius: 999px;
+  background: var(--glass-busy-bg, #e3e9ff); color: var(--glass-busy-ink, #3451d1);
+}
+.cm-members__id { font-size: 11.5px; color: var(--glass-muted, #6f7589); }
+.cm-members__actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.cm-members__wide { flex-basis: 100%; }
+
+.cm-role { background: var(--glass-sunken, rgba(14, 18, 34, 0.045)); color: var(--glass-muted, #6f7589); font-size: 11.5px; }
+.cm-role--admin { background: var(--glass-busy-bg, #e3e9ff); color: var(--glass-busy-ink, #3451d1); }
+
+.cm-select {
+  font: inherit; font-size: 12.5px; padding: 4px 8px; border-radius: var(--glass-radius-sm, 10px);
+  border: 1px solid var(--glass-line-strong, rgba(14, 18, 34, 0.14));
+  background: var(--glass-surface-solid, #fff); color: var(--glass-ink, #0e1222); cursor: pointer;
+}
+.cm-select:disabled { opacity: 0.55; cursor: default; }
+
+.cm-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 30px; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer;
+  font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1;
+  background: var(--glass-surface-solid, #fff); color: var(--glass-ink, #0e1222);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong, rgba(14, 18, 34, 0.14));
+}
+.cm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cm-btn--primary { background: var(--glass-ink, #0e1222); color: var(--glass-on-ink, #fff); box-shadow: none; }
+.cm-btn--danger { color: var(--glass-bad-ink, #a2194b); }
+.cm-btn--danger-solid { background: var(--glass-bad-ink, #a2194b); color: var(--glass-on-ink, #fff); box-shadow: none; }
+
+.cm-confirm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+.cm-confirm__text { color: var(--glass-ink, #0e1222); }

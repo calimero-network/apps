@@ -11,6 +11,11 @@ interface Props {
   /** True when the signed-in member holds MANAGE_MEMBERS (or is an Admin). */
   canManage: boolean;
   busy: boolean;
+  /**
+   * Set when the change would be refused for another reason, such as this
+   * being the workspace's only admin: shown instead of a control.
+   */
+  lockReason?: string;
   onChange: (role: WorkspaceRole) => void;
 }
 
@@ -36,9 +41,10 @@ export default function MemberRoleControl({
   isSelf,
   canManage,
   busy,
+  lockReason,
   onChange,
 }: Props): React.ReactElement {
-  const locked = !canManage || isSelf;
+  const locked = !canManage || isSelf || !!lockReason;
 
   if (locked) {
     return (
@@ -47,7 +53,9 @@ export default function MemberRoleControl({
         data-testid="member-role-badge"
         data-account={account}
         title={
-          isSelf
+          lockReason
+            ? lockReason
+            : isSelf
             ? 'Another admin has to change your role — demoting yourself could leave the workspace with no admin.'
             : 'Only an admin can change roles in this workspace.'
         }

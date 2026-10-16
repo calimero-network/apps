@@ -255,6 +255,12 @@ export interface GroupApi {
     groupId: string,
     memberIdentity: string,
   ): ApiResponse<void>;
+  /** Move a member's workspace role. `identity` is the ACCOUNT the roster keys rows by. */
+  updateMemberRole(
+    groupId: string,
+    identity: string,
+    role: "Admin" | "Member",
+  ): ApiResponse<void>;
   listGroupContexts(groupId: string): ApiResponse<GroupContextEntry[]>;
   joinGroupContext(
     groupId: string,

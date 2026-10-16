@@ -1,0 +1,34 @@
+{
+  "name": "@calimero-apps/members",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Who is in a workspace and what they may do: the member list with role change and removal, guarded the same way in every app.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./members.css": "./src/members.css"
+  },
+  "types": "./src/index.ts",
+  "sideEffects": [
+    "*.css"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "dependencies": {
+    "@calimero-apps/names": "workspace:*"
+  },
+  "devDependencies": {
+    "@testing-library/react": "catalog:",
+    "@types/react": "^19.2.18",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

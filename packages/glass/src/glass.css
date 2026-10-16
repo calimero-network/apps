@@ -193,6 +193,53 @@
   color: transparent;
 }
 
+/* ── The connect dialog and button ──────────────────────────────────────────
+   mero-react's LoginModal ("Connect to Calimero", the landing page's popup and
+   ConnectButton's dialog) and ConnectButton read `--mero-*` variables, which
+   default to its dark green. Set here, every app on glass gets the dialog
+   Mero Pass designed for its landing page: a solid floating surface, ink for
+   the primary action and the selected choice, glass lines. The values point at
+   glass tokens, so the app's dark switch carries over by itself (the fleet
+   marks dark on <html>, where these resolve).
+
+   `html:root` because mero-react injects its own `:root` defaults at runtime,
+   after this file, and a plain `:root` here would lose to them. It is one
+   element-name stronger and no more, so an app that maps `--mero-*` onto its
+   own tokens — in a stylesheet imported after this one, at `html:root` or
+   above — still wins, and a `theme` prop on the component wins over both.
+   The invitation dialog below sets its own values on its overlay. */
+html:root {
+  --mero-bg: var(--glass-surface-solid);
+  --mero-bg-secondary: var(--glass-ground);
+  --mero-bg-tertiary: var(--glass-sunken);
+  --mero-text: var(--glass-ink);
+  --mero-text-secondary: var(--glass-muted);
+  --mero-accent: var(--glass-ink);
+  --mero-accent-hover: var(--glass-ink-2);
+  --mero-on-primary: var(--glass-on-ink);
+  --mero-border: var(--glass-line-strong);
+  --mero-error: var(--glass-bad-ink);
+  --mero-overlay: rgba(14, 18, 34, 0.32);
+  --mero-radius: 18px;
+}
+
+/* ConnectButton sets its own Inter; on glass it speaks Figtree like the rest
+   of the page. Two classes outrank mero-react's one, injected after this. */
+html:root .mero-connect-button {
+  font-family: var(--glass-font);
+}
+
+/* What the variables above cannot reach: the dialog's shadow and font. The
+   `mero-login-*` classes and `--mero-login-shadow` arrive with a mero-react
+   release after 9.14.1; before it nothing here matches, and the dialog keeps
+   mero-react's own shadow and the page's font. */
+body > .mero-login-overlay {
+  --mero-login-shadow: var(--glass-shadow-float);
+  font-family: var(--glass-font);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
 /* ── The invitation dialog ──────────────────────────────────────────────────
    mero-react's InvitationDialog ships in its own dark-green look, styled
    through `--mero-*` variables. Here it takes the glass look instead: a solid

@@ -13,6 +13,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const listGroupMembers = vi.fn();
 const getMemberCapabilities = vi.fn();
 const setMemberCapabilities = vi.fn();
+const updateMemberRole = vi.fn();
+const removeGroupMembers = vi.fn();
 const showToast = vi.fn();
 
 // The panel reaches the admin API through `useMero().admin` — the
@@ -30,6 +32,10 @@ const admin = {
     identity: string,
     req: { capabilities: number },
   ) => setMemberCapabilities(groupId, identity, req.capabilities),
+  updateMemberRole: (groupId: string, identity: string, req: { role: string }) =>
+    updateMemberRole(groupId, identity, req.role),
+  removeGroupMembers: (groupId: string, req: { members: string[] }) =>
+    removeGroupMembers(groupId, req.members),
   getGroupInfo: vi.fn(async () => ({ defaultCapabilities: 0 })),
 };
 vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
@@ -55,12 +61,16 @@ const BOB = "b".repeat(64);
 beforeEach(() => {
   vi.clearAllMocks();
   me = ALICE;
+  // ALICE, the signed-in member, is the team's admin: only an admin is
+  // offered controls at all.
   listGroupMembers.mockResolvedValue([
-    { identity: ALICE, name: "alice" },
-    { identity: BOB, name: "bob" },
+    { identity: ALICE, name: "alice", role: "Admin" },
+    { identity: BOB, name: "bob", role: "Member" },
   ]);
   getMemberCapabilities.mockResolvedValue(CAN_JOIN_OPEN_SUBGROUPS);
   setMemberCapabilities.mockResolvedValue(undefined);
+  updateMemberRole.mockResolvedValue(undefined);
+  removeGroupMembers.mockResolvedValue(undefined);
 });
 
 function open() {
@@ -132,11 +142,31 @@ describe("promoting", () => {
     expect(getMemberCapabilities).toHaveBeenCalledWith("team-1", BOB);
   });
 
+  it("moves the CORE role, not only the mask", async () => {
+    // Writing only the mask made an "Admin" here whom the node still treated
+    // as a member.
+    open();
+    const role = await screen.findByTestId(`role-${BOB}`);
+    fireEvent.change(role, { target: { value: "admin" } });
+    await waitFor(() => expect(updateMemberRole).toHaveBeenCalledWith("team-1", BOB, "Admin"));
+    expect(updateMemberRole.mock.invocationCallOrder[0]).toBeLessThan(
+      setMemberCapabilities.mock.invocationCallOrder[0] ?? Infinity,
+    );
+  });
+
+  it("touches no capability when the node refuses the role", async () => {
+    updateMemberRole.mockRejectedValue(new Error("forbidden"));
+    open();
+    fireEvent.change(await screen.findByTestId(`role-${BOB}`), { target: { value: "admin" } });
+    await waitFor(() => expect(showToast).toHaveBeenCalled());
+    expect(setMemberCapabilities).not.toHaveBeenCalled();
+  });
+
   it("keeps the node's reason AND says who can do it", async () => {
     // A refusal arrives as a bare "forbidden". On its own that tells a user
     // nothing they can act on, so the hint is appended rather than used as a
     // fallback — a fallback is only shown when the node said nothing at all.
-    setMemberCapabilities.mockRejectedValue(new Error("forbidden"));
+    updateMemberRole.mockRejectedValue(new Error("forbidden"));
     open();
     const role = await screen.findByTestId(`role-${BOB}`);
     fireEvent.change(role, { target: { value: "admin" } });
@@ -161,6 +191,76 @@ describe("demoting", () => {
       BOB,
       CAN_JOIN_OPEN_SUBGROUPS,
     );
+  });
+});
+
+describe("demoting a core admin", () => {
+  it("moves the core role back to Member and clears the admin bits", async () => {
+    listGroupMembers.mockResolvedValue([
+      { identity: ALICE, name: "alice", role: "Admin" },
+      { identity: BOB, name: "bob", role: "Admin" },
+    ]);
+    getMemberCapabilities.mockResolvedValue(ADMIN_CAPABILITIES | CAN_JOIN_OPEN_SUBGROUPS);
+    open();
+    fireEvent.change(await screen.findByTestId(`role-${BOB}`), { target: { value: "member" } });
+    await waitFor(() => expect(updateMemberRole).toHaveBeenCalledWith("team-1", BOB, "Member"));
+    await waitFor(() =>
+      expect(setMemberCapabilities).toHaveBeenCalledWith("team-1", BOB, CAN_JOIN_OPEN_SUBGROUPS),
+    );
+  });
+});
+
+describe("removing", () => {
+  it("removes a member by ACCOUNT after confirming", async () => {
+    open();
+    fireEvent.click(await screen.findByLabelText("Remove bob"));
+    expect(removeGroupMembers).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Remove"));
+    await waitFor(() => expect(removeGroupMembers).toHaveBeenCalledWith("team-1", [BOB]));
+  });
+
+  it("never offers to remove yourself or the only admin", async () => {
+    listGroupMembers.mockResolvedValue([
+      { identity: ALICE, name: "alice", role: "Member" },
+      { identity: BOB, name: "bob", role: "Admin" },
+    ]);
+    // ALICE manages members by capability, not by role.
+    getMemberCapabilities.mockImplementation(async (_g: string, id: string) =>
+      id === ALICE ? ADMIN_CAPABILITIES : CAN_JOIN_OPEN_SUBGROUPS,
+    );
+    open();
+    await screen.findByTestId(`member-${BOB}`);
+    // Two admins now (ALICE by mask, BOB by role), so BOB may go…
+    expect(screen.getByLabelText("Remove bob")).toBeTruthy();
+    // …but never ALICE herself.
+    expect(screen.queryByLabelText("Remove alice")).toBeNull();
+  });
+
+  it("protects the only admin", async () => {
+    listGroupMembers.mockResolvedValue([
+      { identity: ALICE, name: "alice", role: "Member" },
+      { identity: BOB, name: "bob", role: "Admin" },
+    ]);
+    getMemberCapabilities.mockImplementation(async (_g: string, id: string) =>
+      id === ALICE ? 8 /* MANAGE_MEMBERS only */ : CAN_JOIN_OPEN_SUBGROUPS,
+    );
+    open();
+    await screen.findByTestId(`member-${BOB}`);
+    expect(screen.queryByLabelText("Remove bob")).toBeNull();
+  });
+});
+
+describe("a member who cannot manage", () => {
+  it("sees the list read-only", async () => {
+    listGroupMembers.mockResolvedValue([
+      { identity: ALICE, name: "alice", role: "Member" },
+      { identity: BOB, name: "bob", role: "Admin" },
+    ]);
+    open();
+    await screen.findByTestId(`member-${BOB}`);
+    expect(screen.queryByTestId(`role-${BOB}`)).toBeNull();
+    expect(screen.getByTestId(`role-badge-${BOB}`).textContent).toBe("Admin");
+    expect(screen.queryByText("Remove")).toBeNull();
   });
 });
 

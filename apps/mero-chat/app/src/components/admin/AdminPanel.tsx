@@ -164,25 +164,29 @@ export default function AdminPanel({
   const groupId = getGroupId();
   const permissions = useCurrentGroupPermissions(groupId);
   const { fetchAll } = admin;
+  // Everyone may open this panel and see who is in the workspace; only an
+  // admin gets the controls and the Details tab.
+  const isAdmin = permissions.isAdmin;
 
   useEffect(() => {
     if (isOpen && groupId) {
-      fetchAll(groupId);
+      fetchAll(groupId, { membersOnly: !isAdmin });
     }
-  }, [fetchAll, groupId, isOpen]);
+  }, [fetchAll, groupId, isOpen, isAdmin]);
 
   const handleRefresh = useCallback(() => {
-    if (groupId) fetchAll(groupId);
-  }, [fetchAll, groupId]);
+    if (groupId) fetchAll(groupId, { membersOnly: !isAdmin });
+  }, [fetchAll, groupId, isAdmin]);
 
-  if (!groupId || permissions.loading || !permissions.isAdmin) {
+  if (!groupId) {
     return null;
   }
 
   const tabs: { id: AdminTab; label: string }[] = [
     { id: "members", label: `Members${admin.members.length ? ` (${admin.members.length})` : ""}` },
-    { id: "settings", label: "Details" },
+    ...(isAdmin ? [{ id: "settings" as const, label: "Details" }] : []),
   ];
+  const shownTab: AdminTab = isAdmin ? activeTab : "members";
 
   const content = (
     <Container>
@@ -193,7 +197,7 @@ export default function AdminPanel({
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
           </TitleIcon>
-          <Title>Workspace Admin</Title>
+          <Title>{isAdmin ? "Workspace Admin" : "Workspace members"}</Title>
         </TitleGroup>
         <CloseButton onClick={() => setIsOpen(false)} aria-label="Close">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -201,6 +205,16 @@ export default function AdminPanel({
           </svg>
         </CloseButton>
       </Header>
+
+      {permissions.error && (
+        <ErrorBanner role="alert">
+          <span>
+            Couldn't check your role in this workspace, so admin controls are
+            hidden: {permissions.error}
+          </span>
+          <DismissButton onClick={permissions.retry}>Retry</DismissButton>
+        </ErrorBanner>
+      )}
 
       {admin.error && (
         <ErrorBanner>
@@ -213,7 +227,7 @@ export default function AdminPanel({
         {tabs.map((tab) => (
           <Tab
             key={tab.id}
-            $active={activeTab === tab.id}
+            $active={shownTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
@@ -225,18 +239,21 @@ export default function AdminPanel({
         <LoadingContainer>Loading...</LoadingContainer>
       ) : (
         <>
-          {activeTab === "members" && (
+          {shownTab === "members" && (
             <MembersTab
               groupId={groupId}
               members={admin.members}
+              canManage={isAdmin}
+              selfIdentity={permissions.memberIdentity}
               actionLoading={admin.actionLoading}
               onRemoveMember={admin.removeMember}
+              onUpdateRole={admin.updateMemberRole}
               onSetCapabilities={admin.setMemberCapabilities}
               onGetCapabilities={admin.getMemberCapabilities}
               onRefresh={handleRefresh}
             />
           )}
-          {activeTab === "settings" && (
+          {shownTab === "settings" && (
             <SettingsTab
               groupId={groupId}
               group={admin.group}

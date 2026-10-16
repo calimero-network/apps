@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
 import { ShieldCheck } from "@calimero-network/mero-icons";
 import { useMemberNames } from "@calimero-apps/names";
+import { MembersPanel } from "@calimero-apps/members";
+import "@calimero-apps/members/members.css";
 import { useApi } from "../api/useApi";
 import { listTeamContexts } from "../api/teamContexts";
 import { useToast } from "../contexts/ToastContext";
@@ -64,7 +66,6 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
   const [selfIdentity, setSelfIdentity] = useState("");
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
-  const [pendingRole, setPendingRole] = useState<string | null>(null);
 
   // Contract-level (merge-enforced) editor roles, project documents only.
   const [contractRoles, setContractRoles] = useState<Record<string, string>>({});
@@ -181,7 +182,9 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
     // The members endpoint only accepts a hex-encoded 32-byte group id; a base58
     // context id (the fallback when no group id is resolved) is rejected with a
     // 400 and would surface as an empty list. Skip the doomed request instead.
-    if (!/^[0-9a-fA-F]{64}$/.test(membersGroupId)) {
+    //
+    // A team's roster is the shared MembersPanel's, which reads it itself.
+    if (type === "team" || !/^[0-9a-fA-F]{64}$/.test(membersGroupId)) {
       setMembers([]);
       setTeeMembers([]);
       setLoadingMembers(false);
@@ -211,10 +214,7 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
       })
       .finally(() => { if (!cancelled) setLoadingMembers(false); });
     return () => { cancelled = true; };
-  }, [membersGroupId, admin]);
-
-  const selfIsAdmin =
-    !!selfIdentity && members.some((m) => m.identity === selfIdentity && m.role === "Admin");
+  }, [type, membersGroupId, admin]);
 
   // ── Team Admin implies document edit ────────────────────────────────────────
   //
@@ -285,35 +285,25 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
     return { changed, failed };
   }
 
-  // Promote (→ Admin) / demote (→ Member). Only namespace (team) members carry
-  // governance roles; only admins may change them.
-  async function changeRole(identity: string, role: "Admin" | "Member") {
-    setPendingRole(identity);
-    try {
-      await admin.updateMemberRole(membersGroupId, identity, { role });
-      setMembers((prev) => prev.map((m) => (m.identity === identity ? { ...m, role } : m)));
-
-      const { changed, failed } = await cascadeDocumentRole(identity, role);
-      const base =
-        role === "Admin" ? "Member promoted to admin." : "Admin demoted to member.";
-      const docs =
-        role === "Admin"
-          ? `Edit access granted on ${changed} document${changed === 1 ? "" : "s"}.`
-          : `Edit access revoked on ${changed} document${changed === 1 ? "" : "s"}.`;
-      if (failed > 0) {
-        // Named explicitly: those documents still have the OLD access.
-        showToast(
-          `${base} ${docs} ${failed} document${failed === 1 ? "" : "s"} could not be updated — open its settings as document admin.`,
-        );
-        return;
-      }
-      showToast(changed > 0 ? `${base} ${docs}` : base, "success");
+  // After the shared panel promoted (→ Admin) or demoted (→ Member) someone:
+  // carry the change onto every document. The role itself has already moved,
+  // so a failure here is reported, not thrown back as "nothing happened".
+  async function afterRoleChange(identity: string, role: "Admin" | "Member") {
+    const { changed, failed } = await cascadeDocumentRole(identity, role);
+    const base =
+      role === "Admin" ? "Member promoted to admin." : "Admin demoted to member.";
+    const docs =
+      role === "Admin"
+        ? `Edit access granted on ${changed} document${changed === 1 ? "" : "s"}.`
+        : `Edit access revoked on ${changed} document${changed === 1 ? "" : "s"}.`;
+    if (failed > 0) {
+      // Named explicitly: those documents still have the OLD access.
+      showToast(
+        `${base} ${docs} ${failed} document${failed === 1 ? "" : "s"} could not be updated — open its settings as document admin.`,
+      );
       return;
-    } catch (err) {
-      showToast(extractErrorMessage(err, "Could not update role."));
-    } finally {
-      setPendingRole(null);
     }
+    showToast(changed > 0 ? `${base} ${docs}` : base, "success");
   }
 
   return (
@@ -396,6 +386,15 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
 
         <div className={styles.divider} />
 
+        {type === "team" ? (
+          <MembersPanel
+            admin={admin}
+            groupId={membersGroupId}
+            namespaceId={namespaceId ?? id}
+            selfAccount={selfIdentity}
+            onRoleChanged={afterRoleChange}
+          />
+        ) : (
         <div className={styles.row}>
           <div className={styles.labelRow}>
             <span className="mp-label">
@@ -425,8 +424,6 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
                 // The team name first: one name per person across every project.
                 const shownName = nameOf(m.identity) || m.name;
                 const initial = (shownName?.[0] ?? m.identity[0] ?? "?").toUpperCase();
-                const canModerate = type === "team" && selfIsAdmin && !isSelf;
-                const busy = pendingRole === m.identity;
                 // Document role. `list_roles` only enumerates members who have
                 // opened the document, so an absent entry means plain viewer —
                 // which is exactly what the contract's own `get_role` answers
@@ -469,24 +466,16 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
                         {!shownName && isSelf && <span className={styles.youTag}>you</span>}
                       </div>
                     </div>
-                    {/* Team role, shown in BOTH scopes. In project settings the
-                        two badges sit side by side, so it is visible that team
-                        governance and document access are different things. */}
+                    {/* Governance role beside the document role: the two
+                        badges sit side by side, so it is visible that team
+                        governance and document access are different things.
+                        Team settings show the shared MembersPanel instead. */}
                     <span
                       className={`${styles.roleBadge} ${isAdmin ? styles.roleAdmin : styles.roleMember}`}
                       title="Team role (namespace governance)"
                     >
                       {isAdmin ? "Admin" : "Member"}
                     </span>
-                    {canModerate && (
-                      <button
-                        className={styles.roleBtn}
-                        disabled={busy}
-                        onClick={() => changeRole(m.identity, isAdmin ? "Member" : "Admin")}
-                      >
-                        {busy ? "…" : isAdmin ? "Demote" : "Promote"}
-                      </button>
-                    )}
                     {/* Document access, for EVERY member — not only those the
                         document has already heard from, who were the only rows
                         that used to get a badge at all. */}
@@ -524,6 +513,7 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );

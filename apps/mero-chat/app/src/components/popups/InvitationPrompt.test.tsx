@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  JOIN_SYNC_WATCHDOG_MS,
   peekInvitation,
   primeInvitationCapture,
   resetInvitationCaptureForTests,
@@ -207,6 +208,41 @@ describe("InvitationPrompt", () => {
     await act(async () => {});
     expect(screen.getByTestId("invite-prompt")).toHaveAttribute("data-stage", "syncing");
     expect(h.enterWorkspace).not.toHaveBeenCalled();
+  });
+
+  // "Continue in background" takes the dialog down while the channels are
+  // still on their way. The read went on, and when it finished, up to a minute
+  // later, the page was reloaded into the workspace wherever the person had
+  // gone meanwhile. Carrying on means staying where you are.
+  it("does not go in later once the person carried on before the channels arrived", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      localStorage.setItem("chat-username", "Bob");
+      h.listSubgroups.mockResolvedValue({ data: [], error: null });
+      openLink();
+      fireEvent.click(await screen.findByTestId("invite-accept"));
+      await waitFor(() =>
+        expect(screen.getByTestId("invite-prompt")).toHaveAttribute("data-stage", "syncing"),
+      );
+      // A sync slow enough to offer carrying on.
+      await act(() => vi.advanceTimersByTimeAsync(JOIN_SYNC_WATCHDOG_MS));
+      fireEvent.click(await screen.findByTestId("invite-continue"));
+      await waitFor(() =>
+        expect(screen.queryByTestId("invite-prompt")).not.toBeInTheDocument(),
+      );
+
+      // The channels land afterwards.
+      h.listSubgroups.mockResolvedValue({
+        data: [{ groupId: "sg-general", alias: "general" }],
+        error: null,
+      });
+      await act(() => vi.advanceTimersByTimeAsync(5_000));
+      expect(h.listSubgroups.mock.calls.length).toBeGreaterThan(1);
+      expect(h.enterWorkspace).not.toHaveBeenCalled();
+      expect(h.enterJoinedWorkspaceForName).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says why a refused invitation did not join, and goes nowhere", async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { HTTPError } from '@calimero-network/mero-js';
 import { folderDocsContext, loadCoreFolders, type FolderReader } from '../coreFolders';
 
 const ROOT = 'root';
@@ -109,6 +110,26 @@ describe('loadCoreFolders', () => {
       return g === ROOT ? [{ groupId: 'a' }, { groupId: 'b' }] : [];
     });
     expect((await loadCoreFolders(admin, ROOT, 'app')).map((f) => f.id)).toEqual(['a', 'b']);
+  });
+
+  // An unreachable node is not core saying "no folders". The walk used to read
+  // it as an empty tree, so an open document's folder vanished, the document
+  // read as deleted and its editor unmounted with the typing not yet sent.
+  const unreachable = () =>
+    new HTTPError(0, 'Network Error', 'http://node/admin-api', new Headers(), '');
+  it.each([
+    ['listSubgroups', 'listing a group'],
+    ['getGroupInfo', 'describing a folder'],
+    ['listGroupContexts', "reading a folder's docs context"],
+    ['getContextsForApplication', 'finding shared folders'],
+  ] as const)('fails instead of returning fewer folders when the node is unreachable: %s (%s)', async (call, _what) => {
+    const admin = reader({
+      children: { [ROOT]: ['a'] },
+      info: { a: { name: 'A' } },
+      contexts: { a: 'ctx-a' },
+    });
+    (admin[call] as ReturnType<typeof vi.fn>).mockRejectedValue(unreachable());
+    await expect(loadCoreFolders(admin, ROOT, 'app')).rejects.toBeInstanceOf(HTTPError);
   });
 });
 

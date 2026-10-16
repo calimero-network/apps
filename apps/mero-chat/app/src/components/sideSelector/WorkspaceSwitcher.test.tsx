@@ -44,6 +44,17 @@ vi.mock("../../utils/session", () => ({
   clearStoredSession: mockClearStoredSession,
 }));
 
+// The real popup creates a namespace on a node; here it only has to be shown
+// and to report a creation.
+vi.mock("../popups/CreateWorkspacePopup", () => ({
+  default: ({ onSuccess, onCancel }: { onSuccess: (id: string) => void; onCancel: () => void }) => (
+    <div data-testid="create-workspace-popup">
+      <button onClick={() => onSuccess("group-new")}>fake-create</button>
+      <button onClick={onCancel}>fake-cancel</button>
+    </div>
+  ),
+}));
+
 describe("WorkspaceSwitcher", () => {
   beforeEach(() => {
     mockListGroups.mockReset();
@@ -101,6 +112,41 @@ describe("WorkspaceSwitcher", () => {
 
     expect(mockSetGroupId).not.toHaveBeenCalled();
     expect(mockClearStoredSession).not.toHaveBeenCalled();
+  });
+
+  describe("New workspace", () => {
+    // CreateWorkspacePopup existed but nothing rendered it: a member already
+    // inside a workspace had no way to create another.
+    it("opens the create popup from the switcher", async () => {
+      render(<WorkspaceSwitcher isCollapsed={false} />);
+      fireEvent.click(await screen.findByText("Current"));
+      fireEvent.click(screen.getByTestId("workspace-switcher-create"));
+      expect(screen.getByTestId("create-workspace-popup")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText("fake-cancel"));
+      expect(screen.queryByTestId("create-workspace-popup")).not.toBeInTheDocument();
+      expect(mockClearStoredSession).not.toHaveBeenCalled();
+    });
+
+    it("drops the old workspace's stored chat once the new one exists", async () => {
+      const location = window.location;
+      // jsdom refuses navigation; capture the assignment instead.
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: { ...location, href: "" },
+      });
+      try {
+        render(<WorkspaceSwitcher isCollapsed={false} />);
+        fireEvent.click(await screen.findByText("Current"));
+        fireEvent.click(screen.getByTestId("workspace-switcher-create"));
+        fireEvent.click(screen.getByText("fake-create"));
+
+        expect(mockClearStoredSession).toHaveBeenCalled();
+        expect(window.location.href).toBe("/");
+      } finally {
+        Object.defineProperty(window, "location", { configurable: true, value: location });
+      }
+    });
   });
 
   describe("TEE indicator", () => {

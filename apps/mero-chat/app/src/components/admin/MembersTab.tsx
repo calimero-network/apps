@@ -4,6 +4,12 @@ import { IdentityAvatar } from "../IdentityAvatar";
 import type { GroupMember, MemberCapabilities } from "../../api/groupApi";
 import ConfirmPopup from "../popups/ConfirmPopup";
 import {
+  canChangeRole,
+  canRemoveMember,
+  countAdmins,
+  type MemberRole,
+} from "@calimero-apps/members";
+import {
   buildGroupCapabilitiesMask,
   readGroupCapabilitiesMask,
   type GroupCapabilityToggles,
@@ -100,6 +106,26 @@ const RemoveButton = styled(SmallButton)`
   }
 `;
 
+const RoleSelect = styled.select`
+  background: color-mix(in srgb, var(--glass-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 10%, transparent);
+  color: var(--glass-ink);
+  font-size: 0.7rem;
+  padding: 0.2rem 0.375rem;
+  border-radius: 5px;
+  cursor: pointer;
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const ReadOnlyNote = styled.div`
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--glass-ink) 45%, transparent);
+  padding: 0 0.625rem 0.5rem;
+`;
+
 const EmptyState = styled.div`
   text-align: center;
   padding: 1.5rem;
@@ -183,8 +209,21 @@ function getMemberDisplayName(member: GroupMember): string {
 interface MembersTabProps {
   groupId: string;
   members: GroupMember[];
+  /**
+   * The signed-in member is an admin. Without it the list is read-only: the
+   * node would refuse every change, and seeing who is in the workspace is
+   * useful without the right to change it.
+   */
+  canManage?: boolean;
+  /** The signed-in member's ACCOUNT, to keep controls off their own row. */
+  selfIdentity?: string;
   actionLoading: boolean;
   onRemoveMember: (groupId: string, identity: string) => Promise<boolean>;
+  onUpdateRole?: (
+    groupId: string,
+    identity: string,
+    role: MemberRole,
+  ) => Promise<boolean>;
   onSetCapabilities: (
     groupId: string,
     identity: string,
@@ -200,8 +239,11 @@ interface MembersTabProps {
 export default function MembersTab({
   groupId,
   members,
+  canManage = true,
+  selfIdentity = "",
   actionLoading,
   onRemoveMember,
+  onUpdateRole,
   onSetCapabilities,
   onGetCapabilities,
   onRefresh,
@@ -247,9 +289,40 @@ export default function MembersTab({
     return <EmptyState>No members found</EmptyState>;
   }
 
+  const adminCount = countAdmins(members);
+  const isSelf = (identity: string) =>
+    !!selfIdentity && identity.toLowerCase() === selfIdentity.toLowerCase();
+
   return (
     <List>
-      {members.map((member) => (
+      {!canManage && (
+        <ReadOnlyNote>Only a workspace admin can change roles or remove people.</ReadOnlyNote>
+      )}
+      {members.map((member) => {
+        const self = isSelf(member.identity);
+        const role: MemberRole = member.role === "Admin" ? "Admin" : "Member";
+        const otherRole: MemberRole = role === "Admin" ? "Member" : "Admin";
+        // Your own role is changed by another admin: stepping down from here
+        // is how the last admin locks a workspace, and the guard below only
+        // counts the admins this list can see.
+        const roleChange = self
+          ? { allowed: false, reason: "Another admin has to change your role." }
+          : canChangeRole({
+              canManage,
+              isSelf: self,
+              currentRole: member.role,
+              nextRole: otherRole,
+              adminCount,
+            });
+        const removal = canRemoveMember({
+          canManage,
+          isSelf: self,
+          role: member.role,
+          adminCount,
+        });
+        const choosable =
+          canManage && !!onUpdateRole && (member.role === "Admin" || member.role === "Member");
+        return (
         <React.Fragment key={member.identity}>
           <MemberRow>
             <MemberInfo>
@@ -259,12 +332,29 @@ export default function MembersTab({
                   {getMemberDisplayName(member)}
                 </Identity>
               </IdentityStack>
-              <RoleBadge $admin={member.role === "Admin"}>
-                {member.role}
-              </RoleBadge>
+              {!choosable && (
+                <RoleBadge $admin={member.role === "Admin"}>
+                  {member.role}
+                </RoleBadge>
+              )}
             </MemberInfo>
             <Actions>
-              {member.role !== "Admin" && (
+              {choosable && (
+                <RoleSelect
+                  aria-label={`Role for ${getMemberDisplayName(member)}`}
+                  value={role}
+                  disabled={actionLoading || !roleChange.allowed}
+                  title={roleChange.allowed ? undefined : roleChange.reason}
+                  onChange={(e) => {
+                    const next = e.target.value as MemberRole;
+                    if (next !== role) void onUpdateRole?.(groupId, member.identity, next);
+                  }}
+                >
+                  <option value="Admin">Admin</option>
+                  <option value="Member">Member</option>
+                </RoleSelect>
+              )}
+              {canManage && member.role !== "Admin" && (
                 <SmallButton
                   onClick={() => openCapabilities(member.identity)}
                   disabled={actionLoading}
@@ -272,7 +362,7 @@ export default function MembersTab({
                   Capabilities
                 </SmallButton>
               )}
-              {member.role !== "Admin" && (
+              {removal.allowed && (
                 <ConfirmPopup
                   title="Remove Member"
                   message={`Remove ${getMemberDisplayName(member)} from the group? This will revoke access to all group contexts (cascade removal).`}
@@ -297,7 +387,7 @@ export default function MembersTab({
             </Actions>
           </MemberRow>
 
-          {member.role !== "Admin" && capEditIdentity === member.identity && (
+          {canManage && member.role !== "Admin" && capEditIdentity === member.identity && (
             <CapabilitiesOverlay>
               <CapLabel>
                 Member permissions for {getMemberDisplayName(member)}
@@ -346,7 +436,8 @@ export default function MembersTab({
             </CapabilitiesOverlay>
           )}
         </React.Fragment>
-      ))}
+        );
+      })}
     </List>
   );
 }

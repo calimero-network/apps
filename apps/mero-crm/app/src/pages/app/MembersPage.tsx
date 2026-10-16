@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
+import {
+  LAST_ADMIN_REASON,
+  RemoveMemberButton,
+  canRemoveMember,
+  countAdmins,
+} from '@calimero-apps/members';
+import '@calimero-apps/members/members.css';
 import { tokens as t } from '../../theme';
 import { truncateKey } from '../../utils/display';
 import { describeError } from '../../utils/errors';
@@ -108,6 +115,11 @@ export default function MembersPage(): React.ReactElement {
     }
   }, []);
 
+  // The last-admin guard counts the roster's own answer. Removing or demoting
+  // the only admin leaves nobody who could appoint one again, so neither is
+  // offered — not even to a Member who holds MANAGE_MEMBERS.
+  const adminCount = countAdmins(Array.from(roles.roles.values(), (role) => ({ role })));
+
   const selfCanInvite = canInvite({
     role: roles.roles.get(selfAccount),
     override: roles.overrides.get(selfAccount),
@@ -213,6 +225,7 @@ export default function MembersPage(): React.ReactElement {
                   isSelf={you}
                   canManage={roles.canManageMembers}
                   busy={busyAccount === account}
+                  lockReason={isAdminRole(role) && adminCount <= 1 ? LAST_ADMIN_REASON : undefined}
                   onChange={(next) => run(account, () => roles.setRole(account, next))}
                 />
               </span>
@@ -242,6 +255,19 @@ export default function MembersPage(): React.ReactElement {
                       onToggle={(next) => run(account, () => roles.setCapabilities(account, next))}
                     />
                   </span>
+                )}
+                {canRemoveMember({
+                  canManage: roles.canManageMembers,
+                  isSelf: you,
+                  role,
+                  adminCount,
+                }).allowed && (
+                  <RemoveMemberButton
+                    label={label}
+                    disabled={busyAccount === account}
+                    prompt={`Remove ${label} from this workspace?`}
+                    onConfirm={() => run(account, () => roles.removeMember(account))}
+                  />
                 )}
               </span>
             </Row>
