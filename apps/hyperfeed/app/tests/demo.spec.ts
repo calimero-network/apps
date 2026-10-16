@@ -24,6 +24,19 @@ function watch(page: Page) {
  * generated spec beside this one (marketing-landing.spec.ts).
  */
 
+
+// These walk the Lanes layout; Brief, the default, has its own tests.
+test.beforeEach(async ({ page }, info) => {
+  if (info.title.startsWith("Brief")) return;
+  await page.addInitScript(() => {
+    try {
+      if (!localStorage.getItem("hyperfeed:view")) localStorage.setItem("hyperfeed:view", "lanes");
+    } catch {
+      // No storage: the page falls back to its default.
+    }
+  });
+});
+
 test("in the demo, a choice is answered in place and the agent delivers it", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -208,4 +221,48 @@ test("Settings opens one section at a time, and an old Controls link lands on it
   );
 
   expect(errors, "an unhandled error escaped to the page").toEqual([]);
+});
+
+test("Brief is the feed's first view: a few ranked decisions, settled on their cards", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/demo");
+  await expect(page.getByRole("button", { name: "Brief", pressed: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "How things stand" })).toContainText(/decisions? for you/);
+  const decisions = page.getByRole("region", { name: "Decisions for you" });
+  await expect(decisions.locator("li.brief-card")).toHaveCount(3);
+  // Your agent's situation leads its card, and the card says why it reached you.
+  const launch = decisions.locator("li.brief-card", { hasText: "Maya needs the board numbers" });
+  await launch.getByRole("button", { name: "Why me?" }).click();
+  await expect(launch).toContainText("Signing anything always needs you");
+  await expect(launch).toContainText(/About: .*Vendor NDA/);
+  await launch.getByRole("button", { name: "Approve" }).click();
+  // Signed: the card stays while the rest of the chain still needs you, and moves on to it.
+  await expect(launch).not.toContainText("Vendor NDA", { timeout: 15_000 });
+  expect(errors, "an unhandled error escaped to the page").toEqual([]);
+});
+
+test("Brief: you stop a proposal that would go ahead by itself", async ({ page }) => {
+  await page.goto("/demo");
+  const jordan = page.locator("li.brief-card", { hasText: "Reply to Jordan" });
+  const going = jordan.getByRole("group", { name: "Goes ahead by itself" });
+  await expect(going).toContainText("unless you stop it");
+  await going.getByRole("button", { name: "Stop it" }).click();
+  await expect(going).toHaveCount(0);
+  // It still waits for you, with its draft.
+  await expect(jordan.getByRole("button", { name: /Approve/ })).toBeVisible();
+});
+
+test("Brief: what was filtered out opens, and tuning it becomes a rule", async ({ page }) => {
+  await page.goto("/demo");
+  const filtered = page.getByRole("region", { name: "Filtered out" });
+  const general = filtered.locator("li", { hasText: "updates in #general" }).first();
+  await general.getByRole("button", { name: "Show me" }).click();
+  await expect(general).toContainText("Lunch order closes at 12");
+  await general.getByRole("button", { name: "Less like this" }).click();
+  await expect(general).toContainText("You'll get fewer like this");
+  // In the app, not a reload: the demo lives in this tab.
+  await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: /^Rules/ }).click();
+  await expect(page.getByText("Record fewer updates from #general in Chat")).toBeVisible();
 });

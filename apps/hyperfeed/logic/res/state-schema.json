@@ -525,6 +525,42 @@
         }
       ]
     },
+    "Autorun": {
+      "kind": "record",
+      "doc": "One proposal's default, kept by the action's id. The time is last-writer-\nwins by when it was set; stopping and firing only ever turn on, and a stop\noutranks a fire, so a merge never makes a stopped default go ahead.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "set_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "stopped_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "fired_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Checkpoint": {
       "kind": "record",
       "doc": "The latest checkpoint on one chain, kept by chain id. A new one replaces\nit whole: last writer wins.",
@@ -1199,6 +1235,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "The call that sends each draft for you to send, by the action's id."
+        },
+        {
+          "name": "situations",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Situation"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Each task told as one card, as your agent last wrote it, by chain id.\nSee [`brief`]."
+        },
+        {
+          "name": "autoruns",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Autorun"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Proposals that go ahead at a set time unless you stop them, by the\naction's id. See [`brief`]."
         }
       ]
     },
@@ -2031,6 +2095,72 @@
             "kind": "string"
           },
           "doc": "`{\"method\": ..., \"args\": {...}}`, as a lens's `reply_call` is."
+        }
+      ]
+    },
+    "Situation": {
+      "kind": "record",
+      "doc": "One chain's situation, kept by chain id. A new one replaces it whole: last\nwriter wins.",
+      "fields": [
+        {
+          "name": "headline",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "recommend",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "score",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "due_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "sources",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "apps",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
         }
       ]
     },

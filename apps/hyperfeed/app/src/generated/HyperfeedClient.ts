@@ -396,6 +396,42 @@ export interface Attachments {
 }
 
 /**
+ * One proposal's default, kept by the action's id. The time is last-writer-
+ * wins by when it was set; stopping and firing only ever turn on, and a stop
+ * outranks a fire, so a merge never makes a stopped default go ahead.
+ */
+export interface Autorun {
+  chain: string;
+  at: number;
+  set_at: number;
+  stopped_at: number;
+  fired_at: number;
+}
+
+/**
+ * A proposal's default, as [`crate::Hyperfeed::autoruns`] returns it.
+ */
+export interface AutorunView {
+  /**
+   * The proposal's action id.
+   */
+  id: string;
+  chain: string;
+  /**
+   * When it goes ahead (ms).
+   */
+  at: number;
+  set_at: number;
+  /**
+   * One of [`AUTORUN_WAITING`], [`AUTORUN_STOPPED`], [`AUTORUN_FIRED`],
+   * [`AUTORUN_SETTLED`].
+   */
+  status: string;
+  stopped_at: number;
+  fired_at: number;
+}
+
+/**
  * The latest checkpoint on one chain, kept by chain id. A new one replaces
  * it whole: last writer wins.
  */
@@ -482,6 +518,11 @@ export interface Event_ArchiveChanged {
   count: number;
 }
 
+export interface Event_AutorunChanged {
+  id: string;
+  status: string;
+}
+
 export interface Event_ChainLeaseChanged {
   chain: string;
 }
@@ -529,6 +570,10 @@ export interface Event_NotificationsSeen {
 
 export interface Event_PrChanged {
   key: string;
+}
+
+export interface Event_SituationChanged {
+  chain: string;
 }
 
 export interface Event_StopRequested {
@@ -881,6 +926,16 @@ export interface Hyperfeed {
    * The call that sends each draft for you to send, by the action's id.
    */
   sends: Record<string, SendCall>;
+  /**
+   * Each task told as one card, as your agent last wrote it, by chain id.
+   * See [`brief`].
+   */
+  situations: Record<string, Situation>;
+  /**
+   * Proposals that go ahead at a set time unless you stop them, by the
+   * action's id. See [`brief`].
+   */
+  autoruns: Record<string, Autorun>;
 }
 
 /**
@@ -1596,6 +1651,84 @@ export interface SettingsView {
 }
 
 /**
+ * One chain's situation, kept by chain id. A new one replaces it whole: last
+ * writer wins.
+ */
+export interface Situation {
+  headline: string;
+  summary: string;
+  recommend: string;
+  reason: string;
+  score: number;
+  due_at: number;
+  sources: number;
+  apps: number;
+  author: string;
+  updated_at: number;
+}
+
+/**
+ * What the agent writes: [`crate::Hyperfeed::set_situation`]'s `input`.
+ */
+export interface SituationInput {
+  /**
+   * The card's headline, as you would say it: "Launch date: the team
+   * settled on Thursday, and your calendar clashes".
+   */
+  headline: string;
+  /**
+   * What is going on, in a few sentences.
+   */
+  summary: string;
+  /**
+   * What your agent recommends you do; may be empty.
+   */
+  recommend: string;
+  /**
+   * Why it ranks where it does; may be empty.
+   */
+  reason: string;
+  /**
+   * How pressing your agent judges it, 0 (whenever) to 100 (now).
+   */
+  score: number;
+  /**
+   * When it is due (ms), or 0.
+   */
+  due_at: number;
+  /**
+   * How many things it read to write this, and in how many apps: "from 7
+   * things in 3 apps". 0 when it does not say.
+   */
+  sources: number;
+  apps: number;
+  /**
+   * Who writes it: "mero-bot@studio".
+   */
+  author: string;
+}
+
+/**
+ * A chain's situation, as [`crate::Hyperfeed::situations`] returns it.
+ */
+export interface SituationView {
+  chain: string;
+  headline: string;
+  summary: string;
+  recommend: string;
+  reason: string;
+  score: number;
+  due_at: number;
+  sources: number;
+  apps: number;
+  author: string;
+  /**
+   * When it was written (ms).
+   */
+  updated_at: number;
+}
+
+/**
  * One step in a row's history: a status, who said what about it, and when.
  */
 export interface Step {
@@ -1835,6 +1968,8 @@ export interface Work {
 
 
 
+
+
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }
   | { name: "ActionRecorded"; payload: Event_ActionRecorded }
@@ -1852,6 +1987,13 @@ export type AbiEvent =
      */
     name: "ArchiveChanged";
     payload: Event_ArchiveChanged;
+  }
+  | {
+    /**
+     * A proposal's default was set, stopped or went ahead: re-read `autoruns`.
+     */
+    name: "AutorunChanged";
+    payload: Event_AutorunChanged;
   }
   | {
     /**
@@ -1921,6 +2063,13 @@ export type AbiEvent =
     name: "PushChanged";
   }
   | { name: "SettingsChanged" }
+  | {
+    /**
+     * Your agent wrote or cleared how a task reads as one card: re-read `situations`.
+     */
+    name: "SituationChanged";
+    payload: Event_SituationChanged;
+  }
   | {
     /**
      * You asked your agent to stop working on message `id`: it ends the turn
@@ -2226,6 +2375,18 @@ export class HyperfeedClient {
   }
 
   /**
+   * autoruns
+   *
+   * Every proposal's default, soonest first.
+   *
+   * @intent read_only
+   */
+  public async autoruns(): Promise<AutorunView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'autoruns', argsJson: {} });
+    return response as AutorunView[];
+  }
+
+  /**
    * cancel_watch
    *
    * Cancel a watch still watching, with an optional note why. A watch that
@@ -2316,6 +2477,18 @@ export class HyperfeedClient {
   public async clearMemos(): Promise<number> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'clear_memos', argsJson: {} });
     return response as number;
+  }
+
+  /**
+   * clear_situation
+   *
+   * Take a chain's situation off: the brief shows its rows again.
+   *
+   * @intent mutating
+   */
+  public async clearSituation(params: { chain: string }): Promise<boolean> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'clear_situation', argsJson: params });
+    return response as boolean;
   }
 
   /**
@@ -2433,6 +2606,21 @@ export class HyperfeedClient {
   public async finishWatch(params: { id: string; outcome: string; note: string }): Promise<WatchView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'finish_watch', argsJson: params });
     return response as WatchView;
+  }
+
+  /**
+   * fire_autorun
+   *
+   * Your agent's runtime fires a default once its time came: the proposal
+   * is approved, with its draft as the answer, and your agent carries it out
+   * as any approval. Every check that let it be set is made again; if one
+   * fails now, it is refused and the proposal waits for you.
+   *
+   * @intent mutating
+   */
+  public async fireAutorun(params: { id: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'fire_autorun', argsJson: params });
+    return response as FeedItem;
   }
 
   /**
@@ -2840,6 +3028,21 @@ export class HyperfeedClient {
   }
 
   /**
+   * schedule_autorun
+   *
+   * Your agent sets a proposal to go ahead at `at` (ms) unless you stop it.
+   * Allowed only where nothing would be lost by it (see
+   * [`Self::autorun_answer`]), up to [`MAX_AUTORUN_AHEAD_MS`] ahead. Setting
+   * it again moves the time; once you stopped it, it stays stopped.
+   *
+   * @intent mutating
+   */
+  public async scheduleAutorun(params: { id: string; at: number }): Promise<AutorunView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'schedule_autorun', argsJson: params });
+    return response as AutorunView;
+  }
+
+  /**
    * set_access
    *
    * What `agent` (its name, as it reports in) may reach on its computer
@@ -2944,6 +3147,21 @@ export class HyperfeedClient {
   }
 
   /**
+   * set_situation
+   *
+   * Your agent tells the task in `chain` as one card: a headline, what is
+   * going on, what it recommends, why it ranks where it does, and when it
+   * is due. It replaces the chain's last one. At most [`MAX_SITUATIONS`]
+   * are kept; one more drops the one written longest ago.
+   *
+   * @intent mutating
+   */
+  public async setSituation(params: { chain: string; input: SituationInput }): Promise<SituationView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_situation', argsJson: params });
+    return response as SituationView;
+  }
+
+  /**
    * settings
    *
    * Your rules: the pause switch, every app you set a policy for, every
@@ -2955,6 +3173,18 @@ export class HyperfeedClient {
   public async settings(): Promise<SettingsView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'settings', argsJson: {} });
     return response as SettingsView;
+  }
+
+  /**
+   * situations
+   *
+   * Every task your agent told as one card, most recently written first.
+   *
+   * @intent read_only
+   */
+  public async situations(): Promise<SituationView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'situations', argsJson: {} });
+    return response as SituationView[];
   }
 
   /**
@@ -2988,6 +3218,19 @@ export class HyperfeedClient {
   public async stop(params: { id: string }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'stop', argsJson: params });
     return response as FeedItem;
+  }
+
+  /**
+   * stop_autorun
+   *
+   * You stop a proposal's default: it waits for you as any proposal does,
+   * and never goes ahead on its own again.
+   *
+   * @intent mutating
+   */
+  public async stopAutorun(params: { id: string }): Promise<AutorunView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'stop_autorun', argsJson: params });
+    return response as AutorunView;
   }
 
   /**

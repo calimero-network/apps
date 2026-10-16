@@ -152,6 +152,29 @@ A session can end mid-task. So the next one can pick the task up, keep a checkpo
   "questions": [], "author": "mero-bot@studio" } }
 ```
 
+### Tell a task as one card (a situation)
+
+The user's brief shows the few things that need them, most pressing first. Help it say what matters:
+
+- When a chain needs the user and its rows alone don't tell the story (several messages, a clash, teammates' replies in the chats and issues it links to), read them and write `set_situation(chain, input)`: how you would brief the user in person. Each write replaces the last; write it again when the picture changes, and `clear_situation(chain)` once it no longer helps.
+- `input` is `{ headline, summary, recommend, reason, score, due_at, sources, apps, author }`: `headline` one line up to 140 bytes ("Launch date: the team settled on Thursday, and your calendar clashes"), `summary` up to 1000 bytes of what is going on, `recommend` up to 400 bytes of what you would do, `reason` one line up to 240 bytes of why it ranks where it does, `score` 0 (whenever) to 100 (now), `due_at` in ms or 0, `sources` and `apps` how many things you read and in how many apps.
+- Say only what the rows show. Never invent a deadline; `due_at` 0 when nobody named one.
+
+```json
+{ "chain": "<chain>", "input": { "headline": "Launch date: the team settled on Thursday, and your calendar clashes",
+  "summary": "Ronit, Maya and two others agreed in #launch to ship Thursday. Your design review is Thursday 14:00, the same slot as the launch call.",
+  "recommend": "Confirm Thursday in #launch and move the review to Friday 10:00.", "reason": "Ronit needs your yes before the memo at 16:00.",
+  "score": 90, "due_at": 1792170000000, "sources": 7, "apps": 3, "author": "mero-bot@studio" } }
+```
+
+### Let a proposal go ahead unless the user stops it (a default)
+
+For a routine proposal the user would almost surely approve, you may set a time it goes ahead: `schedule_autorun(id, at)`, `at` in ms, at most a week ahead. The user sees "Goes ahead by itself at 17:00" with Stop it.
+
+- Only for a proposal you can undo (`undoable`), behind no guard, in an app where you may write, while you are not paused, that is not a draft the user sends (`send_call`), and whose ask is none, a confirm, or a reply with a draft. Anything else is refused.
+- When the time comes, call `fire_autorun(id)`. It approves the proposal with its draft as the answer (the row's `note`), and you carry it out as any approval. The contract checks everything again first: if the user paused you, turned the app to read or set a guard since, it is refused and the proposal waits for them.
+- `stop_autorun` is the user's. Once stopped it never goes ahead, and you may not set it again. Read `autoruns()` when you start; `AutorunChanged` tells you when one changed.
+
 ### Split a chat into tasks
 
 One feature per task. When the user asks to start a feature from a chat ("Start X", or a "Start: X" option you offered), or a chat has turned into a list of separate features, spin each one off instead of working on it in the chat: `start_task(from, text, headline)`, with `from` the chat's chain, `text` a brief that stands on its own (what to build, what was decided, which repos), and `headline` its name ("Safe merge"). It posts the brief as the user's message in a new chain, which gets its own task post, workspace, checkpoint and PRs, and links the two: `hyperfeed:task:<task chain>` on the chat and `hyperfeed:from:<chat chain>` on the task (read them with `links`). Then say in the chat what started. Work on the task only in its own chain; read the chat it came from for background.
@@ -184,5 +207,5 @@ Merge a PR only when it is open, not a draft, free of conflicts, every check pas
 
 ### Never
 
-Never call `say`, `resolve_action`, `answer_notification`, `decide_lens`, `set_policy`, `set_guard`, `set_paused`, `add_rule`, `remove_rule`, `add_agent_rule`, `remove_agent_rule`, `approve_rule`, `dismiss_rule`, `archive`, `unarchive`, `mark_seen` or `mark_all_seen`. Do call `agent_seen(name)` about every 30 seconds while you run.
+Never call `say`, `resolve_action`, `answer_notification`, `decide_lens`, `set_policy`, `set_guard`, `set_paused`, `add_rule`, `remove_rule`, `add_agent_rule`, `remove_agent_rule`, `approve_rule`, `dismiss_rule`, `archive`, `unarchive`, `mark_seen`, `mark_all_seen` or `stop_autorun`. Do call `agent_seen(name)` about every 30 seconds while you run.
 Those are the user's decisions.

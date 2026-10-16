@@ -874,6 +874,93 @@
         }
       ]
     },
+    "Autorun": {
+      "kind": "record",
+      "doc": "One proposal's default, kept by the action's id. The time is last-writer-\nwins by when it was set; stopping and firing only ever turn on, and a stop\noutranks a fire, so a merge never makes a stopped default go ahead.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "set_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "stopped_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "fired_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AutorunView": {
+      "kind": "record",
+      "doc": "A proposal's default, as [`crate::Hyperfeed::autoruns`] returns it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The proposal's action id."
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When it goes ahead (ms)."
+        },
+        {
+          "name": "set_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`AUTORUN_WAITING`], [`AUTORUN_STOPPED`], [`AUTORUN_FIRED`],\n[`AUTORUN_SETTLED`]."
+        },
+        {
+          "name": "stopped_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "fired_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Checkpoint": {
       "kind": "record",
       "doc": "The latest checkpoint on one chain, kept by chain id. A new one replaces\nit whole: last writer wins.",
@@ -1142,6 +1229,23 @@
         }
       ]
     },
+    "Event_AutorunChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_ChainLeaseChanged": {
       "kind": "record",
       "fields": [
@@ -1287,6 +1391,17 @@
       "fields": [
         {
           "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_SituationChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "chain",
           "type": {
             "kind": "string"
           }
@@ -2339,6 +2454,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "The call that sends each draft for you to send, by the action's id."
+        },
+        {
+          "name": "situations",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Situation"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Each task told as one card, as your agent last wrote it, by chain id.\nSee [`brief`]."
+        },
+        {
+          "name": "autoruns",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Autorun"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Proposals that go ahead at a set time unless you stop them, by the\naction's id. See [`brief`]."
         }
       ]
     },
@@ -4228,6 +4371,213 @@
         }
       ]
     },
+    "Situation": {
+      "kind": "record",
+      "doc": "One chain's situation, kept by chain id. A new one replaces it whole: last\nwriter wins.",
+      "fields": [
+        {
+          "name": "headline",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "recommend",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "score",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "due_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "sources",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "apps",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "SituationInput": {
+      "kind": "record",
+      "doc": "What the agent writes: [`crate::Hyperfeed::set_situation`]'s `input`.",
+      "fields": [
+        {
+          "name": "headline",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The card's headline, as you would say it: \"Launch date: the team\nsettled on Thursday, and your calendar clashes\"."
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What is going on, in a few sentences."
+        },
+        {
+          "name": "recommend",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What your agent recommends you do; may be empty."
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Why it ranks where it does; may be empty."
+        },
+        {
+          "name": "score",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How pressing your agent judges it, 0 (whenever) to 100 (now)."
+        },
+        {
+          "name": "due_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When it is due (ms), or 0."
+        },
+        {
+          "name": "sources",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How many things it read to write this, and in how many apps: \"from 7\nthings in 3 apps\". 0 when it does not say."
+        },
+        {
+          "name": "apps",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Who writes it: \"mero-bot@studio\"."
+        }
+      ]
+    },
+    "SituationView": {
+      "kind": "record",
+      "doc": "A chain's situation, as [`crate::Hyperfeed::situations`] returns it.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "headline",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "recommend",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "score",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "due_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "sources",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "apps",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When it was written (ms)."
+        }
+      ]
+    },
     "Step": {
       "kind": "record",
       "doc": "One step in a row's history: a status, who said what about it, and when.",
@@ -5105,6 +5455,18 @@
       "intent": "mutating"
     },
     {
+      "name": "autoruns",
+      "doc": "Every proposal's default, soonest first.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "AutorunView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "cancel_watch",
       "doc": "Cancel a watch still watching, with an optional note why. A watch that\nalready fired cannot be called back.",
       "params": [
@@ -5254,6 +5616,22 @@
       "params": [],
       "returns": {
         "kind": "u32"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "clear_situation",
+      "doc": "Take a chain's situation off: the brief shows its rows again.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
       },
       "intent": "mutating"
     },
@@ -5469,6 +5847,22 @@
       ],
       "returns": {
         "$ref": "WatchView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "fire_autorun",
+      "doc": "Your agent's runtime fires a default once its time came: the proposal\nis approved, with its draft as the answer, and your agent carries it out\nas any approval. Every check that let it be set is made again; if one\nfails now, it is refused and the proposal waits for you.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
       },
       "intent": "mutating"
     },
@@ -6066,6 +6460,28 @@
       "intent": "mutating"
     },
     {
+      "name": "schedule_autorun",
+      "doc": "Your agent sets a proposal to go ahead at `at` (ms) unless you stop it.\nAllowed only where nothing would be lost by it (see\n[`Self::autorun_answer`]), up to [`MAX_AUTORUN_AHEAD_MS`] ahead. Setting\nit again moves the time; once you stopped it, it stays stopped.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "AutorunView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "set_access",
       "doc": "What `agent` (its name, as it reports in) may reach on its computer\nbesides your Calimero apps: `folders` (each with or without writes),\na `shell`, and the `web`. It replaces what was set before. Your\nagent's runtime refuses this method to the agent, so only you widen\nor narrow it.",
       "params": [
@@ -6260,11 +6676,45 @@
       "intent": "mutating"
     },
     {
+      "name": "set_situation",
+      "doc": "Your agent tells the task in `chain` as one card: a headline, what is\ngoing on, what it recommends, why it ranks where it does, and when it\nis due. It replaces the chain's last one. At most [`MAX_SITUATIONS`]\nare kept; one more drops the one written longest ago.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "input",
+          "type": {
+            "$ref": "SituationInput"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "SituationView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "settings",
       "doc": "Your rules: the pause switch, every app you set a policy for, every\nguard (defaults included), your standing rules, and the rules your\nagent suggested that wait for you.",
       "params": [],
       "returns": {
         "$ref": "SettingsView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "situations",
+      "doc": "Every task your agent told as one card, most recently written first.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SituationView"
+        }
       },
       "intent": "read_only"
     },
@@ -6310,6 +6760,22 @@
       ],
       "returns": {
         "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "stop_autorun",
+      "doc": "You stop a proposal's default: it waits for you as any proposal does,\nand never goes ahead on its own again.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "AutorunView"
       },
       "intent": "mutating"
     },
@@ -6424,6 +6890,13 @@
       "doc": "Chains were put away or brought back: re-read the feed."
     },
     {
+      "name": "AutorunChanged",
+      "payload": {
+        "$ref": "Event_AutorunChanged"
+      },
+      "doc": "A proposal's default was set, stopped or went ahead: re-read `autoruns`."
+    },
+    {
       "name": "ChainLeaseChanged",
       "payload": {
         "$ref": "Event_ChainLeaseChanged"
@@ -6506,6 +6979,13 @@
     },
     {
       "name": "SettingsChanged"
+    },
+    {
+      "name": "SituationChanged",
+      "payload": {
+        "$ref": "Event_SituationChanged"
+      },
+      "doc": "Your agent wrote or cleared how a task reads as one card: re-read `situations`."
     },
     {
       "name": "StopRequested",

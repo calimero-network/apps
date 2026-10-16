@@ -2169,3 +2169,246 @@ steps:
     statements:
       - "is_set({{intruder_push_error}})"
       - "is_set({{intruder_push_key_error}})"
+
+  # ── Situations: a task told as one card ─────────────────────────────────
+  - name: The agent tells the mention's chain as one card
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_situation
+    args:
+      chain: "{{mention_id}}"
+      input: { headline: "Maya needs the numbers before 2", summary: "Maya asked in #launch for last week's numbers in the board deck.", recommend: "Take the Thursday slot.", reason: "The deck review is at 2pm.", score: 80, due_at: 0, sources: 3, apps: 2, author: "mero-bot@studio" }
+    outputs:
+      brief_situation: result
+
+  - name: The owner reads the situations
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: situations
+    args: {}
+    outputs:
+      brief_situation_first: result.output.0
+
+  - name: node-2 cannot write a situation
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: set_situation
+    args:
+      chain: "{{mention_id}}"
+      input: { headline: "x", summary: "x", recommend: "", reason: "", score: 0, due_at: 0, sources: 0, apps: 0, author: "x" }
+    expected_failure: true
+    outputs:
+      intruder_situation_error: error
+
+  - name: The agent takes the situation off
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: clear_situation
+    args: { chain: "{{mention_id}}" }
+    outputs:
+      brief_cleared: result
+
+  - name: Assert the situation
+    type: json_assert
+    statements:
+      - 'json_subset({{brief_situation}}, {"output": {"chain": "{{mention_id}}", "headline": "Maya needs the numbers before 2", "score": 80}})'
+      - 'json_subset({{brief_situation_first}}, {"chain": "{{mention_id}}", "sources": 3, "apps": 2})'
+      - 'json_subset({{brief_cleared}}, {"output": true})'
+
+  - name: Assert the refused situation
+    type: assert
+    statements:
+      - "is_set({{intruder_situation_error}})"
+
+  # ── Defaults: a proposal that goes ahead unless you stop it ─────────────
+  # The owner paused the agent near the top, and a paused agent's proposals
+  # never go ahead on their own: resume first.
+  - name: The owner resumes the agent
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_paused
+    args: { paused: false }
+
+  - name: The agent proposes a reply it could undo, with a draft
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_action
+    args:
+      input:
+        app: "chat"
+        source_context: "ctx-dm"
+        source_label: "DM · Jordan"
+        method: "send_message"
+        category: ""
+        writes: true
+        undoable: true
+        title: "Reply to Jordan with the terms"
+        body: ""
+        why: "Jordan asked for the terms."
+        outcome: "proposed"
+        intent_hash: ""
+        executor: ""
+        note: ""
+        chain: ""
+        ask: { kind: "reply", prompt: "Send to Jordan", options: [], draft: "Terms attached: 12 months, net 30." }
+    outputs:
+      default_id: result.output.id
+      default_chain: result.output.chain
+
+  - name: The agent proposes a second one, which the owner will stop
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_action
+    args:
+      input:
+        app: "chat"
+        source_context: "ctx-dm"
+        source_label: "DM · Priya"
+        method: "send_message"
+        category: ""
+        writes: true
+        undoable: true
+        title: "Reply to Priya about the budget"
+        body: ""
+        why: "Priya asked."
+        outcome: "proposed"
+        intent_hash: ""
+        executor: ""
+        note: ""
+        chain: ""
+        ask: { kind: "reply", prompt: "Send to Priya", options: [], draft: "Budget is fine." }
+    outputs:
+      stopped_default_id: result.output.id
+
+  # A merobox argument cannot say "now plus 15 s"; a lease's expiry is
+  # exactly that, read from the node's own clock.
+  - name: A lease on the reply's chain gives a time 15 s ahead
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: claim_chain
+    args: { chain: "{{default_chain}}", session: "clock", ttl_ms: 15000, agent: "mero-bot@studio" }
+    outputs:
+      default_at: result.output.expires_at
+
+  - name: The agent sets the reply to go ahead then
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: schedule_autorun
+    args: { id: "{{default_id}}", at: "{{default_at}}" }
+    outputs:
+      default_scheduled: result
+
+  - name: The agent sets the second one too
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: schedule_autorun
+    args: { id: "{{stopped_default_id}}", at: "{{default_at}}" }
+    outputs:
+      second_scheduled: result
+
+  - name: node-2 cannot stop a default
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: stop_autorun
+    args: { id: "{{stopped_default_id}}" }
+    expected_failure: true
+    outputs:
+      intruder_stop_error: error
+
+  - name: The owner stops the second one
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: stop_autorun
+    args: { id: "{{stopped_default_id}}" }
+    outputs:
+      default_stopped: result
+
+  - name: The reply does not go ahead before its time
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: fire_autorun
+    args: { id: "{{default_id}}" }
+    expected_failure: true
+    outputs:
+      early_fire_error: error
+
+  - name: Let the time come
+    type: wait
+    seconds: 18
+
+  - name: The runtime fires the reply
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: fire_autorun
+    args: { id: "{{default_id}}" }
+    outputs:
+      default_fired: result
+
+  - name: The stopped one never goes ahead
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: fire_autorun
+    args: { id: "{{stopped_default_id}}" }
+    expected_failure: true
+    outputs:
+      stopped_fire_error: error
+
+  - name: Let the defaults reach node-2
+    type: wait
+    seconds: 6
+
+  - name: node-2 reads the defaults
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: autoruns
+    args: {}
+    outputs:
+      autoruns_on_2: result
+
+  - name: Assert the defaults
+    type: json_assert
+    statements:
+      - 'json_subset({{default_scheduled}}, {"output": {"id": "{{default_id}}", "status": "waiting"}})'
+      - 'json_subset({{second_scheduled}}, {"output": {"status": "waiting"}})'
+      - 'json_subset({{default_stopped}}, {"output": {"id": "{{stopped_default_id}}", "status": "stopped"}})'
+      - 'json_subset({{default_fired}}, {"output": {"id": "{{default_id}}", "status": "approved", "note": "Terms attached: 12 months, net 30."}})'
+
+  - name: Assert the refused defaults
+    type: assert
+    statements:
+      - "is_set({{intruder_stop_error}})"
+      - "is_set({{early_fire_error}})"
+      - "is_set({{stopped_fire_error}})"
+      - "is_set({{autoruns_on_2}})"

@@ -3,6 +3,7 @@ import type {
   ActionInput,
   ActionSetView,
   Attachment,
+  AutorunView,
   CheckpointView,
   FeedItem,
   FeedPage,
@@ -18,6 +19,7 @@ import type {
   RuleProposalView,
   RuleView,
   AgentRuleView,
+  SituationView,
   SettingsView,
   WatchView,
   Folder,
@@ -65,6 +67,12 @@ export interface FeedBackend {
   chain(chain: string): Promise<FeedItem[]>;
   /** Where the task in a chain stands, as your agent last wrote it; null when it wrote none, or the feed predates checkpoints. */
   checkpoint?(chain: string): Promise<CheckpointView | null>;
+  /** Each task your agent told as one card, newest first; [] when the feed predates situations. */
+  situations?(): Promise<SituationView[]>;
+  /** Proposals that go ahead at a set time unless you stop them, soonest first; [] when the feed predates them. */
+  autoruns?(): Promise<AutorunView[]>;
+  /** Stop a proposal's default: it waits for you as any proposal does. */
+  stopAutorun?(id: string): Promise<AutorunView>;
   /** The watches in a chain ("when X, do Y"), oldest first; [] when the feed predates watches. */
   watches?(chain: string): Promise<WatchView[]>;
   /** Cancel a watch that has not fired yet. */
@@ -189,6 +197,17 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
           throw e;
         },
       ),
+    situations: () =>
+      client.situations().catch((e: unknown) => {
+        if (lacksMethod(e, "situations")) return [];
+        throw e;
+      }),
+    autoruns: () =>
+      client.autoruns().catch((e: unknown) => {
+        if (lacksMethod(e, "autoruns")) return [];
+        throw e;
+      }),
+    stopAutorun: (id) => client.stopAutorun({ id }),
     watches: (chain) =>
       client.watches({ chain }).catch((e: unknown) => {
         if (lacksMethod(e, "watches")) return [];
