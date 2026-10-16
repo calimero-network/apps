@@ -43,16 +43,9 @@ describe("appLink", () => {
 });
 
 describe("appHome", () => {
-  it("opens an app's front page signed in, and nothing for an app it does not know", () => {
-    const url = new URL(appHome("sheets", session)!);
-    expect(url.origin + url.pathname).toBe("https://mero-sheets.vercel.app/");
-    expect(Object.fromEntries(new URLSearchParams(url.hash.slice(1)))).toEqual({
-      access_token: "acc",
-      refresh_token: "ref",
-      node_url: "http://localhost:2428",
-    });
-    expect(appHome("sheets", null)).toBe("https://mero-sheets.vercel.app/");
-    expect(appHome("evil", session)).toBeNull();
+  it("opens an app's front page with no session in it, and nothing for an app it does not know", () => {
+    expect(appHome("sheets")).toBe("https://mero-sheets.vercel.app/");
+    expect(appHome("evil")).toBeNull();
   });
 });
 

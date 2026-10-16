@@ -21,10 +21,10 @@ describe("launcherGroups", () => {
 describe("AppLauncher", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("opens an installed app in a new tab, signed in, and sends the rest to install", () => {
+  it("opens an installed app in a new tab and sends the rest to install", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     const onInstall = vi.fn();
-    const href = vi.fn((app: string) => `https://${app}.example/#access_token=t`);
+    const href = vi.fn((app: string) => `https://${app}.example/`);
     render(<AppLauncher installed={["chat"]} href={href} onInstall={onInstall} />);
 
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -34,7 +34,7 @@ describe("AppLauncher", () => {
 
     fireEvent.click(within(panel).getByRole("button", { name: /Chat/ }));
     expect(href).toHaveBeenCalledWith("chat");
-    expect(open).toHaveBeenCalledWith("https://chat.example/#access_token=t", "_blank", "noopener,noreferrer");
+    expect(open).toHaveBeenCalledWith("https://chat.example/", "_blank", "noopener,noreferrer");
     expect(screen.queryByRole("dialog")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Apps" }));

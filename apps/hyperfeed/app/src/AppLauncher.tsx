@@ -37,8 +37,11 @@ export function launcherGroups(installed: string[] | null): { yours: string[]; m
 
 /**
  * The apps grid in the top bar: every app Hyperfeed supports, one tile each,
- * as a launcher. A tile for an app on your node opens it in a new tab, signed
- * in; one that isn't installed yet takes you to Settings → Controls to install it.
+ * as a launcher. A tile for an app on your node opens it in a new tab, where
+ * it signs in to your node with a key of its own: Hyperfeed never hands its
+ * session over, since the node lets a refresh token be used once and a shared
+ * one logs both apps out. One that isn't installed yet takes you to
+ * Settings → Controls to install it.
  */
 export function AppLauncher({
   installed,
@@ -47,7 +50,7 @@ export function AppLauncher({
 }: {
   /** The apps installed on your node, by key; null in the demo, or until the node says. */
   installed: string[] | null;
-  /** Where an app opens, signed in: read at the click, so the tokens are fresh. */
+  /** Where an app opens. */
   href: (app: string) => string | null;
   /** Go where an app not on your node is installed. */
   onInstall?: () => void;

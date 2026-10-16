@@ -135,7 +135,7 @@ function NodeFeedApp({
   const launcher = (
     <AppLauncher
       installed={node.installed}
-      href={(app) => appHome(app, appSession())}
+      href={appHome}
       onInstall={node.install ? () => navigate("/settings/controls") : undefined}
     />
   );
@@ -186,7 +186,7 @@ function DemoApp({ page }: { page: Page }) {
       page={page}
       feed={feed}
       status="Demo · nothing leaves this tab"
-      launcher={<AppLauncher installed={null} href={(app) => appHome(app, null)} />}
+      launcher={<AppLauncher installed={null} href={appHome} />}
       extra={
         <button type="button" className="ghost small" onClick={() => void backend.simulateAgent()}>
           Simulate agent

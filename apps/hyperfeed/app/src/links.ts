@@ -67,12 +67,13 @@ export function appLink(item: FeedItem, ctx: LinkContext): string | null {
 }
 
 /**
- * An app's front page, signed in to your node when there is a session: what
- * the app launcher opens. null for an app with no known frontend.
+ * An app's front page, as the app launcher opens it. It carries no session:
+ * the app signs in to your node itself, with a key of its own. null for an
+ * app with no known frontend.
  */
-export function appHome(app: string, session: Session | null): string | null {
+export function appHome(app: string): string | null {
   const base = FRONTENDS[app]?.replace(/\/+$/, "");
-  return base ? signedIn(`${base}/`, session) : null;
+  return base ? `${base}/` : null;
 }
 
 /** An address with your session in its login hash, or as it is with none. */
