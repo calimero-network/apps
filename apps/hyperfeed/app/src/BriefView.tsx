@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AutorunView, FeedItem, LinkView, SituationView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
@@ -44,12 +44,17 @@ export function BriefView({
   query,
   onChat,
   feedKey = "",
+  focus = "",
+  onFocused,
 }: {
   feed: Feed;
   query: string;
   onChat?: (chain: string) => void;
   /** Which feed this is, so your last visit is kept per feed; "" in the demo. */
   feedKey?: string;
+  /** A chain the bell points at: its card is brought into view, held back or not; "" for none. */
+  focus?: string;
+  onFocused?: () => void;
 }) {
   const { page } = feed;
   // Where "since" starts: the end of your last visit on this device, read once.
@@ -72,6 +77,18 @@ export function BriefView({
   const going = brief.decisions.filter((i) => autoruns.has(i.id)).length;
   const [showHeld, setShowHeld] = useState(false);
   const calm = brief.decisions.length === 0 && brief.moving.length === 0;
+  // Once per focus: show it even when it was held back, then bring it into view.
+  const [focused, setFocused] = useState("");
+  const handled = useRef("");
+  useEffect(() => {
+    if (!focus) handled.current = "";
+    if (!focus || !page || handled.current === focus) return;
+    handled.current = focus;
+    setFocused(focus);
+    onFocused?.();
+  }, [focus, page, onFocused]);
+  // A held-back card the bell pointed at shows with the rest of them.
+  const expanded = showHeld || brief.held.some((i) => i.chain === focused);
 
   return (
     <main className="brief">
@@ -105,7 +122,7 @@ export function BriefView({
               <p className="brief-clear">You're clear. Your agent will bring you anything that needs a person.</p>
             ) : (
               <ol className="brief-cards">
-                {(showHeld ? brief.decisions : brief.shown).map((item, n) => (
+                {(expanded ? brief.decisions : brief.shown).map((item, n) => (
                   <DecisionCard
                     key={item.chain}
                     item={item}
@@ -114,14 +131,23 @@ export function BriefView({
                     items={page.items}
                     situation={situations.get(item.chain)}
                     autorun={autoruns.get(item.id)}
+                    focused={focused === item.chain}
                     onChat={onChat}
                   />
                 ))}
               </ol>
             )}
             {brief.held.length > 0 && (
-              <button type="button" className="link small brief-more" aria-expanded={showHeld} onClick={() => setShowHeld((v) => !v)}>
-                {showHeld ? "Show only the most pressing" : `${brief.held.length} more, less pressing`}
+              <button
+                type="button"
+                className="link small brief-more"
+                aria-expanded={expanded}
+                onClick={() => {
+                  setFocused("");
+                  setShowHeld(!expanded);
+                }}
+              >
+                {expanded ? "Show only the most pressing" : `${brief.held.length} more, less pressing`}
               </button>
             )}
           </section>
@@ -157,6 +183,7 @@ function DecisionCard({
   items,
   situation,
   autorun,
+  focused = false,
   onChat,
 }: {
   item: FeedItem;
@@ -168,8 +195,14 @@ function DecisionCard({
   situation?: SituationView;
   /** When it goes ahead by itself unless you stop it. */
   autorun?: AutorunView;
+  /** The bell pointed at it: bring it into view, marked. */
+  focused?: boolean;
   onChat?: (chain: string) => void;
 }) {
+  const ref = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (focused) ref.current?.scrollIntoView?.({ block: "center" });
+  }, [focused]);
   const [why, setWhy] = useState(false);
   const [evidence, setEvidence] = useState(false);
   const [keepAsking, setKeepAsking] = useState(false);
@@ -182,7 +215,7 @@ function DecisionCard({
   const hot = Boolean(item.breach || item.category || item.status === "failed" || press?.hot);
   const offer = !keepAsking && feed.setActionMode ? allowOffer(item, items, feed.actionSets, feed.settings) : null;
   return (
-    <li className={`brief-card${hot ? " hot" : ""}`}>
+    <li ref={ref} className={`brief-card${hot ? " hot" : ""}${focused ? " focused" : ""}`}>
       <div className="brief-card-head">
         <span className="brief-rank" aria-label={`Number ${rank}`}>
           {rank}

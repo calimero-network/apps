@@ -66,6 +66,18 @@ function node(): MeroJs {
   return mero;
 }
 
+
+// These walk the Lanes layout; Brief, the default, has its own tests.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    try {
+      if (!localStorage.getItem("hyperfeed:view")) localStorage.setItem("hyperfeed:view", "lanes");
+    } catch {
+      // No storage: the page falls back to its default.
+    }
+  });
+});
+
 test("you create your feed and answer a notification in place", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));

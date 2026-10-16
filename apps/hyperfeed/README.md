@@ -614,14 +614,26 @@ beside the feed at the row's context (Chat at the channel, Design at the documen
 your node. Its address comes from the app's `frontend` in its Cargo.toml, and only those apps are
 handed your session. The theme follows your system until you switch it.
 
-**Brief** is the first of the feed's three layouts (Brief, Lanes, Team; `?view=brief` opens it
-from a link): the feed as your agent would hand it over. One line says how things stand ("All quiet"
-when nothing waits or moves). Below it are the decisions only you can make, most pressing first
-(something your agent did without asking, then a guard, a failure, a proposal, a notification), three
-at a time with the rest behind "more". Each card shows what happened, your agent's reason, whether
-saying yes can be undone, **Why me?** (the rule or fact that brought it to you) and **Evidence** (its
-whole chain). Then what is in motion, and **Handled quietly**: what was settled today without you,
-folded away, with Undo where it applies. It reads the same rows as Lanes; nothing new is stored.
+**Brief** is the feed's first layout and its default (Brief, Lanes, Team; your pick is remembered
+in this browser, and `?view=lanes` opens another from a link): the feed as your agent would hand it
+over. One line says how things stand since you were last here on this device ("All quiet" when
+nothing waits or moves). Below it are the decisions only you can make, three at a time with the rest
+behind "more", ranked by kind (something your agent did without asking, then a guard, a failure, a
+proposal, a notification), by your agent's own score when it told the chain as a situation, by how
+soon it is due, and by how long it has waited. Each card shows:
+
+- what is going on: your agent's situation (headline, summary, recommendation) when it wrote one,
+  else the row's own text, with your agent's reason;
+- whether saying yes can be undone, and, for a default, when it goes ahead by itself, with Stop it;
+- **Why me?** (the rule or fact that brought it to you, and why it ranks there) and **Evidence**:
+  the chain's steps, and what your team did in the chats and issues the task links to or came from;
+- **Always allow**, once you approved the same action three times this week and declined it never:
+  it sets that action to act (never for a guard).
+
+Then what is in motion, **Done for you** (what your agent did, with Undo where it applies) and
+**Filtered out** (notifications that did not need you, by where they came from, with Show me, and
+Less like this and More like this, which become rules your agent keeps). The bell's rows open on
+their card. Brief reads the same rows as Lanes, plus `situations` and `autoruns`.
 
 The feed's id beside the brand switches feeds: it lists every feed this Hyperfeed has on your node
 and opens the one you pick in place, still signed in, and a reload opens it again. **Create a new

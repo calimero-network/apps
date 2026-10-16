@@ -4734,3 +4734,10 @@ select {
   border-radius: 999px;
   background: var(--accent-solid);
 }
+
+/* The card the bell pointed at. */
+.brief-card.focused {
+  box-shadow:
+    0 0 0 2px var(--accent-solid),
+    var(--shadow);
+}

@@ -6,11 +6,11 @@ import { DemoBackend } from "./demo";
 import { useFeed } from "./useFeed";
 import { BRIEF_BUDGET } from "./brief";
 
-function Harness({ backend }: { backend: DemoBackend }) {
+function Harness({ backend, focus, onFocused }: { backend: DemoBackend; focus?: string; onFocused?: () => void }) {
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
   const feed = useFeed(backend, nudge);
-  return <BriefView feed={feed} query="" />;
+  return <BriefView feed={feed} query="" focus={focus} onFocused={onFocused} />;
 }
 
 const cardsIn = (el: HTMLElement) => within(el).getAllByRole("listitem").filter((li) => li.classList.contains("brief-card"));
@@ -92,5 +92,16 @@ describe("BriefView", () => {
     fireEvent.click(within(going).getByRole("button", { name: "Stop it" }));
     await expect.poll(async () => (await backend.autoruns())[0]!.status).toBe("stopped");
     await expect.poll(() => within(jordan).queryByRole("group", { name: "Goes ahead by itself" })).toBeNull();
+  });
+
+  it("brings the card the bell points at into view, even one held back", async () => {
+    const backend = new DemoBackend(true, 0);
+    const vote = (await backend.feed("all", "")).items.find((i) => i.title.startsWith("Vote"))!;
+    let done = 0;
+    render(<Harness backend={backend} focus={vote.chain} onFocused={() => done++} />);
+    const decisions = await screen.findByRole("region", { name: "Decisions for you" });
+    await expect.poll(() => done).toBe(1);
+    const card = within(decisions).getByText(/Offsite location/).closest("li")!;
+    expect(card).toHaveClass("focused");
   });
 });
