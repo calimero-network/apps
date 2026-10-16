@@ -332,6 +332,35 @@ before it acts there and resumes from it; mero-bot puts it in the turn's prompt.
 behind "Where it stands" on the task. Limits: `done` and `next` up to 1000 bytes (at least one of
 them), each list up to 10 one-line entries of up to 300 bytes, `author` up to 120 bytes.
 
+**Situations and defaults: what the brief reads.** The brief (the feed's first layout) puts the
+few things that need you on top. Your agent can tell a chain as one card, and let a routine proposal
+go ahead at a set time unless you stop it.
+
+| Method | Args | Returns |
+| --- | --- | --- |
+| `set_situation` | `chain: string, input: SituationInput { headline, summary, recommend, reason, score, due_at, sources, apps, author }` | `SituationView`; replaces the chain's last one. Up to 200 are kept |
+| `clear_situation` | `chain: string` | `bool`: whether there was one |
+| `situations` | none | `SituationView[]`, newest first |
+| `schedule_autorun` | `id: string, at: u64` | `AutorunView`, `waiting`; at most a week ahead |
+| `stop_autorun` | `id: string` | `AutorunView`, `stopped`; yours only, and final |
+| `fire_autorun` | `id: string` | `FeedItem`, now `approved`, its draft as the answer; only once its time came |
+| `autoruns` | none | `AutorunView[] { id, chain, at, set_at, status, stopped_at, fired_at }`, soonest first |
+
+A situation has a headline (one line, 140 bytes) and a summary (1000 bytes); `recommend` (400),
+`reason` (one line, 240), `score` 0–100, `due_at` (ms, or 0) and how many things in how many apps it
+was written from are optional. The brief shows the headline and summary in place of the row's own,
+ranks by the higher of the row's kind and `score` and by `due_at`, and keeps the rows as evidence.
+Each write emits `SituationChanged { chain }`.
+
+A default is only for a proposal your agent can undo, behind no guard, in an app where it may write,
+while it is not paused, that is not a draft you send yourself, and whose ask is none, a confirm or a
+reply with a draft. `fire_autorun` checks all of that again when the time comes; anything changed and
+it is refused, and the proposal waits for you. Your stop always wins: stopping and firing only ever
+turn on, a stop outranks a fire when two devices' copies merge, and a stopped default cannot be set
+again. Status: `waiting`, `stopped`, `fired`, or `settled` once you decided on the proposal yourself.
+Each change emits `AutorunChanged { id, status }`. The contract cannot keep time: the agent's runtime
+fires a default when it is due (mero-bot does not do this yet).
+
 **Watches: "when X, do Y" that outlives a session.** "Merge #434 when it's green" or "watch main
 and fix it if red" used to live in an agent session's background shell and die with it. A watch is
 kept in the feed instead: a condition, an action, and the chain it reports to.
@@ -486,7 +515,7 @@ An outcome recorded where the rules said `ask` or `refuse` is still stored, with
 stays in "Needs you" until you keep it or undo it. Events the contract emits: `ActionRecorded`,
 `ActionChanged`, `NotificationRecorded`, `NotificationChanged`, `NotificationsSeen`,
 `SettingsChanged`, `MessagePosted`, `MessageChanged`, `LensChanged`, `ArchiveChanged`,
-`WatchChanged`, `PrChanged`.
+`WatchChanged`, `PrChanged`, `SituationChanged`, `AutorunChanged`.
 
 7. Report in while you run: `agent_seen(name)`, about every 30 seconds (mero-bot sends
    `mero-bot@<host>`). `settings().agents` lists who reported and when. Report what you can reach with
@@ -532,6 +561,10 @@ words, and an agent should never call them for itself. The agent's side of lense
   for your edit of its draft) is sent by your client, as you, when you approve it, and reported by
   your client with `complete_action`; the agent can neither send nor report one. Since the write
   is yours, an app where your agent may only read still takes drafts.
+- **A default is an approval you gave by not stopping it.** `fire_autorun` is the agent's call, so
+  it is the one place the agent's side moves a proposal to `approved`. It is bound to what you could
+  have stopped: only an undoable call behind no guard, with the rules checked again at its time,
+  never once you stopped it.
 - **Notifications are best-effort.** Core events carry no author and no "concerns you" bit, so the
   "needs you" flag is a guess for every kind outside the known list.
 
@@ -580,6 +613,27 @@ move between rows. A row from a first-party app has **Open in …** (`O`), which
 beside the feed at the row's context (Chat at the channel, Design at the document), signed in to
 your node. Its address comes from the app's `frontend` in its Cargo.toml, and only those apps are
 handed your session. The theme follows your system until you switch it.
+
+**Brief** is the feed's first layout and its default (Brief, Lanes, Team; your pick is remembered
+in this browser, and `?view=lanes` opens another from a link): the feed as your agent would hand it
+over. One line says how things stand since you were last here on this device ("All quiet" when
+nothing waits or moves). Below it are the decisions only you can make, three at a time with the rest
+behind "more", ranked by kind (something your agent did without asking, then a guard, a failure, a
+proposal, a notification), by your agent's own score when it told the chain as a situation, by how
+soon it is due, and by how long it has waited. Each card shows:
+
+- what is going on: your agent's situation (headline, summary, recommendation) when it wrote one,
+  else the row's own text, with your agent's reason;
+- whether saying yes can be undone, and, for a default, when it goes ahead by itself, with Stop it;
+- **Why me?** (the rule or fact that brought it to you, and why it ranks there) and **Evidence**:
+  the chain's steps, and what your team did in the chats and issues the task links to or came from;
+- **Always allow**, once you approved the same action three times this week and declined it never:
+  it sets that action to act (never for a guard).
+
+Then what is in motion, **Done for you** (what your agent did, with Undo where it applies) and
+**Filtered out** (notifications that did not need you, by where they came from, with Show me, and
+Less like this and More like this, which become rules your agent keeps). The bell's rows open on
+their card. Brief reads the same rows as Lanes, plus `situations` and `autoruns`.
 
 The feed's id beside the brand switches feeds: it lists every feed this Hyperfeed has on your node
 and opens the one you pick in place, still signed in, and a reload opens it again. **Create a new

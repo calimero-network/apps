@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   InvitationDialog,
+  InvitationGate,
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
@@ -114,16 +115,20 @@ export default function InvitationPrompt() {
   const payload = redemption.parsed?.payload;
 
   return (
-    <InvitationDialog
-      redemption={redemption}
-      noun="stream"
-      appName="Mero Stream"
-      status={status}
-      detail={
-        payload?.roomName
-          ? "Joining takes you straight into that call."
-          : "Joining gives you access to the stream and every room in it."
-      }
-    />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={parse} noun="stream" appName="Mero Stream" />
+      <InvitationDialog
+        redemption={redemption}
+        noun="stream"
+        appName="Mero Stream"
+        status={status}
+        detail={
+          payload?.roomName
+            ? "Joining takes you straight into that call."
+            : "Joining gives you access to the stream and every room in it."
+        }
+      />
+    </>
   );
 }

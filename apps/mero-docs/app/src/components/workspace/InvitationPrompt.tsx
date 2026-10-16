@@ -22,6 +22,8 @@
 import React, { useCallback, useRef } from 'react';
 import {
   InvitationDialog,
+  InvitationGate,
+  usePendingInvitation,
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
@@ -175,6 +177,9 @@ export function InvitationPrompt({ onJoined }: Props) {
   isMemberRef.current = isMember;
 
   const scope = invite ? scopeOf(invite) : 'workspace';
+  // Logged out, redemption has not read the link yet; read it for the gate.
+  const waiting = usePendingInvitation();
+  const waitingInvite = !invite && waiting ? parse(waiting.token, waiting.params)?.invite : null;
   const detail = !invite
     ? undefined
     : isInviteExpired(invite.invitation)
@@ -186,11 +191,15 @@ export function InvitationPrompt({ onJoined }: Props) {
           : "You'll be added to the workspace.";
 
   return (
-    <InvitationDialog
-      redemption={redemption}
-      noun={scope}
-      appName="Mero Docs"
-      detail={detail}
-    />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={parse} noun={waitingInvite ? scopeOf(waitingInvite) : scope} appName="Mero Docs" />
+      <InvitationDialog
+        redemption={redemption}
+        noun={scope}
+        appName="Mero Docs"
+        detail={detail}
+      />
+    </>
   );
 }

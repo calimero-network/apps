@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   InvitationDialog,
+  InvitationGate,
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
@@ -81,5 +82,11 @@ export default function InvitationPrompt() {
     onJoined: (namespaceId) => navigate(`/teams/${namespaceId}/projects`),
   });
 
-  return <InvitationDialog redemption={redemption} noun="team" appName="Mero Design" />;
+  return (
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={parseTeamInvitation} noun="team" appName="Mero Design" />
+      <InvitationDialog redemption={redemption} noun="team" appName="Mero Design" />
+    </>
+  );
 }

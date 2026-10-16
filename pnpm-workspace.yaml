@@ -79,7 +79,14 @@ catalog:
   # declares mero-js ^24.5.0, so the root `pnpm.overrides` entry in package.json
   # (`"@calimero-network/mero-js": "catalog:"`) is what puts it on this line
   # too; without it mero-react bundles its own 24.5.0 and its joins sign at 24.
-  "@calimero-network/mero-js": ^25.3.0
+  # 25.3.1 (mero-js#262) signs a request proof over the path and query under
+  # `calimero.auth.request.v2`, the only form merod 0.11.0-rc.89 (core#4549)
+  # admits; 25.3.0 signs v1 and its proofs get 401s from rc.89. Exact, not
+  # ^: 25.3.2 (mero-js#271) refuses a login callback this page did not begin,
+  # which drops the tokens Calimero Desktop opens an app with until
+  # mero-react#103 passes `allowUnsolicited` there, and it removes the
+  # enrolment `state`/`expectState` options mero-blocks and merraria pass.
+  "@calimero-network/mero-js": 25.3.1
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
@@ -129,7 +136,14 @@ catalog:
   # sync gate) plus InvitationDialog, the one invitation prompt every app shows.
   # 9.14.1 (#107): useJoinSync hears a join of the namespace a page already
   # shows; on 9.14.0 the dialog sat on "Syncing…" for that invitation.
-  "@calimero-network/mero-react": ^9.14.1
+  # 9.15.0 (#111): LoginModal carries `mero-login-*` classes and
+  # `--mero-login-shadow`, which glass.css uses for the connect dialog's float
+  # shadow, font and blur.
+  # 9.16.0 (#109): InvitationGate, the "You're invited" screen a link opened
+  # while logged out lands on instead of the app's landing page.
+  # 9.16.1 (#110): a stray click outside the dialog no longer closes it while
+  # a join is still syncing.
+  "@calimero-network/mero-react": ^9.16.1
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"

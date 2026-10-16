@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ConnectButton,
   InvitationDialog,
+  InvitationGate,
   clearContextId,
   useContextGroup,
   useMero,
@@ -13,7 +14,7 @@ import { StandupBoard } from "./StandupBoard";
 import { WeekDigest } from "./WeekDigest";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
 import { PersonName, TeamNamespace, useSpaceNames } from "./names";
-import { useJoinFromInvitation } from "./useJoinFromInvitation";
+import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
 import { useRead, useTeam, type Team } from "./useTeam";
 
 type Tab = "standup" | "week" | "decisions" | "invite";
@@ -40,6 +41,8 @@ export function App() {
 
   return (
     <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={readInvitation} noun="team" appName="Mero Standup" />
       <InvitationDialog
         redemption={invitation}
         noun="team"

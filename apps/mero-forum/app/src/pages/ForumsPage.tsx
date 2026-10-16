@@ -244,12 +244,12 @@ export default function ForumsPage() {
       );
       setForumName(contextId, forumName);
       setName("");
-      setActiveForum(contextId, memberPublicKey, namespaceId);
+      setActiveForum(contextId, memberPublicKey, namespaceId, nodeUrl);
       // Into the forum: the creator is already a member, so there is nothing to wait
       // for. 480p H.264 (/live), not the 64x48 in-WASM comparison route.
       navigate("/f");
     });
-  }, [name, mero, appId, namespaceId, run, navigate]);
+  }, [name, mero, appId, namespaceId, run, navigate, nodeUrl]);
 
   /** Enter a forum: join it if needed, wait for the identity, then open the forum. */
   const enter = useCallback(
@@ -269,11 +269,11 @@ export default function ForumsPage() {
           onStatus,
         );
         setForumName(contextId, forum.name);
-        setActiveForum(contextId, identity, namespaceId);
+        setActiveForum(contextId, identity, namespaceId, nodeUrl);
         navigate("/f");
       });
     },
-    [mero, run, navigate, namespaceId],
+    [mero, run, navigate, namespaceId, nodeUrl],
   );
 
   const inviteToForum = useCallback(

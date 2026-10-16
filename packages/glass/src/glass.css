@@ -229,10 +229,9 @@ html:root .mero-connect-button {
   font-family: var(--glass-font);
 }
 
-/* What the variables above cannot reach: the dialog's shadow and font. The
-   `mero-login-*` classes and `--mero-login-shadow` arrive with a mero-react
-   release after 9.14.1; before it nothing here matches, and the dialog keeps
-   mero-react's own shadow and the page's font. */
+/* What the variables above cannot reach: the dialog's shadow and font,
+   through the `mero-login-*` classes and `--mero-login-shadow` mero-react
+   carries from 9.15.0. */
 body > .mero-login-overlay {
   --mero-login-shadow: var(--glass-shadow-float);
   font-family: var(--glass-font);

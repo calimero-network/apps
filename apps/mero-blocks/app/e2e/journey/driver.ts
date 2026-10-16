@@ -128,6 +128,8 @@ const breakBlock: Feature = {
 
 export const driver: AppDriver = {
   app: "mero-blocks",
+  // No "you're invited" screen: not React-rooted on MeroProvider; the game draws its own login.
+  inviteLanding: false,
 
   async login(actor) {
     const page = actor.page;

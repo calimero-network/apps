@@ -23,7 +23,23 @@ import { PAGE_SIZE, type ActionMode, type AgentMode, type Decision, type FeedBac
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
 import { mergeWatchInput, moveWatch, newWatch } from "./watches";
 import { replySubject, splitSubject } from "./subject";
-import type { AccessView, AgentAccountView, AgentRuleView, AssignmentView, Folder, LinkView, PrInput, PrView, ReachLine, ReachView, WatchInput, WatchView } from "./generated/HyperfeedClient";
+import type {
+  AccessView,
+  AgentAccountView,
+  AgentRuleView,
+  AssignmentView,
+  AutorunView,
+  Folder,
+  LinkView,
+  PrInput,
+  PrView,
+  ReachLine,
+  ReachView,
+  SituationInput,
+  SituationView,
+  WatchInput,
+  WatchView,
+} from "./generated/HyperfeedClient";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 import chatActions from "./actions/fixtures/chat.json";
@@ -862,6 +878,111 @@ export class DemoBackend implements FeedBackend {
     return c ? { ...c, branches: [...c.branches], worktrees: [...c.worktrees], prs: [...c.prs], questions: [...c.questions] } : null;
   }
 
+  /** Each task told as one card, as `set_situation` keeps it: one per chain, the latest replacing the last. */
+  private situationRows = new Map<string, SituationView>();
+
+  /** The agent tells a chain as one card, as `set_situation` takes it (same limits). */
+  setSituation(chain: string, input: SituationInput): SituationView {
+    if (!this.chainExists(chain)) throw new Error(`no chain ${chain}`);
+    const headline = input.headline.trim();
+    const summary = input.summary.trim();
+    if (!headline || !summary) throw new Error("a situation has a headline and says what is going on");
+    if (headline.length > 140 || /[\r\n]/.test(headline)) throw new Error("headline is one line of 140 bytes at most");
+    if (summary.length > 1_000 || input.recommend.length > 400 || input.reason.length > 240) throw new Error("a situation is over its limits");
+    if (input.score > 100) throw new Error(`score is ${input.score}, limit is 100`);
+    if (input.apps > input.sources) throw new Error("apps cannot be more than sources");
+    const prior = this.situationRows.get(chain);
+    const view: SituationView = {
+      chain,
+      ...input,
+      headline,
+      summary,
+      recommend: input.recommend.trim(),
+      reason: input.reason.trim(),
+      author: input.author.trim(),
+      updated_at: Math.max(this.now(), (prior?.updated_at ?? 0) + 1),
+    };
+    this.situationRows.set(chain, view);
+    this.changed();
+    return { ...view };
+  }
+
+  async situations(): Promise<SituationView[]> {
+    return [...this.situationRows.values()].sort((a, b) => b.updated_at - a.updated_at).map((v) => ({ ...v }));
+  }
+
+  /** Proposals that go ahead at a set time unless you stop them, as `schedule_autorun` keeps them. */
+  private autorunRows = new Map<string, { chain: string; at: number; set_at: number; stopped_at: number; fired_at: number }>();
+
+  /** Mirrors `Hyperfeed::autorun_answer`: why it may not go ahead on its own, or the answer the approval carries. */
+  private autorunAnswer(item: FeedItem): { answer: string } | { why: string } {
+    if (item.status !== "pending") return { why: `action ${item.id} is not waiting for you` };
+    if (!item.undoable) return { why: "only a proposal your agent can undo may go ahead on its own" };
+    if (item.reply_call) return { why: "a draft you send yourself never goes ahead on its own" };
+    const call = this.resolveCall(item.app, item.method, item.category, true);
+    if (this.guardOn(call.category)) return { why: `"${call.category}" always needs you` };
+    if (this.paused) return { why: "your agent is paused" };
+    const verdict = this.verdictFor(item.app, call);
+    if (verdict.decision === "refuse") return { why: `not allowed: ${verdict.reason}` };
+    if (!item.ask.kind || item.ask.kind === "confirm") return { answer: "" };
+    if (item.ask.kind === "reply" && item.ask.draft.trim()) return { answer: item.ask.draft };
+    return { why: item.ask.kind === "reply" ? "a reply goes ahead on its own only with a draft" : "a choice is yours to make: it never goes ahead on its own" };
+  }
+
+  /** The agent sets a proposal to go ahead at `at` unless you stop it, as `schedule_autorun` does. */
+  scheduleAutorun(id: string, at: number): AutorunView {
+    const item = this.get(id, "action");
+    const check = this.autorunAnswer(item);
+    if ("why" in check) throw new Error(check.why);
+    const now = this.now();
+    if (at <= now) throw new Error("a default goes ahead later, not now");
+    if (at > now + 7 * 24 * 60 * MINUTE) throw new Error("a default goes ahead within a week");
+    const prior = this.autorunRows.get(id);
+    if (prior?.stopped_at) throw new Error("you stopped this one: it waits for you");
+    this.autorunRows.set(id, { chain: item.chain, at, set_at: Math.max(now, (prior?.set_at ?? 0) + 1), stopped_at: 0, fired_at: 0 });
+    // The pretend agent's runtime fires it when its time comes.
+    if (this.agentDelayMs > 0) setTimeout(() => void this.fireAutorun(id).catch(() => undefined), Math.min(at - now, 2 ** 31 - 1));
+    this.changed();
+    return this.autorunView(id)!;
+  }
+
+  async stopAutorun(id: string): Promise<AutorunView> {
+    const row = this.autorunRows.get(id);
+    if (!row) throw new Error(`action ${id} has no default`);
+    if (row.fired_at) throw new Error("it already went ahead: undo it instead");
+    if (!row.stopped_at) row.stopped_at = Math.max(this.now(), row.set_at + 1);
+    this.changed();
+    return this.autorunView(id)!;
+  }
+
+  /** The agent's runtime fires a default once its time came, as `fire_autorun` does. */
+  async fireAutorun(id: string): Promise<FeedItem> {
+    const row = this.autorunRows.get(id);
+    if (!row) throw new Error(`action ${id} has no default`);
+    if (row.stopped_at) throw new Error("you stopped it: it waits for you");
+    if (row.fired_at) throw new Error("it already went ahead");
+    if (this.now() < row.at) throw new Error("its time has not come");
+    const check = this.autorunAnswer(this.get(id, "action"));
+    if ("why" in check) throw new Error(check.why);
+    row.fired_at = Math.max(this.now(), row.set_at + 1);
+    const approved = this.step(this.get(id, "action"), "approved", check.answer);
+    this.changed();
+    if (this.agentDelayMs > 0) setTimeout(() => this.agentCompletes(id), this.agentDelayMs);
+    return approved;
+  }
+
+  private autorunView(id: string): AutorunView | null {
+    const row = this.autorunRows.get(id);
+    if (!row) return null;
+    const pending = this.items.get(id)?.status === "pending";
+    const status = row.stopped_at ? "stopped" : row.fired_at ? "fired" : pending ? "waiting" : "settled";
+    return { id, ...row, status };
+  }
+
+  async autoruns(): Promise<AutorunView[]> {
+    return [...this.autorunRows.keys()].map((id) => this.autorunView(id)!).sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+  }
+
   private markHeld(chain: string, agent: string, since: number) {
     for (const i of this.items.values()) {
       if (i.chain === chain && i.kind === "message") {
@@ -1327,6 +1448,42 @@ export class DemoBackend implements FeedBackend {
     const note = (minutes: number, input: Partial<NotificationInput> & { key: string }) =>
       void this.recordNotification(notification(input), ago(minutes));
 
+    // Earlier today: replies your agent proposed and you approved, the record
+    // the brief's "Always allow" counts.
+    const approved = new Map<string, number>();
+    for (const [minutes, title, label] of [
+      [320, "Replied to Priya about the offsite budget", "DM · Priya Nair"],
+      [280, "Sent Tomás the release notes", "DM · Tomás Reid"],
+      [230, "Answered Jordan's question about seats", "DM · Jordan Lee"],
+    ] as const) {
+      approved.set(title, ago(minutes));
+      done(minutes, { app: "chat", source_label: label, method: "send_message", undoable: true, title, why: "Drafted from the thread; you approved it." });
+    }
+    // What your agent got on with by itself.
+    done(190, { app: "issues", source_label: "Hyperfeed", method: "create_issue", title: "Filed HF-52 from Tomás's bug report", why: "Tomás reported it in #eng; you asked me to file reports like that." });
+    done(170, { app: "sheets", source_label: "Metrics", method: "set_cells", undoable: true, title: "Refreshed last week's numbers in Metrics", why: "The board deck reads from it." });
+    done(140, { app: "crm", source_label: "Acme · Sales", method: "add_note", undoable: true, title: "Logged the Northwind call notes on the deal", why: "From the call summary in #sales." });
+    done(120, { app: "chat", source_label: "#launch", method: "send_message", undoable: true, title: "Shared the launch checklist in #launch", why: "Ronit asked for it this morning." });
+    // Your team, around you: nothing here needed you, so it is filtered out.
+    const general = ["Lunch order closes at 12", "Who has the HDMI adapter?", "Office closed Monday", "New coffee machine is in", "Reminder: expenses by Friday"];
+    general.forEach((text, i) =>
+      note(300 - i * 40, {
+        key: `chat-general:${i}`,
+        app: "chat",
+        source_context: "chat-general",
+        source_label: "#general",
+        from: ["Ana Ruiz", "Ben Okafor", "People team", "Ana Ruiz", "Finance"][i]!,
+        title: "Posted in #general",
+        body: text,
+        event: "MessageSent",
+      }),
+    );
+    ["Edited the pricing table", "Renamed a section", "Resolved a comment"].forEach((title, i) =>
+      note(200 - i * 30, { key: `docs-pricing:${i}`, app: "docs", source_context: "docs-context", source_label: "Pricing v4", from: "Maya Ortiz", title, event: "DocumentChanged" }),
+    );
+    note(25, { key: "chat-launch:t:0", app: "chat", source_label: "#launch", from: "Ronit Cohen", title: "Posted in #launch", body: "Board deck review moved to 2pm.", event: "MessageSent" });
+    note(15, { key: "chat-launch:t:1", app: "chat", source_label: "#launch", from: "Tomás Reid", title: "Posted in #launch", body: "QA signs off the release tonight.", event: "MessageSent" });
+
     // The stand-up: a chain of one.
     done(105, {
       app: "chat",
@@ -1483,6 +1640,37 @@ export class DemoBackend implements FeedBackend {
       }),
       ago(1),
     );
+    // The replies you approved: proposed, approved by you, then carried out.
+    for (const item of [...this.items.values()]) {
+      const at = approved.get(item.title);
+      if (at === undefined || item.kind !== "action") continue;
+      this.put({
+        ...item,
+        history: [
+          { status: "pending", note: "", at: at - 4 * MINUTE },
+          { status: "approved", note: "", at: at - 2 * MINUTE },
+          { status: "done", note: "Carried out by your agent.", at },
+        ],
+      });
+    }
+    // Your agent tells the launch chain as one card, from what it read there.
+    this.situationRows.set("chat-launch:e>f:0", {
+      chain: "chat-launch:e>f:0",
+      headline: "Maya needs the board numbers and the Northwind NDA before 2",
+      summary:
+        "Maya asked in #launch for last week's numbers in the board deck and the NDA out today. The numbers are in the deck already; the NDA waits for your signature, and Ronit moved the deck review to 2pm.",
+      recommend: "Sign the NDA now, then take the 12:30 slot with Maya to go through the numbers.",
+      reason: "The board deck review is at 2pm, and the NDA has to go out today.",
+      score: 85,
+      due_at: now + 40 * MINUTE,
+      sources: 6,
+      apps: 3,
+      author: "mero-bot@studio",
+      updated_at: now,
+    });
+    // Jordan's reply goes ahead at the end of the day unless you stop it.
+    const jordan = [...this.items.values()].find((i) => i.title === "Reply to Jordan with the contract terms");
+    if (jordan) this.autorunRows.set(jordan.id, { chain: jordan.chain, at: now + 80 * MINUTE, set_at: ago(30), stopped_at: 0, fired_at: 0 });
   }
 
   /** The "simulate" button: what an agent might do next, recorded through the rules. */

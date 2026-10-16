@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A member with no name gets a person icon instead of the first character of
+  their account. The "3" from `3e76…db86` looked like a member count in the
+  channel header and the members list. Settings shows the same icon.
+- Creating a workspace from the side menu asks for your display name,
+  prefilled with the one you use elsewhere, and publishes it as your member
+  name. That path never set one, so you appeared as your shortened account.
+
 - The bundle lists `https://mero-chat-pwa.vercel.app` in `frontend-aliases`. A
   node's sign-in page (auth-frontend v1.3.9, core 0.11.0-rc.86) trusts a login
   callback from an alias too, so a node or Calimero Desktop launcher still

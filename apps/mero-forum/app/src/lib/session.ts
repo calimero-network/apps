@@ -22,6 +22,11 @@ let contextId: string | null = null;
 let executorPublicKey: string | null = null;
 let applicationId: string | null = null;
 let activeNamespaceId: string | null = null;
+// The node the active forum was opened on (`useMero().nodeUrl`). A context id
+// means nothing on another node, so a forum remembered on :2528 must not be
+// reopened after connecting to :2529. Null for forums stored before this was
+// recorded: those are reopened only once this node lists them.
+let forumNode: string | null = null;
 let devMode = false;
 
 // The desktop passes the session (app id, space context, identity, dev mode) in
@@ -35,7 +40,14 @@ function persistSession(): void {
   try {
     localStorage.setItem(
       SESSION_KEY,
-      JSON.stringify({ applicationId, contextId, executorPublicKey, activeNamespaceId, devMode }),
+      JSON.stringify({
+        applicationId,
+        contextId,
+        executorPublicKey,
+        activeNamespaceId,
+        forumNode,
+        devMode,
+      }),
     );
   } catch {
     /* ignore blocked storage */
@@ -51,6 +63,7 @@ function restoreSession(): void {
     contextId = s.contextId ?? contextId;
     executorPublicKey = s.executorPublicKey ?? executorPublicKey;
     activeNamespaceId = s.activeNamespaceId ?? activeNamespaceId;
+    if (s.contextId) forumNode = s.forumNode ?? null;
     if (typeof s.devMode === "boolean") devMode = s.devMode;
   } catch {
     /* ignore malformed/blocked storage */
@@ -70,7 +83,12 @@ export function captureSessionFromHash(): void {
   const hash = window.location.hash.slice(1);
   if (hash) {
     const p = new URLSearchParams(hash);
-    contextId = p.get("context_id") ?? p.get("contextId") ?? contextId;
+    const handed = p.get("context_id") ?? p.get("contextId");
+    if (handed) {
+      contextId = handed;
+      // A desktop deep-link names its node beside the context.
+      forumNode = p.get("node_url");
+    }
     executorPublicKey =
       p.get("executor_public_key") ??
       p.get("executorPublicKey") ??
@@ -89,10 +107,11 @@ export function captureSessionFromHash(): void {
     try {
       const saved = localStorage.getItem(spaceStorageKey());
       if (saved) {
-        const { ctx, executor, ns } = JSON.parse(saved);
+        const { ctx, executor, ns, node } = JSON.parse(saved);
         if (ctx && executor) {
           contextId = ctx;
           executorPublicKey = executor;
+          forumNode = typeof node === "string" ? node : null;
           // Absent for forums stored before this was recorded — the forum then
           // simply offers no "back to forums", rather than routing nowhere.
           if (ns) activeNamespaceId = ns;
@@ -131,6 +150,27 @@ export function getActiveNamespaceId(): string | null {
   return activeNamespaceId;
 }
 
+/** The node the active forum was opened on; null when not recorded. */
+export function getForumNode(): string | null {
+  return forumNode;
+}
+
+// Forums known to exist on a node during this app load: set by an explicit
+// open (create, join, pick) or by the node listing them. Spares the gate a
+// round-trip on every route hop, and trusts a just-joined context the node's
+// list may not show yet.
+const confirmedForums = new Set<string>();
+const confirmKey = (ctx: string, node: string | null) =>
+  `${node ?? ""}\n${ctx}`;
+
+export function markForumConfirmed(ctx: string, node: string | null): void {
+  confirmedForums.add(confirmKey(ctx, node));
+}
+
+export function isForumConfirmed(ctx: string, node: string | null): boolean {
+  return confirmedForums.has(confirmKey(ctx, node));
+}
+
 /** The installed Mero Forum application id (needed to create spaces). */
 export function getApplicationId(): string | null {
   return applicationId;
@@ -139,15 +179,19 @@ export function getApplicationId(): string | null {
 /**
  * Make `ctx` the active space with member identity `executor`, and persist it so
  * a reload (or the next open of this app) returns here. Used after the user
- * creates or joins a space in the picker.
+ * creates or joins a space in the picker. `node` is the node it was opened
+ * on (`useMero().nodeUrl`), so another node never reopens it.
  */
 export function setActiveForum(
   ctx: string,
   executor: string,
-  namespaceId?: string,
+  namespaceId: string | undefined,
+  node: string | null,
 ): void {
   contextId = ctx;
   executorPublicKey = executor;
+  forumNode = node;
+  markForumConfirmed(ctx, node);
   // Remembered so the forum can offer a way BACK to its forum list. A context
   // knows nothing about the namespace that holds it, and there is no "parent
   // of" read in the admin API, so the only cheap place to keep the link is
@@ -156,7 +200,7 @@ export function setActiveForum(
   try {
     localStorage.setItem(
       spaceStorageKey(),
-      JSON.stringify({ ctx, executor, ns: activeNamespaceId }),
+      JSON.stringify({ ctx, executor, ns: activeNamespaceId, node }),
     );
   } catch {
     /* ignore blocked storage */
@@ -177,6 +221,7 @@ export function clearActiveForum(): void {
   contextId = null;
   executorPublicKey = null;
   activeNamespaceId = null;
+  forumNode = null;
   try {
     localStorage.removeItem(spaceStorageKey());
   } catch {

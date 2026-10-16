@@ -14,6 +14,11 @@ import {
   resolveInstalledAppId,
 } from "../../utils/installedApps";
 import { useToast } from "../../contexts/ToastContext";
+import {
+  getMessengerDisplayName,
+  setMessengerDisplayName,
+} from "../../utils/messengerName";
+import { log } from "../../utils/logger";
 
 const Overlay = styled.div`
   position: fixed;
@@ -125,8 +130,15 @@ export default function CreateWorkspacePopup({
   const [step, setStep] = useState<Step>("form");
   const [errorMessage, setErrorMessage] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
+  // Each workspace gives the user a new member identity with no name of its
+  // own. Without one, every view showed the shortened account instead. Ask
+  // here, prefilled with the name used elsewhere, the way the first-run
+  // picker does.
+  const [displayName, setDisplayName] = useState(getMessengerDisplayName());
   const trimmedWorkspaceName = workspaceName.trim();
-  const canCreateWorkspace = trimmedWorkspaceName.length > 0;
+  const trimmedDisplayName = displayName.trim();
+  const canCreateWorkspace =
+    trimmedWorkspaceName.length > 0 && trimmedDisplayName.length > 0;
   const stepsCompleted = step === "form" ? 0 : step === "creating" ? 1 : 0;
 
   // Throws AppNotInstalledError when the configured app is absent, so both
@@ -160,12 +172,25 @@ export default function CreateWorkspacePopup({
     await groupApi.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES });
 
     const identityResult = await groupApi.resolveCurrentMemberIdentity(groupId);
-    if (identityResult.data?.memberIdentity) {
-      setGroupMemberIdentity(groupId, identityResult.data.memberIdentity);
+    const memberIdentity = identityResult.data?.memberIdentity;
+    setMessengerDisplayName(trimmedDisplayName);
+    if (memberIdentity) {
+      setGroupMemberIdentity(groupId, memberIdentity);
+      // Awaited: `onSuccess` reloads the page, which would abort the request.
+      // The workspace exists either way, so a failure is logged, not fatal.
+      const nameResult = await groupApi.setMemberMetadata(groupId, memberIdentity, {
+        name: trimmedDisplayName,
+      });
+      if (nameResult.error) {
+        log.warn(
+          "CreateWorkspace",
+          `could not publish member name: ${nameResult.error.message}`,
+        );
+      }
     }
 
     onSuccess(groupId);
-  }, [trimmedWorkspaceName, onSuccess, addToast]);
+  }, [trimmedWorkspaceName, trimmedDisplayName, onSuccess, addToast]);
 
   const createWorkspace = useCallback(async () => {
     setStep("creating");
@@ -226,8 +251,8 @@ export default function CreateWorkspacePopup({
           <>
             <Title>Create Namespace</Title>
             <Subtitle>
-              Give your namespace a name. You can create channels and invite
-              members once you enter.
+              Name your namespace and choose how others will see you. You can
+              create channels and invite members once you enter.
             </Subtitle>
             <InputGroup>
               <Label htmlFor="workspaceName">Namespace name</Label>
@@ -238,6 +263,16 @@ export default function CreateWorkspacePopup({
                 value={workspaceName}
                 onChange={(event) => setWorkspaceName(event.target.value)}
                 autoFocus
+              />
+            </InputGroup>
+            <InputGroup style={{ marginTop: "0.75rem" }}>
+              <Label htmlFor="workspaceDisplayName">Your display name</Label>
+              <Input
+                id="workspaceDisplayName"
+                type="text"
+                placeholder="How others will see you"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
               />
             </InputGroup>
             <ButtonGroup>

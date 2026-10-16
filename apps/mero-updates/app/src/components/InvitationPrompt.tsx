@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   InvitationDialog,
+  InvitationGate,
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
@@ -44,7 +45,7 @@ interface UpdatesInvitation extends ParsedInvitation {
 export default function InvitationPrompt() {
   // The session-aware admin: on an account the raw client's join route is the
   // relay's node route and answers 403. `redeemInvite` takes only the admin.
-  const { admin } = useMero();
+  const { admin, nodeUrl } = useMero();
   const navigate = useNavigate();
   const [status, setStatus] = useState<string | null>(null);
 
@@ -87,7 +88,12 @@ export default function InvitationPrompt() {
           // The audience's company becomes the active one, which is what
           // UpdatesPage's `useJoinSync` watches.
           joinedId = landed.namespaceId ?? namespaceId;
-          setActiveAudience(landed.contextId, landed.identity, joinedId);
+          setActiveAudience(
+            landed.contextId,
+            landed.identity,
+            joinedId,
+            nodeUrl,
+          );
           navigate("/a");
         } else if (landed.kind === "namespace") {
           joinedId = landed.namespaceId;
@@ -104,23 +110,27 @@ export default function InvitationPrompt() {
         setStatus(null);
       }
     },
-    [admin, navigate],
+    [admin, navigate, nodeUrl],
   );
 
   const redemption = useInviteRedemption({ parse, redeem, enabled: !!admin });
   const payload = redemption.parsed?.payload;
 
   return (
-    <InvitationDialog
-      redemption={redemption}
-      noun="company"
-      appName="Mero Updates"
-      status={status}
-      detail={
-        payload?.audienceName
-          ? "Joining takes you straight into that audience."
-          : "Joining gives you access to the space and every audience in it."
-      }
-    />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={parse} noun="company" appName="Mero Updates" />
+      <InvitationDialog
+        redemption={redemption}
+        noun="company"
+        appName="Mero Updates"
+        status={status}
+        detail={
+          payload?.audienceName
+            ? "Joining takes you straight into that audience."
+            : "Joining gives you access to the space and every audience in it."
+        }
+      />
+    </>
   );
 }

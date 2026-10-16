@@ -16,7 +16,7 @@ import PeoplePage from "./pages/PeoplePage";
 import SettingsPage from "./pages/SettingsPage";
 import InvitationPrompt from "./components/InvitationPrompt";
 import { ToastProvider } from "./contexts/ToastContext";
-import { getContextId } from "./lib/session";
+import { useStoredAudience } from "./lib/storedAudience";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -39,6 +39,7 @@ const LANDING_PATHS = ["/", "/docs", "/preview"];
 function RequireAudience({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
   const location = useLocation();
+  const audience = useStoredAudience();
 
   if (isLoading) return null;
   if (!isAuthenticated) {
@@ -48,7 +49,12 @@ function RequireAudience({ children }: { children: ReactNode }) {
   // joined. This used to be a `SetupPage` that could make exactly ONE audience,
   // because the app modelled "a namespace with one context inside it" and had
   // no way to express a second. Spaces and audiences are separate screens now.
-  if (!getContextId()) return <Navigate to="/companies" replace />;
+  //
+  // And the stored audience must be one THIS node holds: it is remembered
+  // across reloads and node switches, so it can name a context deleted, left,
+  // or on another node. `checking` renders nothing until the node has answered.
+  if (audience === "checking") return null;
+  if (audience === "none") return <Navigate to="/companies" replace />;
   return <>{children}</>;
 }
 
@@ -79,9 +85,13 @@ function RequireAuth({ children }: { children: ReactNode }) {
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
+  // Into the remembered audience only once this node has confirmed it holds it.
+  const audience = useStoredAudience();
   if (isLoading) return null; // the auth probe is still in flight
-  if (isAuthenticated)
-    return <Navigate to={getContextId() ? "/a" : "/companies"} replace />;
+  if (isAuthenticated) {
+    if (audience === "checking") return null;
+    return <Navigate to={audience === "open" ? "/a" : "/companies"} replace />;
+  }
   return <>{children}</>;
 }
 

@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   InvitationDialog,
+  InvitationGate,
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
@@ -98,19 +99,23 @@ export default function InvitationPrompt() {
   const payload = redemption.parsed?.payload;
 
   return (
-    <InvitationDialog
-      redemption={redemption}
-      noun="team"
-      appName="Mero Pass"
-      status={status}
-      // Deliberately explicit about the real grant. A vault invitation is a
-      // SPACE invitation underneath, because vault access is inherited, and the
-      // person being asked to accept is entitled to know that before they click.
-      detail={
-        payload?.vaultName
-          ? 'Joining gives you this vault and the rest of the team it belongs to.'
-          : 'Joining gives you access to the team and every vault in it.'
-      }
-    />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={parse} noun="team" appName="Mero Pass" />
+      <InvitationDialog
+        redemption={redemption}
+        noun="team"
+        appName="Mero Pass"
+        status={status}
+        // Deliberately explicit about the real grant. A vault invitation is a
+        // SPACE invitation underneath, because vault access is inherited, and the
+        // person being asked to accept is entitled to know that before they click.
+        detail={
+          payload?.vaultName
+            ? 'Joining gives you this vault and the rest of the team it belongs to.'
+            : 'Joining gives you access to the team and every vault in it.'
+        }
+      />
+    </>
   );
 }

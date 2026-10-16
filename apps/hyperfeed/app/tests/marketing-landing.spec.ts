@@ -44,7 +44,7 @@ test.describe("Hyperfeed landing page", () => {
     await page.goto("/");
     await page.getByRole("link", { name: "Try the demo, no node needed" }).click();
     await expect(page).toHaveURL(/\/demo$/);
-    await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Decisions for you" })).toBeVisible();
   });
 
   test("starts light even when the system prefers dark", async ({ page }) => {

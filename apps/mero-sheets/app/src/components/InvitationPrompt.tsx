@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import {
   InvitationDialog,
+  InvitationGate,
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
@@ -125,16 +126,20 @@ export default function InvitationPrompt({
   const payload = redemption.parsed?.payload;
 
   return (
-    <InvitationDialog
-      redemption={redemption}
-      noun="workspace"
-      appName={APP_DISPLAY_NAME}
-      status={status}
-      detail={
-        payload?.projectName
-          ? `Joining opens “${payload.projectName}” and every other spreadsheet in it.`
-          : 'Joining gives you every spreadsheet in this workspace.'
-      }
-    />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={parse} noun="workspace" appName={APP_DISPLAY_NAME} />
+      <InvitationDialog
+        redemption={redemption}
+        noun="workspace"
+        appName={APP_DISPLAY_NAME}
+        status={status}
+        detail={
+          payload?.projectName
+            ? `Joining opens “${payload.projectName}” and every other spreadsheet in it.`
+            : 'Joining gives you every spreadsheet in this workspace.'
+        }
+      />
+    </>
   );
 }

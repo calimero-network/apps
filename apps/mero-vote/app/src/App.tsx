@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import {
   ConnectButton,
   InvitationDialog,
+  InvitationGate,
   clearContextId,
   useMero,
 } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { InviteCard } from "./InviteCard";
-import { useJoinFromInvitation } from "./useJoinFromInvitation";
+import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
 import { VotePanel } from "./VotePanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { signOut } from "./signOut";
@@ -65,6 +66,8 @@ export function App() {
 
   return (
     <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={readInvitation} noun="voting group" appName="Mero Vote" />
       {/*
         At the root, so a link that arrives while a context is already open is
         answered too, not left waiting until the user happens to log out.

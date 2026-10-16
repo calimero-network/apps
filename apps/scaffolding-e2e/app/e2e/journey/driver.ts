@@ -140,6 +140,8 @@ const blob: Feature = {
 
 export const driver: AppDriver = {
   app: "scaffolding-e2e",
+  // No "you're invited" screen: a test harness that drives node discovery itself, with no ConnectButton.
+  inviteLanding: false,
 
   async login(actor) {
     const page = actor.page;

@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   InvitationDialog,
+  InvitationGate,
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
@@ -46,7 +47,7 @@ interface ForumInvitation extends ParsedInvitation {
 }
 
 export default function InvitationPrompt() {
-  const { mero } = useMero();
+  const { mero, nodeUrl } = useMero();
   const navigate = useNavigate();
   const [status, setStatus] = useState<string | null>(null);
 
@@ -88,7 +89,12 @@ export default function InvitationPrompt() {
         if (landed.kind === "forum") {
           if (landed.forumName)
             setForumName(landed.contextId, landed.forumName);
-          setActiveForum(landed.contextId, landed.identity, landed.namespaceId);
+          setActiveForum(
+            landed.contextId,
+            landed.identity,
+            landed.namespaceId,
+            nodeUrl,
+          );
           namespaceId = landed.namespaceId ?? namespaceId;
           navigate("/f");
         } else if (landed.kind === "namespace") {
@@ -106,23 +112,27 @@ export default function InvitationPrompt() {
         setStatus(null);
       }
     },
-    [mero, navigate],
+    [mero, navigate, nodeUrl],
   );
 
   const redemption = useInviteRedemption({ parse, redeem, enabled: !!mero });
   const payload = redemption.parsed?.payload;
 
   return (
-    <InvitationDialog
-      redemption={redemption}
-      noun="space"
-      appName="Mero Forum"
-      status={status}
-      detail={
-        payload?.forumName
-          ? "Joining takes you straight into that forum."
-          : "Joining gives you access to the space and every forum in it."
-      }
-    />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={parse} noun="space" appName="Mero Forum" />
+      <InvitationDialog
+        redemption={redemption}
+        noun="space"
+        appName="Mero Forum"
+        status={status}
+        detail={
+          payload?.forumName
+            ? "Joining takes you straight into that forum."
+            : "Joining gives you access to the space and every forum in it."
+        }
+      />
+    </>
   );
 }
