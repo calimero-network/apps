@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   InvitationDialog,
+  InvitationGate,
   useInviteRedemption,
   useMero,
 } from "@calimero-network/mero-react";
@@ -44,10 +45,14 @@ export default function InvitationHost(): React.ReactElement | null {
   });
 
   return (
-    <InvitationDialog
-      redemption={redemption}
-      noun="workspace"
-      appName="Mero CRM"
-    />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={parseInviteToken} noun="workspace" appName="Mero CRM" />
+      <InvitationDialog
+        redemption={redemption}
+        noun="workspace"
+        appName="Mero CRM"
+      />
+    </>
   );
 }

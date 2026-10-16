@@ -10,10 +10,11 @@ import {
 import {
   ConnectButton,
   InvitationDialog,
+  InvitationGate,
   useMero,
 } from "@calimero-network/mero-react";
 import { ScenePicker } from "./ScenePicker";
-import { useJoinFromInvitation } from "./useJoinFromInvitation";
+import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
 import LandingPage from "./pages/landing/LandingPage";
 
 /**
@@ -159,15 +160,19 @@ function InvitationPrompt({
     },
   });
   return (
-    <InvitationDialog
-      redemption={join}
-      noun="scene"
-      appName="Mero Models"
-      // The grant is the namespace, not just the scene the link names: one
-      // invitation opens every scene in it, and the person accepting should
-      // know that before they click.
-      detail="Joining makes this node a member of the studio this scene belongs to, so every scene in it syncs here from the other members."
-    />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={readInvitation} noun="scene" appName="Mero Models" />
+      <InvitationDialog
+        redemption={join}
+        noun="scene"
+        appName="Mero Models"
+        // The grant is the namespace, not just the scene the link names: one
+        // invitation opens every scene in it, and the person accepting should
+        // know that before they click.
+        detail="Joining makes this node a member of the studio this scene belongs to, so every scene in it syncs here from the other members."
+      />
+    </>
   );
 }
 

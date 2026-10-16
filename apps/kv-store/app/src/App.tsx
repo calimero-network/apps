@@ -2,13 +2,14 @@ import { useState } from "react";
 import {
   ConnectButton,
   InvitationDialog,
+  InvitationGate,
   clearContextId,
   useMero,
 } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { InviteCard } from "./InviteCard";
 import { KvPanel } from "./KvPanel";
-import { useJoinFromInvitation } from "./useJoinFromInvitation";
+import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
 
 /** `head…tail`, so two ids can be told apart without the full 44 characters. */
 function shortId(id: string) {
@@ -148,6 +149,8 @@ export function App() {
         </div>
       )}
 
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={readInvitation} noun="namespace" appName="KV Store" />
       {/*
         Above every branch, so a link that arrives while a context is open is
         asked about too, rather than waiting until the user logs out. It stays

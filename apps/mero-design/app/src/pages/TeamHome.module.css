@@ -1,0 +1,349 @@
+/* A team's home inside the shell (TeamHome), and the no-team start
+   (TeamIndex): a page title and a grid of frosted board cards, scrolling in
+   the shell's main area. */
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border-radius: 20px;
+}
+
+/* ── Page title ──────────────────────────────────────────────────────── */
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 36px 28px 56px;
+  color: var(--glass-ink);
+}
+
+.center {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+.heroText { min-width: 0; }
+.heroActions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.ghostBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+  color: var(--glass-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ghostBtn:hover { background: var(--glass-sunken); }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--md-lime-ink);
+  margin-bottom: 10px;
+}
+.eyebrow::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--glass-tint);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glass-tint) 35%, transparent);
+}
+
+.title {
+  font-size: clamp(30px, 4.4vw, 44px);
+  line-height: 1.05;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+
+.subtitle {
+  margin-top: 12px;
+  max-width: 560px;
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--glass-ink-2);
+}
+
+/* ── Cards and panels ────────────────────────────────────────────────── */
+.panel {
+  border-radius: 24px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  background: var(--glass-surface-solid);
+  box-shadow: inset 0 0 0 1px var(--glass-line-strong);
+  transition: box-shadow 0.15s;
+}
+.field:focus-within {
+  box-shadow: inset 0 0 0 1px var(--glass-ink), 0 0 0 4px color-mix(in srgb, var(--glass-tint) 45%, transparent);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: var(--glass-ink);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.input::placeholder { color: var(--glass-muted); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 20px;
+  background: var(--glass-ink);
+  color: var(--glass-on-ink);
+  border: none;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 700;
+  box-shadow: 0 10px 24px -12px rgba(14, 18, 34, 0.7);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, opacity 0.15s;
+}
+.btn:hover:not(:disabled) { background: var(--glass-ink-2); }
+.btn:disabled { opacity: 0.4; box-shadow: none; cursor: default; }
+
+.btnLg { height: 44px; padding: 0 24px; font-size: 14.5px; }
+
+.errorText { font-size: 12.5px; color: var(--glass-bad-ink); padding: 0 6px; }
+
+/* ── Section heading ─────────────────────────────────────────────────── */
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.sectionTitle { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+.count {
+  min-width: 26px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--glass-ink-2);
+  background: var(--glass-sunken);
+}
+
+/* ── Grid of cards ───────────────────────────────────────────────────── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  padding: 8px;
+  border-radius: 24px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+  color: var(--glass-ink);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: box-shadow 0.2s, transform 0.2s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.card:hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--md-lift); }
+.card:focus-visible { outline: 2px solid var(--glass-ink); outline-offset: 3px; }
+
+/* The grid's first tile: make a board, right where the boards are. */
+.newCard {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px;
+  min-height: 214px;
+}
+.newIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: #365314;
+  background: linear-gradient(135deg, #ecfccb, #bef264);
+  box-shadow: inset 0 0 0 1px rgba(54, 83, 20, 0.12);
+}
+.newTitle { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.newCard .btn { padding: 0 14px; }
+.newCard .input { padding: 0 8px; }
+
+.card:hover,
+.card:focus-visible { transform: translateY(-3px); }
+
+/* A board's picture: the board itself, on the board's own colour. */
+.cardThumb {
+  position: relative;
+  width: 100%;
+  height: 150px;
+  overflow: hidden;
+  border-radius: 17px;
+  background-color: var(--md-board);
+  box-shadow: inset 0 0 0 1px var(--glass-line);
+  color: var(--glass-ink);
+}
+.cardThumb img {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 10px;
+  /* On dark glass the board (white by default) reads as a sheet, not a hole. */
+  border-radius: 18px;
+}
+.cardThumb svg[data-placeholder] { position: absolute; inset: 0; }
+/* No cache yet and still fetching: a faint shimmer over the placeholder, so it
+   reads as loading rather than as an empty board. */
+.cardThumb[data-state="loading"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--md-board) 70%, transparent) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: thumbLoading 1.4s ease-in-out infinite;
+}
+@keyframes thumbLoading {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 8px 6px;
+  min-width: 0;
+}
+.cardName {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cardMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--glass-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.metaDot { width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.6; flex: none; }
+.metaId { font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+
+/* Loading: cards without content, breathing. */
+.skeleton {
+  height: 214px;
+  border-radius: 24px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow);
+  animation: breathe 1.6s ease-in-out infinite;
+}
+@keyframes breathe { 50% { opacity: 0.55; } }
+
+/* ── Empty state ─────────────────────────────────────────────────────── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 28px 36px;
+  margin-bottom: 24px;
+}
+.empty svg { max-width: 100%; height: auto; }
+.emptyTitle {
+  margin-top: 18px;
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+}
+.emptyText {
+  margin-top: 8px;
+  max-width: 420px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--glass-ink-2);
+}
+.emptyField {
+  width: min(440px, 100%);
+  margin-top: 22px;
+}
+.emptyNote {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--glass-muted);
+}
+
+/* ── Narrow screens ──────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .page { padding: 24px 14px 40px; }
+  .hero { margin-bottom: 20px; }
+  .grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .cardThumb { height: 110px; }
+  .newCard { min-height: 0; grid-column: 1 / -1; }
+}
+@media (max-width: 420px) {
+  .grid { grid-template-columns: 1fr; }
+}

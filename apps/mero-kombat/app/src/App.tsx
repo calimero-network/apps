@@ -10,12 +10,13 @@ import {
 import {
   ConnectButton,
   InvitationDialog,
+  InvitationGate,
   useMero,
 } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { ArenaPage } from "./ArenaPage";
 import { PracticePage } from "./PracticePage";
-import { useJoinFromInvitation } from "./useJoinFromInvitation";
+import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
 import LandingPage from "./pages/landing/LandingPage";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
@@ -160,19 +161,23 @@ function InvitationPrompt({ onOpen }: { onOpen: (contextId: string) => void }) {
   );
   const invited = join.parsed;
   return (
-    <InvitationDialog
-      redemption={join}
-      noun="arena"
-      appName="Mero Kombat"
-      // The ids, because following a link must not act on the player's
-      // behalf: joining binds their identity to a namespace someone else chose
-      // and switches the arena they are in.
-      detail={
-        invited
-          ? `Joining adds this node to namespace ${shortId(invited.namespaceId)} and opens its arena ${shortId(invited.contextId)}.`
-          : undefined
-      }
-    />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={readInvitation} noun="arena" appName="Mero Kombat" />
+      <InvitationDialog
+        redemption={join}
+        noun="arena"
+        appName="Mero Kombat"
+        // The ids, because following a link must not act on the player's
+        // behalf: joining binds their identity to a namespace someone else chose
+        // and switches the arena they are in.
+        detail={
+          invited
+            ? `Joining adds this node to namespace ${shortId(invited.namespaceId)} and opens its arena ${shortId(invited.contextId)}.`
+            : undefined
+        }
+      />
+    </>
   );
 }
 

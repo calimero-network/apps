@@ -190,6 +190,8 @@ const createAgreement: Feature = {
 
 export const driver: AppDriver = {
   app: "mero-sign",
+  // No "you're invited" screen: on the legacy CalimeroProvider, so mero-react's InvitationGate cannot read its session.
+  inviteLanding: false,
 
   async login(actor) {
     await defaultLogin(actor);

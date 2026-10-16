@@ -10,11 +10,12 @@ import {
 import {
   ConnectButton,
   InvitationDialog,
+  InvitationGate,
   useMero,
 } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { TablePage } from "./TablePage";
-import { useJoinFromInvitation } from "./useJoinFromInvitation";
+import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
 import LandingPage from "./pages/landing/LandingPage";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
@@ -210,6 +211,8 @@ function AppRoutes() {
 
   return (
     <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={readInvitation} noun="table" appName="Mero Chess" />
       {/* Above the routes, so a link opened mid-game is asked about too. It
           stays on "Syncing…" until `TablePage` has read the joined table. The
           ids are shown because following a link must not act on the player's

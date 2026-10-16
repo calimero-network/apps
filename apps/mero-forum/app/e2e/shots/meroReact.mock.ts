@@ -4,7 +4,8 @@ import { scenarioById } from "./fixtures";
 
 // The invitation dialog is the real one; only the redemption driving it is a
 // fixture, so the "invitation" shot shows the production prompt.
-export { InvitationDialog, JoinSyncBanner } from "mero-react-real";
+// The invitation screen is real too; with no MeroProvider here it shows nothing.
+export { InvitationDialog, InvitationGate, JoinSyncBanner } from "mero-react-real";
 
 /** The id `pickApplicationId` should settle on for the fixture node. */
 const APP_ID = "3xKm9QpLvR7nTzB4aW1cYeUf3gJd6NqSvXhKrM8tZoPq";

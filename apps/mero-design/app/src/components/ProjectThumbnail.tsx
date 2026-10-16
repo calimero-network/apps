@@ -15,7 +15,7 @@ import { BoardPlaceholder } from "./Artwork";
  * runs no script, so no label or text on the board can become markup here.
  */
 
-/** Card thumbnail proportions (Home.module.css `.cardThumb`: ~240×150). */
+/** Card thumbnail proportions (TeamHome.module.css `.cardThumb`: ~240×150). */
 const FALLBACK_ASPECT = 240 / 150;
 
 interface Props {
@@ -23,9 +23,11 @@ interface Props {
   /** The project's name, for the generated tile an empty board shows. */
   name?: string;
   className?: string;
+  /** Prefix for the test ids, so the rail's and the grid's pictures of one board differ. */
+  testId?: string;
 }
 
-export default function ProjectThumbnail({ contextId, name, className }: Props) {
+export default function ProjectThumbnail({ contextId, name, className, testId = "project" }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [aspect, setAspect] = useState(FALLBACK_ASPECT);
@@ -67,12 +69,12 @@ export default function ProjectThumbnail({ contextId, name, className }: Props) 
     <div
       ref={ref}
       className={className}
-      data-testid={`project-thumb-${contextId}`}
+      data-testid={`${testId}-thumb-${contextId}`}
       data-state={state}
       aria-hidden="true"
     >
       {state !== "ready" && <BoardPlaceholder id={contextId} name={name ?? contextId} />}
-      {url && <img src={url} alt="" draggable={false} data-testid={`project-preview-${contextId}`} />}
+      {url && <img src={url} alt="" draggable={false} data-testid={`${testId}-preview-${contextId}`} />}
     </div>
   );
 }

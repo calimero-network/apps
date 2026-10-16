@@ -408,7 +408,7 @@ test.describe("Preview mode", () => {
   });
 });
 
-// ── TeamsPage — Joining by invitation ────────────────────────────────────────
+// ── Team start — Joining by invitation ───────────────────────────────────────
 //
 // An invitation reaches the app only by its link being opened; there is no
 // field to paste one into. The link's token is the app's own deflate + base58
@@ -419,13 +419,14 @@ function invitationToken(obj: unknown): string {
   return bs58.encode(deflateSync(new TextEncoder().encode(JSON.stringify(obj)), { level: 9 }));
 }
 
-test.describe("TeamsPage – Joining by invitation", () => {
+test.describe("Team start – Joining by invitation", () => {
   let joinRequests = 0;
 
   test.beforeEach(async ({ page }) => {
     joinRequests = 0;
     await injectAuth(page);
-    await page.route("**/admin-api/namespaces", (route) =>
+    // No teams on this node yet: the shell's first-team start.
+    await page.route(/\/admin-api\/namespaces(\/for-application\/[^/]+)?$/, (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -478,25 +479,36 @@ test.describe("TeamsPage – Joining by invitation", () => {
   });
 });
 
-// ── ProjectsPage — Tabs ───────────────────────────────────────────────────────
+// ── Team home — Invite ───────────────────────────────────────────────────────
+//
+// The Invitations tab is gone: the shell's top bar has Invite on every screen,
+// and the link is minted as the dialog opens.
 
-test.describe("ProjectsPage – Invitations tab", () => {
+test.describe("Team home – Invite", () => {
   test.beforeEach(async ({ page }) => {
     await injectAuth(page);
     await page.route("**/admin-api/groups/**/subgroups", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { subgroups: [] } }) }),
     );
+    await page.route("**/admin-api/namespaces/*/invite", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { invitation: { invitation: { group_id: [9] }, inviterSignature: "s" } } }),
+      }),
+    );
     await page.goto("/teams/team-1/projects");
   });
 
-  test("tabs Projects and Invitations are visible", async ({ page }) => {
-    await expect(page.getByRole("button", { name: "Projects" })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole("button", { name: "Invitations" })).toBeVisible();
+  test("there are no Projects / Invitations tabs", async ({ page }) => {
+    await expect(page.getByTestId("invite-btn")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: "Invitations" })).toHaveCount(0);
   });
 
-  test("switching to Invitations tab shows generate button", async ({ page }) => {
-    await page.getByRole("button", { name: "Invitations" }).click();
-    await expect(page.getByTestId("generate-invite")).toBeVisible();
+  test("Invite shows a ready link, no Generate step", async ({ page }) => {
+    await page.getByTestId("invite-btn").click();
+    await expect(page.getByTestId("invite-token")).toBeVisible();
+    await expect(page.getByTestId("copy-invite")).toHaveText("Copy link");
   });
 });
 

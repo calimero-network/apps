@@ -24,16 +24,6 @@
   user-select: none;
 }
 
-.logo {
-  font-size: 14.5px;
-  font-weight: 750;
-  white-space: nowrap;
-  letter-spacing: -0.03em;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-right: 4px;
-}
 
 /* The tools sit in their own sunken tray inside the bar. */
 .tools {
@@ -143,37 +133,9 @@
   cursor: default;
 }
 
-.backBtn {
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  font-size: 16px;
-  color: var(--glass-ink-2);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.backBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
 .spacer { flex: 1; }
 
-.logoutBtn {
-  height: 34px;
-  padding: 0 14px;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  font-size: 12.5px;
-  font-weight: 650;
-  color: var(--glass-ink-2);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.logoutBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
 .previewBtn {
   height: 34px;
@@ -232,8 +194,9 @@
 
 .membersBtn {
   position: relative;
-  width: 34px;
+  min-width: 34px;
   height: 34px;
+  padding: 0 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -246,21 +209,22 @@
 }
 .membersBtn:hover { background: var(--glass-sunken); color: var(--glass-ink); }
 
-.membersBadge {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  background: var(--glass-ink);
-  color: var(--glass-on-ink);
-  font-size: 8px;
-  font-weight: 700;
-  border-radius: 6px;
-  padding: 0 3px;
-  min-width: 12px;
-  text-align: center;
-  line-height: 13px;
-  height: 13px;
+
+/* Who is here: up to three faces, overlapping, then "+n". */
+.avatarStack { display: inline-flex; align-items: center; }
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #fff;
+  box-shadow: 0 0 0 2px var(--glass-surface-solid);
 }
+.avatar + .avatar { margin-left: -8px; }
+.avatarMore { background: var(--glass-sunken); color: var(--glass-ink-2); }
 
 .membersDropdown {
   position: absolute;
@@ -384,13 +348,6 @@
   color: var(--glass-muted);
 }
 
-
-/* The project's own title, beside the mark. */
-.brandText { white-space: nowrap; }
-
-@media (max-width: 1180px) {
-  .brandText { display: none; }
-}
 @media (max-width: 760px) {
   /* Two rows: the actions on top, the whole tool tray below it, scrolling
      sideways when it does not fit. */
@@ -402,8 +359,12 @@
     gap: 4px;
     padding: 6px;
   }
-  .logo { display: none; }
   .hideNarrow { display: none; }
+  /* In the shell's top bar: Present shrinks to its icon, and who is here
+     stays in the board (its cursors) rather than crowding the bar. */
+  .presentLabel { display: none; }
+  .presentBtn { padding: 0 12px; }
+  .membersWrap { display: none; }
   .optionsLabel { display: none; }
   .divider { display: none; }
   .spacer { display: block; }

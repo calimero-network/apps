@@ -16,7 +16,7 @@ _`pnpm tasks --check` fails CI if this drifts. A task is only "done" when a spec
 _exists for it and contains at least one live test; the count is × 2 because every spec_
 _runs in both the browser and the Tauri project._
 
-**14 of 15 done** · 63 task tests × 2 projects = 126 runs in CI
+**14 of 15 done** · 67 task tests × 2 projects = 134 runs in CI
 
 | # | Item | Status | Plan | Spec | CI runs |
 | --- | --- | --- | --- | --- | --- |
@@ -28,10 +28,10 @@ _runs in both the browser and the Tauri project._
 | 6 | Stroke/fill ignored on images | **done** | PR 8 | `task-06-image-stroke.spec.ts` | 5 × 2 = 10 |
 | 7 | Stroke ignored on text | **done** | PR 9 | `task-07-text-stroke.spec.ts` | 4 × 2 = 8 |
 | 8 | Usernames on canvas, comments, members | **done** | PR 10 | `task-08-comment-usernames.spec.ts` | 4 × 2 = 8 |
-| 9 | Save PNG/SVG/.mero-design in Tauri | **done** | PR 11 | `task-09-tauri-save.spec.ts` | 6 × 2 = 12 |
+| 9 | Save PNG/SVG/.mero-design in Tauri | **done** | PR 11 | `task-09-tauri-save.spec.ts` | 9 × 2 = 18 |
 | 10 | Comments overlay navbar dropdowns | **done** | PR 12 | `task-10-comment-zorder.spec.ts` | 5 × 2 = 10 |
 | 11 | Images not embedded in code export | **done** | PR 13 | `task-11-code-export.spec.ts` | 3 × 2 = 6 |
-| 12 | Usernames in project settings | **done** | PR 10 | `task-12-settings-usernames.spec.ts` | 2 × 2 = 4 |
+| 12 | Usernames in project settings | **done** | PR 10 | `task-12-settings-usernames.spec.ts` | 3 × 2 = 6 |
 | 13 | SVG icon: bundle, logos, favicon, metadata | **done** | PR 15 | `task-13-svg-icon.spec.ts` | 5 × 2 = 10 |
 | 14 | Rounded corners on rectangles | **done** | PR 14 | `task-14-corner-radius.spec.ts` | 4 × 2 = 8 |
 | 15 | Close the Figma feature gap | not started | roadmap | — | 0 |

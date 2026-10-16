@@ -131,8 +131,9 @@ catalog:
   # shows; on 9.14.0 the dialog sat on "Syncing…" for that invitation.
   # 9.15.0 (#111): LoginModal carries `mero-login-*` classes and
   # `--mero-login-shadow`, which glass.css uses for the connect dialog's float
-  # shadow, font and blur. 9.16.0 (#109): a "You're invited" screen for an
-  # invitation link opened logged out.
+  # shadow, font and blur.
+  # 9.16.0 (#109): InvitationGate, the "You're invited" screen a link opened
+  # while logged out lands on instead of the app's landing page.
   "@calimero-network/mero-react": ^9.16.0
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every

@@ -19,26 +19,29 @@ vi.mock("../api/teamContexts", () => ({ listTeamContexts: vi.fn().mockResolvedVa
 const admin: { listGroupMembers: ReturnType<typeof vi.fn>; setMemberMetadata?: ReturnType<typeof vi.fn> } = {
   listGroupMembers: vi.fn().mockResolvedValue({ members: [{ identity: ana, role: "Member", name: "Ana" }] }),
 };
-vi.mock("@calimero-network/mero-react", () => ({ useMero: () => ({ applicationId: "app-1", admin }) }));
+vi.mock("@calimero-network/mero-react", () => ({
+  useMero: () => ({ applicationId: "app-1", admin }),
+  useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn() }),
+}));
 vi.mock("../contexts/ToastContext", () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
-const SettingsModal = (await import("./SettingsModal")).default;
+const SettingsSection = (await import("./SettingsSection")).default;
 
-describe("SettingsModal – member names", () => {
+describe("SettingsSection – member names", () => {
   it("names a project member from the team, not by their account id", async () => {
     render(
-      <SettingsModal type="project" id="ctx1" groupId={"1".repeat(64)} namespaceId="ns1" name="Board" onClose={vi.fn()} />,
+      <SettingsSection type="project" id="ctx1" groupId={"1".repeat(64)} namespaceId="ns1" name="Board" />,
     );
     expect(await screen.findByText("Ana")).toBeInTheDocument();
     expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1");
   });
 });
 
-describe("SettingsModal – your name", () => {
+describe("SettingsSection – your name", () => {
   it("renames you for the whole team, not for one board", async () => {
     const { fireEvent } = await import("@testing-library/react");
     admin.setMemberMetadata = vi.fn().mockResolvedValue(undefined);
-    render(<SettingsModal type="team" id="ns1" name="Team" onClose={vi.fn()} />);
+    render(<SettingsSection type="team" id="ns1" name="Team" />);
     const input = await screen.findByTestId("your-name-input");
     fireEvent.change(input, { target: { value: "Sandi" } });
     fireEvent.click(screen.getByTestId("your-name-save"));
