@@ -510,12 +510,13 @@ test('people edit one document live: formatted, restructured, undone, apart, the
       const runs = ['a', 'b', 'c'].map((letter) =>
         `${letter}${round}`.repeat(3),
       );
-      await Promise.all(
-        everyone.map(async (w, i) => {
-          await caretToEnd(w.page, 0);
-          await typeLive(w.page, runs[i]);
-        }),
-      );
+      // One spot means every caret is in place before anyone types. A caret
+      // placed late lands after a peer's half-typed run and starts a new run
+      // inside it, which no merge keeps whole. In round one, window b's
+      // formatting toolbar, still open from the link step, covers this block
+      // and holds its click for about two seconds.
+      await Promise.all(everyone.map((w) => caretToEnd(w.page, 0)));
+      await Promise.all(everyone.map((w, i) => typeLive(w.page, runs[i])));
       // `settle` alone can agree on a moment before a slower window has sent
       // its last keystrokes. Wait for every typed character first; a run that
       // never lands still fails here, by count.
