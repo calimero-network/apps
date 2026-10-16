@@ -277,7 +277,7 @@ function Screen({
         ))}
       </div>
       {view === "brief" ? (
-        <BriefView feed={feed} query={query} onChat={openChat} />
+        <BriefView feed={feed} query={query} onChat={openChat} feedKey={contextId ?? ""} />
       ) : view === "team" ? (
         <TeamView feed={feed} query={query} onChat={openChat} focus={focus} onFocused={focused} />
       ) : (

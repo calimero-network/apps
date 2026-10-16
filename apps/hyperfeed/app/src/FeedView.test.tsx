@@ -127,7 +127,7 @@ describe("FeedView", () => {
     render(<Harness backend={new DemoBackend(true, 0)} />);
     await rowFor(/Vendor NDA/);
     // What needs you stays in the strip, and the card only counts it.
-    expect(digest()).toHaveTextContent("Did 1 thing, 3 waiting on you.");
+    expect(digest()).toHaveTextContent("Filed 1 issue, did 7 other things, 3 waiting on you.");
     expect(within(digest()).queryByRole("button", { name: /Posted your stand-up/i })).not.toBeInTheDocument();
     // After what needs you, before everything else.
     expect(needs().compareDocumentPosition(digest()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

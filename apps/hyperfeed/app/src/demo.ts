@@ -1327,6 +1327,42 @@ export class DemoBackend implements FeedBackend {
     const note = (minutes: number, input: Partial<NotificationInput> & { key: string }) =>
       void this.recordNotification(notification(input), ago(minutes));
 
+    // Earlier today: replies your agent proposed and you approved, the record
+    // the brief's "Always allow" counts.
+    const approved = new Map<string, number>();
+    for (const [minutes, title, label] of [
+      [320, "Replied to Priya about the offsite budget", "DM · Priya Nair"],
+      [280, "Sent Tomás the release notes", "DM · Tomás Reid"],
+      [230, "Answered Jordan's question about seats", "DM · Jordan Lee"],
+    ] as const) {
+      approved.set(title, ago(minutes));
+      done(minutes, { app: "chat", source_label: label, method: "send_message", undoable: true, title, why: "Drafted from the thread; you approved it." });
+    }
+    // What your agent got on with by itself.
+    done(190, { app: "issues", source_label: "Hyperfeed", method: "create_issue", title: "Filed HF-52 from Tomás's bug report", why: "Tomás reported it in #eng; you asked me to file reports like that." });
+    done(170, { app: "sheets", source_label: "Metrics", method: "set_cells", undoable: true, title: "Refreshed last week's numbers in Metrics", why: "The board deck reads from it." });
+    done(140, { app: "crm", source_label: "Acme · Sales", method: "add_note", undoable: true, title: "Logged the Northwind call notes on the deal", why: "From the call summary in #sales." });
+    done(120, { app: "chat", source_label: "#launch", method: "send_message", undoable: true, title: "Shared the launch checklist in #launch", why: "Ronit asked for it this morning." });
+    // Your team, around you: nothing here needed you, so it is filtered out.
+    const general = ["Lunch order closes at 12", "Who has the HDMI adapter?", "Office closed Monday", "New coffee machine is in", "Reminder: expenses by Friday"];
+    general.forEach((text, i) =>
+      note(300 - i * 40, {
+        key: `chat-general:${i}`,
+        app: "chat",
+        source_context: "chat-general",
+        source_label: "#general",
+        from: ["Ana Ruiz", "Ben Okafor", "People team", "Ana Ruiz", "Finance"][i]!,
+        title: "Posted in #general",
+        body: text,
+        event: "MessageSent",
+      }),
+    );
+    ["Edited the pricing table", "Renamed a section", "Resolved a comment"].forEach((title, i) =>
+      note(200 - i * 30, { key: `docs-pricing:${i}`, app: "docs", source_context: "docs-context", source_label: "Pricing v4", from: "Maya Ortiz", title, event: "DocumentChanged" }),
+    );
+    note(25, { key: "chat-launch:t:0", app: "chat", source_label: "#launch", from: "Ronit Cohen", title: "Posted in #launch", body: "Board deck review moved to 2pm.", event: "MessageSent" });
+    note(15, { key: "chat-launch:t:1", app: "chat", source_label: "#launch", from: "Tomás Reid", title: "Posted in #launch", body: "QA signs off the release tonight.", event: "MessageSent" });
+
     // The stand-up: a chain of one.
     done(105, {
       app: "chat",
@@ -1483,6 +1519,19 @@ export class DemoBackend implements FeedBackend {
       }),
       ago(1),
     );
+    // The replies you approved: proposed, approved by you, then carried out.
+    for (const item of [...this.items.values()]) {
+      const at = approved.get(item.title);
+      if (at === undefined || item.kind !== "action") continue;
+      this.put({
+        ...item,
+        history: [
+          { status: "pending", note: "", at: at - 4 * MINUTE },
+          { status: "approved", note: "", at: at - 2 * MINUTE },
+          { status: "done", note: "Carried out by your agent.", at },
+        ],
+      });
+    }
   }
 
   /** The "simulate" button: what an agent might do next, recorded through the rules. */

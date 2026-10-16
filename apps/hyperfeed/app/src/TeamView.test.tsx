@@ -52,7 +52,7 @@ describe("TeamView", () => {
     const around = region("Around you");
     expect(within(around).queryByText(/Your agent/)).not.toBeInTheDocument();
     const agent = region("Your agent today");
-    expect(within(agent).getByText(/^(Did|Answered|\d+ in progress|\d+ failed|Nothing yet)/)).toBeInTheDocument();
+    expect(within(agent).getByText(/^(Filed|Did|Answered|\d+ in progress|\d+ failed|Nothing yet)/)).toBeInTheDocument();
   });
 
   it("shows two teammates' comments on one issue as one card, below Needs you, with both faces and the latest verb", () => {
