@@ -134,7 +134,9 @@ catalog:
   # shadow, font and blur.
   # 9.16.0 (#109): InvitationGate, the "You're invited" screen a link opened
   # while logged out lands on instead of the app's landing page.
-  "@calimero-network/mero-react": ^9.16.0
+  # 9.16.1 (#110): a stray click outside the dialog no longer closes it while
+  # a join is still syncing.
+  "@calimero-network/mero-react": ^9.16.1
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"
