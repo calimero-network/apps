@@ -101,7 +101,8 @@ describe("BriefView", () => {
     render(<Harness backend={backend} focus={vote.chain} onFocused={() => done++} />);
     const decisions = await screen.findByRole("region", { name: "Decisions for you" });
     await expect.poll(() => done).toBe(1);
-    const card = within(decisions).getByText(/Offsite location/).closest("li")!;
+    // The focus lands, then the held-back card renders with the rest.
+    const card = (await within(decisions).findByText(/Offsite location/)).closest("li")!;
     expect(card).toHaveClass("focused");
   });
 });

@@ -251,10 +251,7 @@ function DecisionCard({
       </div>
 
       {situation && (
-        <p className="brief-about muted small">
-          About: {h.who} {h.verb}
-          {h.object ? ` ${h.object}` : ""}
-        </p>
+        <p className="brief-about muted small">About: {h.verb ? `${h.who} ${h.verb}${h.object ? ` ${h.object}` : ""}` : h.object}</p>
       )}
       {told && <p className="brief-situation">{told}</p>}
       {recommends && (

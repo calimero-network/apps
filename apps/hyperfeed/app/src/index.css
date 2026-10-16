@@ -4567,11 +4567,15 @@ select {
 
 .brief-evidence li {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: 72px minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
   color: var(--ink-2);
   overflow-wrap: anywhere;
+}
+
+.brief-evidence li > :first-child {
+  white-space: nowrap;
 }
 
 .brief-evidence li strong {
