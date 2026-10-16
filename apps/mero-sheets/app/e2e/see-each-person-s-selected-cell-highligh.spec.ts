@@ -70,7 +70,10 @@ test.describe(`collaborator: see each person's selected cell highlighted in thei
       await cell(b, 6, 1).click();
       await expect.poll(() => outline(a, 6, 1), { timeout: 60_000 }).not.toBeNull();
       await b.close();
-      await expect.poll(() => outline(a, 6, 1), { timeout: 30_000 }).toBeNull();
+      // A closed page rarely gets its leave out, so the highlight goes when the
+      // slice goes stale: PRESENCE_STALE_MS (25s) after b's last beat, seen on
+      // the next PRESENCE_BEAT_MS (10s) re-render. That is up to ~35s.
+      await expect.poll(() => outline(a, 6, 1), { timeout: 45_000 }).toBeNull();
     });
   });
 });
