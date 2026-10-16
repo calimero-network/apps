@@ -6,10 +6,13 @@ import { useToast } from "../contexts/ToastContext";
 import {
   createSpaceNamespace,
   deleteSpace,
+  leaveSpace,
   listSpaceNamespaces,
   mintNamespaceInvite,
+  selfIsGroupAdmin,
   type NamespaceRow,
 } from "../lib/groups";
+import { useSelfAccount } from "../lib/updates";
 import InviteModal from "../components/InviteModal";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { hostingProblem } from "../lib/hosting";
@@ -21,6 +24,7 @@ import {
   CopyIcon,
   InfoIcon,
   LayersIcon,
+  LogOutIcon,
   MoreIcon,
   PlusIcon,
   TrashIcon,
@@ -98,6 +102,11 @@ export default function CompaniesPage() {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pendingDelete, setPendingDelete] = useState<NamespaceRow | null>(null);
   const deleteDialogRef = useRef<HTMLDialogElement | null>(null);
+  // Whether this account is an Admin of each company, by id. An Admin deletes
+  // it; anyone else leaves it. Absent while unknown: the menu then offers
+  // neither rather than guessing.
+  const selfAccount = useSelfAccount();
+  const [adminOf, setAdminOf] = useState<Record<string, boolean>>({});
 
   /**
    * Run one action under its own key, with step status wired to `onStatus`.
@@ -149,6 +158,24 @@ export default function CompaniesPage() {
   useEffect(() => {
     void load();
   }, [load, location.key]);
+
+  const spaceIds = namespaces.map((n) => n.namespaceId).join(",");
+  useEffect(() => {
+    const ids = spaceIds ? spaceIds.split(",") : [];
+    if (!admin || !selfAccount || ids.length === 0) return;
+    let cancelled = false;
+    void Promise.all(
+      ids.map(
+        async (id) =>
+          [id, await selfIsGroupAdmin(admin, id, selfAccount)] as const,
+      ),
+    ).then((entries) => {
+      if (!cancelled) setAdminOf(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [admin, selfAccount, spaceIds]);
 
   // Close an open card menu on an outside click. The ref is attached to the
   // OPEN card only (see the grid below), so this compares against one node
@@ -229,6 +256,19 @@ export default function CompaniesPage() {
         onStatus("Refreshing your companies…");
         await load(false);
         showToast(`Deleted \u201c${ns.name}\u201d.`);
+      });
+    },
+    [admin, run, load, showToast],
+  );
+
+  const exitSpace = useCallback(
+    (ns: NamespaceRow) => {
+      if (!admin) return;
+      void run(`leave:${ns.namespaceId}`, async (onStatus) => {
+        await leaveSpace(admin, { namespaceId: ns.namespaceId }, onStatus);
+        onStatus("Refreshing your companies…");
+        await load(false);
+        showToast(`Left \u201c${ns.name}\u201d.`);
       });
     },
     [admin, run, load, showToast],
@@ -421,10 +461,11 @@ export default function CompaniesPage() {
                       <CopyIcon size={15} />
                       Copy company ID
                     </button>
-                    {/* Deleting a namespace is a node's own operation — the
-                        account admin refuses it by name (NotForAccountError).
-                        Hidden rather than shown-and-failing. */}
-                    {!isDelegated && (
+                    {/* An Admin deletes, anyone else leaves. Deleting a
+                        namespace is a node's own operation — the account
+                        admin refuses it by name (NotForAccountError) — so it
+                        is hidden there rather than shown-and-failing. */}
+                    {adminOf[ns.namespaceId] === true && !isDelegated && (
                       <>
                         <div className={styles.dropdownSep} />
                         <button
@@ -437,6 +478,22 @@ export default function CompaniesPage() {
                         >
                           <TrashIcon size={15} />
                           Delete
+                        </button>
+                      </>
+                    )}
+                    {adminOf[ns.namespaceId] === false && (
+                      <>
+                        <div className={styles.dropdownSep} />
+                        <button
+                          className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                          onClick={() => {
+                            setMenuOpenId(null);
+                            exitSpace(ns);
+                          }}
+                          data-testid="leave-space"
+                        >
+                          <LogOutIcon size={15} />
+                          Leave
                         </button>
                       </>
                     )}

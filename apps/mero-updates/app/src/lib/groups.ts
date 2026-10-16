@@ -25,6 +25,7 @@
 // component is the worst place to unit-test one.
 
 import { CAPABILITIES, type AdminApiClient } from "@calimero-network/mero-js";
+import { sameAccount } from "@calimero-apps/names";
 import {
   encodeInvite,
   groupIdOfInvite,
@@ -467,6 +468,47 @@ export interface AudienceRow {
    * list.
    */
   identity: string | null;
+  /** This account is an Admin of the audience's subgroup (may delete it). */
+  selfAdmin: boolean;
+}
+
+// ── Who may delete ───────────────────────────────────────────────────────────
+//
+// An Admin deletes a space or audience; anyone else leaves a space (and is not
+// offered an audience delete at all). Read from the group's own member
+// listing, which keys rows by ACCOUNT — the id `useSelfAccount` gives, not a
+// context identity.
+
+/** Whether `selfAccount` holds Admin among `rows`. Case-insensitive on the role. */
+export function selfIsAdminIn(
+  rows: readonly { identity?: string; role?: string }[],
+  selfAccount: string | null | undefined,
+): boolean {
+  if (!selfAccount) return false;
+  return rows.some(
+    (m) =>
+      sameAccount(m.identity, selfAccount) &&
+      (m.role ?? "").trim().toLowerCase() === "admin",
+  );
+}
+
+/**
+ * Whether `selfAccount` is an Admin of `groupId`. `false` when the listing
+ * fails or the account is unknown: offering a Delete the node will refuse is
+ * worse than not offering it.
+ */
+export async function selfIsGroupAdmin(
+  admin: AdminApiClient,
+  groupId: string,
+  selfAccount: string | null | undefined,
+): Promise<boolean> {
+  if (!groupId || !selfAccount) return false;
+  try {
+    const r = await admin.listGroupMembers(groupId);
+    return selfIsAdminIn(r.members ?? [], selfAccount);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -480,6 +522,7 @@ export interface AudienceRow {
 export async function listAudiences(
   admin: AdminApiClient,
   namespaceId: string,
+  selfAccount: string | null = null,
 ): Promise<AudienceRow[]> {
   const subgroups = await admin.listNamespaceGroups(namespaceId);
   return Promise.all(
@@ -508,6 +551,7 @@ export async function listAudiences(
         teeMode: teeModeOf(members),
         joined: !!identity,
         identity,
+        selfAdmin: selfIsAdminIn(members, selfAccount),
       };
     }),
   );
@@ -587,29 +631,25 @@ export async function createAudience(
 }
 
 /**
- * Delete an audience: its context first, then the subgroup that held it.
+ * Delete an audience: the subgroup that holds it, and with it its context.
  *
- * ⚠️ Order matters and is not interchangeable. The context is bound to the
- * subgroup, so removing the subgroup first orphans a context that no member can
- * reach and no longer appears in any listing — it keeps replicating and cannot
- * be cleaned up through the app. Context, then group.
+ * ⚠️ One call, `deleteGroup`, and NOT `deleteContext` first. This used to
+ * delete the context first so the subgroup's removal could not orphan it — but
+ * `DELETE /admin-api/contexts/:id` needs `context:delete`, which the app's
+ * token does not carry: the node answered 403 and the whole delete stopped
+ * there (and on an account `deleteContext` is refused by name). The orphan
+ * concern is answered by core instead: `GroupDeleted` cascades, unregistering
+ * every context in the deleted subtree on every peer that applies it.
  *
- * The context delete is NOT swallowed: if it fails, stop, because proceeding is
- * exactly how the orphan above gets made. The subgroup delete is allowed to
- * report its own failure, by which point the audience is already unreadable.
- *
- * This removes it for EVERYONE, not just this node — it is a governance op on
- * the namespace, not a local hide.
+ * Allowed to a namespace Admin or the audience's owner (core checks), on a
+ * node and on an account alike; the page offers it to Admins only. This
+ * removes it for EVERYONE — a governance op on the namespace, not a local hide.
  */
 export async function deleteAudience(
   admin: AdminApiClient,
-  opts: { audienceId: string; contextId: string | null },
+  opts: { audienceId: string },
   onStatus: StatusFn = noop,
 ): Promise<void> {
-  if (opts.contextId) {
-    onStatus("Deleting the audience's context…");
-    await admin.deleteContext(opts.contextId);
-  }
   onStatus("Removing the audience…");
   await admin.deleteGroup(opts.audienceId);
 }
@@ -617,30 +657,29 @@ export async function deleteAudience(
 /**
  * Delete a space, and every audience in it.
  *
- * Each audience's context is deleted first for the reason above, then the
- * namespace goes. An audience whose context this node has never seen is skipped
- * rather than failing the whole delete: it cannot be addressed from here, and
- * refusing to delete the space because one context has not replicated would
- * leave the space undeletable on exactly the node that most wants rid of it.
+ * One `deleteNamespace`: core's namespace delete cascades through the subtree,
+ * audiences and their contexts included. There is no per-audience
+ * `deleteContext` pass first — the app's token carries no `context:delete`, so
+ * each of those was a 403. An Admin's action, and a node's own (an account
+ * has no form of it); anyone else leaves the space instead.
  */
 export async function deleteSpace(
   admin: AdminApiClient,
   opts: { namespaceId: string },
   onStatus: StatusFn = noop,
 ): Promise<void> {
-  onStatus("Finding the audiences in this space…");
-  const audiences = await listAudiences(admin, opts.namespaceId).catch(
-    () => [],
-  );
-
-  for (const audience of audiences) {
-    if (!audience.contextId) continue;
-    onStatus(`Deleting “${audience.name}”…`);
-    await admin.deleteContext(audience.contextId).catch(() => {});
-  }
-
   onStatus("Removing the space…");
   await admin.deleteNamespace(opts.namespaceId);
+}
+
+/** Leave a space: what a non-Admin does instead of deleting it. Node or account. */
+export async function leaveSpace(
+  admin: AdminApiClient,
+  opts: { namespaceId: string },
+  onStatus: StatusFn = noop,
+): Promise<void> {
+  onStatus("Leaving the space…");
+  await admin.leaveNamespace(opts.namespaceId);
 }
 
 // ── Invitations ───────────────────────────────────────────────────────────────

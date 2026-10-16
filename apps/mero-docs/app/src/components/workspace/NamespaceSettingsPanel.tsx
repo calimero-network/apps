@@ -13,6 +13,7 @@ import { NamespaceMembersPanel } from './NamespaceMembersPanel';
 import { MemberDefaultsPanel } from '@/components/admin/MemberDefaultsPanel';
 import { MyDisplayNamePanel } from '@/components/admin/MyDisplayNamePanel';
 import { WorkspaceSettingsPanel } from '@/components/admin/WorkspaceSettingsPanel';
+import { WorkspaceExitPanel } from './WorkspaceExitPanel';
 
 export function NamespaceSettingsPanel() {
   const { namespaceId, namespaces, namespaceMembers } = useDriveWorkspace();
@@ -43,6 +44,7 @@ export function NamespaceSettingsPanel() {
       <MemberDefaultsPanel />
       <NamespaceMembersPanel />
       <WorkspaceSettingsPanel />
+      <WorkspaceExitPanel />
     </div>
   );
 }

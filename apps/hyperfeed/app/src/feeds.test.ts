@@ -31,7 +31,9 @@ describe("deleteFeed", () => {
   it("deletes the feed and the namespace it had to itself", async () => {
     const { a, calls } = admin({ f1: "ns1" }, { ns1: ["f1"] });
     expect(await deleteFeed(a, "f1")).toEqual({ namespace: true });
-    expect(calls).toEqual(["context f1", "namespace ns1"]);
+    // The namespace alone: its delete cascades to the context, and a
+    // `deleteContext` first needs `context:delete`, which an app's token lacks.
+    expect(calls).toEqual(["namespace ns1"]);
   });
 
   it("leaves a namespace that still holds another context", async () => {

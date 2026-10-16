@@ -8,6 +8,7 @@ import {
   vi,
 } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -35,6 +36,9 @@ const { resetInvitationCaptureForTests } =
 // and `identities-owned` answers `[]`. `useMero().admin` is the account admin,
 // which carries the same calls through the relay. These tests render the two
 // pages with BOTH clients spied and prove the pages reach only the account one.
+
+/** The account this session runs as (what member listings key rows by). */
+const ME = "ab".repeat(32);
 
 /** The session-aware admin, `useMero().admin`. */
 const admin = {
@@ -64,6 +68,13 @@ const admin = {
     memberPublicKey: "",
   })),
   getContextIdentitiesOwned: vi.fn(async () => ({ identities: ["acct-1"] })),
+  leaveNamespace: vi.fn(async () => undefined),
+  listGroupContexts: vi.fn(async () => [{ contextId: "ctx-aud" }]),
+  getGroupMetadata: vi.fn(async () => null),
+  deleteGroup: vi.fn(async () => ({ isDeleted: true })),
+  deleteContext: vi.fn(async () => {
+    throw new Error("deleteContext is node-only");
+  }),
 };
 
 /** The RAW client's admin, `useMero().mero.admin` — must never be reached. */
@@ -96,6 +107,7 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
     nodeUrl: "https://relay.example",
     logout: vi.fn(),
   }),
+  useNodeIdentity: () => ({ identity: { accountId: "ab".repeat(32) } }),
 }));
 
 beforeAll(() => {
@@ -117,6 +129,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  admin.listGroupMembers.mockImplementation(async () => ({ members: [] }));
+  admin.listNamespaceGroups.mockImplementation(async () => []);
 });
 
 const neverTouchedTheNodeRoute = () => {
@@ -198,12 +212,35 @@ describe("an account session (delegated) on the companies page", () => {
     neverTouchedTheNodeRoute();
   });
 
-  it("hides Delete — deleting a namespace is a node's own operation", async () => {
+  it("hides Delete from an admin — deleting a namespace is a node's own operation — and never offers an admin Leave", async () => {
+    admin.listGroupMembers.mockResolvedValue({
+      members: [{ identity: ME, role: "Admin" }],
+    });
     renderCompanies();
     await screen.findByTestId("space-row");
+    await waitFor(() =>
+      expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1"),
+    );
+    await act(async () => {}); // let the role land before asserting an absence
     fireEvent.click(screen.getByTestId("space-menu"));
     expect(screen.getByTestId("invite-btn")).toBeInTheDocument();
     expect(screen.queryByTestId("delete-space")).toBeNull();
+    expect(screen.queryByTestId("leave-space")).toBeNull();
+  });
+
+  it("offers a member Leave through the account admin, never Delete", async () => {
+    admin.listGroupMembers.mockResolvedValue({
+      members: [{ identity: ME, role: "Member" }],
+    });
+    renderCompanies();
+    await screen.findByTestId("space-row");
+    fireEvent.click(screen.getByTestId("space-menu"));
+    fireEvent.click(await screen.findByTestId("leave-space"));
+    expect(screen.queryByTestId("delete-space")).toBeNull();
+    await waitFor(() =>
+      expect(admin.leaveNamespace).toHaveBeenCalledWith("ns1"),
+    );
+    neverTouchedTheNodeRoute();
   });
 });
 
@@ -268,6 +305,37 @@ describe("an account session (delegated) on the audiences page", () => {
     expect(badge.textContent).toContain("TEE enabled");
     expect(badge.textContent).toContain("Replica");
     expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1");
+  });
+
+  it("lets an audience admin delete it as its subgroup, never through deleteContext", async () => {
+    admin.listNamespaceGroups.mockResolvedValue([
+      { groupId: "aud1", name: "Investors" },
+    ] as never);
+    admin.listGroupMembers.mockResolvedValue({
+      members: [{ identity: ME, role: "Admin" }],
+    });
+    renderAudiences();
+    await screen.findByText("Investors");
+    fireEvent.click(await screen.findByTestId("audience-menu"));
+    fireEvent.click(await screen.findByTestId("delete-audience"));
+    fireEvent.click(await screen.findByTestId("confirm-delete-audience"));
+    await waitFor(() => expect(admin.deleteGroup).toHaveBeenCalledWith("aud1"));
+    expect(admin.deleteContext).not.toHaveBeenCalled();
+    neverTouchedTheNodeRoute();
+  });
+
+  it("hides an audience's Delete from someone who is not an admin", async () => {
+    admin.listNamespaceGroups.mockResolvedValue([
+      { groupId: "aud1", name: "Investors" },
+    ] as never);
+    admin.listGroupMembers.mockResolvedValue({
+      members: [{ identity: ME, role: "Member" }],
+    });
+    renderAudiences();
+    await screen.findByText("Investors");
+    fireEvent.click(await screen.findByTestId("audience-menu"));
+    expect(screen.getByTestId("invite-audience")).toBeInTheDocument();
+    expect(screen.queryByTestId("delete-audience")).toBeNull();
   });
 
   it("shows no TEE indicator when the namespace has no TEE node", async () => {

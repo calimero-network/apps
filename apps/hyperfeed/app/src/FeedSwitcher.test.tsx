@@ -126,7 +126,7 @@ describe("Switching feeds", () => {
     await act(async () => {
       fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
     });
-    expect(deleted).toEqual(["context feed-bbbb-2222", "namespace ns-of-feed-bbbb-2222"]);
+    expect(deleted).toEqual(["namespace ns-of-feed-bbbb-2222"]);
     expect(refetch).toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
@@ -134,8 +134,8 @@ describe("Switching feeds", () => {
   it("says what to do when the node refuses this session the delete, not a bare 403", async () => {
     openFeed("feed-aaaa-1111");
     deleted.length = 0;
-    const deleteContext = admin.deleteContext;
-    admin.deleteContext = async () => {
+    const deleteNamespace = admin.deleteNamespace;
+    admin.deleteNamespace = async () => {
       throw Object.assign(new Error("HTTP 403 Forbidden"), { status: 403 });
     };
     try {
@@ -153,7 +153,7 @@ describe("Switching feeds", () => {
       expect(screen.queryByText("HTTP 403 Forbidden")).toBeNull();
       expect(deleted).toEqual([]);
     } finally {
-      admin.deleteContext = deleteContext;
+      admin.deleteNamespace = deleteNamespace;
     }
   });
 

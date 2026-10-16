@@ -10,7 +10,7 @@
 // than failing at invite time. (Joining is the invitation prompt's, and tested
 // beside it in `components/InvitationPrompt.test.tsx`.)
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import TeamsPage from "./TeamsPage";
 import { ToastProvider } from "../contexts/ToastContext";
@@ -19,6 +19,9 @@ const stub = vi.hoisted(() => {
   const admin = {
     createNamespace: vi.fn(async () => ({ namespaceId: "ns-new", haEnabled: false, haError: "link this account to your cloud user in the wallet" })),
     deleteNamespace: vi.fn(),
+    leaveNamespace: vi.fn(async () => {}),
+    getNodeIdentity: vi.fn(async () => ({ accountId: "ab".repeat(32) })),
+    listGroupMembers: vi.fn(async () => ({ members: [{ identity: "ab".repeat(32), role: "Member" }] })),
     listNamespacesForApplication: vi.fn(async () => [{ namespaceId: "ns-existing", name: "Existing" }]),
     listNamespaces: vi.fn(async () => []),
     listApplications: vi.fn(),
@@ -65,6 +68,7 @@ function renderPage() {
 afterEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
+  stub.admin.listGroupMembers.mockImplementation(async () => ({ members: [{ identity: "ab".repeat(32), role: "Member" }] }));
 });
 
 describe("TeamsPage on a delegated session", () => {
@@ -89,11 +93,28 @@ describe("TeamsPage on a delegated session", () => {
     await screen.findByText(/not hosted yet: link this account/);
   });
 
-  it("hides the node-only Delete control", async () => {
+  it("offers a member Leave through the account admin, never Delete", async () => {
     renderPage();
     await screen.findByTestId("team-card-ns-existing");
+    await waitFor(() => expect(stub.admin.listGroupMembers).toHaveBeenCalledWith("ns-existing"));
     fireEvent.click(screen.getByTitle("More options"));
     expect(screen.getByText("Settings")).toBeInTheDocument();
     expect(screen.queryByText("Delete")).toBeNull();
+    fireEvent.click(await screen.findByText("Leave"));
+
+    await waitFor(() => expect(stub.admin.leaveNamespace).toHaveBeenCalledWith("ns-existing"));
+    await waitFor(() => expect(screen.queryByTestId("team-card-ns-existing")).toBeNull());
+  });
+
+  it("hides the node-only Delete from an admin, and never offers an admin Leave", async () => {
+    stub.admin.listGroupMembers.mockResolvedValue({ members: [{ identity: "ab".repeat(32), role: "Admin" }] });
+    renderPage();
+    await screen.findByTestId("team-card-ns-existing");
+    await waitFor(() => expect(stub.admin.listGroupMembers).toHaveBeenCalled());
+    await act(async () => {}); // let the role land before asserting an absence
+    fireEvent.click(screen.getByTitle("More options"));
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.queryByText("Delete")).toBeNull();
+    expect(screen.queryByText("Leave")).toBeNull();
   });
 });

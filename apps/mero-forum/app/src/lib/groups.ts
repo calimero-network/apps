@@ -32,6 +32,7 @@ import {
   type SignedInvitation,
   type ForumInvitePayload,
 } from "./inviteCodec";
+import { sameAccount } from "@calimero-apps/names";
 import {
   markNamespaceJustJoined,
   redeemInvitation,
@@ -191,6 +192,45 @@ function teeModeOf(rows: readonly { role?: string }[]): TeeMode | null {
   const tee = rows.filter((m) => isTeeRole(m.role));
   if (tee.length === 0) return null;
   return tee.some((m) => m.role === "RelayTee") ? "relay" : "replica";
+}
+
+// ── Who may delete ───────────────────────────────────────────────────────────
+//
+// An Admin deletes a space or forum; anyone else leaves a space (and is not
+// offered a forum delete at all). Read from the group's own member listing,
+// which keys rows by ACCOUNT — the id `useSelfAccount` gives, not a context
+// identity.
+
+/** Whether `selfAccount` holds Admin among `rows`. Case-insensitive on the role. */
+export function selfIsAdminIn(
+  rows: readonly { identity?: string; role?: string }[],
+  selfAccount: string | null | undefined,
+): boolean {
+  if (!selfAccount) return false;
+  return rows.some(
+    (m) =>
+      sameAccount(m.identity, selfAccount) &&
+      (m.role ?? "").trim().toLowerCase() === "admin",
+  );
+}
+
+/**
+ * Whether `selfAccount` is an Admin of `groupId`. `false` when the listing
+ * fails or the account is unknown: offering a Delete the node will refuse is
+ * worse than not offering it.
+ */
+export async function selfIsGroupAdmin(
+  admin: AdminLike,
+  groupId: string,
+  selfAccount: string | null | undefined,
+): Promise<boolean> {
+  if (!groupId || !selfAccount) return false;
+  try {
+    const r = await admin.listGroupMembers(groupId);
+    return selfIsAdminIn(r.members ?? [], selfAccount);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -428,6 +468,8 @@ export interface ForumRow {
    * list.
    */
   identity: string | null;
+  /** This account is an Admin of the forum's subgroup (may delete it). */
+  selfAdmin: boolean;
 }
 
 /**
@@ -441,6 +483,7 @@ export interface ForumRow {
 export async function listForums(
   admin: AdminLike,
   namespaceId: string,
+  selfAccount: string | null = null,
 ): Promise<ForumRow[]> {
   const subgroups = await admin.listNamespaceGroups(namespaceId);
   return Promise.all(
@@ -469,6 +512,7 @@ export async function listForums(
         teeMode: teeModeOf(members),
         joined: !!identity,
         identity,
+        selfAdmin: selfIsAdminIn(members, selfAccount),
       };
     }),
   );
@@ -534,29 +578,25 @@ export async function createForum(
 }
 
 /**
- * Delete a forum: its context first, then the subgroup that held it.
+ * Delete a forum: the subgroup that holds it, and with it its context.
  *
- * ⚠️ Order matters and is not interchangeable. The context is bound to the
- * subgroup, so removing the subgroup first orphans a context that no member can
- * reach and no longer appears in any listing — it keeps replicating and cannot
- * be cleaned up through the app. Context, then group.
+ * ⚠️ One call, `deleteGroup`, and NOT `deleteContext` first. This used to
+ * delete the context first so the subgroup's removal could not orphan it — but
+ * `DELETE /admin-api/contexts/:id` needs `context:delete`, which the app's
+ * token does not carry: the node answered 403 and the whole delete stopped
+ * there, so a forum could never be deleted. The orphan concern is answered by
+ * core instead: `GroupDeleted` cascades, unregistering every context in the
+ * deleted subtree on every peer that applies it.
  *
- * The context delete is NOT swallowed: if it fails, stop, because proceeding is
- * exactly how the orphan above gets made. The subgroup delete is allowed to
- * report its own failure, by which point the forum is already unreadable.
- *
- * This removes it for EVERYONE, not just this node — it is a governance op on
- * the namespace, not a local hide.
+ * Allowed to a namespace Admin or the forum's owner (core checks); the page
+ * offers it to Admins only. This removes it for EVERYONE, not just this node —
+ * it is a governance op on the namespace, not a local hide.
  */
 export async function deleteForum(
   admin: AdminLike,
-  opts: { forumId: string; contextId: string | null },
+  opts: { forumId: string },
   onStatus: StatusFn = noop,
 ): Promise<void> {
-  if (opts.contextId) {
-    onStatus("Deleting the forum's context…");
-    await admin.deleteContext(opts.contextId);
-  }
   onStatus("Removing the forum…");
   await admin.deleteGroup(opts.forumId);
 }
@@ -564,28 +604,28 @@ export async function deleteForum(
 /**
  * Delete a space, and every forum in it.
  *
- * Each forum's context is deleted first for the reason above, then the
- * namespace goes. A forum whose context this node has never seen is skipped
- * rather than failing the whole delete: it cannot be addressed from here, and
- * refusing to delete the space because one context has not replicated would
- * leave the space undeletable on exactly the node that most wants rid of it.
+ * One `deleteNamespace`: core's namespace delete cascades through the subtree,
+ * forums and their contexts included. There is no per-forum `deleteContext`
+ * pass first — the app's token carries no `context:delete`, so each of those
+ * was a 403. An Admin's action; anyone else leaves the space instead.
  */
 export async function deleteSpace(
   admin: AdminLike,
   opts: { namespaceId: string },
   onStatus: StatusFn = noop,
 ): Promise<void> {
-  onStatus("Finding the forums in this space…");
-  const forums = await listForums(admin, opts.namespaceId).catch(() => []);
-
-  for (const forum of forums) {
-    if (!forum.contextId) continue;
-    onStatus(`Deleting “${forum.name}”…`);
-    await admin.deleteContext(forum.contextId).catch(() => {});
-  }
-
   onStatus("Removing the space…");
   await admin.deleteNamespace(opts.namespaceId);
+}
+
+/** Leave a space: what a non-Admin does instead of deleting it. */
+export async function leaveSpace(
+  admin: AdminLike,
+  opts: { namespaceId: string },
+  onStatus: StatusFn = noop,
+): Promise<void> {
+  onStatus("Leaving the space…");
+  await admin.leaveNamespace(opts.namespaceId);
 }
 
 // ── Invitations ───────────────────────────────────────────────────────────────

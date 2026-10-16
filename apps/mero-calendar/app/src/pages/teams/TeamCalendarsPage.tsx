@@ -12,8 +12,10 @@ import {
   listGroupContexts,
   listNamespaces,
   listSubgroupIds,
+  selfIsGroupAdmin,
   setContextName,
 } from "../../api/admin";
+import { loadAccountId } from "../../api/identity";
 import {
   contextId as readContextId,
   contextName as readContextName,
@@ -65,6 +67,10 @@ export default function TeamCalendarsPage() {
    * before names were replicated has no entry here at all.
    */
   const [names, setNames] = useState<Record<string, string>>({});
+  /** contextId → the group it hangs off: its subgroup, or the team itself. */
+  const [groupOf, setGroupOf] = useState<Record<string, string>>({});
+  /** contextId → this session is an Admin of the team or of its subgroup. */
+  const [adminOf, setAdminOf] = useState<Record<string, boolean>>({});
   const [membersOpen, setMembersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   /**
@@ -181,8 +187,28 @@ export default function TeamCalendarsPage() {
     const visible = [...inTeam].filter(
       (id) => calendarIds === null || calendarIds.has(id),
     );
+
+    // Who may delete each calendar: a team Admin, or an Admin of the
+    // calendar's own subgroup — the two core lets `deleteGroup` through for.
+    const self = await loadAccountId(client);
+    const teamAdmin = await selfIsGroupAdmin(client, teamId, self);
+    const subgroupAdmin: Record<string, boolean> = {};
+    if (!teamAdmin) {
+      for (const gid of new Set(visible.map((id) => ownerGroup[id]))) {
+        if (gid && gid !== teamId) {
+          subgroupAdmin[gid] = await selfIsGroupAdmin(client, gid, self);
+        }
+      }
+    }
+    const admins: Record<string, boolean> = {};
+    for (const id of visible) {
+      admins[id] = teamAdmin || !!subgroupAdmin[ownerGroup[id]];
+    }
+
     setCalendars(visible);
     setNames(found);
+    setGroupOf(ownerGroup);
+    setAdminOf(admins);
     setLoading(false);
     setListedFor(teamId);
 
@@ -331,26 +357,46 @@ export default function TeamCalendarsPage() {
     }
   }
 
+  /** The subgroup a calendar lives in, or "" when it hangs off the team itself. */
+  const subgroupOf = (cid: string) => {
+    const gid = groupOf[cid];
+    return gid && gid !== teamId ? gid : "";
+  };
+
   /**
-   * Removing a calendar, in the two senses the node distinguishes.
+   * Admins delete a calendar; anyone else may leave it (on a node).
    *
-   * `delete` drops this node's copy and its local state; `leave` stops syncing
-   * but keeps our copy out of the group. Neither reaches the peers — they keep
-   * theirs — so the confirmation says so rather than implying a team-wide
-   * deletion the API cannot perform.
-   *
-   * Both are a NODE's own operations: an account has no local copy to drop and
-   * nothing local to opt out of, and the account admin refuses both by name
-   * (`NotForAccountError`). The menu that offers them is not rendered for an
-   * account at all.
+   * Delete removes the calendar for the whole team: a calendar is a subgroup
+   * holding one context, and core's `deleteGroup` on that subgroup cascades to
+   * the context. It is allowed to a team Admin or the subgroup's Admin, and has
+   * an account form. `deleteContext` is NOT the way: the app's token carries no
+   * `context:delete` (the node answers 403), and on an account it is refused by
+   * name. It remains only for a calendar created straight in the team (no
+   * subgroup), on a node.
    */
+  const canDelete = (cid: string) =>
+    !!adminOf[cid] && (!!subgroupOf(cid) || !isDelegated);
+
+  /**
+   * `leave` stops this node syncing the calendar and keeps the group's copy.
+   * It is a NODE's own operation (an account has nothing local to opt out of,
+   * and the account admin refuses it by name), and is not offered to an Admin,
+   * who deletes instead.
+   */
+  const canLeave = (cid: string) => !isDelegated && adminOf[cid] === false;
+
   async function removeCalendar(contextId: string, mode: "delete" | "leave") {
     setConfirmId(null);
     setMenuOpenId(null);
     setBusyId(contextId);
     try {
       if (mode === "delete") {
-        await requireAdmin().deleteContext(contextId);
+        const subgroup = subgroupOf(contextId);
+        if (subgroup) {
+          await requireAdmin().deleteGroup(subgroup);
+        } else {
+          await requireAdmin().deleteContext(contextId);
+        }
         clearStoredCalendarName(contextId);
       } else {
         await requireAdmin().leaveContext(contextId);
@@ -362,14 +408,14 @@ export default function TeamCalendarsPage() {
       );
       await load().catch(() => {});
     } catch (err) {
+      // Not `humanizeError`: its copy is about creating a calendar, and would
+      // turn a refused delete into "You don't have permission to create…".
       showToast(
-        humanizeError(
-          extractErrorMessage(
-            err,
-            mode === "delete"
-              ? "Could not delete the calendar."
-              : "Could not leave the calendar.",
-          ),
+        extractErrorMessage(
+          err,
+          mode === "delete"
+            ? "Could not delete the calendar."
+            : "Could not leave the calendar.",
         ),
       );
     } finally {
@@ -456,9 +502,9 @@ export default function TeamCalendarsPage() {
                   <span className={styles.cardSub}>{cid.slice(0, 12)}…</span>
                 </button>
 
-                {/* Leave and Delete are a node's own operations (see
-                    removeCalendar); an account is not offered the menu. */}
-                {!isDelegated && (
+                {/* Only rendered when there is something to offer (see
+                    canDelete / canLeave above). */}
+                {(canDelete(cid) || canLeave(cid)) && (
                   <button
                     className={styles.menuBtn}
                     onClick={() =>
@@ -471,31 +517,44 @@ export default function TeamCalendarsPage() {
                   </button>
                 )}
 
-                {!isDelegated && menuOpenId === cid && (
+                {menuOpenId === cid && (canDelete(cid) || canLeave(cid)) && (
                   <div className={styles.dropdown} ref={menuRef}>
-                    <button
-                      className={styles.dropdownItem}
-                      onClick={() => removeCalendar(cid, "leave")}
-                      data-testid={`leave-calendar-${cid}`}
-                    >
-                      Leave calendar
-                    </button>
-                    <button
-                      className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
-                      onClick={() => setConfirmId(cid)}
-                      data-testid={`delete-calendar-${cid}`}
-                    >
-                      Delete calendar
-                    </button>
+                    {canLeave(cid) && (
+                      <button
+                        className={styles.dropdownItem}
+                        onClick={() => removeCalendar(cid, "leave")}
+                        data-testid={`leave-calendar-${cid}`}
+                      >
+                        Leave calendar
+                      </button>
+                    )}
+                    {canDelete(cid) && (
+                      <button
+                        className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                        onClick={() => setConfirmId(cid)}
+                        data-testid={`delete-calendar-${cid}`}
+                      >
+                        Delete calendar
+                      </button>
+                    )}
                   </div>
                 )}
 
                 {confirmId === cid && (
                   <div className={styles.confirmBox} data-testid="confirm-delete">
                     <p className={styles.confirmText}>
-                      Delete <strong>{nameOf(cid)}</strong> from this
-                      node? Its events are removed here. Peers who joined keep
-                      their own copy.
+                      {subgroupOf(cid) ? (
+                        <>
+                          Delete <strong>{nameOf(cid)}</strong> for everyone in
+                          this team? Its events are removed for all members.
+                        </>
+                      ) : (
+                        <>
+                          Delete <strong>{nameOf(cid)}</strong> from this
+                          node? Its events are removed here. Peers who joined
+                          keep their own copy.
+                        </>
+                      )}
                     </p>
                     <div className={styles.confirmRow}>
                       <button

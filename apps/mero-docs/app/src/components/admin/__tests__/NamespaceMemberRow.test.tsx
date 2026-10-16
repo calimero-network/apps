@@ -280,4 +280,29 @@ describe('NamespaceMemberRow admin-rename affordance', () => {
     expect(screen.queryByLabelText('Remove Owner')).toBeNull();
     expect(screen.getByTestId('remove-slot')).toBeTruthy();
   });
+
+  // An Admin deletes the workspace (WorkspaceExitPanel); Leave is for everyone
+  // else, so an Admin's own row offers no self-removal.
+  it("offers an Admin no Leave on their own row, but a non-admin manager still can", () => {
+    useAdminRenameMemberMock.mockReturnValue({ canRename: false, renameTo: renameToMock });
+    const row = (role: string) => (
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="self-id"
+        actorRole={role === 'Admin' ? 'Admin' : 'Member'}
+        actorCaps={null}
+        adminCount={2}
+        label="Me"
+        role={role}
+        isSelf={true}
+        canManage={true}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    const { unmount } = render(row('Admin'));
+    expect(screen.queryByLabelText('Remove Me')).toBeNull();
+    unmount();
+    render(row('Member'));
+    expect(screen.getByLabelText('Remove Me')).toBeTruthy();
+  });
 });

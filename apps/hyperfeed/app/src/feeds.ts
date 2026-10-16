@@ -52,19 +52,28 @@ export function orderFeeds(ids: string[], current: string, facts: Record<string,
 }
 
 /**
- * Delete a feed: its context, then its namespace once nothing else is in it.
- * A feed is made in a namespace of its own, so that is the usual case; a
- * namespace still holding another context is left alone. Resolves to whether
- * the namespace went too.
+ * Delete a feed. A feed is made in a namespace of its own, so the usual case
+ * is deleting that namespace: core's namespace delete cascades to the context
+ * in it. Only a feed sharing its namespace with another context is deleted on
+ * its own, with `deleteContext`.
+ *
+ * ⚠️ Not `deleteContext` first. `DELETE /admin-api/contexts/:id` needs
+ * `context:delete`, which an app's grant set signed in from a browser does
+ * not carry: the node answered 403 and the delete stopped before the
+ * namespace was reached, so a browser session could never delete a feed.
+ * Resolves to whether the namespace went.
  */
 export async function deleteFeed(admin: FeedAdmin, contextId: string): Promise<{ namespace: boolean }> {
   const group = await admin.getContextGroup(contextId).catch(() => null);
+  if (group) {
+    const inGroup = await admin.listGroupContexts(group).catch(() => null);
+    if (inGroup && inGroup.every((c) => c.contextId === contextId)) {
+      await admin.deleteNamespace(group);
+      return { namespace: true };
+    }
+  }
   await admin.deleteContext(contextId);
-  if (!group) return { namespace: false };
-  const left = await admin.listGroupContexts(group).catch(() => null);
-  if (!left || left.some((c) => c.contextId !== contextId)) return { namespace: false };
-  await admin.deleteNamespace(group);
-  return { namespace: true };
+  return { namespace: false };
 }
 
 /**

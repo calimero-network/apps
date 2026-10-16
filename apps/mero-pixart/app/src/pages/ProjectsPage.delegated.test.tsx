@@ -6,7 +6,9 @@
 // be created through the session-aware `useMero().admin` (the account admin:
 // governance ops signed by the account, delegated context creation), with the
 // provider's registry-resolved application id, and the raw client's admin must
-// never be reached. Deleting a project is a node's own operation and is hidden.
+// never be reached. Deleting a project deletes its subgroup (`deleteGroup`,
+// which has an account form and cascades to the context), offered to admins
+// only; `deleteContext` is node-only and the app token lacks `context:delete`.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -20,7 +22,9 @@ const stub = vi.hoisted(() => {
   const admin = {
     listSubgroups: vi.fn(async () => [{ groupId: "ef".repeat(32), name: "Poster" }]),
     listGroupContexts: vi.fn(async () => [{ contextId: "ctx-existing", name: "Poster" }]),
-    listGroupMembers: vi.fn(async () => ({ members: [{ identity: "a", role: "Admin" }] })),
+    listGroupMembers: vi.fn(async () => ({ members: [{ identity: "ab".repeat(32), role: "Admin" }] })),
+    getNodeIdentity: vi.fn(async () => ({ accountId: "ab".repeat(32) })),
+    deleteGroup: vi.fn(async () => ({ isDeleted: true })),
     createGroupInNamespace: vi.fn(async () => ({ groupId: "sg-new" })),
     setSubgroupVisibility: vi.fn(async () => {}),
     createContext: vi.fn(async () => ({ contextId: "ctx-new", memberPublicKey: "" })),
@@ -79,6 +83,8 @@ function renderPage() {
 afterEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
+  stub.admin.listGroupMembers.mockImplementation(async () => ({ members: [{ identity: "ab".repeat(32), role: "Admin" }] }));
+  stub.admin.deleteGroup.mockImplementation(async () => ({ isDeleted: true }));
 });
 
 describe("ProjectsPage on a delegated session", () => {
@@ -133,9 +139,9 @@ describe("ProjectsPage on a delegated session", () => {
   // A Born Open subgroup admits the TEE fleet node as a member row. It is
   // infrastructure, so the card's "N members" counts people only.
   it("leaves TEE nodes out of a project card's member count", async () => {
-    stub.admin.listGroupMembers.mockResolvedValueOnce({
+    stub.admin.listGroupMembers.mockResolvedValue({
       members: [
-        { identity: "a", role: "Admin" },
+        { identity: "ab".repeat(32), role: "Admin" },
         { identity: "t1", role: "ReadOnlyTee" },
         { identity: "t2", role: "RelayTee" },
       ],
@@ -146,7 +152,31 @@ describe("ProjectsPage on a delegated session", () => {
     expect(card).not.toHaveTextContent("3 members");
   });
 
-  it("hides the node-only Delete control", async () => {
+  it("deletes an admin's project as its subgroup, never through deleteContext", async () => {
+    renderPage();
+    await screen.findByTestId("project-card-ctx-existing");
+    fireEvent.click(screen.getByTitle("More options"));
+    fireEvent.click(await screen.findByText("Delete"));
+
+    await waitFor(() => expect(stub.admin.deleteGroup).toHaveBeenCalledWith(SUB));
+    expect(stub.admin.deleteContext).not.toHaveBeenCalled();
+    expect(stub.rawAdmin.deleteContext).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByTestId("project-card-ctx-existing")).toBeNull());
+  });
+
+  it("keeps the card and says why when the delete is refused", async () => {
+    stub.admin.deleteGroup.mockRejectedValue(new Error("permission denied"));
+    renderPage();
+    await screen.findByTestId("project-card-ctx-existing");
+    fireEvent.click(screen.getByTitle("More options"));
+    fireEvent.click(await screen.findByText("Delete"));
+
+    await screen.findByText(/permission denied/i);
+    expect(screen.getByTestId("project-card-ctx-existing")).toBeInTheDocument();
+  });
+
+  it("hides Delete from someone who is neither team nor project admin", async () => {
+    stub.admin.listGroupMembers.mockResolvedValue({ members: [{ identity: "ab".repeat(32), role: "Member" }] });
     renderPage();
     await screen.findByTestId("project-card-ctx-existing");
     fireEvent.click(screen.getByTitle("More options"));

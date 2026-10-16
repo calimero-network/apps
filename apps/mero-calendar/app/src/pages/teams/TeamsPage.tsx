@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
-import { listNamespaces } from "../../api/admin";
+import { listNamespaces, selfIsGroupAdmin } from "../../api/admin";
+import { loadAccountId } from "../../api/identity";
 import { useEnsureAppId } from "../../hooks/useEnsureAppId";
 import CalendarLogo from "../../components/common/logo/CalendarLogo";
 import ThemeToggle from "../../components/common/theme-toggle/ThemeToggle";
@@ -37,6 +38,9 @@ export default function TeamsPage() {
     null,
   );
   const menuRef = useRef<HTMLDivElement>(null);
+  // Whether this session is an Admin of each team, by team id. Absent while
+  // unknown: the menu then offers neither Delete nor Leave rather than guessing.
+  const [adminOf, setAdminOf] = useState<Record<string, boolean>>({});
 
   // Mero Calendar's own application id (see hooks/useEnsureAppId).
   const ensureAppId = useEnsureAppId();
@@ -77,6 +81,26 @@ export default function TeamsPage() {
       clearInterval(id);
     };
   }, [admin, ensureAppId, requireAdmin]);
+
+  // An Admin deletes a team; anyone else leaves it. Asked of each team's own
+  // member listing, by the account this session runs as. Keyed on the ids, so
+  // the 30s list poll does not re-ask while the teams stay the same.
+  const teamIds = teams.map((t) => t.groupId).join(",");
+  useEffect(() => {
+    const ids = teamIds ? teamIds.split(",") : [];
+    if (!admin || ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const self = await loadAccountId(admin);
+      const entries = await Promise.all(
+        ids.map(async (id) => [id, await selfIsGroupAdmin(admin, id, self)] as const),
+      );
+      if (!cancelled) setAdminOf(Object.fromEntries(entries));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [admin, teamIds]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -127,13 +151,30 @@ export default function TeamsPage() {
     }
   }
 
-  /** Node-only: the account admin refuses it, so the control is hidden there. */
+  /**
+   * Admin only, and node-only: the account admin refuses it, so the control is
+   * hidden there. The card goes once the node has accepted the delete; a
+   * refusal is said, not swallowed.
+   */
   async function deleteTeam(teamId: string) {
     setMenuOpenId(null);
     try {
       await requireAdmin().deleteNamespace(teamId);
-    } catch {
-      /* best-effort */
+    } catch (err) {
+      showToast(extractErrorMessage(err, "Could not delete team."));
+      return;
+    }
+    setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
+  }
+
+  /** Not an admin: leave the team. A node and an account can both. */
+  async function leaveTeam(teamId: string) {
+    setMenuOpenId(null);
+    try {
+      await requireAdmin().leaveNamespace(teamId);
+    } catch (err) {
+      showToast(extractErrorMessage(err, "Could not leave team."));
+      return;
     }
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
   }
@@ -273,16 +314,26 @@ export default function TeamsPage() {
                     >
                       Invite
                     </button>
-                    {/* Deleting a namespace is a node's own operation; the
-                        account admin refuses it by name, so an account is
-                        not offered it. */}
-                    {!isDelegated && (
+                    {/* An Admin deletes, anyone else leaves. Deleting a
+                        namespace is a node's own operation; the account
+                        admin refuses it by name, so an account is not
+                        offered it. */}
+                    {adminOf[t.groupId] === true && !isDelegated && (
                       <button
                         className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
                         onClick={() => deleteTeam(t.groupId)}
                         data-testid={`delete-team-${t.groupId}`}
                       >
                         Delete
+                      </button>
+                    )}
+                    {adminOf[t.groupId] === false && (
+                      <button
+                        className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                        onClick={() => leaveTeam(t.groupId)}
+                        data-testid={`leave-team-${t.groupId}`}
+                      >
+                        Leave
                       </button>
                     )}
                   </div>

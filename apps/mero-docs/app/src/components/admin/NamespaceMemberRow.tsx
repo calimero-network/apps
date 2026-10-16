@@ -252,8 +252,13 @@ export function NamespaceMemberRow({
   // (server enforces the same authz; this is just the UI gate).
   const showRenameAffordance = canRename && !isSelf;
   // The node refuses to remove the owner or the last admin, so neither is offered.
+  // Nor is an Admin offered to leave from their own row: an Admin deletes the
+  // workspace instead (see WorkspaceExitPanel), and Leave is for everyone else.
   const removable =
-    canManage && !isOwner && !(currentRole === 'Admin' && adminCount <= 1);
+    canManage &&
+    !isOwner &&
+    !(currentRole === 'Admin' && adminCount <= 1) &&
+    !(isSelf && currentRole === 'Admin');
 
   return (
     <li className="px-4 py-2 text-sm">

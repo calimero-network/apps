@@ -38,6 +38,7 @@ const h = vi.hoisted(() => {
 vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => h.session,
+  useNodeIdentity: () => ({ identity: null }),
 }));
 
 vi.mock("../hooks/useApplicationId", () => ({
