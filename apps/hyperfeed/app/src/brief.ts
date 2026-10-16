@@ -1,4 +1,4 @@
-import type { ActionSetView, FeedItem, SettingsView } from "./generated/HyperfeedClient";
+import type { ActionSetView, AutorunView, FeedItem, SettingsView, SituationView } from "./generated/HyperfeedClient";
 import { fieldsOf, GUARD_LABELS, laneOf, previewOf } from "./format";
 import { groupSets, modeOf } from "./actions/actions";
 import { digestSince, isNoise } from "./team";
@@ -55,7 +55,8 @@ const HOUR = 60 * 60 * 1000;
  * a typed row's `due`, `closes_at` or `when`, given as a number (seconds or
  * milliseconds). "This sprint" is shown as it is, but cannot rank.
  */
-export function dueAt(item: FeedItem): number {
+export function dueAt(item: FeedItem, sit?: SituationView): number {
+  if (sit?.due_at) return sit.due_at;
   const f = fieldsOf(item);
   for (const k of ["due", "closes_at", "when"]) {
     const v = f[k];
@@ -74,8 +75,12 @@ export function dueText(item: FeedItem): string {
   return "";
 }
 
-/** How pressing a decision is by its kind alone: higher first. */
-function tier(item: FeedItem): number {
+/** How pressing a decision is by its kind alone, or as your agent scored it when it wrote a situation: higher first. */
+function tier(item: FeedItem, sit?: SituationView): number {
+  return Math.max(kindTier(item), sit?.score ?? 0);
+}
+
+function kindTier(item: FeedItem): number {
   // It acted where your rules say it should have asked: the one row you most need to see.
   if (item.breach && !item.reviewed_at) return 100;
   if (item.category && GUARD_LABELS[item.category]) return 80;
@@ -96,9 +101,9 @@ function waitingSince(item: FeedItem): number {
  * hour beats anything but an action taken without asking; within the day
  * moves it up), then how long it has waited (up to 10 points, one an hour).
  */
-export function urgency(item: FeedItem, now = Date.now()): number {
-  let score = tier(item);
-  const due = dueAt(item);
+export function urgency(item: FeedItem, now = Date.now(), sit?: SituationView): number {
+  let score = tier(item, sit);
+  const due = dueAt(item, sit);
   if (due) {
     const left = due - now;
     if (left < HOUR) score += 45;
@@ -130,8 +135,8 @@ function relative(ms: number): string {
  * "Overdue · 2 h ago", "Due: This sprint", or "Waiting 2 h" once it has
  * waited half an hour. "" when none of it applies.
  */
-export function pressLine(item: FeedItem, now = Date.now()): { text: string; hot: boolean } | null {
-  const due = dueAt(item);
+export function pressLine(item: FeedItem, now = Date.now(), sit?: SituationView): { text: string; hot: boolean } | null {
+  const due = dueAt(item, sit);
   if (due) {
     const left = due - now;
     if (left < 0) return { text: `Overdue · ${relative(left)}`, hot: true };
@@ -163,11 +168,11 @@ export function briefOf(
   now = Date.now(),
   since = digestSince(now),
   appName: (key: string) => string = (k) => k,
+  situations: Map<string, SituationView> = new Map(),
 ): Brief {
   const at = (i: FeedItem) => i.chain_at || i.at;
-  const decisions = items
-    .filter((i) => i.needs_you)
-    .sort((a, b) => urgency(b, now) - urgency(a, now) || at(b) - at(a));
+  const rank = (i: FeedItem) => urgency(i, now, situations.get(i.chain));
+  const decisions = items.filter((i) => i.needs_you).sort((a, b) => rank(b) - rank(a) || at(b) - at(a));
   const moving = items.filter((i) => !i.needs_you && laneOf(i) === "progress").sort((a, b) => at(b) - at(a));
   const settled = items.filter((i) => !i.needs_you && laneOf(i) === "done" && !isNoise(i) && at(i) >= since);
   const done = settled.filter(agentLed).sort((a, b) => at(b) - at(a));
@@ -229,14 +234,20 @@ export function greeting(now = Date.now()): string {
  * filtered out, what needs you (and how many of those are due within the
  * hour), and what will go ahead on its own.
  */
-export function summaryLine(b: Brief, visited: boolean, now = Date.now(), autoruns = 0): string {
+export function summaryLine(
+  b: Brief,
+  visited: boolean,
+  now = Date.now(),
+  autoruns = 0,
+  situations: Map<string, SituationView> = new Map(),
+): string {
   const lead = visited ? "While you were away" : "Today";
   const parts: string[] = [];
   if (b.done.length) parts.push(`your agent took care of ${count(b.done.length, "thing")}`);
   if (b.filteredCount) parts.push(`filtered out ${count(b.filteredCount, "notification")}`);
   const head = parts.length ? `${lead} ${parts.join(" and ")}.` : visited ? "Nothing happened while you were away." : "Nothing has happened yet today.";
   const soon = b.decisions.filter((i) => {
-    const due = dueAt(i);
+    const due = dueAt(i, situations.get(i.chain));
     return due && due - now < HOUR;
   }).length;
   const yours =
@@ -248,9 +259,14 @@ export function summaryLine(b: Brief, visited: boolean, now = Date.now(), autoru
 }
 
 /** Why this reached you rather than being handled: the rule or the fact that put it here, and why it ranks where it does. */
-export function whyShown(item: FeedItem, appName: (key: string) => string, now = Date.now()): string {
+export function whyShown(item: FeedItem, appName: (key: string) => string, now = Date.now(), sit?: SituationView): string {
+  const reason = sit?.reason ? `${sit.reason.replace(/\.?$/, ".")} ` : "";
+  return reason + whyRule(item, appName, now, sit);
+}
+
+function whyRule(item: FeedItem, appName: (key: string) => string, now: number, sit?: SituationView): string {
   const app = appName(item.app || "hyperfeed");
-  const press = pressLine(item, now);
+  const press = pressLine(item, now, sit);
   const rank = press ? ` ${press.text.startsWith("Waiting") ? `It has been ${press.text.toLowerCase()}.` : `${press.text.split(" · ")[0]}.`}` : "";
   if (item.breach && !item.reviewed_at) return `Your agent did this without asking, where your rules say it should have. Keep it or undo it.${rank}`;
   if (item.category && GUARD_LABELS[item.category]) return `${GUARD_LABELS[item.category]} always needs you: your agent can't do it for you, whatever its rules.${rank}`;
@@ -342,4 +358,23 @@ export function tuneRule(g: FilteredGroup, more: boolean, appName: (key: string)
   return more
     ? `Bring me updates from ${where}: they matter to me even when they don't mention me.`
     : `Record fewer updates from ${where}: propose a narrower lens so they stop reaching my feed.`;
+}
+
+/** The defaults waiting to go ahead, by the proposal's id. */
+export function waitingAutoruns(autoruns: AutorunView[]): Map<string, AutorunView> {
+  return new Map(autoruns.filter((a) => a.status === "waiting").map((a) => [a.id, a]));
+}
+
+/**
+ * A default's line on its card: "Goes ahead at 17:00 · in 1 h 20 min unless
+ * you stop it", and how far through its wait it is (0 to 1), for the bar.
+ */
+export function autorunLine(a: AutorunView, now = Date.now()): { pill: string; line: string; progress: number } {
+  const left = a.at - now;
+  const span = Math.max(1, a.at - a.set_at);
+  const progress = Math.min(1, Math.max(0, (now - a.set_at) / span));
+  if (left <= 0) return { pill: "Going ahead now", line: "Its time came: your agent is carrying it out", progress: 1 };
+  const mins = Math.round(left / 60_000);
+  const wait = mins < 60 ? `${Math.max(1, mins)} min` : `${Math.floor(mins / 60)} h${mins % 60 ? ` ${mins % 60} min` : ""}`;
+  return { pill: `Goes ahead by itself at ${clock(a.at, now)}`, line: `Goes ahead in ${wait} unless you stop it`, progress };
 }

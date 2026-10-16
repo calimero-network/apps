@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import type { FeedItem, LinkView } from "./generated/HyperfeedClient";
+import type { AutorunView, FeedItem, LinkView, SituationView } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
 import { choicesFor, flowOf, previewOf, progressLine, resolvable, timeLabel, type FlowStep } from "./format";
 import { AskAgent, Badge, Choices, LATER_MS, Resolver, Status } from "./FeedView";
 import {
   allowOffer,
+  autorunLine,
   briefOf,
   greeting,
   pressLine,
@@ -15,6 +16,7 @@ import {
   statusLine,
   summaryLine,
   tuneRule,
+  waitingAutoruns,
   whyShown,
   type FilteredGroup,
 } from "./brief";
@@ -64,7 +66,10 @@ export function BriefView({
   }, [page, query]);
   const now = Date.now();
   const since = lastVisit || digestSince(now);
-  const brief = useMemo(() => briefOf(items, Date.now(), since, appName), [items, since]);
+  const situations = useMemo(() => new Map(feed.situations.map((v) => [v.chain, v])), [feed.situations]);
+  const autoruns = useMemo(() => waitingAutoruns(feed.autoruns), [feed.autoruns]);
+  const brief = useMemo(() => briefOf(items, Date.now(), since, appName, situations), [items, since, situations]);
+  const going = brief.decisions.filter((i) => autoruns.has(i.id)).length;
   const [showHeld, setShowHeld] = useState(false);
   const calm = brief.decisions.length === 0 && brief.moving.length === 0;
 
@@ -92,7 +97,7 @@ export function BriefView({
         <>
           <header className="brief-intro">
             <h1>{greeting(now)}.</h1>
-            <p>{summaryLine(brief, lastVisit > 0, now)}</p>
+            <p>{summaryLine(brief, lastVisit > 0, now, going, situations)}</p>
           </header>
 
           <section className="brief-decisions" aria-label="Decisions for you">
@@ -101,7 +106,16 @@ export function BriefView({
             ) : (
               <ol className="brief-cards">
                 {(showHeld ? brief.decisions : brief.shown).map((item, n) => (
-                  <DecisionCard key={item.chain} item={item} rank={n + 1} feed={feed} items={page.items} onChat={onChat} />
+                  <DecisionCard
+                    key={item.chain}
+                    item={item}
+                    rank={n + 1}
+                    feed={feed}
+                    items={page.items}
+                    situation={situations.get(item.chain)}
+                    autorun={autoruns.get(item.id)}
+                    onChat={onChat}
+                  />
                 ))}
               </ol>
             )}
@@ -141,6 +155,8 @@ function DecisionCard({
   rank,
   feed,
   items,
+  situation,
+  autorun,
   onChat,
 }: {
   item: FeedItem;
@@ -148,16 +164,21 @@ function DecisionCard({
   feed: Feed;
   /** Every row on the page: what "Always allow" counts, and what Evidence finds around it. */
   items: FeedItem[];
+  /** The chain told as one card by your agent, when it wrote one. */
+  situation?: SituationView;
+  /** When it goes ahead by itself unless you stop it. */
+  autorun?: AutorunView;
   onChat?: (chain: string) => void;
 }) {
   const [why, setWhy] = useState(false);
   const [evidence, setEvidence] = useState(false);
   const [keepAsking, setKeepAsking] = useState(false);
   const h = headlineOf(item, appName);
-  const situation = item.body ? previewOf(item.body, 3, 320) : "";
-  const recommends = recommendationOf(item);
+  const told = situation?.summary || (item.body ? previewOf(item.body, 3, 320) : "");
+  const recommends = situation?.recommend ? { label: "Your agent recommends", text: situation.recommend } : recommendationOf(item);
   const rev = reversibility(item);
-  const press = pressLine(item);
+  const press = pressLine(item, Date.now(), situation);
+  const going = autorun ? autorunLine(autorun) : null;
   const hot = Boolean(item.breach || item.category || item.status === "failed" || press?.hot);
   const offer = !keepAsking && feed.setActionMode ? allowOffer(item, items, feed.actionSets, feed.settings) : null;
   return (
@@ -167,10 +188,22 @@ function DecisionCard({
           {rank}
         </span>
         <div className="brief-card-title">
-          <span className="team-sentence">
-            <strong>{h.who}</strong> {h.verb}
-            {h.object && <span className="team-object">{h.object}</span>}
-          </span>
+          {situation ? (
+            <>
+              <h3 className="brief-headline">{situation.headline}</h3>
+              {situation.sources > 0 && (
+                <span className="muted small">
+                  Written by your agent from {situation.sources} {situation.sources === 1 ? "thing" : "things"}
+                  {situation.apps > 1 ? ` in ${situation.apps} apps` : ""}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="team-sentence">
+              <strong>{h.who}</strong> {h.verb}
+              {h.object && <span className="team-object">{h.object}</span>}
+            </span>
+          )}
           <span className="team-card-where">
             <Badge app={item.app || "hyperfeed"} size="sm" />
             {appName(item.app || "hyperfeed")}
@@ -178,12 +211,19 @@ function DecisionCard({
           </span>
         </div>
         <div className="brief-card-pills">
+          {going && <span className="pill pill-busy">{going.pill}</span>}
           {press && <span className={`pill ${press.hot ? "pill-bad" : "pill-wait"}`}>{press.text}</span>}
           <Status item={item} />
         </div>
       </div>
 
-      {situation && <p className="brief-situation">{situation}</p>}
+      {situation && (
+        <p className="brief-about muted small">
+          About: {h.who} {h.verb}
+          {h.object ? ` ${h.object}` : ""}
+        </p>
+      )}
+      {told && <p className="brief-situation">{told}</p>}
       {recommends && (
         <div className="brief-recommend">
           <span className="brief-label">{recommends.label}</span>
@@ -191,6 +231,21 @@ function DecisionCard({
         </div>
       )}
       {rev && <span className={`brief-rev ${rev}`}>{rev === "undoable" ? "Can be undone" : "Can't be undone"}</span>}
+      {going && autorun && (
+        <div className="brief-autorun" role="group" aria-label="Goes ahead by itself">
+          <div className="brief-autorun-line">
+            <span>{going.line}</span>
+            {feed.stopAutorun && (
+              <button type="button" className="ghost small" disabled={feed.busy} onClick={() => void feed.stopAutorun?.(autorun.id)}>
+                Stop it
+              </button>
+            )}
+          </div>
+          <div className="brief-bar" aria-hidden="true">
+            <span style={{ width: `${Math.round(going.progress * 100)}%` }} />
+          </div>
+        </div>
+      )}
 
       {resolvable(item) && <Resolver key={item.id} item={item} feed={feed} />}
       <div className="actions">
@@ -216,7 +271,7 @@ function DecisionCard({
           Later
         </button>
       </div>
-      {why && <p className="brief-why">{whyShown(item, appName)}</p>}
+      {why && <p className="brief-why">{whyShown(item, appName, Date.now(), situation)}</p>}
       {evidence && <Evidence item={item} feed={feed} items={items} />}
       {offer && (
         <div className="brief-allow" role="group" aria-label="Stop asking for this">

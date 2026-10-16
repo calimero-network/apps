@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ActionSetView, FeedItem, SettingsView } from "./generated/HyperfeedClient";
 import {
   ALLOW_AFTER,
+  autorunLine,
   BRIEF_BUDGET,
   allowOffer,
   briefOf,
@@ -12,8 +13,10 @@ import {
   summaryLine,
   tuneRule,
   urgency,
+  waitingAutoruns,
   whyShown,
 } from "./brief";
+import type { SituationView } from "./generated/HyperfeedClient";
 
 const NOW = new Date(2026, 9, 16, 15, 0).getTime();
 const HOUR = 3_600_000;
@@ -169,5 +172,34 @@ describe("brief: always allow", () => {
     const acting = { ...settings, action_modes: [{ app: "chat", action: "send", mode: "act" }] } as SettingsView;
     expect(allowOffer(item, [item, ...past], sets, acting, NOW)).toBeNull();
     expect(allowOffer(item, [item, ...past], [], settings, NOW)).toBeNull();
+  });
+});
+
+describe("brief: situations and defaults", () => {
+  const sit = (chain: string, over: Partial<SituationView> = {}): SituationView => ({
+    chain, headline: "Launch date", summary: "Thursday.", recommend: "", reason: "Ronit needs your yes by 16:00",
+    score: 95, due_at: 0, sources: 3, apps: 2, author: "mero-bot", updated_at: NOW, ...over,
+  });
+
+  it("ranks by your agent's score and due time when it wrote a situation", () => {
+    const guarded = row({ kind: "action", status: "pending", category: "sign", needs_you: true, status_at: NOW });
+    const note = row({ needs_you: true, status_at: NOW });
+    const b = briefOf([guarded, note], NOW, SINCE, appName, new Map([[note.chain, sit(note.chain)]]));
+    expect(b.decisions[0]!.id).toBe(note.id);
+    const due = sit(note.chain, { score: 0, due_at: NOW + 10 * 60_000 });
+    expect(pressLine(note, NOW, due)?.hot).toBe(true);
+  });
+
+  it("puts your agent's reason first in Why me?", () => {
+    const note = row({ needs_you: true, status_at: NOW });
+    expect(whyShown(note, appName, NOW, sit(note.chain))).toBe("Ronit needs your yes by 16:00. Chat marks it as needing you.");
+  });
+
+  it("says when a default goes ahead and how far through its wait it is", () => {
+    const a = { id: "x", chain: "c", at: NOW + 80 * 60_000, set_at: NOW - 20 * 60_000, status: "waiting", stopped_at: 0, fired_at: 0 };
+    const line = autorunLine(a, NOW);
+    expect(line.line).toBe("Goes ahead in 1 h 20 min unless you stop it");
+    expect(line.progress).toBeCloseTo(0.2);
+    expect(waitingAutoruns([a, { ...a, id: "y", status: "stopped" }]).size).toBe(1);
   });
 });

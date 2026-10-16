@@ -72,4 +72,25 @@ describe("BriefView", () => {
     const around = await within(nda).findByRole("list", { name: "Around it, from your team" });
     expect(around).toHaveTextContent("Ronit Cohen");
   });
+
+  it("tells a chain as your agent wrote it, with the rows it is about", async () => {
+    render(<Harness backend={new DemoBackend(true, 0)} />);
+    const decisions = await screen.findByRole("region", { name: "Decisions for you" });
+    const card = within(decisions).getByText("Maya needs the board numbers and the Northwind NDA before 2").closest("li")!;
+    expect(card).toHaveTextContent("Written by your agent from 6 things in 3 apps");
+    expect(card).toHaveTextContent("Your agent recommends");
+    expect(card).toHaveTextContent(/About: .*Vendor NDA/);
+  });
+
+  it("shows when a proposal goes ahead by itself, and stops it", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} />);
+    const decisions = await screen.findByRole("region", { name: "Decisions for you" });
+    const jordan = within(decisions).getByText(/Reply to Jordan/).closest("li")!;
+    const going = within(jordan).getByRole("group", { name: "Goes ahead by itself" });
+    expect(going).toHaveTextContent(/Goes ahead in 1 h 20 min unless you stop it/);
+    fireEvent.click(within(going).getByRole("button", { name: "Stop it" }));
+    await expect.poll(async () => (await backend.autoruns())[0]!.status).toBe("stopped");
+    await expect.poll(() => within(jordan).queryByRole("group", { name: "Goes ahead by itself" })).toBeNull();
+  });
 });

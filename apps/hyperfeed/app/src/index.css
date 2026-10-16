@@ -4688,3 +4688,49 @@ select {
     display: none;
   }
 }
+
+.brief-headline {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 18px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.brief-about {
+  margin: -4px 0 0;
+}
+
+.brief-autorun {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--busy-bg);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.brief-autorun-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.brief-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  overflow: hidden;
+}
+
+.brief-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-solid);
+}

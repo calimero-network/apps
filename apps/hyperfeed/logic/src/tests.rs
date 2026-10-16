@@ -4001,3 +4001,223 @@ fn a_guard_covers_reads_too() {
         .unwrap();
     assert_eq!(v.decision, "act");
 }
+
+// ── situations and defaults ──────────────────────────────────────────────────
+
+fn situation(headline: &str) -> SituationInput {
+    SituationInput {
+        headline: headline.to_owned(),
+        summary: "Ronit, Maya and two others agreed to ship Thursday.".to_owned(),
+        recommend: "Confirm Thursday and move the review to Friday 10:00.".to_owned(),
+        reason: "Ronit needs your yes before the memo at 16:00.".to_owned(),
+        score: 90,
+        due_at: 1_800_000_000_000,
+        sources: 7,
+        apps: 3,
+        author: "mero-bot@studio".to_owned(),
+    }
+}
+
+#[test]
+fn a_situation_tells_a_chain_as_one_card_and_the_next_one_replaces_it() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let n = app
+        .call(|s| s.record_notification(notification("k1", "chat", true)))
+        .unwrap();
+    let first = app
+        .call(|s| s.set_situation(n.chain.clone(), situation("Launch date: Thursday")))
+        .unwrap();
+    assert_eq!(first.chain, n.chain);
+    assert_eq!(first.score, 90);
+    let second = app
+        .call(|s| s.set_situation(n.chain.clone(), situation("Launch date: settled")))
+        .unwrap();
+    assert!(second.updated_at > first.updated_at);
+    let all = app.view(|s| s.situations()).unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].headline, "Launch date: settled");
+    assert!(app.call(|s| s.clear_situation(n.chain.clone())).unwrap());
+    assert!(app.view(|s| s.situations()).unwrap().is_empty());
+}
+
+#[test]
+fn a_situation_needs_a_chain_a_headline_and_a_summary_within_the_limits() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let n = app
+        .call(|s| s.record_notification(notification("k1", "chat", true)))
+        .unwrap();
+    assert!(app
+        .call(|s| s.set_situation("no-such-chain".to_owned(), situation("x")))
+        .is_err());
+    let mut empty = situation("Launch");
+    empty.summary = " ".to_owned();
+    assert!(app
+        .call(|s| s.set_situation(n.chain.clone(), empty))
+        .is_err());
+    let mut loud = situation("Launch");
+    loud.score = MAX_SITUATION_SCORE + 1;
+    assert!(app
+        .call(|s| s.set_situation(n.chain.clone(), loud))
+        .is_err());
+    let mut two_lines = situation("Launch\ndate");
+    two_lines.headline = "Launch\ndate".to_owned();
+    assert!(app
+        .call(|s| s.set_situation(n.chain.clone(), two_lines))
+        .is_err());
+    let r = app.call_as_account(STRANGER, STRANGER, |s| {
+        s.set_situation(n.chain.clone(), situation("Launch"))
+    });
+    assert!(r.is_err());
+}
+
+fn proposal(app: &mut TestHost<Hyperfeed>, input: ActionInput) -> FeedItem {
+    app.call(|s| s.record_action(input))
+        .expect("record proposal")
+}
+
+fn reply_proposal() -> ActionInput {
+    let mut input = action("chat", "proposed");
+    input.title = "Reply to Jordan with the contract terms".to_owned();
+    input.ask = Ask {
+        kind: "reply".to_owned(),
+        prompt: "Send to Jordan".to_owned(),
+        options: vec![],
+        draft: "Hi Jordan, terms are attached.".to_owned(),
+    };
+    input
+}
+
+fn now(app: &TestHost<Hyperfeed>) -> u64 {
+    app.view(|_| now_ms())
+}
+
+fn wait_past(at: u64) {
+    let left = at.saturating_sub(now_ms()) + 5;
+    std::thread::sleep(std::time::Duration::from_millis(left));
+}
+
+#[test]
+fn a_default_goes_ahead_at_its_time_with_its_draft_as_the_answer() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let p = proposal(&mut app, reply_proposal());
+    let at = now(&app) + 40;
+    let view = app.call(|s| s.schedule_autorun(p.id.clone(), at)).unwrap();
+    assert_eq!(view.status, AUTORUN_WAITING);
+    assert_eq!(view.chain, p.chain);
+    // Not before its time.
+    assert!(app.call(|s| s.fire_autorun(p.id.clone())).is_err());
+    wait_past(at);
+    let fired = app.call(|s| s.fire_autorun(p.id.clone())).unwrap();
+    assert_eq!(fired.status, STATUS_APPROVED);
+    assert_eq!(fired.note, "Hi Jordan, terms are attached.");
+    assert_eq!(app.view(|s| s.autoruns()).unwrap()[0].status, AUTORUN_FIRED);
+    // Once.
+    assert!(app.call(|s| s.fire_autorun(p.id.clone())).is_err());
+}
+
+#[test]
+fn a_default_you_stopped_never_goes_ahead() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let p = proposal(&mut app, reply_proposal());
+    let at = now(&app) + 30;
+    app.call(|s| s.schedule_autorun(p.id.clone(), at)).unwrap();
+    let r = app.call_as_account(STRANGER, STRANGER, |s| s.stop_autorun(p.id.clone()));
+    assert!(r.is_err());
+    let stopped = app.call(|s| s.stop_autorun(p.id.clone())).unwrap();
+    assert_eq!(stopped.status, AUTORUN_STOPPED);
+    wait_past(at);
+    assert!(app.call(|s| s.fire_autorun(p.id.clone())).is_err());
+    // Setting it again does not undo your stop.
+    let later = now(&app) + 60_000;
+    assert!(app
+        .call(|s| s.schedule_autorun(p.id.clone(), later))
+        .is_err());
+    let row = app.view(|s| s.item(p.id.clone())).unwrap().unwrap();
+    assert_eq!(row.status, STATUS_PENDING);
+}
+
+#[test]
+fn a_default_is_only_for_what_could_be_undone_with_no_guard() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let later = now(&app) + 60_000;
+    let mut signing = reply_proposal();
+    signing.category = "sign".to_owned();
+    let signing = proposal(&mut app, signing);
+    assert!(app
+        .call(|s| s.schedule_autorun(signing.id.clone(), later))
+        .is_err());
+    let mut final_one = reply_proposal();
+    final_one.undoable = false;
+    let final_one = proposal(&mut app, final_one);
+    assert!(app
+        .call(|s| s.schedule_autorun(final_one.id.clone(), later))
+        .is_err());
+    let mut choice = action("chat", "proposed");
+    choice.ask = Ask {
+        kind: "choose".to_owned(),
+        prompt: "Pick a slot".to_owned(),
+        options: vec!["12:30".to_owned(), "13:15".to_owned()],
+        draft: String::new(),
+    };
+    let choice = proposal(&mut app, choice);
+    assert!(app
+        .call(|s| s.schedule_autorun(choice.id.clone(), later))
+        .is_err());
+    let ok = proposal(&mut app, reply_proposal());
+    assert!(app
+        .call(|s| s.schedule_autorun(ok.id.clone(), now_ms()))
+        .is_err());
+    assert!(app
+        .call(|s| s.schedule_autorun(ok.id.clone(), now_ms() + MAX_AUTORUN_AHEAD_MS + 60_000))
+        .is_err());
+    assert!(app
+        .call(|s| s.schedule_autorun(ok.id.clone(), later))
+        .is_ok());
+}
+
+#[test]
+fn a_default_checks_the_rules_again_when_its_time_comes() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let p = proposal(&mut app, reply_proposal());
+    let at = now(&app) + 30;
+    app.call(|s| s.schedule_autorun(p.id.clone(), at)).unwrap();
+    app.call(|s| s.set_paused(true)).unwrap();
+    wait_past(at);
+    let r = app.call(|s| s.fire_autorun(p.id.clone()));
+    assert!(r.is_err());
+    assert_eq!(
+        app.view(|s| s.item(p.id.clone())).unwrap().unwrap().status,
+        STATUS_PENDING
+    );
+    // You deciding first settles it.
+    app.call(|s| s.set_paused(false)).unwrap();
+    app.call(|s| s.resolve_action(p.id.clone(), "decline".to_owned(), String::new()))
+        .unwrap();
+    assert_eq!(
+        app.view(|s| s.autoruns()).unwrap()[0].status,
+        AUTORUN_SETTLED
+    );
+    assert!(app.call(|s| s.fire_autorun(p.id.clone())).is_err());
+}
+
+#[test]
+fn a_stop_wins_over_a_later_schedule_when_copies_merge() {
+    let mut mine = Autorun {
+        chain: "c".to_owned(),
+        at: 100,
+        set_at: 10,
+        stopped_at: 20,
+        fired_at: 0,
+    };
+    let theirs = Autorun {
+        chain: "c".to_owned(),
+        at: 500,
+        set_at: 30,
+        stopped_at: 0,
+        fired_at: 0,
+    };
+    mine.merge(&theirs).unwrap();
+    assert_eq!(mine.at, 500);
+    assert_eq!(mine.stopped_at, 20);
+    assert_eq!(mine.status(true), AUTORUN_STOPPED);
+}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ActionSetView,
+  AutorunView,
   Attachment,
   CheckpointView,
   FeedItem,
@@ -13,6 +14,7 @@ import type {
   PushDeviceView,
   PushKeyView,
   SettingsView,
+  SituationView,
   WatchView,
 } from "./generated/HyperfeedClient";
 import type { NameLink } from "./links";
@@ -27,6 +29,12 @@ export interface Feed {
   lenses: LensView[];
   /** What your agent can do in each app version, newest first; [] on a feed made before actions. */
   actionSets: ActionSetView[];
+  /** Each task your agent told as one card, newest first; [] on a feed made before situations. */
+  situations: SituationView[];
+  /** Proposals that go ahead at a set time unless you stop them, soonest first. */
+  autoruns: AutorunView[];
+  /** Stop a proposal's default; absent on a feed made before them. */
+  stopAutorun?: (id: string) => Promise<void>;
   /**
    * The feed was made by a Hyperfeed from before lenses: it works, but holds
    * no lenses or typed rows until it is created again with the latest one.
@@ -159,6 +167,8 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [lenses, setLenses] = useState<LensView[]>([]);
   const [actionSets, setActionSets] = useState<ActionSetView[]>([]);
+  const [situations, setSituations] = useState<SituationView[]>([]);
+  const [autoruns, setAutoruns] = useState<AutorunView[]>([]);
   const [outdated, setOutdated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -190,11 +200,22 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
           throw e;
         });
         const actionsOrNone = backend.actionSets ? backend.actionSets() : Promise.resolve([]);
-        const [p, s, l, a] = await Promise.all([backend.feed(filter, appKey), backend.settings(), lensesOrOld, actionsOrNone]);
+        const situationsOrNone = backend.situations ? backend.situations() : Promise.resolve([]);
+        const autorunsOrNone = backend.autoruns ? backend.autoruns() : Promise.resolve([]);
+        const [p, s, l, a, sit, auto] = await Promise.all([
+          backend.feed(filter, appKey),
+          backend.settings(),
+          lensesOrOld,
+          actionsOrNone,
+          situationsOrNone,
+          autorunsOrNone,
+        ]);
         setPage(p);
         setSettings(s);
         setLenses(l ?? []);
         setActionSets(a);
+        setSituations(sit);
+        setAutoruns(auto);
         setOutdated(l === null);
         const stale = readError.current;
         readError.current = null;
@@ -248,6 +269,10 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       run((b) => (b.setActionMode ? b.setActionMode(app, action, mode) : Promise.resolve())),
     [run],
   );
+  const stopAutorun = useCallback(
+    (id: string) => run((b) => (b.stopAutorun ? b.stopAutorun(id).then(() => undefined) : Promise.resolve())),
+    [run],
+  );
   const setAssignment = useCallback(
     (app: string, agent: string) => run((b) => (b.setAssignment ? b.setAssignment(app, agent) : Promise.resolve())),
     [run],
@@ -298,6 +323,8 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     settings,
     lenses,
     actionSets,
+    situations,
+    autoruns,
     outdated,
     error,
     busy,
@@ -336,6 +363,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       [run],
     ),
     setActionMode: backend?.setActionMode ? setActionMode : undefined,
+    stopAutorun: backend?.stopAutorun ? stopAutorun : undefined,
     say: useCallback(
       async (chain, text, attachments, mode) => {
         let posted: FeedItem | null = null;

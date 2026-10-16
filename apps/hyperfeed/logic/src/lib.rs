@@ -95,6 +95,14 @@ pub use checkpoint::{
     MAX_CHECKPOINT_ENTRY, MAX_CHECKPOINT_TEXT,
 };
 
+mod brief;
+pub use brief::{
+    Autorun, AutorunView, Situation, SituationInput, SituationView, AUTORUN_FIRED, AUTORUN_SETTLED,
+    AUTORUN_STOPPED, AUTORUN_WAITING, MAX_AUTORUN_AHEAD_MS, MAX_SITUATIONS, MAX_SITUATION_AUTHOR,
+    MAX_SITUATION_HEADLINE, MAX_SITUATION_REASON, MAX_SITUATION_RECOMMEND, MAX_SITUATION_SCORE,
+    MAX_SITUATION_SUMMARY,
+};
+
 mod watches;
 pub use watches::{
     Watch, WatchInput, WatchView, MAX_ACTIVE_WATCHES, WATCH_ACTIONS, WATCH_CANCELLED,
@@ -1626,6 +1634,12 @@ pub struct Hyperfeed {
     agent_accounts: UnorderedMap<String, AgentAccount>,
     /// The call that sends each draft for you to send, by the action's id.
     sends: UnorderedMap<String, SendCall>,
+    /// Each task told as one card, as your agent last wrote it, by chain id.
+    /// See [`brief`].
+    situations: UnorderedMap<String, Situation>,
+    /// Proposals that go ahead at a set time unless you stop them, by the
+    /// action's id. See [`brief`].
+    autoruns: UnorderedMap<String, Autorun>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1712,6 +1726,15 @@ pub enum Event<'a> {
     },
     /// A device to push to, or the push key, changed: re-read `push_devices`.
     PushChanged,
+    /// Your agent wrote or cleared how a task reads as one card: re-read `situations`.
+    SituationChanged {
+        chain: &'a str,
+    },
+    /// A proposal's default was set, stopped or went ahead: re-read `autoruns`.
+    AutorunChanged {
+        id: &'a str,
+        status: &'a str,
+    },
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -1764,6 +1787,8 @@ impl Hyperfeed {
             agent_rules: UnorderedMap::new(),
             agent_accounts: UnorderedMap::new(),
             sends: UnorderedMap::new(),
+            situations: UnorderedMap::new(),
+            autoruns: UnorderedMap::new(),
         }
     }
 
@@ -3890,6 +3915,213 @@ impl Hyperfeed {
     pub fn checkpoint(&self, chain: String) -> app::Result<Option<CheckpointView>> {
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         Ok(self.checkpoints.get(&chain)?.map(|c| c.view(&chain)))
+    }
+
+    /// Your agent tells the task in `chain` as one card: a headline, what is
+    /// going on, what it recommends, why it ranks where it does, and when it
+    /// is due. It replaces the chain's last one. At most [`MAX_SITUATIONS`]
+    /// are kept; one more drops the one written longest ago.
+    pub fn set_situation(
+        &mut self,
+        chain: String,
+        input: SituationInput,
+    ) -> app::Result<SituationView> {
+        self.require_agent()?;
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        if !self.chain_exists(&chain)? {
+            return Err(AppError::msg(format!("no chain {chain}")));
+        }
+        let prior_at = self.situations.get(&chain)?.map_or(0, |s| s.updated_at);
+        let situation = Situation::from_input(input, now_ms().max(prior_at + 1))?;
+        let view = situation.view(&chain);
+        if prior_at == 0 && self.situations.len()? >= MAX_SITUATIONS {
+            let oldest = self
+                .situations
+                .entries()?
+                .min_by_key(|(k, s)| (s.updated_at, k.clone()))
+                .map(|(k, _)| k);
+            if let Some(oldest) = oldest {
+                self.situations.remove(&oldest)?;
+            }
+        }
+        self.situations.insert(chain.clone(), situation)?;
+        app::emit!(Event::SituationChanged { chain: &chain });
+        Ok(view)
+    }
+
+    /// Take a chain's situation off: the brief shows its rows again.
+    pub fn clear_situation(&mut self, chain: String) -> app::Result<bool> {
+        self.require_agent()?;
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        let removed = self.situations.remove(&chain)?.is_some();
+        if removed {
+            app::emit!(Event::SituationChanged { chain: &chain });
+        }
+        Ok(removed)
+    }
+
+    /// Every task your agent told as one card, most recently written first.
+    pub fn situations(&self) -> app::Result<Vec<SituationView>> {
+        let mut out: Vec<SituationView> = self
+            .situations
+            .entries()?
+            .map(|(chain, s)| s.view(&chain))
+            .collect();
+        out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at).then(a.chain.cmp(&b.chain)));
+        Ok(out)
+    }
+
+    /// Why a proposal may not go ahead on its own, or `None` when it may: it
+    /// is pending, your agent could undo it, no guard of yours covers it, its
+    /// app lets your agent write, your agent is not paused, it is not a draft
+    /// only you send, and its ask (if any) has a draft or is a confirm.
+    /// Returns the answer the approval would carry.
+    fn autorun_answer(&self, action: &Action) -> app::Result<Result<String, String>> {
+        let id = &action.id;
+        if current(&action.history).status != STATUS_PENDING {
+            return Ok(Err(format!("action {id} is not waiting for you")));
+        }
+        if !action.undoable {
+            return Ok(Err(
+                "only a proposal your agent can undo may go ahead on its own".to_owned(),
+            ));
+        }
+        if self.sends.get(id)?.is_some() {
+            return Ok(Err(
+                "a draft you send yourself never goes ahead on its own".to_owned()
+            ));
+        }
+        let call =
+            self.resolve_call(&action.app, &action.method, &action.category, action.writes)?;
+        if self.guard_on(&call.category)? {
+            return Ok(Err(format!("\"{}\" always needs you", call.category)));
+        }
+        if self.is_paused()? {
+            return Ok(Err("your agent is paused".to_owned()));
+        }
+        let verdict = self.verdict_for(&action.app, &call)?;
+        if verdict.decision == "refuse" {
+            return Ok(Err(format!("not allowed: {}", verdict.reason)));
+        }
+        Ok(match action.ask.kind.as_str() {
+            "" | "confirm" => Ok(String::new()),
+            "reply" if !action.ask.draft.trim().is_empty() => Ok(action.ask.draft.clone()),
+            "reply" => Err("a reply goes ahead on its own only with a draft".to_owned()),
+            _ => Err("a choice is yours to make: it never goes ahead on its own".to_owned()),
+        })
+    }
+
+    /// Your agent sets a proposal to go ahead at `at` (ms) unless you stop it.
+    /// Allowed only where nothing would be lost by it (see
+    /// [`Self::autorun_answer`]), up to [`MAX_AUTORUN_AHEAD_MS`] ahead. Setting
+    /// it again moves the time; once you stopped it, it stays stopped.
+    pub fn schedule_autorun(&mut self, id: String, at: u64) -> app::Result<AutorunView> {
+        self.require_agent()?;
+        let action = self.get_action(&id)?;
+        if let Err(why) = self.autorun_answer(&action)? {
+            return Err(AppError::msg(why));
+        }
+        let now = now_ms();
+        if at <= now {
+            return Err(AppError::msg("a default goes ahead later, not now"));
+        }
+        if at > now + MAX_AUTORUN_AHEAD_MS {
+            return Err(AppError::msg("a default goes ahead within a week"));
+        }
+        let prior = self.autoruns.get(&id)?.map(|a| a.clone());
+        if prior.as_ref().is_some_and(|a| a.stopped_at > 0) {
+            return Err(AppError::msg("you stopped this one: it waits for you"));
+        }
+        let autorun = Autorun {
+            chain: action.chain.clone(),
+            at,
+            set_at: now.max(prior.as_ref().map_or(0, |a| a.set_at) + 1),
+            stopped_at: 0,
+            fired_at: 0,
+        };
+        let view = autorun.view(&id, true);
+        self.autoruns.insert(id.clone(), autorun)?;
+        app::emit!(Event::AutorunChanged {
+            id: &id,
+            status: AUTORUN_WAITING
+        });
+        Ok(view)
+    }
+
+    /// You stop a proposal's default: it waits for you as any proposal does,
+    /// and never goes ahead on its own again.
+    pub fn stop_autorun(&mut self, id: String) -> app::Result<AutorunView> {
+        self.require_owner()?;
+        let mut autorun = self
+            .autoruns
+            .get(&id)?
+            .map(|a| a.clone())
+            .ok_or_else(|| AppError::msg(format!("action {id} has no default")))?;
+        if autorun.fired_at > 0 {
+            return Err(AppError::msg("it already went ahead: undo it instead"));
+        }
+        if autorun.stopped_at == 0 {
+            autorun.stopped_at = now_ms().max(autorun.set_at + 1);
+        }
+        let pending = current(&self.get_action(&id)?.history).status == STATUS_PENDING;
+        let view = autorun.view(&id, pending);
+        self.autoruns.insert(id.clone(), autorun)?;
+        app::emit!(Event::AutorunChanged {
+            id: &id,
+            status: AUTORUN_STOPPED
+        });
+        Ok(view)
+    }
+
+    /// Your agent's runtime fires a default once its time came: the proposal
+    /// is approved, with its draft as the answer, and your agent carries it out
+    /// as any approval. Every check that let it be set is made again; if one
+    /// fails now, it is refused and the proposal waits for you.
+    pub fn fire_autorun(&mut self, id: String) -> app::Result<FeedItem> {
+        self.require_agent()?;
+        let mut autorun = self
+            .autoruns
+            .get(&id)?
+            .map(|a| a.clone())
+            .ok_or_else(|| AppError::msg(format!("action {id} has no default")))?;
+        if autorun.stopped_at > 0 {
+            return Err(AppError::msg("you stopped it: it waits for you"));
+        }
+        if autorun.fired_at > 0 {
+            return Err(AppError::msg("it already went ahead"));
+        }
+        let now = now_ms();
+        if now < autorun.at {
+            return Err(AppError::msg("its time has not come"));
+        }
+        let action = self.get_action(&id)?;
+        let answer = match self.autorun_answer(&action)? {
+            Ok(answer) => answer,
+            Err(why) => return Err(AppError::msg(why)),
+        };
+        autorun.fired_at = now.max(autorun.set_at + 1);
+        self.autoruns.insert(id.clone(), autorun)?;
+        app::emit!(Event::AutorunChanged {
+            id: &id,
+            status: AUTORUN_FIRED
+        });
+        // The note is the approval's answer, which your agent carries out
+        // exactly: the draft, or nothing. `autoruns` says it went ahead.
+        self.push_step(action, STATUS_APPROVED, answer)
+    }
+
+    /// Every proposal's default, soonest first.
+    pub fn autoruns(&self) -> app::Result<Vec<AutorunView>> {
+        let mut out = Vec::new();
+        for (id, a) in self.autoruns.entries()? {
+            let pending = self
+                .actions
+                .get(&id)?
+                .is_some_and(|x| current(&x.history).status == STATUS_PENDING);
+            out.push(a.view(&id, pending));
+        }
+        out.sort_by(|a, b| a.at.cmp(&b.at).then(a.id.cmp(&b.id)));
+        Ok(out)
     }
 
     /// A standing rule's text: one short line, trimmed.
