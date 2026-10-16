@@ -323,6 +323,105 @@ describe('useFugueBody', () => {
     expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
   });
 
+  // A node restart hands the hook a new client, and can drop the docs context
+  // (docId null) while it re-resolves. The hook used to reset on either: the
+  // pending edit was forgotten and the editor reloaded with the node's text, so
+  // the last keystrokes typed before the restart vanished from every node and
+  // from the window (mero-docs' rich e2e, "apart": ' Left si').
+  it.each([
+    ['a new client for the same document', [{ docId: DOC }]],
+    ['the document dropping out and back', [{ docId: null }, { docId: DOC }]],
+  ] as const)(
+    'keeps typing the node never got and sends it once the node is back: %s',
+    async (_case, steps) => {
+      const down = fakeClient([row('blk-1', 'The fox.')]);
+      // The first keystroke lands; the next is in flight when the node goes down.
+      down.applyDeltaOn
+        .mockResolvedValueOnce(applied('The fox. a'))
+        .mockRejectedValue(
+          new HTTPError(0, 'Network Error', 'http://node/jsonrpc', new Headers(), ''),
+        );
+      const editor = new FakeEditor();
+      const view = renderHook(
+        ({ client, docId }: { client: FakeClient; docId: string | null }) =>
+          useFugueBody({
+            client: client as unknown as DocsClient,
+            docId,
+            contextId: CTX,
+            editor,
+          }),
+        { initialProps: { client: down, docId: DOC as string | null } },
+      );
+      await settle();
+      editor.document = JSON.parse(view.result.current.content ?? '[]');
+      editor.onChange = () => view.result.current.onContentChange('');
+      // EditorShell applies every new `content`; a reload would overwrite the typing.
+      let shown = view.result.current.content;
+      const applyLikeTheShell = () => {
+        const next = view.result.current.content;
+        if (next !== undefined && next !== shown) {
+          editor.document = JSON.parse(next);
+          shown = next;
+        }
+      };
+
+      editor.type('blk-1', 'The fox. a');
+      await settle();
+      editor.type('blk-1', 'The fox. ab');
+      await settle();
+      expect(down.applyDeltaOn).toHaveBeenCalledTimes(2);
+      expect(view.result.current.status).toBe('offline');
+
+      // The node as it comes back: it holds what landed, and then what is resent.
+      let held = 'The fox. a';
+      const up = fakeClient([]);
+      up.getDocument.mockImplementation(async () => [row('blk-1', held)]);
+      up.applyDeltaOn.mockImplementation(async () => {
+        held = 'The fox. ab';
+        return applied(held);
+      });
+      for (const step of steps) {
+        view.rerender({ client: step.docId ? up : down, docId: step.docId });
+        await settle();
+        applyLikeTheShell();
+      }
+      await settle(1_000);
+      applyLikeTheShell();
+
+      expect(editor.textOf('blk-1')).toBe('The fox. ab');
+      expect(up.applyDeltaOn).toHaveBeenCalledWith({
+        doc: DOC,
+        block: 'blk-1',
+        base: 'The fox. a',
+        ops: [{ retain: 10 }, { insert: 'b', attributes: {} }],
+        anchor: null,
+      });
+      expect(view.result.current.status).toBe('saved');
+    },
+  );
+
+  it('loads the other document when the editor is pointed at a different one', async () => {
+    const client = fakeClient([row('blk-1', 'first')]);
+    const editor = new FakeEditor();
+    const view = renderHook(
+      ({ docId }: { docId: string }) =>
+        useFugueBody({
+          client: client as unknown as DocsClient,
+          docId,
+          contextId: CTX,
+          editor,
+        }),
+      { initialProps: { docId: DOC } },
+    );
+    await settle();
+    editor.document = JSON.parse(view.result.current.content ?? '[]');
+    client.getDocument.mockResolvedValue([row('blk-9', 'second')]);
+    view.rerender({ docId: 'doc-2' });
+    await settle();
+    expect(client.getDocument).toHaveBeenLastCalledWith({ doc: 'doc-2' });
+    expect(JSON.parse(view.result.current.content ?? '[]')[0].content[0].text).toBe('second');
+  });
+
   it('rebases a refused write onto the peer text and resends it', async () => {
     const client = fakeClient([row('blk-1', 'The fox.')]);
     client.applyDeltaOn

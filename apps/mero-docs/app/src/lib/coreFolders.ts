@@ -10,6 +10,7 @@
 // Restricted subgroup only to its members and to the admins above it.
 
 import type { AdminApiClient } from '@calimero-network/mero-js';
+import { isTransportFailure } from './rich/transport';
 
 /** Where a folder's colour lives in its subgroup metadata's `data` map. */
 export const FOLDER_COLOR_KEY = 'color';
@@ -43,6 +44,16 @@ export async function folderDocsContext(
   return contexts[0]?.contextId ?? null;
 }
 
+// Core refusing a read to this caller means there is nothing for it there. An
+// unreachable node means nothing yet, and must fail the walk: an empty answer
+// would read as every folder gone, and an open document with them.
+const refused =
+  <T,>(nothing: T) =>
+  (cause: unknown): T => {
+    if (isTransportFailure(cause)) throw cause;
+    return nothing;
+  };
+
 function visibilityOf(raw: string | undefined): CoreFolder['visibility'] {
   if (raw === 'open' || raw === 'Open') return 'Open';
   if (raw === 'restricted' || raw === 'Restricted') return 'Restricted';
@@ -57,8 +68,8 @@ async function describe(
   shared: boolean,
 ): Promise<{ folder: CoreFolder; namespaceId: string | undefined } | null> {
   const [info, context] = await Promise.all([
-    admin.getGroupInfo(id).catch(() => null),
-    folderDocsContext(admin, id).catch(() => null),
+    admin.getGroupInfo(id).catch(refused(null)),
+    folderDocsContext(admin, id).catch(refused(null)),
   ]);
   if (!info) return null;
   const color = info.metadata?.data?.[FOLDER_COLOR_KEY];
@@ -110,7 +121,7 @@ export async function loadCoreFolders(
     while (level.length > 0) {
       const children = await Promise.all(
         level.map(async (parent) =>
-          (await admin.listSubgroups(parent).catch(() => [])).map((c) => ({
+          (await admin.listSubgroups(parent).catch(refused([]))).map((c) => ({
             id: c.groupId,
             parent: parent === rootId ? null : parent,
           })),
@@ -139,7 +150,7 @@ export async function loadCoreFolders(
   if (applicationId) {
     const { contexts } = await admin
       .getContextsForApplication(applicationId)
-      .catch(() => ({ contexts: [] }));
+      .catch(refused({ contexts: [] }));
     const candidates = [
       ...new Set(
         contexts
