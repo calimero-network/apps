@@ -1,4 +1,5 @@
 import React, { useMemo, memo } from "react";
+import { isPlaceholderName } from "../../../utils/placeholderName";
 
 export interface AvatarProps {
   src?: string;
@@ -60,6 +61,10 @@ export const Avatar: React.FC<AvatarProps> = ({
   style = {},
 }) => {
   const avatarSize = sizeMap[size];
+  // A shortened account is not a name: its first character ("3") reads as a
+  // count. Such members get the person glyph, still on their own colour so two
+  // nameless members stay apart.
+  const hasRealName = !!name && !isPlaceholderName(name);
 
   // Memoize styles to prevent object recreation on every render
   const baseStyle = useMemo(
@@ -68,7 +73,7 @@ export const Avatar: React.FC<AvatarProps> = ({
       height: avatarSize,
       borderRadius: shape === "circle" ? "50%" : "12px",
       backgroundColor:
-        !src && name && !fallback ? initialsColor(name) : "var(--glass-sunken)",
+        !src && name?.trim() && !fallback ? initialsColor(name) : "var(--glass-sunken)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -91,20 +96,20 @@ export const Avatar: React.FC<AvatarProps> = ({
 
   // Memoize initials calculation
   const initials = useMemo(() => {
-    if (!name) return "";
+    if (!name || !hasRealName) return "";
     return name
       .split(" ")
       .map((word) => word.charAt(0))
       .join("")
       .slice(0, 2);
-  }, [name]);
+  }, [name, hasRealName]);
 
   const renderFallback = () => {
     if (fallback) {
       return fallback;
     }
 
-    if (name) {
+    if (hasRealName) {
       return <span style={fallbackStyle}>{initials}</span>;
     }
 
@@ -114,7 +119,8 @@ export const Avatar: React.FC<AvatarProps> = ({
         height={avatarSize * 0.5}
         viewBox="0 0 24 24"
         fill="none"
-        style={{ color: "var(--glass-ink-2)" }}
+        aria-hidden="true"
+        style={{ color: name?.trim() ? "#ffffff" : "var(--glass-ink-2)" }}
       >
         <path
           d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
