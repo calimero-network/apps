@@ -353,7 +353,7 @@ export default function ForumsPage() {
       if (!mero) return;
       setPendingDelete(null);
       void run(`delete:${forum.forumId}`, async (onStatus) => {
-        await deleteForum(mero.admin, { forumId: forum.forumId }, onStatus);
+        await deleteForum(mero.admin, { forumId: forum.forumId, contextId: forum.contextId }, onStatus);
         onStatus("Refreshing forums…");
         await load(false);
         showToast(`Deleted \u201c${forum.name}\u201d.`);

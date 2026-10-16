@@ -5,7 +5,8 @@
  * which is `DELETE /admin-api/contexts/:id` — and the app's token carries no
  * `context:delete`, so the node answered 403 and nothing was deleted. A
  * calendar is a subgroup holding one context; it is deleted as the subgroup
- * (`deleteGroup`, which cascades to the context), offered to an Admin only.
+ * (`deleteGroup`), offered to an Admin only. The context delete is still tried
+ * first, since the group delete only unregisters it, but its 403 is tolerated.
  * Anyone else is offered Leave, and an Admin never is.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -96,7 +97,7 @@ beforeEach(() => {
 });
 
 describe("deleting a calendar", () => {
-  it("deletes a team admin's calendar as its subgroup, never through deleteContext", async () => {
+  it("deletes a team admin's calendar as its subgroup when the context delete is refused", async () => {
     open();
     fireEvent.click(await screen.findByTestId(`calendar-menu-${CAL}`));
     expect(screen.queryByTestId(`leave-calendar-${CAL}`)).toBeNull();
@@ -104,7 +105,8 @@ describe("deleting a calendar", () => {
     fireEvent.click(screen.getByTestId("confirm-delete-btn"));
 
     await waitFor(() => expect(stub.admin.deleteGroup).toHaveBeenCalledWith(SUB));
-    expect(stub.admin.deleteContext).not.toHaveBeenCalled();
+    // Tried first (it answers 403 here), and its refusal did not stop the delete.
+    expect(stub.admin.deleteContext).toHaveBeenCalledWith(CAL);
     expect(stub.showToast).toHaveBeenCalledWith("Calendar deleted.", "success");
   });
 

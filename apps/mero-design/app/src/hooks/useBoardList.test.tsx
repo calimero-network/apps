@@ -1,8 +1,9 @@
 // A team's boards, as the rail and the team home share them.
 //
-// Deleting a board: through its subgroup, whose delete cascades to the
-// context. The node-local `deleteContext` is not on the app's token (no
-// `context:delete`), so it answered every app 403. The board goes only once
+// Deleting a board: through its subgroup, which takes it out of every listing.
+// The group delete only unregisters the context, so the node's own copy is
+// deleted first, best-effort: `deleteContext` is not on the app's token (no
+// `context:delete`) and answered every app 403, which must not stop the delete. The board goes only once
 // the delete went through: a refusal used to be swallowed and the card dropped
 // anyway, so a 403 looked like a delete until the next reload brought it back.
 //
@@ -49,6 +50,7 @@ describe("useBoardList", () => {
   beforeEach(() => {
     deleteContext.mockReset();
     deleteGroup.mockReset();
+    deleteContext.mockResolvedValue(undefined);
     createSubgroup.mockReset();
     createContext.mockReset();
   });
@@ -60,12 +62,21 @@ describe("useBoardList", () => {
     ]);
   });
 
-  it("deletes the board through its subgroup, not the context", async () => {
+  it("deletes the board's context, then its subgroup", async () => {
+    deleteGroup.mockResolvedValue(undefined);
+    const { result } = await listed();
+    await act(() => result.current.deleteBoard(result.current.boards[0]!));
+    expect(deleteContext).toHaveBeenCalledWith(CTX);
+    expect(deleteGroup).toHaveBeenCalledWith(GROUP);
+    expect(result.current.boards).toEqual([]);
+  });
+
+  it("still deletes the subgroup when the node refuses the context delete (an app token)", async () => {
+    deleteContext.mockRejectedValue(Object.assign(new Error("HTTP 403"), { status: 403 }));
     deleteGroup.mockResolvedValue(undefined);
     const { result } = await listed();
     await act(() => result.current.deleteBoard(result.current.boards[0]!));
     expect(deleteGroup).toHaveBeenCalledWith(GROUP);
-    expect(deleteContext).not.toHaveBeenCalled();
     expect(result.current.boards).toEqual([]);
   });
 

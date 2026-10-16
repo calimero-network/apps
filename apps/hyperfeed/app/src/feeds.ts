@@ -52,28 +52,29 @@ export function orderFeeds(ids: string[], current: string, facts: Record<string,
 }
 
 /**
- * Delete a feed. A feed is made in a namespace of its own, so the usual case
- * is deleting that namespace: core's namespace delete cascades to the context
- * in it. Only a feed sharing its namespace with another context is deleted on
- * its own, with `deleteContext`.
+ * Delete a feed: its context, then its namespace once nothing else is in it.
+ * A feed is made in a namespace of its own, so that is the usual case; a
+ * namespace still holding another context is left alone. Resolves to whether
+ * the namespace went too.
  *
- * ⚠️ Not `deleteContext` first. `DELETE /admin-api/contexts/:id` needs
- * `context:delete`, which an app's grant set signed in from a browser does
- * not carry: the node answered 403 and the delete stopped before the
- * namespace was reached, so a browser session could never delete a feed.
- * Resolves to whether the namespace went.
+ * ⚠️ The context delete is tolerated when the feed is alone in its namespace.
+ * The namespace delete only UNREGISTERS its contexts (their data stays), so
+ * the context goes first wherever it can — but `DELETE /admin-api/contexts/:id`
+ * needs `context:delete`, which an app's grant set signed in from a browser
+ * may not carry. A refusal there must not leave the feed undeletable: the
+ * namespace still goes, and the feed with it out of every listing.
  */
 export async function deleteFeed(admin: FeedAdmin, contextId: string): Promise<{ namespace: boolean }> {
   const group = await admin.getContextGroup(contextId).catch(() => null);
-  if (group) {
-    const inGroup = await admin.listGroupContexts(group).catch(() => null);
-    if (inGroup && inGroup.every((c) => c.contextId === contextId)) {
-      await admin.deleteNamespace(group);
-      return { namespace: true };
-    }
+  const inGroup = group ? await admin.listGroupContexts(group).catch(() => null) : null;
+  const alone = !!group && !!inGroup && inGroup.every((c) => c.contextId === contextId);
+  if (!alone) {
+    await admin.deleteContext(contextId);
+    return { namespace: false };
   }
-  await admin.deleteContext(contextId);
-  return { namespace: false };
+  await admin.deleteContext(contextId).catch(() => {});
+  await admin.deleteNamespace(group);
+  return { namespace: true };
 }
 
 /**

@@ -393,6 +393,10 @@ export default function TeamCalendarsPage() {
       if (mode === "delete") {
         const subgroup = subgroupOf(contextId);
         if (subgroup) {
+          // The group delete only unregisters the context (its data stays on
+          // the node), so the context goes first where it can. Best-effort: an
+          // app token has no `context:delete` and an account has no form of it.
+          await requireAdmin().deleteContext(contextId).catch(() => {});
           await requireAdmin().deleteGroup(subgroup);
         } else {
           await requireAdmin().deleteContext(contextId);

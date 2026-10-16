@@ -308,17 +308,19 @@ export default function ProjectsPage() {
   }
 
   // A project is a subgroup holding one document context, so it is deleted as
-  // the subgroup: core's `deleteGroup` cascades to the context it holds, is
-  // allowed to a team Admin or the subgroup's Admin, and has an account form.
-  // `deleteContext` is NOT the way: the app's token carries no
-  // `context:delete`, so the node answers 403 — and on an account it is a
-  // node-only call. It is only the fallback for a document created straight
-  // in the team (no subgroup), on a node session. The card goes once the node
+  // the subgroup: allowed to a team Admin or the subgroup's Admin, with an
+  // account form, and it takes the project out of every listing. Core's group
+  // delete only UNREGISTERS the context (its data stays on the node), so the
+  // context goes first — best-effort: the app's token carries no
+  // `context:delete` (the node answers 403) and an account has no form of it,
+  // and neither may stop the delete. A document created straight in the team
+  // (no subgroup) is deleted as the context alone. The card goes once the node
   // has accepted the delete; a refusal is said, not swallowed.
   async function deleteProject(project: ProjectCard) {
     setMenuOpenId(null);
     try {
       if (project.groupId && project.groupId !== teamId) {
+        await admin.deleteContext(project.contextId).catch(() => {});
         await admin.deleteGroup(project.groupId);
       } else {
         await admin.deleteContext(project.contextId);

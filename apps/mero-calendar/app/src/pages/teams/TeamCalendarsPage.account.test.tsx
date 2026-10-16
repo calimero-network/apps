@@ -30,7 +30,10 @@ const stub = vi.hoisted(() => {
     createContext: vi.fn(async () => ({ contextId: "ctx-new", memberPublicKey: "" })),
     setContextMetadata: vi.fn(async () => {}),
     joinContext: vi.fn(async () => ({ contextId: "ctx-new", memberPublicKey: "" })),
-    deleteContext: vi.fn(),
+    // As the account admin answers: a node-only call it refuses by name.
+    deleteContext: vi.fn(async () => {
+      throw new Error("NotForAccountError: deleteContext");
+    }),
     leaveContext: vi.fn(),
     deleteGroup: vi.fn(async () => ({ isDeleted: true })),
     getNodeIdentity: vi.fn(),
@@ -153,8 +156,8 @@ describe("an account's calendar list", () => {
     fireEvent.click(screen.getByTestId(`delete-calendar-${EXISTING}`));
     fireEvent.click(screen.getByTestId("confirm-delete-btn"));
 
+    // The account refuses the context delete; the subgroup delete still goes.
     await waitFor(() => expect(stub.admin.deleteGroup).toHaveBeenCalledWith(SUB));
-    expect(stub.admin.deleteContext).not.toHaveBeenCalled();
   });
 
   it("offers a non-admin account nothing to remove", async () => {

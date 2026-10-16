@@ -631,25 +631,28 @@ export async function createAudience(
 }
 
 /**
- * Delete an audience: the subgroup that holds it, and with it its context.
+ * Delete an audience: the subgroup that holds it, which takes it out of every
+ * listing for everyone.
  *
- * ⚠️ One call, `deleteGroup`, and NOT `deleteContext` first. This used to
- * delete the context first so the subgroup's removal could not orphan it — but
- * `DELETE /admin-api/contexts/:id` needs `context:delete`, which the app's
- * token does not carry: the node answered 403 and the whole delete stopped
- * there (and on an account `deleteContext` is refused by name). The orphan
- * concern is answered by core instead: `GroupDeleted` cascades, unregistering
- * every context in the deleted subtree on every peer that applies it.
+ * ⚠️ The context first, best-effort. Core's `GroupDeleted` only UNREGISTERS
+ * the contexts in the deleted subtree: their data stays on the node, so a node
+ * that can delete its own copy does so first. That call needs
+ * `context:delete`, which the token a node hands an app does not carry (the
+ * node answers 403), and an account refuses it by name — so a refusal must not
+ * stop the delete, as it once did and left audiences undeletable.
  *
  * Allowed to a namespace Admin or the audience's owner (core checks), on a
- * node and on an account alike; the page offers it to Admins only. This
- * removes it for EVERYONE — a governance op on the namespace, not a local hide.
+ * node and on an account alike; the page offers it to Admins only.
  */
 export async function deleteAudience(
   admin: AdminApiClient,
-  opts: { audienceId: string },
+  opts: { audienceId: string; contextId?: string | null },
   onStatus: StatusFn = noop,
 ): Promise<void> {
+  if (opts.contextId) {
+    onStatus("Deleting the audience's context…");
+    await admin.deleteContext(opts.contextId).catch(() => {});
+  }
   onStatus("Removing the audience…");
   await admin.deleteGroup(opts.audienceId);
 }
@@ -657,17 +660,25 @@ export async function deleteAudience(
 /**
  * Delete a space, and every audience in it.
  *
- * One `deleteNamespace`: core's namespace delete cascades through the subtree,
- * audiences and their contexts included. There is no per-audience
- * `deleteContext` pass first — the app's token carries no `context:delete`, so
- * each of those was a 403. An Admin's action, and a node's own (an account
- * has no form of it); anyone else leaves the space instead.
+ * Each audience's context first, best-effort, for the reason on
+ * `deleteAudience`: the namespace delete only unregisters them. A refusal (an
+ * app token has no `context:delete`) is skipped rather than failing the whole
+ * delete. An Admin's action, and a node's own (an account has no form of it);
+ * anyone else leaves the space instead.
  */
 export async function deleteSpace(
   admin: AdminApiClient,
   opts: { namespaceId: string },
   onStatus: StatusFn = noop,
 ): Promise<void> {
+  onStatus("Finding the audiences in this space…");
+  const audiences = await listAudiences(admin, opts.namespaceId).catch(() => []);
+  for (const audience of audiences) {
+    if (!audience.contextId) continue;
+    onStatus(`Deleting “${audience.name}”…`);
+    await admin.deleteContext(audience.contextId).catch(() => {});
+  }
+
   onStatus("Removing the space…");
   await admin.deleteNamespace(opts.namespaceId);
 }

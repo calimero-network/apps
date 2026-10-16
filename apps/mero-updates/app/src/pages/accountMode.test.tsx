@@ -307,7 +307,7 @@ describe("an account session (delegated) on the audiences page", () => {
     expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1");
   });
 
-  it("lets an audience admin delete it as its subgroup, never through deleteContext", async () => {
+  it("lets an audience admin delete it as its subgroup, though the account refuses deleteContext", async () => {
     admin.listNamespaceGroups.mockResolvedValue([
       { groupId: "aud1", name: "Investors" },
     ] as never);
@@ -319,8 +319,9 @@ describe("an account session (delegated) on the audiences page", () => {
     fireEvent.click(await screen.findByTestId("audience-menu"));
     fireEvent.click(await screen.findByTestId("delete-audience"));
     fireEvent.click(await screen.findByTestId("confirm-delete-audience"));
+    // The account admin refuses the context delete by name; the subgroup
+    // delete still goes.
     await waitFor(() => expect(admin.deleteGroup).toHaveBeenCalledWith("aud1"));
-    expect(admin.deleteContext).not.toHaveBeenCalled();
     neverTouchedTheNodeRoute();
   });
 

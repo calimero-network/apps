@@ -578,15 +578,15 @@ export async function createForum(
 }
 
 /**
- * Delete a forum: the subgroup that holds it, and with it its context.
+ * Delete a forum: the subgroup that holds it, which takes it out of every
+ * listing for everyone.
  *
- * ⚠️ One call, `deleteGroup`, and NOT `deleteContext` first. This used to
- * delete the context first so the subgroup's removal could not orphan it — but
- * `DELETE /admin-api/contexts/:id` needs `context:delete`, which the app's
- * token does not carry: the node answered 403 and the whole delete stopped
- * there, so a forum could never be deleted. The orphan concern is answered by
- * core instead: `GroupDeleted` cascades, unregistering every context in the
- * deleted subtree on every peer that applies it.
+ * ⚠️ The context first, best-effort. Core's `GroupDeleted` only UNREGISTERS
+ * the contexts in the deleted subtree: their data stays on the node, so a node
+ * that can delete its own copy does so first. That call needs
+ * `context:delete`, which the token a node hands an app does not carry (the
+ * node answers 403), and an account has no form of it — so a refusal must not
+ * stop the delete, as it once did and left forums undeletable.
  *
  * Allowed to a namespace Admin or the forum's owner (core checks); the page
  * offers it to Admins only. This removes it for EVERYONE, not just this node —
@@ -594,9 +594,13 @@ export async function createForum(
  */
 export async function deleteForum(
   admin: AdminLike,
-  opts: { forumId: string },
+  opts: { forumId: string; contextId?: string | null },
   onStatus: StatusFn = noop,
 ): Promise<void> {
+  if (opts.contextId) {
+    onStatus("Deleting the forum's context…");
+    await admin.deleteContext(opts.contextId).catch(() => {});
+  }
   onStatus("Removing the forum…");
   await admin.deleteGroup(opts.forumId);
 }
@@ -604,16 +608,24 @@ export async function deleteForum(
 /**
  * Delete a space, and every forum in it.
  *
- * One `deleteNamespace`: core's namespace delete cascades through the subtree,
- * forums and their contexts included. There is no per-forum `deleteContext`
- * pass first — the app's token carries no `context:delete`, so each of those
- * was a 403. An Admin's action; anyone else leaves the space instead.
+ * Each forum's context first, best-effort, for the reason on `deleteForum`:
+ * the namespace delete only unregisters them. A refusal (an app token has no
+ * `context:delete`) or a forum this node has never seen is skipped rather than
+ * failing the whole delete. An Admin's action; anyone else leaves the space.
  */
 export async function deleteSpace(
   admin: AdminLike,
   opts: { namespaceId: string },
   onStatus: StatusFn = noop,
 ): Promise<void> {
+  onStatus("Finding the forums in this space…");
+  const forums = await listForums(admin, opts.namespaceId).catch(() => []);
+  for (const forum of forums) {
+    if (!forum.contextId) continue;
+    onStatus(`Deleting “${forum.name}”…`);
+    await admin.deleteContext(forum.contextId).catch(() => {});
+  }
+
   onStatus("Removing the space…");
   await admin.deleteNamespace(opts.namespaceId);
 }

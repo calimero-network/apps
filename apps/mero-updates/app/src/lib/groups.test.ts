@@ -740,15 +740,16 @@ describe("mint*Invite — the account admin's hosting refusal", () => {
 // The reported bug: "Delete audience" called `deleteContext` first, which needs
 // `context:delete` — a permission the app's token does not carry — so the node
 // answered 403 and the delete stopped before the subgroup was touched. The
-// audience is the subgroup; core's `GroupDeleted` cascades to its context.
+// audience is the subgroup. Core's `GroupDeleted` only unregisters its context,
+// so the context delete is still tried first, but its refusal is tolerated.
 describe("deleteAudience / deleteSpace / leaveSpace", () => {
-  it("deletes an audience as its subgroup, without a deleteContext first", async () => {
+  it("deletes an audience as its subgroup when its context delete is refused (403)", async () => {
     const admin = fakeAdmin({
       deleteContext: () => Promise.reject(new Error("403 permission_denied")),
     });
-    await deleteAudience(admin, { audienceId: "audience1" });
-    expect(methodsOf(admin)).toEqual(["deleteGroup"]);
-    expect(admin.calls[0].args).toEqual(["audience1"]);
+    await deleteAudience(admin, { audienceId: "audience1", contextId: "ctx1" });
+    expect(methodsOf(admin)).toEqual(["deleteContext", "deleteGroup"]);
+    expect(admin.calls[1].args).toEqual(["audience1"]);
   });
 
   it("reports a refused audience delete rather than swallowing it", async () => {
@@ -760,13 +761,16 @@ describe("deleteAudience / deleteSpace / leaveSpace", () => {
     ).rejects.toThrow("not the owner");
   });
 
-  it("deletes a space with one deleteNamespace, no per-audience deleteContext", async () => {
+  it("deletes a space with one deleteNamespace, trying each audience's context first", async () => {
     const admin = fakeAdmin({
       listNamespaceGroups: () => Promise.resolve([{ groupId: "a1" }]),
       listGroupContexts: () => Promise.resolve([{ contextId: "ctx1" }]),
+      deleteContext: () => Promise.reject(new Error("403 permission_denied")),
     });
     await deleteSpace(admin, { namespaceId: "ns1" });
-    expect(methodsOf(admin)).toEqual(["deleteNamespace"]);
+    const calls = methodsOf(admin);
+    expect(calls).toContain("deleteContext");
+    expect(calls[calls.length - 1]).toBe("deleteNamespace");
   });
 
   it("leaves a space through leaveNamespace", async () => {

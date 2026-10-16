@@ -120,12 +120,18 @@ export function useBoardList(teamId: string | null): BoardList {
   }, [teamId, ensureAppId]);
 
   const deleteBoard = useCallback(async (board: Project) => {
-    // Through the board's subgroup, whose delete cascades to its context. A
-    // node's own `deleteContext` is not on the app's token (no
-    // `context:delete`, so it answers 403) and has no account form; it is only
-    // the fallback for a board created straight in the team.
-    if (board.groupId && board.groupId !== teamId) await deleteGroup(board.groupId);
-    else await deleteContext(board.contextId);
+    // Through the board's subgroup, which takes it out of every listing for
+    // the whole team. Core's group delete only UNREGISTERS the context (its
+    // data stays on the node), so the context goes first wherever it can —
+    // best-effort: the app's token has no `context:delete` (the node answers
+    // 403) and an account has no form of it, and neither may stop the delete.
+    // A board created straight in the team has no subgroup: the context alone.
+    if (board.groupId && board.groupId !== teamId) {
+      await deleteContext(board.contextId).catch(() => {});
+      await deleteGroup(board.groupId);
+    } else {
+      await deleteContext(board.contextId);
+    }
     // Remove the card only once the delete went through: dropping it on a
     // refusal hid the failure until the next reload brought the board back.
     setBoards((prev) => prev.filter((p) => p.contextId !== board.contextId));

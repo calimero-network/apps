@@ -136,9 +136,10 @@ test.describe("switching and creating", () => {
     await page.getByTestId("confirm-ok").click();
     await expect(page).toHaveURL(/\/teams\/team-a\/projects$/);
     await expect(page.getByTestId("rail-board-ctx-a1")).toHaveCount(0);
-    // Through the subgroup: the context route is not on the app's token.
-    expect(node.writes.map((w) => `${w.method} ${w.path}`)).toContain("DELETE /groups/sg-a1");
-    expect(node.writes.some((w) => w.method === "DELETE" && w.path.startsWith("/contexts/"))).toBe(false);
+    // The context is tried first (the group delete only unregisters it) and
+    // the node refuses it, as it does an app token; the subgroup still goes.
+    const deletes = node.writes.filter((w) => w.method === "DELETE").map((w) => w.path);
+    expect(deletes).toEqual(["/contexts/ctx-a1", "/groups/sg-a1"]);
   });
 
   test("a member who is not an admin is offered Leave, never Delete", async ({ page }) => {

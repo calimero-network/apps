@@ -323,7 +323,7 @@ export default function AudiencesPage() {
       void run(`delete:${audience.audienceId}`, async (onStatus) => {
         await deleteAudience(
           admin,
-          { audienceId: audience.audienceId },
+          { audienceId: audience.audienceId, contextId: audience.contextId },
           onStatus,
         );
         onStatus("Refreshing audiences…");

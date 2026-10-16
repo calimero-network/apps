@@ -126,7 +126,7 @@ describe("Switching feeds", () => {
     await act(async () => {
       fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
     });
-    expect(deleted).toEqual(["namespace ns-of-feed-bbbb-2222"]);
+    expect(deleted).toEqual(["context feed-bbbb-2222", "namespace ns-of-feed-bbbb-2222"]);
     expect(refetch).toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
@@ -151,7 +151,7 @@ describe("Switching feeds", () => {
         screen.getByText("This session may not delete a feed. Open Hyperfeed from Calimero Desktop, which lets it."),
       ).toBeInTheDocument();
       expect(screen.queryByText("HTTP 403 Forbidden")).toBeNull();
-      expect(deleted).toEqual([]);
+      expect(deleted).not.toContain("namespace ns-of-feed-bbbb-2222");
     } finally {
       admin.deleteNamespace = deleteNamespace;
     }

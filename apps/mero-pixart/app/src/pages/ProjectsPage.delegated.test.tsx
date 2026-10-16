@@ -29,7 +29,7 @@ const stub = vi.hoisted(() => {
     setSubgroupVisibility: vi.fn(async () => {}),
     createContext: vi.fn(async () => ({ contextId: "ctx-new", memberPublicKey: "" })),
     joinContext: vi.fn(async () => ({ contextId: "ctx-existing", memberPublicKey: "a" })),
-    deleteContext: vi.fn(),
+    deleteContext: vi.fn(async () => {}),
     listApplications: vi.fn(),
   };
   const rawAdmin = {
@@ -152,14 +152,16 @@ describe("ProjectsPage on a delegated session", () => {
     expect(card).not.toHaveTextContent("3 members");
   });
 
-  it("deletes an admin's project as its subgroup, never through deleteContext", async () => {
+  it("deletes an admin's project as its subgroup, even when the context delete is refused", async () => {
+    // An account has no form of `deleteContext` (and an app token no
+    // `context:delete`): the refusal is tolerated, the subgroup still goes.
+    stub.admin.deleteContext.mockRejectedValueOnce(new Error("NotForAccountError: deleteContext"));
     renderPage();
     await screen.findByTestId("project-card-ctx-existing");
     fireEvent.click(screen.getByTitle("More options"));
     fireEvent.click(await screen.findByText("Delete"));
 
     await waitFor(() => expect(stub.admin.deleteGroup).toHaveBeenCalledWith(SUB));
-    expect(stub.admin.deleteContext).not.toHaveBeenCalled();
     expect(stub.rawAdmin.deleteContext).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByTestId("project-card-ctx-existing")).toBeNull());
   });

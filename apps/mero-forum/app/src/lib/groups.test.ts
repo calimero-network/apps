@@ -756,15 +756,16 @@ describe("createSpaceNamespace — the rc.41 default mask", () => {
 // The reported bug: "Delete forum" called `deleteContext` first, which needs
 // `context:delete` — a permission the app's token does not carry — so the node
 // answered 403 and the delete stopped before the subgroup was touched. The
-// forum is the subgroup; core's `GroupDeleted` cascades to its context.
+// forum is the subgroup. Core's `GroupDeleted` only unregisters its context,
+// so the context delete is still tried first, but its refusal is tolerated.
 describe("deleteForum / deleteSpace / leaveSpace", () => {
-  it("deletes a forum as its subgroup, without a deleteContext first", async () => {
+  it("deletes a forum as its subgroup when its context delete is refused (403)", async () => {
     const admin = fakeAdmin({
       deleteContext: () => Promise.reject(new Error("403 permission_denied")),
     });
-    await deleteForum(admin, { forumId: "forum1" });
-    expect(methodsOf(admin)).toEqual(["deleteGroup"]);
-    expect(admin.calls[0].args).toEqual(["forum1"]);
+    await deleteForum(admin, { forumId: "forum1", contextId: "ctx1" });
+    expect(methodsOf(admin)).toEqual(["deleteContext", "deleteGroup"]);
+    expect(admin.calls[1].args).toEqual(["forum1"]);
   });
 
   it("reports a refused forum delete rather than swallowing it", async () => {
@@ -776,13 +777,16 @@ describe("deleteForum / deleteSpace / leaveSpace", () => {
     );
   });
 
-  it("deletes a space with one deleteNamespace, no per-forum deleteContext", async () => {
+  it("deletes a space with one deleteNamespace, trying each forum's context first", async () => {
     const admin = fakeAdmin({
       listNamespaceGroups: () => Promise.resolve([{ groupId: "f1" }]),
       listGroupContexts: () => Promise.resolve([{ contextId: "ctx1" }]),
+      deleteContext: () => Promise.reject(new Error("403 permission_denied")),
     });
     await deleteSpace(admin, { namespaceId: "ns1" });
-    expect(methodsOf(admin)).toEqual(["deleteNamespace"]);
+    const calls = methodsOf(admin);
+    expect(calls).toContain("deleteContext");
+    expect(calls[calls.length - 1]).toBe("deleteNamespace");
   });
 
   it("leaves a space through leaveNamespace", async () => {
