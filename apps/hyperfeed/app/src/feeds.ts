@@ -56,13 +56,23 @@ export function orderFeeds(ids: string[], current: string, facts: Record<string,
  * A feed is made in a namespace of its own, so that is the usual case; a
  * namespace still holding another context is left alone. Resolves to whether
  * the namespace went too.
+ *
+ * ⚠️ The context delete is tolerated when the feed is alone in its namespace.
+ * The namespace delete only UNREGISTERS its contexts (their data stays), so
+ * the context goes first wherever it can — but `DELETE /admin-api/contexts/:id`
+ * needs `context:delete`, which an app's grant set signed in from a browser
+ * may not carry. A refusal there must not leave the feed undeletable: the
+ * namespace still goes, and the feed with it out of every listing.
  */
 export async function deleteFeed(admin: FeedAdmin, contextId: string): Promise<{ namespace: boolean }> {
   const group = await admin.getContextGroup(contextId).catch(() => null);
-  await admin.deleteContext(contextId);
-  if (!group) return { namespace: false };
-  const left = await admin.listGroupContexts(group).catch(() => null);
-  if (!left || left.some((c) => c.contextId !== contextId)) return { namespace: false };
+  const inGroup = group ? await admin.listGroupContexts(group).catch(() => null) : null;
+  const alone = !!group && !!inGroup && inGroup.every((c) => c.contextId === contextId);
+  if (!alone) {
+    await admin.deleteContext(contextId);
+    return { namespace: false };
+  }
+  await admin.deleteContext(contextId).catch(() => {});
   await admin.deleteNamespace(group);
   return { namespace: true };
 }

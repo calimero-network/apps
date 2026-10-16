@@ -31,7 +31,18 @@ describe("deleteFeed", () => {
   it("deletes the feed and the namespace it had to itself", async () => {
     const { a, calls } = admin({ f1: "ns1" }, { ns1: ["f1"] });
     expect(await deleteFeed(a, "f1")).toEqual({ namespace: true });
+    // The context first: the namespace delete only unregisters it, so its
+    // data would stay on the node.
     expect(calls).toEqual(["context f1", "namespace ns1"]);
+  });
+
+  it("still deletes the namespace when the context delete is refused (an app token)", async () => {
+    const { a, calls } = admin({ f1: "ns1" }, { ns1: ["f1"] });
+    a.deleteContext = async () => {
+      throw Object.assign(new Error("HTTP 403 Forbidden"), { status: 403 });
+    };
+    expect(await deleteFeed(a, "f1")).toEqual({ namespace: true });
+    expect(calls).toEqual(["namespace ns1"]);
   });
 
   it("leaves a namespace that still holds another context", async () => {

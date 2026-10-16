@@ -7,6 +7,7 @@ import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { setStoredTeamName, teamLabel } from "../utils/teamName";
+import { selfIsGroupAdmin } from "../api/selfRole";
 import type { Team } from "../types";
 import styles from "./TeamsPage.module.css";
 
@@ -28,6 +29,9 @@ export default function TeamsPage() {
   const [newName, setNewName] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [settingsTeam, setSettingsTeam] = useState<Team | null>(null);
+  // Whether this session is an Admin of each team, by team id. Absent while
+  // unknown: the menu then offers neither Delete nor Leave rather than guessing.
+  const [adminOf, setAdminOf] = useState<Record<string, boolean>>({});
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,6 +53,25 @@ export default function TeamsPage() {
     const id = setInterval(loadTeams, 30_000);
     return () => { cancelled = true; clearInterval(id); };
   }, [api]);
+
+  // An Admin deletes a team; anyone else leaves it. Asked of each team's own
+  // member listing, by the account this session runs as. Keyed on the ids, so
+  // the 30s list poll does not re-ask while the teams stay the same.
+  const teamIds = teams.map((t) => t.groupId).join(",");
+  useEffect(() => {
+    const ids = teamIds ? teamIds.split(",") : [];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      let self = "";
+      try { self = (await api.getNodeIdentity()).accountId ?? ""; } catch { /* unknown: no admin controls */ }
+      const entries = await Promise.all(
+        ids.map(async (id) => [id, await selfIsGroupAdmin(admin, id, self)] as const),
+      );
+      if (!cancelled) setAdminOf(Object.fromEntries(entries));
+    })();
+    return () => { cancelled = true; };
+  }, [teamIds, api, admin]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -94,14 +117,28 @@ export default function TeamsPage() {
     }
   }
 
-  // A node's own operation: deleting a namespace has no account form, so the
-  // control is hidden on a delegated session rather than offered and refused.
+  // Admin only, and a node's own operation: deleting a namespace has no account
+  // form, so the control is hidden on a delegated session rather than offered
+  // and refused. The card goes only once the node has accepted the delete.
   async function deleteTeam(teamId: string) {
     setMenuOpenId(null);
     try {
       await admin.deleteNamespace(teamId);
-    } catch {
-      // best-effort
+    } catch (err) {
+      showToast(extractErrorMessage(err, "Could not delete team."));
+      return;
+    }
+    setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
+  }
+
+  // Not an admin: leave the team. Works on a node and on an account alike.
+  async function leaveTeam(teamId: string) {
+    setMenuOpenId(null);
+    try {
+      await admin.leaveNamespace(teamId);
+    } catch (err) {
+      showToast(extractErrorMessage(err, "Could not leave team."));
+      return;
     }
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
   }
@@ -171,9 +208,14 @@ export default function TeamsPage() {
                     <button className={styles.dropdownItem} onClick={() => { setMenuOpenId(null); setSettingsTeam(t); }}>
                       Settings
                     </button>
-                    {!isDelegated && (
+                    {adminOf[t.groupId] === true && !isDelegated && (
                       <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteTeam(t.groupId)}>
                         Delete
+                      </button>
+                    )}
+                    {adminOf[t.groupId] === false && (
+                      <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => leaveTeam(t.groupId)}>
+                        Leave
                       </button>
                     )}
                   </div>

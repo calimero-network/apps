@@ -134,8 +134,8 @@ describe("Switching feeds", () => {
   it("says what to do when the node refuses this session the delete, not a bare 403", async () => {
     openFeed("feed-aaaa-1111");
     deleted.length = 0;
-    const deleteContext = admin.deleteContext;
-    admin.deleteContext = async () => {
+    const deleteNamespace = admin.deleteNamespace;
+    admin.deleteNamespace = async () => {
       throw Object.assign(new Error("HTTP 403 Forbidden"), { status: 403 });
     };
     try {
@@ -151,9 +151,9 @@ describe("Switching feeds", () => {
         screen.getByText("This session may not delete a feed. Open Hyperfeed from Calimero Desktop, which lets it."),
       ).toBeInTheDocument();
       expect(screen.queryByText("HTTP 403 Forbidden")).toBeNull();
-      expect(deleted).toEqual([]);
+      expect(deleted).not.toContain("namespace ns-of-feed-bbbb-2222");
     } finally {
-      admin.deleteContext = deleteContext;
+      admin.deleteNamespace = deleteNamespace;
     }
   });
 

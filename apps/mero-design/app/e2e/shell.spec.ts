@@ -127,7 +127,7 @@ test.describe("switching and creating", () => {
   });
 
   test("deleting a board asks first, then leaves it", async ({ page }) => {
-    await mockShellNode(page, { teams: twoTeams() });
+    const node = await mockShellNode(page, { teams: twoTeams() });
     await page.goto("/teams/team-a/projects/ctx-a1");
     await expect(page.getByTestId("fabric-canvas")).toBeVisible();
     await page.getByTestId("board-menu-ctx-a1").click();
@@ -136,6 +136,38 @@ test.describe("switching and creating", () => {
     await page.getByTestId("confirm-ok").click();
     await expect(page).toHaveURL(/\/teams\/team-a\/projects$/);
     await expect(page.getByTestId("rail-board-ctx-a1")).toHaveCount(0);
+    // The context is tried first (the group delete only unregisters it) and
+    // the node refuses it, as it does an app token; the subgroup still goes.
+    const deletes = node.writes.filter((w) => w.method === "DELETE").map((w) => w.path);
+    expect(deletes).toEqual(["/contexts/ctx-a1", "/groups/sg-a1"]);
+  });
+
+  test("a member who is not an admin is offered Leave, never Delete", async ({ page }) => {
+    const teams = twoTeams();
+    teams[0].members = [
+      { identity: "a".repeat(64), role: "Admin", name: "Ann" },
+      { identity: TEST_IDENTITY, role: "Member", name: "Tester" },
+    ];
+    const node = await mockShellNode(page, { teams });
+    await page.goto("/teams/team-a/projects/ctx-a1?settings=team");
+    await expect(page.getByTestId("leave-team-btn")).toBeVisible();
+    await expect(page.getByTestId("delete-team-btn")).toHaveCount(0);
+    await page.getByTestId("board-menu-ctx-a1").click();
+    await expect(page.getByTestId("board-delete-ctx-a1")).toHaveCount(0);
+
+    await page.getByTestId("leave-team-btn").click();
+    await page.getByTestId("confirm-ok").click();
+    await expect(page).toHaveURL(/\/teams$/);
+    expect(node.writes.map((w) => `${w.method} ${w.path}`)).toContain("POST /namespaces/team-a/leave");
+  });
+
+  test("an admin is offered Delete, never Leave", async ({ page }) => {
+    await mockShellNode(page, { teams: twoTeams() });
+    await page.goto("/teams/team-a/projects/ctx-a1?settings=team");
+    await expect(page.getByTestId("delete-team-btn")).toBeVisible();
+    await expect(page.getByTestId("leave-team-btn")).toHaveCount(0);
+    await page.getByTestId("settings-tab-board").click();
+    await expect(page.getByTestId("delete-board-btn")).toBeVisible();
   });
 });
 

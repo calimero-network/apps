@@ -269,6 +269,8 @@ export interface GroupApi {
   leaveContext(contextId: string): ApiResponse<LeaveContextResponse>;
   leaveGroup(groupId: string): ApiResponse<LeaveGroupResponse>;
   leaveNamespace(namespaceId: string): ApiResponse<LeaveNamespaceResponse>;
+  /** Node-only: an account session has no form of it. */
+  deleteNamespace(namespaceId: string): ApiResponse<boolean>;
   syncGroup(groupId: string): ApiResponse<SyncGroupResponse>;
 
   getContextVisibility(

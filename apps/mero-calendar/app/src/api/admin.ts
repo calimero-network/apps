@@ -1,4 +1,6 @@
 import type { AdminApiClient } from "@calimero-network/mero-js";
+import { isAdminRole } from "@calimero-apps/members";
+import { sameAccount } from "@calimero-apps/names";
 import {
   contextsForThisApp,
   namespacesForThisApp,
@@ -208,6 +210,29 @@ export async function listGroupMembers(
     members: all.filter((m) => !isTeeRole(m.role)),
     teeMembers: all.filter((m) => isTeeRole(m.role)),
   };
+}
+
+/**
+ * Whether `selfAccount` holds Admin in `groupId`.
+ *
+ * Decides whether a team or calendar offers Delete (an Admin) or Leave
+ * (anyone else). `false` when the listing fails or the session cannot say who
+ * it is: offering a Delete the node will refuse is the bug this guards.
+ */
+export async function selfIsGroupAdmin(
+  admin: AdminApiClient,
+  groupId: string,
+  selfAccount: string,
+): Promise<boolean> {
+  if (!groupId || !selfAccount) return false;
+  try {
+    const { members } = await listGroupMembers(admin, groupId);
+    return members.some(
+      (m) => sameAccount(m.identity, selfAccount) && isAdminRole(m.role),
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**

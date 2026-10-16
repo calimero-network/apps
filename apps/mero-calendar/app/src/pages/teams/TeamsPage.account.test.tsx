@@ -10,11 +10,13 @@
  * through the raw client's `mero.admin`. (Joining is the invitation prompt's,
  * and tested beside it.)
  */
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetAccountId } from "../../api/identity";
 
 const NS = "a1".repeat(32);
+const ME = "d4".repeat(32);
 const SIGNED = { invitation: { group_id: NS, expiration_timestamp: 0 }, signature: "sig" };
 
 const stub = vi.hoisted(() => {
@@ -24,6 +26,9 @@ const stub = vi.hoisted(() => {
     listNamespaces: vi.fn(async () => []),
     createNamespaceInvitation: vi.fn(),
     deleteNamespace: vi.fn(),
+    leaveNamespace: vi.fn(async () => {}),
+    getNodeIdentity: vi.fn(),
+    listGroupMembers: vi.fn(),
     listApplications: vi.fn(),
   };
   // The RAW client's admin: the relay's node route, a 403 for an account.
@@ -72,6 +77,9 @@ function open() {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  resetAccountId();
+  stub.admin.getNodeIdentity.mockResolvedValue({ accountId: ME });
+  stub.admin.listGroupMembers.mockResolvedValue({ members: [{ identity: ME, role: "Admin" }] });
   stub.admin.listNamespacesForApplication.mockResolvedValue([]);
   stub.admin.createNamespace.mockResolvedValue({ namespaceId: NS, haEnabled: true });
   stub.admin.createNamespaceInvitation.mockResolvedValue({ invitation: SIGNED });
@@ -158,13 +166,29 @@ describe("an account inviting to a team", () => {
     expect(shown?.textContent).toMatch(/^https:\/\/links\.calimero\.network\//);
   });
 
-  it("does not offer Delete: deleting a namespace is a node's own operation", async () => {
+  it("does not offer an admin Delete (a node's own operation), nor Leave", async () => {
+    stub.admin.listNamespacesForApplication.mockResolvedValue([
+      { namespaceId: NS, targetApplicationId: "app-from-registry", name: "Design" },
+    ]);
+    open();
+    await waitFor(() => expect(stub.admin.listGroupMembers).toHaveBeenCalledWith(NS));
+    await act(async () => {}); // let the role land before asserting an absence
+    fireEvent.click(await screen.findByTestId(`team-menu-${NS}`));
+    expect(screen.getByText("Invite")).toBeTruthy();
+    expect(screen.queryByTestId(`delete-team-${NS}`)).toBeNull();
+    expect(screen.queryByTestId(`leave-team-${NS}`)).toBeNull();
+  });
+
+  it("offers a member Leave through the account admin, and drops the team once left", async () => {
+    stub.admin.listGroupMembers.mockResolvedValue({ members: [{ identity: ME, role: "Member" }] });
     stub.admin.listNamespacesForApplication.mockResolvedValue([
       { namespaceId: NS, targetApplicationId: "app-from-registry", name: "Design" },
     ]);
     open();
     fireEvent.click(await screen.findByTestId(`team-menu-${NS}`));
-    expect(screen.getByText("Invite")).toBeTruthy();
+    fireEvent.click(await screen.findByTestId(`leave-team-${NS}`));
     expect(screen.queryByTestId(`delete-team-${NS}`)).toBeNull();
+    await waitFor(() => expect(stub.admin.leaveNamespace).toHaveBeenCalledWith(NS));
+    await waitFor(() => expect(screen.queryByTestId(`team-card-${NS}`)).toBeNull());
   });
 });

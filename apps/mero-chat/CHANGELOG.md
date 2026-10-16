@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Settings offers a workspace admin **Delete workspace** and everyone else
+  **Leave workspace**, never both. Leave was gated on `!isAdmin`, and `isAdmin`
+  is false until the role is read and when the read fails, so an admin was
+  shown Leave and had no way to delete. Neither control shows until the role is
+  known; an account session's admin gets no Delete, which core has no account
+  form of.
+
 ### Changed
 
 - A workspace created from the side menu starts with a public #general, as one

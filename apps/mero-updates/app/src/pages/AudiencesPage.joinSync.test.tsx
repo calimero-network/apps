@@ -24,6 +24,7 @@ const h = vi.hoisted(() => {
 vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ admin: h.admin, isDelegated: false }),
+  useNodeIdentity: () => ({ identity: null }),
 }));
 
 vi.mock("../lib/groups", async (importOriginal) => ({

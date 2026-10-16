@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsPopup from "./SettingsPopup";
 
@@ -7,11 +7,19 @@ const {
   mockClearStoredSession,
   mockClearWorkspaceSelection,
   mockNavigate,
+  mockDeleteNamespace,
+  perms,
+  session,
 } = vi.hoisted(() => ({
   mockLogout: vi.fn(),
   mockClearStoredSession: vi.fn(),
   mockClearWorkspaceSelection: vi.fn(),
   mockNavigate: vi.fn(),
+  mockDeleteNamespace: vi.fn(),
+  perms: {
+    current: { isAdmin: false, loading: false, error: null as string | null, memberIdentity: "me" },
+  },
+  session: { isDelegated: false },
 }));
 
 vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
@@ -40,16 +48,18 @@ vi.mock("../../constants/config", () => ({
 vi.mock("../../api/meroJsClient", () => ({
   getAuthConfig: vi.fn(),
   nodeApi: {},
+  isDelegatedSession: () => session.isDelegated,
 }));
 
 vi.mock("../../hooks/useCurrentGroupPermissions", () => ({
-  useCurrentGroupPermissions: () => ({ isAdmin: false, canCreateContext: false }),
+  useCurrentGroupPermissions: () => ({ ...perms.current, canCreateContext: false }),
 }));
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
     leaveGroup = vi.fn();
     leaveNamespace = vi.fn().mockResolvedValue({ data: null, error: null });
+    deleteNamespace = mockDeleteNamespace;
     // `useWorkspaceName` reads the workspace's replicated name and backfills a
     // local-only one. An undefined method throws synchronously rather than
     // rejecting, so the hook's `.catch` does not cover it.
@@ -82,7 +92,44 @@ describe("SettingsPopup", () => {
     mockClearStoredSession.mockReset();
     mockClearWorkspaceSelection.mockReset();
     mockNavigate.mockReset();
+    mockDeleteNamespace.mockReset().mockResolvedValue({ data: true, error: null });
+    perms.current = { isAdmin: false, loading: false, error: null, memberIdentity: "me" };
+    session.isDelegated = false;
     sessionStorage.clear();
+  });
+
+  const renderOpen = () =>
+    render(<SettingsPopup isOpen={true} setIsOpen={vi.fn()} toggle={<button>Open</button>} />);
+
+  it("offers a member Leave, never Delete", () => {
+    renderOpen();
+    expect(screen.getByRole("button", { name: /^leave workspace$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /delete workspace/i })).not.toBeInTheDocument();
+  });
+
+  it("offers an admin Delete, never Leave, and deletes the namespace on confirm", async () => {
+    perms.current = { ...perms.current, isAdmin: true };
+    renderOpen();
+    expect(screen.queryByRole("button", { name: /leave workspace/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^delete workspace$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm delete/i }));
+    await waitFor(() => expect(mockDeleteNamespace).toHaveBeenCalledWith("group-1"));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/login"));
+  });
+
+  it("offers neither while the role is unknown, so an admin is never shown Leave", () => {
+    perms.current = { isAdmin: false, loading: false, error: "Could not read your role", memberIdentity: "" };
+    renderOpen();
+    expect(screen.queryByRole("button", { name: /leave workspace/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /delete workspace/i })).not.toBeInTheDocument();
+  });
+
+  it("does not offer an account admin a namespace delete it has no form of", () => {
+    perms.current = { ...perms.current, isAdmin: true };
+    session.isDelegated = true;
+    renderOpen();
+    expect(screen.queryByRole("button", { name: /delete workspace/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /leave workspace/i })).not.toBeInTheDocument();
   });
 
   it("shows separate actions for changing workspace and full logout", () => {

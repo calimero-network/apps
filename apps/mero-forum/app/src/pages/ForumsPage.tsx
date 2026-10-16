@@ -4,6 +4,7 @@ import { useMero } from "@calimero-network/mero-react";
 import { useApplicationId } from "../hooks/useApplicationId";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveForum, setForumName } from "../lib/session";
+import { useSelfAccount } from "../lib/forum";
 import {
   createForum,
   deleteForum,
@@ -12,6 +13,7 @@ import {
   mintNamespaceInvite,
   mintForumInvite,
   namespaceTeeMode,
+  selfIsGroupAdmin,
   type ForumRow,
   type TeeMode,
 } from "../lib/groups";
@@ -92,6 +94,9 @@ export default function ForumsPage() {
   const { appId } = useApplicationId();
 
   const [forums, setForums] = useState<ForumRow[]>([]);
+  // Who may delete a forum: a space Admin, or an Admin of the forum itself.
+  const selfAccount = useSelfAccount();
+  const [spaceAdmin, setSpaceAdmin] = useState(false);
   /** The space whose forum list has come back at least once. */
   const [listedForNs, setListedForNs] = useState<string | null>(null);
   /** Contract roster per forum context, kept for the member counts on each row. */
@@ -164,7 +169,10 @@ export default function ForumsPage() {
         void namespaceTeeMode(mero.admin, namespaceId).then((mode) =>
           setTee({ id: namespaceId, mode }),
         );
-        setForums(await listForums(mero.admin, namespaceId));
+        void selfIsGroupAdmin(mero.admin, namespaceId, selfAccount).then(
+          setSpaceAdmin,
+        );
+        setForums(await listForums(mero.admin, namespaceId, selfAccount));
         // A real answer. Whether an EMPTY one ends the sync gate is decided
         // there, not here: see `settled` below.
         setListedForNs(namespaceId);
@@ -177,7 +185,7 @@ export default function ForumsPage() {
         setListing(false);
       }
     },
-    [mero, namespaceId],
+    [mero, namespaceId, selfAccount],
   );
 
   useEffect(() => {
@@ -345,11 +353,7 @@ export default function ForumsPage() {
       if (!mero) return;
       setPendingDelete(null);
       void run(`delete:${forum.forumId}`, async (onStatus) => {
-        await deleteForum(
-          mero.admin,
-          { forumId: forum.forumId, contextId: forum.contextId },
-          onStatus,
-        );
+        await deleteForum(mero.admin, { forumId: forum.forumId, contextId: forum.contextId }, onStatus);
         onStatus("Refreshing forums…");
         await load(false);
         showToast(`Deleted \u201c${forum.name}\u201d.`);
@@ -649,19 +653,21 @@ export default function ForumsPage() {
                         Copy context ID
                       </button>
                     )}
-                    <button
-                      className="ui-menuItem"
-                      role="menuitem"
-                      data-danger="true"
-                      data-testid="delete-forum"
-                      onClick={() => {
-                        setMenuOpenId(null);
-                        setPendingDelete(forum);
-                      }}
-                    >
-                      <TrashIcon size={17} />
-                      Delete
-                    </button>
+                    {(spaceAdmin || forum.selfAdmin) && (
+                      <button
+                        className="ui-menuItem"
+                        role="menuitem"
+                        data-danger="true"
+                        data-testid="delete-forum"
+                        onClick={() => {
+                          setMenuOpenId(null);
+                          setPendingDelete(forum);
+                        }}
+                      >
+                        <TrashIcon size={17} />
+                        Delete
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

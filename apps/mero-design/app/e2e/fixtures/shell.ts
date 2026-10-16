@@ -107,8 +107,18 @@ export async function mockShellNode(page: Page, opts: ShellOptions): Promise<She
       if (board) board.contextId = contextId;
       return json(route, { data: { contextId } });
     }
-    if (method === "DELETE" && (m = path.match(/^\/contexts\/([^/]+)$/))) {
-      for (const t of node.teams) t.boards = t.boards.filter((b) => b.contextId !== m![1]);
+    // As a real node answers an app: its token has no `context:delete`.
+    if (method === "DELETE" && path.match(/^\/contexts\/[^/]+$/)) {
+      return route.fulfill({ status: 403, headers: { "x-auth-error": "permission_denied" }, body: "" });
+    }
+    // A board goes with its subgroup: the delete cascades to the context.
+    if (method === "DELETE" && (m = path.match(/^\/groups\/([^/]+)$/))) {
+      for (const t of node.teams) t.boards = t.boards.filter((b) => b.groupId !== m![1]);
+      return json(route, { data: { isDeleted: true } });
+    }
+    if ((method === "DELETE" && (m = path.match(/^\/namespaces\/([^/]+)$/)))
+      || (method === "POST" && (m = path.match(/^\/namespaces\/([^/]+)\/leave$/)))) {
+      node.teams = node.teams.filter((t) => t.id !== m![1]);
       return json(route, { data: {} });
     }
     if ((m = path.match(/^\/groups\/([^/]+)\/subgroups$/))) {

@@ -9,6 +9,7 @@ import {
 } from "@calimero-network/mero-react";
 import { useApi } from "../api/useApi";
 import { listGroupContextRows, listSubgroupRows } from "../api/teamContexts";
+import { isSelfAdmin, selfIsGroupAdmin } from "../api/selfRole";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
@@ -40,6 +41,8 @@ interface ProjectCard extends Project {
   width?: number;
   height?: number;
   memberCount?: number;
+  /** This session is an Admin of the team or of the project's subgroup. */
+  canDelete?: boolean;
 }
 
 export default function ProjectsPage() {
@@ -94,6 +97,11 @@ export default function ProjectsPage() {
     async function loadProjects() {
       try {
         const subgroups = await listSubgroupRows(admin, teamId!);
+        // Who may delete: a team Admin, or an Admin of the project's own
+        // subgroup. Anyone else is not offered the control.
+        let self = "";
+        try { self = (await api.getNodeIdentity()).accountId ?? ""; } catch { /* unknown: no delete */ }
+        const teamAdmin = await selfIsGroupAdmin(admin, teamId!, self);
 
         const resolved: ProjectCard[] = [];
         for (const sg of subgroups) {
@@ -114,10 +122,12 @@ export default function ProjectsPage() {
               // 0 for peers who joined the subgroup but never registered). The
               // subgroup id is hex, so the members listing accepts it.
               let memberCount: number | undefined = doc?.memberCount;
+              let sgAdmin = false;
               try {
                 const m = await admin.listGroupMembers(sgId);
                 // People only: a Born Open subgroup admits the TEE node too.
                 if (Array.isArray(m?.members)) memberCount = splitTeeMembers(m.members).members.length;
+                sgAdmin = isSelfAdmin(m, self);
               } catch { /* keep the doc fallback */ }
               resolved.push({
                 contextId,
@@ -127,6 +137,7 @@ export default function ProjectsPage() {
                 width: doc?.width,
                 height: doc?.height,
                 memberCount,
+                canDelete: teamAdmin || sgAdmin,
               });
             }
           } catch {
@@ -273,6 +284,8 @@ export default function ProjectsPage() {
           width: dims.width,
           height: dims.height,
           memberCount: 1,
+          // The creator is the new subgroup's Admin.
+          canDelete: true,
         },
       ]);
       setNewName("");
@@ -294,16 +307,29 @@ export default function ProjectsPage() {
     }
   }
 
-  // A node's own operation: deleting a context has no account form, so the
-  // control is hidden on a delegated session rather than offered and refused.
-  async function deleteProject(contextId: string) {
+  // A project is a subgroup holding one document context, so it is deleted as
+  // the subgroup: allowed to a team Admin or the subgroup's Admin, with an
+  // account form, and it takes the project out of every listing. Core's group
+  // delete only UNREGISTERS the context (its data stays on the node), so the
+  // context goes first — best-effort: the app's token carries no
+  // `context:delete` (the node answers 403) and an account has no form of it,
+  // and neither may stop the delete. A document created straight in the team
+  // (no subgroup) is deleted as the context alone. The card goes once the node
+  // has accepted the delete; a refusal is said, not swallowed.
+  async function deleteProject(project: ProjectCard) {
     setMenuOpenId(null);
     try {
-      await admin.deleteContext(contextId);
-    } catch {
-      // best-effort
+      if (project.groupId && project.groupId !== teamId) {
+        await admin.deleteContext(project.contextId).catch(() => {});
+        await admin.deleteGroup(project.groupId);
+      } else {
+        await admin.deleteContext(project.contextId);
+      }
+    } catch (err) {
+      showToast(humanizeError(extractErrorMessage(err, "Could not delete project.")));
+      return;
     }
-    setProjects((prev) => prev.filter((p) => p.contextId !== contextId));
+    setProjects((prev) => prev.filter((p) => p.contextId !== project.contextId));
   }
 
   // Open a project: ensure this node has joined the context (it may have been
@@ -452,8 +478,8 @@ export default function ProjectsPage() {
                         <button className={styles.dropdownItem} onClick={() => { setMenuOpenId(null); setSettingsProject(p); }}>
                           Settings
                         </button>
-                        {!isDelegated && (
-                          <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteProject(p.contextId)}>
+                        {p.canDelete && (p.groupId !== teamId || !isDelegated) && (
+                          <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteProject(p)}>
                             Delete
                           </button>
                         )}

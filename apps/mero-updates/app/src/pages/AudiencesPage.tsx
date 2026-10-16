@@ -4,6 +4,7 @@ import { useMero } from "@calimero-network/mero-react";
 import { useApplicationId } from "../hooks/useApplicationId";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveAudience, setAudienceName } from "../lib/session";
+import { useSelfAccount } from "../lib/updates";
 import {
   createAudience,
   deleteAudience,
@@ -12,6 +13,7 @@ import {
   mintNamespaceInvite,
   mintAudienceInvite,
   namespaceTeeMode,
+  selfIsGroupAdmin,
   type AudienceRow,
   type TeeMode,
 } from "../lib/groups";
@@ -66,7 +68,7 @@ export default function AudiencesPage() {
   // `admin`, never `mero.admin`: the session-aware admin (see CompaniesPage).
   // On an account session the raw client's admin is the relay's node route and
   // answers 403 to every create and join.
-  const { admin, isDelegated, nodeUrl } = useMero();
+  const { admin, nodeUrl } = useMero();
   const { showToast } = useToast();
   // Resolved from the NODE by package (or the registry, for an account) — see
   // lib/appId and hooks/useApplicationId.
@@ -81,6 +83,9 @@ export default function AudiencesPage() {
   );
 
   const [audiences, setAudiences] = useState<AudienceRow[]>([]);
+  // Who may delete an audience: a company Admin, or an Admin of the audience.
+  const selfAccount = useSelfAccount();
+  const [spaceAdmin, setSpaceAdmin] = useState(false);
   /** The space whose audience list has come back at least once. */
   const [listedForNs, setListedForNs] = useState<string | null>(null);
   /** Contract roster per audience context, kept for the member counts on each row. */
@@ -147,7 +152,10 @@ export default function AudiencesPage() {
         void namespaceTeeMode(admin, namespaceId).then((mode) =>
           setTee({ id: namespaceId, mode }),
         );
-        setAudiences(await listAudiences(admin, namespaceId));
+        void selfIsGroupAdmin(admin, namespaceId, selfAccount).then(
+          setSpaceAdmin,
+        );
+        setAudiences(await listAudiences(admin, namespaceId, selfAccount));
         // A real answer for this space, which the sync gate below weighs.
         setListedForNs(namespaceId);
       } catch (e) {
@@ -156,7 +164,7 @@ export default function AudiencesPage() {
         setListing(false);
       }
     },
-    [admin, namespaceId],
+    [admin, namespaceId, selfAccount],
   );
 
   useEffect(() => {
@@ -551,10 +559,10 @@ export default function AudiencesPage() {
                         Copy context ID
                       </button>
                     )}
-                    {/* Deleting an audience deletes its context first, which
-                        is a node's own operation — the account admin refuses
-                        `deleteContext` by name. Hidden rather than failing. */}
-                    {!isDelegated && (
+                    {/* Admins only. Deleting an audience is `deleteGroup` on
+                        its subgroup (see deleteAudience), which an account
+                        can do too; anyone else is not offered it. */}
+                    {(spaceAdmin || audience.selfAdmin) && (
                       <>
                         <div className={styles.dropdownSep} />
                         <button

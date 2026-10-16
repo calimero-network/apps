@@ -5,6 +5,7 @@ import {
   createContext,
   createSubgroup,
   deleteContext,
+  deleteGroup,
   listGroupContexts,
   listSubgroups,
   renameBoard as renameBoardOnNode,
@@ -20,8 +21,8 @@ export interface BoardList {
   reload: () => Promise<void>;
   /** A new board in the team; rejects with the node's reason. */
   createBoard: (name: string) => Promise<Project>;
-  /** Node-only. The board stays listed when the node refuses. */
-  deleteBoard: (contextId: string) => Promise<void>;
+  /** Deletes the board for the whole team. It stays listed when refused. */
+  deleteBoard: (board: Project) => Promise<void>;
   renameBoard: (board: Project, name: string) => Promise<void>;
 }
 
@@ -118,13 +119,23 @@ export function useBoardList(teamId: string | null): BoardList {
     return board;
   }, [teamId, ensureAppId]);
 
-  const deleteBoard = useCallback(async (contextId: string) => {
-    // Remove the card only once the node has deleted the context: dropping it
-    // on a refusal (a token without `context:delete` answering 403) hid the
-    // failure until the next reload brought the board back.
-    await deleteContext(contextId);
-    setBoards((prev) => prev.filter((p) => p.contextId !== contextId));
-  }, []);
+  const deleteBoard = useCallback(async (board: Project) => {
+    // Through the board's subgroup, which takes it out of every listing for
+    // the whole team. Core's group delete only UNREGISTERS the context (its
+    // data stays on the node), so the context goes first wherever it can —
+    // best-effort: the app's token has no `context:delete` (the node answers
+    // 403) and an account has no form of it, and neither may stop the delete.
+    // A board created straight in the team has no subgroup: the context alone.
+    if (board.groupId && board.groupId !== teamId) {
+      await deleteContext(board.contextId).catch(() => {});
+      await deleteGroup(board.groupId);
+    } else {
+      await deleteContext(board.contextId);
+    }
+    // Remove the card only once the delete went through: dropping it on a
+    // refusal hid the failure until the next reload brought the board back.
+    setBoards((prev) => prev.filter((p) => p.contextId !== board.contextId));
+  }, [teamId]);
 
   const renameBoard = useCallback(async (board: Project, rawName: string) => {
     const name = rawName.trim();

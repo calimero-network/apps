@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
 import { useToast } from "../../contexts/ToastContext";
 import { extractErrorMessage, humanizeError } from "../../utils/errorMessage";
 import ProjectThumbnail from "../ProjectThumbnail";
@@ -21,8 +20,7 @@ export default function BoardRail({
   onNavigate?: () => void;
   onDelete: (board: Project) => void;
 }) {
-  const { teamId, projectId, boards, openBoard, openTeam, openSettings } = useShell();
-  const { isDelegated } = useMero();
+  const { teamId, projectId, boards, isTeamAdmin, openBoard, openTeam, openSettings } = useShell();
   const { showToast } = useToast();
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -207,9 +205,9 @@ export default function BoardRail({
                     onClick={() => { setMenuFor(null); openSettings("board", b.contextId); onNavigate?.(); }}
                     data-testid={`board-settings-${b.contextId}`}
                   >Settings</button>
-                  {/* Deleting a context is a node's own operation; an
-                      account's relay has no form of it. */}
-                  {!isDelegated && (
+                  {/* A team admin's: a board is deleted for everyone in the
+                      team, through its subgroup, on a node and an account. */}
+                  {isTeamAdmin === true && (
                     <button
                       type="button"
                       role="menuitem"

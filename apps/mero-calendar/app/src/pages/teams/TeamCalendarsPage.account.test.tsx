@@ -5,15 +5,19 @@
  * and `POST /admin-api/contexts` on the relay answer an account's token with
  * 403. The page must create the calendar's subgroup and context through
  * `useMero().admin` (delegated creation through the relay) and never through
- * the raw client's `mero.admin`. Delete/Leave are a node's own operations and
- * are not offered to an account.
+ * the raw client's `mero.admin`. Leave (`leaveContext`) and the no-subgroup
+ * `deleteContext` fallback are a node's own operations and are not offered to
+ * an account; deleting a calendar's subgroup (`deleteGroup`) is, to an admin.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetAccountId } from "../../api/identity";
 
 const NS = "a1".repeat(32);
 const EXISTING = "c0".repeat(32);
+const SUB = "b2".repeat(32);
+const ME = "d4".repeat(32);
 
 const stub = vi.hoisted(() => {
   const admin = {
@@ -26,8 +30,14 @@ const stub = vi.hoisted(() => {
     createContext: vi.fn(async () => ({ contextId: "ctx-new", memberPublicKey: "" })),
     setContextMetadata: vi.fn(async () => {}),
     joinContext: vi.fn(async () => ({ contextId: "ctx-new", memberPublicKey: "" })),
-    deleteContext: vi.fn(),
+    // As the account admin answers: a node-only call it refuses by name.
+    deleteContext: vi.fn(async () => {
+      throw new Error("NotForAccountError: deleteContext");
+    }),
     leaveContext: vi.fn(),
+    deleteGroup: vi.fn(async () => ({ isDeleted: true })),
+    getNodeIdentity: vi.fn(),
+    listGroupMembers: vi.fn(),
     listApplications: vi.fn(),
   };
   const rawAdmin = {
@@ -80,8 +90,11 @@ function open() {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  resetAccountId();
   stub.admin.listSubgroups.mockResolvedValue([]);
   stub.admin.listGroupContexts.mockResolvedValue([]);
+  stub.admin.getNodeIdentity.mockResolvedValue({ accountId: ME });
+  stub.admin.listGroupMembers.mockResolvedValue({ members: [{ identity: ME, role: "Admin" }] });
 });
 
 describe("an account creating a calendar", () => {
@@ -123,12 +136,39 @@ describe("an account creating a calendar", () => {
 });
 
 describe("an account's calendar list", () => {
-  it("does not offer Leave or Delete: both are a node's own operations", async () => {
+  it("does not offer Leave or the no-subgroup Delete: both are a node's own operations", async () => {
     stub.admin.listGroupContexts.mockResolvedValue([{ contextId: EXISTING, name: "Ops" }]);
     open();
     await screen.findByTestId(`calendar-card-${EXISTING}`);
     expect(screen.queryByTestId(`calendar-menu-${EXISTING}`)).toBeNull();
     expect(screen.queryByTestId(`leave-calendar-${EXISTING}`)).toBeNull();
     expect(screen.queryByTestId(`delete-calendar-${EXISTING}`)).toBeNull();
+  });
+
+  it("lets an admin delete a calendar as its subgroup, through the account admin", async () => {
+    stub.admin.listSubgroups.mockResolvedValue([{ groupId: SUB }]);
+    stub.admin.listGroupContexts.mockImplementation(async (gid: string) =>
+      gid === SUB ? [{ contextId: EXISTING, name: "Ops" }] : [],
+    );
+    open();
+    fireEvent.click(await screen.findByTestId(`calendar-menu-${EXISTING}`));
+    expect(screen.queryByTestId(`leave-calendar-${EXISTING}`)).toBeNull();
+    fireEvent.click(screen.getByTestId(`delete-calendar-${EXISTING}`));
+    fireEvent.click(screen.getByTestId("confirm-delete-btn"));
+
+    // The account refuses the context delete; the subgroup delete still goes.
+    await waitFor(() => expect(stub.admin.deleteGroup).toHaveBeenCalledWith(SUB));
+  });
+
+  it("offers a non-admin account nothing to remove", async () => {
+    stub.admin.listGroupMembers.mockResolvedValue({ members: [{ identity: ME, role: "Member" }] });
+    stub.admin.listSubgroups.mockResolvedValue([{ groupId: SUB }]);
+    stub.admin.listGroupContexts.mockImplementation(async (gid: string) =>
+      gid === SUB ? [{ contextId: EXISTING, name: "Ops" }] : [],
+    );
+    open();
+    await screen.findByTestId(`calendar-card-${EXISTING}`);
+    await waitFor(() => expect(stub.admin.listGroupMembers).toHaveBeenCalledWith(SUB));
+    expect(screen.queryByTestId(`calendar-menu-${EXISTING}`)).toBeNull();
   });
 });

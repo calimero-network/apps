@@ -6,7 +6,11 @@ import {
   acceptInvite,
   createSpaceNamespace,
   createForum,
+  deleteForum,
+  deleteSpace,
   enterForumContext,
+  leaveSpace,
+  selfIsGroupAdmin,
   listForums,
   namespaceTeeMode,
   mintForumInvite,
@@ -70,6 +74,10 @@ function fakeAdmin(overrides: Record<string, (...a: never[]) => unknown> = {}) {
     listGroupMembers: rec("listGroupMembers", () => ({ members: [] })),
     setGroupMetadata: rec("setGroupMetadata"),
     getGroupMetadata: rec("getGroupMetadata", () => null),
+    deleteGroup: rec("deleteGroup", () => ({ isDeleted: true })),
+    deleteContext: rec("deleteContext"),
+    deleteNamespace: rec("deleteNamespace", () => ({ isDeleted: true })),
+    leaveNamespace: rec("leaveNamespace"),
   };
   return admin as unknown as AdminLike & {
     calls: { method: string; args: unknown[] }[];
@@ -612,6 +620,7 @@ describe("listForums", () => {
         // contract keys its roster by this, so it is what marks "you" in a
         // member list.
         identity: "pk-mine",
+        selfAdmin: false,
       },
       {
         forumId: "r2",
@@ -621,6 +630,7 @@ describe("listForums", () => {
         teeMode: null,
         joined: false,
         identity: null,
+        selfAdmin: false,
       },
     ]);
   });
@@ -740,5 +750,72 @@ describe("createSpaceNamespace — the rc.41 default mask", () => {
         name: "Space",
       }),
     ).rejects.toThrow("503");
+  });
+});
+
+// The reported bug: "Delete forum" called `deleteContext` first, which needs
+// `context:delete` — a permission the app's token does not carry — so the node
+// answered 403 and the delete stopped before the subgroup was touched. The
+// forum is the subgroup. Core's `GroupDeleted` only unregisters its context,
+// so the context delete is still tried first, but its refusal is tolerated.
+describe("deleteForum / deleteSpace / leaveSpace", () => {
+  it("deletes a forum as its subgroup when its context delete is refused (403)", async () => {
+    const admin = fakeAdmin({
+      deleteContext: () => Promise.reject(new Error("403 permission_denied")),
+    });
+    await deleteForum(admin, { forumId: "forum1", contextId: "ctx1" });
+    expect(methodsOf(admin)).toEqual(["deleteContext", "deleteGroup"]);
+    expect(admin.calls[1].args).toEqual(["forum1"]);
+  });
+
+  it("reports a refused forum delete rather than swallowing it", async () => {
+    const admin = fakeAdmin({
+      deleteGroup: () => Promise.reject(new Error("not the owner")),
+    });
+    await expect(deleteForum(admin, { forumId: "forum1" })).rejects.toThrow(
+      "not the owner",
+    );
+  });
+
+  it("deletes a space with one deleteNamespace, trying each forum's context first", async () => {
+    const admin = fakeAdmin({
+      listNamespaceGroups: () => Promise.resolve([{ groupId: "f1" }]),
+      listGroupContexts: () => Promise.resolve([{ contextId: "ctx1" }]),
+      deleteContext: () => Promise.reject(new Error("403 permission_denied")),
+    });
+    await deleteSpace(admin, { namespaceId: "ns1" });
+    const calls = methodsOf(admin);
+    expect(calls).toContain("deleteContext");
+    expect(calls[calls.length - 1]).toBe("deleteNamespace");
+  });
+
+  it("leaves a space through leaveNamespace", async () => {
+    const admin = fakeAdmin();
+    await leaveSpace(admin, { namespaceId: "ns1" });
+    expect(methodsOf(admin)).toEqual(["leaveNamespace"]);
+    expect(admin.calls[0].args).toEqual(["ns1"]);
+  });
+});
+
+describe("selfIsGroupAdmin", () => {
+  const ME = "ab".repeat(32);
+  const roster = (role: string) =>
+    fakeAdmin({
+      listGroupMembers: () =>
+        Promise.resolve({ members: [{ identity: ME.toUpperCase(), role }] }),
+    });
+
+  it("is true for an Admin row naming this account, in either case", async () => {
+    expect(await selfIsGroupAdmin(roster("Admin"), "ns1", ME)).toBe(true);
+    expect(await selfIsGroupAdmin(roster("admin"), "ns1", ME)).toBe(true);
+  });
+
+  it("is false for a Member, an unknown account, or a failed listing", async () => {
+    expect(await selfIsGroupAdmin(roster("Member"), "ns1", ME)).toBe(false);
+    expect(await selfIsGroupAdmin(roster("Admin"), "ns1", null)).toBe(false);
+    const failing = fakeAdmin({
+      listGroupMembers: () => Promise.reject(new Error("403")),
+    });
+    expect(await selfIsGroupAdmin(failing, "ns1", ME)).toBe(false);
   });
 });
