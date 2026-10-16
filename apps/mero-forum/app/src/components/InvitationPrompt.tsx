@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   InvitationDialog,
+  InvitationGate,
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
@@ -113,16 +114,20 @@ export default function InvitationPrompt() {
   const payload = redemption.parsed?.payload;
 
   return (
-    <InvitationDialog
-      redemption={redemption}
-      noun="space"
-      appName="Mero Forum"
-      status={status}
-      detail={
-        payload?.forumName
-          ? "Joining takes you straight into that forum."
-          : "Joining gives you access to the space and every forum in it."
-      }
-    />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={parse} noun="space" appName="Mero Forum" />
+      <InvitationDialog
+        redemption={redemption}
+        noun="space"
+        appName="Mero Forum"
+        status={status}
+        detail={
+          payload?.forumName
+            ? "Joining takes you straight into that forum."
+            : "Joining gives you access to the space and every forum in it."
+        }
+      />
+    </>
   );
 }

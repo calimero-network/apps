@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   InvitationDialog,
+  InvitationGate,
   useInviteRedemption,
   useMero,
   type InviteRedeemer,
@@ -93,6 +94,10 @@ export default function InvitationPrompt() {
   });
 
   return (
-    <InvitationDialog redemption={redemption} noun="lobby" appName="Battleships" />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
+      <InvitationGate parse={parse} noun="lobby" appName="Battleships" />
+      <InvitationDialog redemption={redemption} noun="lobby" appName="Battleships" />
+    </>
   );
 }

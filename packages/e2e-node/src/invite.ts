@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { loginWithModal } from "./auth";
 
 /**
  * Opening an invitation the way a person does: by following the link.
@@ -78,6 +79,30 @@ export async function openInviteLink(page: Page, link: string, route: InviteRout
       { message: "the app subscribes to the desktop bridge's deep-link event", timeout: 30_000 },
     )
     .toBeGreaterThan(0);
+}
+
+/**
+ * A link opened before logging in: the app says you are invited, and you log in from there.
+ *
+ * Without this screen (mero-react `InvitationGate`) a logged-out invitee landed on the
+ * app's marketing page with nothing saying they had been invited, and the dialog only
+ * appeared once they thought to log in. Call it right after `openInviteLink` on a page
+ * with no session. It returns logged in, with the invitation dialog asking.
+ */
+export async function loginFromInviteLanding(page: Page, nodeUrl: string): Promise<void> {
+  const landing = page.getByTestId("invite-landing");
+  await expect(landing, "a logged-out invitee is told they are invited, not shown the landing page").toHaveAttribute(
+    "data-state",
+    "invited",
+    { timeout: 30_000 },
+  );
+  await expect(landing).toContainText(/invited/i);
+  await page.getByTestId("invite-landing-login").getByRole("button").click();
+  await loginWithModal(page, nodeUrl);
+  await expect(page.getByTestId("invite-accept"), "once logged in, the invitation dialog asks").toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(landing, "and the invitation screen is gone").toHaveCount(0);
 }
 
 /**

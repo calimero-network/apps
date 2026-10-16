@@ -216,6 +216,21 @@ Its test ids are `invite-prompt` (with `data-stage`), `invite-accept`,
 `invite-decline`, `invite-continue`, `invite-done`, `invite-retry` and
 `invite-error`; the journey harness relies on them.
 
+Opened **before logging in**, a link shows mero-react's `InvitationGate`
+instead of the app's logged-out page: a full page saying "You're invited to
+join “Design team”" (decoded by the app's own `parse`, no session needed), in
+which app, with **Log in to join** (the usual `ConnectButton` dialog, Node and
+Cloud) and **Not now** (acks the invitation). While the session is still
+restoring it shows only a spinner, so neither the landing page nor the invite
+screen flashes; once logged in it gets out of the way and the dialog asks. Every
+app that mounts `InvitationDialog` under `MeroProvider` mounts the gate beside
+it, with the same `parse`, noun and app name. Without it, the landing page was
+all a logged-out invitee saw, with nothing saying they had been invited.
+mero-sign (legacy provider), mero-blocks and merraria (no `MeroProvider`) and
+scaffolding-e2e (test harness) do not have it yet. Its test ids are
+`invite-landing` (with `data-state`: `checking`, `invited`, `invalid`),
+`invite-landing-login` and `invite-landing-decline`.
+
 ### What CI proves
 
 Every app with invitations has a two-node journey (`e2e/journey/`,
@@ -224,7 +239,9 @@ Every app with invitations has a two-node journey (`e2e/journey/`,
 1. **Lifecycle:** alice creates a namespace and copies the link (which must be a
    `links.calimero.network/…/join` link); bob, on the second node, opens it as
    the links page would (`/?invitation=…`), accepts the prompt, and every
-   feature then syncs both ways.
+   feature then syncs both ways. Before that, a second browser for bob opens
+   the link logged out, sees the invitation screen, logs in from it and sees
+   the dialog ask (a driver opts out with `inviteLanding: false`).
 2. **Desktop:** on fresh nodes, bob's app is already open inside a stand-in
    launcher. A link for another app must be ignored; then his own arrives as a
    `deep-link` event and must join without a reload, after which the first

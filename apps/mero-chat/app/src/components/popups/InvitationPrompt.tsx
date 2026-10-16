@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   InvitationDialog,
+  InvitationGate,
   useInviteRedemption,
 } from "@calimero-network/mero-react";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
@@ -107,12 +108,20 @@ export default function InvitationPrompt({ enabled }: Props) {
   }, [state.stage, pendingEnter]);
 
   return (
-    <InvitationDialog
-      redemption={redemption}
-      noun="workspace"
-      appName="Mero Chat"
-      synced={state.stage === "joined" && readFor === state.namespaceId}
-    />
+    <>
+      {/* Logged out with a link opened: "you're invited" and the login, not
+          the landing page. Only while the session cannot join: a stored live
+          token counts as signed in here before `isAuthenticated` catches up. */}
+      {!enabled && (
+        <InvitationGate parse={parseInvitationToken} noun="workspace" appName="Mero Chat" />
+      )}
+      <InvitationDialog
+        redemption={redemption}
+        noun="workspace"
+        appName="Mero Chat"
+        synced={state.stage === "joined" && readFor === state.namespaceId}
+      />
+    </>
   );
 }
 

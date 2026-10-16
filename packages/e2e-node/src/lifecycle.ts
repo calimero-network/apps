@@ -2,7 +2,13 @@ import path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 import { loginWithModal } from "./auth";
 import { adminApi, freshRig, readRigState, restartNode, type RigNode, type RigState } from "./rig";
-import { acceptInvitePrompt, installDesktopBridge, openInviteLink, type InviteRoute } from "./invite";
+import {
+  acceptInvitePrompt,
+  installDesktopBridge,
+  loginFromInviteLanding,
+  openInviteLink,
+  type InviteRoute,
+} from "./invite";
 import { TrafficLog } from "./traffic";
 
 export interface Actor {
@@ -36,6 +42,11 @@ export interface AppDriver {
    */
   joined(actor: Actor): Promise<void>;
   afterReload?(actor: Actor): Promise<void>;
+  /**
+   * `false` for an app without mero-react's `InvitationGate` (no `MeroProvider`, or its own
+   * login), which skips opening the link logged out. Every other app shows the screen.
+   */
+  inviteLanding?: false;
   features: Feature[];
   permissions?: string[];
 }
@@ -246,6 +257,19 @@ export function defineLifecycle(driver: AppDriver): void {
         link = await driver.invite(alice);
         expect(link, "the invitation is a shareable link").toMatch(INVITE_LINK);
       });
+
+      if (driver.inviteLanding !== false) {
+        // A browser of its own: bob then joins by the regular path below, so the app's
+        // own login and setup run for him as for alice, from a clean session.
+        const cold = await openActor(browser, "bob", n2, run, traffic, urls, driver.permissions);
+        opened.push(cold.context);
+        await test.step("bob opens the link logged out, is told he is invited, and logs in from there", async () => {
+          await openInviteLink(cold.actor.page, link, "url");
+          await loginFromInviteLanding(cold.actor.page, n2.url);
+          await cold.actor.page.getByTestId("invite-decline").click();
+          await expect(cold.actor.page.getByTestId("invite-prompt")).toHaveCount(0);
+        });
+      }
 
       const b = await openActor(browser, "bob", n2, run, traffic, urls, driver.permissions);
       opened.push(b.context);
