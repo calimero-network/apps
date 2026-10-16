@@ -36,10 +36,24 @@ export function useGroupAdmin() {
 
   const api = new GroupApiDataSource();
 
-  const fetchAll = useCallback(async (groupId: string) => {
+  const fetchAll = useCallback(async (groupId: string, options: { membersOnly?: boolean } = {}) => {
     setLoading(true);
     setError(null);
     try {
+      // A non-admin opens the panel to see who is in the workspace, and the
+      // group, subgroup and upgrade reads are admin business that may refuse
+      // them. Asking for those would put a refusal banner over a list that
+      // loaded fine.
+      if (options.membersOnly) {
+        const membersResp = await api.listMembers(groupId);
+        if (membersResp.data) {
+          setMembers(membersResp.data.members);
+          setTeeMembers(membersResp.data.teeMembers);
+        }
+        if (membersResp.error) setError(membersResp.error.message);
+        return;
+      }
+
       const [groupResp, membersResp, subgroupsResp, upgradeResp] = await Promise.all([
         api.getGroup(groupId),
         api.listMembers(groupId),
@@ -108,6 +122,39 @@ export function useGroupAdmin() {
       } catch (err) {
         log.error("useGroupAdmin", "Failed to remove member", err);
         setError("Failed to remove member");
+        return false;
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [],
+  );
+
+  const updateMemberRole = useCallback(
+    async (
+      groupId: string,
+      identity: string,
+      role: "Admin" | "Member",
+    ): Promise<boolean> => {
+      setActionLoading(true);
+      setError(null);
+      try {
+        const resp = await api.updateMemberRole(groupId, identity, role);
+        if (resp.error) {
+          setError(resp.error.message);
+          return false;
+        }
+        // Read back rather than patch: a role the node did not apply must not
+        // show as applied.
+        const membersResp = await api.listMembers(groupId);
+        if (membersResp.data) {
+          setMembers(membersResp.data.members);
+          setTeeMembers(membersResp.data.teeMembers);
+        }
+        return true;
+      } catch (err) {
+        log.error("useGroupAdmin", "Failed to update member role", err);
+        setError("Failed to update member role");
         return false;
       } finally {
         setActionLoading(false);
@@ -380,6 +427,7 @@ export function useGroupAdmin() {
     clearError: () => setError(null),
     fetchAll,
     removeMember,
+    updateMemberRole,
     setMemberCapabilities,
     setMemberMetadata,
     getMemberCapabilities,

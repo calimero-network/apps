@@ -81,6 +81,11 @@ export interface UseMemberRolesReturn {
   setRole: (account: string, role: WorkspaceRole) => Promise<void>;
   /** Write an explicit per-member capability override. */
   setCapabilities: (account: string, capabilities: number) => Promise<void>;
+  /**
+   * Remove a member from the workspace by ACCOUNT. Refetches before returning,
+   * so a removal the node refused never looks like one it accepted.
+   */
+  removeMember: (account: string) => Promise<void>;
   /** Grant the app's baseline to every FUTURE member of this workspace. */
   repairDefaultCapabilities: () => Promise<void>;
   loading: boolean;
@@ -236,6 +241,17 @@ export function useMemberRoles(
     [admin, namespaceId, load],
   );
 
+  const removeMember = useCallback(
+    async (account: string) => {
+      if (!admin || !namespaceId) throw new Error('Workspace not ready');
+      // The ACCOUNT the roster keys rows by, never an executor key: both are
+      // 64 hex and a key would remove nobody without an error.
+      await admin.removeGroupMembers(namespaceId, { members: [account] });
+      await load();
+    },
+    [admin, namespaceId, load],
+  );
+
   const repairDefaultCapabilities = useCallback(async () => {
     if (!admin || !namespaceId) throw new Error('Workspace not ready');
     await admin.setDefaultCapabilities(namespaceId, {
@@ -254,6 +270,7 @@ export function useMemberRoles(
     canInvite,
     setRole,
     setCapabilities,
+    removeMember,
     repairDefaultCapabilities,
     loading,
     refetch: load,

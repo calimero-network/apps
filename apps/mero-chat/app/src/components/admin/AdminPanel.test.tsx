@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminPanel from "./AdminPanel";
 
@@ -82,10 +82,13 @@ describe("AdminPanel", () => {
     });
   });
 
-  it("does not render admin content for non-admin members", () => {
+  it("shows non-admins the member list only, without admin controls", () => {
+    const fetchAll = vi.fn();
+    mockUseGroupAdmin.mockReturnValue({ ...mockUseGroupAdmin(), fetchAll });
     mockUseCurrentGroupPermissions.mockReturnValue({
       loading: false,
       isAdmin: false,
+      error: null,
     });
 
     render(
@@ -97,6 +100,33 @@ describe("AdminPanel", () => {
     );
 
     expect(screen.queryByText("Workspace Admin")).not.toBeInTheDocument();
+    expect(screen.getByText("Workspace members")).toBeInTheDocument();
+    expect(screen.getByText("Members Tab")).toBeInTheDocument();
+    expect(screen.queryByText("Details")).not.toBeInTheDocument();
+    // Admin-only reads would put a refusal banner over a list that loaded.
+    expect(fetchAll).toHaveBeenCalledWith("group-1", { membersOnly: true });
+  });
+
+  it("says the role lookup failed and offers a retry", () => {
+    const retry = vi.fn();
+    mockUseCurrentGroupPermissions.mockReturnValue({
+      loading: false,
+      isAdmin: false,
+      error: "HTTP 502",
+      retry,
+    });
+
+    render(
+      <AdminPanel
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        toggle={<button>toggle</button>}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/couldn't check your role.*HTTP 502/i);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalled();
   });
 
   it("renders admin content for admins", () => {

@@ -12,21 +12,36 @@
  * `CAN_MANAGE_METADATA`, because a member who can create a calendar but cannot
  * publish its name would make calendars that show up as raw ids on everyone
  * else's node.
+ *
+ * ⚠️ A role change moves the CORE role (`updateMemberRole`) and keeps the
+ * capability mask in step with it. It used to write only the mask, which made
+ * somebody an "Admin" here whom the node still treated as a plain member, and
+ * there was no way to remove anybody at all.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
-import { useMemberNames } from "@calimero-apps/names";
+import { sameAccount, useMemberNames } from "@calimero-apps/names";
+import {
+  RemoveMemberButton,
+  canChangeRole,
+  canRemoveMember,
+  isAdminRole,
+} from "@calimero-apps/members";
+import "@calimero-apps/members/members.css";
 
 import {
   fallbackCapabilities,
   getMemberCapabilities,
   listGroupMembers,
+  removeGroupMembers,
   setMemberCapabilities,
+  updateMemberRole,
   type GroupMemberRow,
 } from "../../api/admin";
 import { accountId } from "../../api/identity";
 import {
   ADMIN_CAPABILITIES,
+  MANAGE_MEMBERS,
   capabilitiesFor,
   roleLabel,
   roleOf,
@@ -44,7 +59,15 @@ interface Props {
 
 interface Row extends GroupMemberRow {
   capabilities: number;
+  /** The raw core role from the listing (Admin / Member / ReadOnly). */
+  coreRole?: string;
+  /** What this list shows: an admin by core role or by the full admin mask. */
   role: Role;
+}
+
+/** Core's own Admin, or a member who holds every admin bit, reads as Admin. */
+function displayedRole(coreRole: string | undefined, capabilities: number): Role {
+  return isAdminRole(coreRole) ? "admin" : roleOf(capabilities);
 }
 
 export default function TeamMembersPanel({ teamId, onClose }: Props) {
@@ -88,7 +111,12 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
               ADMIN_CAPABILITIES,
             );
           }
-          return { ...m, capabilities, role: roleOf(capabilities) };
+          return {
+            ...m,
+            capabilities,
+            coreRole: m.role,
+            role: displayedRole(m.role, capabilities),
+          };
         }),
       );
       setRows(withCaps);
@@ -107,15 +135,57 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
     void load();
   }, [load]);
 
+  const meRow = rows.find((r) => sameAccount(r.identity, me));
+  // Whether the signed-in member may change roles and remove people: a core
+  // Admin, or a member holding MANAGE_MEMBERS. Everyone else sees the list
+  // read-only, because the node would refuse every write they could make.
+  const canManage =
+    !!meRow &&
+    (isAdminRole(meRow.coreRole) ||
+      (meRow.capabilities & MANAGE_MEMBERS) === MANAGE_MEMBERS);
+  const adminCount = rows.filter((r) => r.role === "admin").length;
+
   async function changeRole(row: Row, next: Role) {
     if (row.role === next) return;
+    const verdict = canChangeRole({
+      canManage,
+      isSelf: sameAccount(row.identity, me),
+      currentRole: row.role === "admin" ? "Admin" : "Member",
+      nextRole: next === "admin" ? "Admin" : "Member",
+      adminCount,
+    });
+    if (!verdict.allowed) {
+      showToast(verdict.reason ?? "That change is not allowed.");
+      return;
+    }
     setBusy(row.identity);
-    // Re-read rather than trusting the row: capabilities are governance state
-    // another admin may have changed since this list was drawn, and
-    // `capabilitiesFor` preserves every bit it does not speak for — which only
-    // works if it is handed the CURRENT mask.
     try {
       if (!admin) throw new Error("Not connected.");
+      // The core role first: it is the change itself, and if the node refuses
+      // it nothing else should move.
+      const coreNext = next === "admin" ? "Admin" : "Member";
+      if (isAdminRole(row.coreRole) !== (coreNext === "Admin")) {
+        await updateMemberRole(admin, teamId, row.identity, coreNext);
+      }
+    } catch (err) {
+      // ⚠️ The node's own reason AND the hint, not one or the other.
+      // `extractErrorMessage` prefers the error's message over the fallback, so
+      // passing the guidance as the fallback meant it was only ever shown when
+      // the node said NOTHING — and the refusal a user actually hits arrives as
+      // a bare "forbidden", which does not tell them a team admin has to do it.
+      const reason = humanizeError(
+        extractErrorMessage(err, "Could not change that role."),
+      );
+      showToast(`${reason} Only a team admin can change roles.`);
+      setBusy(null);
+      return;
+    }
+    // Then the mask. Re-read rather than trusting the row: capabilities are
+    // governance state another admin may have changed since this list was
+    // drawn, and `capabilitiesFor` preserves every bit it does not speak for —
+    // which only works if it is handed the CURRENT mask. A demotion that left
+    // the admin bits behind would leave the member able to do everything.
+    try {
       let current = row.capabilities;
       try {
         current = await getMemberCapabilities(admin, teamId, row.identity);
@@ -134,17 +204,31 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
           : `${short(row)} is a member again.`,
         "success",
       );
+    } catch (err) {
+      const reason = humanizeError(
+        extractErrorMessage(err, "Could not update their permissions."),
+      );
+      showToast(
+        `${short(row)} is now ${next === "admin" ? "an admin" : "a member"}, but their permissions did not follow: ${reason}`,
+      );
+    } finally {
+      await load();
+      setBusy(null);
+    }
+  }
+
+  async function removeMember(row: Row) {
+    setBusy(row.identity);
+    try {
+      if (!admin) throw new Error("Not connected.");
+      await removeGroupMembers(admin, teamId, [row.identity]);
+      showToast(`${short(row)} was removed from the team.`, "success");
       await load();
     } catch (err) {
-      // ⚠️ The node's own reason AND the hint, not one or the other.
-      // `extractErrorMessage` prefers the error's message over the fallback, so
-      // passing the guidance as the fallback meant it was only ever shown when
-      // the node said NOTHING — and the refusal a user actually hits arrives as
-      // a bare "forbidden", which does not tell them a team admin has to do it.
       const reason = humanizeError(
-        extractErrorMessage(err, "Could not change that role."),
+        extractErrorMessage(err, "Could not remove that member."),
       );
-      showToast(`${reason} Only a team admin can change roles.`);
+      showToast(`${reason} Only a team admin can remove members.`);
     } finally {
       setBusy(null);
     }
@@ -199,7 +283,7 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
         ) : (
           <ul className={styles.memberList}>
             {rows.map((row) => {
-              const isMe = Boolean(me) && me === row.identity;
+              const isMe = sameAccount(row.identity, me);
               return (
                 <li
                   className={styles.memberRow}
@@ -219,17 +303,44 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
                     </code>
                   </span>
 
-                  <select
-                    className={styles.memberRole}
-                    value={row.role}
-                    disabled={busy === row.identity}
-                    onChange={(e) => changeRole(row, e.target.value as Role)}
-                    aria-label={`Role for ${short(row)}`}
-                    data-testid={`role-${row.identity}`}
-                  >
-                    <option value="member">{roleLabel("member")}</option>
-                    <option value="admin">{roleLabel("admin")}</option>
-                  </select>
+                  {canManage && !isMe ? (
+                    <select
+                      className={styles.memberRole}
+                      value={row.role}
+                      disabled={busy === row.identity}
+                      onChange={(e) => changeRole(row, e.target.value as Role)}
+                      aria-label={`Role for ${short(row)}`}
+                      data-testid={`role-${row.identity}`}
+                    >
+                      <option value="member">{roleLabel("member")}</option>
+                      <option value="admin">{roleLabel("admin")}</option>
+                    </select>
+                  ) : (
+                    <span
+                      className={styles.memberRole}
+                      data-testid={`role-badge-${row.identity}`}
+                      title={
+                        isMe
+                          ? "Another admin has to change your role."
+                          : "Only a team admin can change roles."
+                      }
+                    >
+                      {roleLabel(row.role)}
+                    </span>
+                  )}
+                  {canRemoveMember({
+                    canManage,
+                    isSelf: isMe,
+                    role: row.role === "admin" ? "Admin" : "Member",
+                    adminCount,
+                  }).allowed && (
+                    <RemoveMemberButton
+                      label={short(row)}
+                      disabled={busy === row.identity}
+                      prompt={`Remove ${short(row)} from the team?`}
+                      onConfirm={() => removeMember(row)}
+                    />
+                  )}
                 </li>
               );
             })}

@@ -10,6 +10,7 @@ import {
 import type { GroupSummary } from "../../api/groupApi";
 import { getGroupId, setGroupId, getStoredGroupAlias } from "../../constants/config";
 import { clearStoredSession } from "../../utils/session";
+import CreateWorkspacePopup from "../popups/CreateWorkspacePopup";
 
 interface WorkspaceSwitcherProps {
   isCollapsed: boolean;
@@ -155,6 +156,12 @@ const EmptyDot = styled.div`
   flex-shrink: 0;
 `;
 
+const CreateItem = styled(DropdownItem)`
+  border-top: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
+  color: var(--glass-ink-2);
+  font-weight: 600;
+`;
+
 const DropdownLabel = styled.div`
   padding: 0.4rem 0.75rem 0.25rem;
   font-size: 10px;
@@ -167,6 +174,9 @@ const DropdownLabel = styled.div`
 export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProps) {
   const [workspaces, setWorkspaces] = useState<GroupSummary[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  // Creating a workspace used to be possible only from the entry screen, which
+  // a member already inside one never sees again.
+  const [creating, setCreating] = useState(false);
   const currentGroupId = getGroupId();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -236,6 +246,14 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
     clearStoredSession();
     window.location.href = "/";
   }, [currentGroupId]);
+
+  // The popup has already made the new workspace current (`setGroupId`). The
+  // old one's stored chat is dropped for the same reason as on a switch.
+  const handleCreated = useCallback(() => {
+    setCreating(false);
+    clearStoredSession();
+    window.location.href = "/";
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -310,7 +328,23 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
               </DropdownItem>
             );
           })}
+          <CreateItem
+            $active={false}
+            onClick={() => {
+              setIsOpen(false);
+              setCreating(true);
+            }}
+            data-testid="workspace-switcher-create"
+          >
+            <EmptyDot />+ New workspace
+          </CreateItem>
         </Dropdown>
+      )}
+      {creating && (
+        <CreateWorkspacePopup
+          onSuccess={handleCreated}
+          onCancel={() => setCreating(false)}
+        />
       )}
     </DropdownWrapper>
   );

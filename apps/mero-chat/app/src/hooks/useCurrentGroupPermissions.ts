@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { GroupApiDataSource } from "../api/dataSource/groupApiDataSource";
 import {
   getGroupMemberIdentity,
@@ -26,6 +26,13 @@ interface CurrentGroupPermissionsState {
   canCreateSubgroup: boolean;
   canDeleteSubgroup: boolean;
   canManageVisibility: boolean;
+  /**
+   * Why the role could not be read, or null. Set only when the FIRST read of
+   * this workspace fails: a caller that hides an admin control on `!isAdmin`
+   * must be able to tell "not an admin" from "could not tell", or an admin
+   * whose read failed loses the control with no word of why.
+   */
+  error: string | null;
 }
 
 const initialState: CurrentGroupPermissionsState = {
@@ -40,12 +47,16 @@ const initialState: CurrentGroupPermissionsState = {
   canCreateSubgroup: false,
   canDeleteSubgroup: false,
   canManageVisibility: false,
+  error: null,
 };
 
 const POLL_INTERVAL_MS = 30_000;
 
 export function useCurrentGroupPermissions(groupId: string) {
   const [state, setState] = useState<CurrentGroupPermissionsState>(initialState);
+  // Bumped by `retry` to run the first-load path again.
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
     if (!groupId) {
@@ -85,7 +96,14 @@ export function useCurrentGroupPermissions(groupId: string) {
         // permissions" until something works). On polled refreshes
         // swallow transient errors — keep the last known-good state so
         // a single flaky request doesn't briefly hide gated buttons.
-        if (!silent) setState(initialState);
+        if (!silent) {
+          setState({
+            ...initialState,
+            error:
+              identityResponse.error?.message ||
+              "Could not read your role in this workspace.",
+          });
+        }
         return;
       }
 
@@ -100,7 +118,15 @@ export function useCurrentGroupPermissions(groupId: string) {
       const currentMember = findSelfMember({ members, selfIdentity: memberIdentity });
 
       if (!currentMember) {
-        if (!silent) setState(initialState);
+        // Not on the roster we were handed: a membership that has not landed
+        // yet, or an identity mismatch. Either way, unknown, not "member".
+        if (!silent) {
+          setState({
+            ...initialState,
+            memberIdentity,
+            error: "Could not find you in this workspace's member list.",
+          });
+        }
         return;
       }
 
@@ -119,6 +145,7 @@ export function useCurrentGroupPermissions(groupId: string) {
           canCreateSubgroup: true,
           canDeleteSubgroup: true,
           canManageVisibility: true,
+          error: null,
         });
         return;
       }
@@ -136,6 +163,7 @@ export function useCurrentGroupPermissions(groupId: string) {
           canCreateSubgroup: true,
           canDeleteSubgroup: true,
           canManageVisibility: true,
+          error: null,
         });
         return;
       }
@@ -163,6 +191,7 @@ export function useCurrentGroupPermissions(groupId: string) {
         canCreateSubgroup: canCreateSubgroup(capabilities),
         canDeleteSubgroup: canDeleteSubgroup(capabilities),
         canManageVisibility: canManageVisibility(capabilities),
+        error: null,
       });
     };
 
@@ -175,7 +204,9 @@ export function useCurrentGroupPermissions(groupId: string) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [groupId]);
+  }, [groupId, attempt]);
 
-  return state;
+  // Memoised: callers put this object in effect deps, and a fresh one every
+  // render would re-run them on every render.
+  return useMemo(() => ({ ...state, retry }), [state, retry]);
 }
