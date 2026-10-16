@@ -129,6 +129,9 @@ catalog:
   # sync gate) plus InvitationDialog, the one invitation prompt every app shows.
   # 9.14.1 (#107): useJoinSync hears a join of the namespace a page already
   # shows; on 9.14.0 the dialog sat on "Syncing…" for that invitation.
+  # 9.15.0 (#111): LoginModal carries `mero-login-*` classes and
+  # `--mero-login-shadow`, which glass.css uses for the connect dialog's float
+  # shadow, font and blur.
   # 9.16.0 (#109): InvitationGate, the "You're invited" screen a link opened
   # while logged out lands on instead of the app's landing page.
   "@calimero-network/mero-react": ^9.16.0
