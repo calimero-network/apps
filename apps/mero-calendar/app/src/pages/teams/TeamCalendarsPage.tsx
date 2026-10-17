@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   JOIN_SYNC_POLL_MS,
   JoinSyncBanner,
@@ -35,6 +35,13 @@ import {
   setStoredCalendarName,
   useTeamName,
 } from "../../utils/teamName";
+import {
+  forgetCalendar,
+  pickRemembered,
+  readLastVisit,
+  rememberTeam,
+  resumeRequested,
+} from "../../utils/lastVisit";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import { joinCalendarWithRetry } from "../../api/joinCalendar";
 import styles from "./teams.module.scss";
@@ -50,12 +57,13 @@ import styles from "./teams.module.scss";
  */
 export default function TeamCalendarsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { teamId = "" } = useParams();
   const { showToast } = useToast();
   // `admin`, not `mero.admin`: the session-aware client (see TeamsPage). On an
   // account, `createGroupInNamespace`/`createContext` are delegated creation
   // through the relay; the raw client's node routes answer 403 there.
-  const { admin, isDelegated } = useMero();
+  const { admin, isDelegated, nodeUrl } = useMero();
   const teamName = useTeamName(teamId);
 
   const [calendars, setCalendars] = useState<string[]>([]);
@@ -275,6 +283,46 @@ export default function TeamCalendarsPage() {
     };
   }, [admin, load, isSyncing]);
 
+  // Remember this team for the next open (utils/lastVisit). Every read checks
+  // it against what the node lists, so a stale URL is never resumed into.
+  useEffect(() => {
+    if (teamId) rememberTeam(nodeUrl, teamId);
+  }, [teamId, nodeUrl]);
+
+  // Arriving with `state.resume` (the teams list's resume path) goes straight
+  // on to the calendar last open in this team, once the team has listed it and
+  // only if it still does; a calendar no longer listed is forgotten. Resolved
+  // either way, once: a later visit to this page is a plain one.
+  const resume = resumeRequested(location);
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (!resume || !teamId || listedFor !== teamId || resumed.current) return;
+    resumed.current = true;
+    const remembered = readLastVisit(nodeUrl).calendars?.[teamId];
+    const target = pickRemembered(calendars, remembered);
+    if (target) {
+      void openCalendar(target, { replace: true });
+      return;
+    }
+    if (remembered) forgetCalendar(nodeUrl, teamId, remembered);
+    navigate(location.pathname + location.search, {
+      replace: true,
+      state: null,
+    });
+    // `openCalendar` is a plain function, re-made each render; the ref keeps
+    // this to one run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    resume,
+    teamId,
+    listedFor,
+    calendars,
+    nodeUrl,
+    navigate,
+    location.pathname,
+    location.search,
+  ]);
+
   async function createCalendar() {
     const name = newName.trim() || teamName;
     setCreating(true);
@@ -337,7 +385,10 @@ export default function TeamCalendarsPage() {
   // not hold that calendar yet and refuses the join; opening it anyway failed
   // the calendar page's first read. The join is retried, and only a calendar
   // the node has joined is opened.
-  async function openCalendar(contextId: string) {
+  async function openCalendar(
+    contextId: string,
+    opts?: { replace?: boolean },
+  ) {
     setBusyId(contextId);
     try {
       const admin = requireAdmin();
@@ -346,7 +397,9 @@ export default function TeamCalendarsPage() {
         teamId || null,
         () => unmounted.current,
       );
-      navigate(`/teams/${teamId}/calendar/${contextId}`);
+      const to = `/teams/${teamId}/calendar/${contextId}`;
+      if (opts?.replace) navigate(to, { replace: true });
+      else navigate(to);
     } catch (err) {
       if (unmounted.current) return;
       showToast(
@@ -406,6 +459,7 @@ export default function TeamCalendarsPage() {
         await requireAdmin().leaveContext(contextId);
       }
       setCalendars((prev) => prev.filter((id) => id !== contextId));
+      forgetCalendar(nodeUrl, teamId, contextId);
       showToast(
         mode === "delete" ? "Calendar deleted." : "Left the calendar.",
         "success",

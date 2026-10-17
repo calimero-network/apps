@@ -24,6 +24,7 @@ import type { TeamRow } from '../../lib/vaults';
 import { hueOf, monogramOf } from '../../lib/itemView';
 import styles from '../../styles/shell.module.css';
 import { describeError } from '../../lib/errors';
+import { pickTeam, readLastVisit } from '../../lib/lastVisit';
 
 /**
  * Your teams. The app's front screen once you are signed in.
@@ -48,7 +49,7 @@ export default function TeamsPage() {
   // call on this screen — the list, the creates, the invitation, the join —
   // which rendered as "Mero Pass is not installed on this node". See
   // `lib/vaults` `AdminLike`.
-  const { admin } = useMero();
+  const { admin, nodeUrl } = useMero();
   // ⚠️ `accountId`, never `publicKey` and never a context executor identity —
   // all three are 64 hex since rc.27, so a swap type-checks, returns 200, and
   // grants a principal that exists nowhere. See `useTeamCapabilities`.
@@ -109,6 +110,40 @@ export default function TeamsPage() {
   useEffect(() => {
     void load();
   }, [load, location.key]);
+
+  // Arriving from the landing redirect (`state.resume`: a sign-in, a cold
+  // open, a reload of the desktop window), go on to the team open last if this
+  // node still lists it; the team screen carries the mark on to its vault.
+  // Otherwise the mark is DROPPED, by replacing this entry without it: left in
+  // place, Back from the team you then open would land on a resuming `/teams`
+  // and send you straight back into it. Reached any other way, this is the list.
+  const resume = (location.state as { resume?: boolean } | null)?.resume;
+  useEffect(() => {
+    if (!resume || loading || resolving) return;
+    if (!notInstalled && (!admin || !appId)) return; // not listed yet
+    const target = error
+      ? null
+      : pickTeam(
+          teams.map((t) => t.namespaceId),
+          readLastVisit(nodeUrl).team,
+        );
+    navigate(target ? `/teams/${target}` : location.pathname, {
+      replace: true,
+      state: target ? { resume: true } : null,
+    });
+  }, [
+    resume,
+    loading,
+    resolving,
+    notInstalled,
+    admin,
+    appId,
+    error,
+    teams,
+    nodeUrl,
+    navigate,
+    location.pathname,
+  ]);
 
   // A dropdown that does not close on an outside click is a dropdown that
   // covers the next thing you try to press.

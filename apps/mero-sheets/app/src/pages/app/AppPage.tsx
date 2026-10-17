@@ -79,10 +79,11 @@ import { avatarLabel, distinctCollaborators, peerCount } from '../../spreadsheet
 import { useSheetPresence } from '../../hooks/useSheetPresence';
 import { labelMembers, labelsById, withNamespaceNames } from '../../lib/people';
 import { isUsableName, normaliseName, rememberName, rememberedName } from '../../lib/displayName';
+import { forgetLastWorkspace } from '../../lib/lastWorkspace';
 
 
 export default function AppPage() {
-  const { logout, mero, admin } = useMero();
+  const { logout, mero, admin, nodeUrl } = useMero();
   const ws = useWorkspace();
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const ss = useSpreadsheet({
@@ -108,11 +109,13 @@ export default function AppPage() {
   }, [joined, landJoined, navigate, location.pathname]);
 
   // Log out: mero-react drops this browser's node session (tokens and all),
-  // and the front door is where a signed-out visitor belongs.
+  // and the front door is where a signed-out visitor belongs. The spreadsheet
+  // remembered for a reload goes too: the next sign-in starts at the picker.
   const signOut = useCallback(() => {
+    forgetLastWorkspace(nodeUrl);
     logout();
     navigate('/', { replace: true });
-  }, [logout, navigate]);
+  }, [logout, navigate, nodeUrl]);
 
   // id↔name resolvers for translating formulas at the frontend boundary: the
   // engine/store deal in canonical sheet ids; the formula bar shows names.
@@ -1310,7 +1313,9 @@ export default function AppPage() {
   // 1. Workspace picker — shown whenever no workspace is open. Lists every
   //    workspace on this node and lets you open, create, or join one.
   if (!ws.contextId) {
-    const listLoading = ws.loading && ws.workspaces.length === 0;
+    // While a reload decides whether to reopen the last spreadsheet, the list
+    // stays hidden: showing it for a moment and then leaving reads as a glitch.
+    const listLoading = (ws.loading && ws.workspaces.length === 0) || ws.resuming;
     return (
       <PickerShell>
         <TopBar>
@@ -1341,7 +1346,7 @@ export default function AppPage() {
                 {ws.workspaces.length > 0 && <CountPill>{ws.workspaces.length}</CountPill>}
               </CardHead>
 
-              {ws.workspaces.length > 0 && (
+              {ws.workspaces.length > 0 && !ws.resuming && (
                 <WorkspaceList aria-label={`Spreadsheets in ${ws.namespaceName}`}>
                   {ws.workspaces.map((w) => (
                     <WorkspaceRow

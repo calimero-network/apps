@@ -7,6 +7,7 @@ const {
   mockGetGroupId,
   mockSetGroupId,
   mockClearStoredSession,
+  mockSetNamespaceReady,
   mockGetGroupMetadata,
   mockSetGroupMetadata,
   mockListMembers,
@@ -15,6 +16,7 @@ const {
   mockGetGroupId: vi.fn(),
   mockSetGroupId: vi.fn(),
   mockClearStoredSession: vi.fn(),
+  mockSetNamespaceReady: vi.fn(),
   mockGetGroupMetadata: vi.fn(),
   mockSetGroupMetadata: vi.fn(),
   mockListMembers: vi.fn(),
@@ -42,6 +44,7 @@ vi.mock("../../constants/config", () => ({
 
 vi.mock("../../utils/session", () => ({
   clearStoredSession: mockClearStoredSession,
+  setNamespaceReady: mockSetNamespaceReady,
 }));
 
 // The real popup creates a namespace on a node; here it only has to be shown
@@ -69,6 +72,7 @@ describe("WorkspaceSwitcher", () => {
     mockGetGroupId.mockReset();
     mockSetGroupId.mockReset();
     mockClearStoredSession.mockReset();
+    mockSetNamespaceReady.mockReset();
 
     mockGetGroupId.mockReturnValue("group-current");
     mockListGroups.mockResolvedValue({
@@ -95,6 +99,9 @@ describe("WorkspaceSwitcher", () => {
     // resubscribes to a context the new workspace does not have.
     expect(mockSetGroupId).toHaveBeenCalledWith("group-other");
     expect(mockClearStoredSession).toHaveBeenCalled();
+    // The remembered workspace is scoped to its id: without moving it to the
+    // new one, the reload would land on the picker instead of the switch.
+    expect(mockSetNamespaceReady).toHaveBeenCalledWith("group-other");
   });
 
   it("does not clear the session when re-selecting the current workspace", async () => {
@@ -112,6 +119,7 @@ describe("WorkspaceSwitcher", () => {
 
     expect(mockSetGroupId).not.toHaveBeenCalled();
     expect(mockClearStoredSession).not.toHaveBeenCalled();
+    expect(mockSetNamespaceReady).not.toHaveBeenCalled();
   });
 
   describe("New workspace", () => {
@@ -142,6 +150,7 @@ describe("WorkspaceSwitcher", () => {
         fireEvent.click(screen.getByText("fake-create"));
 
         expect(mockClearStoredSession).toHaveBeenCalled();
+        expect(mockSetNamespaceReady).toHaveBeenCalledWith("group-new");
         expect(window.location.href).toBe("/");
       } finally {
         Object.defineProperty(window, "location", { configurable: true, value: location });

@@ -75,6 +75,23 @@ export function useActiveWorkspace(): string | null {
   );
 }
 
+/**
+ * The workspace a signed-in visit to `/` resumes: the remembered one if this
+ * node still lists it, else none — and none means the picker.
+ *
+ * The stored value is only a hint. A workspace you have since left (or one
+ * from before a node reset) would open an agreements screen that can only
+ * fail, so every read is checked against what the node lists right now (the
+ * rule mero-design's `lastVisit` uses for its team). Never the first listed
+ * either: which workspace you meant is not a thing to guess.
+ */
+export function pickResumeWorkspace(
+  listed: readonly string[],
+  remembered: string | null,
+): string | null {
+  return remembered && listed.includes(remembered) ? remembered : null;
+}
+
 /** Test seam. Clears the selection and the stored copy. */
 export function resetActiveWorkspaceForTests(): void {
   current = null;

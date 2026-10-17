@@ -33,6 +33,7 @@ import { generateInvitationUrl } from '../../utils/invitation';
 import { friendlyContractMessage, isMatchFinishedError, isPlayerKeyShaped, isShipsNotPlacedError } from '../../utils/contractError';
 import { EMBEDDED_NAME_KEY, getStoredLobbyName, setStoredLobbyName } from '../../utils/lobbyName';
 import { INVITER_KEY } from '../../utils/knownPlayers';
+import { forgetLastLobby, pickResumeLobby, readLastLobby, rememberLobby } from '../../utils/lastLobby';
 import type { JoinedLobbyState } from '../../components/InvitationPrompt';
 import LobbyView from '../../components/LobbyView';
 import { playerName } from '../../utils/playerName';
@@ -257,7 +258,8 @@ export default function MatchPage() {
 
   // URL-driven lobby entry: if `/lobby?id=<ns_id>` is in the address bar,
   // select that namespace and advance to 'lobby' view once it's ready.
-  // A bare `/lobby` (no ?id) always stays on 'lobby-select'.
+  // A bare `/lobby` (no ?id) stays on 'lobby-select', unless the resume effect
+  // below hands it the lobby you had open last.
   useEffect(() => {
     if (view !== 'lobby-select') return;
     if (manualLobbySelect.current) return;
@@ -327,6 +329,50 @@ export default function MatchPage() {
     readFor: lobbyReadFor,
     reread: rereadLobby,
   });
+
+  // A bare `/lobby` — a reload, or signing in (`/` → `/home` → `/lobby` drops
+  // any query) — resumes the lobby you had open last, if the node still lists
+  // it (see `utils/lastLobby`). Handed to `?id=`, so the URL effect above
+  // enters it exactly as a link would. Decided once per visit: a `?id=`
+  // already in the URL, an invitation, or "All lobbies" win. A lobby no longer
+  // listed is forgotten and the picker shows.
+  const resumeDecided = useRef(false);
+  const lobbiesReadStarted = useRef(false);
+  useEffect(() => {
+    // An empty list before the node was asked says nothing; one after does.
+    if (lobby.lobbiesLoading) lobbiesReadStarted.current = true;
+    if (resumeDecided.current) return;
+    if (
+      location.pathname !== '/lobby'
+      || view !== 'lobby-select'
+      || manualLobbySelect.current
+      || joinedLobbyId
+      || new URLSearchParams(location.search).get('id')
+    ) {
+      resumeDecided.current = true;
+      return;
+    }
+    const remembered = readLastLobby(nodeUrl);
+    if (!remembered) {
+      resumeDecided.current = true;
+      return;
+    }
+    const listed = lobby.lobbies.map((l) => l.namespaceId);
+    if (listed.length === 0 && (lobby.lobbiesLoading || !lobbiesReadStarted.current)) return;
+    resumeDecided.current = true;
+    const target = pickResumeLobby(listed, remembered);
+    if (target) {
+      navigate(`/lobby?id=${encodeURIComponent(target)}`, { replace: true, state: { resume: true } });
+    } else {
+      forgetLastLobby(nodeUrl);
+    }
+  }, [view, location.pathname, location.search, joinedLobbyId, lobby.lobbies, lobby.lobbiesLoading, nodeUrl, navigate]);
+
+  // Remember the lobby once you are in it — never on the picker, where a
+  // selection is only a preselection.
+  useEffect(() => {
+    if (view === 'lobby' && lobby.namespaceId) rememberLobby(nodeUrl, lobby.namespaceId);
+  }, [view, lobby.namespaceId, nodeUrl]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -1055,7 +1101,12 @@ export default function MatchPage() {
   // Lobby actions
   // ---------------------------------------------------------------------------
 
-  const doLogout = useCallback(() => { logout(); navigate('/'); }, [logout, navigate]);
+  // The next sign-in starts at the picker, not inside this session's lobby.
+  const doLogout = useCallback(() => {
+    forgetLastLobby(nodeUrl);
+    logout();
+    navigate('/');
+  }, [logout, navigate, nodeUrl]);
 
   const handleCreateLobby = useCallback(async () => {
     const name = newLobbyName.trim();
@@ -1178,7 +1229,13 @@ export default function MatchPage() {
             <button
               type="button"
               className="page-back"
-              onClick={() => { manualLobbySelect.current = true; setView('lobby-select'); navigate('/lobby', { replace: true }); }}
+              onClick={() => {
+                // Back to the picker on purpose: a reload keeps you there.
+                forgetLastLobby(nodeUrl);
+                manualLobbySelect.current = true;
+                setView('lobby-select');
+                navigate('/lobby', { replace: true });
+              }}
             >
               <span aria-hidden>&larr;</span> All lobbies
             </button>

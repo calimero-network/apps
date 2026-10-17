@@ -37,7 +37,9 @@ function RequireAuth({ children }: { children: ReactNode }) {
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
   if (isLoading) return null; // the auth probe is still in flight
-  if (isAuthenticated) return <Navigate to="/teams" replace />;
+  // `resume`: the teams list goes on to the team (and project) open last
+  // rather than asking again (utils/lastVisit).
+  if (isAuthenticated) return <Navigate to="/teams" replace state={{ resume: true }} />;
   return <>{children}</>;
 }
 

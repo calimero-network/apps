@@ -181,6 +181,31 @@ describe('every path the app can be opened at settles', () => {
     }
   });
 
+  // Resuming where you were (`lib/lastVisit`) happens only on the way IN: the
+  // landing redirect marks its navigation, and a plain `/teams` — the rail,
+  // the brand, a "Vaults" back link — carries no mark and stays the list.
+  it('only the way into the app asks the teams screen to resume', () => {
+    session.isAuthenticated = true;
+    const stateAt = (path: string) => {
+      let state: unknown = 'unset';
+      function StateProbe() {
+        state = useLocation().state;
+        return null;
+      }
+      const { unmount } = render(
+        <MemoryRouter initialEntries={[path]}>
+          <App />
+          <StateProbe />
+        </MemoryRouter>,
+      );
+      unmount();
+      return state;
+    };
+    expect(stateAt('/')).toEqual({ resume: true });
+    expect(stateAt('/landing')).toEqual({ resume: true });
+    expect(stateAt('/teams')).toBeNull();
+  });
+
   it('a legacy /space link keeps its id on the way to /teams', () => {
     session.isAuthenticated = true;
     expect(settleAt('/space/ns-abc')).toBe('/teams/ns-abc');
