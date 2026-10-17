@@ -1,0 +1,72 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ── App theme tokens (light default). The landing page does NOT use these. ──
+   `--c-on-accent` is text on the bright green accent — stays dark in both
+   themes. `--c-green-ink`/`--c-green-deep` are accent TEXT, so they lighten in
+   dark mode for contrast on dark surfaces. */
+:root {
+  --c-green: #a4ff11;
+  --c-green-hover: #93e60c;
+  --c-green-deep: #4e7a06;
+  --c-green-ink: #37610a;
+  --c-on-accent: #0e140f;
+  --c-ink: #0e140f;
+  --c-paper: #ffffff;
+  --c-paper2: #f5f8f1;
+  --c-line: #e7ece2;
+  --c-muted: #5d6b60;
+  --c-muted-soft: #93a394;
+  --c-off: #c4ccbf;
+  --c-disabled: #e2e8da;
+  --c-danger: #d23b2f;
+}
+
+:root[data-theme='dark'] {
+  --c-green: #a4ff11;
+  --c-green-hover: #b4ff3d;
+  --c-green-deep: #bdf76a;
+  --c-green-ink: #cdf78a;
+  --c-on-accent: #0e140f;
+  --c-ink: #e7edf2;
+  --c-paper: #14181d;
+  --c-paper2: #1b2027;
+  --c-line: #2b313a;
+  --c-muted: #9aa6ad;
+  --c-muted-soft: #6d7884;
+  --c-off: #3a414b;
+  --c-disabled: #2a2f37;
+  --c-danger: #ff6b6b;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--c-paper);
+  color: var(--c-ink);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-bg {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 1rem;
+}

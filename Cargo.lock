@@ -101,6 +101,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "board-types"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "hex",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "borsh"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -840,6 +850,18 @@ dependencies = [
  "calimero-storage",
  "calimero-storage-macros",
  "hex",
+]
+
+[[package]]
+name = "mero-board"
+version = "0.1.0"
+dependencies = [
+ "board-types",
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
+ "serial_test",
 ]
 
 [[package]]

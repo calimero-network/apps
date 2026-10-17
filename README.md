@@ -51,7 +51,7 @@ single atomic change with a single CI signal.
 
 ## Apps
 
-Twenty-three apps, each `apps/<name>/{logic,app}`. **Package** is the registry id; the linked name is the
+Twenty-four apps, each `apps/<name>/{logic,app}`. **Package** is the registry id; the linked name is the
 live deployment. Versions are owned by the registry, not by `Cargo.toml` — the release workflow
 increments them on publish.
 
@@ -77,6 +77,7 @@ Start here. These exist to be read, not shipped.
 | [mero-docs](apps/mero-docs) | [↗](https://mero-docs.vercel.app) | Namespace-scoped document workspace - a multi-service bundle pairing a registry with the docs themselves. | `com.calimero.mero-drive-docs` |
 | [mero-crm](apps/mero-crm) | — | Sales CRM — drag-and-drop pipeline, deals, people, activities, stage automations, insights, and a local deal assistant (health score, next best step, email draft). | `com.calimero.mero-crm` |
 | [mero-issue-tracker](apps/mero-issue-tracker) | [↗](https://mero-issue-tracker-app.vercel.app) | Issue board for a small engineering team whose backlog lives on their own nodes. | `com.calimero.mero-issue-tracker` |
+| [mero-board](apps/mero-board) | — | Kanban boards for any team: folders of boards, lists you define, cards you drag together, with an MCP server for agents. | `com.calimero.mero-board` |
 | [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | Threads and comments replicated across your own nodes, with no server in the middle. | `com.calimero.mero-forum` |
 | [mero-updates](apps/mero-updates) | — | Investor updates, two-way: categories, KPI deltas, asks answered in one click, investor Q&A and read receipts, between the company's and its investors' nodes. | `com.calimero.mero-updates` |
 | [mero-standup](apps/mero-standup) | — | Async standups and a decision log for a small team: each member's own update per day (started from yesterday's), help on blockers, a weekly digest, and tagged write-once decisions superseded rather than edited. Small on purpose — the second app to read after kv-store, and the worked example of migrating a live app's state (v1 → v2). | `com.calimero.mero-standup` |
