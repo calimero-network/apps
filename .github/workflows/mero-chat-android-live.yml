@@ -1,0 +1,145 @@
+# Live (real-relay) tests for the native Android Mero Chat app.
+#
+# The unit-test job (mero-chat-android.yml) runs the same suite offline, where every live test skips
+# itself. This job gives them a relay: one merod with delegated access, device-key login and a mock
+# TEE, booted by merobox from apps/mero-chat/mobile/e2e (relay.yml / run-relay.sh), with the
+# mero-chat bundle built from ../logic installed on it. The tests then drive the app's own view
+# models and repository against it — founding, channels, messages, invitations, direct admission,
+# the live event stream. Only the Calimero Cloud's routing answers are faked, in process; there is
+# no cloud or wallet here, so each test mints its accounts offline.
+#
+# The relay must be a merod built with `mock-attestation` from the core commit run-relay.sh pins
+# (CORE_REF): no release carries both that and `/admit` without a credential. The
+# build-merod-mock-tee action builds it once per CORE_REF and caches it.
+
+name: Mero Chat Android live
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-chat/mobile/android/**
+      - apps/mero-chat/mobile/e2e/**
+      - apps/mero-chat/logic/**
+      - .github/workflows/mero-chat-android-live.yml
+      - .github/actions/build-merod-mock-tee/**
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-chat/mobile/android/**
+      - apps/mero-chat/mobile/e2e/**
+      - apps/mero-chat/logic/**
+      - .github/workflows/mero-chat-android-live.yml
+      - .github/actions/build-merod-mock-tee/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-chat-android-live-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  live:
+    name: Live tests against a relay
+    runs-on: ubuntu-latest
+    # An uncached merod build is most of this; a cached run takes a few minutes.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Before the SDK checkout below, which carries a wrapper of its own.
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Build merod (mock TEE)
+        uses: ./.github/actions/build-merod-mock-tee
+
+      # The bundle: run-relay.sh builds it from apps/mero-chat/logic with cargo-mero.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-wasm-${{ runner.os }}-
+
+      - uses: ./.github/actions/install-cargo-mero
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-merobox-0.6.75-client-0.7.0
+
+      # The pair the relay rig is verified with (the Kotlin SDK's pin). They move together:
+      # merobox 0.6.75 declares calimero-client-py>=0.7.0.
+      - name: Install merobox
+        run: pip install 'merobox==0.6.75' 'calimero-client-py==0.7.0' && merobox --version
+
+      - name: Boot the relay
+        working-directory: apps/mero-chat/mobile/e2e
+        run: |
+          set -euo pipefail
+          ./run-relay.sh
+          cat .relay.env
+          # The tests read these from the environment.
+          cat .relay.env >> "$GITHUB_ENV"
+
+      - name: Fetch the pinned Kotlin SDK
+        working-directory: apps/mero-chat/mobile/android
+        run: ./scripts/fetch-sdk.sh
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Live tests
+        working-directory: apps/mero-chat/mobile/android
+        run: |
+          set -o pipefail
+          ./gradlew :app:testDebugUnitTest --tests 'network.calimero.chat.live.*' --stacktrace 2>&1 | tee live.log
+          # A skipped live test still reports green, so refuse a vacuous pass: at least one live
+          # test case must have actually run.
+          REPORT_DIR=app/build/test-results/testDebugUnitTest
+          ls "$REPORT_DIR"/TEST-network.calimero.chat.live.*.xml >/dev/null 2>&1 \
+            || { echo "::error::no live test results — refusing a vacuous pass"; exit 1; }
+          totals=$(grep -ho 'tests="[0-9]*" skipped="[0-9]*"' "$REPORT_DIR"/TEST-network.calimero.chat.live.*.xml \
+            | sed -E 's/tests="([0-9]*)" skipped="([0-9]*)"/\1 \2/' \
+            | awk '{t+=$1; s+=$2} END {print t, s}')
+          tests=${totals% *}
+          skipped=${totals#* }
+          echo "live tests: executed=$tests skipped=$skipped"
+          [ "${tests:-0}" -gt 0 ] && [ "${skipped:-0}" -eq 0 ] \
+            || { echo "::error::live tests were skipped — the relay env did not reach them"; exit 1; }
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-chat-android-live-logs
+          path: |
+            apps/mero-chat/mobile/e2e/merobox-run.log
+            apps/mero-chat/mobile/e2e/data/*/logs/
+            apps/mero-chat/mobile/android/live.log
+            apps/mero-chat/mobile/android/app/build/reports/tests/
+            apps/mero-chat/mobile/android/app/build/test-results/
+          if-no-files-found: warn
+
+      - name: Stop the relay
+        if: always()
+        working-directory: apps/mero-chat/mobile/e2e
+        run: ./run-relay.sh --stop

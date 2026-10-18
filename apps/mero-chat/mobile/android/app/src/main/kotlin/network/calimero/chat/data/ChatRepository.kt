@@ -242,6 +242,23 @@ class ChatRepository(
         backend.write(contextId, ChatMethods.SET_PROFILE, ChatArgs.setProfile(username.trim()))
     }
 
+    /**
+     * Register [username] in [contextId] unless the account already has a name there. A member of
+     * an open channel can read and write it without ever joining it explicitly (namespace members
+     * inherit open subgroups), and then nothing else names them — the web app's auto-join sweep
+     * does this for the same reason. Returns whether it registered one.
+     */
+    suspend fun ensureProfile(
+        contextId: String,
+        username: String,
+    ): Boolean {
+        if (ChatValidation.usernameError(username) != null) return false
+        val me = myUserId ?: return false
+        if (profiles(contextId).any { it.identity == me }) return false
+        setProfile(contextId, username)
+        return true
+    }
+
     /** Record that the account has read [contextId] up to now (`mark_as_read`, cross-device). */
     suspend fun markRead(contextId: String) {
         backend.write(contextId, ChatMethods.MARK_AS_READ, ChatArgs.markAsRead(nowSecs()))

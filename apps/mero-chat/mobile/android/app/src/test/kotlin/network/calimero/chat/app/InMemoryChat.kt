@@ -40,6 +40,9 @@ class InMemoryChat(
     val calls = CopyOnWriteArrayList<Pair<String, JsonObject>>()
     var failNext: Exception? = null
 
+    /** What `get_profiles` answers; by default someone else and this account. */
+    var profiles: List<ChatProfile>? = null
+
     fun post(
         text: String,
         sender: String = OTHER,
@@ -62,7 +65,7 @@ class InMemoryChat(
             "get_messages" -> page(args["limit"]!!.jsonPrimitive.int, args["offset"]!!.jsonPrimitive.int)
             "get_messages_from" -> from(args["start"]!!.jsonPrimitive.long, args["limit"]!!.jsonPrimitive.int)
             "get_profiles" ->
-                chatJson.encodeToJsonElement(ListSerializer(ChatProfile.serializer()), listOf(ChatProfile(OTHER, "alice"), ChatProfile(me, "droid")))
+                chatJson.encodeToJsonElement(ListSerializer(ChatProfile.serializer()), profiles ?: listOf(ChatProfile(OTHER, "alice"), ChatProfile(me, "droid")))
             else -> error("unexpected view $method")
         }
     }

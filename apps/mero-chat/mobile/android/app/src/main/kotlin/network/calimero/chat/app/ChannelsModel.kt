@@ -70,7 +70,8 @@ class ChannelsModel(
 
     /**
      * Open [channel]: a channel the account is only an inherited member of is joined first (as the
-     * web app's first sweep does), then [onReady] gets it.
+     * web app's first sweep does), then [onReady] gets it. Either way the person's name ends up
+     * registered in it ([ChatRepository.ensureProfile] for a channel already joined).
      */
     fun open(
         channel: Channel,
@@ -79,6 +80,14 @@ class ChannelsModel(
         scope.launch {
             if (channel.joined) {
                 onReady(channel)
+                // Best-effort, after opening: a member who never joined explicitly has no name here yet.
+                try {
+                    repo.ensureProfile(channel.contextId, profile.displayName.value)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Their messages show by short id until a name is registered.
+                }
                 return@launch
             }
             step("Joining #${channel.name}") {

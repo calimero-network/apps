@@ -124,6 +124,45 @@ gap catch-up), that views go to `/query` and writes to `/intents` as warrants (a
 `/jsonrpc`), channel creation through `context-intents`, founding, invitation links in both
 directions, and joining by direct admission.
 
+### Live tests (a real relay)
+
+`app/src/test/kotlin/network/calimero/chat/live/` runs the app's own view models and repository
+against a real relay: a merod with delegated access, device-key login and a mock TEE, with the
+chat bundle installed, booted by `../e2e/run-relay.sh`. There is no cloud or wallet in that rig,
+so each test mints its accounts offline (an account root certifying the device's key, handed to
+`MeroClient` as the wallet's redirect) and an in-process fake answers only the Calimero Cloud's
+routing questions (which relay serves an account, who admits for a namespace). Everything else
+goes to the relay.
+
+- **Founder:** found a workspace (real mock attestation), `#general` and a second channel, send,
+  read back and page through `/query`, edit, react and un-react, delete, set the profile name,
+  unread after opening.
+- **Invite and join:** a second, brand-new account opens the founder's invitation link and joins by
+  direct admission at the relay's `/admit`, lists the workspace and `#general`, reads the founder's
+  message, replies, and the founder reads the reply. The invitee cannot edit the founder's message:
+  the model refuses, and the contract's refusal reaches the app's error text.
+- **Live update:** the founder's open channel gets the invitee's message over the relay's event
+  stream (polling is set an hour apart, so only the stream can deliver it).
+
+They skip themselves unless `MERO_E2E_RELAY_URL` and `MERO_E2E_APP_ID` are set, or
+`mobile/e2e/.relay.env` exists (run-relay.sh writes it and `--stop` removes it), so
+`testDebugUnitTest` stays offline. To run them:
+
+```sh
+cd ../e2e && MEROD_BIN=/path/to/merod ./run-relay.sh   # a merod built with --features mock-attestation
+cd ../android && ./gradlew :app:testDebugUnitTest --tests 'network.calimero.chat.live.*'
+../e2e/run-relay.sh --stop
+```
+
+The test rig logs in to the relay as its admin (`dev` / `dev-password`, relay.yml's; override with
+`MERO_E2E_RELAY_ADMIN_USER` / `_PASSWORD`) only to learn the relay's account, which a real cloud
+would name. CI: `.github/workflows/mero-chat-android-live.yml`.
+
+**SDK pin:** `kotlin-sdk.ref` points at the head of calimero-network/kotlin-sdk#26, which signs
+namespace ops at schema 25. The SDK's default branch still signs at 24, which a relay on core
+rc.85+ refuses (`schema version mismatch: expected 25, got 24`), and the live tests caught it.
+Move the pin to the merge commit once #26 lands.
+
 ## Not supported yet
 
 - Threads: reply counts show, but threads open on the web or desktop only.
