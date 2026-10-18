@@ -35,7 +35,15 @@ ENV_FILE="$HERE/.relay.env"
 RELAY_URL="http://127.0.0.1:2528"
 
 stop() {
-  pkill -f "merod --home $HERE/data/" 2>/dev/null || true
+  local pattern="merod --home $HERE/data/"
+  pkill -f "$pattern" 2>/dev/null || true
+  # pkill only signals. A merod still flushing its store races the rm below
+  # ("Directory not empty"), so wait for it to exit, and kill it if it won't.
+  for _ in $(seq 1 50); do
+    pgrep -f "$pattern" >/dev/null || break
+    sleep 0.2
+  done
+  pkill -9 -f "$pattern" 2>/dev/null || true
   rm -rf "$HERE/data" "$ENV_FILE"
 }
 
