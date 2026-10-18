@@ -1,4 +1,5 @@
 import MeroKit
+import MeroKitTestSupport
 import XCTest
 
 /// A channel of `count` messages as the contract pages it (`page_window` /
@@ -184,6 +185,36 @@ final class ChannelModelTests: XCTestCase {
         XCTAssertEqual(model.names[ChatFixtures.myUserId], "alice")
         let refused = await model.setProfileName(String(repeating: "x", count: 51))
         XCTAssertFalse(refused)
+    }
+
+    func testEnsureProfileRegistersANameOnlyWhereTheAccountHasNone() async {
+        let sets = Counter()
+        let contract = RecordingChatContract { call in
+            switch call.method {
+            case "get_profiles":
+                return sets.count > 0 ? JSONValue.parse(ChatFixtures.profilesJSON) : JSONValue.array([])
+            case "set_profile":
+                sets.increment()
+                return JSONValue.string("Profile set")
+            default:
+                return JSONValue.string("ok")
+            }
+        }
+        let model = ChannelModel(channel: entry, backend: FakeChatBackend(contract: contract), pollInterval: 60)
+        await model.loadProfiles()
+        XCTAssertNil(model.myProfileName)
+
+        let registered = await model.ensureProfile(" alice ")
+        XCTAssertTrue(registered)
+        XCTAssertEqual(contract.calls("set_profile").first?.args, ["username": "alice", "avatar": .null])
+        XCTAssertEqual(contract.calls("set_profile").first?.path, .execute)
+        XCTAssertEqual(model.myProfileName, "alice")
+
+        let again = await model.ensureProfile("someone else")
+        XCTAssertFalse(again, "a name already registered is left alone")
+        let blank = await model.ensureProfile("   ")
+        XCTAssertFalse(blank)
+        XCTAssertEqual(contract.calls("set_profile").count, 1)
     }
 
     func testLiveEventsForTheChannelTriggerARefreshAndPresenceDoesNot() {

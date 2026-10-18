@@ -18,7 +18,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 2316394831440c80318f72c44e3a6e394ac2b57d
+    revision: a5e0cea3f93072d3d0ab76ae30ab00224546dc00
 
 targets:
   MeroChat:
@@ -84,12 +84,39 @@ targets:
       - package: MeroKit
         product: MeroKitTestSupport
 
+  # Live tests: the same chat layer against a REAL relay (mobile/e2e/relay.yml).
+  # Their own target, not MeroChatTests: they drive the session the app's
+  # SessionModel builds (MeroKitUI's MeroClient over a CloudSignIn), while the
+  # logic tests deliberately link no UI module and route URLSession through
+  # MockURLProtocol. Every case skips itself unless MERO_E2E_RELAY_URL and
+  # MERO_E2E_APP_ID are set (see LiveTests/LiveRig.swift), so running the whole
+  # scheme offline stays green. CI: .github/workflows/mero-chat-ios-live.yml
+  # runs `-only-testing:MeroChatLiveTests`.
+  MeroChatLiveTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Sources/Core
+      - LiveTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.chat.livetests
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: "YES"
+    dependencies:
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
 schemes:
   MeroChat:
     build:
       targets:
         MeroChat: all
         MeroChatTests: [test]
+        MeroChatLiveTests: [test]
     test:
       targets:
         - MeroChatTests
+        - MeroChatLiveTests

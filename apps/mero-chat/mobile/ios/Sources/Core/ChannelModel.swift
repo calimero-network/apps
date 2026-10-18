@@ -253,6 +253,25 @@ final class ChannelModel: ObservableObject {
         }
     }
 
+    /// Register `rawName` here unless this account already has a name in the
+    /// channel. Namespace members inherit open channels, so they can read and
+    /// write one without ever joining it explicitly, and then nothing else
+    /// names them (the web app's auto-join sweep covers the same gap). Silent
+    /// and best-effort: the channel works either way. Returns whether a name
+    /// was registered.
+    @discardableResult
+    func ensureProfile(_ rawName: String) async -> Bool {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 50, !me.isEmpty, names[me] == nil else { return false }
+        do {
+            try await api.setProfile(channel.id, username: name)
+        } catch {
+            return false
+        }
+        await loadProfiles()
+        return names[me] != nil
+    }
+
     // MARK: Live updates
 
     func startLive() {

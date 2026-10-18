@@ -48,6 +48,7 @@ struct ChannelScreen: View {
         .task {
             await model.loadInitial()
             model.startLive()
+            await model.ensureProfile(session.displayName)
         }
         .onDisappear { model.stopLive() }
         .sheet(item: $editing) { message in

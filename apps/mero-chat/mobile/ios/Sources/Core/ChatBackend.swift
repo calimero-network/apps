@@ -61,12 +61,24 @@ struct DelegatedChatBackend: ChatBackend {
     let connection: CloudConnection
     let admin: any AdminSurface
     let signIn: CloudSignIn
+    /// What a new workspace is founded with. `nil` (the app) resolves chat's
+    /// package from the registry; the live tests name the bundle installed on
+    /// their relay, which the registry does not list.
+    let foundingApplication: FoundingApplication?
+    /// Where to send a join. `nil` (the app) asks the Cloud manager for the
+    /// admitting relay; the live tests, which have no cloud, name their relay.
+    let joinNodeURL: String?
 
-    init(connection: CloudConnection, admin: any AdminSurface, signIn: CloudSignIn) {
+    init(
+        connection: CloudConnection, admin: any AdminSurface, signIn: CloudSignIn,
+        foundingApplication: FoundingApplication? = nil, joinNodeURL: String? = nil
+    ) {
         self.account = connection.session.account
         self.connection = connection
         self.admin = admin
         self.signIn = signIn
+        self.foundingApplication = foundingApplication
+        self.joinNodeURL = joinNodeURL
         if let relay = connection.relay {
             contract = RelayChatContract(relay: relay)
         } else {
@@ -105,7 +117,8 @@ struct DelegatedChatBackend: ChatBackend {
     }
 
     func foundWorkspace(name: String) async throws -> FoundedWorkspace {
-        let founded = try await signIn.foundNamespace(connection, name: name, package: ChatConstants.packageName)
+        let founded = try await signIn.foundNamespace(
+            connection, name: name, package: ChatConstants.packageName, application: foundingApplication)
         return FoundedWorkspace(
             namespaceId: founded.namespaceId, haEnabled: founded.haEnabled, haError: founded.haError)
     }
@@ -133,7 +146,8 @@ struct DelegatedChatBackend: ChatBackend {
     }
 
     func joinWorkspace(namespaceId: String, invitation: SignedGroupOpenInvitation) async throws -> JoinedWorkspace {
-        let (_, outcome) = try await signIn.join(namespaceId: namespaceId, invitation: invitation)
+        let (_, outcome) = try await signIn.join(
+            namespaceId: namespaceId, invitation: invitation, nodeURL: joinNodeURL)
         return JoinedWorkspace(published: outcome.published, relayURL: outcome.relayUrl)
     }
 

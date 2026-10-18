@@ -42,6 +42,7 @@ project.yml          XcodeGen spec (the .xcodeproj is generated, not committed)
 Sources/Core/        chat layer: contract calls, invitations, backend, view models (no SwiftUI)
 Sources/App/         SwiftUI app: session, screens
 Tests/               logic tests (compile Sources/Core directly, no host app)
+LiveTests/           live tests: Sources/Core against a real relay (target MeroChatLiveTests)
 ```
 
 ## Build and run
@@ -65,19 +66,61 @@ in Xcode (Signing & Capabilities).
 ### The SDK pin
 
 The delegated parity work in swift-sdk is unreleased, so `project.yml` pins the
-package to an exact commit of its default branch:
+package to an exact commit. It is the head of calimero-network/swift-sdk#50 for now, which
+signs namespace ops at schema 25 (the default branch signs at 24, which a relay on core
+rc.85+ refuses); move it to the merge commit once #50 lands:
 
 ```yaml
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 2316394831440c80318f72c44e3a6e394ac2b57d
+    revision: a5e0cea3f93072d3d0ab76ae30ab00224546dc00
 ```
 
 To bump it, change `revision` to the new commit, run `xcodegen generate`, and
 let Xcode re-resolve packages (File → Packages → Reset Package Caches if it
 holds on to the old one). Once swift-sdk tags a release with this surface,
 replace `revision:` with `from: <version>`.
+
+## Live tests (a real relay)
+
+`MeroChatLiveTests` runs the chat layer against a real merod relay, booted by
+[`../e2e/run-relay.sh`](../e2e) (one node: embedded auth, device-key login,
+delegated access, mock TEE, mero-chat installed). Nothing is faked but the
+cloud: each test mints its accounts offline (a BIP39 root certifies a fresh
+device key, as the wallet does), restores that session through `MeroClient`
+exactly as `SessionModel` does, and drives `WorkspacesModel`,
+`ChannelsModel` and `ChannelModel`:
+
+| Case | Test | What it asserts |
+| --- | --- | --- |
+| Founder flow | `testFounderFlowAgainstTheRelay` | founding through the relay lists the workspace with its name and chat's app id; `#general` is created and joined; send ×3, paging back with `get_messages(limit: 2, offset)`, edit (stamped), react / un-react, delete (blanked, slot kept), `set_profile`, no unread |
+| Invite + join | `testInviteJoinAndReplyAcrossTwoAccounts` | the app's invitation link parses back; a relayless second account redeems it at `/admit`, gains the relay, lists the workspace and `#general`, joins, reads the founder's message and replies; the founder sees an unread badge, the reply under Bob's name, and the badge clears; Bob's edit of Alice's message is not offered and is refused by the contract |
+| Live update | `testBobsMessageReachesAlicesOpenChannelLive` | with `#general` open and live, Bob's message shows up in Alice's model while it is still on the SSE stream (not the polling fallback) |
+
+They skip themselves unless `MERO_E2E_RELAY_URL` and `MERO_E2E_APP_ID` are
+set, or `../e2e/.relay.env` exists, so the ordinary test run stays offline.
+xcodebuild forwards only `TEST_RUNNER_`-prefixed variables to the test
+process, so pass them that way:
+
+```sh
+cd apps/mero-chat/mobile/e2e && MEROD_BIN=/path/to/merod ./run-relay.sh   # writes .relay.env
+cd ../ios && xcodegen generate
+set -a; . ../e2e/.relay.env; set +a
+TEST_RUNNER_MERO_E2E_RELAY_URL=$MERO_E2E_RELAY_URL TEST_RUNNER_MERO_E2E_APP_ID=$MERO_E2E_APP_ID \
+  xcodebuild test -project MeroChat.xcodeproj -scheme MeroChat \
+  -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:MeroChatLiveTests CODE_SIGNING_ALLOWED=NO
+```
+
+Where the app would ask the cloud or the registry, the tests stand in:
+`DelegatedChatBackend` takes the application to found with
+(`MERO_E2E_APP_ID`, version `MERO_E2E_APP_VERSION`, default `0.0.0`) and the
+relay to send joins to; both are `nil` in the app. The relay's own account
+(the executor a founding warrant names, which the Cloud manager reports in
+the app) is read once with the rig's operator login (`MERO_E2E_RELAY_ADMIN_USER` /
+`MERO_E2E_RELAY_ADMIN_PASSWORD`, default `dev` / `dev-password`) unless
+`MERO_E2E_RELAY_ACCOUNT` gives it. CI:
+[`.github/workflows/mero-chat-ios-live.yml`](../../../../.github/workflows/mero-chat-ios-live.yml).
 
 ## Pointing it at another environment
 
