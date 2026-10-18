@@ -158,10 +158,9 @@ The test rig logs in to the relay as its admin (`dev` / `dev-password`, relay.ym
 `MERO_E2E_RELAY_ADMIN_USER` / `_PASSWORD`) only to learn the relay's account, which a real cloud
 would name. CI: `.github/workflows/mero-chat-android-live.yml`.
 
-**SDK pin:** `kotlin-sdk.ref` points at the head of calimero-network/kotlin-sdk#26, which signs
-namespace ops at schema 25. The SDK's default branch still signs at 24, which a relay on core
-rc.85+ refuses (`schema version mismatch: expected 25, got 24`), and the live tests caught it.
-Move the pin to the merge commit once #26 lands.
+**SDK pin:** `kotlin-sdk.ref` is the merge of calimero-network/kotlin-sdk#26, which signs namespace
+ops at schema 25. The live tests caught the SDK still signing at 24, which a relay on core rc.85+
+refuses (`schema version mismatch: expected 25, got 24`).
 
 ## Not supported yet
 

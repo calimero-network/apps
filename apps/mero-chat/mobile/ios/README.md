@@ -66,15 +66,14 @@ in Xcode (Signing & Capabilities).
 ### The SDK pin
 
 The delegated parity work in swift-sdk is unreleased, so `project.yml` pins the
-package to an exact commit. It is the head of calimero-network/swift-sdk#50 for now, which
-signs namespace ops at schema 25 (the default branch signs at 24, which a relay on core
-rc.85+ refuses); move it to the merge commit once #50 lands:
+package to an exact commit of its default branch, at or after calimero-network/swift-sdk#50
+(namespace ops signed at schema 25; a relay on core rc.85+ refuses 24):
 
 ```yaml
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: a5e0cea3f93072d3d0ab76ae30ab00224546dc00
+    revision: 6eabf1eabc42971a2a4cb15ea150d49071663c32
 ```
 
 To bump it, change `revision` to the new commit, run `xcodegen generate`, and

@@ -18,7 +18,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: a5e0cea3f93072d3d0ab76ae30ab00224546dc00
+    revision: 6eabf1eabc42971a2a4cb15ea150d49071663c32
 
 targets:
   MeroChat:
