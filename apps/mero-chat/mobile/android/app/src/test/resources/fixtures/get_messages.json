@@ -1,0 +1,51 @@
+{
+  "total_count": 42,
+  "messages": [
+    {
+      "index": 40,
+      "timestamp": 1760800000,
+      "sender": "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
+      "mentions": [],
+      "mentions_usernames": [],
+      "files": [],
+      "images": [
+        {
+          "name": "cat.png",
+          "mime_type": "image/png",
+          "size": 1024,
+          "blob_id": "0f5e3c1a9b8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f",
+          "uploaded_at": 1760800000123456789
+        }
+      ],
+      "id": "8d3c1b0a99887766554433221100ffeeddccbbaa99887766554433221100ffee_1760800000",
+      "text": "hello from the web",
+      "edited_on": null,
+      "reactions": {
+        "👍": ["9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin", "{{ME}}"],
+        "🎉": ["9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin"]
+      },
+      "deleted": null,
+      "thread_count": 2,
+      "thread_last_timestamp": 1760800100,
+      "parent_message_id": null
+    },
+    {
+      "index": 41,
+      "timestamp": 1760800200,
+      "sender": "{{ME}}",
+      "mentions": [],
+      "mentions_usernames": [],
+      "files": [],
+      "images": [],
+      "id": "11aa22bb33cc44dd55ee66ff77008899aabbccddeeff00112233445566778899_1760800200",
+      "text": "hi, edited",
+      "edited_on": 1760800300,
+      "reactions": {},
+      "deleted": null,
+      "thread_count": 0,
+      "thread_last_timestamp": 0,
+      "parent_message_id": null
+    }
+  ],
+  "start_position": 0
+}
