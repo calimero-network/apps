@@ -5,6 +5,7 @@
 #
 #   MERO_E2E_RELAY_URL   the relay, on loopback (the SDKs accept its mock quote only there)
 #   MERO_E2E_APP_ID      mero-chat's application id as installed on it
+#   MERO_E2E_RELAY_ACCOUNT  the relay's own account (the executor a founding warrant names)
 #
 # Usage:
 #   MEROD_BIN=/path/to/merod ./run-relay.sh      # start (idempotent: nukes and re-boots)
@@ -91,9 +92,31 @@ curl -sf -o /dev/null -X POST -H 'content-type: application/json' \
   -d "{\"nonce\":\"$(printf '%064d' 0)\",\"bindNodeKey\":true}" "$RELAY_URL/admin-api/tee/attest" ||
   { echo "the relay gives no quote: it is not running with --mock-tee" >&2; exit 1; }
 
+# The relay's own account: the executor a founding warrant names, which the
+# Cloud manager reports in the app. Learnt here once, with the operator login,
+# so no test spends its own timeout on a node that is still settling after boot.
+learn_relay_account() {
+  local body token
+  body=$(printf '{"auth_method":"user_password","public_key":"%s","client_name":"mero-chat-live-rig","permissions":[],"timestamp":%s,"provider_data":{"username":"%s","password":"%s"}}' \
+    "$MERO_AUTH_ADMIN_USER" "$(date +%s)" "$MERO_AUTH_ADMIN_USER" "$MERO_AUTH_ADMIN_PASSWORD")
+  token=$(curl -sf --max-time 30 -X POST -H 'content-type: application/json' -d "$body" "$RELAY_URL/auth/token" |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["access_token"])') || return 1
+  curl -sf --max-time 30 -H "authorization: Bearer $token" "$RELAY_URL/admin-api/identity" |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["accountId"].lower())'
+}
+RELAY_ACCOUNT=""
+for attempt in 1 2 3 4 5; do
+  RELAY_ACCOUNT=$(learn_relay_account) && [ -n "$RELAY_ACCOUNT" ] && break
+  RELAY_ACCOUNT=""
+  echo "operator login to the relay failed (attempt $attempt), retrying" >&2
+  sleep 3
+done
+[ -n "$RELAY_ACCOUNT" ] || { echo "could not learn the relay's account with the operator login" >&2; exit 1; }
+
 cat >"$ENV_FILE" <<EOF
 MERO_E2E_RELAY_URL=$RELAY_URL
 MERO_E2E_APP_ID=$APP_ID
+MERO_E2E_RELAY_ACCOUNT=$RELAY_ACCOUNT
 EOF
-echo "relay up at $RELAY_URL, mero-chat $APP_ID"
+echo "relay up at $RELAY_URL, mero-chat $APP_ID, relay account $RELAY_ACCOUNT"
 echo "wrote $ENV_FILE"

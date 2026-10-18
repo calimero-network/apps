@@ -22,10 +22,12 @@ runs:
         echo "core $ref"
         echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
-    # A commit's build is immutable, so the commit IS the key.
-    - name: Cache merod
+    # A commit's build is immutable, so the commit IS the key. Restore and save
+    # are split so a build is kept even when the job fails later: actions/cache
+    # saves only after a green job, and a cold build is half an hour on macOS.
+    - name: Restore merod
       id: cache
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: ~/.local/merod-mock-tee
         key: merod-mock-tee-${{ runner.os }}-${{ runner.arch }}-${{ steps.core.outputs.ref }}
@@ -49,6 +51,13 @@ runs:
         cargo build --release -p merod --features mock-attestation
         mkdir -p ~/.local/merod-mock-tee
         cp target/release/merod ~/.local/merod-mock-tee/merod
+
+    - name: Save merod
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.local/merod-mock-tee
+        key: ${{ steps.cache.outputs.cache-primary-key }}
 
     - name: Export MEROD_BIN
       shell: bash

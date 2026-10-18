@@ -107,6 +107,7 @@ cd apps/mero-chat/mobile/e2e && MEROD_BIN=/path/to/merod ./run-relay.sh   # writ
 cd ../ios && xcodegen generate
 set -a; . ../e2e/.relay.env; set +a
 TEST_RUNNER_MERO_E2E_RELAY_URL=$MERO_E2E_RELAY_URL TEST_RUNNER_MERO_E2E_APP_ID=$MERO_E2E_APP_ID \
+  TEST_RUNNER_MERO_E2E_RELAY_ACCOUNT=$MERO_E2E_RELAY_ACCOUNT \
   xcodebuild test -project MeroChat.xcodeproj -scheme MeroChat \
   -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:MeroChatLiveTests CODE_SIGNING_ALLOWED=NO
 ```
@@ -116,9 +117,9 @@ Where the app would ask the cloud or the registry, the tests stand in:
 (`MERO_E2E_APP_ID`, version `MERO_E2E_APP_VERSION`, default `0.0.0`) and the
 relay to send joins to; both are `nil` in the app. The relay's own account
 (the executor a founding warrant names, which the Cloud manager reports in
-the app) is read once with the rig's operator login (`MERO_E2E_RELAY_ADMIN_USER` /
-`MERO_E2E_RELAY_ADMIN_PASSWORD`, default `dev` / `dev-password`) unless
-`MERO_E2E_RELAY_ACCOUNT` gives it. CI:
+the app) is `MERO_E2E_RELAY_ACCOUNT`, which `run-relay.sh` writes; without it the rig
+reads it once with the operator login (`MERO_E2E_RELAY_ADMIN_USER` /
+`MERO_E2E_RELAY_ADMIN_PASSWORD`, default `dev` / `dev-password`). CI:
 [`.github/workflows/mero-chat-ios-live.yml`](../../../../.github/workflows/mero-chat-ios-live.yml).
 
 ## Pointing it at another environment
