@@ -1,0 +1,57 @@
+name: Build merod (mock TEE)
+description: >
+  Build merod with `--features mock-attestation` from the core commit
+  apps/mero-chat/mobile/e2e/run-relay.sh pins (CORE_REF), from cache when
+  possible, and export its path as MEROD_BIN.
+
+  The mobile live tests need a relay that founds namespaces through a mock
+  attestation and serves `/admit` without a credential. No core release ships
+  a binary with both: release binaries never carry mock-attestation code, and
+  setup-merod downloads releases. So this builds one, once per CORE_REF per OS.
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the pinned core commit
+      id: core
+      shell: bash
+      run: |
+        set -euo pipefail
+        ref=$(awk -F= '/^CORE_REF=/{print $2}' apps/mero-chat/mobile/e2e/run-relay.sh)
+        test -n "$ref"
+        echo "core $ref"
+        echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+    # A commit's build is immutable, so the commit IS the key.
+    - name: Cache merod
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/merod-mock-tee
+        key: merod-mock-tee-${{ runner.os }}-${{ runner.arch }}-${{ steps.core.outputs.ref }}
+
+    - name: Install Rust
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Build merod with mock attestation
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        REF: ${{ steps.core.outputs.ref }}
+      run: |
+        set -euo pipefail
+        git init -q "$RUNNER_TEMP/core"
+        cd "$RUNNER_TEMP/core"
+        git remote add origin https://github.com/calimero-network/core.git
+        git fetch -q --depth 1 origin "$REF"
+        git checkout -q FETCH_HEAD
+        cargo build --release -p merod --features mock-attestation
+        mkdir -p ~/.local/merod-mock-tee
+        cp target/release/merod ~/.local/merod-mock-tee/merod
+
+    - name: Export MEROD_BIN
+      shell: bash
+      run: |
+        "$HOME/.local/merod-mock-tee/merod" --version
+        echo "MEROD_BIN=$HOME/.local/merod-mock-tee/merod" >> "$GITHUB_ENV"

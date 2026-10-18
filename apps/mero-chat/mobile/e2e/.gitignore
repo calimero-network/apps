@@ -1,0 +1,4 @@
+data/
+res/
+.relay.env
+merobox-run.log
