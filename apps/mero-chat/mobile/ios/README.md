@@ -73,7 +73,7 @@ package to an exact commit of its default branch, at or after calimero-network/s
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 6eabf1eabc42971a2a4cb15ea150d49071663c32
+    revision: 0f3bc6aa75722a13e3ff6cc78ca4f48939564456
 ```
 
 To bump it, change `revision` to the new commit, run `xcodegen generate`, and
