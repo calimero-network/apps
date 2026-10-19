@@ -3,6 +3,7 @@
 // what "signed in" / "can play" mean for an account.
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { completeDeviceEnrolment } from "@calimero-network/mero-js";
 import {
   beginAccountEnrolment,
   chooseRelay,
@@ -77,9 +78,17 @@ describe("enrolment redirect", () => {
     expect(url.searchParams.get("enrol-device")).toMatch(/^[0-9a-f]{64}$/);
     expect(url.searchParams.get("enrol-kem")).toMatch(/^[0-9a-f]{64}$/);
     expect(url.searchParams.get("callback-url")).toBe(window.location.origin + window.location.pathname);
-    const state = url.searchParams.get("state");
-    expect(state).toMatch(/^[0-9a-f]{32}$/);
-    expect(sessionStorage.getItem("calimero.enrol.state")).toBe(state);
+    // mero-js mints the state and keeps it; an answer carrying any other is refused
+    expect(url.searchParams.get("state")).toBeTruthy();
+    await expect(
+      completeDeviceEnrolment({
+        credential: "00",
+        account: "ac".repeat(32),
+        device: "de".repeat(32),
+        state: "not-the-one-sent",
+        devicePublicKey: url.searchParams.get("enrol-device")!,
+      }),
+    ).rejects.toThrow(/did not make/);
     // the device key is kept, so the callback can be checked against it
     const keys = JSON.parse(localStorage.getItem("calimero.device")!);
     expect(keys.signPk).toBe(url.searchParams.get("enrol-device"));

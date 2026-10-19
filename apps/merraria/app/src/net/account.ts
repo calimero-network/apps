@@ -2,9 +2,9 @@
 // `useAccountEnrolment`, same order of operations, no React.
 //
 //   goToWallet()            — generate (or reuse) this browser's device keys,
-//                             remember a state parameter, leave for the wallet.
-//   completeEnrolment()     — on the way back: read the callback ONCE, check
-//                             the state against the one sent, verify the
+//                             leave for the wallet (mero-js remembers the state).
+//   completeEnrolment()     — on the way back: read the callback ONCE, have
+//                             mero-js check its state against the one sent, verify the
 //                             certificate, save the credential, ask the cloud
 //                             which relay serves the account, adopt the session.
 //
@@ -28,8 +28,6 @@ import { resetTransport } from "./transport";
 
 /** Where this browser's device keypair lives. */
 const DEVICE_KEY = "calimero.device";
-/** The state parameter this tab sent to the wallet, to check what comes back. */
-const STATE_KEY = "calimero.enrol.state";
 
 /**
  * The hosted wallet, which is a property of the platform rather than of any
@@ -106,21 +104,14 @@ export function isReturningFromWallet(location: { hash: string } = window.locati
 /** Leave for the wallet to enrol this browser's device key. Does not return. */
 export async function goToWallet(walletUrl: string = HOSTED_WALLET): Promise<void> {
   const keys = await deviceKeys();
-  // Remembered before leaving, so what comes back can be checked against what
-  // we sent. Without this the state parameter is decoration.
-  const state = hex(crypto.getRandomValues(new Uint8Array(16)));
-  try {
-    sessionStorage.setItem(STATE_KEY, state);
-  } catch {
-    /* storage unavailable: the check on return reports it as unverifiable */
-  }
+  // mero-js mints the state and remembers it before we leave, so what comes
+  // back is checked against what was sent.
   window.location.assign(
     deviceEnrolmentUrl({
       walletUrl,
       devicePublicKey: keys.signPk,
       kemPublicKey: keys.kemPk,
       returnTo: window.location.origin + window.location.pathname,
-      state,
     }),
   );
 }
@@ -195,32 +186,14 @@ export async function completeEnrolment(
   }
   if (!back) return { status: "none" };
 
-  // The state we sent, not the one that came back: comparing the returned
-  // value against itself always passes, and then any page able to drive this
-  // origin's callback could have had a credential adopted here.
-  let sent: string | null = null;
-  try {
-    sent = sessionStorage.getItem(STATE_KEY);
-    sessionStorage.removeItem(STATE_KEY);
-  } catch {
-    /* single-use where storage allows it; the comparison below is the gate */
-  }
-  if (!sent) {
-    return {
-      status: "failed",
-      note:
-        "This enrolment could not be verified as one this tab started, so it was not " +
-        'accepted. Start again from "Enrol with your account".',
-    };
-  }
-
   try {
     const keys = await deviceKeys();
+    // mero-js compares `back.state` with the state IT sent, not with itself,
+    // and throws on a mismatch, so a callback this tab did not start is refused.
     const enrolled = await completeDeviceEnrolment({
       ...back,
       devicePublicKey: keys.signPk,
       kemPublicKey: keys.kemPk,
-      expectState: sent,
     });
 
     // Saved BEFORE the relay lookup, and kept whatever that lookup answers:

@@ -23,7 +23,6 @@ import {
 export const WALLET_URL = "https://wallet.cloud.calimero.network/account-enroll";
 /** Same keys as mero-react, so a device enrolled by either is one device. */
 const DEVICE_KEY = "calimero.device";
-const STATE_KEY = "calimero.enrol.state";
 
 const hex = (b: ArrayBuffer | Uint8Array): string =>
   [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -87,19 +86,13 @@ export async function beginAccountEnrolment(
   walletUrl: string = WALLET_URL,
 ): Promise<void> {
   const keys = await deviceKeys();
-  const state = hex(crypto.getRandomValues(new Uint8Array(16)));
-  try {
-    sessionStorage.setItem(STATE_KEY, state);
-  } catch {
-    /* the comparison on return is the gate; without storage it fails closed */
-  }
+  // mero-js mints the state, remembers it, and refuses an answer to any other.
   navigate(
     deviceEnrolmentUrl({
       walletUrl,
       devicePublicKey: keys.signPk,
       kemPublicKey: keys.kemPk,
       returnTo: window.location.origin + window.location.pathname,
-      state,
     }),
   );
 }
@@ -162,23 +155,11 @@ export async function completeAccountEnrolment(deps: { cloudBaseUrl?: string } =
   const back = readEnrolmentCallback(); // throws on `error=`; strips the fragment
   if (!back) return null;
   const keys = await deviceKeys();
-  let sent: string | null = null;
-  try {
-    sent = sessionStorage.getItem(STATE_KEY);
-    sessionStorage.removeItem(STATE_KEY);
-  } catch {
-    /* single-use where storage allows it */
-  }
-  if (!sent) {
-    throw new Error(
-      'This enrolment could not be verified as one this tab started, so it was not accepted. Start again from "Enrol with your account".',
-    );
-  }
+  // `back.state` is checked against the one mero-js sent; a mismatch throws.
   const enrolled = await completeDeviceEnrolment({
     ...back,
     devicePublicKey: keys.signPk,
     kemPublicKey: keys.kemPk,
-    expectState: sent,
   });
   // Kept as a credential too, so the identity outlives the connection: a
   // relay can be lost without the certificate being lost.

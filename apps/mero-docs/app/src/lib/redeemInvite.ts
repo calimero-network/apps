@@ -120,33 +120,12 @@ function redeemOnce(
   );
 }
 
-/**
- * The refusals a person can do something specific about, read off the node's
- * message. Core answers both with a 409, which the shared classifier files as
- * a generic `refused` - true, but "ask an admin to invite you again" sends
- * someone whose link is merely spent to the wrong person, and someone who was
- * removed to ask for a link that cannot readmit them.
- */
-const SPECIFIC_REFUSALS: ReadonlyArray<[RegExp, string]> = [
-  [
-    /InvitationAlreadyConsumed|already used this invitation/i,
-    "You've already used this link. Ask for a new one.",
-  ],
-  [
-    /RemovedFromGroup|was removed from group|cannot rejoin/i,
-    'An admin removed you. Ask to be re-added.',
-  ],
-];
-
-/** What the prompt says about a failed redeem, in the scope's own noun: the
- *  shared wording, plus a line naming the refusal when the node's message
- *  says which one it was. */
+/** What the prompt says about a failed redeem, in the scope's own noun. A link
+ *  already used and a removal by an admin each have their own reason (mero-js
+ *  26.1), so the shared wording already tells the person what to do. */
 export function inviteFailureCopy(
   outcome: Extract<RedeemOutcome, { status: 'failed' }>,
   noun: 'workspace' | 'folder',
 ): string {
-  const general =
-    describeInviteFailure(outcome.reason, noun) ?? outcome.message;
-  const specific = SPECIFIC_REFUSALS.find(([re]) => re.test(outcome.message));
-  return specific ? `${general} ${specific[1]}` : general;
+  return describeInviteFailure(outcome.reason, noun) ?? outcome.message;
 }

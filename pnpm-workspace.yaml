@@ -86,7 +86,14 @@ catalog:
   # which drops the tokens Calimero Desktop opens an app with until
   # mero-react#103 passes `allowUnsolicited` there, and it removes the
   # enrolment `state`/`expectState` options mero-blocks and merraria pass.
-  "@calimero-network/mero-js": 25.3.1
+  # 26.1.0 (mero-js#287): a refused join names why, so a link already used and
+  # a removal by an admin each get their own message (mero-react#113). Still
+  # schema 25 and request proof v2, so rc.89 and `merod-image` stay. The
+  # mero-react#116 provider passes `allowUnsolicited` inside Calimero Desktop,
+  # and mero-blocks and merraria let mero-js keep the enrolment state. The
+  # 26.0.0 break (#286) dropped calls to routes core does not serve; no app on
+  # the catalog used them.
+  "@calimero-network/mero-js": 26.1.0
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
@@ -143,7 +150,11 @@ catalog:
   # while logged out lands on instead of the app's landing page.
   # 9.16.1 (#110): a stray click outside the dialog no longer closes it while
   # a join is still syncing.
-  "@calimero-network/mero-react": ^9.16.1
+  # 10.1.2 moves with mero-js 26. 10.0.0 removed `useNamespaceIdentity`, which
+  # no app used; 10.1.0 (#113) says when a link was already used or the person
+  # was removed; 10.1.2 (#116) signs in an app Calimero Desktop opens, which
+  # mero-js 26 otherwise refuses as a login this page did not begin.
+  "@calimero-network/mero-react": ^10.1.2
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"
