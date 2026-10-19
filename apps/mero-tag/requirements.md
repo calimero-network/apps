@@ -27,7 +27,7 @@ mero-tag/
 | Tool | Needed for | Install |
 |------|-----------|---------|
 | **Rust** + `wasm32-unknown-unknown` | building the contract | <https://rustup.rs>, then `rustup target add wasm32-unknown-unknown` |
-| **cargo-mero** (core 0.11.0-rc.83) | ABI embed + signed bundle | from the core tag pinned in `logic/Cargo.toml` |
+| **cargo-mero** (core 0.11.0-rc.89) | ABI embed + signed bundle | from the core tag pinned in `logic/Cargo.toml` |
 | **Full Xcode 16+** | building / running the app, XCTest, deploying to a device | Mac App Store, then `sudo xcode-select -s /Applications/Xcode.app` |
 | **XcodeGen** | generating the `.xcodeproj` | `brew install xcodegen` |
 | **A Calimero account** | signing in | created with a passkey in the Calimero wallet on first sign-in |
@@ -83,7 +83,7 @@ other's member (tracker ▸ **Share**). Move one device and watch the other's ma
 |---------|-------------|--------------|
 | `make logic-test` | Rust unit tests for the contract's pure helpers | no |
 | `make logic-build` | WASM build with the ABI embedded | no |
-| `make workflows` | merobox scenarios against `merod:0.11.0-rc.83` (Docker) | no |
+| `make workflows` | merobox scenarios against `merod:0.11.0-rc.89` (Docker) | no |
 | `make app-test` | App unit tests (events, service args, store, session) + sign-in UI smoke test | yes |
 | `make test` | `logic-test` (the no-Xcode subset) | no |
 
