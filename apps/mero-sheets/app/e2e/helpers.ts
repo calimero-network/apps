@@ -1,4 +1,5 @@
 import { expect, type Browser, type Page } from '@playwright/test';
+import { openAuthCallback } from '@calimero-apps/e2e-node/journey';
 import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -72,7 +73,7 @@ export async function loginViaHash(page: Page, nodeIndex = 0) {
     application_id: node.appId,
   }).toString();
 
-  await page.goto(`/#${hash}`);
+  await openAuthCallback(page, '/', new URLSearchParams(hash));
   await page.waitForURL(`**${appRoute()}`, { timeout: 30_000 });
 }
 
