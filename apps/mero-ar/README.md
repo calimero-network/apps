@@ -13,10 +13,10 @@ workflows/  merobox suites (logic-test.yml = 1 node, identity-and-roles.yml = 2 
 Makefile    every command has a `make` shortcut
 ```
 
-Built for **Calimero core 0.11.0-rc.83**: the contract pins `calimero-sdk`,
-`calimero-storage` and `calimero-storage-macros` to tag `0.11.0-rc.83`
+Built for **Calimero core 0.11.0-rc.89**: the contract pins `calimero-sdk`,
+`calimero-storage` and `calimero-storage-macros` to tag `0.11.0-rc.89`
 (`logic/Cargo.toml`, `min-runtime-version` too), and the merobox suites run
-`ghcr.io/calimero-network/merod:0.11.0-rc.83`.
+`ghcr.io/calimero-network/merod:0.11.0-rc.89`.
 
 ## The iOS app: Cloud sign-in, relay session
 
@@ -123,7 +123,7 @@ Two more things the same code depends on:
 
 ## Status
 
-- ✅ WASM scene-graph contract (objects + transforms, presence, comments, locking, versioned LWW, world-map blob) — core rc.83, builds + unit-tested
+- ✅ WASM scene-graph contract (objects + transforms, presence, comments, locking, versioned LWW, world-map blob) — core rc.89, builds + unit-tested
 - ✅ Account identity model: account-attributed writes, account-keyed roles, owner-gated room name, admin lock-breaking — covered by both merobox suites
 - ✅ App on the shared swift-sdk: Cloud sign-in (wallet passkey → device certificate → relay), relay writes/reads, Keychain session resume, live SSE, roles UI
 - ✅ Light Calimero design (the apps' light tokens, SF Symbols, ids behind "Show technical details")
