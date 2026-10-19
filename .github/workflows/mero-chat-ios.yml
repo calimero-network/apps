@@ -1,0 +1,93 @@
+# Native iOS Mero Chat (apps/mero-chat/mobile/ios): generate the Xcode project
+# from project.yml, build the app and its logic tests for the iOS Simulator,
+# and run the tests. The swift-sdk is resolved from GitHub at the revision
+# project.yml pins.
+name: Mero Chat iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-chat/mobile/ios/**
+      - .github/workflows/mero-chat-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-chat/mobile/ios/**
+      - .github/workflows/mero-chat-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-chat-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-test:
+    name: Build & test (iOS Simulator)
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-chat/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # Pick an available iPhone simulator by name (image-agnostic), as the
+      # swift-sdk's own UI workflow does.
+      - name: Pick a simulator
+        id: sim
+        run: |
+          DEVICE=$(xcrun simctl list devices available | grep -oE 'iPhone 1[0-9][^(]*' | head -1 | xargs)
+          echo "Using simulator: ${DEVICE:-iPhone 16}"
+          echo "device=${DEVICE:-iPhone 16}" >> "$GITHUB_OUTPUT"
+
+      - name: Build for testing
+        env:
+          DEVICE: ${{ steps.sim.outputs.device }}
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project MeroChat.xcodeproj \
+            -scheme MeroChat \
+            -destination "platform=iOS Simulator,name=${DEVICE}" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: Test
+        env:
+          DEVICE: ${{ steps.sim.outputs.device }}
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project MeroChat.xcodeproj \
+            -scheme MeroChat \
+            -destination "platform=iOS Simulator,name=${DEVICE}" \
+            -derivedDataPath build/DerivedData \
+            -resultBundlePath build/MeroChatTests.xcresult \
+            | tee xcodebuild-test.log
+          grep -q "\*\* TEST EXECUTE SUCCEEDED \*\*\|\*\* TEST SUCCEEDED \*\*" xcodebuild-test.log \
+            || { echo "::error::iOS tests did not pass"; exit 1; }
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-chat-ios-logs
+          path: |
+            apps/mero-chat/mobile/ios/xcodebuild-*.log
+            apps/mero-chat/mobile/ios/build/MeroChatTests.xcresult
+          if-no-files-found: warn

@@ -1,0 +1,40 @@
+{
+  "total_count": 42,
+  "messages": [
+    {
+      "index": 20,
+      "timestamp": 1760700000,
+      "sender": "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
+      "mentions": [],
+      "mentions_usernames": [],
+      "files": [],
+      "images": [],
+      "id": "aa00000000000000000000000000000000000000000000000000000000000020_1760700000",
+      "text": "older one",
+      "edited_on": null,
+      "reactions": {},
+      "deleted": null,
+      "thread_count": 0,
+      "thread_last_timestamp": 0,
+      "parent_message_id": null
+    },
+    {
+      "index": 21,
+      "timestamp": 1760700100,
+      "sender": "{{ME}}",
+      "mentions": [],
+      "mentions_usernames": [],
+      "files": [],
+      "images": [],
+      "id": "aa00000000000000000000000000000000000000000000000000000000000021_1760700100",
+      "text": "",
+      "edited_on": null,
+      "reactions": null,
+      "deleted": true,
+      "thread_count": 0,
+      "thread_last_timestamp": 0,
+      "parent_message_id": null
+    }
+  ],
+  "start_position": 20
+}

@@ -1,0 +1,122 @@
+# XcodeGen spec for the native iOS Mero Chat app and its unit tests.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes MeroChat.xcodeproj (not committed)
+#   open MeroChat.xcodeproj
+#
+# The SDK is consumed from GitHub, pinned to an exact commit of swift-sdk's
+# default branch (the delegated-account parity work is unreleased). To bump it,
+# change `revision` below and regenerate.
+name: MeroChat
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: 6eabf1eabc42971a2a4cb15ea150d49071663c32
+
+targets:
+  MeroChat:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/Core
+      - Sources/App
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Mero Chat
+        UILaunchScreen: {}
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`mero-chat://enrol#credential=…`).
+          # ASWebAuthenticationSession intercepts it itself; registering it also
+          # lets `onOpenURL` finish a sign-in that arrives outside the sheet.
+          - CFBundleURLName: network.calimero.chat.enrol
+            CFBundleURLSchemes: [mero-chat]
+          # Invitation deep links: `calimero://com.calimero.chat/join?invitation=…`.
+          - CFBundleURLName: network.calimero.chat.invite
+            CFBundleURLSchemes: [calimero]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
+        # wallet and Cloud manager). Point these at another environment to test
+        # against it; see README.md.
+        MeroChatCallbackScheme: mero-chat
+        MeroChatCallbackHost: ""
+        MeroChatCallbackPath: /enrol
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.chat
+        PRODUCT_NAME: MeroChat
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+  # Logic tests: the chat layer (Sources/Core) compiled straight into the test
+  # bundle, with no host app, so MeroKit is linked exactly once and the SDK's
+  # test doubles (MeroKitTestSupport) sit beside it.
+  MeroChatTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Sources/Core
+      - Tests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.chat.tests
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: "YES"
+    dependencies:
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitTestSupport
+
+  # Live tests: the same chat layer against a REAL relay (mobile/e2e/relay.yml).
+  # Their own target, not MeroChatTests: they drive the session the app's
+  # SessionModel builds (MeroKitUI's MeroClient over a CloudSignIn), while the
+  # logic tests deliberately link no UI module and route URLSession through
+  # MockURLProtocol. Every case skips itself unless MERO_E2E_RELAY_URL and
+  # MERO_E2E_APP_ID are set (see LiveTests/LiveRig.swift), so running the whole
+  # scheme offline stays green. CI: .github/workflows/mero-chat-ios-live.yml
+  # runs `-only-testing:MeroChatLiveTests`.
+  MeroChatLiveTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Sources/Core
+      - LiveTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.chat.livetests
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: "YES"
+    dependencies:
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+schemes:
+  MeroChat:
+    build:
+      targets:
+        MeroChat: all
+        MeroChatTests: [test]
+        MeroChatLiveTests: [test]
+    test:
+      targets:
+        - MeroChatTests
+        - MeroChatLiveTests

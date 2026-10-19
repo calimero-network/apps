@@ -1,0 +1,151 @@
+# Native iOS Mero Chat against a REAL relay: the live tests
+# (apps/mero-chat/mobile/ios/LiveTests, target MeroChatLiveTests).
+#
+# One merod relay (mobile/e2e/relay.yml: embedded auth, device-key login,
+# delegated access, mock TEE, mero-chat installed) is booted on the runner's
+# loopback, and the tests drive the app's chat layer through it with accounts
+# minted offline — founding, channels, messages, an invitation redeemed by
+# direct admission, and live updates over SSE. The iOS Simulator reaches the
+# host's 127.0.0.1 directly. No cloud, no wallet, no registry.
+#
+# xcodebuild passes the test process only variables prefixed TEST_RUNNER_
+# (prefix stripped), so .relay.env is exported as TEST_RUNNER_MERO_E2E_*.
+# Without them the live tests skip, which is why this job also refuses a run
+# where any of them skipped.
+name: Mero Chat iOS (live relay)
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-chat/mobile/ios/**
+      - apps/mero-chat/mobile/e2e/**
+      - apps/mero-chat/logic/**
+      - .github/workflows/mero-chat-ios-live.yml
+      - .github/actions/build-merod-mock-tee/**
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-chat/mobile/ios/**
+      - apps/mero-chat/mobile/e2e/**
+      - apps/mero-chat/logic/**
+      - .github/workflows/mero-chat-ios-live.yml
+      - .github/actions/build-merod-mock-tee/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-chat-ios-live-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  live:
+    name: Live relay tests (iOS Simulator)
+    runs-on: macos-15
+    # An uncached merod build is most of this; the step timeouts below are the
+    # ones that matter, so a hang fails its step and the logs still upload.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # The wasm target, for the mero-chat bundle run-relay.sh builds.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      # merod with --features mock-attestation at run-relay.sh's CORE_REF,
+      # cached per commit and OS; exports MEROD_BIN.
+      - name: Build merod (mock TEE)
+        timeout-minutes: 50
+        uses: ./.github/actions/build-merod-mock-tee
+
+      - uses: ./.github/actions/install-cargo-mero
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # The kotlin-sdk's pin, as for the Android live tests.
+      - name: Install merobox
+        run: pip install 'merobox==0.6.75' 'calimero-client-py==0.7.0'
+
+      - name: Boot the relay
+        timeout-minutes: 20
+        working-directory: apps/mero-chat/mobile/e2e
+        run: |
+          set -euo pipefail
+          ./run-relay.sh
+          cat .relay.env
+          # Hand every value to the test process (see the header).
+          while IFS='=' read -r key value; do
+            [ -n "$key" ] && echo "TEST_RUNNER_${key}=${value}" >> "$GITHUB_ENV"
+          done < .relay.env
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: apps/mero-chat/mobile/ios
+        run: xcodegen generate
+
+      # Any available iPhone, by name (image-agnostic), as mero-chat-ios.yml does.
+      - name: Pick a simulator
+        id: sim
+        run: |
+          DEVICE=$(xcrun simctl list devices available | grep -oE 'iPhone 1[0-9][^(]*' | head -1 | xargs)
+          echo "Using simulator: ${DEVICE:-iPhone 16}"
+          echo "device=${DEVICE:-iPhone 16}" >> "$GITHUB_OUTPUT"
+
+      - name: Run the live tests
+        timeout-minutes: 30
+        working-directory: apps/mero-chat/mobile/ios
+        env:
+          DEVICE: ${{ steps.sim.outputs.device }}
+        run: |
+          set -o pipefail
+          test -n "${TEST_RUNNER_MERO_E2E_RELAY_URL:-}" || { echo "::error::no relay env"; exit 1; }
+          xcodebuild test \
+            -project MeroChat.xcodeproj \
+            -scheme MeroChat \
+            -destination "platform=iOS Simulator,name=${DEVICE}" \
+            -only-testing:MeroChatLiveTests \
+            -derivedDataPath build/DerivedData \
+            -resultBundlePath build/MeroChatLiveTests.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-live.log
+          grep -q "\*\* TEST SUCCEEDED \*\*" xcodebuild-live.log \
+            || { echo "::error::the live tests did not pass"; exit 1; }
+          # A skip is a pass to xcodebuild: a live test that skipped itself
+          # (no relay env reached it) proved nothing, so it fails the job.
+          if grep -qE "Test [Cc]ase .* skipped|Test skipped|with [1-9][0-9]* tests? skipped" xcodebuild-live.log; then
+            echo "::error::a live test skipped itself; that is not a pass"
+            grep -nE "skipped" xcodebuild-live.log || true
+            exit 1
+          fi
+          grep -qE "Executed [1-9][0-9]* tests?" xcodebuild-live.log \
+            || { echo "::error::no live test executed"; exit 1; }
+
+      # Before the relay stops: `run-relay.sh --stop` removes its data dir.
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-chat-ios-live-logs
+          path: |
+            apps/mero-chat/mobile/ios/xcodebuild-live.log
+            apps/mero-chat/mobile/ios/build/MeroChatLiveTests.xcresult
+            apps/mero-chat/mobile/e2e/merobox-run.log
+            apps/mero-chat/mobile/e2e/data/*/logs
+          if-no-files-found: warn
+          include-hidden-files: true
+
+      - name: Stop the relay
+        if: always()
+        working-directory: apps/mero-chat/mobile/e2e
+        run: ./run-relay.sh --stop
