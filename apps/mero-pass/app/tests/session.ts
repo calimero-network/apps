@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { openAuthCallback } from '@calimero-apps/e2e-node/journey';
 
 // A signed-in session without a node.
 //
@@ -42,8 +43,15 @@ export function sessionKeys(page: Page): Promise<string[]> {
 export async function signIn(page: Page, path = '/teams') {
   await stubNodeAuth(page);
   const expires = Date.now() + 60 * 60 * 1000;
-  await page.goto(
-    `${path}#node_url=${encodeURIComponent(NODE)}&access_token=test-access&refresh_token=test-refresh&expires_at=${expires}`,
+  await openAuthCallback(
+    page,
+    path,
+    new URLSearchParams({
+      node_url: NODE,
+      access_token: 'test-access',
+      refresh_token: 'test-refresh',
+      expires_at: String(expires),
+    }),
   );
   await expect(page.getByTestId('theme-toggle')).toBeVisible();
   // mero-react took the session out of the fragment and stored it.

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openAuthCallback } from '@calimero-apps/e2e-node/journey';
 
 // What this asserts is the half of the invitation flow that can be observed
 // without a node: an invitation link, opened by somebody who is NOT logged in,
@@ -83,8 +84,14 @@ test.describe('invitation links', () => {
     // address bar leak into history, referrers and screenshots.
     //
     // So the assertion moved to where the session actually has to end up.
-    await page.goto(
-      `/?invitation=${CODE}#access_token=abc&refresh_token=def&node_url=http%3A%2F%2Flocalhost%3A2528`,
+    await openAuthCallback(
+      page,
+      `/?invitation=${CODE}`,
+      new URLSearchParams({
+        access_token: 'abc',
+        refresh_token: 'def',
+        node_url: 'http://localhost:2528',
+      }),
     );
     await expect(
       page.getByRole('heading', { level: 1, name: 'Mero Sign' }),
