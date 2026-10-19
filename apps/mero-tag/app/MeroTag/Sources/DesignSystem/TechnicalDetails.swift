@@ -30,10 +30,10 @@ struct TechnicalDetails: View {
                         .font(.system(size: 11, weight: .semibold))
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
                     Text(isOpen ? "Hide technical details" : title)
-                        .font(Cal.Typeface.label)
+                        .font(Tag.Typeface.label)
                     Spacer()
                 }
-                .foregroundStyle(Cal.textFaint)
+                .foregroundStyle(Tag.textFaint)
                 .frame(minHeight: 28)
                 .contentShape(Rectangle())
             }
@@ -45,7 +45,7 @@ struct TechnicalDetails: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(items) { item in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(item.label).font(Cal.Typeface.hint).foregroundStyle(Cal.textFaint)
+                            Text(item.label).font(Tag.Typeface.hint).foregroundStyle(Tag.textFaint)
                             IdField(value: item.value, copyable: item.copyable)
                         }
                     }
@@ -67,8 +67,8 @@ struct IdField: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(value)
-                .font(Cal.Typeface.mono)
-                .foregroundStyle(Cal.textDim)
+                .font(Tag.Typeface.mono)
+                .foregroundStyle(Tag.textDim)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
@@ -85,7 +85,7 @@ struct IdField: View {
                 } label: {
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(copied ? Cal.accentInk : Cal.textFaint)
+                        .foregroundStyle(copied ? Tag.accentInk : Tag.textFaint)
                         .frame(width: 26, height: 26)
                         .contentShape(Rectangle())
                 }
@@ -96,10 +96,10 @@ struct IdField: View {
         .padding(.leading, 10)
         .padding(.trailing, copyable ? 2 : 10)
         .frame(minHeight: 30)
-        .background(RoundedRectangle(cornerRadius: Cal.Radius.id, style: .continuous).fill(Cal.surfaceSunken))
+        .background(RoundedRectangle(cornerRadius: Tag.Radius.id, style: .continuous).fill(Tag.surfaceSunken))
         .overlay(
-            RoundedRectangle(cornerRadius: Cal.Radius.id, style: .continuous)
-                .strokeBorder(Cal.border, lineWidth: 1))
+            RoundedRectangle(cornerRadius: Tag.Radius.id, style: .continuous)
+                .strokeBorder(Tag.border, lineWidth: 1))
     }
 }
 
@@ -112,12 +112,12 @@ struct KeyValueRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(label)
-                .font(Cal.Typeface.hint)
-                .foregroundStyle(Cal.textFaint)
+                .font(Tag.Typeface.hint)
+                .foregroundStyle(Tag.textFaint)
             Spacer(minLength: 8)
             Text(value)
-                .font(monospaced ? Cal.Typeface.mono : Cal.Typeface.bodySmall)
-                .foregroundStyle(Cal.ink)
+                .font(monospaced ? Tag.Typeface.mono : Tag.Typeface.bodySmall)
+                .foregroundStyle(Tag.ink)
                 .monospacedDigit()
                 .lineLimit(1)
                 .truncationMode(.middle)

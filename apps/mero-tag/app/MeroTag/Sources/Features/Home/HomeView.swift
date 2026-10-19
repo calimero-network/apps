@@ -8,8 +8,8 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: Cal.Space.stack) {
-                    PageHeader(title: "Trackers", subtitle: subtitle) {
+                VStack(alignment: .leading, spacing: Tag.Space.stack) {
+                    PageHeader(title: "People", subtitle: subtitle) {
                         ConnectionPill(connection: store.connection)
                     }
 
@@ -19,11 +19,11 @@ struct HomeView: View {
                     }
 
                     if !store.hasLoaded {
-                        Card { HStack { Spacer(); ProgressView().tint(Cal.textFaint); Spacer() } }
+                        Card { HStack { Spacer(); ProgressView().tint(Tag.textFaint); Spacer() } }
                     } else if store.trackers.isEmpty {
                         EmptyState(
                             systemImage: "location.slash",
-                            title: "No trackers yet",
+                            title: "Nobody on the map yet",
                             message: "Create a tracker for this phone, then share it with the people who should "
                                 + "see where it is."
                         ) {
@@ -32,13 +32,13 @@ struct HomeView: View {
                             } label: {
                                 Label("New tracker", systemImage: "plus")
                             }
-                            .buttonStyle(.calPrimary)
+                            .buttonStyle(.tagPrimary)
                         }
                     } else {
                         Card(padding: 0) {
                             VStack(spacing: 0) {
                                 ForEach(Array(store.trackers.enumerated()), id: \.element.id) { index, tracker in
-                                    if index > 0 { Hairline().padding(.leading, 62) }
+                                    if index > 0 { Hairline().padding(.leading, 74) }
                                     NavigationLink(value: tracker.id) {
                                         TrackerRow(
                                             tracker: tracker,
@@ -53,22 +53,21 @@ struct HomeView: View {
                         }
                     }
                 }
-                .calPage()
+                .tagPage()
             }
-            .background(Cal.bg.ignoresSafeArea())
+            .background(Tag.bg.ignoresSafeArea())
             .refreshable { await store.refresh() }
             .navigationDestination(for: String.self) { id in
                 TrackerDetailView(trackerId: id, store: store)
             }
             .toolbar {
-                ToolbarItem(placement: .calLeading) { BrandTitle() }
-                ToolbarItem(placement: .calTrailing) {
+                ToolbarItem(placement: .tagTrailing) {
                     IconButton(systemImage: "plus", label: "New tracker") { showingNew = true }
                         .accessibilityIdentifier("newTrackerButton")
                 }
             }
             .inlineNavigationTitle()
-            .calNavigationBar()
+            .tagNavigationBar()
             .sheet(isPresented: $showingNew) {
                 NewTrackerSheet(store: store)
             }
@@ -90,10 +89,16 @@ private struct TrackerRow: View {
 
     var body: some View {
         ListRow(title: tracker.name, subtitle: subtitle) {
-            IconTile(systemImage: tracker.latest == nil ? "location.slash" : "location.fill", accent: isSharingHere)
+            Avatar(name: tracker.name, seed: tracker.id, size: 44)
+                .overlay(alignment: .bottomTrailing) {
+                    if isSharingHere {
+                        Circle().fill(Tag.live).frame(width: 13, height: 13)
+                            .overlay(Circle().strokeBorder(Tag.surface, lineWidth: 2.5))
+                    }
+                }
         } trailing: {
             if isSharingHere {
-                Badge(text: "Live", tone: .accent, dot: true)
+                Badge(text: "Live", tone: .success, dot: true)
             } else if let battery = tracker.latest?.battery {
                 Badge(text: "\(battery)%", tone: battery <= 20 ? .warning : .neutral, systemImage: BatteryIcon.name(battery))
             }
@@ -132,7 +137,7 @@ struct NewTrackerSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    CalTextField(
+                    TagTextField(
                         label: "Name", placeholder: "e.g. My iPhone", text: $name,
                         help: "Members you share it with see this name on their map.",
                         submitLabel: .done, onSubmit: save)
@@ -140,12 +145,12 @@ struct NewTrackerSheet: View {
 
                     Toggle(isOn: $shareFromThisPhone) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Report this phone's location").font(Cal.Typeface.section).foregroundStyle(Cal.ink)
+                            Text("Report this phone's location").font(Tag.Typeface.section).foregroundStyle(Tag.ink)
                             Text("You can stop any time from the Map tab.")
-                                .font(Cal.Typeface.meta).foregroundStyle(Cal.textFaint)
+                                .font(Tag.Typeface.meta).foregroundStyle(Tag.textFaint)
                         }
                     }
-                    .tint(Cal.accentInk)
+                    .tint(Tag.accentInk)
 
                     if let error = store.lastError, !isSaving {
                         Callout(tone: .danger, message: error)
@@ -155,15 +160,15 @@ struct NewTrackerSheet: View {
                         .disabled(trimmed.isEmpty)
                         .accessibilityIdentifier("createTrackerButton")
                 }
-                .padding(Cal.Space.gutter)
+                .padding(Tag.Space.gutter)
             }
-            .background(Cal.bg.ignoresSafeArea())
+            .background(Tag.bg.ignoresSafeArea())
             .navigationTitle("New tracker")
             .inlineNavigationTitle()
-            .calNavigationBar()
+            .tagNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.foregroundStyle(Cal.textDim)
+                    Button("Cancel") { dismiss() }.foregroundStyle(Tag.textDim)
                 }
             }
         }

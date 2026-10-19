@@ -2,9 +2,9 @@ import SwiftUI
 
 // MARK: - Buttons
 
-/// Calimero button variants (vote `index.css` `.btn`): radius 8, 14/500 label,
-/// 8pt icon gap. Primary is lime with ink text and a 1px dark edge.
-struct CalButtonStyle: ButtonStyle {
+/// Button variants. Primary is the indigo→violet gradient with white text and
+/// a soft glow; it springs a little when pressed.
+struct TagButtonStyle: ButtonStyle {
     enum Kind { case primary, secondary, plain, danger }
     enum Size { case small, regular, large }
 
@@ -17,29 +17,43 @@ struct CalButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
         configuration.label
-            .font(size == .large ? .system(size: 16, weight: .semibold) : .system(size: 14, weight: .medium))
-            .labelStyle(CalLabelStyle(gap: size == .small ? 6 : 8))
+            .font(size == .large ? .system(size: 17, weight: .semibold) : .system(size: 14.5, weight: .semibold))
+            .labelStyle(TagLabelStyle(gap: size == .small ? 6 : 8))
             .lineLimit(1)
             .foregroundStyle(foreground(pressed: pressed))
             .padding(.horizontal, horizontalPadding)
             .frame(height: height)
             .frame(maxWidth: fullWidth ? .infinity : nil)
-            .background(
-                RoundedRectangle(cornerRadius: Cal.Radius.control, style: .continuous)
-                    .fill(fill(pressed: pressed)))
+            .background(background(pressed: pressed))
             .overlay(
-                RoundedRectangle(cornerRadius: Cal.Radius.control, style: .continuous)
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(stroke(pressed: pressed), lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: Cal.Radius.control, style: .continuous))
-            .opacity(isEnabled ? 1 : 0.5)
-            .animation(.easeOut(duration: 0.12), value: pressed)
+            .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .shadow(
+                color: kind == .primary && isEnabled ? Tag.accent.opacity(pressed ? 0.15 : 0.32) : .clear,
+                radius: pressed ? 6 : 14, y: pressed ? 2 : 6)
+            .scaleEffect(pressed ? 0.97 : 1)
+            .opacity(isEnabled ? 1 : 0.45)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: pressed)
+    }
+
+    private var radius: CGFloat { size == .large ? 18 : Tag.Radius.control }
+
+    @ViewBuilder
+    private func background(pressed: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        if kind == .primary {
+            shape.fill(Tag.accentGradient).overlay(shape.fill(Color.black.opacity(pressed ? 0.12 : 0)))
+        } else {
+            shape.fill(fill(pressed: pressed))
+        }
     }
 
     private var height: CGFloat {
         switch size {
-        case .small: return 30
-        case .regular: return 36
-        case .large: return 48
+        case .small: return 32
+        case .regular: return 40
+        case .large: return 56
         }
     }
 
@@ -53,44 +67,44 @@ struct CalButtonStyle: ButtonStyle {
 
     private func foreground(pressed: Bool) -> Color {
         switch kind {
-        case .primary: return Cal.onLime
-        case .secondary: return Cal.ink
-        case .plain: return pressed ? Cal.ink : Cal.textDim
-        case .danger: return Cal.danger
+        case .primary: return Tag.onAccent
+        case .secondary: return Tag.ink
+        case .plain: return pressed ? Tag.ink : Tag.textDim
+        case .danger: return Tag.danger
         }
     }
 
     private func fill(pressed: Bool) -> Color {
         switch kind {
-        case .primary: return pressed ? Cal.limePressed : Cal.lime
-        case .secondary: return pressed ? Cal.surfaceHover : Cal.surface
-        case .plain: return pressed ? Cal.surfaceHover : .clear
-        case .danger: return pressed ? Cal.dangerSoft : Cal.surface
+        case .primary: return pressed ? Tag.accentPressed : Tag.accent
+        case .secondary: return pressed ? Tag.surfaceHover : Tag.surface
+        case .plain: return pressed ? Tag.surfaceHover : .clear
+        case .danger: return pressed ? Tag.dangerSoft : Tag.surface
         }
     }
 
     private func stroke(pressed: Bool) -> Color {
         switch kind {
-        case .primary: return Cal.limeEdge
-        case .secondary: return Cal.borderStrong
+        case .primary: return Tag.accentEdge
+        case .secondary: return Tag.border
         case .plain: return .clear
-        case .danger: return pressed ? Cal.danger : Cal.borderStrong
+        case .danger: return pressed ? Tag.danger : Tag.borderStrong
         }
     }
 }
 
-extension ButtonStyle where Self == CalButtonStyle {
-    static var calPrimary: CalButtonStyle { CalButtonStyle(kind: .primary) }
-    static var calSecondary: CalButtonStyle { CalButtonStyle(kind: .secondary) }
-    static var calPlain: CalButtonStyle { CalButtonStyle(kind: .plain) }
-    static func cal(
-        _ kind: CalButtonStyle.Kind, size: CalButtonStyle.Size = .regular, fullWidth: Bool = false
-    ) -> CalButtonStyle {
-        CalButtonStyle(kind: kind, size: size, fullWidth: fullWidth)
+extension ButtonStyle where Self == TagButtonStyle {
+    static var tagPrimary: TagButtonStyle { TagButtonStyle(kind: .primary) }
+    static var tagSecondary: TagButtonStyle { TagButtonStyle(kind: .secondary) }
+    static var tagPlain: TagButtonStyle { TagButtonStyle(kind: .plain) }
+    static func tag(
+        _ kind: TagButtonStyle.Kind, size: TagButtonStyle.Size = .regular, fullWidth: Bool = false
+    ) -> TagButtonStyle {
+        TagButtonStyle(kind: kind, size: size, fullWidth: fullWidth)
     }
 }
 
-struct CalLabelStyle: LabelStyle {
+struct TagLabelStyle: LabelStyle {
     var gap: CGFloat = 8
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: gap) {
@@ -105,8 +119,8 @@ struct LoadingButton: View {
     let title: String
     var systemImage: String?
     var isLoading = false
-    var kind: CalButtonStyle.Kind = .primary
-    var size: CalButtonStyle.Size = .large
+    var kind: TagButtonStyle.Kind = .primary
+    var size: TagButtonStyle.Size = .large
     var fullWidth = true
     let action: () -> Void
 
@@ -119,14 +133,14 @@ struct LoadingButton: View {
                 if isLoading {
                     ProgressView()
                         .controlSize(.small)
-                        .tint(kind == .primary ? Cal.onLime : Cal.ink)
+                        .tint(kind == .primary ? Tag.onAccent : Tag.ink)
                 } else if let systemImage {
                     Image(systemName: systemImage).imageScale(.small)
                 }
                 Text(title)
             }
         }
-        .buttonStyle(.cal(kind, size: size, fullWidth: fullWidth))
+        .buttonStyle(.tag(kind, size: size, fullWidth: fullWidth))
         .disabled(isLoading)
         .accessibilityLabel(isLoading ? "\(title), in progress" : title)
     }
@@ -143,14 +157,10 @@ struct IconButton: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Cal.textDim)
-                .frame(width: 34, height: 34)
-                .background(
-                    RoundedRectangle(cornerRadius: Cal.Radius.control, style: .continuous)
-                        .fill(bordered ? Cal.surface : .clear))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Cal.Radius.control, style: .continuous)
-                        .strokeBorder(bordered ? Cal.borderStrong : .clear, lineWidth: 1))
+                .foregroundStyle(Tag.textDim)
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(bordered ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(Color.clear)))
+                .overlay(Circle().strokeBorder(bordered ? Tag.border : .clear, lineWidth: 1))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -162,7 +172,7 @@ struct IconButton: View {
 
 /// Label above a 44pt field: white, 1px strong border, radius 8; focus turns
 /// the border ink and adds the lime ring.
-struct CalTextField: View {
+struct TagTextField: View {
     let label: String
     var placeholder = ""
     @Binding var text: String
@@ -178,30 +188,30 @@ struct CalTextField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 4) {
-                Text(label).font(Cal.Typeface.label).foregroundStyle(Cal.ink)
+                Text(label).font(Tag.Typeface.label).foregroundStyle(Tag.ink)
                 if optional {
-                    Text("optional").font(Cal.Typeface.hint).foregroundStyle(Cal.textFaint)
+                    Text("optional").font(Tag.Typeface.hint).foregroundStyle(Tag.textFaint)
                 }
             }
 
-            TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Cal.textFaint))
+            TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Tag.textFaint))
                 .font(monospaced ? .system(size: 14, design: .monospaced) : .system(size: 15))
-                .foregroundStyle(Cal.ink)
-                .tint(Cal.ink)
+                .foregroundStyle(Tag.ink)
+                .tint(Tag.ink)
                 .keyboard(keyboardKind)
                 .submitLabel(submitLabel)
                 .onSubmit(onSubmit)
                 .focused($focused)
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 50)
                 .background(
-                    RoundedRectangle(cornerRadius: Cal.Radius.control, style: .continuous).fill(Cal.surface))
+                    RoundedRectangle(cornerRadius: Tag.Radius.control, style: .continuous).fill(Tag.surfaceSunken))
                 .overlay(
-                    RoundedRectangle(cornerRadius: Cal.Radius.control, style: .continuous)
-                        .strokeBorder(focused ? Cal.ink : Cal.borderStrong, lineWidth: 1))
+                    RoundedRectangle(cornerRadius: Tag.Radius.control, style: .continuous)
+                        .strokeBorder(focused ? Tag.accent : Tag.border, lineWidth: focused ? 1.5 : 1))
                 .background(
-                    RoundedRectangle(cornerRadius: Cal.Radius.control + 3, style: .continuous)
-                        .stroke(Cal.ring, lineWidth: focused ? 3 : 0)
+                    RoundedRectangle(cornerRadius: Tag.Radius.control + 3, style: .continuous)
+                        .stroke(Tag.ring, lineWidth: focused ? 3 : 0)
                         .padding(-1.5))
                 .animation(.easeOut(duration: 0.15), value: focused)
                 .accessibilityLabel(label)
@@ -209,7 +219,7 @@ struct CalTextField: View {
             if let help {
                 Text(help)
                     .font(.system(size: 12))
-                    .foregroundStyle(Cal.textFaint)
+                    .foregroundStyle(Tag.textFaint)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -218,9 +228,9 @@ struct CalTextField: View {
 
 // MARK: - Cards
 
-/// White card, 1px hairline, radius 14, shadow-xs.
+/// A raised card: radius 22, a hairline and a soft cool shadow.
 struct Card<Content: View>: View {
-    var padding: CGFloat = Cal.Space.card
+    var padding: CGFloat = Tag.Space.card
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -228,11 +238,28 @@ struct Card<Content: View>: View {
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: Cal.Radius.card, style: .continuous).fill(Cal.surface))
+                RoundedRectangle(cornerRadius: Tag.Radius.card, style: .continuous).fill(Tag.surface))
             .overlay(
-                RoundedRectangle(cornerRadius: Cal.Radius.card, style: .continuous)
-                    .strokeBorder(Cal.border, lineWidth: 1))
-            .shadow(color: Cal.shadow, radius: 1, y: 1)
+                RoundedRectangle(cornerRadius: Tag.Radius.card, style: .continuous)
+                    .strokeBorder(Tag.border, lineWidth: 1))
+            .shadow(color: Tag.shadow, radius: 18, y: 8)
+    }
+}
+
+/// A floating, translucent card for content over the map.
+struct GlassCard<Content: View>: View {
+    var padding: CGFloat = 16
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Tag.Radius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Tag.Radius.card, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
+            .shadow(color: Color.black.opacity(0.14), radius: 24, y: 10)
     }
 }
 
@@ -248,9 +275,9 @@ struct CardHeader<Trailing: View>: View {
         HStack(spacing: 12) {
             IconTile(systemImage: systemImage, accent: accent)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(Cal.Typeface.section).foregroundStyle(Cal.ink)
+                Text(title).font(Tag.Typeface.section).foregroundStyle(Tag.ink)
                 if let meta {
-                    Text(meta).font(Cal.Typeface.meta).foregroundStyle(Cal.textFaint)
+                    Text(meta).font(Tag.Typeface.meta).foregroundStyle(Tag.textFaint)
                 }
             }
             Spacer(minLength: 8)
@@ -265,7 +292,8 @@ extension CardHeader where Trailing == EmptyView {
     }
 }
 
-/// 34pt rounded square holding an SF Symbol. `accent` = soft lime with ink-green.
+/// A rounded square holding an SF Symbol. `accent` = the brand gradient with
+/// a white glyph.
 struct IconTile: View {
     let systemImage: String
     var accent = false
@@ -273,12 +301,12 @@ struct IconTile: View {
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: size * 0.44, weight: .medium))
-            .foregroundStyle(accent ? Cal.accentInk : Cal.textDim)
+            .font(.system(size: size * 0.44, weight: .semibold))
+            .foregroundStyle(accent ? Tag.onAccent : Tag.textDim)
             .frame(width: size, height: size)
             .background(
-                RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
-                    .fill(accent ? Cal.accentSoft : Cal.bgSubtle))
+                RoundedRectangle(cornerRadius: size * 0.32, style: .continuous)
+                    .fill(accent ? AnyShapeStyle(Tag.accentGradient) : AnyShapeStyle(Tag.bgSubtle)))
             .accessibilityHidden(true)
     }
 }
@@ -296,13 +324,13 @@ struct ListRow<Leading: View, Trailing: View>: View {
             leading
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(Cal.Typeface.section)
-                    .foregroundStyle(Cal.ink)
+                    .font(Tag.Typeface.section)
+                    .foregroundStyle(Tag.ink)
                     .lineLimit(1)
                 if let subtitle {
                     Text(subtitle)
-                        .font(Cal.Typeface.meta)
-                        .foregroundStyle(Cal.textFaint)
+                        .font(Tag.Typeface.meta)
+                        .foregroundStyle(Tag.textFaint)
                         .lineLimit(1)
                 }
             }
@@ -311,11 +339,11 @@ struct ListRow<Leading: View, Trailing: View>: View {
             if showsChevron {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Cal.textFaint)
+                    .foregroundStyle(Tag.textFaint)
                     .accessibilityHidden(true)
             }
         }
-        .padding(.horizontal, Cal.Space.gutter)
+        .padding(.horizontal, Tag.Space.gutter)
         .padding(.vertical, 12)
         .frame(minHeight: 64)
         .contentShape(Rectangle())
@@ -326,14 +354,14 @@ struct ListRow<Leading: View, Trailing: View>: View {
 struct RowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(configuration.isPressed ? Cal.surfaceHover : Color.clear)
+            .background(configuration.isPressed ? Tag.surfaceHover : Color.clear)
     }
 }
 
 /// 1px hairline.
 struct Hairline: View {
     var body: some View {
-        Rectangle().fill(Cal.border).frame(height: 1)
+        Rectangle().fill(Tag.border).frame(height: 1)
     }
 }
 
@@ -349,25 +377,26 @@ struct EmptyState<Action: View>: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            IconTile(systemImage: systemImage, size: 40)
-                .padding(.bottom, 4)
+            IconTile(systemImage: systemImage, accent: true, size: 52)
+                .padding(.bottom, 6)
             Text(title)
-                .font(Cal.Typeface.section)
-                .foregroundStyle(Cal.ink)
+                .font(Tag.Typeface.section)
+                .foregroundStyle(Tag.ink)
             Text(message)
-                .font(Cal.Typeface.bodySmall)
-                .foregroundStyle(Cal.textDim)
+                .font(Tag.Typeface.bodySmall)
+                .foregroundStyle(Tag.textDim)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
                 .fixedSize(horizontal: false, vertical: true)
             action.padding(.top, 8)
         }
-        .padding(.vertical, compact ? 22 : 32)
-        .padding(.horizontal, compact ? 16 : 20)
+        .padding(.vertical, compact ? 24 : 36)
+        .padding(.horizontal, compact ? 16 : 22)
         .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: Tag.Radius.card, style: .continuous).fill(Tag.surface))
         .overlay(
-            RoundedRectangle(cornerRadius: Cal.Radius.card, style: .continuous)
-                .strokeBorder(Cal.borderStrong, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+            RoundedRectangle(cornerRadius: Tag.Radius.card, style: .continuous)
+                .strokeBorder(Tag.border, lineWidth: 1))
     }
 }
 
@@ -382,23 +411,23 @@ enum Tone {
 
     var foreground: Color {
         switch self {
-        case .neutral: return Cal.textDim
-        case .accent: return Cal.accentInk
-        case .success: return Cal.success
-        case .warning: return Cal.warning
-        case .danger: return Cal.danger
-        case .info: return Cal.info
+        case .neutral: return Tag.textDim
+        case .accent: return Tag.accentInk
+        case .success: return Tag.success
+        case .warning: return Tag.warning
+        case .danger: return Tag.danger
+        case .info: return Tag.info
         }
     }
 
     var background: Color {
         switch self {
-        case .neutral: return Cal.bgSubtle
-        case .accent: return Cal.accentSoft
-        case .success: return Cal.successSoft
-        case .warning: return Cal.warningSoft
-        case .danger: return Cal.dangerSoft
-        case .info: return Cal.infoSoft
+        case .neutral: return Tag.bgSubtle
+        case .accent: return Tag.accentSoft
+        case .success: return Tag.successSoft
+        case .warning: return Tag.warningSoft
+        case .danger: return Tag.dangerSoft
+        case .info: return Tag.infoSoft
         }
     }
 
@@ -427,20 +456,20 @@ struct Callout: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 if let title {
-                    Text(title).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(Cal.ink)
+                    Text(title).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(Tag.ink)
                 }
                 Text(message)
                     .font(.system(size: 13.5))
-                    .foregroundStyle(Cal.textDim)
+                    .foregroundStyle(Tag.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 14)
-        .background(RoundedRectangle(cornerRadius: Cal.Radius.callout, style: .continuous).fill(tone.background))
+        .background(RoundedRectangle(cornerRadius: Tag.Radius.callout, style: .continuous).fill(tone.background))
         .overlay(
-            RoundedRectangle(cornerRadius: Cal.Radius.callout, style: .continuous)
+            RoundedRectangle(cornerRadius: Tag.Radius.callout, style: .continuous)
                 .strokeBorder(tone.foreground.opacity(0.18), lineWidth: 1))
         .accessibilityElement(children: .combine)
     }
@@ -458,14 +487,14 @@ struct PageHeader<Trailing: View>: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
-                    .font(Cal.Typeface.pageTitle)
-                    .tracking(-0.4)
-                    .foregroundStyle(Cal.ink)
+                    .font(Tag.Typeface.pageTitle)
+                    .tracking(-0.6)
+                    .foregroundStyle(Tag.ink)
                     .accessibilityAddTraits(.isHeader)
                 if let subtitle {
                     Text(subtitle)
-                        .font(Cal.Typeface.bodySmall)
-                        .foregroundStyle(Cal.textDim)
+                        .font(Tag.Typeface.bodySmall)
+                        .foregroundStyle(Tag.textDim)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -496,9 +525,9 @@ struct SectionLabel: View {
 
 extension View {
     /// The standard scrolling page: warm background, 16pt gutters.
-    func calPage() -> some View {
+    func tagPage() -> some View {
         self
-            .padding(.horizontal, Cal.Space.gutter)
+            .padding(.horizontal, Tag.Space.gutter)
             .padding(.bottom, 24)
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)

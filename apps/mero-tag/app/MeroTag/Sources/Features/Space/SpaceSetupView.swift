@@ -13,19 +13,19 @@ struct SpaceSetupView: View {
 
     private var invite: SpaceInvite? { SpaceInvite.decode(pasted: inviteText) }
     private var isBusy: Bool { app.isCreatingSpace || app.isJoiningSpace || app.isOpeningSpace }
-    private var hasRelay: Bool { app.client.connection?.relay != nil }
+    private var hasRelay: Bool { app.canCreateSpaces }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: Cal.Space.stack) {
+                VStack(alignment: .leading, spacing: Tag.Space.stack) {
                     PageHeader(
                         title: "Choose a space",
                         subtitle: "A space is the group you share locations with. Start your own, or join one "
                             + "with the invite link someone sent you.")
 
                     Card {
-                        CalTextField(
+                        TagTextField(
                             label: "Your name", placeholder: "e.g. Ana", text: $displayName,
                             help: "Shown to the other members of the space.", submitLabel: .done)
                             .accessibilityIdentifier("displayNameField")
@@ -50,19 +50,18 @@ struct SpaceSetupView: View {
                         }
                     }
                 }
-                .calPage()
+                .tagPage()
             }
-            .background(Cal.bg.ignoresSafeArea())
+            .background(Tag.bg.ignoresSafeArea())
             .toolbar {
-                ToolbarItem(placement: .calLeading) { BrandTitle() }
-                ToolbarItem(placement: .calTrailing) {
+                ToolbarItem(placement: .tagTrailing) {
                     Button("Sign out") { confirmSignOut = true }
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Cal.textDim)
+                        .foregroundStyle(Tag.textDim)
                 }
             }
             .inlineNavigationTitle()
-            .calNavigationBar()
+            .tagNavigationBar()
             .confirmationDialog("Sign out of Mero Tag?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) { Task { await app.signOut() } }
             }
@@ -84,10 +83,10 @@ struct SpaceSetupView: View {
             VStack(alignment: .leading, spacing: 16) {
                 CardHeader(
                     systemImage: "envelope.open", title: "Invite link",
-                    meta: "Joins with your Calimero account", accent: invite != nil)
+                    meta: app.node == nil ? "Joins with your account" : "Joins on your node", accent: invite != nil)
 
                 HStack(alignment: .bottom, spacing: 8) {
-                    CalTextField(
+                    TagTextField(
                         label: "Link", placeholder: "Paste the invite link", text: $inviteText,
                         monospaced: true, keyboardKind: .identifier, submitLabel: .go, onSubmit: join)
                         .accessibilityIdentifier("inviteField")
@@ -96,7 +95,7 @@ struct SpaceSetupView: View {
                     } label: {
                         Label("Paste", systemImage: "doc.on.clipboard")
                     }
-                    .buttonStyle(.cal(.secondary, size: .regular, fullWidth: false))
+                    .buttonStyle(.tag(.secondary, size: .regular, fullWidth: false))
                     .padding(.bottom, 4)
                     .accessibilityIdentifier("pasteInviteButton")
                 }
@@ -127,7 +126,7 @@ struct SpaceSetupView: View {
                     meta: "You'll be its owner, and can invite people")
 
                 if hasRelay {
-                    CalTextField(
+                    TagTextField(
                         label: "Space name", placeholder: "e.g. Family", text: $spaceName,
                         submitLabel: .go, onSubmit: create)
                         .accessibilityIdentifier("spaceNameField")
@@ -159,10 +158,10 @@ struct SpaceSetupView: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .semibold))
                         .rotationEffect(.degrees(showsIdEntry ? 90 : 0))
-                    Text("Open a space by ID").font(Cal.Typeface.label)
+                    Text("Open a space by ID").font(Tag.Typeface.label)
                     Spacer()
                 }
-                .foregroundStyle(Cal.textFaint)
+                .foregroundStyle(Tag.textFaint)
                 .frame(minHeight: 28)
                 .contentShape(Rectangle())
             }
@@ -170,7 +169,7 @@ struct SpaceSetupView: View {
             .accessibilityIdentifier("openByIdToggle")
 
             if showsIdEntry {
-                CalTextField(
+                TagTextField(
                     label: "Space ID", placeholder: "Paste the space ID", text: $contextId,
                     help: "The context ID of a space your account is already a member of.", monospaced: true,
                     keyboardKind: .identifier, submitLabel: .go, onSubmit: open)
@@ -206,7 +205,11 @@ enum AccountDetails {
     static func items(_ app: AppState, contextId: String? = nil) -> [DetailItem] {
         var items: [DetailItem] = []
         if let contextId { items.append(DetailItem(label: "Space (context) ID", value: contextId)) }
-        if let account = app.client.account { items.append(DetailItem(label: "Account", value: account)) }
+        if let node = app.node {
+            items.append(DetailItem(label: "Node", value: node.url))
+            items.append(DetailItem(label: "Node user", value: node.username, copyable: false))
+        }
+        if let account = app.account { items.append(DetailItem(label: "Account", value: account)) }
         if let device = app.client.connection?.session.device {
             items.append(DetailItem(label: "Device", value: device))
         }
