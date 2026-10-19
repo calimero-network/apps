@@ -1,4 +1,5 @@
 import { Page, test } from "@playwright/test";
+import { openAuthCallback } from "@calimero-apps/e2e-node/journey";
 import { readFileSync, existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -447,7 +448,7 @@ export async function loginViaHash(
   page.on("requestfailed", onRequestFailed);
   page.on("response", onResponse);
   try {
-    await page.goto(`/#${hash}`);
+    await openAuthCallback(page, "/", new URLSearchParams(hash));
     await page.waitForURL(`**${appRoute()}`, { timeout: 30_000 });
   } catch (e) {
     const tail = diag.slice(-12).join("\n  ");

@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { openAuthCallback } from "@calimero-apps/e2e-node/journey";
 import { readState } from "./global-setup";
 
 export const state = () => readState();
@@ -35,7 +36,7 @@ export async function login(page: Page, opts: { withContext?: boolean } = {}) {
 
   // `/studio` rather than `/`: the landing page is the front door for a
   // stranger, and `marketing-landing.spec.ts` covers that route.
-  await page.goto(`/studio#${params.toString()}`);
+  await openAuthCallback(page, "/studio", params);
 }
 
 /** The studio, once the first read of the scene has landed. */

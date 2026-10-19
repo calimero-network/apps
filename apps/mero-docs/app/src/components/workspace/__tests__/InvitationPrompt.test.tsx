@@ -157,7 +157,7 @@ describe('InvitationPrompt', () => {
         ),
     });
     expect((await screen.findByTestId('invite-error')).textContent).toContain(
-      "You've already used this link. Ask for a new one.",
+      "You've already used this link to join this workspace once. Ask an admin for a new link.",
     );
     expect(screen.queryByTestId('invite-retry')).toBeNull();
   });
@@ -168,7 +168,7 @@ describe('InvitationPrompt', () => {
         Promise.reject(httpError(409, 'member was removed from group cd')),
     });
     expect((await screen.findByTestId('invite-error')).textContent).toContain(
-      'An admin removed you. Ask to be re-added.',
+      "An admin removed you from this workspace. A new link won't let you back in; ask an admin to add you again.",
     );
   });
 

@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { openAuthCallback } from "@calimero-apps/e2e-node/journey";
 import { readState } from "./global-setup";
 
 export const state = () => readState();
@@ -27,7 +28,7 @@ export async function login(page: Page, opts: { withContext?: boolean } = {}) {
   });
   if (opts.withContext !== false) params.set("context_id", s.contextId);
 
-  await page.goto(`/#${params.toString()}`);
+  await openAuthCallback(page, "/", params);
   await expect(page.locator(".brand-name")).toBeVisible();
 }
 

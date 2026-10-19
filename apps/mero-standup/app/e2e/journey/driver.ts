@@ -45,6 +45,10 @@ const postUpdate: Feature = {
     await openTab(page, "Standup");
     const text = stamp(actor, "Shipped");
     posted[actor.name] = text;
+    // Until the board has read today's updates the form shows empty; once the
+    // read lands with yours in it, the form is swapped for "my-update" and a
+    // fill already under way loses its textbox.
+    await expect(page.locator("p.empty", { hasText: "Loading…" })).toHaveCount(0, { timeout: SYNC });
     const mine = page.getByTestId("my-update");
     if (await mine.isVisible()) await btn(mine, "Edit").click();
     await field(page, "done").fill(text);

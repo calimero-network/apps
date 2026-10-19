@@ -110,7 +110,7 @@ describe('redeemInvite', () => {
 
   // Both are 409s, which read as a generic refusal; the node's message is
   // the only thing that says which one, and they need different people.
-  it('names a spent link, from the node message, after the general line', async () => {
+  it('names a spent link, from the node message', async () => {
     const c = calls({
       joinNamespace: vi.fn(() =>
         Promise.reject(
@@ -124,19 +124,24 @@ describe('redeemInvite', () => {
     const outcome = failed(await redeemInvite(workspace, c));
     expect(shouldRetain(outcome)).toBe(false);
     expect(inviteFailureCopy(outcome, 'workspace')).toBe(
-      "You can't join this workspace with this invitation. Ask an admin to invite you again. You've already used this link. Ask for a new one.",
+      "You've already used this link to join this workspace once. Ask an admin for a new link.",
     );
   });
 
   it('names a removal, from the node message', async () => {
     const c = calls({
       joinNamespace: vi.fn(() =>
-        Promise.reject(httpError(409, 'RemovedFromGroup { group_id: cd }')),
+        Promise.reject(
+          httpError(
+            409,
+            'identity ab was removed from group cd and cannot rejoin; an admin must re-add them',
+          ),
+        ),
       ),
     });
     const outcome = failed(await redeemInvite(workspace, c));
-    expect(inviteFailureCopy(outcome, 'workspace')).toMatch(
-      /An admin removed you. Ask to be re-added\.$/,
+    expect(inviteFailureCopy(outcome, 'workspace')).toBe(
+      "An admin removed you from this workspace. A new link won't let you back in; ask an admin to add you again.",
     );
   });
 

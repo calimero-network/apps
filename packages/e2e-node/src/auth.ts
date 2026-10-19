@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 import { ADMIN_PASSWORD, ADMIN_USER } from "./rig";
 
@@ -7,6 +8,36 @@ export interface Credentials {
 }
 
 export const RIG_CREDENTIALS: Credentials = { username: ADMIN_USER, password: ADMIN_PASSWORD };
+
+/** Where mero-js's `buildAuthLoginUrl` records a login this browser began, and the param it adds. */
+const LOGIN_PENDING_KEY = "calimero.auth.login.pending";
+const LOGIN_STATE_PARAM = "auth_state";
+
+/**
+ * Open `path` with `callback` (access_token, node_url, …) in the fragment, the
+ * way the auth frontend sends a login back. From mero-js 25.3.2 (mero-js#271)
+ * a page refuses callback tokens no login in it began, so this first records a
+ * begun login exactly as `buildAuthLoginUrl` does and puts its state on the URL.
+ */
+export async function openAuthCallback(page: Page, path: string, callback: URLSearchParams): Promise<void> {
+  const state = randomBytes(16).toString("hex");
+  await page.addInitScript(
+    ([key, begun, expiresAt]) => {
+      let pending: Record<string, unknown> = {};
+      try {
+        pending = JSON.parse(window.localStorage.getItem(key) ?? "{}") as Record<string, unknown>;
+      } catch {
+        /* unreadable: start over */
+      }
+      window.localStorage.setItem(key, JSON.stringify({ ...pending, [begun]: { expiresAt } }));
+    },
+    [LOGIN_PENDING_KEY, state, Date.now() + 10 * 60_000] as const,
+  );
+  const [pathname, query = ""] = path.split("?");
+  const params = new URLSearchParams(query);
+  params.set(LOGIN_STATE_PARAM, state);
+  await page.goto(`${pathname}?${params.toString()}#${callback.toString()}`);
+}
 
 /** What the login modal showed, for a failure message: which state kept Connect disabled. */
 async function describeLoginModal(page: Page): Promise<string> {

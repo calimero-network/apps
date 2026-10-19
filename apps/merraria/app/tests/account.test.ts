@@ -86,7 +86,7 @@ describe("goToWallet", () => {
     expect(url.searchParams.get("enrol-device")).toBe(keys.signPk);
     expect(url.searchParams.get("enrol-kem")).toBe(keys.kemPk);
     expect(url.searchParams.get("callback-url")).toBe("http://localhost:5184/");
-    expect(url.searchParams.get("state")).toBe(sessionStorage.getItem("calimero.enrol.state"));
+    expect(url.searchParams.get("state")).toBeTruthy(); // minted and kept by mero-js
     // the keys are reused on the way back — a regenerated key would not match the certificate
     await goToWallet();
     expect(JSON.parse(localStorage.getItem("calimero.device")!).signPk).toBe(keys.signPk);
@@ -114,19 +114,20 @@ describe("completeEnrolment", () => {
   });
 
   it("refuses a callback this tab never started (no state remembered)", async () => {
+    const real = await vi.importActual<typeof import("@calimero-network/mero-js")>("@calimero-network/mero-js");
+    fakes.completeDeviceEnrolment.mockImplementation(real.completeDeviceEnrolment);
     fakes.readEnrolmentCallback.mockReturnValue({ credential: "c", account: ACCOUNT, device: "d", state: "x" });
     const res = await completeEnrolment({ cloud: cloud([]) });
     expect(res.status).toBe("failed");
-    expect((res as { note: string }).note).toMatch(/could not be verified/);
-    expect(fakes.completeDeviceEnrolment).not.toHaveBeenCalled();
+    expect((res as { note: string }).note).toMatch(/did not make/);
+    expect(readDelegatedSession()).toBeNull();
     expect(sessionKind()).toBeNull();
   });
 
-  it("verifies against the state SENT, saves the credential, adopts the account session with its relay", async () => {
+  it("hands mero-js the returned state to check, saves the credential, adopts the account session with its relay", async () => {
     // a node login from before must not survive the sign-in
     updateSession({ kind: "node", nodeUrl: "http://node:2428", contextId: "ctx-old", applicationId: "app-old" });
     localStorage.setItem("mero-tokens", JSON.stringify({ access_token: "t" }));
-    sessionStorage.setItem("calimero.enrol.state", "sent-state");
     localStorage.setItem(
       "calimero.device",
       JSON.stringify({ signPk: "1".repeat(64), signSk: "2".repeat(64), kemPk: "3".repeat(64), kemSk: "4".repeat(64) }),
@@ -139,9 +140,8 @@ describe("completeEnrolment", () => {
 
     expect(res).toEqual({ status: "enrolled", account: ACCOUNT, note: null });
     expect(fakes.completeDeviceEnrolment).toHaveBeenCalledWith(
-      expect.objectContaining({ devicePublicKey: "1".repeat(64), kemPublicKey: "3".repeat(64), expectState: "sent-state" }),
+      expect.objectContaining({ devicePublicKey: "1".repeat(64), kemPublicKey: "3".repeat(64), state: "sent-state" }),
     );
-    expect(sessionStorage.getItem("calimero.enrol.state")).toBeNull(); // single-use
     expect(readDelegatedSession()).toEqual({
       account: ACCOUNT,
       credential: "cred-hex",
@@ -158,7 +158,6 @@ describe("completeEnrolment", () => {
   });
 
   it("still signs in an account with no relay — that is how it comes to be invited", async () => {
-    sessionStorage.setItem("calimero.enrol.state", "s");
     localStorage.setItem(
       "calimero.device",
       JSON.stringify({ signPk: "1".repeat(64), signSk: "2".repeat(64), kemPk: "3".repeat(64), kemSk: "4".repeat(64) }),
@@ -173,7 +172,6 @@ describe("completeEnrolment", () => {
   });
 
   it("a certificate the wallet mismatched is refused and nothing is adopted", async () => {
-    sessionStorage.setItem("calimero.enrol.state", "s");
     localStorage.setItem(
       "calimero.device",
       JSON.stringify({ signPk: "1".repeat(64), signSk: "2".repeat(64), kemPk: "3".repeat(64), kemSk: "4".repeat(64) }),

@@ -21,7 +21,8 @@ async function mockNode(page: Page) {
 // Simulate the Tauri desktop runtime so main.tsx takes the hash-auth-skip path.
 async function fakeTauri(page: Page) {
   await page.addInitScript(() => {
-    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    // Shaped like what Tauri injects: mero-react only counts an object with a callable `invoke`.
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = { invoke: () => Promise.resolve(null) };
   });
 }
 
