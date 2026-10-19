@@ -23,22 +23,22 @@ struct TrackerDetailView: View {
                     systemImage: "location.slash", title: "Tracker removed",
                     message: "This tracker no longer exists in the space."
                 )
-                .calPage()
+                .tagPage()
                 .padding(.top, 24)
                 .frame(maxHeight: .infinity, alignment: .top)
             }
         }
-        .background(Cal.bg.ignoresSafeArea())
+        .background(Tag.bg.ignoresSafeArea())
         .navigationTitle(tracker?.name ?? "Tracker")
         .inlineNavigationTitle()
-        .calNavigationBar()
+        .tagNavigationBar()
     }
 
     @ViewBuilder
     private func content(_ tracker: Tracker) -> some View {
         let isMine = tracker.ownerId == store.memberId
         ScrollView {
-            VStack(alignment: .leading, spacing: Cal.Space.stack) {
+            VStack(alignment: .leading, spacing: Tag.Space.stack) {
                 // Map preview + headline.
                 Card(padding: 0) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -54,14 +54,14 @@ struct TrackerDetailView: View {
                             .allowsHitTesting(false)
                             .frame(height: 180)
                             .clipShape(UnevenRoundedRectangle(
-                                topLeadingRadius: Cal.Radius.card, topTrailingRadius: Cal.Radius.card))
+                                topLeadingRadius: Tag.Radius.card, topTrailingRadius: Tag.Radius.card))
                             Hairline()
                         }
                         HStack(spacing: 12) {
                             IconTile(systemImage: "location.fill", accent: isOnline(tracker))
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(tracker.name).font(Cal.Typeface.h2).foregroundStyle(Cal.ink)
-                                Text(updatedText(tracker)).font(Cal.Typeface.meta).foregroundStyle(Cal.textFaint)
+                                Text(tracker.name).font(Tag.Typeface.h2).foregroundStyle(Tag.ink)
+                                Text(updatedText(tracker)).font(Tag.Typeface.meta).foregroundStyle(Tag.textFaint)
                             }
                             Spacer()
                             if isOnline(tracker) {
@@ -70,7 +70,7 @@ struct TrackerDetailView: View {
                                 StatusPill(text: "Offline", state: .off)
                             }
                         }
-                        .padding(Cal.Space.gutter)
+                        .padding(Tag.Space.gutter)
                     }
                 }
 
@@ -119,7 +119,7 @@ struct TrackerDetailView: View {
                                     sharingHere(tracker) ? "Stop sharing" : "Share from this phone",
                                     systemImage: sharingHere(tracker) ? "stop.fill" : "location.fill")
                             }
-                            .buttonStyle(.cal(sharingHere(tracker) ? .secondary : .primary, fullWidth: true))
+                            .buttonStyle(.tag(sharingHere(tracker) ? .secondary : .primary, fullWidth: true))
                         }
                     }
                 }
@@ -137,7 +137,7 @@ struct TrackerDetailView: View {
                                 } label: {
                                     Label("Share", systemImage: "person.badge.plus")
                                 }
-                                .buttonStyle(.cal(.secondary, size: .small))
+                                .buttonStyle(.tag(.secondary, size: .small))
                                 .accessibilityIdentifier("shareTrackerButton")
                             }
                         }
@@ -165,18 +165,18 @@ struct TrackerDetailView: View {
                         } label: {
                             Label("Rename", systemImage: "pencil")
                         }
-                        .buttonStyle(.cal(.secondary, fullWidth: true))
+                        .buttonStyle(.tag(.secondary, fullWidth: true))
 
                         Button {
                             confirmDelete = true
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
-                        .buttonStyle(.cal(.danger, fullWidth: true))
+                        .buttonStyle(.tag(.danger, fullWidth: true))
                     }
                 }
             }
-            .calPage()
+            .tagPage()
             .padding(.top, 8)
         }
         .refreshable { await store.refresh() }
@@ -245,9 +245,9 @@ private struct PersonLine: View {
     var body: some View {
         HStack(spacing: 10) {
             Avatar(name: name, seed: seed, size: 28, isMe: isMe)
-            Text(name).font(Cal.Typeface.bodySmall).foregroundStyle(Cal.ink).lineLimit(1)
+            Text(name).font(Tag.Typeface.bodySmall).foregroundStyle(Tag.ink).lineLimit(1)
             Spacer()
-            Text(caption).font(Cal.Typeface.meta).foregroundStyle(Cal.textFaint)
+            Text(caption).font(Tag.Typeface.meta).foregroundStyle(Tag.textFaint)
             if let onRemove {
                 IconButton(systemImage: "xmark", label: "Stop sharing with \(name)", action: onRemove)
             }
@@ -270,10 +270,10 @@ private struct ShareTrackerSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: Cal.Space.stack) {
+                VStack(alignment: .leading, spacing: Tag.Space.stack) {
                     Text("Members you add see \(tracker.name) on their map, live.")
-                        .font(Cal.Typeface.bodySmall)
-                        .foregroundStyle(Cal.textDim)
+                        .font(Tag.Typeface.bodySmall)
+                        .foregroundStyle(Tag.textDim)
 
                     if candidates.isEmpty {
                         EmptyState(
@@ -292,15 +292,15 @@ private struct ShareTrackerSheet: View {
                     }
                     if let error = store.lastError { Callout(tone: .danger, message: error) }
                 }
-                .padding(Cal.Space.gutter)
+                .padding(Tag.Space.gutter)
             }
-            .background(Cal.bg.ignoresSafeArea())
+            .background(Tag.bg.ignoresSafeArea())
             .navigationTitle("Share tracker")
             .inlineNavigationTitle()
-            .calNavigationBar()
+            .tagNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }.fontWeight(.semibold).foregroundStyle(Cal.ink)
+                    Button("Done") { dismiss() }.fontWeight(.semibold).foregroundStyle(Tag.ink)
                 }
             }
         }
@@ -328,7 +328,7 @@ private struct ShareTrackerSheet: View {
                 } else {
                     Image(systemName: shared ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 20))
-                        .foregroundStyle(shared ? Cal.accentInk : Cal.borderStrong)
+                        .foregroundStyle(shared ? Tag.accentInk : Tag.borderStrong)
                 }
             }
         }

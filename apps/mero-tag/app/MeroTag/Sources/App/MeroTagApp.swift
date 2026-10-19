@@ -18,7 +18,7 @@ struct AppRoot: View {
 
     var body: some View {
         ZStack {
-            Cal.bg.ignoresSafeArea()
+            Tag.bg.ignoresSafeArea()
             switch app.phase {
             case .launching:
                 LaunchView()
@@ -32,8 +32,8 @@ struct AppRoot: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: app.phase)
-        .tint(Cal.accentInk)
+        .animation(.spring(response: 0.45, dampingFraction: 0.9), value: app.phase)
+        .tint(Tag.accentInk)
         .task { await app.restore() }
         .onOpenURL { url in
             Task { await app.handleOpenURL(url) }
@@ -43,9 +43,9 @@ struct AppRoot: View {
 
 private struct LaunchView: View {
     var body: some View {
-        VStack(spacing: 16) {
-            BrandMark(size: 44)
-            ProgressView().controlSize(.small).tint(Cal.textFaint)
+        ZStack {
+            HeroBackground()
+            RadarMark().frame(width: 220, height: 220)
         }
         .accessibilityLabel("Loading")
     }
@@ -58,13 +58,14 @@ struct RootTabView: View {
 
     var body: some View {
         TabView {
-            HomeView(store: store)
-                .tabItem { Label("Trackers", systemImage: "dot.radiowaves.left.and.right") }
             LiveMapView(store: store)
-                .tabItem { Label("Map", systemImage: "map") }
+                .tabItem { Label("Map", systemImage: "map.fill") }
+            HomeView(store: store)
+                .tabItem { Label("People", systemImage: "person.2.fill") }
             SpaceView(store: store)
-                .tabItem { Label("Space", systemImage: "person.2") }
+                .tabItem { Label("Space", systemImage: "circle.hexagongrid.fill") }
         }
+        .tint(Tag.accent)
         .environmentObject(sharing)
         .onAppear { sharing.attach(store) }
     }

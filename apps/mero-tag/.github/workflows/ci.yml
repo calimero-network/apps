@@ -43,6 +43,22 @@ jobs:
       - name: Build WASM (+ ABI embed)
         run: cargo mero build
 
+  landing:
+    name: Landing page build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: landing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
   app:
     name: iOS app build
     runs-on: macos-15

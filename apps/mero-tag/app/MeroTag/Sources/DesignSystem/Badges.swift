@@ -15,7 +15,7 @@ struct Badge: View {
             if let systemImage {
                 Image(systemName: systemImage).font(.system(size: 10, weight: .semibold))
             }
-            Text(text).font(Cal.Typeface.badge).monospacedDigit()
+            Text(text).font(Tag.Typeface.badge).monospacedDigit()
         }
         .foregroundStyle(tone.foreground)
         .padding(.horizontal, 8)
@@ -25,7 +25,7 @@ struct Badge: View {
     }
 }
 
-/// 26pt status pill with a dot; `live` gets the lime dot with an ink-green halo.
+/// A status pill with a dot; `live` gets a pulsing mint dot.
 struct StatusPill: View {
     enum State { case live, waiting, off }
 
@@ -35,25 +35,23 @@ struct StatusPill: View {
     var body: some View {
         HStack(spacing: 6) {
             ZStack {
-                if state == .live {
-                    Circle().fill(Cal.accentInk.opacity(0.18)).frame(width: 12, height: 12)
-                }
+                if state == .live { PulseRing(color: Tag.live, size: 12) }
                 Circle().fill(dotColor).frame(width: 8, height: 8)
             }
             .frame(width: 12, height: 12)
-            Text(text).font(Cal.Typeface.badge).foregroundStyle(Cal.textDim)
+            Text(text).font(Tag.Typeface.badge).foregroundStyle(Tag.textDim)
         }
         .padding(.horizontal, 10)
         .frame(height: 26)
-        .background(Capsule().fill(Cal.bgSubtle))
+        .background(Capsule().fill(state == .live ? Tag.liveSoft : Tag.bgSubtle))
         .accessibilityElement(children: .combine)
     }
 
     private var dotColor: Color {
         switch state {
-        case .live: return Cal.lime
-        case .waiting: return Cal.warning
-        case .off: return Cal.textFaint
+        case .live: return Tag.live
+        case .waiting: return Tag.warning
+        case .off: return Tag.textFaint
         }
     }
 }
@@ -65,18 +63,23 @@ struct Avatar: View {
     var size: CGFloat = 28
     var isMe = false
 
+    /// Gradient pairs per person: start, end.
     private static let tones: [(UInt32, UInt32)] = [
-        (0xF0FFD6, 0x4A7300), (0xE6EEFB, 0x1D4F9F), (0xFBE9E4, 0x9A3412),
-        (0xEFE8FB, 0x5B3AA8), (0xFDF3DC, 0x8A5300), (0xE2F4F1, 0x116A5C),
+        (0x5B4BFF, 0x9B5CFF), (0x0EA5E9, 0x22D3EE), (0xF43F5E, 0xFB923C),
+        (0x10B981, 0x84CC16), (0xF59E0B, 0xEF4444), (0x8B5CF6, 0xEC4899),
     ]
 
     var body: some View {
         let tone = isMe ? Self.tones[0] : Self.tones[Self.index(for: seed ?? name)]
         Text(Self.initials(name))
-            .font(.system(size: size * 0.4, weight: .bold))
-            .foregroundStyle(Color(hex: tone.1))
+            .font(.system(size: size * 0.38, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(Circle().fill(Color(hex: tone.0)))
+            .background(
+                Circle().fill(
+                    LinearGradient(
+                        colors: [Color(hex: tone.0), Color(hex: tone.1)], startPoint: .topLeading,
+                        endPoint: .bottomTrailing)))
             .accessibilityHidden(true)
     }
 
@@ -95,20 +98,21 @@ struct Avatar: View {
     }
 }
 
-/// The Mero Tag mark: a lime rounded square with an ink location glyph.
+/// The Mero Tag mark: a gradient squircle with a white location glyph.
 struct BrandMark: View {
     var size: CGFloat = 28
 
     var body: some View {
-        Image(systemName: "location.fill")
-            .font(.system(size: size * 0.46, weight: .semibold))
-            .foregroundStyle(Cal.onLime)
+        Image(systemName: "location.north.fill")
+            .font(.system(size: size * 0.44, weight: .bold))
+            .rotationEffect(.degrees(45))
+            .foregroundStyle(Tag.onAccent)
             .frame(width: size, height: size)
             .background(
-                RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).fill(Cal.lime))
+                RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).fill(Tag.accentGradient))
             .overlay(
                 RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-                    .strokeBorder(Cal.limeEdge, lineWidth: 1))
+                    .strokeBorder(Tag.accentEdge, lineWidth: 1))
             .accessibilityHidden(true)
     }
 }
@@ -118,9 +122,29 @@ struct BrandTitle: View {
     var body: some View {
         HStack(spacing: 8) {
             BrandMark(size: 26)
-            Text("Mero Tag").font(Cal.Typeface.brand).tracking(-0.2).foregroundStyle(Cal.ink)
+            Text("Mero Tag").font(Tag.Typeface.brand).tracking(-0.2).foregroundStyle(Tag.ink)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Mero Tag")
+    }
+}
+
+/// A ring that expands and fades, forever — the "live" signal.
+struct PulseRing: View {
+    var color: Color = Tag.live
+    var size: CGFloat = 12
+    @State private var on = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Circle()
+            .stroke(color.opacity(on ? 0 : 0.6), lineWidth: 2)
+            .frame(width: size, height: size)
+            .scaleEffect(on ? 2.2 : 0.8)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeOut(duration: 1.6).repeatForever(autoreverses: false)) { on = true }
+            }
+            .accessibilityHidden(true)
     }
 }

@@ -3,8 +3,13 @@
 Live location sharing on [Calimero](https://calimero.network): an AirTag / Find My-style app where positions
 travel through your own Calimero account and its relay, not through a central server.
 
+**Landing page:** [`landing/`](landing/) — how it works, with real screen recordings and a promo film
+(`cd landing && npm install && npm run dev`; deploys to Vercel as-is).
+
 ```
 logic/      Rust WASM contract (calimero-sdk)
+landing/    The landing page (Vite + React + Framer Motion) and its media
+promo/      The promo film (Remotion), rendered from the app's recordings
 app/
   MeroTag/  SwiftUI iOS app (MapKit + CoreLocation), built on the official
             Calimero Swift SDK (MeroKit + MeroKitUI)
@@ -21,7 +26,10 @@ Pinned to core **0.11.0-rc.89**:
 
 ## How the app talks to Calimero
 
-Sign-in is **Calimero Cloud only**. There is no node URL, username or password.
+Two ways in. **Calimero Cloud** is the default, described below. Under it, **Manually enter node URL** signs in to a
+node you run — a local `merod` — with its admin username and password: the app then talks to that node's JSON-RPC and
+SSE directly (`NodeSession`, `NodeTransport`, `NodeSpaces`), and creating a space installs `com.calimero.mero-tag` from
+the app registry if the node doesn't have it. The URL and username are remembered; the password never is.
 
 1. **Continue with Calimero.** The app opens the Calimero wallet in the system sign-in sheet
    (`ASWebAuthenticationSession`). The person approves this device with their passkey.
@@ -53,6 +61,29 @@ the device; no node is involved.
 
 Opening a space by its raw ID is still possible, tucked away at the bottom of the screen (*Open a space by ID*).
 
+## Run it against a local node
+
+```bash
+merod --home ~/.calimero/tag init --server-port 4201 --swarm-port 4202 --auth-mode embedded \
+  --admin-user dev --admin-password-stdin <<< dev-password
+merod --home ~/.calimero/tag run &
+python3 scripts/demo-seed.py setup          # optional: a "Weekend crew" space with three friends; prints its id
+make app-run
+```
+
+In the app tap **Manually enter node URL**, use `http://localhost:4201` / `dev` / `dev-password`, then create a space
+(or open the seeded one by ID). `python3 scripts/demo-seed.py move --context <id>` keeps the friends walking.
+
+## Recordings and the promo
+
+```bash
+scripts/record-demo.sh <context-id>         # films DemoRecordingTests on the "iPhone Air" simulator →
+                                            # landing/public/media/{signin,live-map,share,invite}.mp4 + .jpg
+cd promo && npm install && npm run render   # → landing/public/media/promo.mp4, promo-vertical.mp4
+```
+
+The recordings are the real app on a real node; the seeder writes the demo friends straight into the contract.
+
 ## Build and run the app
 
 You need full Xcode 16+ (an iOS 17 SDK) and XcodeGen (`brew install xcodegen`).
@@ -60,7 +91,7 @@ You need full Xcode 16+ (an iOS 17 SDK) and XcodeGen (`brew install xcodegen`).
 ```bash
 make app-gen      # generate app/MeroTag/MeroTag.xcodeproj from project.yml
 make app-run      # build, boot the Simulator, install and launch
-make app-test     # unit tests + the sign-in UI smoke test
+make app-test     # unit tests + the sign-in UI tests (TEST_RUNNER_MEROTAG_NODE / _SPACE add the live-node one)
 ```
 
 For a device: open `app/MeroTag/MeroTag.xcodeproj` and set your team under *Signing & Capabilities* (or set
@@ -72,8 +103,6 @@ To build against a local swift-sdk checkout, for example an unmerged SDK branch:
 2. Run `make app-gen`.
 3. Do not commit that change.
 
-> **Until swift-sdk#43 (rc.83 wire) and #44 (Cloud sign-in, RelayClient) are merged**, `master` lacks the APIs the
-> app uses. Build against a local checkout that merges both branches.
 
 ## Contract
 

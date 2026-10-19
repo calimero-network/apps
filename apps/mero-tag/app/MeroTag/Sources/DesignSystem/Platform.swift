@@ -49,7 +49,7 @@ enum Platform {
     }
 }
 
-enum KeyboardKind { case plain, identifier }
+enum KeyboardKind { case plain, identifier, url }
 
 extension View {
     /// Inline navigation title on iOS; a no-op elsewhere.
@@ -61,12 +61,11 @@ extension View {
         #endif
     }
 
-    /// White top bar with a hairline, matching the web apps' sticky header.
-    func calNavigationBar() -> some View {
+    /// A translucent material top bar.
+    func tagNavigationBar() -> some View {
         #if os(iOS)
         return self
-            .toolbarBackground(Cal.surface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         #else
         return self
         #endif
@@ -78,17 +77,19 @@ extension View {
         switch kind {
         case .identifier:
             return AnyView(self.textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.asciiCapable))
+        case .url:
+            return AnyView(self.textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL))
         case .plain:
             return AnyView(self.textInputAutocapitalization(.words))
         }
         #else
-        return AnyView(self.autocorrectionDisabled(kind == .identifier))
+        return AnyView(self.autocorrectionDisabled(kind != .plain))
         #endif
     }
 }
 
 extension ToolbarItemPlacement {
-    static var calLeading: ToolbarItemPlacement {
+    static var tagLeading: ToolbarItemPlacement {
         #if os(iOS)
         return .topBarLeading
         #else
@@ -96,7 +97,7 @@ extension ToolbarItemPlacement {
         #endif
     }
 
-    static var calTrailing: ToolbarItemPlacement {
+    static var tagTrailing: ToolbarItemPlacement {
         #if os(iOS)
         return .topBarTrailing
         #else

@@ -15,7 +15,7 @@ struct SpaceView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: Cal.Space.stack) {
+                VStack(alignment: .leading, spacing: Tag.Space.stack) {
                     PageHeader(title: store.space?.name ?? "Space", subtitle: summary) {
                         ConnectionPill(connection: store.connection)
                     }
@@ -60,27 +60,26 @@ struct SpaceView: View {
                                 } label: {
                                     Label("Switch space", systemImage: "arrow.left.arrow.right")
                                 }
-                                .buttonStyle(.cal(.secondary))
+                                .buttonStyle(.tag(.secondary))
 
                                 Button {
                                     confirmSignOut = true
                                 } label: {
                                     Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                                 }
-                                .buttonStyle(.cal(.danger))
+                                .buttonStyle(.tag(.danger))
                                 .accessibilityIdentifier("signOutButton")
                             }
                             TechnicalDetails(items: AccountDetails.items(app, contextId: app.space?.contextId))
                         }
                     }
                 }
-                .calPage()
+                .tagPage()
             }
-            .background(Cal.bg.ignoresSafeArea())
+            .background(Tag.bg.ignoresSafeArea())
             .refreshable { await store.refresh() }
-            .toolbar { ToolbarItem(placement: .calLeading) { BrandTitle() } }
             .inlineNavigationTitle()
-            .calNavigationBar()
+            .tagNavigationBar()
             .confirmationDialog("Sign out of Mero Tag?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     sharing.stop()
@@ -107,7 +106,7 @@ struct SpaceView: View {
             VStack(alignment: .leading, spacing: 14) {
                 CardHeader(
                     systemImage: "person.badge.plus", title: "Invite people",
-                    meta: "They join with their own Calimero account", accent: true)
+                    meta: "They join with their own account", accent: true)
 
                 if let inviteLink {
                     IdField(value: inviteLink)
@@ -118,7 +117,7 @@ struct SpaceView: View {
                     ) {
                         Label("Share invite link", systemImage: "square.and.arrow.up")
                     }
-                    .buttonStyle(.cal(.primary, size: .large, fullWidth: true))
+                    .buttonStyle(.tag(.primary, size: .large, fullWidth: true))
                     .accessibilityIdentifier("shareInviteButton")
                 } else {
                     LoadingButton(
@@ -133,7 +132,7 @@ struct SpaceView: View {
 
                 Text("The link works for 24 hours. New members can see trackers once someone shares one with them.")
                     .font(.system(size: 12))
-                    .foregroundStyle(Cal.textFaint)
+                    .foregroundStyle(Tag.textFaint)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -165,9 +164,9 @@ struct SpaceView: View {
                     } label: {
                         Label("Switch to it", systemImage: "arrow.right")
                     }
-                    .buttonStyle(.cal(.primary))
+                    .buttonStyle(.tag(.primary))
                     Button("Not now") { app.pendingInvite = nil }
-                        .buttonStyle(.cal(.plain))
+                        .buttonStyle(.tag(.plain))
                 }
             }
         }

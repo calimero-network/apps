@@ -8,8 +8,8 @@ options:
   createIntermediateGroups: true
 
 packages:
-  # The official Calimero Swift SDK (MeroKit + MeroKitUI). Needs core
-  # 0.11.0-rc.83 wire support and Cloud sign-in (swift-sdk#43, #44).
+  # The official Calimero Swift SDK (MeroKit + MeroKitUI): Cloud sign-in,
+  # the relay, and the node admin API / JSON-RPC used by node sign-in.
   # To build against a local checkout instead, swap `url`/`branch` for
   # `path: ../../../swift-sdk` — but never commit that.
   MeroKit:
@@ -62,6 +62,9 @@ targets:
     platform: iOS
     sources:
       - path: Tests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: MeroTag
       - package: MeroKit
@@ -75,6 +78,9 @@ targets:
     sources:
       - path: UITests
         optional: true
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: MeroTag
 
