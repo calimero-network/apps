@@ -157,7 +157,10 @@ test.describe("switching and creating", () => {
 
     await page.getByTestId("leave-team-btn").click();
     await page.getByTestId("confirm-ok").click();
-    await expect(page).toHaveURL(/\/teams$/);
+    // Leaving goes to `/teams`, which never stops there while a team is left
+    // (TeamIndex): it goes straight on to the other one. Asserting `/teams`
+    // only held while that redirect happened to land after the first poll.
+    await expect(page).toHaveURL(/\/teams\/team-b\/projects$/);
     expect(node.writes.map((w) => `${w.method} ${w.path}`)).toContain("POST /namespaces/team-a/leave");
   });
 

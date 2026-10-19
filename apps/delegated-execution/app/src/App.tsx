@@ -1002,16 +1002,18 @@ function AccountCloudStep({
         text:
           callback.error === 'denied'
             ? 'You cancelled at the cloud, so nothing was linked. The account is unchanged.'
-            : `The cloud sent back an error: ${callback.error}`,
+            : callback.error === 'unexpected_callback'
+              ? 'A grant came back that this browser did not ask for, so it was not spent. Start the connection again from this browser.'
+              : `The cloud sent back an error: ${callback.error}`,
         error: callback.error !== 'denied',
       });
       return;
     }
     // Two different failures; say which, because the fixes differ. A missing
-    // pending record means this browser did not start the round trip (or
+    // pending record or verifier means this browser did not start the round trip (or
     // already answered it); a missing identity means the key it was for is
     // gone, and starting again would only reach the same place.
-    if (!pending || !linkIdentity) {
+    if (!pending || !linkIdentity || !callback.verifier) {
       setOutcome({
         text: !linkIdentity
           ? 'A grant came back but this browser holds no account key to sign it with. Create or restore an identity, then connect again.'
@@ -1022,7 +1024,7 @@ function AccountCloudStep({
     }
 
     setBusy(true);
-    finishCloudLink(pending, callback.grant as string, linkIdentity)
+    finishCloudLink(pending, callback.grant as string, callback.verifier, linkIdentity)
       .then((link) => {
         setLinked(true);
         setOutcome({
@@ -1040,13 +1042,13 @@ function AccountCloudStep({
     // read that broke this path.
   }, []);
 
-  const connectCloud = useCallback(() => {
+  const connectCloud = useCallback(async () => {
     setOutcome(null);
     try {
       if (!identity) throw new Error('Mint or restore an account in step 1 first.');
       if (settings.portalUrl.trim() === '') throw new Error('Enter the cloud portal URL first.');
       if (settings.cloudUrl.trim() === '') throw new Error('Enter your cloud API URL first.');
-      savePendingLink(startCloudLink(settings.cloudUrl, settings.portalUrl, identity));
+      savePendingLink(await startCloudLink(settings.cloudUrl, settings.portalUrl, identity));
       setOutcome({
         text:
           'Opened the cloud in a new tab. Sign in there, check the account it names, and press ' +

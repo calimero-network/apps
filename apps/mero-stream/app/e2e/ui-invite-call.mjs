@@ -40,6 +40,7 @@
 // and this file pinned playwright itself, so a catalog bump desynced them.
 // @playwright/test re-exports chromium, so one dependency covers both uses.
 import { chromium } from "@playwright/test";
+import { randomBytes } from "node:crypto";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -101,6 +102,37 @@ function sessionHash(nodeUrl, token, refresh, appId) {
     `#node_url=${nodeUrl}&access_token=${token}&refresh_token=${refresh}` +
     `&app-id=${appId}&dev_mode=1`
   );
+}
+
+/**
+ * From mero-js 25.3.2 (mero-js#271) a page refuses callback tokens that no
+ * login in it began. Record a begun login in `ctx` exactly as
+ * `buildAuthLoginUrl` does, and return `url` with its state in the query.
+ * The same as `openAuthCallback` in packages/e2e-node, for a plain .mjs.
+ */
+async function beginLogin(ctx, url) {
+  const state = randomBytes(16).toString("hex");
+  await ctx.addInitScript(
+    ([key, begun, expiresAt]) => {
+      let pending = {};
+      try {
+        pending = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+      } catch {
+        /* unreadable: start over */
+      }
+      window.localStorage.setItem(
+        key,
+        JSON.stringify({ ...pending, [begun]: { expiresAt } }),
+      );
+    },
+    ["calimero.auth.login.pending", state, Date.now() + 10 * 60_000],
+  );
+  const hash = url.indexOf("#");
+  const [base, fragment] =
+    hash < 0 ? [url, ""] : [url.slice(0, hash), url.slice(hash)];
+  const at = new URL(base);
+  at.searchParams.set("auth_state", state);
+  return `${at.toString()}${fragment}`;
 }
 
 /**
@@ -168,7 +200,9 @@ async function main() {
     const logs = [];
     page.on("console", (m) => logs.push(`[${m.type()}] ${m.text()}`));
     page.on("pageerror", (e) => logs.push(`[pageerror] ${e.message}`));
-    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await page.goto(await beginLogin(ctx, url), {
+      waitUntil: "domcontentloaded",
+    });
     return { name, ctx, page, logs };
   };
 

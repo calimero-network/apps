@@ -87,13 +87,17 @@ catalog:
   # mero-react#103 passes `allowUnsolicited` there, and it removes the
   # enrolment `state`/`expectState` options mero-blocks and merraria pass.
   # 26.1.0 (mero-js#287): a refused join names why, so a link already used and
-  # a removal by an admin each get their own message (mero-react#113). Still
-  # schema 25 and request proof v2, so rc.89 and `merod-image` stay. The
+  # a removal by an admin each get their own message (mero-react#113). The
   # mero-react#116 provider passes `allowUnsolicited` inside Calimero Desktop,
   # and mero-blocks and merraria let mero-js keep the enrolment state. The
   # 26.0.0 break (#286) dropped calls to routes core does not serve; no app on
   # the catalog used them.
-  "@calimero-network/mero-js": 26.1.0
+  # 26.2.1 (mero-js#290) signs namespace ops at schema 26, the only version
+  # merod 0.11.0-rc.90 (core#4605) admits, so it moves with the rc.90 pin and
+  # `merod-image`: rc.89 refuses 26 and rc.90 refuses 25. 26.2.2 (mero-js#284)
+  # binds a cloud link grant to the browser that began the link and makes the
+  # handoff async; delegated-execution is the only app that links.
+  "@calimero-network/mero-js": 26.2.2
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
