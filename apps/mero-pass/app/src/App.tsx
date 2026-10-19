@@ -20,6 +20,9 @@ import VaultPage from './pages/vault/VaultPage';
  */
 const LANDING_PATHS = ['/', '/landing', '/docs', '/preview'];
 
+/** The mark the way into the app carries: resume where you were. */
+const RESUME = { resume: true } as const;
+
 /**
  * An authenticated visitor has no business on the marketing page.
  *
@@ -32,11 +35,16 @@ const LANDING_PATHS = ['/', '/landing', '/docs', '/preview'];
  * `replace`, always: a redirect that pushes leaves the guarded path in history,
  * so Back returns to it and is immediately redirected forward again — a trap
  * the user cannot escape with the browser's own controls.
+ *
+ * `state.resume`: this is the way in from a sign-in or a cold open, so the
+ * teams screen goes on to the team (and vault) open last, when this node still
+ * lists it — see `lib/lastVisit`. Every other way to `/teams` carries no mark
+ * and shows the list, which is what keeps the list reachable.
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
   if (isLoading) return null; // the auth probe is still in flight
-  if (isAuthenticated) return <Navigate to="/teams" replace />;
+  if (isAuthenticated) return <Navigate to="/teams" replace state={RESUME} />;
   return <>{children}</>;
 }
 
@@ -107,7 +115,13 @@ function CatchAll() {
   // marketing page and then bounce them forward — two redirects where one will
   // do, and a flash of the wrong page.
   if (isLoading) return null;
-  return <Navigate to={isAuthenticated ? '/teams' : '/'} replace />;
+  return (
+    <Navigate
+      to={isAuthenticated ? '/teams' : '/'}
+      replace
+      state={isAuthenticated ? RESUME : undefined}
+    />
+  );
 }
 
 /** `/space/:id` was this app's name for a team until it had a better one. */

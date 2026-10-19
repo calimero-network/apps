@@ -79,8 +79,8 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
   // Hard guard: if no namespace/group is actually selected, bounce back to
   // /login so the NamespaceEntryPopup picks one. Belt-and-braces with the
-  // isNamespaceReady() check in App.tsx — that's a sessionStorage flag and
-  // can fall out of sync with the real group selection.
+  // isNamespaceReady() check in App.tsx — that marker is stored apart from
+  // the group selection and can fall out of sync with it.
   //
   // This MUST be a real navigation, not a client-side one. App.tsx gates the
   // two routes on `canEnterApp`, read once per render: "/" renders
@@ -99,7 +99,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     log.warn("Home", "no group selected — returning to workspace picker", {
       groupSession: sessionStorage.getItem("calimero_group_id"),
       groupLocal: localStorage.getItem("calimero_group_id"),
-      nsReady: sessionStorage.getItem("curb_ns_ready"),
+      nsEntered: localStorage.getItem("curb_ns_entered"),
       path: window.location.pathname,
     });
 

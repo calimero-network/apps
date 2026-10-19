@@ -9,7 +9,7 @@ import {
 } from "../../utils/workspaceName";
 import type { GroupSummary } from "../../api/groupApi";
 import { getGroupId, setGroupId, getStoredGroupAlias } from "../../constants/config";
-import { clearStoredSession } from "../../utils/session";
+import { clearStoredSession, setNamespaceReady } from "../../utils/session";
 import CreateWorkspacePopup from "../popups/CreateWorkspacePopup";
 
 interface WorkspaceSwitcherProps {
@@ -244,14 +244,18 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
     // doesn't have. NamespaceEntryPopup.enterChat clears it for this reason;
     // this path did not.
     clearStoredSession();
+    // The remembered workspace is scoped to its id; move it along, or the
+    // reload below lands on the picker instead of the workspace picked here.
+    setNamespaceReady(groupId);
     window.location.href = "/";
   }, [currentGroupId]);
 
   // The popup has already made the new workspace current (`setGroupId`). The
   // old one's stored chat is dropped for the same reason as on a switch.
-  const handleCreated = useCallback(() => {
+  const handleCreated = useCallback((groupId: string) => {
     setCreating(false);
     clearStoredSession();
+    setNamespaceReady(groupId);
     window.location.href = "/";
   }, []);
 

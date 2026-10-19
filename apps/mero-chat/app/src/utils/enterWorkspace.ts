@@ -59,7 +59,7 @@ export function enterWorkspace(
   }
   forgetJoinedAwaitingName();
   clearStoredSession();
-  setNamespaceReady();
+  setNamespaceReady(namespaceId);
   // Ask for OS notification permission once, here: entry is a real user
   // gesture (Safari requires one) and it covers desktop/browser users who
   // never trigger the PWA `appinstalled` event. Deliberately not awaited —

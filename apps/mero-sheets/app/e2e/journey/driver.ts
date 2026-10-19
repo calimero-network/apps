@@ -90,9 +90,11 @@ async function recover(actor: Actor): Promise<void> {
   await expect(cell(page, 0, 0).or(picker(page)).first()).toBeVisible({ timeout: 60_000 });
   const name = current[actor.name];
   if (name && (await picker(page).isVisible())) {
+    // A reload reopens the last spreadsheet by itself, after a moment on the
+    // picker while the node is read: either it does, or the row is there.
     const row = page.getByTestId("workspace-item").filter({ hasText: name }).first();
-    await expect(row).toBeVisible({ timeout: 60_000 });
-    await row.click();
+    await expect(row.or(cell(page, 0, 0)).first()).toBeVisible({ timeout: 60_000 });
+    if (await row.isVisible()) await row.click();
   }
   await waitForGrid(actor);
   await settleNickname(actor, 5_000);

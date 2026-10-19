@@ -10,6 +10,7 @@ import { useMyName } from "@calimero-apps/names";
 
 import { accountId, loadAccountId } from "../../api/identity";
 import { bindSession } from "../../api/session";
+import { rememberCalendar } from "../../utils/lastVisit";
 import { ClientApiDataSource } from "../../api/dataSource/ClientApiDataSource";
 import Calendar from "../../components/calendar/Calendar";
 import UsernameModal from "../../components/common/modals/username-modal/UsernameModal";
@@ -28,10 +29,18 @@ export default function CalendarPage() {
   // `admin`, not `mero.admin`: the session-aware client. On an account its
   // `getNodeIdentity` is the ACCOUNT and its `getContextIdentitiesOwned` is the
   // account too — where the relay's own routes would name the relay.
-  const { admin } = useMero();
+  const { admin, nodeUrl } = useMero();
   const [ready, setReady] = useState(false);
   const [askUsername, setAskUsername] = useState(false);
   const setupDone = useRef(false);
+
+  // Remember this calendar for the next open (utils/lastVisit). Not under the
+  // desktop's placeholder team `t` (see index.tsx), which names no real team.
+  useEffect(() => {
+    if (teamId && teamId !== "t" && contextId) {
+      rememberCalendar(nodeUrl, teamId, contextId);
+    }
+  }, [nodeUrl, teamId, contextId]);
 
   // ── Activate the context + identity, register a username, load data ─────────
   // The rest of the data layer reads the *active* context from getContextId()

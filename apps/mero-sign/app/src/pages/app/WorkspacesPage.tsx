@@ -22,7 +22,11 @@ import {
   NOT_INSTALLED_MESSAGE,
   useApplicationId,
 } from '../../hooks/useApplicationId';
-import { setActiveWorkspace } from '../../lib/activeWorkspace';
+import {
+  getActiveWorkspace,
+  pickResumeWorkspace,
+  setActiveWorkspace,
+} from '../../lib/activeWorkspace';
 import {
   createWorkspace,
   listWorkspaces,
@@ -66,7 +70,18 @@ interface Banner {
   text: string;
 }
 
-export default function WorkspacesPage() {
+/**
+ * `resume` is set only for a signed-in visit to `/` — a cold open, a reload of
+ * the desktop window, the return from sign-in. Those go on to the workspace
+ * open last, if this node still lists it. `/workspaces` (the rail, the brand,
+ * every "Workspaces" back link) never sets it, which is what lets you come
+ * back to this list on purpose without being sent straight out again.
+ */
+export default function WorkspacesPage({
+  resume = false,
+}: {
+  resume?: boolean;
+}) {
   const navigate = useNavigate();
   // Changes on every navigation, including one to the URL already showing —
   // which is what an accepted invitation that resolved to no single workspace
@@ -124,6 +139,24 @@ export default function WorkspacesPage() {
   useEffect(() => {
     if (app && !idLoading) void load();
   }, [app, idLoading, load, navigationKey]);
+
+  // Decided ONCE, on the first listing that came back, and either way `/` is
+  // REPLACED: by the remembered workspace, or by `/workspaces` when there is
+  // none to go on to. Staying at `/` would leave a resuming entry in history —
+  // pick a workspace here, press Back, and `/` would send you straight into
+  // the workspace you just left. `/workspaces` never resumes, so Back is safe.
+  const resumeDecided = useRef(false);
+  useEffect(() => {
+    if (!resume || resumeDecided.current || loading || idLoading) return;
+    resumeDecided.current = true;
+    const target = pickResumeWorkspace(
+      rows.map((r) => r.namespaceId),
+      getActiveWorkspace(),
+    );
+    navigate(target ? `/workspaces/${target}` : '/workspaces', {
+      replace: true,
+    });
+  }, [resume, loading, idLoading, rows, navigate]);
 
   useEffect(() => {
     function onOutside(e: MouseEvent) {

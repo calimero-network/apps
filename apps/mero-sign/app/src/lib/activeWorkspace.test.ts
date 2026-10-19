@@ -90,3 +90,33 @@ describe('the active workspace', () => {
     expect(getActiveWorkspace()).toBe('ns-acme');
   });
 });
+
+// ── Resuming it at `/` ───────────────────────────────────────────────────────
+//
+// Signed in at `/`, the app used to show the picker every time, so a reload of
+// the desktop window meant picking the same workspace again. It now resumes the
+// remembered one — but only one this node still lists, so a workspace you have
+// since left falls back to the picker instead of an agreements screen that can
+// only fail.
+describe('the workspace `/` resumes', () => {
+  it('is the remembered one when the node still lists it', async () => {
+    stubStorage();
+    const { pickResumeWorkspace } = await loadModule();
+    expect(pickResumeWorkspace(['ns-a', 'ns-acme'], 'ns-acme')).toBe('ns-acme');
+  });
+
+  it('is none when the node no longer lists it', async () => {
+    stubStorage();
+    const { pickResumeWorkspace } = await loadModule();
+    expect(pickResumeWorkspace(['ns-a', 'ns-b'], 'ns-acme')).toBeNull();
+  });
+
+  it('is never a guess: nothing remembered shows the picker', async () => {
+    // Unlike mero-design's teams, the first listed workspace is not a good
+    // default — which one you sign in is not a thing to pick for you.
+    stubStorage();
+    const { pickResumeWorkspace } = await loadModule();
+    expect(pickResumeWorkspace(['ns-a', 'ns-b'], null)).toBeNull();
+    expect(pickResumeWorkspace([], null)).toBeNull();
+  });
+});

@@ -10,7 +10,9 @@ import { useSse } from "../hooks/useSse";
 import { useToast } from "../contexts/ToastContext";
 import { useShallow } from "zustand/react/shallow";
 import { useMemberNames, useMyName } from "@calimero-apps/names";
+import { useMero } from "@calimero-network/mero-react";
 import { decideProjectName } from "../utils/projectName";
+import { rememberProject } from "../utils/lastVisit";
 import { useEditorStore } from "../store/editorStore";
 import {
   getLayerCanvas, peekLayerCanvas, getMaskCanvas, peekMaskCanvas,
@@ -72,11 +74,18 @@ export default function EditorPage() {
   // so these aliases are safe in the callbacks below.
   const api = useApi();
   const { admin } = api;
+  const { nodeUrl } = useMero();
   const rpcCall = api.call;
   const adminUploadBlob = api.uploadBlob;
   const adminGetBlob = api.getBlob;
   // The name each person set once for the whole team, shared by every app on it.
   const { nameOf: teamNameOf } = useMemberNames(admin, teamId);
+
+  // Remember this project for the next open (utils/lastVisit). Not under the
+  // desktop's placeholder team `t` (see main.tsx), which names no real team.
+  useEffect(() => {
+    if (teamId && teamId !== "t" && ctxId) rememberProject(nodeUrl, teamId, ctxId);
+  }, [nodeUrl, teamId, ctxId]);
 
   const {
     doc, layers, selectedLayerId, editingMaskOf, showRulers, panels,

@@ -20,6 +20,7 @@ import { PlusIcon } from '../../components/icons';
 import { useApplicationId } from '../../hooks/useApplicationId';
 import { useTeamCapabilities } from '../../hooks/useTeamCapabilities';
 import { hueOf, monogramOf } from '../../lib/itemView';
+import { pickVault, readLastVisit, rememberTeam } from '../../lib/lastVisit';
 import { canCreateVault, canInvite } from '../../lib/roles';
 import {
   DEFAULT_INVITE_SECS,
@@ -62,9 +63,13 @@ export default function TeamPage() {
   // `AdminLike`). `isDelegated` hides the two things an ACCOUNT cannot do yet:
   // a subgroup invitation has no account form in mero-react, so an invite-only
   // vault can neither be invited to nor, for an account, usefully created.
-  const { admin, isDelegated } = useMero();
+  const { admin, isDelegated, nodeUrl } = useMero();
   const navigate = useNavigate();
   const location = useLocation();
+  // Set by the teams screen when it resumed into this team. See the effect
+  // after the list loads.
+  const resume =
+    (location.state as { resume?: boolean } | null)?.resume === true;
   // Handed over by the teams screen right after `createTeam`: why the cloud
   // would not host this team, in words a person can act on. Only an account
   // founding through a relay ever has one.
@@ -146,6 +151,40 @@ export default function TeamPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Where you were last (`lib/lastVisit`), written only once the node has
+  // listed this team's vaults, so a typo'd or stale URL is never resumed into.
+  // Resumed here, go on to the vault open last if the team still lists it;
+  // otherwise drop the mark (replacing this entry, so Back cannot land on a
+  // resuming one) and this team is the place to come back to.
+  useEffect(() => {
+    if (!listed || !teamId) return;
+    if (resume) {
+      const last = readLastVisit(nodeUrl);
+      const target =
+        last.team === teamId
+          ? pickVault(
+              vaults.flatMap((v) => (v.contextId ? [v.contextId] : [])),
+              last.vault,
+            )
+          : null;
+      if (target) {
+        navigate(`/vault/${target}`, { replace: true });
+        return;
+      }
+      navigate(`${location.pathname}${location.search}`, { replace: true });
+    }
+    rememberTeam(nodeUrl, teamId);
+  }, [
+    listed,
+    teamId,
+    resume,
+    vaults,
+    nodeUrl,
+    navigate,
+    location.pathname,
+    location.search,
+  ]);
 
   // Nothing else re-reads the list, so while the gate is up keep asking — and
   // that covers a read that failed because the team had not synced yet. A

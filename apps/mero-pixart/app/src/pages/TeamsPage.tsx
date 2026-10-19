@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { useApi } from "../api/useApi";
 import Logo from "../components/Logo";
@@ -7,6 +7,7 @@ import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { setStoredTeamName, teamLabel } from "../utils/teamName";
+import { clearLastVisit, forgetTeam, pickRemembered, readLastVisit, shouldResume } from "../utils/lastVisit";
 import { selfIsGroupAdmin } from "../api/selfRole";
 import type { Team } from "../types";
 import styles from "./TeamsPage.module.css";
@@ -16,8 +17,9 @@ type CreatedNamespace = { namespaceId?: string; haEnabled?: boolean; haError?: s
 
 export default function TeamsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { showToast } = useToast();
-  const { logout } = useMero();
+  const { logout, nodeUrl } = useMero();
   // The session-aware API (see api/useApi): the node's own admin on a node
   // login, the account admin on a delegated session. Shared by list/create/join
   // so namespaces are always scoped to (and created under) the right app.
@@ -25,6 +27,9 @@ export default function TeamsPage() {
   const { admin, isDelegated } = api;
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
+  // The node has answered the list (empty or not). A failed read has not, and
+  // must not forget a team it simply could not see.
+  const [listed, setListed] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -45,6 +50,7 @@ export default function TeamsPage() {
             groupId: n.namespaceId ?? "",
             name: n.name ?? "",
           })));
+          setListed(true);
         })
         .catch(() => { if (!cancelled) setTeams([]); })
         .finally(() => { if (!cancelled) setLoading(false); });
@@ -53,6 +59,20 @@ export default function TeamsPage() {
     const id = setInterval(loadTeams, 30_000);
     return () => { cancelled = true; clearInterval(id); };
   }, [api]);
+
+  // Resume the team open last (utils/lastVisit) when this is the default
+  // landing, not a visit you chose, and this node still lists it. Anything
+  // else settles here: a remembered team the node no longer lists is
+  // forgotten, and the entry is replaced so Back or a reload to it is a
+  // plain visit to the list.
+  const resume = shouldResume(location);
+  const remembered = readLastVisit(nodeUrl).team;
+  const resumeTo = resume && listed ? pickRemembered(teams.map((t) => t.groupId), remembered) : null;
+  useEffect(() => {
+    if (!resume || loading || resumeTo) return;
+    if (listed && remembered) forgetTeam(nodeUrl, remembered);
+    navigate(location.pathname + location.search, { replace: true, state: null });
+  }, [resume, loading, listed, resumeTo, remembered, nodeUrl, navigate, location.pathname, location.search]);
 
   // An Admin deletes a team; anyone else leaves it. Asked of each team's own
   // member listing, by the account this session runs as. Keyed on the ids, so
@@ -129,6 +149,7 @@ export default function TeamsPage() {
       return;
     }
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
+    forgetTeam(nodeUrl, teamId);
   }
 
   // Not an admin: leave the team. Works on a node and on an account alike.
@@ -141,12 +162,17 @@ export default function TeamsPage() {
       return;
     }
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
+    forgetTeam(nodeUrl, teamId);
   }
 
   function handleLogout() {
+    // Before `logout()`, which drops the node URL the entry is keyed by.
+    clearLastVisit(nodeUrl);
     logout();
     navigate("/");
   }
+
+  if (resumeTo) return <Navigate to={`/teams/${resumeTo}/projects`} replace state={{ resume: true }} />;
 
   return (
     <div className={styles.root}>

@@ -7,6 +7,7 @@ vi.mock('../hooks/useApplicationId', () => ({
 
 import { copySecret } from '../lib/clipboard';
 import { deviceKeeper } from '../lib/deviceKey';
+import { readLastVisit, rememberVault } from '../lib/lastVisit';
 import { THEME_KEY } from '../lib/theme';
 import { signOut } from './signOut';
 
@@ -66,6 +67,12 @@ describe('signOut', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('forgets the team and vault open last, so the next sign-in is not resumed into them', () => {
+    rememberVault('http://localhost:2528', 'team-a', 'ctx-1');
+    signOut(() => {});
+    expect(readLastVisit('http://localhost:2528')).toEqual({});
   });
 
   it('keeps the light/dark choice: it belongs to the browser, not the account', () => {

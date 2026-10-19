@@ -61,14 +61,19 @@ function Screenful({
     case 'landing':
     default:
       // Signed in, `/` is the app rather than the pitch — a render decision, not
-      // a redirect, so the URL never changes under anybody. `/landing` keeps
-      // showing the landing page either way, which is what makes it a front
-      // door you can link to rather than a fallback you fall into.
+      // a redirect (the picker it renders settles the URL once it has listed;
+      // see below). `/landing` keeps showing the landing page either way,
+      // which is what makes it a front door you can link to rather than a
+      // fallback you fall into.
       return authed && window.location.pathname === '/' ? (
         // Signed in at `/`, the app's home is the workspace picker: an
         // agreement cannot exist outside a workspace since rc.41 bound every
         // context to a group, so the agreements list is not a place to start.
-        <WorkspacesPage />
+        // `resume`: once it has listed, the picker replaces `/` with the
+        // workspace open last (when the node still lists it) or with
+        // `/workspaces`. That is the page acting on what it listed, not this
+        // renderer navigating; `/workspaces` itself shows the list as-is.
+        <WorkspacesPage resume />
       ) : (
         // ⚠️ `onConnect` is load-bearing. The landing template leaves this hook
         // for apps whose sign-in is not the shared popup, and Mero Sign is one
