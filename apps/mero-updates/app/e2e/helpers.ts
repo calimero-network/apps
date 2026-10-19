@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { openAuthCallback } from "@calimero-apps/e2e-node/journey";
 
 import { readState } from "./global-setup";
 
@@ -14,7 +15,7 @@ export async function login(page: Page): Promise<void> {
     refresh_token: s.refreshToken,
     node_url: s.nodeUrl,
   });
-  await page.goto(`/#${params.toString()}`);
+  await openAuthCallback(page, "/", params);
 }
 
 /**

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openAuthCallback } from "@calimero-apps/e2e-node/journey";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,7 +38,7 @@ async function login(page: Page) {
     refresh_token: s.refreshToken,
     node_url: s.nodeUrl,
   });
-  await page.goto(`/#${params.toString()}`);
+  await openAuthCallback(page, "/", params);
 }
 
 test("a founder sets up, publishes, and the conversation works", async ({ page }) => {

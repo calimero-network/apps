@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openAuthCallback } from "@calimero-apps/e2e-node/journey";
 import { MeroJs } from "@calimero-network/mero-js";
 
 import { readState } from "./global-setup";
@@ -29,7 +30,7 @@ async function login(page: Page) {
     node_url: s.nodeUrl,
     application_id: s.applicationId,
   });
-  await page.goto(`/#${params.toString()}`);
+  await openAuthCallback(page, "/", params);
 }
 
 /**

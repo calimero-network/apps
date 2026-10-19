@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { openAuthCallback } from "@calimero-apps/e2e-node/journey";
 import { readState } from "./global-setup";
 
 export const state = () => readState();
@@ -36,7 +37,7 @@ export async function login(page: Page, opts: { withContext?: boolean } = {}) {
   // `/play` rather than `/`: the landing page is the front door for a stranger,
   // and a spec about the arena should not spend its first assertion proving the
   // marketing copy redirects. `marketing-landing.spec.ts` covers that route.
-  await page.goto(`/play#${params.toString()}`);
+  await openAuthCallback(page, "/play", params);
 }
 
 /** The arena, once the first `arena()` read has landed. */
