@@ -13,10 +13,10 @@ workflows/  merobox scenarios. The merod image pinned here MUST equal the
             calimero-sdk tag in logic/Cargo.toml; CI fails the pair otherwise.
 ```
 
-Pinned to core **0.11.0-rc.83**:
+Pinned to core **0.11.0-rc.89**:
 
-- the contract builds against `calimero-sdk` / `calimero-storage` tag `0.11.0-rc.83`
-- the merobox workflows run `ghcr.io/calimero-network/merod:0.11.0-rc.83`
+- the contract builds against `calimero-sdk` / `calimero-storage` tag `0.11.0-rc.89`
+- the merobox workflows run `ghcr.io/calimero-network/merod:0.11.0-rc.89`
 - the app uses [`calimero-network/swift-sdk`](https://github.com/calimero-network/swift-sdk) `master`
 
 ## How the app talks to Calimero
@@ -82,7 +82,7 @@ make setup        # check prereqs, build the WASM + signed dev bundle
 make logic-test   # cargo test
 make logic-build  # cargo mero build → logic/res/mero_tag.wasm (ABI embedded)
 make logic-bundle # signed .mpk a node accepts
-make workflows    # merobox scenarios against merod rc.83 in Docker
+make workflows    # merobox scenarios against merod rc.89 in Docker
 ```
 
 `make node` / `node2` / `invite` still start local dev nodes, for working on the contract and the merobox workflows.
@@ -93,7 +93,7 @@ Run `make help` for all targets. [requirements.md](requirements.md) has the full
 ## Status
 
 - Done: the WASM contract (trackers, locations, sharing, groups, geofences, presence, history), built and unit-tested
-  on rc.83.
+  on rc.89.
 - Done: Cloud sign-in, and writes and reads through the relay, using the official Swift SDK.
 - Done: screens in the light Calimero design:
   - sign-in
