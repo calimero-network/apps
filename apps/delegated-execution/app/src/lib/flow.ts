@@ -965,20 +965,21 @@ export interface PendingLink {
  *
  * Returns what to remember while they are away. It is stored because the answer
  * arrives on a *fresh page load*: the app that asked is gone by then, and only
- * `localStorage` crosses that gap.
+ * `localStorage` crosses that gap. mero-js keeps the grant's verifier itself,
+ * beside its own record of the handoff, and hands it back with the grant.
  */
-export function startCloudLink(
+export async function startCloudLink(
   cloudUrl: string,
   portalUrl: string,
   identity: DeviceIdentity,
-): PendingLink {
+): Promise<PendingLink> {
   // Come back to this page, minus any fragment it is already carrying: a second
   // round trip would otherwise append its answer to the first one's, and the
   // callback reader would take whichever came first.
   const here = new URL(window.location.href);
   here.hash = '';
 
-  const { url } = CloudClient.accountLinkHandoff({
+  const { url } = await CloudClient.accountLinkHandoff({
     portalUrl: normaliseUrl(portalUrl),
     accountId: identity.accountId,
     callbackUrl: here.toString(),
@@ -1009,6 +1010,7 @@ export interface LinkResult {
 export async function finishCloudLink(
   pending: PendingLink,
   grant: string,
+  verifier: string,
   identity: DeviceIdentity,
 ): Promise<LinkResult> {
   if (!identity.rootSecret) {
@@ -1022,6 +1024,7 @@ export async function finishCloudLink(
   }
   const link = await new CloudClient({ cloudBaseUrl: pending.cloudUrl }).linkAccountWithGrant({
     grant,
+    verifier,
     rootSecret: identity.rootSecret,
   });
   return { accountId: link.accountId, alreadyLinked: link.alreadyLinked };
