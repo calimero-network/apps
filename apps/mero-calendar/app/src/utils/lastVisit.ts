@@ -125,15 +125,14 @@ export function resumeRequested(location: Pick<Location, "state">): boolean {
 /**
  * Whether arriving on the teams list should go on to where you were last.
  *
- * Yes for the app's own default redirect (sign-in, `/`), which says so with
- * `state.resume`, and for the first page of a load (`key === "default"`): a
- * desktop window, a bookmark, a typed URL. Not for a deliberate visit — the
- * "← All teams" link, or Back to a list you chose — which carries neither, so it
- * never bounces you out again. The page replaces the entry once it has
- * resolved it, so a later visit to it is a plain one.
+ * Only for the app's own default redirect (sign-in, `/`), which says so with
+ * `state.resume`. Every other arrival is a visit to the list you chose: the
+ * "← All teams" link, Back, and the first page of a load too — a reload of the
+ * list, or a typed `/teams`, must not bounce you straight back out. The page
+ * replaces the entry once it has resolved it, so a later visit is a plain one.
  */
 export function shouldResume(
-  location: Pick<Location, "key" | "state">,
+  location: Pick<Location, "state">,
 ): boolean {
-  return resumeRequested(location) || location.key === "default";
+  return resumeRequested(location);
 }

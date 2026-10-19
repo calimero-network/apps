@@ -78,10 +78,11 @@ beforeEach(() => {
 });
 
 describe("the teams list resumes the last team", () => {
-  it("opens the remembered team on the first page of a load", async () => {
+  it("stays on the list when it is reloaded (the first page of a load)", async () => {
     rememberTeam(NODE, NS);
     open();
-    await screen.findByText("team page");
+    await screen.findByTestId(`team-card-${NS}`);
+    expect(screen.queryByText("team page")).toBeNull();
   });
 
   it("opens it from the sign-in redirect", async () => {
@@ -99,7 +100,7 @@ describe("the teams list resumes the last team", () => {
 
   it("shows the list and forgets a team the node no longer lists", async () => {
     rememberTeam(NODE, "gone");
-    open();
+    open({ resume: true });
     await screen.findByTestId(`team-card-${NS}`);
     await waitFor(() => expect(readLastVisit(NODE).team).toBeUndefined());
     expect(screen.queryByText("team page")).toBeNull();

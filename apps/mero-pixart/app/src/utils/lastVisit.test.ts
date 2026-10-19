@@ -82,13 +82,13 @@ describe("pickRemembered", () => {
 });
 
 describe("shouldResume", () => {
-  it("resumes from the default redirect and on the first page of a load", () => {
-    expect(shouldResume({ key: "abc123", state: { resume: true } })).toBe(true);
-    expect(shouldResume({ key: "default", state: null })).toBe(true);
+  it("resumes only from the default redirect", () => {
+    expect(shouldResume({ state: { resume: true } })).toBe(true);
+    expect(shouldResume({ state: null })).toBe(false);
   });
   it("never bounces a deliberate visit to the list", () => {
-    expect(shouldResume({ key: "abc123", state: null })).toBe(false);
-    expect(shouldResume({ key: "abc123", state: { other: 1 } })).toBe(false);
+    expect(shouldResume({ state: null })).toBe(false);
+    expect(shouldResume({ state: { other: 1 } })).toBe(false);
   });
   it("resumes into a project only when asked to", () => {
     expect(resumeRequested({ state: { resume: true } })).toBe(true);
