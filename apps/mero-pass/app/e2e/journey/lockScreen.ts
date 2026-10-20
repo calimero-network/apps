@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 // Every browser must protect its device key and make a recovery key before a
 // vault opens (src/components/LockGate.tsx). The journeys seal it under a
@@ -43,13 +43,18 @@ export async function stepPastLock(page: Page): Promise<boolean> {
   return false;
 }
 
-/** Step past the lock screens until `ready` shows. */
-export async function passLockScreen(page: Page, ready: string, timeout = 120_000): Promise<void> {
+/**
+ * Step past the lock screens until `ready` shows: a test id, or a locator.
+ * After a reload a sealed key is locked again, so anything behind the lock
+ * screen needs this first.
+ */
+export async function passLockScreen(page: Page, ready: string | Locator, timeout = 120_000): Promise<void> {
+  const target = typeof ready === "string" ? page.getByTestId(ready) : ready;
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    if (await page.getByTestId(ready).isVisible().catch(() => false)) return;
+    if (await target.first().isVisible().catch(() => false)) return;
     await stepPastLock(page);
     await page.waitForTimeout(1_000);
   }
-  await expect(page.getByTestId(ready)).toBeVisible({ timeout: 1_000 });
+  await expect(target.first()).toBeVisible({ timeout: 1_000 });
 }

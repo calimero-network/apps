@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { defaultLogin, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
-import { stepPastLock } from "./lockScreen";
+import { passLockScreen, stepPastLock } from "./lockScreen";
 
 const SYNC = 90_000;
 
@@ -329,7 +329,9 @@ export const driver: AppDriver = {
 
   async afterReload(actor) {
     const page = actor.page;
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 30_000 });
+    // A reload locks the sealed device key: a vault page shows the lock
+    // screen, whose heading is not an h1, until it is unlocked.
+    await passLockScreen(page, page.getByRole("heading", { level: 1 }), 60_000);
     const name = inVault[actor.name];
     if (name && /\/vault\//.test(page.url())) await ensureReady(actor, name);
   },
