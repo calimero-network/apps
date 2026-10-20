@@ -112,11 +112,8 @@ peer-to-peer sync.
 The Swift client is **not** vendored here: the app depends on
 [calimero-network/swift-sdk](https://github.com/calimero-network/swift-sdk)
 (`MeroKit` + `MeroKitUI`) as a SwiftPM package declared in
-`app/MeroAR/project.yml`. It needs two SDK changes that are open as PRs, so the
-package tracks `branch: master` until they land and a release is cut:
-
-- [swift-sdk#43](https://github.com/calimero-network/swift-sdk/pull/43) — the core rc.83 wire.
-- [swift-sdk#44](https://github.com/calimero-network/swift-sdk/pull/44) — Cloud sign-in, the account layer and `RelayClient`.
+`app/MeroAR/project.yml`, pinned to the
+[0.2.0 release](https://github.com/calimero-network/swift-sdk/releases/tag/v0.2.0) (`from: 0.2.0`).
 
 **Continue with Calimero Cloud** opens the Calimero wallet in the system sign-in
 sheet (`ASWebAuthenticationSession`); the person approves this device with their
@@ -148,10 +145,10 @@ context.
 
 ### Building against an unmerged SDK
 
-Until #43/#44 are on swift-sdk master, build against a local checkout that
-merges both branches: in `app/MeroAR/project.yml` replace the package's
-`url:`/`branch:` with `path: /path/to/swift-sdk-checkout`, run `make app-gen`,
-and **don't commit that change**.
+To try an SDK change that isn't released yet, build against a local checkout:
+in `app/MeroAR/project.yml` replace the package's `url:`/`from:` with
+`path: /path/to/swift-sdk-checkout`, run `make app-gen`, and **don't commit
+that change**.
 
 ## Identity & roles
 

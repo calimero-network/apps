@@ -159,12 +159,28 @@ public final class AppState: ObservableObject {
             if displayName.isEmpty { displayName = username }
             phase = .lobby
             await loadNodeRooms()
-        } catch MeroError.network {
-            nodeError = "Can't reach a node at \(urlString). Is merod running?"
-        } catch MeroError.authenticationFailed {
-            nodeError = "The node refused that username or password."
         } catch {
-            nodeError = userMessage(error)
+            nodeError = Self.nodeLoginMessage(error, url: urlString)
+        }
+    }
+
+    /// What a failed node sign-in says. The SDK types the failure, so a
+    /// lockout after too many attempts doesn't read as a wrong password.
+    static func nodeLoginMessage(_ error: Error, url: String) -> String {
+        switch LoginFailureReason(error) {
+        case .invalidCredentials:
+            return "The node refused that username or password."
+        case .rateLimited(let retryAfter?) where retryAfter > 0:
+            let seconds = Int(retryAfter.rounded(.up))
+            return "Too many failed attempts. Try again in \(seconds) second\(seconds == 1 ? "" : "s")."
+        case .rateLimited:
+            return "Too many failed attempts. Try again later."
+        case .unreachable:
+            return "Can't reach a node at \(url). Is merod running?"
+        case .notFound:
+            return "No node sign-in at \(url). Check the URL and port."
+        case .serverError, .other:
+            return userMessage(error)
         }
     }
 

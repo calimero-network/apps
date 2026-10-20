@@ -80,22 +80,14 @@ public struct NodeTransport: ContractTransport {
             HttpRequest(path: "/jsonrpc", method: .post, body: .json(try MeroJSON.encode(body))))
         let envelope = try MeroJSON.decode(Envelope.self, from: data)
         if let error = envelope.error {
+            // The contract's sentence sits in `data`; `RpcError.reason` reads it.
             throw MeroError.rpc(
                 RpcError(
-                    code: error.code ?? -1, message: error.message ?? Self.describe(error.type, error.data),
+                    code: error.code ?? -1, message: error.message ?? error.type ?? "The node refused the call.",
                     type: error.type, data: error.data))
         }
         guard let output = envelope.result?.output, output != .null else { return nil }
         return output
-    }
-
-    /// The node's own sentence for a contract failure: `data` carries it.
-    static func describe(_ type: String?, _ data: JSONValue?) -> String {
-        if case .string(let text)? = data { return text }
-        if let data, let encoded = try? MeroJSON.encode(data), let text = String(data: encoded, encoding: .utf8) {
-            return [type, text].compactMap { $0 }.joined(separator: ": ")
-        }
-        return type ?? "The node refused the call."
     }
 
     public func query(contextId: String, method: String, args: [String: JSONValue]) async throws -> JSONValue? {
