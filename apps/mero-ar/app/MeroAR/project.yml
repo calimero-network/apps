@@ -8,17 +8,13 @@ options:
   createIntermediateGroups: true
 
 # MeroKit + MeroKitUI are the shared Calimero Swift SDK
-# (calimero-network/swift-sdk). The app depends on two things that are not on
-# a tagged release yet, so this tracks `master`:
+# (calimero-network/swift-sdk): Cloud sign-in (`CloudSignIn`, `RelayClient`,
+# `MeroClient.signInWithCloud`), the relay session every contract call goes
+# through, and the node admin API for node sign-in.
 #
-# - swift-sdk#43 (feat/core-rc83): the core 0.11.0-rc.83 wire.
-# - swift-sdk#44 (feat/cloud-sign-in): Cloud-only mobile sign-in — wallet
-#   passkey → device certificate → hosted relay (`CloudSignIn`, `RelayClient`,
-#   `MeroClient.signInWithCloud`). Every contract call in this app goes through
-#   that relay session.
-#
-# Once the SDK cuts a release, pin it here by `revision:` or `from:` so a clean
-# build cannot pick up whatever landed upstream that morning.
+# Pinned to a release, `from: 0.2.0` (typed login failures,
+# `RpcError.reason`), so a clean build cannot pick up whatever landed on the
+# SDK's `master` that morning.
 #
 # Local development against an unmerged SDK checkout: swap the two lines below
 # for `path: ../../../swift-sdk` (or your worktree), regenerate, and do NOT
@@ -26,7 +22,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    branch: master
+    from: 0.2.0
 
 targets:
   MeroAR:

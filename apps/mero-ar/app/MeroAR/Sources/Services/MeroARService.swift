@@ -452,7 +452,7 @@ func userMessage(_ error: Error) -> String {
         return "Nobody could redeem an invite to this room yet: no relay that can admit people serves its space. "
             + "Try again once the space is hosted in Calimero Cloud."
     case MeroError.rpc(let rpcError):
-        return rpcError.message
+        return rpcError.reason
     case MeroError.authRevoked:
         return "Your session was revoked. Sign in again."
     case MeroError.network(let detail):
