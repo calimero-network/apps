@@ -1,11 +1,11 @@
 import Foundation
 import MeroKit
 
-/// The Mero AR contract, spoken through the account's Cloud relay.
+/// The Mero AR contract, spoken through a ``ContractTransport``: the account's
+/// Cloud relay, or a node the person signed in to directly.
 ///
-/// A phone does not run a node and never holds a node password. After Cloud
-/// sign-in (wallet passkey → device certificate → hosted relay) every call goes
-/// through the SDK's relay session:
+/// After Cloud sign-in (wallet passkey → device certificate → hosted relay)
+/// every call goes through the SDK's relay session:
 ///
 /// - **Writes** are warrant intents — ``RelayClient/execute(contextId:method:argsJson:)``.
 ///   The device signs a warrant naming the method and its arguments; the relay
@@ -23,10 +23,15 @@ import MeroKit
 /// structs (`transform`, `position`, `SceneObject`) use the camelCase encoding
 /// the contract's serde derives expect. `MeroJSON` applies no key strategy, so
 /// what is written here is what goes on the wire — and into the warrant hash.
+///
+/// Signed in to a node directly, reads and writes are JSON-RPC on that node and
+/// ``mero`` is the node itself (blobs, invitations and live events all work).
 public final class MeroARService: @unchecked Sendable {
-    public let relay: RelayClient
-    /// The relay's Bearer session (blobs, invitations, SSE), or nil when the
-    /// relay's node key could not be established.
+    public let transport: ContractTransport
+    /// The relay, on a Cloud session.
+    public var relay: RelayClient? { (transport as? RelayTransport)?.relay }
+    /// The relay's Bearer session or the node (blobs, invitations, SSE), or nil
+    /// when the relay's node key could not be established.
     public let mero: Mero?
     public let contextId: String
     /// Who this session is in the room: an account id (64 hex), as `whoami` on
@@ -38,11 +43,20 @@ public final class MeroARService: @unchecked Sendable {
     /// or nil when this session cannot — no Cloud connection behind it.
     let mintInvitation: InvitationMinter?
 
-    public init(
+    public convenience init(
         relay: RelayClient, mero: Mero?, contextId: String, memberId: String,
         mintInvitation: InvitationMinter? = nil
     ) {
-        self.relay = relay
+        self.init(
+            transport: RelayTransport(relay: relay), mero: mero, contextId: contextId, memberId: memberId,
+            mintInvitation: mintInvitation)
+    }
+
+    public init(
+        transport: ContractTransport, mero: Mero?, contextId: String, memberId: String,
+        mintInvitation: InvitationMinter? = nil
+    ) {
+        self.transport = transport
         self.mero = mero
         self.contextId = contextId
         self.memberId = memberId
@@ -61,6 +75,20 @@ public final class MeroARService: @unchecked Sendable {
         { namespaceId in try await cloud.createNamespaceInvitation(connection, namespaceId: namespaceId) }
     }
 
+    /// The node minter: the node signs the invitation with its namespace key.
+    public static func nodeMinter(_ mero: Mero) -> InvitationMinter {
+        { namespaceId in
+            switch try await mero.admin.createNamespaceInvitation(namespaceId) {
+            case .single(let data): return data.invitation
+            case .recursive(let data):
+                guard let first = data.invitations.first else {
+                    throw MeroError.decoding("the node returned no invitation")
+                }
+                return first.invitation
+            }
+        }
+    }
+
     /// Whether live events and blob transfer are available on this session.
     public var hasBearerSession: Bool { mero != nil }
 
@@ -76,11 +104,20 @@ public final class MeroARService: @unchecked Sendable {
         relay: RelayClient, mero: Mero?, contextId: String, account: String,
         mintInvitation: InvitationMinter? = nil
     ) async throws -> MeroARService {
-        _ = try await relay.describe(contextId)
-        let member = (try? await relay.query(String.self, contextId: contextId, method: "whoami"))
+        try await open(
+            transport: RelayTransport(relay: relay), mero: mero, contextId: contextId, account: account,
+            mintInvitation: mintInvitation)
+    }
+
+    public static func open(
+        transport: ContractTransport, mero: Mero?, contextId: String, account: String,
+        mintInvitation: InvitationMinter? = nil
+    ) async throws -> MeroARService {
+        try await transport.describe(contextId: contextId)
+        let member = (try? await transport.query(String.self, contextId: contextId, method: "whoami"))
             .flatMap { $0.isEmpty ? nil : $0 } ?? account.lowercased()
         return MeroARService(
-            relay: relay, mero: mero, contextId: contextId, memberId: member, mintInvitation: mintInvitation)
+            transport: transport, mero: mero, contextId: contextId, memberId: member, mintInvitation: mintInvitation)
     }
 
     // MARK: - Invitations
@@ -94,12 +131,28 @@ public final class MeroARService: @unchecked Sendable {
     /// to see which context appeared.
     public func createRoomInvite() async throws -> RoomInvite {
         guard let mero, let mintInvitation else { throw MeroARError.readsUnavailable }
-        guard let namespaceId = try await mero.admin.getContextGroup(contextId) else {
+        guard let group = try await mero.admin.getContextGroup(contextId) else {
             throw MeroError.decoding("this room has no namespace to invite into")
         }
+        let namespaceId = await Self.namespace(containing: group, mero: mero)
         let signed = try await mintInvitation(namespaceId)
         let name = (try? await getRoom().name) ?? ""
         return RoomInvite(namespaceId: namespaceId, contextId: contextId, roomName: name, invitation: signed)
+    }
+
+    /// The namespace (root group) a room's group sits in. A room made in a
+    /// subgroup, as a node creates them, is invited into through its
+    /// namespace; a group that is itself a namespace is returned as is.
+    static func namespace(containing group: String, mero: Mero) async -> String {
+        guard let namespaces = try? await mero.admin.listNamespaces() else { return group }
+        let ids = namespaces.map(\.namespaceId)
+        if ids.contains(group) { return group }
+        for id in ids {
+            if let groups = try? await mero.admin.listNamespaceGroups(id), groups.contains(where: { $0.groupId == group }) {
+                return id
+            }
+        }
+        return group
     }
 
     // MARK: - Reads
@@ -113,7 +166,7 @@ public final class MeroARService: @unchecked Sendable {
 
     /// `Option<SceneObject>`: absent and `null` both come back as nil.
     public func getObject(id: String) async throws -> SceneObject? {
-        let value = try await relay.query(contextId: contextId, method: "get_object", argsJson: ["id": .string(id)])
+        let value = try await transport.query(contextId: contextId, method: "get_object", args: ["id": .string(id)])
         guard let value, value != .null else { return nil }
         return try MeroJSON.decode(SceneObject.self, from: try MeroJSON.encode(value))
     }
@@ -233,7 +286,10 @@ public final class MeroARService: @unchecked Sendable {
     /// Same request `admin.uploadBlob` builds (raw octet-stream body,
     /// `context_id` in the query, `{ data: { blob_id, size } }` back), sent on
     /// the SDK transport only to carry ``uploadTimeout``.
-    func uploadWorldMap(_ data: Data) async throws -> String {
+    func uploadWorldMap(_ data: Data) async throws -> String { try await uploadBlob(data) }
+
+    /// Upload bytes into this room's blob space and return the blob id.
+    func uploadBlob(_ data: Data) async throws -> String {
         guard let mero else { throw MeroARError.readsUnavailable }
         let (response, _) = try await mero.http.sendRaw(
             HttpRequest(
@@ -243,7 +299,7 @@ public final class MeroARService: @unchecked Sendable {
                 timeout: Self.uploadTimeout))
         let envelope = try MeroJSON.decode(ApiResponse<BlobRef>.self, from: response)
         guard let blobId = envelope.data?.blobId, !blobId.isEmpty else {
-            throw MeroError.decoding("the relay accepted the world map but returned no blob id")
+            throw MeroError.decoding("the upload was accepted but no blob id came back")
         }
         return blobId
     }
@@ -254,6 +310,48 @@ public final class MeroARService: @unchecked Sendable {
     public func downloadWorldMap(blobId: String) async throws -> Data {
         guard let mero else { throw MeroARError.readsUnavailable }
         return try await mero.admin.getBlob(blobId, contextId: contextId)
+    }
+
+    // MARK: - Room scan (the shared 3D model of the room)
+
+    /// The room's current scan, if one has been published.
+    public func getRoomScan() async throws -> RoomScanRecord? {
+        let value = try await transport.query(contextId: contextId, method: "get_room_scan", args: [:])
+        guard let value, value != .null else { return nil }
+        return try MeroJSON.decode(RoomScanRecord.self, from: try MeroJSON.encode(value))
+    }
+
+    /// Upload the room model (and the USDZ, when there is one) into the room's
+    /// blob space, then record them as the room's scan. Returns the new version.
+    @discardableResult
+    public func publishRoomScan(_ model: RoomModel, usdz: Data? = nil) async throws -> UInt64 {
+        let json = try model.encoded()
+        let jsonBlob = try await uploadBlob(json)
+        var usdzBlob: JSONValue = .null
+        var usdzSize: JSONValue = .null
+        if let usdz {
+            usdzBlob = .string(try await uploadBlob(usdz))
+            usdzSize = .number(Double(usdz.count))
+        }
+        try await transport.execute(
+            contextId: contextId, method: "set_room_scan",
+            args: [
+                "json_blob": .string(jsonBlob), "json_size": .number(Double(json.count)),
+                "usdz_blob": usdzBlob, "usdz_size": usdzSize,
+                "width": .number(Double(model.width)), "length": .number(Double(model.length)),
+                "height": .number(Double(model.height)), "object_count": .number(Double(model.objects.count)),
+                "sample": .bool(model.sample), "scanned_at": .number(Double(Self.ms())),
+            ])
+        return try await getRoomScan()?.version ?? 0
+    }
+
+    /// Remove the room's scan (admin).
+    public func clearRoomScan() async throws { try await write("clear_room_scan") }
+
+    /// Download the room model a scan record names.
+    public func loadRoomModel(_ record: RoomScanRecord) async throws -> RoomModel {
+        guard let mero else { throw MeroARError.readsUnavailable }
+        return try RoomModel.decode(try await mero.admin.getBlob(record.jsonBlob, contextId: contextId))
     }
 
     /// `PUT` path for a world-map upload into this room.
@@ -307,13 +405,13 @@ public final class MeroARService: @unchecked Sendable {
     // MARK: - Relay plumbing
 
     private func read<T: Decodable>(_ method: String, _ args: [String: JSONValue] = [:]) async throws -> T {
-        try await relay.query(T.self, contextId: contextId, method: method, argsJson: .object(args))
+        try await transport.query(T.self, contextId: contextId, method: method, args: args)
     }
 
     /// A warranted write. Contract methods returning `()` send no `returns`,
     /// which is success.
     private func write(_ method: String, _ args: [String: JSONValue] = [:]) async throws {
-        _ = try await relay.execute(contextId: contextId, method: method, argsJson: .object(args))
+        try await transport.execute(contextId: contextId, method: method, args: args)
     }
 
     private static func ms() -> UInt64 { UInt64(Date().timeIntervalSince1970 * 1000) }
@@ -358,9 +456,9 @@ func userMessage(_ error: Error) -> String {
     case MeroError.authRevoked:
         return "Your session was revoked. Sign in again."
     case MeroError.network(let detail):
-        return "Can't reach your relay: \(detail)"
+        return "Can't reach the server: \(detail)"
     default:
-        if let urlError = error as? URLError { return "Can't reach your relay (\(urlError.code.rawValue))." }
+        if let urlError = error as? URLError { return "Can't reach the server (\(urlError.code.rawValue))." }
         return (error as? LocalizedError)?.errorDescription ?? "Something went wrong."
     }
 }
