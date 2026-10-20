@@ -69,6 +69,34 @@ describe('folder row name', () => {
   });
 });
 
+describe('folder row lock', () => {
+  it('locks an Open folder inside a Restricted one, naming the folder that closes it', () => {
+    renderRow({
+      byId: new Map([
+        ['p', { id: 'p', alias: 'Private', color: null, visibility: 'Restricted' as const }],
+        [
+          'f1',
+          {
+            id: 'f1',
+            alias: 'Product',
+            color: null,
+            visibility: 'Open' as const,
+            restricted: true,
+            restrictedBy: 'p',
+          },
+        ],
+      ]) as never,
+    });
+    const lock = screen.getByLabelText('Restricted');
+    expect(lock.parentElement?.getAttribute('title')).toBe('Restricted: only members of Private');
+  });
+
+  it('shows no lock on an Open folder open to the workspace', () => {
+    renderRow();
+    expect(screen.queryByLabelText('Restricted')).toBeNull();
+  });
+});
+
 describe('folder row keyboard access', () => {
   it('selects the folder when Enter is pressed on its name button', async () => {
     const onSelect = vi.fn();

@@ -33,6 +33,7 @@ import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { folderLabel } from '@/lib/folderLabel';
 import { ancestorsOf } from '@/utils/ancestry';
 import { FolderInfoPanel } from './FolderInfoPanel';
+import { openAudience } from '@/lib/folderRestriction';
 import { NewFolderDialog } from './NewFolderDialog';
 
 interface Props {
@@ -215,6 +216,8 @@ export function FolderContextMenu({
           folderId={folderId}
           folderAlias={folderAlias}
           currentVisibility={currentVisibility}
+          restricted={folder?.restricted}
+          openTo={openAudience(folder, (id) => folders.find((f) => f.id === id)?.alias)}
           onClose={() => setShowInfo(false)}
         />
       )}

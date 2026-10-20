@@ -27,6 +27,7 @@ import {
 import { depthOf } from '@/utils/ancestry';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
+import { folderLabel } from '@/lib/folderLabel';
 import { MemberPicker } from '@/components/common/MemberPicker';
 import { MemberLabel } from '@/components/common/MemberLabel';
 
@@ -55,7 +56,13 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
     refetch,
     selfIdentity,
     namespaceMemberNames,
+    folders = [],
   } = useDriveWorkspace();
+  // Inside a Restricted folder an Open one takes that folder's members, not
+  // the workspace's; the option says so.
+  const parentFolder = parentFolderId
+    ? folders.find((f) => f.id === parentFolderId)
+    : undefined;
   const ops = useFolderOperations(
     rootGroupId,
     applicationId,
@@ -220,7 +227,9 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
                     {
                       value: 'Open' as const,
                       title: 'Open',
-                      desc: 'Workspace members can join',
+                      desc: parentFolder?.restricted
+                        ? `Everyone in ${folderLabel(parentFolder.alias)}`
+                        : 'Workspace members can join',
                     },
                     {
                       value: 'Restricted' as const,

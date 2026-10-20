@@ -23,7 +23,7 @@
 // the Role radio) - a follow-up; today only the preset dropdown ships.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { UserPlus, Link2, Globe, Trash2 } from 'lucide-react';
+import { UserPlus, Link2, Globe, Lock, Trash2 } from 'lucide-react';
 import { useGroupCapabilities, useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -81,6 +81,10 @@ export function FolderSharingPanel({ folderId }: Props) {
   // else (Restricted, or not-yet-resolved) keeps the explicit-members
   // layout, which is the safe default.
   const isOpenFolder = folder?.visibility === 'Open';
+  const wall = folder?.restrictedBy
+    ? folders.find((f) => f.id === folder.restrictedBy)
+    : undefined;
+  const wallLabel = wall ? folderLabel(wall.alias) : 'the folder above';
 
   const [identity, setIdentity] = useState('');
   const [inviting, setInviting] = useState(false);
@@ -264,12 +268,28 @@ export function FolderSharingPanel({ folderId }: Props) {
 
       {isOpenFolder && (
         <p className="flex items-start gap-2 border-b border-border/60 px-4 py-2.5 text-xs text-muted-foreground">
-          <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          {folder?.restricted ? (
+            <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          ) : (
+            <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          )}
           <span>
-            Open to all workspace members. Anyone in the workspace can join
-            and edit this folder. Use the role dropdowns below to pin a
-            specific person to <strong>Read only</strong> or{' '}
-            <strong>Manager</strong>.
+            {folder?.restricted ? (
+              // Open inside a Restricted folder: the parent's members, and
+              // nobody else in the workspace.
+              <>
+                Open to members of <strong>{wallLabel}</strong>. Anyone with
+                access to it can join and edit this folder; nobody else in the
+                workspace can see it.
+              </>
+            ) : (
+              <>
+                Open to all workspace members. Anyone in the workspace can
+                join and edit this folder.
+              </>
+            )}{' '}
+            Use the role dropdowns below to pin a specific person to{' '}
+            <strong>Read only</strong> or <strong>Manager</strong>.
           </span>
         </p>
       )}

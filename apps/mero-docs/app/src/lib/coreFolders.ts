@@ -25,6 +25,9 @@ export interface CoreFolder {
   /** The folder's docs context; null until one reaches this node. */
   context_id: string | null;
   visibility: 'Open' | 'Restricted' | undefined;
+  /** Core's GroupInfo.effectiveVisibility: Restricted when this folder or one
+   *  above it is. Absent from nodes that predate it; see folderRestriction. */
+  effectiveVisibility?: 'Open' | 'Restricted';
   /** Reached through a context this node holds rather than through the tree:
    *  the caller was added to it but cannot see the folder above it. */
   shared: boolean;
@@ -73,6 +76,10 @@ async function describe(
   ]);
   if (!info) return null;
   const color = info.metadata?.data?.[FOLDER_COLOR_KEY];
+  // Newer than the SDK's GroupInfo type; read off the wire as it comes.
+  const effective = visibilityOf(
+    (info as { effectiveVisibility?: string }).effectiveVisibility,
+  );
   return {
     namespaceId: info.namespaceId,
     folder: {
@@ -82,6 +89,7 @@ async function describe(
       alias: info.metadata?.name || null,
       context_id: context,
       visibility: visibilityOf(info.subgroupVisibility),
+      ...(effective ? { effectiveVisibility: effective } : {}),
       shared,
     },
   };
@@ -127,7 +135,14 @@ export async function loadCoreFolders(
           })),
         ),
       );
-      const next = children.flat().filter(({ id }) => {
+      const next = children.flat().filter(({ id, parent }) => {
+        // A Shared folder that turns up below another one the caller sees sits
+        // there, not at a second Shared root. Its subtree is already walked.
+        const known = found.get(id);
+        if (known?.shared && parent !== null) {
+          found.set(id, { ...known, parent_id: parent, shared: false });
+          return false;
+        }
         if (seen.has(id)) return false;
         seen.add(id);
         return true;
