@@ -22,7 +22,7 @@ Pinned to core **0.11.0-rc.90**:
 
 - the contract builds against `calimero-sdk` / `calimero-storage` tag `0.11.0-rc.90`
 - the merobox workflows run `ghcr.io/calimero-network/merod:0.11.0-rc.90`
-- the app uses [`calimero-network/swift-sdk`](https://github.com/calimero-network/swift-sdk) `master`
+- the app uses [`calimero-network/swift-sdk`](https://github.com/calimero-network/swift-sdk) `0.2.0` (`from: 0.2.0`)
 
 ## How the app talks to Calimero
 
@@ -99,7 +99,7 @@ For a device: open `app/MeroTag/MeroTag.xcodeproj` and set your team under *Sign
 
 To build against a local swift-sdk checkout, for example an unmerged SDK branch:
 
-1. In `app/MeroTag/project.yml`, temporarily replace the package's `url` / `branch` with `path: /path/to/swift-sdk`.
+1. In `app/MeroTag/project.yml`, temporarily replace the package's `url` / `from` with `path: /path/to/swift-sdk`.
 2. Run `make app-gen`.
 3. Do not commit that change.
 

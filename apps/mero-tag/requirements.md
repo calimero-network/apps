@@ -110,8 +110,8 @@ with Calimero Cloud, and does not connect to local nodes.
 
 - **`xcodebuild` says "tool not found".** Full Xcode isn't selected. Run
   `sudo xcode-select -s /Applications/Xcode.app`.
-- **The package fails to resolve, or MeroKit / MeroKitUI APIs are missing.** swift-sdk `master` predates swift-sdk#43
-  and #44. Build against a local checkout that merges both:
+- **The package fails to resolve, or MeroKit / MeroKitUI APIs are missing.** The app needs swift-sdk `0.2.0` or
+  later. Reset the package cache (*File ▸ Packages ▸ Reset Package Caches*), or to try an unreleased SDK change:
   1. Temporarily set the `path:` in `project.yml`.
   2. Run `make app-gen`.
 - **"Couldn't open that space".** Either the ID is wrong, or your account isn't a member of that context on its relay.

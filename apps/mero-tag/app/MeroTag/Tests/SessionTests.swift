@@ -86,6 +86,34 @@ final class SessionTests: XCTestCase {
         XCTAssertNil(TrackerStore.sessionEndReason(MeroError.network("offline")))
     }
 
+    func testNodeLoginTellsALockoutFromAWrongPassword() {
+        let url = "http://localhost:4001"
+        func http(_ status: Int, _ headers: [String: String] = [:]) -> MeroError {
+            .http(HTTPError(status: status, statusText: "", url: "\(url)/auth/token", headers: headers))
+        }
+        XCTAssertEqual(
+            AppState.nodeLoginMessage(MeroError.authenticationFailed("bad"), url: url),
+            "The node refused that username or password.")
+        XCTAssertEqual(
+            AppState.nodeLoginMessage(http(429, ["retry-after": "30"]), url: url),
+            "Too many failed attempts. Try again in 30 seconds.")
+        XCTAssertEqual(AppState.nodeLoginMessage(http(429), url: url), "Too many failed attempts. Try again later.")
+        XCTAssertEqual(
+            AppState.nodeLoginMessage(http(404), url: url), "No node sign-in at \(url). Check the URL and port.")
+        XCTAssertEqual(
+            AppState.nodeLoginMessage(MeroError.network("offline"), url: url),
+            "Can't reach a node at \(url). Is merod running?")
+        XCTAssertEqual(
+            AppState.nodeLoginMessage(NodeSessionError.badURL, url: url),
+            "Enter a full node URL, like http://localhost:4001.")
+    }
+
+    func testAContractRefusalShowsTheContractsReason() {
+        let refused = MeroError.rpc(
+            RpcError(code: -32000, message: "FunctionCallError", type: "FunctionCallError", data: "not a viewer"))
+        XCTAssertEqual(TrackerStore.message(for: refused), "not a viewer")
+    }
+
     func testSpacePreferencesRoundTrip() {
         let prefs = SpacePreferences(defaults: isolatedDefaults())
         XCTAssertNil(prefs.space)
