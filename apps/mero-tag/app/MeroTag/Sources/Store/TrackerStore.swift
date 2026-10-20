@@ -243,6 +243,9 @@ public final class TrackerStore: ObservableObject {
             return reason
         case MeroError.network:
             return "Can't reach your relay. Check your connection; changes will retry when you're back online."
+        case let error as MeroError where error.callFailureReason != nil:
+            // A node's JSON-RPC refusal: the contract's reason, not "FunctionCallError".
+            return error.callFailureReason!
         default:
             return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
