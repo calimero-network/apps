@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9B5CFF"/>
+      <stop offset="0.55" stop-color="#6A50FF"/>
+      <stop offset="1" stop-color="#4338F0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.22" r="0.7">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="live" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#14C99A" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#14C99A" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="22" stdDeviation="26" flood-color="#1A1F3D" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
+  <g fill="none" stroke="#FFFFFF" stroke-linecap="round">
+    <circle cx="512" cy="528" r="340" stroke-opacity="0.12" stroke-width="18"/>
+    <circle cx="512" cy="528" r="245" stroke-opacity="0.22" stroke-width="18"/>
+  </g>
+  <g filter="url(#sh)" transform="translate(512 528) rotate(45)">
+    <path d="M 0 -215 L 158 175 Q 165 196 145 188 L 0 112 L -145 188 Q -165 196 -158 175 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="22" stroke-linejoin="round"/>
+  </g>
+  <circle cx="790" cy="250" r="84" fill="url(#live)"/>
+  <circle cx="790" cy="250" r="46" fill="#14C99A" stroke="#FFFFFF" stroke-width="16"/>
+</svg>
