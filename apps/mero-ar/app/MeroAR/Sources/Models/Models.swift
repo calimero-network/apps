@@ -140,6 +140,8 @@ public enum ARSceneEvent: Equatable {
     case presenceUpdated(String), memberJoined(String)
     case roleUpdated(String), ownerTransferred(String)
     case anchorsUpdated, roomUpdated
+    /// The room's 3D scan was published or cleared.
+    case roomScanUpdated
     case other(String, String)
 
     /// Build from a variant name and its decoded payload.
@@ -158,6 +160,7 @@ public enum ARSceneEvent: Equatable {
         case "OwnerTransferred": self = .ownerTransferred(id)
         case "AnchorsUpdated":   self = .anchorsUpdated
         case "RoomUpdated":      self = .roomUpdated
+        case "RoomScanUpdated":  self = .roomScanUpdated
         default:                 self = .other(kind, id)
         }
     }

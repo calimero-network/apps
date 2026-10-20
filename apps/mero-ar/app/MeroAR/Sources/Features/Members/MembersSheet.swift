@@ -4,122 +4,138 @@ import SwiftUI
 ///
 /// The room's creator is its only admin to start with; everyone who joins is a
 /// viewer until promoted, so this sheet is how a second person gets to place
-/// anything. Only an admin sees the toggles — the contract enforces the same
+/// anything. Only an admin sees the toggles: the contract enforces the same
 /// rule regardless; this just avoids offering taps that would be refused.
 struct MembersSheet: View {
     @ObservedObject var store: SceneStore
-    @Environment(\.dismiss) private var dismiss
 
     /// The invite link, once minted. Held so a second tap does not mint a
     /// second invitation.
     @State private var inviteLink: String?
     @State private var inviting = false
     @State private var inviteError: String?
+    @State private var copied = false
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    membersCard
-                    inviteCard
-                    detailsCard
-                }
-                .padding(Theme.gutter)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                SheetHeader(
+                    title: "People", subtitle: "\(rows.count) in this room · \(store.onlineMembers.count) here now")
+                inviteCard
+                membersCard
+                detailsCard
             }
-            .background(ScreenBackground())
-            .refreshable { await store.refreshRoster() }
-            .navigationTitle("Room")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }.foregroundStyle(Theme.ink)
+            .padding(24)
+        }
+        .refreshable { await store.refreshRoster() }
+        .preferredColorScheme(.dark)
+        .task { await store.refreshRoster() }
+    }
+
+    // MARK: - Invite
+
+    private var inviteCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 12) {
+                    IconTile(systemName: "person.badge.plus", size: 42, gradient: true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Invite someone").font(Theme.title(17)).foregroundStyle(Theme.text)
+                        Text("They join the room's space, then build with you.")
+                            .font(.system(size: 13)).foregroundStyle(Theme.textFaint)
+                    }
+                }
+                if let link = inviteLink {
+                    HStack(spacing: 10) {
+                        Image(systemName: "link").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.accent)
+                        Text(link)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(Theme.textDim)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.black.opacity(0.25)))
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Invite link")
+                    .accessibilityIdentifier("inviteLink")
+                    HStack(spacing: 10) {
+                        ShareLink(item: link) {
+                            ButtonLabel(title: "Share", icon: "square.and.arrow.up")
+                        }
+                        .buttonStyle(PrimaryButtonStyle(height: 46))
+                        .accessibilityIdentifier("shareInviteButton")
+                        Button {
+                            #if canImport(UIKit) && os(iOS)
+                            UIPasteboard.general.string = link
+                            #endif
+                            Haptics.success()
+                            copied = true
+                        } label: {
+                            ButtonLabel(title: copied ? "Copied" : "Copy link", icon: copied ? "checkmark" : "doc.on.doc")
+                        }
+                        .buttonStyle(GlassButtonStyle(height: 46))
+                        .accessibilityIdentifier("copyInviteButton")
+                    }
+                } else {
+                    Button {
+                        Haptics.tap()
+                        Task { await mintInvite() }
+                    } label: {
+                        ButtonLabel(title: "Create invite link", icon: "link", isLoading: inviting)
+                    }
+                    .buttonStyle(PrimaryButtonStyle(height: 50))
+                    .disabled(inviting)
+                    .accessibilityIdentifier("createInviteButton")
+                }
+                if let inviteError {
+                    Callout(tone: .danger, message: inviteError)
                 }
             }
         }
-        .presentationBackground(Theme.bg)
-        .task { await store.refreshRoster() }
     }
 
     // MARK: - Members
 
     private var membersCard: some View {
-        Card(padding: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Eyebrow("\(rows.count) member\(rows.count == 1 ? "" : "s")")
-                    Spacer()
-                    if !store.myRole.isEmpty {
-                        Badge(text: "You: \(store.myRole.capitalized)", tone: store.canEdit ? .accent : .neutral)
-                    }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Eyebrow(text: "Members")
+                Spacer()
+                if !store.myRole.isEmpty {
+                    Pill(text: "You: \(store.myRole.capitalized)", tone: store.canEdit ? .accent : .neutral)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
-
-                if rows.isEmpty {
-                    Text("Loading members…")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Theme.textFaint)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 16)
-                } else {
-                    ForEach(rows) { row in
-                        Rectangle().fill(Theme.border).frame(height: 1)
-                        memberRow(row)
-                    }
-                }
-
-                Rectangle().fill(Theme.border).frame(height: 1)
-                Text(footerText)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Theme.textFaint)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
             }
+            VStack(spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    memberRow(row)
+                    if index < rows.count - 1 { Divider().overlay(Theme.glassStroke).padding(.leading, 66) }
+                }
+            }
+            .glass()
+            Text(footerText).font(.system(size: 12.5)).foregroundStyle(Theme.textFaint)
         }
     }
 
     private func memberRow(_ row: Row) -> some View {
         let isMe = row.id == store.memberId
-        // Rows are members (accounts) and presence is per device, so ask "is any
-        // device of this member here" rather than indexing by row id.
         let online = store.onlineMembers.contains(row.id)
         return HStack(spacing: 12) {
-            Avatar(id: row.id, name: row.name, size: 34, me: isMe)
-                .overlay(alignment: .bottomTrailing) {
-                    if online {
-                        Circle()
-                            .fill(Theme.accent)
-                            .frame(width: 10, height: 10)
-                            .overlay(Circle().stroke(Theme.surface, lineWidth: 2))
-                            .accessibilityLabel("Here now")
-                    }
-                }
-            VStack(alignment: .leading, spacing: 2) {
+            Avatar(id: row.id, name: row.name, size: 40, me: isMe, online: online)
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(row.name)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                        .lineLimit(1)
-                    if isMe {
-                        Text("you").font(.system(size: 12.5)).foregroundStyle(Theme.textFaint)
-                    }
+                    Text(isMe ? "\(row.name) (you)" : row.name)
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
                     if row.id == store.room?.owner {
-                        Image(systemName: "crown")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Theme.accentInk)
+                        Image(systemName: "crown.fill").font(.system(size: 11)).foregroundStyle(Theme.warning)
                             .accessibilityLabel("Owner")
                     }
                 }
-                Text(online ? "\(row.role.capitalized) · here now" : row.role.capitalized)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Theme.textFaint)
+                Text(online ? "Here now" : "Away").font(.system(size: 12)).foregroundStyle(Theme.textFaint)
             }
-            Spacer(minLength: 8)
-            // An admin's rights come from the admin tier, not the editor role,
-            // so there is nothing to toggle for them.
+            Spacer()
             if store.isAdmin && row.role != "admin" {
                 Toggle(
                     "Editor",
@@ -129,72 +145,39 @@ struct MembersSheet: View {
                     )
                 )
                 .labelsHidden()
-                .tint(Theme.accentInk)
+                .tint(Theme.violet)
                 .accessibilityLabel("Editor access for \(row.name)")
+                .accessibilityIdentifier("editorToggle-\(MembersSheet.shortId(row.id))")
             } else {
-                Badge(text: row.role.capitalized, tone: row.role == "viewer" ? .neutral : .accent)
+                Pill(text: row.role.capitalized, tone: row.role == "viewer" ? .neutral : .accent)
             }
         }
-        .padding(.horizontal, 20)
-        .frame(minHeight: 64)
-    }
-
-    // MARK: - Invite
-
-    private var inviteCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 14) {
-                CardHeader(
-                    icon: "person.badge.plus", title: "Invite someone",
-                    meta: "They join with their own Calimero account", accent: true)
-
-                if let link = inviteLink {
-                    IdField(value: link)
-                    ShareLink(item: link) {
-                        ButtonLabel(title: "Share invite link", icon: "square.and.arrow.up")
-                    }
-                    .buttonStyle(PrimaryButtonStyle(height: 44))
-                    .accessibilityIdentifier("shareInviteButton")
-                } else {
-                    Button {
-                        Task { await mintInvite() }
-                    } label: {
-                        ButtonLabel(title: "Create invite link", icon: "link", isLoading: inviting)
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .disabled(inviting)
-                    .accessibilityIdentifier("createInviteButton")
-                }
-
-                if let inviteError {
-                    Callout(tone: .danger, title: "Couldn't create an invite", message: inviteError)
-                }
-
-                Text(
-                    "Send the link to someone. They paste it into Mero AR on their phone, or open it on a "
-                        + "computer with Calimero Desktop. New people start as viewers."
-                )
-                .font(.system(size: 12.5))
-                .foregroundStyle(Theme.textFaint)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 
     // MARK: - Details
 
     private var detailsCard: some View {
-        Card {
+        GlassCard {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeader(
-                    icon: "dot.radiowaves.left.and.right", title: store.isLive ? "Live sync" : "Syncing by refresh",
-                    meta: store.isLive
-                        ? "Changes from others appear as they happen."
-                        : "The relay's live session isn't up; the room refreshes every few seconds.")
+                HStack(spacing: 10) {
+                    Image(systemName: "dot.radiowaves.left.and.right").foregroundStyle(Theme.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(store.isLive ? "Live sync" : "Syncing by refresh")
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                        Text(
+                            store.isLive
+                                ? "Changes arrive as they happen."
+                                : "The live session isn't up yet, so the room refreshes every few seconds."
+                        )
+                        .font(.system(size: 12.5)).foregroundStyle(Theme.textFaint)
+                    }
+                }
                 TechnicalDetails(rows: [
                     ("Room (context) ID", store.service.contextId),
                     ("Your member ID", store.memberId),
-                    ("Relay", store.service.relay.relayURL),
+                    (store.service.relay == nil ? "Node" : "Relay", store.service.transport.endpoint),
                 ])
             }
         }
@@ -216,11 +199,8 @@ struct MembersSheet: View {
         }
     }
 
-    /// `myRole` is empty until it first resolves — don't render "You are a ."
     private var footerText: String {
-        if store.isAdmin {
-            return "Editors can place, move and delete objects, and share the room scan."
-        }
+        if store.isAdmin { return "Editors can place, move and delete objects, and share the room scan." }
         return "Only an admin can change roles."
     }
 

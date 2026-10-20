@@ -9,7 +9,8 @@ struct MeroARApp: App {
             RootView()
                 .environmentObject(app)
                 .environmentObject(app.client)
-                .tint(Theme.ink)
+                .tint(Theme.accent)
+                .preferredColorScheme(.dark)
                 // The wallet returns to `meroar://enrol`. The auth sheet normally
                 // captures it; this catches a callback the system delivers to the
                 // app directly instead.
@@ -46,10 +47,10 @@ private struct RestoringView: View {
             ScreenBackground()
             VStack(spacing: 16) {
                 BrandMark(size: 56)
-                ProgressView().tint(Theme.textFaint)
-                Text("Reconnecting to your relay…")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.textFaint)
+                ProgressView().tint(Theme.textDim)
+                Text("Reconnecting…")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Theme.textDim)
             }
         }
     }

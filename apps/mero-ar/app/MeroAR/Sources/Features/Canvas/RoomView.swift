@@ -1,291 +1,840 @@
 import MeroKit
 import SwiftUI
+import simd
 
+/// The room: the live AR camera on an ARKit device, a 3D preview of the same
+/// shared scene everywhere else (the Simulator, a Mac, older devices). Both
+/// carry the same tools.
 struct RoomView: View {
     @EnvironmentObject private var app: AppState
 
     var body: some View {
-        if let store = app.store, let service = app.service {
-            #if canImport(ARKit) && os(iOS)
-            if ARSupport.isAvailable {
-                ARRoomView(store: store, service: service)
+        Group {
+            if let store = app.store, let service = app.service {
+                #if canImport(ARKit) && os(iOS)
+                if ARSupport.isAvailable && !ARSupport.forcePreview {
+                    ARRoomCanvas(store: store, service: service)
+                } else {
+                    PreviewRoomCanvas(store: store, service: service)
+                }
+                #else
+                PreviewRoomCanvas(store: store, service: service)
+                #endif
             } else {
-                NoARRoomView(store: store)
+                ZStack {
+                    SpatialBackground()
+                    VStack(spacing: 16) {
+                        BrandMark(size: 56)
+                        ProgressView().tint(Theme.textDim)
+                        Text("Entering room…").font(.system(size: 15)).foregroundStyle(Theme.textDim)
+                    }
+                }
             }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+// MARK: - The canvas contract
+
+/// What the editor needs from whichever renderer shows the room.
+@MainActor
+protocol RoomCanvas: AnyObject {
+    /// Where a new object goes, or nil when there is nowhere to put it yet.
+    func placementTransform(count: Int) -> Transform?
+    /// Mirror the shared scene.
+    func sync(objects: [SceneObject], selected: String?, presence: [Presence], comments: [SpatialComment], me: String)
+    var onSelect: ((String?) -> Void)? { get set }
+    /// Called when an object was dragged to a new floor position.
+    var onMove: ((String, SIMD3<Float>) -> Void)? { get set }
+    /// Show the room's 3D scan (nil: none).
+    func showRoom(_ model: RoomModel?)
+    /// Top-down floor plan instead of the orbit view.
+    func setFloorPlan(_ on: Bool)
+}
+
+extension Transform {
+    func moved(_ dx: Double, _ dy: Double, _ dz: Double) -> Transform {
+        var t = self
+        t.position = Vec3(position.x + dx, position.y + dy, position.z + dz)
+        return t
+    }
+
+    func rotatedY(_ degrees: Float) -> Transform {
+        var t = self
+        let turn = simd_quatf(angle: degrees * .pi / 180, axis: SIMD3(0, 1, 0))
+        t.rotation = Quat(turn * rotation.simd)
+        return t
+    }
+
+    func scaled(_ factor: Double) -> Transform {
+        var t = self
+        let clamp = { (v: Double) in min(max(v * factor, 0.2), 6) }
+        t.scale = Vec3(clamp(scale.x), clamp(scale.y), clamp(scale.z))
+        return t
+    }
+
+    /// An identity transform at `position`.
+    static func at(_ position: Vec3) -> Transform {
+        Transform(position: position, rotation: Quat(0, 0, 0, 1), scale: Vec3(1, 1, 1))
+    }
+}
+
+/// The kinds the library offers.
+enum ObjectKind: String, CaseIterable, Identifiable {
+    case cube, sphere, arrow, marker, text
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    var symbol: String {
+        switch self {
+        case .cube: return "cube.fill"
+        case .sphere: return "circle.fill"
+        case .arrow: return "arrow.up.forward"
+        case .marker: return "mappin"
+        case .text: return "textformat"
+        }
+    }
+
+    static func symbol(for kind: String) -> String { ObjectKind(rawValue: kind)?.symbol ?? "cube.fill" }
+}
+
+// MARK: - The editor (shared chrome)
+
+/// The tools over the room, the same over the camera and over the preview.
+struct RoomEditor<Canvas: View>: View {
+    @EnvironmentObject private var app: AppState
+    @ObservedObject var store: SceneStore
+    let service: MeroARService
+    let controller: RoomCanvas
+    let isLiveAR: Bool
+    @Binding var status: String
+    var shareScan: (() -> Void)?
+    var isPublishing = false
+    /// A dock button that swaps between the live camera and the 3D room.
+    var switchView: (title: String, icon: String, action: () -> Void)?
+    @ViewBuilder var canvas: Canvas
+
+    @State private var selected: String?
+    @State private var showLibrary = false
+    @State private var showMembers = false
+    @State private var showComments = false
+    /// When something was last placed or posted: Return can deliver a submit
+    /// twice, and the second must not add a duplicate.
+    @State private var lastAdd = Date.distantPast
+    @State private var floorPlan = false
+    @State private var showScan = false
+
+    var body: some View {
+        ZStack {
+            canvas.ignoresSafeArea()
+
+            if isLiveAR && store.canEdit && selected == nil {
+                Image(systemName: "plus.viewfinder")
+                    .font(.system(size: 34, weight: .ultraLight))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.4), radius: 6)
+                    .accessibilityHidden(true)
+            }
+
+            VStack(spacing: 10) {
+                RoomTopBar(store: store, showMembers: $showMembers) { roomMenu }
+                if !isLiveAR { previewBanner }
+                if let model = store.roomModel, !isLiveAR { roomPill(model) }
+                Spacer()
+                if !status.isEmpty { notice(status, icon: "viewfinder", tone: .neutral) }
+                if let error = store.lastError { errorNotice(error) }
+                if let id = selected, let object = store.objects[id] {
+                    Inspector(store: store, object: object) { selected = nil }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else {
+                    if store.roomModel == nil && store.canEdit && !isLiveAR { addRoomPrompt }
+                    dock.transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .padding(.bottom, 8)
+            .animation(.spring(response: 0.42, dampingFraction: 0.86), value: selected)
+            .animation(.easeOut(duration: 0.2), value: status)
+            .animation(.easeOut(duration: 0.2), value: store.lastError)
+        }
+        .sheet(isPresented: $showLibrary) {
+            ObjectLibrary { kind, color, content in place(kind, color: color, content: content) }
+                .presentationDetents([.height(430)])
+                .presentationBackground(.ultraThinMaterial)
+                .presentationCornerRadius(32)
+        }
+        .sheet(isPresented: $showMembers) {
+            MembersSheet(store: store).presentationBackground(.ultraThinMaterial).presentationCornerRadius(32)
+        }
+        .sheet(isPresented: $showComments) {
+            CommentsSheet(store: store) { text in
+                guard Date().timeIntervalSince(lastAdd) > 0.8 else { return }
+                lastAdd = Date()
+                let anchor = selected.flatMap { store.objects[$0]?.transform.position } ?? Vec3(0, 0.3, -0.6)
+                Task { await store.addComment(text: text, position: anchor) }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationBackground(.ultraThinMaterial)
+            .presentationCornerRadius(32)
+        }
+        .onAppear {
+            controller.onSelect = { id in
+                Haptics.soft()
+                selected = id
+            }
+            controller.onMove = { id, point in
+                Haptics.soft()
+                Task { await store.move(id: id, to: point) }
+            }
+            controller.showRoom(store.roomModel)
+            resync()
+        }
+        .onChange(of: store.roomModel) { _, model in
+            controller.showRoom(model)
+            if model == nil { floorPlan = false }
+        }
+        .onChange(of: floorPlan) { _, on in controller.setFloorPlan(on) }
+        .fullScreenCover(isPresented: $showScan) {
+            #if canImport(RoomPlan) && os(iOS)
+            RoomScanFlow(store: store)
             #else
-            NoARRoomView(store: store)
+            EmptyView()
             #endif
-        } else {
-            ZStack {
-                ScreenBackground()
-                ProgressView("Entering room…").tint(Theme.textFaint)
+        }
+        .onChange(of: store.sortedObjects) { _, _ in resync() }
+        .onChange(of: store.comments) { _, _ in resync() }
+        .onChange(of: store.presence) { _, _ in resync() }
+        .onChange(of: selected) { _, _ in resync() }
+    }
+
+    private func resync() {
+        if let id = selected, store.objects[id] == nil { selected = nil }
+        controller.sync(
+            objects: store.sortedObjects, selected: selected, presence: Array(store.presence.values),
+            comments: store.comments, me: store.memberId)
+    }
+
+    private func place(_ kind: ObjectKind, color: String, content: String?) {
+        guard Date().timeIntervalSince(lastAdd) > 0.8 else { return }
+        lastAdd = Date()
+        showLibrary = false
+        guard let transform = controller.placementTransform(count: store.objects.count) else {
+            status = "Point at a surface, then add"
+            Haptics.error()
+            return
+        }
+        Haptics.success()
+        Task { await store.addObject(kind: kind.rawValue, content: content, transform: transform, color: color) }
+    }
+
+    // MARK: The 3D room
+
+    /// What can be done with the room's 3D scan.
+    @ViewBuilder private var roomMenu: some View {
+        Menu {
+            if store.canEdit {
+                if RoomScanSupport.isSupported {
+                    Button {
+                        showScan = true
+                    } label: {
+                        Label(store.roomModel == nil ? "Scan this room" : "Rescan this room", systemImage: "camera.metering.matrix")
+                    }
+                } else {
+                    Section(RoomScanSupport.unsupportedReason) {}
+                }
+                Button {
+                    tryTheSampleRoom()
+                } label: {
+                    Label("Try a sample room", systemImage: "sofa")
+                }
             }
+            if store.roomModel != nil && !isLiveAR {
+                Button {
+                    floorPlan.toggle()
+                } label: {
+                    Label(floorPlan ? "3D view" : "Floor plan", systemImage: floorPlan ? "cube" : "square.split.bottomrightquarter")
+                }
+            }
+            if isLiveAR, store.canEdit, let shareScan {
+                Button(action: shareScan) {
+                    Label("Align to my room", systemImage: "scope")
+                }
+            }
+            if store.isAdmin && store.roomScan != nil {
+                Button(role: .destructive) {
+                    Task { await store.clearRoomScan() }
+                } label: {
+                    Label("Remove the 3D room", systemImage: "trash")
+                }
+            }
+        } label: {
+            Image(systemName: "house.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .frame(width: 44, height: 44)
+                .modifier(Glass(shape: Circle()))
+        }
+        .accessibilityLabel("Room")
+        .accessibilityIdentifier("roomMenuButton")
+    }
+
+    private func tryTheSampleRoom() {
+        guard let sample = RoomModel.sampleLivingRoom() else {
+            store.lastError = "The sample room is missing from this build."
+            return
+        }
+        Haptics.tap()
+        Task {
+            if await store.publishRoomScan(sample) {
+                Haptics.success()
+                status = "Sample room shared with everyone here"
+            }
+        }
+    }
+
+    private func roomPill(_ model: RoomModel) -> some View {
+        let size = String(format: "%.1f × %.1f m", model.width, model.length)
+        let who = store.roomScan.map { store.name(of: $0.scannedBy) } ?? ""
+        return ARChip {
+            Label(
+                model.sample ? "Sample room · \(size)" : "Scanned by \(who) · \(size)",
+                systemImage: model.sample ? "sofa" : "camera.metering.matrix")
+                .font(.system(size: 12.5, weight: .semibold))
+        }
+        .accessibilityIdentifier("roomScanPill")
+    }
+
+    private var addRoomPrompt: some View {
+        Menu {
+            if RoomScanSupport.isSupported {
+                Button {
+                    showScan = true
+                } label: {
+                    Label("Scan this room", systemImage: "camera.metering.matrix")
+                }
+            }
+            Button {
+                tryTheSampleRoom()
+            } label: {
+                Label("Try a sample room", systemImage: "sofa")
+            }
+        } label: {
+            HStack(spacing: 10) {
+                if store.isPublishingScan {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "house.fill")
+                }
+                Text(store.isPublishingScan ? "Sharing the room…" : "Add your room in 3D")
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 11)
+            .background(Capsule().fill(Theme.aurora))
+            .shadow(color: Theme.violet.opacity(0.45), radius: 12, y: 4)
+        }
+        .accessibilityIdentifier("addRoomPrompt")
+    }
+
+    private var previewBanner: some View {
+        ARChip {
+            Label("3D preview · live AR needs an ARKit iPhone or iPad", systemImage: "cube.transparent")
+                .font(.system(size: 12.5, weight: .semibold))
+        }
+        .accessibilityIdentifier("previewBanner")
+    }
+
+    private var dock: some View {
+        HStack(spacing: 14) {
+            if store.canEdit {
+                dockButton("Add", "plus", gradient: true, id: "addObjectButton") { showLibrary = true }
+            }
+            dockButton("Notes", "text.bubble.fill", badge: store.comments.count, id: "commentsButton") {
+                showComments = true
+            }
+            if isLiveAR, store.canEdit, let shareScan {
+                dockButton(isPublishing ? "Sharing" : "Share scan", "square.stack.3d.up.fill", id: "shareScanButton") {
+                    shareScan()
+                }
+            }
+            if !isLiveAR, store.roomModel != nil {
+                dockButton(floorPlan ? "3D" : "Plan", floorPlan ? "cube.fill" : "square.split.bottomrightquarter.fill", id: "floorPlanButton") {
+                    floorPlan.toggle()
+                }
+            }
+            if let switchView {
+                dockButton(switchView.title, switchView.icon, id: "switchViewButton", action: switchView.action)
+            }
+            dockButton("People", "person.2.fill", id: "peopleButton") { showMembers = true }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .glass(cornerRadius: Theme.Radius.dock, strong: true)
+        .overlay(alignment: .top) {
+            if !store.canEdit && store.myRole == "viewer" {
+                Pill(text: "View only", tone: .warning).offset(y: -14)
+            }
+        }
+    }
+
+    private func dockButton(
+        _ title: String, _ icon: String, gradient: Bool = false, badge: Int = 0, id: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 54, height: 54)
+                    .background(
+                        Circle().fill(gradient ? AnyShapeStyle(Theme.aurora) : AnyShapeStyle(Theme.glassFillStrong))
+                    )
+                    .overlay(Circle().strokeBorder(Color.white.opacity(gradient ? 0.35 : 0.14), lineWidth: 1))
+                    .shadow(color: gradient ? Theme.violet.opacity(0.5) : .clear, radius: 12, y: 4)
+                    .overlay(alignment: .topTrailing) {
+                        if badge > 0 {
+                            Text("\(badge)")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Capsule().fill(Theme.pink))
+                                .offset(x: 4, y: -2)
+                        }
+                    }
+                Text(title).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Theme.textDim)
+            }
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityIdentifier(id)
+    }
+
+    private func notice(_ text: String, icon: String, tone: Tone) -> some View {
+        ARChip {
+            Label(text, systemImage: icon).foregroundStyle(tone == .danger ? Theme.danger : Theme.text)
+        }
+        .padding(.horizontal, Theme.gutter)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .task(id: text) {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if !Task.isCancelled && status == text { status = "" }
+        }
+    }
+
+    private func errorNotice(_ error: String) -> some View {
+        ARChip {
+            Label(error, systemImage: "exclamationmark.octagon.fill")
+                .foregroundStyle(Theme.danger)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(.horizontal, Theme.gutter)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .task(id: error) {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if !Task.isCancelled { store.lastError = nil }
         }
     }
 }
 
-// MARK: - Shared overlay pieces
+// MARK: - Top bar
 
-/// Top bar over the room: name + live count on the left, members and leave on
-/// the right. Rendered as material chips so it reads over a camera feed and
-/// over the light background alike.
-private struct RoomTopBar: View {
+/// Room name, live state, who's here, and leave.
+private struct RoomTopBar<Menu: View>: View {
     @EnvironmentObject private var app: AppState
     @ObservedObject var store: SceneStore
     @Binding var showMembers: Bool
+    @ViewBuilder var menu: Menu
 
     var body: some View {
-        HStack(spacing: 8) {
-            ARChip(padding: EdgeInsets(top: 7, leading: 8, bottom: 7, trailing: 12)) {
-                HStack(spacing: 8) {
-                    BrandMark(size: 22)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(roomName)
-                            .font(.system(size: 13, weight: .semibold))
-                            .lineLimit(1)
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(store.isLive ? Theme.accentInk : Theme.warning)
-                                .frame(width: 6, height: 6)
-                            Text("\(store.objects.count) objects · \(store.onlineMembers.count) here")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Theme.textDim)
-                                .monospacedDigit()
-                        }
-                    }
+        HStack(spacing: 10) {
+            Button {
+                Haptics.tap()
+                app.leaveRoom()
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .buttonStyle(CircleButtonStyle())
+            .accessibilityLabel("Leave room")
+            .accessibilityIdentifier("leaveButton")
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(roomName).font(.system(size: 16, weight: .bold)).foregroundStyle(Theme.text).lineLimit(1)
+                HStack(spacing: 6) {
+                    Circle().fill(store.isLive ? Theme.success : Theme.warning).frame(width: 7, height: 7)
+                    Text("\(store.objects.count) objects · \(store.onlineMembers.count) here")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.textDim)
+                        .monospacedDigit()
                 }
             }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .glassCapsule()
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("roomStatus")
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
+
+            menu
 
             Button {
                 Haptics.tap()
                 showMembers = true
             } label: {
-                ARChip {
-                    Label("\(max(store.roles.count, 1))", systemImage: "person.2")
-                        .monospacedDigit()
-                }
+                AvatarStack(people: people, size: 30)
+                    .padding(6)
+                    .glassCapsule()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Members")
             .accessibilityIdentifier("membersButton")
-
-            Button {
-                Haptics.tap()
-                app.leaveRoom()
-            } label: {
-                ARChip(padding: EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10)) {
-                    Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Leave room")
-            .accessibilityIdentifier("leaveButton")
         }
         .padding(.horizontal, Theme.gutter)
-        .padding(.top, 8)
+        .padding(.top, 6)
     }
 
     private var roomName: String {
         guard let name = store.room?.name, !name.isEmpty else { return "Room" }
         return name
     }
-}
 
-/// A transient hint or error over the room.
-private struct OverlayNotice: View {
-    let text: String
-    var icon: String = "info.circle"
-    var tint: Color = Theme.textDim
-
-    var body: some View {
-        ARChip {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: icon).foregroundStyle(tint)
-                Text(text).multilineTextAlignment(.leading)
-            }
-        }
-        .padding(.horizontal, Theme.gutter)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+    private var people: [(id: String, name: String)] {
+        let online = store.onlineMembers
+        let here = store.members.filter { online.contains($0.id) || $0.id == store.memberId }
+        let list = here.isEmpty ? [(store.memberId, app.effectiveDisplayName)] : here.map { ($0.id, $0.username) }
+        return list.map { (id: $0.0, name: $0.1) }
     }
 }
 
-// MARK: - AR
+// MARK: - Inspector
+
+/// The selected object: nudge, turn, resize, paint, lock, delete.
+private struct Inspector: View {
+    @ObservedObject var store: SceneStore
+    let object: SceneObject
+    let close: () -> Void
+
+    private var lockedByOther: Bool { store.isLockedByOther(object.id) }
+    private var lockedByMe: Bool { object.lockedBy == store.memberId }
+    private var editable: Bool { store.canEdit && !lockedByOther }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                IconTile(systemName: ObjectKind.symbol(for: object.data.kind), size: 40, gradient: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(object.data.kind == "text" ? (object.data.content ?? "Text") : object.data.kind.capitalized)
+                        .font(.system(size: 16, weight: .bold)).foregroundStyle(Theme.text).lineLimit(1)
+                    Text(lockedByOther ? "Locked by \(store.name(of: object.lockedBy ?? ""))" : "Placed by \(store.name(of: object.createdBy))")
+                        .font(.system(size: 12.5)).foregroundStyle(lockedByOther ? Theme.warning : Theme.textFaint)
+                }
+                Spacer()
+                Button(action: close) { Image(systemName: "xmark") }
+                    .buttonStyle(CircleButtonStyle(size: 36))
+                    .accessibilityLabel("Done")
+                    .accessibilityIdentifier("closeInspectorButton")
+            }
+
+            if editable {
+                HStack(spacing: 8) {
+                    nudge("arrow.left", "nudge-left") { $0.moved(-0.1, 0, 0) }
+                    nudge("arrow.right", "nudge-right") { $0.moved(0.1, 0, 0) }
+                    nudge("arrow.up", "nudge-forward") { $0.moved(0, 0, -0.1) }
+                    nudge("arrow.down", "nudge-back") { $0.moved(0, 0, 0.1) }
+                    nudge("arrow.up.to.line", "nudge-up") { $0.moved(0, 0.05, 0) }
+                    nudge("rotate.right", "rotate") { $0.rotatedY(22.5) }
+                    nudge("plus.magnifyingglass", "grow") { $0.scaled(1.2) }
+                    nudge("minus.magnifyingglass", "shrink") { $0.scaled(1 / 1.2) }
+                }
+                HStack(spacing: 10) {
+                    ForEach(Theme.objectColors, id: \.self) { hex in
+                        Button {
+                            Haptics.soft()
+                            Task { await store.updateColor(id: object.id, color: hex) }
+                        } label: {
+                            Circle()
+                                .fill(Color(hexString: hex))
+                                .frame(width: 28, height: 28)
+                                .overlay(
+                                    Circle().strokeBorder(.white, lineWidth: object.color.uppercased() == hex ? 2.5 : 0)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Colour \(hex)")
+                    }
+                    Spacer()
+                }
+            }
+
+            HStack(spacing: 10) {
+                if store.canEdit && !lockedByOther {
+                    Button {
+                        Haptics.tap()
+                        Task { await store.setLocked(id: object.id, !lockedByMe) }
+                    } label: {
+                        ButtonLabel(title: lockedByMe ? "Unlock" : "Lock", icon: lockedByMe ? "lock.open.fill" : "lock.fill")
+                    }
+                    .buttonStyle(GlassButtonStyle(height: 46))
+                    .accessibilityIdentifier("lockObjectButton")
+                    Button {
+                        Haptics.tap()
+                        Task {
+                            await store.deleteObject(id: object.id)
+                            close()
+                        }
+                    } label: {
+                        ButtonLabel(title: "Delete", icon: "trash.fill")
+                    }
+                    .buttonStyle(GlassButtonStyle(height: 46, destructive: true))
+                    .accessibilityIdentifier("deleteObjectButton")
+                }
+            }
+        }
+        .padding(18)
+        .glass(cornerRadius: Theme.Radius.dock, strong: true)
+        .padding(.horizontal, Theme.gutter)
+        // `.contain` keeps each control's own identifier; a bare identifier on
+        // the panel would replace all of theirs.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inspector")
+    }
+
+    private func nudge(_ icon: String, _ id: String, _ change: @escaping (Transform) -> Transform) -> some View {
+        Button {
+            Haptics.soft()
+            Task { await store.updateTransform(id: object.id, transform: change(object.transform)) }
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.glassFillStrong))
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityIdentifier(id)
+    }
+}
+
+// MARK: - Object library
+
+/// Pick a shape (and a colour) to place.
+private struct ObjectLibrary: View {
+    let place: (ObjectKind, String, String?) -> Void
+    @State private var color = Theme.objectColorHex
+    @State private var text = ""
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SheetHeader(title: "Add to the room", subtitle: "Everyone in the room sees it at once.")
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(ObjectKind.allCases.filter { $0 != .text }) { kind in
+                    Button {
+                        place(kind, color, nil)
+                    } label: {
+                        VStack(spacing: 10) {
+                            Image(systemName: kind.symbol)
+                                .font(.system(size: 26, weight: .semibold))
+                                .foregroundStyle(Color(hexString: color))
+                            Text(kind.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 86)
+                        .glass(cornerRadius: 20)
+                    }
+                    .buttonStyle(PressableStyle())
+                    .accessibilityIdentifier("place-\(kind.rawValue)")
+                }
+            }
+            HStack(spacing: 10) {
+                TextInput(placeholder: "Add a 3D label", text: $text, icon: "textformat", identifier: "labelInput")
+                    .submitLabel(.done)
+                    .onSubmit {
+                        if !text.trimmingCharacters(in: .whitespaces).isEmpty { place(.text, color, text) }
+                    }
+                Button {
+                    place(.text, color, text)
+                } label: {
+                    Image(systemName: "arrow.up")
+                }
+                .buttonStyle(CircleButtonStyle(size: 54, active: true))
+                .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+                .accessibilityLabel("Place label")
+                .accessibilityIdentifier("place-text")
+            }
+            HStack(spacing: 12) {
+                ForEach(Theme.objectColors, id: \.self) { hex in
+                    Button {
+                        Haptics.soft()
+                        color = hex
+                    } label: {
+                        Circle().fill(Color(hexString: hex)).frame(width: 30, height: 30)
+                            .overlay(Circle().strokeBorder(.white, lineWidth: color == hex ? 2.5 : 0))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Colour \(hex)")
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .preferredColorScheme(.dark)
+    }
+}
+
+// MARK: - Comments
+
+/// Notes pinned in the room.
+private struct CommentsSheet: View {
+    @ObservedObject var store: SceneStore
+    let add: (String) -> Void
+    @State private var draft = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: "Notes", subtitle: "Pinned to a spot in the room, visible to everyone in it.")
+            ScrollView {
+                VStack(spacing: 10) {
+                    if store.comments.isEmpty {
+                        EmptyState(
+                            icon: "text.bubble", title: "No notes yet",
+                            message: "Select an object to pin a note next to it, or leave one in the room.")
+                    }
+                    ForEach(store.comments) { comment in
+                        HStack(alignment: .top, spacing: 12) {
+                            Avatar(id: comment.author, name: store.name(of: comment.author), size: 34)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(store.name(of: comment.author))
+                                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.textDim)
+                                Text(comment.text).font(.system(size: 15)).foregroundStyle(Theme.text)
+                            }
+                            Spacer()
+                            if comment.author == store.memberId || store.isAdmin {
+                                Button {
+                                    Task { await store.deleteComment(id: comment.id) }
+                                } label: {
+                                    Image(systemName: "trash").font(.system(size: 13))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Theme.textFaint)
+                                .accessibilityLabel("Delete note")
+                            }
+                        }
+                        .padding(14)
+                        .glass(cornerRadius: 20)
+                    }
+                }
+            }
+            if store.canEdit {
+                HStack(spacing: 10) {
+                    TextInput(placeholder: "Write a note", text: $draft, icon: "text.bubble", identifier: "commentInput")
+                        .submitLabel(.send)
+                        .onSubmit(post)
+                    Button(action: post) {
+                        Image(systemName: "arrow.up")
+                    }
+                    .buttonStyle(CircleButtonStyle(size: 54, active: true))
+                    .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityLabel("Post note")
+                    .accessibilityIdentifier("postCommentButton")
+                }
+            }
+        }
+        .padding(24)
+        .preferredColorScheme(.dark)
+        .task { await store.refreshComments() }
+    }
+
+    private func post() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        draft = ""
+        Haptics.tap()
+        add(text)
+    }
+}
+
+// MARK: - Preview canvas (no AR)
+
+struct PreviewRoomCanvas: View {
+    @ObservedObject var store: SceneStore
+    let service: MeroARService
+    /// In live AR, the way back from the 3D room to the camera.
+    var backToCamera: (() -> Void)?
+    @StateObject private var preview = PreviewScene()
+    @State private var status = ""
+
+    var body: some View {
+        RoomEditor(
+            store: store, service: service, controller: preview, isLiveAR: false, status: $status,
+            switchView: backToCamera.map { back in (title: "Camera", icon: "camera.fill", action: back) }
+        ) {
+            ZStack {
+                SpatialBackground(animated: false)
+                PreviewSceneView(scene: preview)
+            }
+        }
+        .task {
+            // The preview's own viewpoint counts as being in the room: a pose
+            // once the join has landed, then a slow heartbeat.
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if !store.myRole.isEmpty {
+                    store.sendPresence(position: Vec3(0, 1.55, 1.75), rotation: Quat(0, 0, 0, 1))
+                    try? await Task.sleep(nanoseconds: 8_000_000_000)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - AR canvas
 
 #if canImport(ARKit) && os(iOS)
 import ARKit
 
 enum ARSupport {
     static var isAvailable: Bool { ARWorldTrackingConfiguration.isSupported }
+    /// `MEROAR_PREVIEW=1` shows the 3D preview even on an ARKit device.
+    static var forcePreview: Bool { ProcessInfo.processInfo.environment["MEROAR_PREVIEW"] == "1" }
 }
 
-struct ARRoomView: View {
+struct ARRoomCanvas: View {
     @ObservedObject var store: SceneStore
     let service: MeroARService
 
-    static let openingHint = "Move your phone slowly to scan the room"
-
     @StateObject private var ar = ARSessionManager()
-    @State private var selected: String?
-    @State private var status = Self.openingHint
-    @State private var showMembers = false
+    @State private var status = "Move your phone slowly to scan the room"
     @State private var isPublishing = false
+    /// Showing the room's 3D scan instead of the camera.
+    @State private var showRoom3D = false
 
     var body: some View {
-        ZStack {
-            ARViewContainer(manager: ar).ignoresSafeArea()
-
-            // Centre reticle — only meaningful while placement is possible.
-            if store.canEdit {
-                Image(systemName: "plus.viewfinder")
-                    .font(.system(size: 30, weight: .light))
-                    .foregroundStyle(.white)
-                    .shadow(color: Theme.ink.opacity(0.35), radius: 4)
-                    .accessibilityHidden(true)
+        if showRoom3D {
+            PreviewRoomCanvas(store: store, service: service) { showRoom3D = false }
+        } else {
+            RoomEditor(
+                store: store, service: service, controller: ar, isLiveAR: true, status: $status,
+                shareScan: shareScan, isPublishing: isPublishing,
+                switchView: store.roomModel == nil ? nil : (title: "3D room", icon: "house.fill", action: { showRoom3D = true })
+            ) {
+                ARViewContainer(manager: ar)
             }
-
-            VStack(spacing: 8) {
-                RoomTopBar(store: store, showMembers: $showMembers)
-                Spacer()
-                if !status.isEmpty { statusLine }
-                if let error = store.lastError { errorLine(error) }
-                if store.canEdit {
-                    toolbar
-                } else if store.myRole == "viewer" {
-                    // Only once the role is actually known — otherwise the room
-                    // owner sees "view-only" flash before `my_role` resolves.
-                    OverlayNotice(text: "View only. Ask an admin for editor access.", icon: "eye")
-                        .padding(.bottom, 12)
-                }
-            }
-            .animation(.easeOut(duration: 0.2), value: status)
-            .animation(.easeOut(duration: 0.2), value: store.lastError)
+            .onAppear(perform: setup)
+            .onDisappear { ar.pause() }
         }
-        .sheet(isPresented: $showMembers) { MembersSheet(store: store) }
-        .onAppear { setup() }
-        .onDisappear { ar.pause() }
-        .onChange(of: store.sortedObjects) { _, objs in ar.sync(objs) }
     }
-
-    /// Session hints — scanning guidance, relocalization, scan-publish results.
-    private var statusLine: some View {
-        OverlayNotice(text: status, icon: "viewfinder")
-            .task(id: status) {
-                // Transient: a stale "Relocalizing…" left on screen reads as a
-                // hang. The first hint stays until something replaces it.
-                guard status != Self.openingHint else { return }
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
-                if !Task.isCancelled { status = "" }
-            }
-    }
-
-    private func errorLine(_ error: String) -> some View {
-        OverlayNotice(text: error, icon: "exclamationmark.circle", tint: Theme.danger)
-            .task(id: error) {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                if !Task.isCancelled { store.lastError = nil }
-            }
-    }
-
-    private var toolbar: some View {
-        HStack(spacing: 6) {
-            placeButton("Cube", "cube", kind: "cube")
-            placeButton("Sphere", "circle", kind: "sphere")
-            placeButton("Marker", "mappin", kind: "marker")
-            Rectangle().fill(Theme.border).frame(width: 1, height: 36).padding(.horizontal, 2)
-            scanButton
-            if let id = selected {
-                Button {
-                    Haptics.tap()
-                    Task {
-                        await store.deleteObject(id: id)
-                        selected = nil
-                    }
-                } label: {
-                    toolLabel("Delete", "trash", tint: Theme.danger)
-                }
-                .buttonStyle(ToolButtonStyle())
-                .accessibilityIdentifier("deleteObjectButton")
-                .transition(.scale.combined(with: .opacity))
-            }
-        }
-        .padding(8)
-        .background(ARMaterial(shape: RoundedRectangle(cornerRadius: 20, style: .continuous)))
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selected)
-        .padding(.bottom, 12)
-    }
-
-    private func placeButton(_ title: String, _ icon: String, kind: String) -> some View {
-        Button {
-            Haptics.tap()
-            guard let transform = ar.placementTransform() else {
-                status = "Point at a surface, then tap"
-                return
-            }
-            Task { await store.addObject(kind: kind, transform: transform, color: Theme.objectColorHex) }
-        } label: {
-            toolLabel(title, icon)
-        }
-        .buttonStyle(ToolButtonStyle())
-        .accessibilityIdentifier("place-\(kind)")
-    }
-
-    /// Publish this device's scan as the room's shared `ARWorldMap`, so the next
-    /// device to join relocalizes into the same coordinate space.
-    private var scanButton: some View {
-        Button {
-            Haptics.tap()
-            guard !isPublishing else { return }
-            guard service.hasBearerSession else {
-                status = "Sharing the scan needs the relay session. Try again shortly."
-                return
-            }
-            isPublishing = true
-            Task {
-                defer { isPublishing = false }
-                do {
-                    let data = try await ar.saveWorldMap()
-                    let ok = await store.publishWorldMap(data)
-                    if ok { Haptics.success() }
-                    status = ok ? "Room scan shared" : "Couldn't share the scan"
-                } catch {
-                    status = "Keep scanning — not enough of the room is mapped yet"
-                }
-            }
-        } label: {
-            if isPublishing {
-                ProgressView().tint(Theme.ink).frame(width: 58, height: 52)
-            } else {
-                toolLabel("Share scan", "square.stack.3d.up")
-            }
-        }
-        .buttonStyle(ToolButtonStyle())
-        .accessibilityIdentifier("shareScanButton")
-    }
-
-    private func toolLabel(_ title: String, _ icon: String, tint: Color = Theme.ink) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 18, weight: .regular))
-            Text(title).font(.system(size: 10.5, weight: .medium)).lineLimit(1)
-        }
-        .foregroundStyle(tint)
-        .frame(width: 58, height: 52)
-    }
-
-    // MARK: Session wiring
 
     private func setup() {
         ar.start()
         ar.onCameraPose = { pos, rot in
             Task { @MainActor in store.sendPresence(position: pos, rotation: rot) }
         }
-        ar.onSelect = { id in selected = id }
-        ar.sync(store.sortedObjects)
-
-        // If the room already has a shared world map, relocalize into it.
+        // If the room already has a shared scan, relocalize into it.
         if let blob = store.room?.worldMapBlob, !blob.isEmpty, service.hasBearerSession {
             status = "Lining up with the shared room scan…"
             Task {
@@ -297,54 +846,27 @@ struct ARRoomView: View {
             }
         }
     }
-}
 
-/// Tool tile: pressed = white wash.
-private struct ToolButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(configuration.isPressed ? Color.white.opacity(0.9) : Color.clear)
-            )
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    /// Publish this device's scan as the room's shared `ARWorldMap`, so the
+    /// next device to join relocalizes into the same coordinate space.
+    private func shareScan() {
+        guard !isPublishing else { return }
+        guard service.hasBearerSession else {
+            status = "Sharing the scan needs the relay session. Try again shortly."
+            return
+        }
+        isPublishing = true
+        Task {
+            defer { isPublishing = false }
+            do {
+                let data = try await ar.saveWorldMap()
+                let ok = await store.publishWorldMap(data)
+                if ok { Haptics.success() }
+                status = ok ? "Room scan shared" : "Couldn't share the scan"
+            } catch {
+                status = "Keep scanning: not enough of the room is mapped yet"
+            }
+        }
     }
 }
 #endif
-
-// MARK: - No AR (Simulator, unsupported devices)
-
-/// The room without a camera: everything except placement — roster, roles,
-/// invitations — so the session is still useful on a device that can't run
-/// world tracking.
-struct NoARRoomView: View {
-    @ObservedObject var store: SceneStore
-    @State private var showMembers = false
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            ScreenBackground()
-            VStack(spacing: 16) {
-                Spacer()
-                EmptyState(
-                    icon: "arkit", title: "AR isn't available here",
-                    message: "Placing objects needs an ARKit-capable iPhone or iPad. You're still in the room: "
-                        + "you can see who's here, manage roles and invite people."
-                ) {
-                    Button {
-                        showMembers = true
-                    } label: {
-                        ButtonLabel(title: "Members & invites", icon: "person.2")
-                    }
-                    .buttonStyle(SecondaryButtonStyle(fullWidth: false, height: 40))
-                    .padding(.top, 6)
-                }
-                .padding(.horizontal, Theme.gutter)
-                Spacer()
-            }
-            RoomTopBar(store: store, showMembers: $showMembers)
-        }
-        .sheet(isPresented: $showMembers) { MembersSheet(store: store) }
-    }
-}

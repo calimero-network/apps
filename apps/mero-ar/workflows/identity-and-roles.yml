@@ -226,6 +226,25 @@ steps:
     statements:
       - "not_contains({{after_denied}}, 'bob-denied')"
 
+  # A viewer can't redefine the room everyone is editing either.
+  - name: Bob Tries To Publish A Room Scan (should be rejected)
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: set_room_scan
+    expected_failure: true
+    args:
+      json_blob: "bob-scan"
+      json_size: 1024
+      usdz_blob: null
+      usdz_size: null
+      width: 4.0
+      length: 3.0
+      height: 2.4
+      object_count: 2
+      sample: false
+      scanned_at: 1000002
+
   # ── Admin grants the editor role ──────────────────────────────────────────
   # `AccessControl::grant` calls `only_admin()` internally, so this is refused by
   # the role registry itself — not by an app-level guard. Bob's account IS known

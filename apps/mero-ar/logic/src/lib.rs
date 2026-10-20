@@ -111,6 +111,28 @@ pub mod pure {
     pub fn may_delete_comment(author: &str, caller: &str, is_admin: bool) -> bool {
         is_admin || author == caller
     }
+
+    /// The largest side a room scan may report, in metres. RoomPlan scans one
+    /// room at a time; anything beyond this is a corrupted or hostile record.
+    pub const MAX_SCAN_SIDE_M: f64 = 60.0;
+
+    /// A room scan's dimensions are finite, positive and of room size.
+    pub fn validate_scan_dimensions(width: f64, length: f64, height: f64) -> Result<(), &'static str> {
+        for side in [width, length, height] {
+            if !side.is_finite() || side <= 0.0 {
+                return Err("room scan dimensions must be positive numbers");
+            }
+            if side > MAX_SCAN_SIDE_M {
+                return Err("room scan dimensions are larger than a room");
+            }
+        }
+        Ok(())
+    }
+
+    /// The version a newly published scan gets: one past the scan it replaces.
+    pub fn next_scan_version(current: Option<u64>) -> u64 {
+        current.map_or(1, |v| v.saturating_add(1))
+    }
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
@@ -351,6 +373,52 @@ impl MergeableTrait for SpatialComment {
     }
 }
 
+// ── Room scan ───────────────────────────────────────────────────────────────────
+
+/// The room's current 3D scan: a RoomPlan `CapturedRoom` as JSON (walls,
+/// doors, windows, openings, furniture with categories, sizes and transforms),
+/// plus optionally the parametric USDZ RoomPlan exports. Both are blobs in the
+/// room's context; this record names them. One current scan per room: a new
+/// one replaces it and bumps `version`.
+#[app::mergeable(id = "mero_ar::RoomScan")]
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct RoomScan {
+    /// Blob id of the `CapturedRoom` JSON — the shared model every client renders.
+    pub json_blob:    String,
+    pub json_size:    u64,
+    /// Blob id of the USDZ export, when the scanner made one.
+    pub usdz_blob:    Option<String>,
+    pub usdz_size:    Option<u64>,
+    /// Floor extent and wall height, in metres.
+    pub width:        f64,
+    pub length:       f64,
+    pub height:       f64,
+    /// Detected furniture and fixtures in the scan.
+    pub object_count: u32,
+    /// A built-in sample room rather than a real scan (the Simulator and demos
+    /// use one); clients label it as such.
+    pub sample:       bool,
+    pub scanned_by:   MemberId,
+    pub scanned_at:   u64,
+    pub version:      u64,
+}
+
+impl MergeableTrait for RoomScan {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Two editors publishing at once: the higher version wins, then the
+        // later scan, then content (see `take_if_greater`).
+        let clock = pure::clock_cmp(self.version, self.scanned_at, other.version, other.scanned_at);
+        take_if_greater(self, other, clock);
+        Ok(())
+    }
+}
+
+/// The key the one current scan lives under.
+const CURRENT_SCAN: &str = "current";
+
 // ── Room info ──────────────────────────────────────────────────────────────────
 
 #[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
@@ -395,6 +463,9 @@ pub enum Event {
     /// A member's role changed — clients re-resolve `my_role` on this.
     RoleUpdated(String),
     OwnerTransferred(String),
+    /// The room's 3D scan was published or cleared; carries its version ("0"
+    /// when cleared). Clients re-read `get_room_scan`.
+    RoomScanUpdated(String),
 }
 
 // ── App state ──────────────────────────────────────────────────────────────────
@@ -430,6 +501,9 @@ pub struct MeroAR {
     members:       UnorderedMap<MemberId, Member>,
     presence:      UnorderedMap<String, Presence>,
     comments:      UnorderedMap<CommentId, SpatialComment>,
+    /// The room's current 3D scan, under [`CURRENT_SCAN`]. A map rather than a
+    /// register so the record merges by its own rule (`RoomScan::merge`).
+    room_scans:    UnorderedMap<String, RoomScan>,
     /// Role registry whose admin tier is a signed writer set. Grants/revokes are
     /// admin-gated at merge; the room creator is the sole initial admin.
     ///
@@ -458,6 +532,7 @@ impl MeroAR {
             members:        UnorderedMap::new(),
             presence:       UnorderedMap::new(),
             comments:       UnorderedMap::new(),
+            room_scans:     UnorderedMap::new(),
             roles:          AccessControl::new(me),
         }
     }
@@ -659,6 +734,74 @@ impl MeroAR {
         }
         self.world_map_blob.set(blob_id);
         app::emit!(Event::AnchorsUpdated());
+        Ok(())
+    }
+
+    // ── Room scan ─────────────────────────────────────────────────────────────
+
+    /// Publish the room's 3D scan: the `CapturedRoom` JSON blob (required) and
+    /// optionally the USDZ export, both uploaded into this context's blob
+    /// space first. Replaces the current scan and returns the new version.
+    /// Editor-gated, like the world map: a viewer must not redefine the room
+    /// everyone is editing.
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_room_scan(
+        &mut self,
+        json_blob: String,
+        json_size: u64,
+        usdz_blob: Option<String>,
+        usdz_size: Option<u64>,
+        width: f64,
+        length: f64,
+        height: f64,
+        object_count: u32,
+        sample: bool,
+        scanned_at: u64,
+    ) -> app::Result<u64> {
+        self.require_editor()?;
+        if json_blob.trim().is_empty() {
+            app::bail!("a room scan needs its CapturedRoom JSON blob");
+        }
+        if let Err(reason) = pure::validate_scan_dimensions(width, length, height) {
+            app::bail!("{}", reason);
+        }
+        for blob in core::iter::once(&json_blob).chain(usdz_blob.iter()) {
+            if let Ok(b) = blob.parse::<BlobId>() {
+                sdk_env::blob_announce_to_context(b.as_ref(), &sdk_env::context_id());
+            }
+        }
+        let current = self.room_scans.get(CURRENT_SCAN).ok().flatten().map(|s| s.version);
+        let version = pure::next_scan_version(current);
+        let scan = RoomScan {
+            json_blob,
+            json_size,
+            usdz_blob,
+            usdz_size,
+            width,
+            length,
+            height,
+            object_count,
+            sample,
+            scanned_by: Self::caller_id(),
+            scanned_at,
+            version,
+        };
+        let _ = self.room_scans.insert(CURRENT_SCAN.to_owned(), scan);
+        app::emit!(Event::RoomScanUpdated(version.to_string()));
+        Ok(version)
+    }
+
+    /// The room's current 3D scan, if one has been published.
+    pub fn get_room_scan(&self) -> Option<RoomScan> {
+        self.room_scans.get(CURRENT_SCAN).ok().flatten().map(|v| v.clone())
+    }
+
+    /// Remove the room's scan. Admin-only: it takes the 3D room away from
+    /// everyone. The blobs stay where they are; nothing names them any more.
+    pub fn clear_room_scan(&mut self) -> app::Result<()> {
+        self.require_admin()?;
+        let _ = self.room_scans.remove(CURRENT_SCAN);
+        app::emit!(Event::RoomScanUpdated("0".to_owned()));
         Ok(())
     }
 
@@ -965,6 +1108,32 @@ mod tests {
     }
 
     #[test]
+    fn a_room_sized_scan_is_valid() {
+        assert!(validate_scan_dimensions(5.2, 4.1, 2.6).is_ok());
+    }
+
+    #[test]
+    fn scan_dimensions_must_be_positive_and_finite() {
+        assert!(validate_scan_dimensions(0.0, 4.0, 2.5).is_err());
+        assert!(validate_scan_dimensions(5.0, -1.0, 2.5).is_err());
+        assert!(validate_scan_dimensions(5.0, 4.0, f64::NAN).is_err());
+        assert!(validate_scan_dimensions(f64::INFINITY, 4.0, 2.5).is_err());
+    }
+
+    #[test]
+    fn a_scan_bigger_than_a_room_is_refused() {
+        assert!(validate_scan_dimensions(MAX_SCAN_SIDE_M + 0.1, 4.0, 2.5).is_err());
+        assert!(validate_scan_dimensions(MAX_SCAN_SIDE_M, 4.0, 2.5).is_ok());
+    }
+
+    #[test]
+    fn the_first_scan_is_version_one_and_each_replacement_bumps_it() {
+        assert_eq!(next_scan_version(None), 1);
+        assert_eq!(next_scan_version(Some(1)), 2);
+        assert_eq!(next_scan_version(Some(u64::MAX)), u64::MAX);
+    }
+
+    #[test]
     fn unlocking_an_unlocked_object_is_allowed_for_holderless() {
         // No holder → nothing to protect; the call is a no-op either way.
         assert!(may_unlock(None, "alice", true));
@@ -1002,7 +1171,41 @@ mod merge_tests {
     use calimero_sdk::borsh::{to_vec, BorshSerialize};
     use calimero_storage::collections::Mergeable;
 
-    use super::{Member, ObjectData, Presence, Quat, SceneObject, SpatialComment, Transform, Vec3};
+    use super::{Member, ObjectData, Presence, Quat, RoomScan, SceneObject, SpatialComment, Transform, Vec3};
+
+    fn scan(json_blob: &str, version: u64, scanned_at: u64) -> RoomScan {
+        RoomScan {
+            json_blob:    json_blob.to_owned(),
+            json_size:    4_096,
+            usdz_blob:    None,
+            usdz_size:    None,
+            width:        5.0,
+            length:       4.0,
+            height:       2.5,
+            object_count: 6,
+            sample:       false,
+            scanned_by:   "c".repeat(64),
+            scanned_at,
+            version,
+        }
+    }
+
+    #[test]
+    fn room_scan_higher_version_wins_either_way() {
+        assert_converges(&scan("old", 1, 500), &scan("new", 2, 100));
+        assert_eq!(merged(&scan("old", 1, 500), &scan("new", 2, 100)).json_blob, "new");
+    }
+
+    #[test]
+    fn room_scan_equal_version_later_scan_wins() {
+        assert_eq!(merged(&scan("a", 3, 100), &scan("b", 3, 200)).json_blob, "b");
+        assert_converges(&scan("a", 3, 100), &scan("b", 3, 200));
+    }
+
+    #[test]
+    fn room_scan_exact_tie_converges_on_content() {
+        assert_converges(&scan("a", 2, 100), &scan("b", 2, 100));
+    }
 
     fn obj(color: &str, version: u64, updated_at: u64) -> SceneObject {
         SceneObject {

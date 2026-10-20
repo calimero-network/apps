@@ -532,6 +532,100 @@ steps:
       - "contains({{room_after}}, 'worldmapblobref')"
       - "contains({{room_after}}, '{{my_member_id}}')"
 
+  # ── Room scan (the shared 3D model of the room) ───────────────────────────
+  - name: No Room Scan Yet
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_room_scan
+    args: {}
+    outputs:
+      scan_none: result
+
+  - name: Assert No Scan
+    type: assert
+    statements:
+      - "not_contains({{scan_none}}, 'jsonBlob')"
+
+  - name: A Scan Bigger Than A Room Is Refused
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: set_room_scan
+    expected_failure: true
+    args:
+      json_blob: "scanjsonref"
+      json_size: 4096
+      usdz_blob: null
+      usdz_size: null
+      width: 500.0
+      length: 4.0
+      height: 2.5
+      object_count: 6
+      sample: true
+      scanned_at: 1000000
+
+  - name: Publish A Room Scan
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: set_room_scan
+    args:
+      json_blob: "scanjsonref"
+      json_size: 4096
+      usdz_blob: "scanusdzref"
+      usdz_size: 180000
+      width: 5.2
+      length: 4.1
+      height: 2.6
+      object_count: 6
+      sample: true
+      scanned_at: 1000000
+    outputs:
+      scan_v1: result
+
+  - name: Replace The Room Scan
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: set_room_scan
+    args:
+      json_blob: "scanjsonref2"
+      json_size: 5120
+      usdz_blob: null
+      usdz_size: null
+      width: 5.2
+      length: 4.1
+      height: 2.6
+      object_count: 7
+      sample: false
+      scanned_at: 1000500
+    outputs:
+      scan_v2: result
+
+  - name: Read The Room Scan
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_room_scan
+    args: {}
+    outputs:
+      scan_now: result
+
+  # One current scan per room: the replacement wins and carries version 2.
+  - name: Assert The Replacement Is Current
+    type: assert
+    statements:
+      - "contains({{scan_v1}}, '1')"
+      - "contains({{scan_v2}}, '2')"
+      - "contains({{scan_now}}, 'scanjsonref2')"
+      - "contains({{scan_now}}, '{{my_member_id}}')"
+
   # ── Delete ────────────────────────────────────────────────────────────────
   - name: Delete Object
     type: call

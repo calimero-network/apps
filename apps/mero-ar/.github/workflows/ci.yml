@@ -98,6 +98,21 @@ jobs:
   # glob that matches nothing produces ZERO legs and the job reports SUCCESS, so
   # a renamed directory would read as "all scenarios passed" — green by absence,
   # which this repo has been bitten by before. Fail loudly instead.
+  landing:
+    name: Landing page + promo (typecheck, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the landing page
+        working-directory: landing
+        run: npm ci && npm run build
+      - name: Typecheck the promo composition
+        working-directory: promo
+        run: npm ci && npx tsc --noEmit -p .
+
   discover-workflows:
     name: Discover merobox scenarios
     runs-on: ubuntu-latest

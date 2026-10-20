@@ -25,3 +25,4 @@ app/.env.integration.bak
 
 # Node home / logs (created under $HOME and /tmp, but ignore any local copies)
 *.log
+.e2e-room/

@@ -1,6 +1,7 @@
 #if canImport(ARKit) && os(iOS)
 import SwiftUI
 import RealityKit
+import ARKit
 
 /// Bridges the ARSessionManager's RealityKit `ARView` into SwiftUI, and forwards
 /// taps to the manager for entity selection.
@@ -13,6 +14,15 @@ public struct ARViewContainer: UIViewRepresentable {
         let view = manager.arView
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
         view.addGestureRecognizer(tap)
+        // Apple's scanning guidance: shown until tracking is good, and again
+        // whenever it's lost.
+        let coaching = ARCoachingOverlayView()
+        coaching.session = view.session
+        coaching.goal = .horizontalPlane
+        coaching.activatesAutomatically = true
+        coaching.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        coaching.frame = view.bounds
+        view.addSubview(coaching)
         return view
     }
 
@@ -27,9 +37,7 @@ public struct ARViewContainer: UIViewRepresentable {
 
         @objc func handleTap(_ gr: UITapGestureRecognizer) {
             let point = gr.location(in: manager.arView)
-            if let id = manager.entityID(at: point) {
-                manager.onSelect?(id)
-            }
+            manager.onSelect?(manager.entityID(at: point))
         }
     }
 }
