@@ -78,11 +78,13 @@ describe('useFolderPermissions', () => {
     return renderHook(() => useFolderPermissions('ns', 'folder-1'));
   };
 
-  it('CAN_CREATE_SUBGROUP permits canCreateSubfolder only', async () => {
+  // Core refuses a nested create from anyone but a namespace admin: the
+  // folder's own CAN_CREATE_SUBGROUP bit does not reach below the root.
+  it('CAN_CREATE_SUBGROUP in the folder grants nothing', async () => {
     const { result } = renderWithCaps(C.CAN_CREATE_SUBGROUP);
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.isMember).toBe(true);
-    expect(result.current.canCreateSubfolder).toBe(true);
+    expect(result.current.canCreateSubfolder).toBe(false);
     expect(result.current.canRename).toBe(false);
     expect(result.current.canManageVisibility).toBe(false);
     expect(result.current.canDelete).toBe(false);
@@ -90,6 +92,22 @@ describe('useFolderPermissions', () => {
     expect(result.current.canManageMembers).toBe(false);
     // canCreateSubfolder is not "admin-ish" so the aggregate stays false.
     expect(result.current.canManageGroup).toBe(false);
+  });
+
+  it('only a namespace admin may create a subfolder, not the folder admin', async () => {
+    // Admin of the folder (it created it), a plain member of the namespace.
+    listMembersMock.mockImplementation(async (group: string) => ({
+      members: [{ identity: 'me', role: group === 'ns-root' ? 'Member' : 'Admin' }],
+    }));
+    const { result: asFolderAdmin } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
+    await waitFor(() => expect(asFolderAdmin.current.canDelete).toBe(true));
+    expect(asFolderAdmin.current.canCreateSubfolder).toBe(false);
+
+    listMembersMock.mockImplementation(async (group: string) => ({
+      members: [{ identity: 'me', role: group === 'ns-root' ? 'Admin' : 'Member' }],
+    }));
+    const { result: asNamespaceAdmin } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
+    await waitFor(() => expect(asNamespaceAdmin.current.canCreateSubfolder).toBe(true));
   });
 
   it('CAN_MANAGE_METADATA permits canRename + canManageGroup, not delete', async () => {
@@ -148,7 +166,8 @@ describe('useFolderPermissions', () => {
     );
     const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
     await waitFor(() => expect(result.current.removed).toBe(true));
-    expect(getMemberCapsMock).toHaveBeenCalledTimes(1);
+    // The namespace root is read too (who may create a subfolder); the folder once.
+    expect(getMemberCapsMock.mock.calls.filter(([g]) => g === 'folder-1')).toHaveLength(1);
     expect(result.current.denied).toBe(false);
     expect(result.current.isMember).toBe(false);
   });
@@ -270,17 +289,17 @@ describe('useFolderPermissions', () => {
     // resolve via the parent-walk for Open subgroups. The hook just
     // forwards what core returns; no app-layer fallback. A namespace
     // member with the default-on join bit who's been granted real
-    // folder caps (here CAN_CREATE_SUBGROUP) sees those caps.
+    // folder caps (here CAN_MANAGE_METADATA) sees those caps.
     listMembersMock.mockResolvedValue({
       members: [{ identity: 'me', role: 'Member' }],
     });
     getMemberCapsMock.mockResolvedValue({
-      capabilities: C.CAN_JOIN_OPEN_SUBGROUPS | C.CAN_CREATE_SUBGROUP,
+      capabilities: C.CAN_JOIN_OPEN_SUBGROUPS | C.CAN_MANAGE_METADATA,
     });
     const { result } = renderHook(() =>
       useFolderPermissions('ns', 'folder-1'),
     );
-    await waitFor(() => expect(result.current.canCreateSubfolder).toBe(true));
+    await waitFor(() => expect(result.current.canRename).toBe(true));
     expect(result.current.isMember).toBe(true);
     expect(result.current.error).toBeNull();
   });

@@ -87,8 +87,8 @@ describe('folder row lock', () => {
         ],
       ]) as never,
     });
-    const lock = screen.getByLabelText('Restricted');
-    expect(lock.parentElement?.getAttribute('title')).toBe('Restricted: only members of Private');
+    expect(screen.getByLabelText('Restricted')).toBeTruthy();
+    expect(screen.getByTitle('Restricted: only members of Private')).toBeTruthy();
   });
 
   it('shows no lock on an Open folder open to the workspace', () => {
