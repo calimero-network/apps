@@ -1654,6 +1654,9 @@ importers:
       '@calimero-apps/names':
         specifier: workspace:*
         version: link:../../../packages/names
+      '@calimero-apps/pass-core':
+        specifier: workspace:*
+        version: link:../../../packages/pass-core
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -2689,6 +2692,18 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
+
+  packages/pass-core:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@22.20.1)(jsdom@29.1.1)(vite@7.3.6(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
 
 packages:
 

@@ -19,12 +19,13 @@
 
 import {
   type DeviceKeyPair,
+  type DeviceRecord,
+  VaultSession,
   fingerprintOf,
   fromB64,
   toB64,
   toHex,
-} from './crypto';
-import { type DeviceRecord, VaultSession } from './vaultSession';
+} from '@calimero-apps/pass-core';
 import { type StatusFn, forEachJoinedVault, forEachOpenVault } from './vaults';
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -163,18 +164,26 @@ export async function recoveryPairFrom(
 
 // ── The public half, remembered so vaults opened later get it too ───────────
 
+/**
+ * This tab's copy, for a browser whose storage refuses writes (a private
+ * window). The lock screen asks for a recovery key until one is remembered,
+ * and must not ask again in the same tab after it was made.
+ */
+let rememberedHere: RecoveryPublic | null = null;
+
 export function rememberedRecoveryKey(): RecoveryPublic | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
+    if (!raw) return rememberedHere;
     const v = JSON.parse(raw) as { fingerprint: string; publicKey: string };
     return { fingerprint: v.fingerprint, publicRaw: fromB64(v.publicKey) };
   } catch {
-    return null;
+    return rememberedHere;
   }
 }
 
 export function rememberRecoveryKey(key: RecoveryPublic): void {
+  rememberedHere = key;
   try {
     localStorage.setItem(
       STORAGE_KEY,

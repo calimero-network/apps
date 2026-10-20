@@ -107,6 +107,31 @@ fn two_secrets_added_together_do_not_share_an_id() {
 }
 
 #[test]
+fn an_agent_credential_is_a_kind_of_its_own() {
+    let mut app = new_vault();
+    for kind in ["api_key", "oauth2"] {
+        let id = sid();
+        app.call(|s| {
+            s.add_secret(
+                id.clone(),
+                kind.to_owned(),
+                "enc:name".to_owned(),
+                "enc:tags".to_owned(),
+                fields(&[("refresh_token", "enc:rt")]),
+            )
+        })
+        .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_secret(id.clone()))
+                .unwrap()
+                .unwrap()
+                .kind,
+            kind
+        );
+    }
+}
+
+#[test]
 fn an_unknown_kind_is_refused() {
     let mut app = new_vault();
     let res = app.call(|s| {
@@ -726,6 +751,20 @@ fn a_device_records_its_kind_and_unknown_kinds_are_refused() {
     .unwrap();
     let devices = app.view(|s| s.list_devices()).unwrap();
     assert_eq!(devices[0].kind, "recovery");
+    app.call(|s| {
+        s.register_device(
+            fp(6),
+            "pk".to_owned(),
+            "mero-bot".to_owned(),
+            "agent".to_owned(),
+        )
+    })
+    .unwrap();
+    assert!(app
+        .view(|s| s.list_devices())
+        .unwrap()
+        .iter()
+        .any(|d| d.fingerprint == fp(6) && d.kind == "agent"));
 
     let bad =
         app.call(|s| s.register_device(fp(5), "pk".to_owned(), String::new(), "phone".to_owned()));
@@ -799,6 +838,85 @@ fn a_member_without_a_role_cannot_make_a_device_look_entitled() {
         .view(|s| s.wrapped_pairs())
         .unwrap()
         .contains(&format!("k2:{}", fp(2))));
+}
+
+/// An agent is admitted by an admin, never by a member opening the vault: a
+/// member's wrap to an agent's key is not stored, and one written anyway (a
+/// modified node) does not make the agent look approved.
+#[test]
+fn only_an_admin_admits_an_agent() {
+    const BOT: [u8; 32] = [0xA0; 32];
+    const BOT_HOST: [u8; 32] = [0xA1; 32];
+    let mut app = new_vault();
+    make(&mut app, &bob(), "editor");
+    make(&mut app, &hex::encode(BOT), "viewer");
+    app.call_as_account(BOT, BOT_HOST, |s| {
+        s.register_device(
+            fp(9),
+            "pk".to_owned(),
+            "mero-bot".to_owned(),
+            "agent".to_owned(),
+        )
+    })
+    .unwrap();
+
+    let added = app
+        .call_as_account(BOB, BOB_LAPTOP, |s| {
+            s.add_key_wraps(vec![wrap_to(fp(9), fp(2))])
+        })
+        .unwrap();
+    assert_eq!(added, 0, "an editor's wrap to an agent is skipped");
+
+    app.call_as_account(BOB, BOB_LAPTOP, |s| -> app::Result<()> {
+        s.key_wraps.insert(
+            format!("{}:k1:forced", fp(9)),
+            KeyWrap {
+                key_id: "k1".to_owned(),
+                recipient: fp(9),
+                wrapper: fp(2),
+                envelope: "env".to_owned(),
+                wrapped_at: 1,
+            },
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    assert!(
+        app.view(|s| s.wrapped_pairs()).unwrap().is_empty(),
+        "an editor's wrap written past the API approves nothing"
+    );
+
+    let added = app
+        .call(|s| s.add_key_wraps(vec![wrap_to(fp(9), fp(1))]))
+        .unwrap();
+    assert_eq!(added, 1);
+    assert_eq!(
+        app.view(|s| s.wrapped_pairs()).unwrap(),
+        vec![format!("k1:{}", fp(9))]
+    );
+}
+
+/// Another account filing an agent entry at a browser's fingerprint does not
+/// make that browser an agent: members still hand it keys.
+#[test]
+fn an_agent_entry_does_not_hijack_a_browser() {
+    let mut app = new_vault();
+    make(&mut app, &bob(), "editor");
+    app.call_as_account(CAROL, CAROL_PHONE, |s| {
+        s.register_device(fp(3), "pk".to_owned(), String::new(), "browser".to_owned())
+    })
+    .unwrap();
+    app.call_as_account(BOB, BOB_LAPTOP, |s| {
+        s.register_device(fp(3), "pk".to_owned(), String::new(), "agent".to_owned())
+    })
+    .unwrap();
+    make(&mut app, &hex::encode(CAROL), "viewer");
+    let added = app
+        .call_as_account(BOB, BOB_LAPTOP, |s| {
+            s.add_key_wraps(vec![wrap_to(fp(3), fp(2))])
+        })
+        .unwrap();
+    assert_eq!(added, 1);
 }
 
 /// A wrap's slot carries a random nonce, so no member can occupy the slot a

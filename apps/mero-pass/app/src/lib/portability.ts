@@ -9,8 +9,13 @@
 // of a password manager is a file that outlives every access control this app
 // has, so it is not offered.
 
-import { fromB64, randomBytes, toB64 } from './crypto';
-import type { Secret, SecretDraft } from './vaultSession';
+import {
+  type Secret,
+  type SecretDraft,
+  fromB64,
+  randomBytes,
+  toB64,
+} from '@calimero-apps/pass-core';
 
 // ── CSV ──────────────────────────────────────────────────────────────────────
 

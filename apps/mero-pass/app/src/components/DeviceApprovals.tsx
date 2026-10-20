@@ -5,7 +5,7 @@ import {
   type DeviceRecord,
   type VaultSession,
   confirmationCode,
-} from '../lib/vaultSession';
+} from '@calimero-apps/pass-core';
 import shell from '../styles/shell.module.css';
 import { describeError } from '../lib/errors';
 
@@ -15,6 +15,8 @@ import { describeError } from '../lib/errors';
  *
  * The code is the check: the requesting browser shows the same one, so an
  * approver compares the two instead of trusting a label anyone could choose.
+ * An agent (mero-bot) prints its code where it runs; only an admin sees its
+ * request, because only an admin's approval lets it in.
  */
 export default function DeviceApprovals({
   session,
@@ -53,6 +55,8 @@ export default function DeviceApprovals({
       <p className={shell.sectionHint}>
         Approve only a device you recognise, showing the same code. Approving
         gives it every key of this vault, old ones included.
+        {requests.some((d) => d.kind === 'agent') &&
+          ' An agent can then read every secret here: give one a vault that holds only what it should use.'}
       </p>
       {error && <p className={shell.error}>{error}</p>}
       {requests.map((d) => (
@@ -63,7 +67,12 @@ export default function DeviceApprovals({
         >
           <div className={shell.rowMain}>
             <div className={shell.rowName}>
-              {d.label || 'Browser'}{' '}
+              {d.label || (d.kind === 'agent' ? 'Agent' : 'Browser')}{' '}
+              {d.kind === 'agent' && (
+                <span className={shell.badge} data-testid="agent-badge">
+                  agent
+                </span>
+              )}{' '}
               <span className={shell.badge}>
                 code{' '}
                 <span className={shell.mono}>

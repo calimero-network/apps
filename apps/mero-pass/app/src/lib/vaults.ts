@@ -79,9 +79,12 @@ import {
 } from '@calimero-network/mero-react';
 
 import { MeroPassClient } from '../generated/MeroPassClient';
-import type { DeviceKeyPair } from './crypto';
+import {
+  type DeviceKeyPair,
+  type VaultApi,
+  VaultSession,
+} from '@calimero-apps/pass-core';
 import { vaultApiFor } from './vaultApi';
-import { type VaultApi, VaultSession } from './vaultSession';
 import { rawReason } from './errors';
 
 /**

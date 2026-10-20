@@ -43,7 +43,7 @@ import {
   type Revision,
   type Secret,
   confirmationCode,
-} from '../../lib/vaultSession';
+} from '@calimero-apps/pass-core';
 import { rememberVault } from '../../lib/lastVisit';
 import { findVaultByContext, mintVaultInvite } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';

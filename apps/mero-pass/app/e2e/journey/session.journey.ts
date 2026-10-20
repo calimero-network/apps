@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { defaultLogin, readClipboard, rig, type Actor } from "@calimero-apps/e2e-node/journey";
+import { passLockScreen } from "./lockScreen";
 
 // One person, one real node: the theme switch inside the app, the password
 // generator, a masked password copied to the clipboard, and Log out — which
@@ -46,6 +47,8 @@ test("mero-pass: theme, generator, copy, then Log out leaves nothing behind", as
         await card.click();
       }
       await expect(page).toHaveURL(/\/vault\/[^/]+/, { timeout: 90_000 });
+      // A new browser protects its key and saves a recovery key first.
+      await passLockScreen(page, "secret-add");
       await expect(page.getByTestId("secret-add")).toBeEnabled({ timeout: 90_000 });
       await expect(page.getByTestId("lock-state")).toContainText("Unlocked");
     });

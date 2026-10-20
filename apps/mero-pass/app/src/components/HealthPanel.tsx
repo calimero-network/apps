@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import { analyse, breachedIds } from '../lib/health';
-import type { Secret } from '../lib/vaultSession';
+import type { Secret } from '@calimero-apps/pass-core';
 import shell from '../styles/shell.module.css';
 import styles from '../pages/vault/vault.module.css';
 import { describeError } from '../lib/errors';

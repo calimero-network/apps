@@ -13,7 +13,7 @@ import {
   needsPassphrase,
   openShareFragment,
 } from './shareLink';
-import type { Secret } from './vaultSession';
+import type { Secret } from '@calimero-apps/pass-core';
 
 function secret(
   id: string,

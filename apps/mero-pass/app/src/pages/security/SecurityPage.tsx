@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 
 import { useSignOut } from '../../auth/signOut';
@@ -9,20 +9,14 @@ import {
   AUTO_LOCK_CHOICES,
   useAutoLockMinutes,
 } from '../../hooks/useDeviceLock';
-import { useApplicationId } from '../../hooks/useApplicationId';
+import { useDeviceSetup } from '../../hooks/useDeviceSetup';
 import {
   MIN_PASSPHRASE,
   type Protection,
   deviceKeeper,
-  deviceLabel,
 } from '../../lib/deviceKey';
-import {
-  rememberedRecoveryKey,
-  restoreFromRecoveryKey,
-  setUpRecoveryKey,
-} from '../../lib/recoveryKey';
+import { rememberedRecoveryKey } from '../../lib/recoveryKey';
 import { type ThemeMode, chooseTheme, useTheme } from '../../lib/theme';
-import { migrateDevice } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
 import { describeError, rawReason } from '../../lib/errors';
 
@@ -47,19 +41,18 @@ interface NodeDevice {
  *     an admin revocation also rotates that team's key.
  */
 export default function SecurityPage() {
-  // `admin` is the session-aware client; `mero.rpc` is what executes on each
-  // vault's contract. On an account they are two objects (see `lib/vaults`
-  // `VaultMero`), so the whole-account walks below take them apart.
-  const { mero, admin, isDelegated, nodeUrl } = useMero();
+  const { admin, isDelegated, nodeUrl } = useMero();
   const signOut = useSignOut();
   const theme = useTheme();
-  const vaultMero = useMemo(
-    () => (mero && admin ? { admin, rpc: mero.rpc } : null),
-    [mero, admin],
-  );
-  const { appId } = useApplicationId();
+  const {
+    protect: reseal,
+    createRecovery: makeRecovery,
+    restoreRecovery,
+  } = useDeviceSetup();
   const [minutes, setMinutes] = useAutoLockMinutes();
-  const [protection, setProtection] = useState<Protection | null>(null);
+  const [protection, setProtection] = useState<Protection | 'missing' | null>(
+    null,
+  );
   const [pass, setPass] = useState('');
   const [pass2, setPass2] = useState('');
   const [recovery, setRecovery] = useState(rememberedRecoveryKey);
@@ -102,27 +95,8 @@ export default function SecurityPage() {
     setError(null);
     if (how === 'passphrase' && pass !== pass2)
       return setError('The two passphrases do not match.');
-    const old = deviceKeeper.device;
-    const oldFp = deviceKeeper.fingerprint;
-    if (!vaultMero || !appId || !old || !oldFp) return;
     try {
-      let moved = 0;
-      const handOver = async (
-        next: NonNullable<typeof old>,
-        nextFp: string,
-      ) => {
-        moved = await migrateDevice(
-          vaultMero,
-          appId,
-          { device: old, fingerprint: oldFp },
-          { device: next, fingerprint: nextFp },
-          deviceLabel(),
-          setStatus,
-        );
-      };
-      if (how === 'passphrase')
-        await deviceKeeper.setPassphrase(pass, handOver);
-      else await deviceKeeper.setPasskey(handOver);
+      const moved = await reseal(how, pass, setStatus);
       setPass('');
       setPass2('');
       setStatus(
@@ -136,16 +110,9 @@ export default function SecurityPage() {
 
   const createRecovery = async () => {
     setError(null);
-    const device = deviceKeeper.device;
-    const fingerprint = deviceKeeper.fingerprint;
-    if (!vaultMero || !appId || !device || !fingerprint) return;
     try {
-      const { code, vaults } = await setUpRecoveryKey(
-        vaultMero,
-        appId,
-        { device, fingerprint },
-        deviceLabel(),
-        (v) => setStatus(`Giving the recovery key ${v}`),
+      const { code, vaults } = await makeRecovery((v) =>
+        setStatus(`Giving the recovery key ${v}`),
       );
       setShownCode(code);
       setRecovery(rememberedRecoveryKey());
@@ -157,17 +124,9 @@ export default function SecurityPage() {
 
   const restore = async () => {
     setError(null);
-    const device = deviceKeeper.device;
-    const fingerprint = deviceKeeper.fingerprint;
-    if (!vaultMero || !appId || !device || !fingerprint) return;
     try {
-      const n = await restoreFromRecoveryKey(
-        vaultMero,
-        appId,
-        restoreCode,
-        { device, fingerprint },
-        deviceLabel(),
-        (v) => setStatus(`Restoring ${v}`),
+      const n = await restoreRecovery(restoreCode, (v) =>
+        setStatus(`Restoring ${v}`),
       );
       setRestoreCode('');
       setRecovery(rememberedRecoveryKey());

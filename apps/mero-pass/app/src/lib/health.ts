@@ -5,7 +5,7 @@
 // k-anonymity range API: only the first five hex characters of the SHA-1 of a
 // password leave the browser, and the match happens here.
 
-import type { Secret } from './vaultSession';
+import type { Secret } from '@calimero-apps/pass-core';
 
 export type Issue = 'weak' | 'reused' | 'old' | 'breached';
 

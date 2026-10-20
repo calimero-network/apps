@@ -1,0 +1,23 @@
+{
+  "// note": [
+    "DOM is in `lib` only for the WebCrypto types (CryptoKey, CryptoKeyPair).",
+    "This package runs in Node (mero-bot) as well as the browser, so it may",
+    "use nothing but globalThis.crypto, btoa/atob and TextEncoder; the tests",
+    "run under Node to hold it to that."
+  ],
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src/**/*.ts"]
+}

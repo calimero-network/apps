@@ -237,8 +237,9 @@ the same add-wins reason as the trash.
 ### 10. Devices: an `AuthoredMap` whose account is the owner stamp
 
 `register_device(fingerprint, public_key, label, kind)` stores a P-256
-public key under its SHA-256 fingerprint. `kind` is `browser` or `recovery`
-(a key pair the user holds as a printed code) and anything else is refused.
+public key under its SHA-256 fingerprint. `kind` is `browser`, `recovery`
+(a key pair the user holds as a printed code) or `agent` (the key of software
+acting for its account, such as mero-bot), and anything else is refused.
 The device's account is the entry's owner stamp, read with
 `entries_with_owners` by `list_devices` and `list_members`, and with
 `entries_by(account)` by `remove_member`; `node_device` is taken from
@@ -282,6 +283,19 @@ the device list can tell machines apart.
 approval rule (below) over the same device list, so they have to agree on
 which entries are recovery keys: a recovery key is never auto-entitled,
 never approves anyone, and doesn't count as the account's approved browser.
+
+**Agents are admitted by an admin, and the contract says so.** An agent key
+is never auto-entitled either, and an admin's housekeeping never gives an
+account with only agent keys the vault's default role. Unlike the browser
+rule, part of this is the contract's: `add_key_wraps` skips a wrap to an
+agent's key unless the caller is an admin, and `wrapped_pairs` counts a wrap
+to one only when an admin wrote it, so an editor's wrap written past the API
+does not make an agent look approved. An agent's key is one where *every*
+registration at the fingerprint is `agent`: another account filing an agent
+entry at a browser's fingerprint must not stop that browser being given
+keys. As with any wrap, a key holder can still hand the vault key to anyone
+outside the contract; what this rules out is a member's client admitting an
+agent by opening the vault.
 
 **Device approval is a client rule, not a contract rule.** A new browser is
 handed keys only when it is *approved* (it already holds a wrap, because
@@ -409,6 +423,14 @@ list so the UI can always render what it receives.
    code, and approves: `add_key_wraps` for every key it holds, old ones too.
    Denying is `revoke_device`.
 
+**An agent is let in:**
+1. Its runtime registers its key with `kind: "agent"`. An admin gives its
+   account a role by hand (`set_role`); housekeeping never does.
+2. An admin sees the request and its code (the agent prints it where it
+   runs) and approves: `add_key_wraps` for every key it holds.
+3. The agent reads and decrypts like a browser. It never wraps a key to
+   anyone, and a rotation reaches it only through an admin's wrap.
+
 **A recovery key is created or used:**
 1. The browser registers it with `kind: "recovery"` and wraps every key to it.
    A replacement revokes the account's previous recovery key first.
@@ -470,10 +492,11 @@ Roles
 
 Devices and keys
 - `register_device(fingerprint, public_key, label, kind)`: `kind` is
-  `browser` or `recovery`
+  `browser`, `recovery` or `agent`
 - `list_devices()` → `[{ fingerprint, public_key, label, kind, account, added_at, revoked }]`,
   `revoke_device(fingerprint)` (your own device, or Admin)
-- `add_key_wraps(wraps)`, `key_wraps_for(recipient)`, `wrapped_pairs()`
+- `add_key_wraps(wraps)`, `key_wraps_for(recipient)`, `wrapped_pairs()`:
+  a wrap to an agent's key is stored and counted only from an admin
 - `rotate_key(key_id)` (Admin): needs at least one wrap first
 
 Secrets

@@ -9,7 +9,7 @@ import {
   subtitleOf,
   who,
 } from './itemView';
-import type { Secret } from './vaultSession';
+import type { Secret } from '@calimero-apps/pass-core';
 
 function secret(
   kind: string,
@@ -40,6 +40,23 @@ describe('itemView', () => {
     expect(hostOf('')).toBe('');
     expect(openableUrl('github.com')).toBe('https://github.com');
     expect(openableUrl('javascript:alert(1)')).toBeNull();
+  });
+
+  it('subtitles an agent credential by its service, never its token', () => {
+    expect(
+      subtitleOf(
+        secret('oauth2', {
+          provider: 'Gmail',
+          account: 'ops@example.com',
+          refresh_token: '1//secret',
+        }),
+      ),
+    ).toBe('Gmail · ops@example.com');
+    expect(
+      subtitleOf(
+        secret('api_key', { base_url: 'https://api.x.com/2', api_key: 'k' }),
+      ),
+    ).toBe('api.x.com');
   });
 
   it('subtitles a login with its username, else its site', () => {

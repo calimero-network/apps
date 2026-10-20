@@ -1,7 +1,11 @@
 import { useRef, useState } from 'react';
 
 import { decryptExport, encryptExport, importCsv } from '../lib/portability';
-import type { Secret, SecretDraft, VaultSession } from '../lib/vaultSession';
+import type {
+  Secret,
+  SecretDraft,
+  VaultSession,
+} from '@calimero-apps/pass-core';
 import shell from '../styles/shell.module.css';
 import styles from '../pages/vault/vault.module.css';
 import { describeError } from '../lib/errors';
