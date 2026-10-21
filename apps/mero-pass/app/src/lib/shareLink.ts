@@ -16,7 +16,7 @@
 // copied the password. And a link cannot be revoked once sent — rotate the
 // password if it went to the wrong place.
 
-import { fromB64, randomBytes, toB64 } from '@calimero-apps/pass-core';
+import { fromB64, randomBytes, toB64 } from '@calimero-network/mero-pass';
 
 export interface SharedSecret {
   name: string;

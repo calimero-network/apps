@@ -1,0 +1,92 @@
+# Publish @calimero-network/mero-pass (packages/mero-pass) to npm.
+#
+# The version is the one in packages/mero-pass/package.json: bump it in the PR
+# that changes the package, and the merge publishes it. A version npm already
+# has is skipped, so a push that does not bump publishes nothing.
+#
+# Publishing uses npm trusted publishing (OIDC), as mero-js does: no token is
+# stored here. npm only lets a trusted publisher be configured for a package
+# that exists, so the very first version is published by hand (see the
+# package's README), and this workflow is then added as its trusted publisher
+# on npmjs.com.
+
+name: Publish mero-pass
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/mero-pass/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-mero-pass
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish @calimero-network/mero-pass
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # the release tag
+      id-token: write # npm trusted publishing and provenance
+    defaults:
+      run:
+        working-directory: packages/mero-pass
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      # Node 24 ships npm 11, the first npm that publishes over OIDC. No
+      # `registry-url`: it writes an `_authToken` line fed by a placeholder
+      # NODE_AUTH_TOKEN, and npm would send that instead of the OIDC token.
+      # The package's publishConfig names the registry.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      - name: Is this version already on npm?
+        id: version
+        run: |
+          set -euo pipefail
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$name@$version is already published; nothing to do"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::publishing $name@$version"
+          fi
+
+      # `pnpm pack`, not `npm publish` on the directory: pnpm applies
+      # `publishConfig` (the dist entry points) and resolves `catalog:`
+      # ranges, which npm does not understand.
+      - name: Pack
+        if: steps.version.outputs.publish == 'true'
+        run: pnpm pack --pack-destination "$RUNNER_TEMP"
+
+      - name: Publish with provenance
+        if: steps.version.outputs.publish == 'true'
+        run: npm publish "$RUNNER_TEMP"/calimero-network-mero-pass-*.tgz --provenance --access public
+
+      - name: Tag the release
+        if: steps.version.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git tag "mero-pass-v$VERSION"
+          git push origin "mero-pass-v$VERSION"

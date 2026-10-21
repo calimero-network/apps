@@ -29,7 +29,7 @@ import {
   fromB64,
   randomBytes,
   toB64,
-} from '@calimero-apps/pass-core';
+} from '@calimero-network/mero-pass';
 
 const DB_NAME = 'mero-pass';
 const STORE = 'device';

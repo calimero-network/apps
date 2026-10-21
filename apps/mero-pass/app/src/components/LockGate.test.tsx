@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { generateDeviceKey } from '@calimero-apps/pass-core';
+import { generateDeviceKey } from '@calimero-network/mero-pass';
 
 // ── The lock screen's first-run setup ───────────────────────────────────────
 //

@@ -12,7 +12,7 @@ import {
 
 import { CopyIcon, SearchIcon } from '../../components/icons';
 import { monogramOf, subtitleOf } from '../../lib/itemView';
-import type { Secret } from '@calimero-apps/pass-core';
+import type { Secret } from '@calimero-network/mero-pass';
 import styles from './items.module.css';
 
 /**

@@ -9,7 +9,7 @@ import {
   subtitleOf,
   who,
 } from './itemView';
-import type { Secret } from '@calimero-apps/pass-core';
+import type { Secret } from '@calimero-network/mero-pass';
 
 function secret(
   kind: string,

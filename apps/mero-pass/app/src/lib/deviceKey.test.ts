@@ -6,7 +6,7 @@ import {
   generateVaultKey,
   unwrapVaultKey,
   wrapVaultKey,
-} from '@calimero-apps/pass-core';
+} from '@calimero-network/mero-pass';
 import {
   DeviceKeeper,
   type DeviceStore,

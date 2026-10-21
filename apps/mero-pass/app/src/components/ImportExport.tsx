@@ -5,7 +5,7 @@ import type {
   Secret,
   SecretDraft,
   VaultSession,
-} from '@calimero-apps/pass-core';
+} from '@calimero-network/mero-pass';
 import shell from '../styles/shell.module.css';
 import styles from '../pages/vault/vault.module.css';
 import { describeError } from '../lib/errors';

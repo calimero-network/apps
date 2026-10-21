@@ -1,0 +1,68 @@
+{
+  "name": "@calimero-network/mero-pass",
+  "version": "0.1.0",
+  "description": "Mero Pass vault crypto and session logic for browsers and Node: open, read and write an end-to-end encrypted Mero Pass vault, as the app or as an agent (mero-bot).",
+  "type": "module",
+  "// exports": [
+    "In the workspace the app and tests read the TypeScript source, so nothing",
+    "has to be built before a typecheck. `publishConfig` swaps in the built",
+    "files when `pnpm pack` makes the tarball the publish workflow uploads."
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=neutral --target=es2020 --format=esm --outfile=dist/index.mjs --sourcemap && esbuild src/index.ts --bundle --platform=neutral --target=es2020 --format=cjs --outfile=dist/index.cjs --sourcemap && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "esbuild": "^0.25.12",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.mjs",
+        "require": "./dist/index.cjs",
+        "default": "./dist/index.mjs"
+      }
+    },
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts"
+  },
+  "keywords": [
+    "calimero",
+    "mero",
+    "mero-pass",
+    "e2ee",
+    "secrets",
+    "vault"
+  ],
+  "license": "MIT",
+  "author": "Calimero Ltd",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/calimero-network/apps",
+    "directory": "packages/mero-pass"
+  },
+  "homepage": "https://github.com/calimero-network/apps/blob/main/packages/mero-pass/README.md",
+  "bugs": {
+    "url": "https://github.com/calimero-network/apps/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

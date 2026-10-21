@@ -15,7 +15,7 @@ import {
   fromB64,
   randomBytes,
   toB64,
-} from '@calimero-apps/pass-core';
+} from '@calimero-network/mero-pass';
 
 // ── CSV ──────────────────────────────────────────────────────────────────────
 

@@ -5,7 +5,7 @@
 import { shortAccount } from '@calimero-apps/names';
 
 import { KINDS, type Kind } from './secretKinds';
-import type { Secret } from '@calimero-apps/pass-core';
+import type { Secret } from '@calimero-network/mero-pass';
 
 /** The list's categories: every kind, in the order the sidebar shows them. */
 export const CATEGORIES: { id: Kind; label: string }[] = [
