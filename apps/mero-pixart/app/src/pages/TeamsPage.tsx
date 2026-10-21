@@ -43,6 +43,11 @@ export default function TeamsPage() {
     let cancelled = false;
     async function loadTeams() {
       const appId = await api.ensureAppId();
+      // On an account the id is the registry's, and lands after sign-in.
+      // Unscoped until then, the list is every namespace the account has,
+      // other apps' included, shown here as teams. Stay loading: `api`
+      // changes when the id lands, and this runs again.
+      if (!appId && api.isDelegated) return;
       api.listNamespaces(appId)
         .then((items) => {
           if (cancelled) return;

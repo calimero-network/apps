@@ -66,6 +66,12 @@ export default function TeamsPage() {
     let cancelled = false;
     async function loadTeams() {
       const appId = await ensureAppId();
+      // An account learns its application id from the registry only after it
+      // has signed in. Until then nothing can be listed for it, and an empty
+      // answer would read as "no teams": the page would offer to create one
+      // and forget the team you had open. Wait; `ensureAppId` changes when the
+      // id lands, and that runs this again.
+      if (!appId && isDelegated) return;
       listNamespaces(requireAdmin(), appId)
         .then((items) => {
           if (cancelled) return;
@@ -91,7 +97,7 @@ export default function TeamsPage() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [admin, ensureAppId, requireAdmin]);
+  }, [admin, ensureAppId, isDelegated, requireAdmin]);
 
   // Resume the team open last (utils/lastVisit) when this is the default
   // landing, not a visit you chose, and this node still lists it. Anything
@@ -162,12 +168,16 @@ export default function TeamsPage() {
     if (!name) return;
     setCreating(true);
     try {
+      const applicationId = await ensureAppId();
+      // Not founded without one: a namespace bound to no application is a team
+      // this app can never list again.
+      if (!applicationId) throw new Error("Still connecting. Try again in a moment.");
       // Body is EXACTLY `applicationId` + `name`: `CreateNamespaceApiRequest`
       // is `deny_unknown_fields`, so an extra key is a 400 for the whole
       // create. On an account the same call founds through the relay with the
       // provider's package, and comes back with `haEnabled`/`haError` on top.
       const data = (await requireAdmin().createNamespace({
-        applicationId: await ensureAppId(),
+        applicationId,
         name,
       })) as {
         namespaceId?: string;

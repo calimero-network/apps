@@ -40,7 +40,7 @@ const stub = vi.hoisted(() => {
       mero: { admin: rawAdmin, rpc: { execute: vi.fn() } },
       admin,
       isDelegated: true,
-      applicationId: "app",
+      applicationId: "app" as string | null,
       nodeUrl: "https://relay.example",
       isAuthenticated: true,
       isLoading: false,
@@ -66,6 +66,7 @@ function renderPage() {
 }
 
 afterEach(() => {
+  stub.mero.applicationId = "app";
   localStorage.clear();
   vi.clearAllMocks();
   stub.admin.listGroupMembers.mockImplementation(async () => ({ members: [{ identity: "ab".repeat(32), role: "Member" }] }));
@@ -78,6 +79,31 @@ describe("TeamsPage on a delegated session", () => {
     expect(stub.admin.listNamespacesForApplication).toHaveBeenCalledWith("app");
     expect(stub.admin.listApplications).not.toHaveBeenCalled();
     expect(stub.rawAdmin.listNamespacesForApplication).not.toHaveBeenCalled();
+  });
+
+  it("waits for the provider's application id rather than listing every app's namespaces", async () => {
+    // Signed in, but the registry has not answered yet: the account's other
+    // apps' namespaces are not this app's teams.
+    stub.mero.applicationId = null;
+    stub.admin.listNamespaces.mockResolvedValueOnce([{ namespaceId: "ns-chess", name: "Chess" }]);
+    const view = renderPage();
+    await act(async () => {});
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByTestId("team-card-ns-chess")).toBeNull();
+    expect(screen.queryByTestId("empty-teams")).toBeNull();
+    expect(stub.admin.listNamespaces).not.toHaveBeenCalled();
+
+    stub.mero.applicationId = "app";
+    view.rerender(
+      <MemoryRouter initialEntries={["/teams"]}>
+        <ToastProvider>
+          <TeamsPage />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByTestId("team-card-ns-existing");
+    expect(stub.admin.listNamespacesForApplication).toHaveBeenCalledWith("app");
+    expect(screen.queryByTestId("team-card-ns-chess")).toBeNull();
   });
 
   it("creates a team through admin.createNamespace, never the raw client, and says when it is not hosted", async () => {

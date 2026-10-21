@@ -264,8 +264,13 @@ export default function AppPage(): React.ReactElement | null {
   //  - `resolvingCallback`: an SSO callback context whose namespace is being
   //    looked up, right before the desktop handoff lands;
   //  - `resolvingApplicationId`: the node has not yet said which installed
-  //    application this app is, and the namespace list is scoped by it.
-  if (!ws.activeNs && (ws.resolvingCallback || ws.resolvingApplicationId))
+  //    application this app is, and the namespace list is scoped by it;
+  //  - `namespacesPending`: that list has not answered yet (on an account, the
+  //    id it is scoped by may not have landed either).
+  if (
+    !ws.activeNs &&
+    (ws.resolvingCallback || ws.resolvingApplicationId || ws.namespacesPending)
+  )
     return null;
 
   // No active namespace (none yet, or a stale/invalid prior choice): never
@@ -279,6 +284,8 @@ export default function AppPage(): React.ReactElement | null {
           namespaces={ws.namespaces}
           onSelect={ws.selectNamespace}
           onCreate={() => setShowCreateNs(true)}
+          failed={ws.namespacesFailed}
+          onRetry={ws.retryNamespaces}
         />
         {dialogs}
       </>

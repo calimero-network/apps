@@ -26,6 +26,9 @@ export function useApplicationId(): () => Promise<string> {
   const { admin, applicationId, isDelegated } = useMero();
   const appIdRef = useRef<string>("");
   return useCallback(async (): Promise<string> => {
+    // On an account the provider's id is the answer, and it lands from the
+    // registry after sign-in: never pin an earlier (empty or stored) one.
+    if (isDelegated) return applicationId ?? "";
     if (appIdRef.current) return appIdRef.current;
     let id = "";
     if (!isDelegated && admin) {

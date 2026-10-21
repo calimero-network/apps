@@ -51,15 +51,16 @@ export function useApplicationId(): ApplicationIdState {
     // as "not installed" — a dead end for every delegated session. mero-react
     // resolves the id from the registry for an account (`useMero()
     // .applicationId`), and that is the id every namespace call wants.
+    //
+    // Until it has that id, this is still LOADING, not answered: the provider
+    // asks the registry after sign-in has settled, so a first account render
+    // has none yet. Reported as answered, the workspaces screen read "no id"
+    // as "no workspaces" and its resume gave up on the one open last.
     if (isDelegated) {
       setApplicationId(sessionApplicationId || null);
       setNotInstalled(false);
-      setError(
-        sessionApplicationId
-          ? null
-          : `${APP_PACKAGE} could not be resolved from the registry for this account.`,
-      );
-      setLoading(false);
+      setError(null);
+      setLoading(!sessionApplicationId);
       return;
     }
     let cancelled = false;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMero } from "@calimero-network/mero-react";
 import { createNamespace, deleteNamespace, leaveNamespace, listNamespaces } from "../api/rpc";
 import { useApplicationId } from "./useApplicationId";
 import { setStoredTeamName } from "../utils/teamName";
@@ -32,10 +33,14 @@ export interface TeamList {
 export function useTeamList(): TeamList {
   // MeroDesign's own application id — see hooks/useApplicationId.
   const ensureAppId = useApplicationId();
+  const { isDelegated } = useMero();
   const [teams, setTeams] = useState<Team[]>([]);
   const [listed, setListed] = useState(false);
   const [error, setError] = useState(false);
   const alive = useRef(true);
+  // Only the newest read is applied: one started under an earlier app id (or
+  // none) can answer after the read that replaced it.
+  const generation = useRef(0);
   // Set in the body too: strict mode runs the cleanup once before the real mount.
   useEffect(() => {
     alive.current = true;
@@ -43,18 +48,24 @@ export function useTeamList(): TeamList {
   }, []);
 
   const reload = useCallback(async () => {
+    const gen = ++generation.current;
     try {
       const appId = await ensureAppId();
+      // An account's id lands from the registry after sign-in. Until then the
+      // list would be unscoped — every app's namespaces, read as teams, and
+      // /teams would open one of another app's — so it is not asked: still
+      // loading, not empty. (On a node "" is the old-node fallback, kept.)
+      if (!appId && isDelegated) return;
       const items = await listNamespaces(appId);
-      if (!alive.current) return;
+      if (!alive.current || gen !== generation.current) return;
       setTeams(items.map((n) => ({ groupId: n.namespaceId, name: n.name ?? "" })));
       setListed(true);
       setError(false);
     } catch {
       // A failed re-read never blanks a list that has loaded.
-      if (alive.current) setError(true);
+      if (alive.current && gen === generation.current) setError(true);
     }
-  }, [ensureAppId]);
+  }, [ensureAppId, isDelegated]);
 
   useEffect(() => {
     void reload();

@@ -12,6 +12,9 @@ interface Props {
   namespaces: Namespace[];
   onSelect: (id: string) => void;
   onCreate: () => void;
+  /** The workspace list failed: offer a retry, not a create that may duplicate. */
+  failed?: boolean;
+  onRetry?: () => void;
 }
 
 /** Full-pane onboarding shown whenever no namespace is active: the app mark,
@@ -23,6 +26,8 @@ export default function NsEmptyState({
   namespaces,
   onSelect,
   onCreate,
+  failed = false,
+  onRetry,
 }: Props): React.ReactElement {
   const hasNamespaces = namespaces.length > 0;
   const signOut = useSignOut();
@@ -45,7 +50,12 @@ export default function NsEmptyState({
           <LogoMark />
         </span>
         <h1>Welcome to {APP_DISPLAY_NAME}</h1>
-        {hasNamespaces ? (
+        {failed && !hasNamespaces ? (
+          <p data-testid="ns-list-failed">
+            Your workspaces could not be loaded. Try again before creating one,
+            so you do not end up with a second copy of a workspace you have.
+          </p>
+        ) : hasNamespaces ? (
           <>
             <p>
               Select a workspace to continue or create a new one. To join
@@ -73,13 +83,23 @@ export default function NsEmptyState({
           </p>
         )}
         <div className="row">
-          <button
-            className="primary"
-            data-testid="ns-create-btn"
-            onClick={onCreate}
-          >
-            Create workspace
-          </button>
+          {failed && !hasNamespaces ? (
+            <button
+              className="primary"
+              data-testid="ns-retry-btn"
+              onClick={onRetry}
+            >
+              Try again
+            </button>
+          ) : (
+            <button
+              className="primary"
+              data-testid="ns-create-btn"
+              onClick={onCreate}
+            >
+              Create workspace
+            </button>
+          )}
         </div>
       </Panel>
     </Wrap>
