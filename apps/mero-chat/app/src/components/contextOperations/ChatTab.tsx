@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { styled } from "styled-components";
-import { hasSession } from "../../api/meroJsClient";
+import { useSessionKey } from "../../hooks/useSessionKey";
 import { Button, Input } from "@calimero-network/mero-ui";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import type { GroupMember, GroupSummary } from "../../api/groupApi";
@@ -136,6 +136,7 @@ export default function ChatTab({
   isConfigSet,
 }: ChatTabProps) {
   const navigate = useNavigate();
+  const sessionKey = useSessionKey();
   const [availableGroups, setAvailableGroups] = useState<GroupSummary[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState(getGroupId());
   const [messengerName, setMessengerName] = useState(getMessengerDisplayName());
@@ -168,8 +169,6 @@ export default function ChatTab({
   }, []);
 
   const fetchGroups = useCallback(async () => {
-    if (!hasSession()) return;
-
     setFetchingGroups(true);
     setError("");
 
@@ -203,10 +202,10 @@ export default function ChatTab({
   }, []);
 
   useEffect(() => {
-    if ((isAuthenticated || isConfigSet) && hasSession()) {
+    if ((isAuthenticated || isConfigSet) && sessionKey) {
       fetchGroups();
     }
-  }, [fetchGroups, isAuthenticated, isConfigSet]);
+  }, [fetchGroups, isAuthenticated, isConfigSet, sessionKey]);
 
   useEffect(() => {
     if (!selectedGroupId) return;
@@ -287,7 +286,7 @@ export default function ChatTab({
     setError("");
   };
 
-  if (!hasSession()) return null;
+  if (!sessionKey) return null;
 
   return (
     <TabContent>

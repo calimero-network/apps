@@ -92,16 +92,6 @@ export function isDelegatedSession(): boolean {
   return _instance?.isDelegated ?? false;
 }
 
-/**
- * Whether there is anything to call: a node URL (node login), or an account
- * session. An account signs in through a relay and never writes
- * `mero:node_url`, so gating on `getNodeUrl()` alone leaves an account with
- * nothing to load, and the UI waits on a request that is never sent.
- */
-export function hasSession(): boolean {
-  return !!getNodeUrl() || isDelegatedSession();
-}
-
 export type LegacyRpcResult<T> =
   | {
       result: { output: T };

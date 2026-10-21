@@ -128,6 +128,27 @@ describe("NamespaceEntryPopup", () => {
     expect(h.listGroups).toHaveBeenCalledTimes(1);
   });
 
+  it("a load for a session that has since changed does not overwrite the newer list", async () => {
+    // A leftover node URL keys a node load; the account session then lands and
+    // keys its own. The node load answers last, with nothing.
+    let answerNode: (v: unknown) => void = () => {};
+    h.listGroups
+      .mockReset()
+      .mockImplementationOnce(() => new Promise((r) => { answerNode = r; }))
+      .mockResolvedValueOnce({ data: [{ groupId: "ns-acct", alias: "Account ws" }], error: null });
+    const view = render(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
+
+    h.useMero.mockReturnValue({ admin: {}, isDelegated: true, applicationId: "app1" });
+    view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
+    expect(await screen.findByText("Select workspace")).toBeInTheDocument();
+
+    answerNode({ data: [], error: null });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByText("Welcome to MeroChat")).not.toBeInTheDocument();
+    expect(screen.getByText("Select workspace")).toBeInTheDocument();
+    expect(h.listGroups).toHaveBeenCalledTimes(2);
+  });
+
   it("a node login with no node URL does not list", () => {
     h.nodeUrl = null;
     open();

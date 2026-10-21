@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
-import { getNodeUrl, useMero } from "@calimero-network/mero-react";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { isDelegatedSession } from "../../api/meroJsClient";
+import { useSessionKey } from "../../hooks/useSessionKey";
 import type { GroupSummary } from "../../api/groupApi";
 import {
   getApplicationId,
@@ -278,13 +278,10 @@ interface Props {
 
 export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLogout }: Props) {
   const api = useRef(new GroupApiDataSource());
-  // What there is to list from, as React state so the load re-runs when it
-  // arrives. A node login has its URL in storage. An account signs in through
-  // a relay and stores none, and is ready only once mero-react has its admin
-  // AND chat's registry-derived application id: listing before the id lands
-  // filters the account's namespaces by the node fallback id and finds none.
-  const { admin, isDelegated, applicationId } = useMero();
-  const sessionReady = isDelegated ? !!admin && !!applicationId : !!getNodeUrl();
+  const sessionKey = useSessionKey();
+  // Only the newest load may apply its result: one started for a session that
+  // has since changed must not overwrite the list of the one that replaced it.
+  const loadGeneration = useRef(0);
   const { addToast } = useToast();
 
   const [step, setStep] = useState<Step>("loading");
@@ -361,12 +358,14 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
   // Initial load
   const loadNamespaces = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setStep("loading");
     setError("");
 
     let groups: GroupSummary[] = [];
     try {
       const res = await api.current.listGroups();
+      if (generation !== loadGeneration.current) return;
       // ⚠️ `listGroups` RETURNS a failure, it does not throw — `catchError`
       // turns every error into `{ data: null, error }`. So `res.data ?? []`
       // read a failed or timed-out listing as an EMPTY one, and an empty
@@ -378,6 +377,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
         alias: g.alias?.trim() || getStoredGroupAlias(g.groupId) || undefined,
       }));
     } catch {
+      if (generation !== loadGeneration.current) return;
       setError(
         isDelegatedSession()
           ? "Could not reach your cloud node. Try again in a moment."
@@ -422,10 +422,10 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
   }, []);
 
   useEffect(() => {
-    if ((isAuthenticated || isConfigSet) && sessionReady) {
+    if ((isAuthenticated || isConfigSet) && sessionKey) {
       void loadNamespaces();
     }
-  }, [loadNamespaces, isAuthenticated, isConfigSet, sessionReady]);
+  }, [loadNamespaces, isAuthenticated, isConfigSet, sessionKey]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
