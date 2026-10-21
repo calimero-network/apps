@@ -13,7 +13,8 @@ const h = vi.hoisted(() => ({
   resolveCurrentMemberIdentity: vi.fn(),
   createGroup: vi.fn(),
   createChannel: vi.fn(),
-  hasSession: vi.fn(),
+  useMero: vi.fn(),
+  nodeUrl: "http://localhost:2428" as string | null,
 }));
 
 vi.mock("../../utils/installedApps", async (importOriginal) => ({
@@ -47,7 +48,8 @@ vi.mock("@calimero-network/mero-ui", () => ({
 
 vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  getNodeUrl: () => "http://localhost:2428",
+  getNodeUrl: () => h.nodeUrl,
+  useMero: h.useMero,
 }));
 
 vi.mock("../../api/meroJsClient", () => ({
@@ -57,7 +59,6 @@ vi.mock("../../api/meroJsClient", () => ({
     applicationId: null,
   }),
   isDelegatedSession: () => false,
-  hasSession: h.hasSession,
 }));
 
 vi.mock("../../contexts/ToastContext", () => ({
@@ -78,7 +79,8 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
 
 beforeEach(() => {
   localStorage.clear();
-  h.hasSession.mockReset().mockReturnValue(true);
+  h.nodeUrl = "http://localhost:2428";
+  h.useMero.mockReset().mockReturnValue(NODE);
   sessionStorage.clear();
   h.listGroups.mockReset().mockResolvedValue({
     data: [{ groupId: "ns0", alias: "Mine" }],
@@ -95,6 +97,8 @@ beforeEach(() => {
     .mockResolvedValue({ contextId: "ctx-general", memberKey: "key" });
 });
 
+const NODE = { admin: {}, isDelegated: false, applicationId: null };
+
 function open() {
   render(
     <NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />,
@@ -102,17 +106,30 @@ function open() {
 }
 
 describe("NamespaceEntryPopup", () => {
-  it("loads workspaces on an account session, which stores no node URL", async () => {
-    // The account path signs in through a relay and never writes
-    // `mero:node_url`. The load used to bail on that and sit on
-    // "Connecting to node…" forever, with no request and no error.
-    open();
+  it("an account waits for its admin and application id, then lists", async () => {
+    // An account signs in through a relay and stores no node URL. It used to
+    // bail on that and sit on "Connecting to node…" forever; and listing before
+    // the registry id lands filters the account's namespaces by the node
+    // fallback id and finds none.
+    h.nodeUrl = null;
+    h.useMero.mockReturnValue({ admin: null, isDelegated: true, applicationId: null });
+    const view = render(
+      <NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />,
+    );
+    expect(screen.getByText("Connecting to node…")).toBeInTheDocument();
+
+    h.useMero.mockReturnValue({ admin: {}, isDelegated: true, applicationId: null });
+    view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
+    expect(h.listGroups).not.toHaveBeenCalled();
+
+    h.useMero.mockReturnValue({ admin: {}, isDelegated: true, applicationId: "app1" });
+    view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
     expect(await screen.findByText("Select workspace")).toBeInTheDocument();
-    expect(h.listGroups).toHaveBeenCalled();
+    expect(h.listGroups).toHaveBeenCalledTimes(1);
   });
 
-  it("waits, without listing, while there is no session at all", async () => {
-    h.hasSession.mockReturnValue(false);
+  it("a node login with no node URL does not list", () => {
+    h.nodeUrl = null;
     open();
     expect(screen.getByText("Connecting to node…")).toBeInTheDocument();
     expect(h.listGroups).not.toHaveBeenCalled();

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
+import { getNodeUrl, useMero } from "@calimero-network/mero-react";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-import { hasSession } from "../../api/meroJsClient";
+import { isDelegatedSession } from "../../api/meroJsClient";
 import type { GroupSummary } from "../../api/groupApi";
 import {
   getApplicationId,
@@ -277,6 +278,13 @@ interface Props {
 
 export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLogout }: Props) {
   const api = useRef(new GroupApiDataSource());
+  // What there is to list from, as React state so the load re-runs when it
+  // arrives. A node login has its URL in storage. An account signs in through
+  // a relay and stores none, and is ready only once mero-react has its admin
+  // AND chat's registry-derived application id: listing before the id lands
+  // filters the account's namespaces by the node fallback id and finds none.
+  const { admin, isDelegated, applicationId } = useMero();
+  const sessionReady = isDelegated ? !!admin && !!applicationId : !!getNodeUrl();
   const { addToast } = useToast();
 
   const [step, setStep] = useState<Step>("loading");
@@ -353,8 +361,6 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
   // Initial load
   const loadNamespaces = useCallback(async () => {
-    if (!hasSession()) return;
-
     setStep("loading");
     setError("");
 
@@ -372,7 +378,11 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
         alias: g.alias?.trim() || getStoredGroupAlias(g.groupId) || undefined,
       }));
     } catch {
-      setError("Could not reach node. Is merod running?");
+      setError(
+        isDelegatedSession()
+          ? "Could not reach your cloud node. Try again in a moment."
+          : "Could not reach node. Is merod running?",
+      );
       setStep("error");
       return;
     }
@@ -412,10 +422,10 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated || isConfigSet) {
+    if ((isAuthenticated || isConfigSet) && sessionReady) {
       void loadNamespaces();
     }
-  }, [loadNamespaces, isAuthenticated, isConfigSet]);
+  }, [loadNamespaces, isAuthenticated, isConfigSet, sessionReady]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
