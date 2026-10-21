@@ -1,7 +1,7 @@
 import type { MeroJs } from '@calimero-network/mero-js';
 import type { InviteRedeemer } from '@calimero-network/mero-react';
 
-/** The two admin calls a lobby join needs, as `useMero().mero.admin` has them. */
+/** The two admin calls a lobby join needs, from the session admin (`useMero().admin`). */
 export type LobbyAdmin = Pick<MeroJs['admin'], 'joinNamespace' | 'listNamespaces'>;
 
 /**

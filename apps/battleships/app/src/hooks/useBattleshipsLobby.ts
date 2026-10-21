@@ -37,6 +37,32 @@ export function splitTeeMembers<M extends { role: string }>(
   };
 }
 
+/**
+ * Whether a list read for the current scope has answered successfully.
+ *
+ * mero-react's list hooks read `[]` with `loading: false` for a render after
+ * every scope change, before their fetch starts, so neither an empty list nor
+ * `!loading` says the list was asked. Only a loading -> settled transition
+ * within the same scope does. (Same rule as mero-crm's `useAnswered`, #607.)
+ */
+export function useAnswered(loading: boolean, error: unknown, scope: readonly unknown[]): boolean {
+  const [answered, setAnswered] = useState(false);
+  const sawLoading = useRef(loading);
+  useEffect(() => {
+    sawLoading.current = loading;
+    setAnswered(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, scope); // only a scope change resets; `loading` is read, not tracked
+  useEffect(() => {
+    if (loading) {
+      sawLoading.current = true;
+      return;
+    }
+    if (sawLoading.current) setAnswered(!error);
+  }, [loading, error]);
+  return answered;
+}
+
 export interface LobbyRecord {
   namespaceId: string;
   lobbyContextId: string | null;
@@ -48,12 +74,19 @@ export interface UseBattleshipsLobbyReturn {
   lobbies: LobbyRecord[];
   lobbiesLoading: boolean;
   lobbiesError: Error | null;
+  /**
+   * The lobby list has answered for this app. Until it has, an empty list is
+   * "not asked yet", not "no lobbies": on an account the application id it is
+   * scoped by lands from the registry after sign-in.
+   */
+  lobbiesAnswered: boolean;
   selectedLobby: LobbyRecord | null;
   selectLobby: (namespaceId: string) => void;
   clearLobby: () => void;
   refetchLobbies: () => Promise<void>;
 
-  createLobby: (name?: string) => Promise<string | null>;
+  /** Resolves with the new lobby's namespace id; rejects with why it failed. */
+  createLobby: (name?: string) => Promise<string>;
   createLobbyLoading: boolean;
   createLobbyError: Error | null;
 
@@ -130,8 +163,17 @@ function persistSelectedNamespaceId(nsId: string | null) {
 const ENV_APPLICATION_ID = import.meta.env.VITE_APPLICATION_ID?.trim() || null;
 
 export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
-  const { applicationId: authApplicationId, mero, contextIdentity } = useMero();
-  const applicationId = authApplicationId || ENV_APPLICATION_ID;
+  // `admin` (the session admin) for every admin call below, never
+  // `mero.admin`: on an account that is the relay's raw node client, which
+  // refuses writes and answers "owned identities" with the relay's own.
+  const { applicationId: authApplicationId, mero, admin, contextIdentity, isDelegated } = useMero();
+  // On an account the provider's registry-derived id is the only answer, and it
+  // lands after sign-in. Listing under the env id meanwhile could list nothing
+  // (another build's id) and read as "no lobbies". On a node the env fallback
+  // stays as it was.
+  const applicationId = isDelegated
+    ? authApplicationId || null
+    : authApplicationId || ENV_APPLICATION_ID;
 
   // --- Namespace listing ---
   const {
@@ -140,6 +182,11 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     error: namespacesError,
     refetch: refetchNamespaces,
   } = useNamespacesForApplication(applicationId);
+  const lobbiesAnswered = useAnswered(namespacesLoading, namespacesError, [admin, applicationId]);
+  // Waiting on an answer that will come: a node with an app id, or an account
+  // (whose id is still landing). A node with no id has nothing to list.
+  const lobbiesPending =
+    !lobbiesAnswered && !namespacesError && (applicationId !== null || isDelegated);
 
   const lobbies: LobbyRecord[] = namespaces.map((ns) => ({
     namespaceId: ns.namespaceId,
@@ -189,13 +236,13 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!mero || namespaceContexts.length === 0) {
+      if (!admin || namespaceContexts.length === 0) {
         if (!cancelled) setLobbyContextId(null);
         return;
       }
       for (const entry of namespaceContexts) {
         try {
-          const ctx = await mero.admin.getContext(entry.contextId);
+          const ctx = await admin.getContext(entry.contextId);
           if (cancelled) return;
           if (ctx?.serviceName === 'lobby') {
             setLobbyContextId(entry.contextId);
@@ -215,7 +262,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mero, contextIdsKey]);
+  }, [admin, contextIdsKey]);
 
   // Patch the lobbyContextId into the selected lobby record
   if (selectedLobby && lobbyContextId) {
@@ -293,13 +340,13 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
 
   // Resolve executor identity from the lobby context
   useEffect(() => {
-    if (!lobbyContextId || !mero) return;
+    if (!lobbyContextId || !admin) return;
 
     let cancelled = false;
 
     (async () => {
       try {
-        const { identities } = await mero.admin.getContextIdentitiesOwned(lobbyContextId);
+        const { identities } = await admin.getContextIdentitiesOwned(lobbyContextId);
         if (!cancelled && identities.length > 0) {
           setExecutorPublicKey(identities[0]);
           return;
@@ -315,7 +362,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     })();
 
     return () => { cancelled = true; };
-  }, [lobbyContextId, mero, contextIdentity]);
+  }, [lobbyContextId, admin, contextIdentity]);
 
   // Mark lobby as joined once we have identity
   useEffect(() => {
@@ -343,15 +390,12 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
 
   const createLobby = useCallback(async (name?: string) => {
     const result = await createNamespaceWithLobby(name || 'lobby');
-    if (result) {
-      setExecutorPublicKey(result.memberPublicKey);
-      setLobbyJoined(true);
-      setSelectedNsId(result.namespaceId);
-      persistSelectedNamespaceId(result.namespaceId);
-      await refetchNamespaces();
-      return result.namespaceId;
-    }
-    return null;
+    setExecutorPublicKey(result.memberPublicKey);
+    setLobbyJoined(true);
+    setSelectedNsId(result.namespaceId);
+    persistSelectedNamespaceId(result.namespaceId);
+    await refetchNamespaces();
+    return result.namespaceId;
   }, [createNamespaceWithLobby, refetchNamespaces]);
 
   const invitePlayer = useCallback(async (_validForSeconds = 86400) => {
@@ -368,9 +412,9 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
    */
   const [playerKeys, setPlayerKeys] = useState<string[]>([]);
   const refetchPlayerKeys = useCallback(async () => {
-    if (!mero || !lobbyContextId) { setPlayerKeys([]); return; }
+    if (!admin || !lobbyContextId) { setPlayerKeys([]); return; }
     try {
-      const res = await mero.admin.getContextIdentities(lobbyContextId);
+      const res = await admin.getContextIdentities(lobbyContextId);
       const fromNode = Array.isArray(res?.identities) ? res.identities : [];
       // Union with the keys learned from invitations: the node reports only
       // what IT knows, which on a joining node is just itself.
@@ -381,7 +425,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
       // worth surfacing — the list simply is not known yet.
       setPlayerKeys([]);
     }
-  }, [mero, lobbyContextId, namespaceId]);
+  }, [admin, lobbyContextId, namespaceId]);
 
   useEffect(() => { void refetchPlayerKeys(); }, [refetchPlayerKeys]);
 
@@ -442,8 +486,9 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
 
   return {
     lobbies,
-    lobbiesLoading: namespacesLoading || contextsLoading,
+    lobbiesLoading: namespacesLoading || contextsLoading || lobbiesPending,
     lobbiesError: namespacesError,
+    lobbiesAnswered,
     selectedLobby,
     selectLobby,
     clearLobby,

@@ -55,17 +55,19 @@ export function useSelfAccount(): string | null {
 }
 
 export function useForumClient(): ForumClient | null {
-  const { mero } = useMero();
+  // The identity is asked of `admin`, the session's own: on an account the
+  // relay's raw route does not answer for the account, the account admin does.
+  const { mero, admin } = useMero();
   const { contextId } = useForumContext();
   const [executor, setExecutor] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!mero || !contextId) {
+    if (!admin || !contextId) {
       setExecutor(null);
       return;
     }
     let cancelled = false;
-    mero.admin
+    admin
       .getContextIdentitiesOwned(contextId)
       .then(({ identities }) => {
         if (!cancelled && identities.length > 0) setExecutor(identities[0]);
@@ -74,7 +76,7 @@ export function useForumClient(): ForumClient | null {
     return () => {
       cancelled = true;
     };
-  }, [mero, contextId]);
+  }, [admin, contextId]);
 
   return useMemo(
     () =>

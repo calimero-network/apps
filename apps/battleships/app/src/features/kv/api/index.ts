@@ -1,12 +1,15 @@
 import { LobbyClient } from '../../../generated/lobby/LobbyClient';
 import { GameClient } from '../../../generated/game/GameClient';
-import type { MeroJs } from '@calimero-network/mero-react';
+import type { ExecuteTransport } from '@calimero-network/mero-js';
+
+/** What the generated clients execute through: `useMero().mero` on either session. */
+type Transport = ExecuteTransport | { readonly rpc: ExecuteTransport };
 
 import { resolveAppContext } from './context';
-import type { AppContext, ContextRole, ResolveAppContextOptions } from './context';
+import type { AppContext, ContextAdmin, ContextRole, ResolveAppContextOptions } from './context';
 
 export { LobbyClient, GameClient };
-export type { AppContext, ContextRole };
+export type { AppContext, ContextAdmin, ContextRole };
 
 export type ApiResult<T> =
   | { data: T; error: null }
@@ -26,7 +29,8 @@ export interface CreateKvClientOptions {
 }
 
 export async function createLobbyClient(
-  mero: MeroJs,
+  mero: Transport,
+  admin: ContextAdmin,
   options: CreateKvClientOptions = {},
 ): Promise<{ client: LobbyClient; context: AppContext }> {
   const resolveOptions: ResolveAppContextOptions = {
@@ -36,7 +40,7 @@ export async function createLobbyClient(
     applicationId: options.applicationId,
   };
 
-  const context = await resolveAppContext(mero, resolveOptions);
+  const context = await resolveAppContext(admin, resolveOptions);
 
   return {
     client: new LobbyClient(mero, context.contextId),
@@ -45,7 +49,8 @@ export async function createLobbyClient(
 }
 
 export async function createGameClient(
-  mero: MeroJs,
+  mero: Transport,
+  admin: ContextAdmin,
   options: CreateKvClientOptions = {},
 ): Promise<{ client: GameClient; context: AppContext }> {
   const resolveOptions: ResolveAppContextOptions = {
@@ -55,7 +60,7 @@ export async function createGameClient(
     applicationId: options.applicationId,
   };
 
-  const context = await resolveAppContext(mero, resolveOptions);
+  const context = await resolveAppContext(admin, resolveOptions);
 
   return {
     client: new GameClient(mero, context.contextId),
@@ -65,8 +70,9 @@ export async function createGameClient(
 
 // Backward compat — createKvClient creates a LobbyClient by default
 export async function createKvClient(
-  mero: MeroJs,
+  mero: Transport,
+  admin: ContextAdmin,
   options: CreateKvClientOptions = {},
 ): Promise<{ client: LobbyClient; context: AppContext }> {
-  return createLobbyClient(mero, options);
+  return createLobbyClient(mero, admin, options);
 }

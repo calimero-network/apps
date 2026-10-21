@@ -1,4 +1,12 @@
-import type { MeroJs } from '@calimero-network/mero-react';
+import type { AdminApiClient } from '@calimero-network/mero-js';
+
+/**
+ * The two reads a context lookup needs, from the SESSION admin
+ * (`useMero().admin`), not `mero.admin`. On an account `mero.admin` is the
+ * relay's raw node client: its `getContextIdentitiesOwned` is the relay's own
+ * identities, not the account's. The session admin answers with the account.
+ */
+export type ContextAdmin = Pick<AdminApiClient, 'getContexts' | 'getContextIdentitiesOwned'>;
 
 export interface AppContext {
   applicationId: string;
@@ -41,7 +49,7 @@ function requireTargetContext(
 }
 
 async function resolveIdentity(
-  mero: MeroJs,
+  admin: ContextAdmin,
   contextId: string,
   contextIdentity?: string | null,
 ): Promise<string> {
@@ -49,7 +57,7 @@ async function resolveIdentity(
     return contextIdentity;
   }
 
-  const { identities } = await mero.admin.getContextIdentitiesOwned(contextId);
+  const { identities } = await admin.getContextIdentitiesOwned(contextId);
   const executorPublicKey = identities[0];
 
   if (!executorPublicKey) {
@@ -60,7 +68,7 @@ async function resolveIdentity(
 }
 
 export async function resolveAppContext(
-  mero: MeroJs,
+  admin: ContextAdmin,
   options: ResolveAppContextOptions = {},
 ): Promise<AppContext> {
   const role = options.role ?? null;
@@ -70,9 +78,9 @@ export async function resolveAppContext(
       throw new Error('A target context id is required when resolving a match context.');
     }
 
-    const { contexts } = await mero.admin.getContexts();
+    const { contexts } = await admin.getContexts();
     const selected = requireTargetContext(contexts, options.targetContextId);
-    const executorPublicKey = await resolveIdentity(mero, selected.id, options.contextIdentity);
+    const executorPublicKey = await resolveIdentity(admin, selected.id, options.contextIdentity);
 
     return {
       applicationId: selected.applicationId,
@@ -86,9 +94,9 @@ export async function resolveAppContext(
       throw new Error('A target context id is required when resolving a lobby context.');
     }
 
-    const { contexts } = await mero.admin.getContexts();
+    const { contexts } = await admin.getContexts();
     const selected = requireTargetContext(contexts, options.targetContextId);
-    const executorPublicKey = await resolveIdentity(mero, selected.id, options.contextIdentity);
+    const executorPublicKey = await resolveIdentity(admin, selected.id, options.contextIdentity);
 
     return {
       applicationId: selected.applicationId,
@@ -98,9 +106,9 @@ export async function resolveAppContext(
   }
 
   if (options.targetContextId) {
-    const { contexts } = await mero.admin.getContexts();
+    const { contexts } = await admin.getContexts();
     const selected = requireTargetContext(contexts, options.targetContextId);
-    const executorPublicKey = await resolveIdentity(mero, selected.id, options.contextIdentity);
+    const executorPublicKey = await resolveIdentity(admin, selected.id, options.contextIdentity);
 
     return {
       applicationId: selected.applicationId,

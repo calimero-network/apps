@@ -244,7 +244,7 @@ export function useSpreadsheet({
   executorPublicKey,
   activeSheetId,
 }: UseSpreadsheetArgs): UseSpreadsheetReturn {
-  const { mero } = useMero();
+  const { mero, admin } = useMero();
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [cells, setCells] = useState<Cell[]>([]);
   const [functions, setFunctions] = useState<FunctionDef[]>([]);
@@ -1232,15 +1232,16 @@ export function useSpreadsheet({
   const attachFile = useCallback(
     async (sheetId: string, row: number, col: number, file: File) => {
       const at = idsAt(sheetId, row, col);
-      if (!client || !mero || !contextId || !at) return;
+      if (!client || !admin || !contextId || !at) return;
       // Announced to this context, so members' nodes can find the bytes.
-      const blob = await mero.admin.uploadBlob({ data: file, contextId });
+      // The session admin, so an account's upload goes the account's way.
+      const blob = await admin.uploadBlob({ data: file, contextId });
       await enqueue(() => client.addAttachment({
         sheet_id: sheetId, ...at, blob_id: blob.blobId, name: file.name, size: file.size, mime: file.type,
       }));
       setAttachments(await client.getAttachments());
     },
-    [client, mero, contextId, enqueue],
+    [client, admin, contextId, enqueue],
   );
   const removeAttachment = useCallback(
     async (id: string) => {
@@ -1252,10 +1253,10 @@ export function useSpreadsheet({
   );
   const fetchAttachment = useCallback(
     async (blobId: string) => {
-      if (!mero || !contextId) throw new Error('Not connected');
-      return mero.admin.getBlob(blobId, { contextId });
+      if (!admin || !contextId) throw new Error('Not connected');
+      return admin.getBlob(blobId, { contextId });
     },
-    [mero, contextId],
+    [admin, contextId],
   );
 
   const addChart = useCallback(

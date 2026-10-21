@@ -11,6 +11,9 @@ interface LobbyRecord {
 interface LobbySelectProps {
   lobbies: LobbyRecord[];
   lobbiesLoading: boolean;
+  /** The lobby list failed: not "no lobbies", and creating one may duplicate. */
+  lobbiesFailed?: boolean;
+  onRetryLobbies?: () => void;
   selectedNamespaceId: string | null;
   lobbyContextId: string | null;
   namespaceId: string | null;
@@ -35,7 +38,7 @@ const LOBBY_INFO_TOOLTIP =
   'Members in the same lobby can challenge each other to matches.';
 
 export default function LobbySelect({
-  lobbies, lobbiesLoading, selectedNamespaceId,
+  lobbies, lobbiesLoading, lobbiesFailed = false, onRetryLobbies, selectedNamespaceId,
   lobbyContextId, namespaceId,
   createLobbyLoading,
   newLobbyName,
@@ -132,7 +135,7 @@ export default function LobbySelect({
                 <button
                   type="submit"
                   className="btn-deploy"
-                  disabled={createLobbyLoading || !newLobbyName.trim()}
+                  disabled={createLobbyLoading || !newLobbyName.trim() || (lobbiesFailed && lobbies.length === 0)}
                 >
                   {createLobbyLoading ? 'Creating…' : 'Create'}
                 </button>
@@ -220,6 +223,17 @@ export default function LobbySelect({
             <div className="lobby-empty">
               <div className="lobby-empty-radar"><span className="lobby-empty-radar-dot" /></div>
               <span className="mono-sm">Scanning for lobbies…</span>
+            </div>
+          ) : lobbiesFailed && lobbies.length === 0 ? (
+            <div className="lobby-empty" data-testid="lobbies-failed">
+              <div className="lobby-empty-headline">Your lobbies could not be loaded</div>
+              <div className="lobby-empty-sub">
+                Try again before creating one, so you do not end up with a second
+                copy of a lobby you already have.
+              </div>
+              <button type="button" className="btn-deploy" onClick={onRetryLobbies}>
+                Try again
+              </button>
             </div>
           ) : lobbies.length === 0 ? (
             <div className="lobby-empty">

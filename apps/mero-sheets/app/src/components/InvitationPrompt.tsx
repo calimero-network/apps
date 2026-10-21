@@ -58,7 +58,9 @@ export default function InvitationPrompt({
   /** Whether there is a session to join with; the invitation waits until there is. */
   enabled: boolean;
 }) {
-  const { mero } = useMero();
+  // `admin`, not `mero.admin`: on an account the relay refuses the node's join
+  // route (403); the account admin joins as the account.
+  const { admin } = useMero();
   const [status, setStatus] = useState<string | null>(null);
   /** What the last join landed in, for `reportJoined`. */
   const landedRef = useRef<Pick<AcceptedInvite, 'namespaceId' | 'contextId'> | null>(null);
@@ -76,7 +78,7 @@ export default function InvitationPrompt({
 
   const redeem = useCallback(
     async ({ payload }: SheetsInvitation): Promise<RedeemOutcome> => {
-      if (!mero) {
+      if (!admin) {
         return {
           status: 'failed',
           namespaceId: null,
@@ -86,7 +88,7 @@ export default function InvitationPrompt({
         };
       }
       try {
-        const landed = await acceptInvite(mero.admin, payload, setStatus);
+        const landed = await acceptInvite(admin, payload, setStatus);
         // The workspace `useWorkspace` will show and watch: it prefers the one
         // just joined, so its `useJoinSync` clears the flag this dialog waits on.
         const namespaceId = landed.namespaceId ?? namespaceIdOfInvite(payload);
@@ -105,7 +107,7 @@ export default function InvitationPrompt({
         setStatus(null);
       }
     },
-    [mero],
+    [admin],
   );
 
   const reportJoined = useCallback(
@@ -121,7 +123,7 @@ export default function InvitationPrompt({
     parse,
     redeem,
     onJoined: reportJoined,
-    enabled: enabled && !!mero,
+    enabled: enabled && !!admin,
   });
   const payload = redemption.parsed?.payload;
 

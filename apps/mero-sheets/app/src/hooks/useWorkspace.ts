@@ -105,6 +105,12 @@ export interface UseWorkspaceReturn {
   error: Error | null;
   /** True when the node has answered and this app is not installed on it. */
   notInstalled: boolean;
+  /**
+   * The workspace list failed. Its empty answer is not "no workspace", so
+   * create stays off (it would found a duplicate) until a retry answers.
+   */
+  namespacesFailed: boolean;
+  retryNamespaces: () => void;
   openWorkspace: (contextId: string) => void;
   createWorkspace: (name: string) => Promise<void>;
   /** The name a freshly-created spreadsheet should be initialised with. */
@@ -124,8 +130,12 @@ export interface UseWorkspaceReturn {
 }
 
 export function useWorkspace(): UseWorkspaceReturn {
+  // `admin`, never `mero.admin`: on an account session `mero` is the relay
+  // client, whose node routes (create a namespace or context, join) refuse an
+  // account (403). `admin` is the node's own client on a node login and the
+  // account admin on an account, where writes become delegated ops.
   const {
-    mero,
+    admin,
     nodeUrl,
     contextId: callbackContextId,
     contextIdentity: callbackContextIdentity,
@@ -136,6 +146,7 @@ export function useWorkspace(): UseWorkspaceReturn {
   const {
     namespaces,
     loading: nsLoading,
+    error: nsError,
     refetch: refetchNamespaces,
   } = useNamespacesForApplication(applicationId || null);
 
@@ -201,12 +212,12 @@ export function useWorkspace(): UseWorkspaceReturn {
   // the context ids so it does not re-run on every unrelated render.
   const contextKey = nsContexts.map((c) => c.contextId).join(',');
   useEffect(() => {
-    if (!mero || !namespaceId) {
+    if (!admin || !namespaceId) {
       setWorkspaces([]);
       return;
     }
     let cancelled = false;
-    void listSpreadsheets(mero.admin, namespaceId, nsContexts).then(
+    void listSpreadsheets(admin, namespaceId, nsContexts).then(
       (rows: SpreadsheetRow[]) => {
         if (cancelled) return;
         setWorkspaces(rows);
@@ -219,16 +230,16 @@ export function useWorkspace(): UseWorkspaceReturn {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mero, namespaceId, contextKey]);
+  }, [admin, namespaceId, contextKey]);
 
   // Get an executor identity in the open context — joining it when this node
   // holds none, which is ALWAYS the case for a spreadsheet you were invited to.
   useEffect(() => {
-    if (!mero || !contextId || executorPublicKey) return;
+    if (!admin || !contextId || executorPublicKey) return;
     let cancelled = false;
     void (async () => {
       try {
-        const identity = await enterSpreadsheet(mero.admin, contextId, (s) => {
+        const identity = await enterSpreadsheet(admin, contextId, (s) => {
           if (!cancelled) setStatus(s);
         });
         if (!cancelled) {
@@ -245,7 +256,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     return () => {
       cancelled = true;
     };
-  }, [mero, contextId, executorPublicKey]);
+  }, [admin, contextId, executorPublicKey]);
 
   const refresh = useCallback(async () => {
     await Promise.all([refetchNamespaces(), refetchContexts()]);
@@ -282,6 +293,10 @@ export function useWorkspace(): UseWorkspaceReturn {
   // hit a disabled button and was lost. A press in the very first one was
   // worse: with no namespace known yet, create would have made a second one.
   // So: settled means a read for this id was seen in flight and then ended.
+  //
+  // And ended WITHOUT failing. A failed list reads `[]`, which is not "no
+  // namespace": creating from it founds a second workspace beside the one the
+  // read could not reach. A failed read is retried, never created over.
   const nsReadStartedFor = useRef<string | null>(null);
   const [nsSettledFor, setNsSettledFor] = useState<string | null>(null);
   useEffect(() => {
@@ -289,18 +304,20 @@ export function useWorkspace(): UseWorkspaceReturn {
     if (nsLoading) nsReadStartedFor.current = applicationId;
     else if (nsReadStartedFor.current === applicationId) setNsSettledFor(applicationId);
   }, [applicationId, nsLoading]);
-  const namespaceKnown = !!applicationId && nsSettledFor === applicationId;
+  const namespacesFailed = !!nsError && !nsLoading;
+  const namespaceKnown =
+    !!applicationId && nsSettledFor === applicationId && !namespacesFailed;
 
   const creatingRef = useRef(false);
   const createWorkspace = useCallback(
     async (name: string) => {
-      if (!mero || !applicationId || !namespaceKnown || creatingRef.current) return;
+      if (!admin || !applicationId || !namespaceKnown || creatingRef.current) return;
       creatingRef.current = true;
       setBusy(true);
       setError(null);
       try {
         const nsId = await ensureNamespace(
-          mero.admin,
+          admin,
           {
             applicationId,
             existingNamespaceId: namespaceId,
@@ -313,7 +330,7 @@ export function useWorkspace(): UseWorkspaceReturn {
           setStatus,
         );
         const ctx = await createSpreadsheet(
-          mero.admin,
+          admin,
           {
             applicationId,
             namespaceId: nsId,
@@ -334,7 +351,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         setStatus(null);
       }
     },
-    [mero, applicationId, namespaceKnown, namespaceId, refresh],
+    [admin, applicationId, namespaceKnown, namespaceId, refresh],
   );
 
   const activeName = useMemo(() => {
@@ -345,14 +362,14 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   const invite = useCallback(
     async (opts?: { contextId?: string | null; projectName?: string }) => {
-      if (!mero) throw new Error('Not connected to a node.');
+      if (!admin) throw new Error('Not connected yet.');
       if (!namespaceId) {
         throw new Error('No workspace yet — create a spreadsheet first.');
       }
       setInviteLoading(true);
       try {
         return await mintInvite(
-          mero.admin,
+          admin,
           {
             namespaceId,
             namespaceName,
@@ -366,7 +383,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         setStatus(null);
       }
     },
-    [mero, namespaceId, namespaceName],
+    [admin, namespaceId, namespaceName],
   );
 
   const landJoined = useCallback(
@@ -507,6 +524,8 @@ export function useWorkspace(): UseWorkspaceReturn {
     status,
     error,
     notInstalled,
+    namespacesFailed,
+    retryNamespaces: () => void refetchNamespaces(),
     openWorkspace,
     createWorkspace,
     pendingInitName,

@@ -31,7 +31,7 @@ const h = vi.hoisted(() => {
     })),
   };
   // Stable across renders, like the real provider's client.
-  const session = { mero: { admin }, logout: () => {}, nodeUrl: null };
+  const session = { mero: { admin }, admin, logout: () => {}, nodeUrl: null };
   return { node, session };
 });
 

@@ -35,7 +35,7 @@ const mero = { admin: {} };
 
 vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@calimero-network/mero-react')>()),
-  useMero: () => ({ mero, contextId: null, contextIdentity: null }),
+  useMero: () => ({ mero, admin: mero.admin, contextId: null, contextIdentity: null }),
   useNamespacesForApplication: () => {
     const { data, loading, refetch } = useFakeRead(() => nodeNamespaces);
     return { namespaces: data, loading, refetch };

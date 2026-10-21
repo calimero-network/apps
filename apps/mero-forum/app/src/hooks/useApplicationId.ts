@@ -26,13 +26,15 @@ export interface ResolvedAppId {
 }
 
 export function useApplicationId(): ResolvedAppId {
-  const { mero, nodeUrl } = useMero();
+  const { mero, admin, nodeUrl, isDelegated, applicationId } = useMero();
   const key = nodeUrl ?? "";
   const [appId, setAppId] = useState<string>(() => cache.get(key) ?? "");
   const [resolving, setResolving] = useState(() => !cache.has(key));
 
   useEffect(() => {
-    if (!mero) return;
+    // An account has no node to ask: `listApplications` is node-wide and a
+    // relay refuses it. The provider's registry-derived id is the answer there.
+    if (isDelegated || !mero || !admin) return;
     const cached = cache.get(key);
     if (cached !== undefined) {
       setAppId(cached);
@@ -41,7 +43,7 @@ export function useApplicationId(): ResolvedAppId {
     }
     let cancelled = false;
     setResolving(true);
-    resolveApplicationId(mero.admin).then((id) => {
+    resolveApplicationId(admin).then((id) => {
       if (cancelled) return;
       cache.set(key, id);
       setAppId(id);
@@ -50,8 +52,15 @@ export function useApplicationId(): ResolvedAppId {
     return () => {
       cancelled = true;
     };
-  }, [mero, key]);
+  }, [mero, admin, isDelegated, key]);
 
+  // On an account the id lands from the registry AFTER sign-in. Until then it
+  // is "still resolving", never "not installed": nothing is listed or created
+  // under no id, and an empty list meanwhile is not "no spaces".
+  if (isDelegated) {
+    const id = applicationId ?? "";
+    return { appId: id, resolving: !id, notInstalled: false };
+  }
   return { appId, resolving, notInstalled: !resolving && !appId };
 }
 
