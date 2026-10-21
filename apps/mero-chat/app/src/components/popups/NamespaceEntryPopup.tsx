@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
-import { getNodeUrl } from "@calimero-network/mero-react";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
+import { hasSession } from "../../api/meroJsClient";
 import type { GroupSummary } from "../../api/groupApi";
 import {
   getApplicationId,
@@ -353,7 +353,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
   // Initial load
   const loadNamespaces = useCallback(async () => {
-    if (!getNodeUrl()) return;
+    if (!hasSession()) return;
 
     setStep("loading");
     setError("");

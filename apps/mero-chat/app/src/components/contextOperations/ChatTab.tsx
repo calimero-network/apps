@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { styled } from "styled-components";
-import { getNodeUrl } from "@calimero-network/mero-react";
+import { hasSession } from "../../api/meroJsClient";
 import { Button, Input } from "@calimero-network/mero-ui";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import type { GroupMember, GroupSummary } from "../../api/groupApi";
@@ -168,7 +168,7 @@ export default function ChatTab({
   }, []);
 
   const fetchGroups = useCallback(async () => {
-    if (!getNodeUrl()) return;
+    if (!hasSession()) return;
 
     setFetchingGroups(true);
     setError("");
@@ -203,7 +203,7 @@ export default function ChatTab({
   }, []);
 
   useEffect(() => {
-    if ((isAuthenticated || isConfigSet) && getNodeUrl()) {
+    if ((isAuthenticated || isConfigSet) && hasSession()) {
       fetchGroups();
     }
   }, [fetchGroups, isAuthenticated, isConfigSet]);
@@ -287,7 +287,7 @@ export default function ChatTab({
     setError("");
   };
 
-  if (!getNodeUrl()) return null;
+  if (!hasSession()) return null;
 
   return (
     <TabContent>

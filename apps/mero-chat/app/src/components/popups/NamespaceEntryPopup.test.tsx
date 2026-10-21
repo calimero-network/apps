@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   resolveCurrentMemberIdentity: vi.fn(),
   createGroup: vi.fn(),
   createChannel: vi.fn(),
+  hasSession: vi.fn(),
 }));
 
 vi.mock("../../utils/installedApps", async (importOriginal) => ({
@@ -56,6 +57,7 @@ vi.mock("../../api/meroJsClient", () => ({
     applicationId: null,
   }),
   isDelegatedSession: () => false,
+  hasSession: h.hasSession,
 }));
 
 vi.mock("../../contexts/ToastContext", () => ({
@@ -76,6 +78,7 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
 
 beforeEach(() => {
   localStorage.clear();
+  h.hasSession.mockReset().mockReturnValue(true);
   sessionStorage.clear();
   h.listGroups.mockReset().mockResolvedValue({
     data: [{ groupId: "ns0", alias: "Mine" }],
@@ -99,6 +102,22 @@ function open() {
 }
 
 describe("NamespaceEntryPopup", () => {
+  it("loads workspaces on an account session, which stores no node URL", async () => {
+    // The account path signs in through a relay and never writes
+    // `mero:node_url`. The load used to bail on that and sit on
+    // "Connecting to node…" forever, with no request and no error.
+    open();
+    expect(await screen.findByText("Select workspace")).toBeInTheDocument();
+    expect(h.listGroups).toHaveBeenCalled();
+  });
+
+  it("waits, without listing, while there is no session at all", async () => {
+    h.hasSession.mockReturnValue(false);
+    open();
+    expect(screen.getByText("Connecting to node…")).toBeInTheDocument();
+    expect(h.listGroups).not.toHaveBeenCalled();
+  });
+
   it("opens on the name step of a workspace an invitation just joined", async () => {
     setStoredGroupAlias("ns1", "Team");
     sessionStorage.setItem("chat:joined-awaiting-name", "ns1");
