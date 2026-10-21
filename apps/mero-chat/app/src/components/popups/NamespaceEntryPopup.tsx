@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
-import { getNodeUrl } from "@calimero-network/mero-react";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
+import { isDelegatedSession } from "../../api/meroJsClient";
+import { useSessionKey } from "../../hooks/useSessionKey";
 import type { GroupSummary } from "../../api/groupApi";
 import {
   getApplicationId,
@@ -277,6 +278,10 @@ interface Props {
 
 export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLogout }: Props) {
   const api = useRef(new GroupApiDataSource());
+  const sessionKey = useSessionKey();
+  // Only the newest load may apply its result: one started for a session that
+  // has since changed must not overwrite the list of the one that replaced it.
+  const loadGeneration = useRef(0);
   const { addToast } = useToast();
 
   const [step, setStep] = useState<Step>("loading");
@@ -353,14 +358,14 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
   // Initial load
   const loadNamespaces = useCallback(async () => {
-    if (!getNodeUrl()) return;
-
+    const generation = ++loadGeneration.current;
     setStep("loading");
     setError("");
 
     let groups: GroupSummary[] = [];
     try {
       const res = await api.current.listGroups();
+      if (generation !== loadGeneration.current) return;
       // ⚠️ `listGroups` RETURNS a failure, it does not throw — `catchError`
       // turns every error into `{ data: null, error }`. So `res.data ?? []`
       // read a failed or timed-out listing as an EMPTY one, and an empty
@@ -372,7 +377,12 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
         alias: g.alias?.trim() || getStoredGroupAlias(g.groupId) || undefined,
       }));
     } catch {
-      setError("Could not reach node. Is merod running?");
+      if (generation !== loadGeneration.current) return;
+      setError(
+        isDelegatedSession()
+          ? "Could not reach your cloud node. Try again in a moment."
+          : "Could not reach node. Is merod running?",
+      );
       setStep("error");
       return;
     }
@@ -412,10 +422,10 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated || isConfigSet) {
+    if ((isAuthenticated || isConfigSet) && sessionKey) {
       void loadNamespaces();
     }
-  }, [loadNamespaces, isAuthenticated, isConfigSet]);
+  }, [loadNamespaces, isAuthenticated, isConfigSet, sessionKey]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
