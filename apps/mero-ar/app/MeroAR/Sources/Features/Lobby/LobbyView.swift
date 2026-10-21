@@ -150,7 +150,11 @@ struct LobbyView: View {
                 Callout(tone: .danger, title: "Couldn't open the room", message: error)
                     .accessibilityIdentifier("roomError")
             }
-            if rooms.isEmpty {
+            if let error = app.roomsError {
+                Callout(tone: .danger, title: "Couldn't load this node's rooms", message: error)
+                    .accessibilityIdentifier("roomsError")
+            }
+            if rooms.isEmpty, app.roomsError == nil {
                 EmptyState(
                     icon: "cube.transparent",
                     title: "No rooms yet",
