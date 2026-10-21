@@ -43,6 +43,9 @@ public final class AppState: ObservableObject {
     @Published public private(set) var nodeRooms: [RoomSummary] = []
     @Published public private(set) var isEntering = false
     @Published public private(set) var isLoadingRooms = false
+    /// Why the node's rooms couldn't be listed. Set only when the listing
+    /// itself failed, so the lobby never reads a failure as "no rooms yet".
+    @Published public private(set) var roomsError: String?
     @Published public var roomError: String?
 
     // Node sign-in.
@@ -56,6 +59,9 @@ public final class AppState: ObservableObject {
     public private(set) var service: MeroARService?
     public private(set) var store: SceneStore?
     private var nodeMero: Mero?
+    /// Bumped by every ``loadNodeRooms()``; an older load that finishes late
+    /// drops its result instead of overwriting a newer one.
+    private var roomsLoad = 0
     private let urlSession: URLSession
 
     private let defaults: UserDefaults
@@ -191,6 +197,7 @@ public final class AppState: ObservableObject {
             self.nodeMero = nil
             nodeURL = nil
             nodeRooms = []
+            roomsError = nil
         } else {
             await client.logout()
         }
@@ -208,17 +215,30 @@ public final class AppState: ObservableObject {
     }
 
     /// The node's Mero AR rooms: its contexts running this app.
+    ///
+    /// A failed listing is not an empty one: it keeps the rooms already shown
+    /// and sets ``roomsError``, so a slow or unreachable node never reads as
+    /// "No rooms yet" (which invites creating a duplicate room).
     public func loadNodeRooms() async {
         guard let nodeMero else { return }
+        roomsLoad += 1
+        let load = roomsLoad
         isLoadingRooms = true
-        defer { isLoadingRooms = false }
-        let appIds = Set(
-            ((try? await nodeMero.admin.listApplications())?.apps ?? []).filter { $0.package == Self.package }.map(\.id))
-        guard !appIds.isEmpty, let contexts = try? await nodeMero.admin.getContexts() else {
-            nodeRooms = []
+        defer { if load == roomsLoad { isLoadingRooms = false } }
+        let mine: [ContextWithGroup]
+        do {
+            let appIds = Set(
+                try await nodeMero.admin.listApplications().apps.filter { $0.package == Self.package }.map(\.id))
+            mine = appIds.isEmpty ? [] : try await nodeMero.admin.getContexts().contexts.filter {
+                appIds.contains($0.applicationId)
+            }
+        } catch {
+            // A cancelled load (pull-to-refresh torn down as the lobby is
+            // replaced) didn't fail: it says nothing about the node.
+            guard load == roomsLoad, self.nodeMero === nodeMero, !Task.isCancelled else { return }
+            roomsError = userMessage(error)
             return
         }
-        let mine = contexts.contexts.filter { appIds.contains($0.applicationId) }
         var rooms: [RoomSummary] = []
         let transport = NodeTransport(mero: nodeMero, nodeURL: nodeURL ?? "")
         for context in mine {
@@ -229,6 +249,8 @@ public final class AppState: ObservableObject {
                     lastOpened: recentRooms.first { $0.id == context.id }?.lastOpened,
                     objectCount: info?.objectCount, memberCount: info?.memberCount))
         }
+        guard load == roomsLoad, self.nodeMero === nodeMero else { return }
+        roomsError = nil
         nodeRooms = rooms.sorted { ($0.lastOpened ?? .distantPast) > ($1.lastOpened ?? .distantPast) }
     }
 
@@ -252,7 +274,7 @@ public final class AppState: ObservableObject {
                 // machine), for a contract newer than the registry's.
                 appId = try await nodeMero.admin.installDevApplication(InstallDevApplicationRequest(path: bundle))
                     .applicationId
-            } else if let installed = await installedAppId(on: nodeMero) {
+            } else if let installed = try await installedAppId(on: nodeMero) {
                 appId = installed
             } else {
                 guard
@@ -281,8 +303,10 @@ public final class AppState: ObservableObject {
         }
     }
 
-    private func installedAppId(on mero: Mero) async -> String? {
-        let apps = (try? await mero.admin.listApplications())?.apps ?? []
+    /// Throws when the node can't list its apps, rather than reading that as
+    /// "not installed" and installing a second copy.
+    private func installedAppId(on mero: Mero) async throws -> String? {
+        let apps = try await mero.admin.listApplications().apps
         // The newest install of the package (a dev bundle and a registry
         // install can sit side by side on a development node).
         return apps.last { $0.package == Self.package }?.id
