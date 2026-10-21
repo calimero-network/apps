@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mero = { admin: {} };
 vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@calimero-network/mero-react')>()),
-  useMero: () => ({ mero }),
+  useMero: () => ({ mero, admin: mero.admin }),
 }));
 
 const acceptInvite = vi.fn();

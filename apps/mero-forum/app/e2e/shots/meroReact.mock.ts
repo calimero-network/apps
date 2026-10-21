@@ -10,8 +10,15 @@ export { InvitationDialog, InvitationGate, JoinSyncBanner } from "mero-react-rea
 /** The id `pickApplicationId` should settle on for the fixture node. */
 const APP_ID = "3xKm9QpLvR7nTzB4aW1cYeUf3gJd6NqSvXhKrM8tZoPq";
 
+// One stable object: the pages read `useMero().admin` (the session admin), and
+// a fresh one per render would re-run every effect keyed on it.
+let session: ReturnType<typeof makeSession> | null = null;
 export function useMero() {
-  return {
+  return (session ??= makeSession());
+}
+
+function makeSession() {
+  const base = {
     mero: {
       // Only what the pages actually reach for. `getNamespace` is called
       // DIRECTLY rather than through lib/groups, so aliasing groups alone left it
@@ -54,7 +61,9 @@ export function useMero() {
     applicationId: APP_ID,
     isAuthenticated: true,
     isLoading: false,
+    isDelegated: false,
   };
+  return { ...base, admin: base.mero.admin };
 }
 
 export function useExecute() {

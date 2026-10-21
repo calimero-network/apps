@@ -17,6 +17,7 @@
 
 import type { MeroJs } from '@calimero-network/mero-js';
 import {
+  NotForAccountError,
   describeInviteFailure,
   redeemInvitation,
   type RedeemOutcome,
@@ -29,7 +30,7 @@ import {
   type SignedInvitation,
 } from './inviteCodec';
 
-/** The admin client, as `useMero().mero.admin` provides it. */
+/** The session admin client, as `useMero().admin` provides it (node or account). */
 export type AdminLike = MeroJs['admin'];
 
 /**
@@ -397,6 +398,13 @@ export async function acceptInvite(
       try {
         await admin.joinGroup({ invitation: step.invitation as never });
       } catch (e) {
+        // A legacy group invitation has no delegated form: say so, rather than
+        // the bare "needs a node" the account admin refuses it with.
+        if (e instanceof NotForAccountError) {
+          throw new Error(
+            'This invitation is an older group invitation, which is not available for cloud accounts yet. Ask for a new link.',
+          );
+        }
         if (!isAlreadyMember(e)) throw e;
         onStatus(`Already in ${label} — continuing…`);
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CAPABILITIES } from '@calimero-network/mero-js';
+import { CAPABILITIES, NotForAccountError } from '@calimero-network/mero-js';
 import {
   DEFAULT_CAPABILITIES,
   ensureNamespace,
@@ -216,6 +216,23 @@ describe('acceptInvite', () => {
         { invitation: SIGNED },
       ),
     ).rejects.toThrow('403 forbidden');
+  });
+});
+
+// A legacy group step has no delegated form: the account admin refuses it as
+// `NotForAccountError` ("needs a node"), which reads as a broken app. Say what
+// is not available instead.
+describe('acceptInvite on a cloud account', () => {
+  it('says a legacy group invitation is not available for cloud accounts yet', async () => {
+    const joinGroup = async () => {
+      throw new NotForAccountError('joinGroup');
+    };
+    await expect(
+      acceptInvite(admin({ joinGroup }), {
+        invitation: SIGNED,
+        chain: [{ groupId: GROUP_HEX, invitation: SIGNED, kind: 'group' }],
+      }),
+    ).rejects.toThrow(/not available for cloud accounts yet/);
   });
 });
 

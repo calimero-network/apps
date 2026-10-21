@@ -18,7 +18,7 @@ const h = vi.hoisted(() => {
     deleteNamespace: vi.fn(async () => ({ isDeleted: true })),
     leaveNamespace: vi.fn(async () => {}),
   };
-  const session = { mero: { admin }, logout: () => {}, nodeUrl: null };
+  const session = { mero: { admin }, admin, logout: () => {}, nodeUrl: null };
   return { admin, session };
 });
 

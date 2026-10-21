@@ -79,7 +79,9 @@ import {
 export default function ForumsPage() {
   const navigate = useNavigate();
   const { namespaceId = "" } = useParams();
-  const { mero, logout, nodeUrl } = useMero();
+  // `admin`, never `mero.admin`: see SpacesPage. On an account the relay
+  // client's node routes refuse every write (403); `admin` is the session's own.
+  const { admin, logout, nodeUrl, isDelegated } = useMero();
   const nodeLabel = (() => {
     if (!nodeUrl) return "";
     try {
@@ -154,25 +156,25 @@ export default function ForumsPage() {
 
   const load = useCallback(
     async (showSpinner = true) => {
-      if (!mero || !namespaceId) return;
+      if (!admin || !namespaceId) return;
       if (showSpinner) setListing(true);
       try {
         // The namespace's own name for the header, so the page says which space
         // you are in rather than a truncated id.
-        const info = await mero.admin
+        const info = await admin
           .getNamespace(namespaceId)
           .catch(() => null);
         setNsName(
           (info?.name ?? "").trim() || `Space ${namespaceId.slice(0, 6)}`,
         );
         // Never throws: an unreadable member list reads as "no TEE".
-        void namespaceTeeMode(mero.admin, namespaceId).then((mode) =>
+        void namespaceTeeMode(admin, namespaceId).then((mode) =>
           setTee({ id: namespaceId, mode }),
         );
-        void selfIsGroupAdmin(mero.admin, namespaceId, selfAccount).then(
+        void selfIsGroupAdmin(admin, namespaceId, selfAccount).then(
           setSpaceAdmin,
         );
-        setForums(await listForums(mero.admin, namespaceId, selfAccount));
+        setForums(await listForums(admin, namespaceId, selfAccount));
         // A real answer. Whether an EMPTY one ends the sync gate is decided
         // there, not here: see `settled` below.
         setListedForNs(namespaceId);
@@ -185,7 +187,7 @@ export default function ForumsPage() {
         setListing(false);
       }
     },
-    [mero, namespaceId, selfAccount],
+    [admin, namespaceId, selfAccount],
   );
 
   useEffect(() => {
@@ -229,16 +231,18 @@ export default function ForumsPage() {
 
   const create = useCallback(() => {
     const forumName = name.trim();
-    if (!forumName || !mero) return;
+    if (!forumName || !admin) return;
     if (!appId) {
       setError(
-        "Missing application id — reopen Mero Forum from the desktop app.",
+        isDelegated
+          ? "Still connecting. Try again in a moment."
+          : "Missing application id — reopen Mero Forum from the desktop app.",
       );
       return;
     }
     void run("create", async (onStatus) => {
       const { contextId, memberPublicKey } = await createForum(
-        mero.admin,
+        admin,
         { applicationId: appId, namespaceId, name: forumName },
         onStatus,
       );
@@ -249,12 +253,12 @@ export default function ForumsPage() {
       // for. 480p H.264 (/live), not the 64x48 in-WASM comparison route.
       navigate("/f");
     });
-  }, [name, mero, appId, namespaceId, run, navigate, nodeUrl]);
+  }, [name, admin, appId, isDelegated, namespaceId, run, navigate, nodeUrl]);
 
   /** Enter a forum: join it if needed, wait for the identity, then open the forum. */
   const enter = useCallback(
     (forum: ForumRow) => {
-      if (!mero) return;
+      if (!admin) return;
       if (!forum.contextId) {
         setError(
           `“${forum.name}” has no forum context on this node yet. It may still be replicating — refresh in a moment.`,
@@ -264,7 +268,7 @@ export default function ForumsPage() {
       const contextId = forum.contextId;
       void run(`enter:${forum.forumId}`, async (onStatus) => {
         const identity = await enterForumContext(
-          mero.admin,
+          admin,
           { forumId: forum.forumId, contextId },
           onStatus,
         );
@@ -273,15 +277,15 @@ export default function ForumsPage() {
         navigate("/f");
       });
     },
-    [mero, run, navigate, namespaceId, nodeUrl],
+    [admin, run, navigate, namespaceId, nodeUrl],
   );
 
   const inviteToForum = useCallback(
     (forum: ForumRow) => {
-      if (!mero) return;
+      if (!admin) return;
       void run(`invite:${forum.forumId}`, async (onStatus) => {
         const code = await mintForumInvite(
-          mero.admin,
+          admin,
           {
             namespaceId,
             forumId: forum.forumId,
@@ -309,14 +313,14 @@ export default function ForumsPage() {
         showToast(`Invite ready for “${forum.name}”.`);
       });
     },
-    [mero, namespaceId, nsName, run, showToast],
+    [admin, namespaceId, nsName, run, showToast],
   );
 
   const inviteToNamespace = useCallback(() => {
-    if (!mero) return;
+    if (!admin) return;
     void run("invite:namespace", async (onStatus) => {
       const code = await mintNamespaceInvite(
-        mero.admin,
+        admin,
         { namespaceId, namespaceName: nsName },
         onStatus,
       );
@@ -335,7 +339,7 @@ export default function ForumsPage() {
       });
       showToast(`Invite ready for “${nsName}”.`);
     });
-  }, [mero, namespaceId, nsName, run, showToast]);
+  }, [admin, namespaceId, nsName, run, showToast]);
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
@@ -350,16 +354,16 @@ export default function ForumsPage() {
 
   const removeForum = useCallback(
     (forum: ForumRow) => {
-      if (!mero) return;
+      if (!admin) return;
       setPendingDelete(null);
       void run(`delete:${forum.forumId}`, async (onStatus) => {
-        await deleteForum(mero.admin, { forumId: forum.forumId, contextId: forum.contextId }, onStatus);
+        await deleteForum(admin, { forumId: forum.forumId, contextId: forum.contextId }, onStatus);
         onStatus("Refreshing forums…");
         await load(false);
         showToast(`Deleted \u201c${forum.name}\u201d.`);
       });
     },
-    [mero, run, load, showToast],
+    [admin, run, load, showToast],
   );
 
   const spaceName = nsName || "Space";
@@ -524,6 +528,24 @@ export default function ForumsPage() {
             <div className={styles.skeletonRow} />
             <div className={styles.skeletonRow} />
             <div className={styles.skeletonRow} />
+          </div>
+        ) : forums.length === 0 && listedForNs !== namespaceId ? (
+          // The list has never answered for this space: a failed read is not
+          // "no forums", and offering a create here would duplicate one.
+          <div className={styles.empty} data-testid="forums-list-failed">
+            <span className={styles.emptyTitle}>
+              This space's forums could not be loaded
+            </span>
+            Try again before creating one.
+            <button
+              type="button"
+              className="ui-btn ui-btn-primary"
+              style={{ marginTop: 14 }}
+              onClick={() => void load()}
+              data-testid="forums-retry"
+            >
+              Try again
+            </button>
           </div>
         ) : forums.length === 0 ? (
           <div className={styles.empty} data-testid="forums-empty">

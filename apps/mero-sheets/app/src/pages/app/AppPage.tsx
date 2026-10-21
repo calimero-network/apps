@@ -83,7 +83,7 @@ import { forgetLastWorkspace } from '../../lib/lastWorkspace';
 
 
 export default function AppPage() {
-  const { logout, mero, admin, nodeUrl } = useMero();
+  const { logout, admin, nodeUrl, isDelegated } = useMero();
   const ws = useWorkspace();
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const ss = useSpreadsheet({
@@ -543,14 +543,16 @@ export default function AppPage() {
     if (showPeople) void refetchGroup();
   }, [showPeople, ss.members.length, refetchGroup]);
   // The always-on replica admission policy, read when the panel opens.
+  //    The policy is a node's own setting (core has no delegated form of it), so
+  //    an account session does not read it: the panel says it is not available.
   useEffect(() => {
-    if (!showPeople || !mero || !ws.namespaceId) return;
+    if (!showPeople || !admin || isDelegated || !ws.namespaceId) return;
     let live = true;
-    mero.admin.getTeeAdmissionPolicy(ws.namespaceId)
+    admin.getTeeAdmissionPolicy(ws.namespaceId)
       .then((p) => { if (live) setReplicaPolicy(replicaPolicyFrom(p)); })
       .catch(() => { if (live) setReplicaPolicy(NO_REPLICA_POLICY); });
     return () => { live = false; };
-  }, [showPeople, mero, ws.namespaceId]);
+  }, [showPeople, admin, isDelegated, ws.namespaceId]);
   const selfMember = ss.members.find((m) => m.id === ss.selfId);
   const myRole = selfMember?.role ?? 'editor';
   const isOwner = myRole === 'owner';
@@ -1384,8 +1386,16 @@ export default function AppPage() {
                   />
                 </div>
               )}
-              {listLoading && !ws.isSyncing && <StatusLine>Loading spreadsheets…</StatusLine>}
-              {!listLoading && !ws.isSyncing && ws.workspaces.length === 0 && (
+              {listLoading && !ws.isSyncing && !ws.namespacesFailed && <StatusLine>Loading spreadsheets…</StatusLine>}
+              {ws.namespacesFailed && ws.workspaces.length === 0 && (
+                <ErrLine data-testid="workspaces-failed">
+                  Your spreadsheets could not be loaded. Try again before creating one.{' '}
+                  <SecondaryBtn type="button" onClick={ws.retryNamespaces} data-testid="action-retry-workspaces">
+                    Try again
+                  </SecondaryBtn>
+                </ErrLine>
+              )}
+              {!listLoading && !ws.isSyncing && !ws.namespacesFailed && ws.workspaces.length === 0 && (
                 <EmptyList>
                   <RowIcon aria-hidden="true"><SheetGlyph size={20} /></RowIcon>
                   <strong>No spreadsheets yet</strong>
@@ -2073,19 +2083,20 @@ export default function AppPage() {
           isGroupAdmin={isGroupAdmin}
           onSetRole={ss.setRole}
           onSetGroupRole={async (account, role) => {
-            if (!mero || !ws.namespaceId) return;
-            await mero.admin.updateMemberRole(ws.namespaceId, account, { role });
+            if (!admin || !ws.namespaceId) return;
+            await admin.updateMemberRole(ws.namespaceId, account, { role });
             await refetchGroup();
           }}
           onRemove={async (account) => {
-            if (!mero || !ws.namespaceId) return;
-            await mero.admin.removeGroupMembers(ws.namespaceId, { members: [account] });
+            if (!admin || !ws.namespaceId) return;
+            await admin.removeGroupMembers(ws.namespaceId, { members: [account] });
             await refetchGroup();
           }}
           policy={replicaPolicy}
+          policyUnavailable={isDelegated}
           onSetPolicy={async (p) => {
-            if (!mero || !ws.namespaceId) return null;
-            const { stored, warning } = await storeReplicaPolicy(mero.admin, ws.namespaceId, p);
+            if (!admin || isDelegated || !ws.namespaceId) return null;
+            const { stored, warning } = await storeReplicaPolicy(admin, ws.namespaceId, p);
             setReplicaPolicy(stored);
             return warning;
           }}

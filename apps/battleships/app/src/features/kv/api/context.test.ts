@@ -20,7 +20,7 @@ describe('resolveAppContext', () => {
       { id: 'ctx-2', applicationId: 'app-2' },
     ]);
 
-    await expect(resolveAppContext(mero as never)).rejects.toThrow(
+    await expect(resolveAppContext(mero.admin as never)).rejects.toThrow(
       'No context intent provided.',
     );
   });
@@ -28,7 +28,7 @@ describe('resolveAppContext', () => {
   it('does not fall back to the first context when no target is given', async () => {
     const mero = makeMero([{ id: 'ctx-1', applicationId: 'app-1' }]);
 
-    await expect(resolveAppContext(mero as never, {})).rejects.toThrow(
+    await expect(resolveAppContext(mero.admin as never, {})).rejects.toThrow(
       'No context intent provided.',
     );
   });
@@ -40,7 +40,7 @@ describe('resolveAppContext', () => {
     ]);
 
     await expect(
-      resolveAppContext(mero as never, {
+      resolveAppContext(mero.admin as never, {
         role: 'lobby',
         targetContextId: 'lobby-ctx',
         contextIdentity: 'auth-identity',
@@ -56,7 +56,7 @@ describe('resolveAppContext', () => {
     const mero = makeMero([{ id: 'ctx-1', applicationId: 'app-1' }]);
 
     await expect(
-      resolveAppContext(mero as never, { role: 'lobby' }),
+      resolveAppContext(mero.admin as never, { role: 'lobby' }),
     ).rejects.toThrow(
       'A target context id is required when resolving a lobby context.',
     );
@@ -69,7 +69,7 @@ describe('resolveAppContext', () => {
     ]);
 
     await expect(
-      resolveAppContext(mero as never, {
+      resolveAppContext(mero.admin as never, {
         role: 'match',
         targetContextId: 'match-ctx',
         contextIdentity: 'auth-identity',
@@ -85,7 +85,7 @@ describe('resolveAppContext', () => {
     const mero = makeMero([{ id: 'ctx-1', applicationId: 'app-1' }]);
 
     await expect(
-      resolveAppContext(mero as never, { role: 'match' }),
+      resolveAppContext(mero.admin as never, { role: 'match' }),
     ).rejects.toThrow(
       'A target context id is required when resolving a match context.',
     );
@@ -95,7 +95,7 @@ describe('resolveAppContext', () => {
     const mero = makeMero([{ id: 'ctx-1', applicationId: 'app-1' }]);
 
     await expect(
-      resolveAppContext(mero as never, { targetContextId: 'ctx-missing' }),
+      resolveAppContext(mero.admin as never, { targetContextId: 'ctx-missing' }),
     ).rejects.toThrow('The requested context is not available on this node.');
   });
 
@@ -106,7 +106,7 @@ describe('resolveAppContext', () => {
     ]);
 
     await expect(
-      resolveAppContext(mero as never, {
+      resolveAppContext(mero.admin as never, {
         targetContextId: 'ctx-2',
         contextIdentity: 'auth-identity',
       }),
@@ -123,7 +123,7 @@ describe('resolveAppContext', () => {
     const mero = makeMero([{ id: 'ctx-1', applicationId: 'app-1' }]);
 
     await expect(
-      resolveAppContext(mero as never, { targetContextId: 'ctx-1' }),
+      resolveAppContext(mero.admin as never, { targetContextId: 'ctx-1' }),
     ).resolves.toEqual({
       applicationId: 'app-1',
       contextId: 'ctx-1',
@@ -146,7 +146,7 @@ describe('resolveAppContext', () => {
     };
 
     await expect(
-      resolveAppContext(mero as never, { targetContextId: 'ctx-1' }),
+      resolveAppContext(mero.admin as never, { targetContextId: 'ctx-1' }),
     ).rejects.toThrow(
       'No context identity is available for the selected context.',
     );

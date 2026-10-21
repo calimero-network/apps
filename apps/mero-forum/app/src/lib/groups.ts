@@ -39,7 +39,7 @@ import {
   type RedeemOutcome,
 } from "@calimero-network/mero-react";
 
-/** The admin client, as `useMero().mero.admin` provides it. */
+/** The session admin, as `useMero().admin` provides it (node or account). */
 export type AdminLike = MeroJs["admin"];
 
 /**

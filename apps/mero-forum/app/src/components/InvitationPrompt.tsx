@@ -47,7 +47,9 @@ interface ForumInvitation extends ParsedInvitation {
 }
 
 export default function InvitationPrompt() {
-  const { mero, nodeUrl } = useMero();
+  // `admin`, not `mero.admin`: on an account the relay client's join route is
+  // a node's (403), while the account admin joins as the account.
+  const { admin, nodeUrl } = useMero();
   const navigate = useNavigate();
   const [status, setStatus] = useState<string | null>(null);
 
@@ -64,7 +66,7 @@ export default function InvitationPrompt() {
 
   const redeem = useCallback(
     async ({ payload }: ForumInvitation): Promise<RedeemOutcome> => {
-      if (!mero) {
+      if (!admin) {
         return {
           status: "failed",
           namespaceId: null,
@@ -77,7 +79,7 @@ export default function InvitationPrompt() {
         // A failed join comes back as its outcome, already carrying whether
         // the invitation is worth keeping; the hook acks or keeps it by that.
         const { outcome, landed } = await redeemInvite(
-          mero.admin,
+          admin,
           payload,
           setStatus,
         );
@@ -112,10 +114,10 @@ export default function InvitationPrompt() {
         setStatus(null);
       }
     },
-    [mero, navigate, nodeUrl],
+    [admin, navigate, nodeUrl],
   );
 
-  const redemption = useInviteRedemption({ parse, redeem, enabled: !!mero });
+  const redemption = useInviteRedemption({ parse, redeem, enabled: !!admin });
   const payload = redemption.parsed?.payload;
 
   return (

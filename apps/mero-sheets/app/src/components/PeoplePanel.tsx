@@ -56,6 +56,11 @@ interface PeoplePanelProps {
   policy: ReplicaPolicy | null;
   /** Stores the policy; resolves to a warning when the node stored less than asked. */
   onSetPolicy: (policy: ReplicaPolicy) => Promise<string | null>;
+  /**
+   * The policy is a node's own setting, with no delegated form: on a cloud
+   * account it can be neither read nor changed, and the section says so.
+   */
+  policyUnavailable?: boolean;
   onClose: () => void;
 }
 
@@ -195,7 +200,8 @@ export default function PeoplePanel(props: PeoplePanelProps) {
         <AlwaysOn
           tees={tees}
           policy={props.policy}
-          canEdit={props.isGroupAdmin}
+          unavailable={!!props.policyUnavailable}
+          canEdit={props.isGroupAdmin && !props.policyUnavailable}
           onSave={props.onSetPolicy}
         />
         <Help>
@@ -213,9 +219,10 @@ const TEE_MODES: { value: TeeMode; label: string; help: string }[] = [
   { value: 'replica', label: 'Replicas', help: 'Hold a read-only copy, and carry no one\'s writes.' },
 ];
 
-function AlwaysOn({ tees, policy, canEdit, onSave }: {
+function AlwaysOn({ tees, policy, unavailable, canEdit, onSave }: {
   tees: number;
   policy: ReplicaPolicy | null;
+  unavailable: boolean;
   canEdit: boolean;
   onSave: (p: ReplicaPolicy) => Promise<string | null>;
 }) {
@@ -263,7 +270,8 @@ function AlwaysOn({ tees, policy, canEdit, onSave }: {
           : 'No always-on TEE yet: the workspace is available while at least one member is online.'}
       </p>
       <p className="muted" data-testid="replica-policy">
-        {policy === null ? 'Reading the admission policy…'
+        {unavailable ? 'The TEE admission policy is not available for cloud accounts yet: set it from a node.'
+          : policy === null ? 'Reading the admission policy…'
           : on ? `TEEs running a signed release${policy.minRelease ? ` (${policy.minRelease} or newer)` : ''} of ${policy.profiles.map(labelOf).join(' or ')} admit themselves, ${policy.mode === 'relay' ? 'as relays for members\' writes' : 'as read-only replicas'}.`
             : legacy ? `The policy lists ${policy.legacyMeasurements} image measurement${policy.legacyMeasurements === 1 ? '' : 's'} by hand, which no longer identifies an image. Switch it to signed releases.`
               : 'TEEs are not admitted.'}

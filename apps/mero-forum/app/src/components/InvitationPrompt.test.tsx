@@ -17,11 +17,13 @@ import InvitationPrompt from "./InvitationPrompt";
 
 const h = vi.hoisted(() => ({
   admin: {} as Record<string, (...a: unknown[]) => Promise<unknown>>,
+  // The raw client's admin, when a test sets one apart from the session's.
+  raw: null as Record<string, (...a: unknown[]) => Promise<unknown>> | null,
 }));
 
 vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  useMero: () => ({ mero: { admin: h.admin } }),
+  useMero: () => ({ mero: { admin: h.raw ?? h.admin }, admin: h.admin }),
 }));
 
 const { peekInvitation, resetInvitationCaptureForTests } =
@@ -36,6 +38,7 @@ const TOKEN = encodeInvite({
 });
 
 beforeEach(() => {
+  h.raw = null;
   resetInvitationCaptureForTests();
   localStorage.clear();
   sessionStorage.clear();
@@ -79,6 +82,16 @@ async function setup(
 }
 
 describe("InvitationPrompt", () => {
+  it("joins through the session admin, not the raw client (an account's relay refuses that route)", async () => {
+    const refused = vi.fn(() => Promise.reject(httpError(403, "Forbidden")));
+    h.raw = { joinNamespace: refused, listNamespaces: refused };
+    const joinNamespace = vi.fn(() => Promise.resolve());
+    await setup({ joinNamespace });
+    await screen.findByTestId("in-space");
+    expect(joinNamespace).toHaveBeenCalled();
+    expect(refused).not.toHaveBeenCalled();
+  });
+
   it("asks before joining, naming what the invitation is for", async () => {
     const joinNamespace = vi.fn(() => Promise.resolve());
     await setup({ joinNamespace }, { click: false });

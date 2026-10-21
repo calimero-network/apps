@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { peopleRows, rowName } from './PeoplePanel';
+// @vitest-environment jsdom
+import { createElement } from 'react';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import PeoplePanel, { peopleRows, rowName } from './PeoplePanel';
 import type { Member } from '../hooks/useSpreadsheet';
 
 const member = (id: string, account: string) => ({ id, account, role: 'editor', nickname: '' }) as unknown as Member;
@@ -42,5 +45,42 @@ describe('rowName', () => {
   it('names a workbook member by their member id', () => {
     const { rows } = peopleRows([member('m-ann', 'acc-ann')], [{ identity: 'acc-ann', role: 'Admin' }]);
     expect(rowName(rows[0], nameOf)).toBe('Ann');
+  });
+});
+
+// The TEE admission policy is a node's own setting: a cloud account can neither
+// read nor change it. The panel said "Reading the admission policy…" forever
+// and offered an editor whose save was refused.
+describe('PeoplePanel on a cloud account', () => {
+  afterEach(() => cleanup());
+  const panel = (policyUnavailable: boolean) =>
+    render(
+      createElement(PeoplePanel, {
+        members: [],
+        group: [{ identity: 'acc-ann', role: 'Admin' }],
+        selfId: null,
+        workspaceName: 'Team',
+        nameOf: (id: string) => id,
+        canManageRoles: false,
+        isGroupAdmin: true,
+        onSetRole: vi.fn(),
+        onSetGroupRole: vi.fn(),
+        onRemove: vi.fn(),
+        policy: null,
+        onSetPolicy: vi.fn(),
+        policyUnavailable,
+        onClose: vi.fn(),
+      }),
+    );
+
+  it('says the admission policy is not available, and offers no editor', () => {
+    panel(true);
+    expect(screen.getByTestId('replica-policy').textContent).toMatch(/not available for cloud accounts yet/);
+    expect(screen.queryByTestId('action-edit-replicas')).toBeNull();
+  });
+
+  it('keeps the editor for a node admin', () => {
+    panel(false);
+    expect(screen.getByTestId('action-edit-replicas')).toBeTruthy();
   });
 });

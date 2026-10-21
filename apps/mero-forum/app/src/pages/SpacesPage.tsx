@@ -63,7 +63,11 @@ function focusCreate() {
 export default function SpacesPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { mero, logout, nodeUrl } = useMero();
+  // `admin`, never `mero.admin`: on an account `mero` is the relay client, and
+  // its node routes (create, invite, join) answer an account 403. `admin` is
+  // the session's own: the node's client on a node, the account admin on an
+  // account.
+  const { admin, logout, nodeUrl, isDelegated } = useMero();
   const { showToast } = useToast();
   // Resolved from the NODE by package, not from the session — see lib/appId.
   const { appId, resolving: resolvingAppId, notInstalled } = useApplicationId();
@@ -84,6 +88,9 @@ export default function SpacesPage() {
   const selfAccount = useSelfAccount();
   const [adminOf, setAdminOf] = useState<Record<string, boolean>>({});
   const [listing, setListing] = useState(true);
+  // The last list failed. An empty list then is not "no spaces": offering a
+  // create would found a duplicate of a space you have.
+  const [listFailed, setListFailed] = useState(false);
   const [name, setName] = useState("");
 
   // One key names the action in flight ("create", `invite:<id>`), instead of a
@@ -132,20 +139,25 @@ export default function SpacesPage() {
 
   const load = useCallback(
     async (showSpinner = true) => {
-      if (!mero || !appId) {
+      // Not before the session's admin and this app's id are both known: on an
+      // account the id lands from the registry after sign-in, and until then
+      // `useApplicationId` reports it as still resolving.
+      if (!admin || !appId) {
         setListing(false);
         return;
       }
       if (showSpinner) setListing(true);
       try {
-        setNamespaces(await listSpaceNamespaces(mero.admin, appId));
+        setNamespaces(await listSpaceNamespaces(admin, appId));
+        setListFailed(false);
       } catch (e) {
+        setListFailed(true);
         setError(e instanceof Error ? e.message : "Could not load spaces.");
       } finally {
         setListing(false);
       }
     },
-    [mero, appId],
+    [admin, appId],
   );
 
   // Keyed on the navigation too. Accepting an invitation whose space cannot be
@@ -159,12 +171,12 @@ export default function SpacesPage() {
   const spaceIds = namespaces.map((n) => n.namespaceId).join(",");
   useEffect(() => {
     const ids = spaceIds ? spaceIds.split(",") : [];
-    if (!mero || !selfAccount || ids.length === 0) return;
+    if (!admin || !selfAccount || ids.length === 0) return;
     let cancelled = false;
     void Promise.all(
       ids.map(
         async (id) =>
-          [id, await selfIsGroupAdmin(mero.admin, id, selfAccount)] as const,
+          [id, await selfIsGroupAdmin(admin, id, selfAccount)] as const,
       ),
     ).then((entries) => {
       if (!cancelled) setAdminOf(Object.fromEntries(entries));
@@ -172,7 +184,7 @@ export default function SpacesPage() {
     return () => {
       cancelled = true;
     };
-  }, [mero, selfAccount, spaceIds]);
+  }, [admin, selfAccount, spaceIds]);
 
   // Close an open card menu on an outside click. The ref is attached to the
   // OPEN card only (see the grid below), so this compares against one node
@@ -188,16 +200,18 @@ export default function SpacesPage() {
 
   const create = useCallback(() => {
     const spaceName = name.trim();
-    if (!spaceName || !mero) return;
+    if (!spaceName || !admin) return;
     if (!appId) {
       setError(
-        "Missing application id — reopen Mero Forum from the desktop app.",
+        isDelegated
+          ? "Still connecting. Try again in a moment."
+          : "Missing application id — reopen Mero Forum from the desktop app.",
       );
       return;
     }
     void run("create", async (onStatus) => {
       const { namespaceId } = await createSpaceNamespace(
-        mero.admin,
+        admin,
         { applicationId: appId, name: spaceName },
         onStatus,
       );
@@ -208,14 +222,14 @@ export default function SpacesPage() {
       // the only useful next step.
       navigate(`/spaces/${namespaceId}`);
     });
-  }, [name, mero, appId, run, load, navigate]);
+  }, [name, admin, appId, isDelegated, run, load, navigate]);
 
   const mintInvite = useCallback(
     (ns: NamespaceRow) => {
-      if (!mero) return;
+      if (!admin) return;
       void run(`invite:${ns.namespaceId}`, async (onStatus) => {
         const code = await mintNamespaceInvite(
-          mero.admin,
+          admin,
           { namespaceId: ns.namespaceId, namespaceName: ns.name },
           onStatus,
         );
@@ -223,16 +237,16 @@ export default function SpacesPage() {
         showToast(`Invite ready for “${ns.name}”.`);
       });
     },
-    [mero, run, showToast],
+    [admin, run, showToast],
   );
 
   const removeSpace = useCallback(
     (ns: NamespaceRow) => {
-      if (!mero) return;
+      if (!admin) return;
       setPendingDelete(null);
       void run(`delete:${ns.namespaceId}`, async (onStatus) => {
         await deleteSpace(
-          mero.admin,
+          admin,
           { namespaceId: ns.namespaceId },
           onStatus,
         );
@@ -241,20 +255,20 @@ export default function SpacesPage() {
         showToast(`Deleted \u201c${ns.name}\u201d.`);
       });
     },
-    [mero, run, load, showToast],
+    [admin, run, load, showToast],
   );
 
   const exitSpace = useCallback(
     (ns: NamespaceRow) => {
-      if (!mero) return;
+      if (!admin) return;
       void run(`leave:${ns.namespaceId}`, async (onStatus) => {
-        await leaveSpace(mero.admin, { namespaceId: ns.namespaceId }, onStatus);
+        await leaveSpace(admin, { namespaceId: ns.namespaceId }, onStatus);
         onStatus("Refreshing your spaces…");
         await load(false);
         showToast(`Left \u201c${ns.name}\u201d.`);
       });
     },
-    [mero, run, load, showToast],
+    [admin, run, load, showToast],
   );
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
@@ -381,6 +395,23 @@ export default function SpacesPage() {
             <div className={styles.skeletonRow} />
             <div className={styles.skeletonRow} />
           </div>
+        ) : namespaces.length === 0 && listFailed ? (
+          <div className={styles.empty} data-testid="spaces-list-failed">
+            <span className={styles.emptyTitle}>
+              Your spaces could not be loaded
+            </span>
+            Try again before creating one, so you do not end up with a second
+            copy of a space you have.
+            <button
+              type="button"
+              className="ui-btn ui-btn-primary"
+              style={{ marginTop: 14 }}
+              onClick={() => void load()}
+              data-testid="spaces-retry"
+            >
+              Try again
+            </button>
+          </div>
         ) : namespaces.length === 0 ? (
           !notInstalled && (
             <div className={styles.empty} data-testid="spaces-empty">
@@ -484,21 +515,35 @@ export default function SpacesPage() {
                       <CopyIcon size={17} />
                       Copy space ID
                     </button>
-                    {adminOf[ns.namespaceId] === true && (
-                      <button
-                        className="ui-menuItem"
-                        role="menuitem"
-                        data-danger="true"
-                        onClick={() => {
-                          setMenuOpenId(null);
-                          setPendingDelete(ns);
-                        }}
-                        data-testid="delete-space"
-                      >
-                        <TrashIcon size={17} />
-                        Delete
-                      </button>
-                    )}
+                    {adminOf[ns.namespaceId] === true &&
+                      (isDelegated ? (
+                        // Deleting a namespace is a node's own operation:
+                        // core has no delegated form for it yet.
+                        <button
+                          className="ui-menuItem"
+                          role="menuitem"
+                          disabled
+                          title="Deleting a space is not available for cloud accounts yet."
+                          data-testid="delete-space-unavailable"
+                        >
+                          <TrashIcon size={17} />
+                          Delete (not available for cloud accounts yet)
+                        </button>
+                      ) : (
+                        <button
+                          className="ui-menuItem"
+                          role="menuitem"
+                          data-danger="true"
+                          onClick={() => {
+                            setMenuOpenId(null);
+                            setPendingDelete(ns);
+                          }}
+                          data-testid="delete-space"
+                        >
+                          <TrashIcon size={17} />
+                          Delete
+                        </button>
+                      ))}
                     {adminOf[ns.namespaceId] === false && (
                       <button
                         className="ui-menuItem"

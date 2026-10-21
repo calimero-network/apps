@@ -6,8 +6,16 @@ import { resolveApplicationId } from '../lib/appId';
  * This app's application id on the connected node.
  *
  * Asked of the node and matched by package — see `lib/appId`. Deliberately not
- * the session's or the provider's id: those describe how you arrived, and on a
- * shared origin they belong to whichever app logged in last.
+ * the session's or the provider's id on a node: those describe how you arrived,
+ * and on a shared origin they belong to whichever app logged in last.
+ *
+ * On an account (delegated) session there is no node to ask: the listing is
+ * `GET /admin-api/applications`, node-wide, which a relay refuses to an
+ * account (403). There the provider resolves the id from the registry by this
+ * app's package, so `useMero().applicationId` is the answer, and it lands
+ * AFTER sign-in. Until it does the id is still being resolved, not absent:
+ * reporting "not installed" (or listing nothing and offering to create) would
+ * tell an account that has workspaces it has none.
  *
  * Cached per node URL for the lifetime of the page. The answer only changes when
  * this app is installed or removed, which is not something a picker needs to
@@ -26,13 +34,15 @@ export interface ResolvedAppId {
 }
 
 export function useApplicationId(): ResolvedAppId {
-  const { mero, nodeUrl } = useMero();
+  // `admin`, not `mero.admin`: the session-aware client. On an account the
+  // listing is never asked for (below).
+  const { admin, nodeUrl, isDelegated, applicationId } = useMero();
   const key = nodeUrl ?? '';
   const [appId, setAppId] = useState<string>(() => cache.get(key) ?? '');
   const [resolving, setResolving] = useState(() => !cache.has(key));
 
   useEffect(() => {
-    if (!mero) return;
+    if (isDelegated || !admin) return;
     const cached = cache.get(key);
     if (cached !== undefined) {
       setAppId(cached);
@@ -41,7 +51,7 @@ export function useApplicationId(): ResolvedAppId {
     }
     let cancelled = false;
     setResolving(true);
-    void resolveApplicationId(mero.admin).then((id) => {
+    void resolveApplicationId(admin).then((id) => {
       if (cancelled) return;
       cache.set(key, id);
       setAppId(id);
@@ -50,8 +60,12 @@ export function useApplicationId(): ResolvedAppId {
     return () => {
       cancelled = true;
     };
-  }, [mero, key]);
+  }, [admin, key, isDelegated]);
 
+  if (isDelegated) {
+    const id = applicationId ?? '';
+    return { appId: id, resolving: !id, notInstalled: false };
+  }
   return { appId, resolving, notInstalled: !resolving && !appId };
 }
 

@@ -337,10 +337,7 @@ export default function MatchPage() {
   // already in the URL, an invitation, or "All lobbies" win. A lobby no longer
   // listed is forgotten and the picker shows.
   const resumeDecided = useRef(false);
-  const lobbiesReadStarted = useRef(false);
   useEffect(() => {
-    // An empty list before the node was asked says nothing; one after does.
-    if (lobby.lobbiesLoading) lobbiesReadStarted.current = true;
     if (resumeDecided.current) return;
     if (
       location.pathname !== '/lobby'
@@ -358,7 +355,10 @@ export default function MatchPage() {
       return;
     }
     const listed = lobby.lobbies.map((l) => l.namespaceId);
-    if (listed.length === 0 && (lobby.lobbiesLoading || !lobbiesReadStarted.current)) return;
+    // An empty list before the list answered says nothing (not asked yet, or
+    // on an account the app id has not landed); a failed one says nothing
+    // either. Only an answered list may forget the remembered lobby.
+    if (listed.length === 0 && !lobby.lobbiesAnswered) return;
     resumeDecided.current = true;
     const target = pickResumeLobby(listed, remembered);
     if (target) {
@@ -366,7 +366,7 @@ export default function MatchPage() {
     } else {
       forgetLastLobby(nodeUrl);
     }
-  }, [view, location.pathname, location.search, joinedLobbyId, lobby.lobbies, lobby.lobbiesLoading, nodeUrl, navigate]);
+  }, [view, location.pathname, location.search, joinedLobbyId, lobby.lobbies, lobby.lobbiesAnswered, nodeUrl, navigate]);
 
   // Remember the lobby once you are in it — never on the picker, where a
   // selection is only a preselection.
@@ -697,7 +697,7 @@ export default function MatchPage() {
         if (!executorKey) executorKey = contextIdentity;
         if (!executorKey || cancelled) return;
 
-        const { client, context } = await createLobbyClient(mero, {
+        const { client, context } = await createLobbyClient(mero, admin, {
           contextId: lobbyContextId,
           contextIdentity: executorKey,
           role: 'lobby' as ContextRole,
@@ -761,7 +761,7 @@ export default function MatchPage() {
     // Each phase advances the visible loader so the user sees the same
     // sync progression merobox enforces with `wait_for_sync` between steps.
     const buildClient = () =>
-      createGameClient(mero, {
+      createGameClient(mero, admin, {
         contextId: matchContextId,
         contextIdentity: executorKey,
         role: 'match' as ContextRole,
@@ -894,7 +894,11 @@ export default function MatchPage() {
       });
       const initBytes = Array.from(new TextEncoder().encode(initParams));
 
-      const { contextId: newContextId } = await mero.admin.createContext({
+      // `admin`, not `mero.admin`: on an account the raw client's createContext
+      // is the relay's node route (403); the session admin creates it as the
+      // account (a delegated context creation).
+      if (!admin) throw new Error('Still connecting. Try again in a moment.');
+      const { contextId: newContextId } = await admin.createContext({
         applicationId: currentContext.applicationId,
         initializationParams: initBytes,
         groupId: lobby.namespaceId,
@@ -916,7 +920,7 @@ export default function MatchPage() {
     } finally {
       setCreatingMatch(false);
     }
-  }, [lobbyApi, mero, currentContext, player2, lobby.executorPublicKey, lobby.namespaceId, contextIdentity, show, navigate]);
+  }, [lobbyApi, admin, currentContext, player2, lobby.executorPublicKey, lobby.namespaceId, contextIdentity, show, navigate]);
 
   const openGame = useCallback((id: string, contextId: string) => {
     setMatchId(id);
@@ -1110,12 +1114,20 @@ export default function MatchPage() {
 
   const handleCreateLobby = useCallback(async () => {
     const name = newLobbyName.trim();
-    const id = await lobby.createLobby(name || undefined);
+    let id: string;
+    try {
+      id = await lobby.createLobby(name || undefined);
+    } catch (e) {
+      // From the rejection, not `lobby.createLobbyError`: that state is the
+      // previous render's here, so a first failure used to show nothing.
+      show({ title: e instanceof Error ? e.message : 'Failed to create lobby', variant: 'error' });
+      return;
+    }
     // Cache it here too: the creator typed the name, and the server may stop
     // returning it. This is also what `invitePlayer` embeds for the joiner.
-    if (id && name) setStoredLobbyName(id, name);
-    if (id) { setNewLobbyName(''); show({ title: 'Namespace created', variant: 'success' }); }
-    else if (lobby.createLobbyError) { show({ title: lobby.createLobbyError.message, variant: 'error' }); }
+    if (name) setStoredLobbyName(id, name);
+    setNewLobbyName('');
+    show({ title: 'Namespace created', variant: 'success' });
   }, [lobby, newLobbyName, show]);
 
   const handleCreateInvitation = useCallback(async () => {
@@ -1196,6 +1208,8 @@ export default function MatchPage() {
             <LobbySelect
               lobbies={lobby.lobbies}
               lobbiesLoading={lobby.lobbiesLoading}
+              lobbiesFailed={!!lobby.lobbiesError}
+              onRetryLobbies={() => void lobby.refetchLobbies()}
               selectedNamespaceId={lobby.selectedLobby?.namespaceId || null}
               lobbyContextId={lobby.lobbyContextId}
               namespaceId={lobby.namespaceId}

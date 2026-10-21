@@ -44,7 +44,9 @@ const NO_CLIENT: InviteRedeemer = {
  * ends when that page's `useJoinSync` sees the lobby's match list come back.
  */
 export default function InvitationPrompt() {
-  const { mero, isAuthenticated } = useMero();
+  // `admin`, not `mero.admin`: on an account the raw client's joinNamespace is
+  // the relay's node route (403); the session admin joins as the account.
+  const { admin, isAuthenticated } = useMero();
   const navigate = useNavigate();
   // What the token carried beyond the hook's `ParsedInvitation`: the node's
   // group alias for the join body, and the extras stored once it lands.
@@ -64,10 +66,10 @@ export default function InvitationPrompt() {
 
   const redeemer = useMemo(
     () =>
-      mero
-        ? lobbyRedeemer(mero.admin, () => lobbyRef.current?.groupAlias)
+      admin
+        ? lobbyRedeemer(admin, () => lobbyRef.current?.groupAlias)
         : NO_CLIENT,
-    [mero],
+    [admin],
   );
 
   const onJoined = useCallback(
@@ -90,7 +92,7 @@ export default function InvitationPrompt() {
     parse,
     redeemer,
     onJoined,
-    enabled: isAuthenticated && !!mero,
+    enabled: isAuthenticated && !!admin,
   });
 
   return (
