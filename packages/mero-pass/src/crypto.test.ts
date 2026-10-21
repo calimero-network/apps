@@ -13,7 +13,7 @@ import {
   sealField,
   unwrapVaultKey,
   wrapVaultKey,
-} from './crypto';
+} from './crypto.js';
 
 describe('device keys', () => {
   it('fingerprints the raw public key as 64 hex', async () => {

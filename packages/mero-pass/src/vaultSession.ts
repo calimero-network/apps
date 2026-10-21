@@ -21,7 +21,7 @@ import {
   toB64,
   unwrapVaultKey,
   wrapVaultKey,
-} from './crypto';
+} from './crypto.js';
 
 // ── The contract surface this module needs ──────────────────────────────────
 

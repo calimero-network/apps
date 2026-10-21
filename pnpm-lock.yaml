@@ -1654,15 +1654,15 @@ importers:
       '@calimero-apps/names':
         specifier: workspace:*
         version: link:../../../packages/names
-      '@calimero-apps/pass-core':
-        specifier: workspace:*
-        version: link:../../../packages/pass-core
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: 26.6.0
         version: 26.6.0
+      '@calimero-network/mero-pass':
+        specifier: workspace:*
+        version: link:../../../packages/mero-pass
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -2665,6 +2665,21 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@7.3.7(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
 
+  packages/mero-pass:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@22.20.1)(jsdom@29.1.1)(vite@7.3.7(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
+
   packages/names:
     dependencies:
       bs58:
@@ -2692,18 +2707,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@7.3.7(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
-
-  packages/pass-core:
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.20.1
-      typescript:
-        specifier: 'catalog:'
-        version: 5.8.3
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.11(@types/node@22.20.1)(jsdom@29.1.1)(vite@7.3.7(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
 
 packages:
 

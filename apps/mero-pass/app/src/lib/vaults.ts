@@ -83,7 +83,7 @@ import {
   type DeviceKeyPair,
   type VaultApi,
   VaultSession,
-} from '@calimero-apps/pass-core';
+} from '@calimero-network/mero-pass';
 import { vaultApiFor } from './vaultApi';
 import { rawReason } from './errors';
 

@@ -2,7 +2,7 @@
 // decrypted. The real hook needs a node, a device key and wraps; the pages
 // only need what it returns.
 import { VARIANT } from './fixtures';
-import type { DeviceRecord, Secret } from '@calimero-apps/pass-core';
+import type { DeviceRecord, Secret } from '@calimero-network/mero-pass';
 
 const ME = 'a'.repeat(64);
 const ANA = 'b'.repeat(64);

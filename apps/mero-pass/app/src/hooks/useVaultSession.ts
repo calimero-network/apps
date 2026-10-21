@@ -10,7 +10,7 @@ import {
   type Secret,
   type SessionState,
   VaultSession,
-} from '@calimero-apps/pass-core';
+} from '@calimero-network/mero-pass';
 import { vaultAudience } from '../lib/vaults';
 import { useDeviceUnlocked } from './useDeviceLock';
 import { describeError, isTransient } from '../lib/errors';

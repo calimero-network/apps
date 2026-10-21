@@ -232,7 +232,7 @@ logic/            Rust contract → WASM
 app/              React + Vite frontend
   src/lib/        deviceKey, recoveryKey, vaults, totp, health, portability,
                   shareLink (crypto and vaultSession live in
-                  packages/pass-core, shared with mero-bot)
+                  packages/mero-pass, shared with mero-bot)
   src/pages/      landing, teams, team, vault, security, share
   src/components/AppShell.tsx   the signed-in frame: rail, top bar, Lock, Log out
   src/auth/       signOut: lock, clear clipboard, forget the app, log out

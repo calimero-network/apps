@@ -31,7 +31,7 @@
   "dependencies": {
     "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/names": "workspace:*",
-    "@calimero-apps/pass-core": "workspace:*",
+    "@calimero-network/mero-pass": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",

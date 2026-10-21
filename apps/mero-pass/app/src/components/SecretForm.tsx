@@ -4,7 +4,7 @@ import { useDialogOpen } from '../hooks/useDialogOpen';
 import { generatePassword, strengthOf } from '../lib/health';
 import { FIELDS, KINDS, type Kind } from '../lib/secretKinds';
 import { parseTotp } from '../lib/totp';
-import type { Secret, VaultSession } from '@calimero-apps/pass-core';
+import type { Secret, VaultSession } from '@calimero-network/mero-pass';
 import shell from '../styles/shell.module.css';
 import { CloseIcon, RefreshIcon } from './icons';
 import styles from './SecretForm.module.css';

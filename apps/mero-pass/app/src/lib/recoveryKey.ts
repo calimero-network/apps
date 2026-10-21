@@ -25,7 +25,7 @@ import {
   fromB64,
   toB64,
   toHex,
-} from '@calimero-apps/pass-core';
+} from '@calimero-network/mero-pass';
 import { type StatusFn, forEachJoinedVault, forEachOpenVault } from './vaults';
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';

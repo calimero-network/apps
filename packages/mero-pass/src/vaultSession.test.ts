@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
-import { fingerprintOf, generateDeviceKey, keyIdOf } from './crypto';
+import { fingerprintOf, generateDeviceKey, keyIdOf } from './crypto.js';
 import {
   confirmationCode,
   type DeviceRecord,
@@ -10,7 +10,7 @@ import {
   type VaultApi,
   type WrapRecord,
   VaultSession,
-} from './vaultSession';
+} from './vaultSession.js';
 
 // ── A shared in-memory vault, and one API handle per person ─────────────────
 //
