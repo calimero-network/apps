@@ -23,7 +23,7 @@ const stub = vi.hoisted(() => {
     getNodeIdentity: vi.fn(async () => ({ accountId: "ab".repeat(32) })),
     listGroupMembers: vi.fn(async () => ({ members: [{ identity: "ab".repeat(32), role: "Member" }] })),
     listNamespacesForApplication: vi.fn(async () => [{ namespaceId: "ns-existing", name: "Existing" }]),
-    listNamespaces: vi.fn(async () => []),
+    listNamespaces: vi.fn(async (): Promise<Array<{ namespaceId: string; name: string }>> => []),
     listApplications: vi.fn(),
   };
   const rawAdmin = {
