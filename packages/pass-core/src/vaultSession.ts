@@ -58,10 +58,12 @@ export interface RevisionRecord {
 
 /**
  * `browser`: a key pair that lives in one browser. `recovery`: a key pair the
- * user holds as a printed code (see `recoveryKey.ts`); it never unlocks
- * anything on its own and never approves anyone.
+ * user holds as a printed code (see the app's `recoveryKey.ts`); it never
+ * unlocks anything on its own and never approves anyone. `agent`: the key of
+ * software acting for its account (mero-bot). It is never let in by itself,
+ * only an admin approves it, and it never hands a key to anyone.
  */
-export type DeviceKind = 'browser' | 'recovery';
+export type DeviceKind = 'browser' | 'recovery' | 'agent';
 
 export interface DeviceRecord {
   fingerprint: string;
@@ -197,7 +199,9 @@ const HELD_ROLES: readonly Role[] = ['admin', 'editor', 'viewer'];
  *
  * Both classes need a device that is unrevoked, whose account holds a role,
  * and that is in `allowed` when given. Recovery devices are never
- * auto-entitled; they are given keys explicitly when they are created.
+ * auto-entitled; they are given keys explicitly when they are created. Agent
+ * devices are never auto-entitled either: each one waits for an admin, and
+ * the contract counts only an admin's wrap to one as approving it.
  *
  * Everything this trusts comes from the contract's owner stamps: a device's
  * `account` is the account that registered it, and `pairs` counts only wraps
@@ -221,7 +225,7 @@ export function classifyDevices(
   );
   const accountsWithApproved = new Set(
     live
-      .filter((d) => d.kind !== 'recovery' && holders.has(d.fingerprint))
+      .filter((d) => d.kind === 'browser' && holders.has(d.fingerprint))
       .map((d) => d.account),
   );
   const entitled: DeviceRecord[] = [];
@@ -229,10 +233,31 @@ export function classifyDevices(
   for (const d of live) {
     if (holders.has(d.fingerprint)) entitled.push(d);
     else if (d.kind === 'recovery') continue;
+    else if (d.kind === 'agent') awaiting.push(d);
     else if (!accountsWithApproved.has(d.account)) entitled.push(d);
     else awaiting.push(d);
   }
   return { entitled, awaiting };
+}
+
+/**
+ * Accounts that have registered only agent keys: software, not a person. An
+ * admin's housekeeping never gives one the vault's default role; an admin
+ * sets its role by hand.
+ */
+export function agentOnlyAccounts(devices: DeviceRecord[]): Set<string> {
+  const kinds = new Map<string, Set<string>>();
+  for (const d of devices) {
+    if (d.revoked) continue;
+    const set = kinds.get(d.account) ?? new Set<string>();
+    set.add(d.kind);
+    kinds.set(d.account, set);
+  }
+  const out = new Set<string>();
+  for (const [account, set] of kinds) {
+    if (set.size === 1 && set.has('agent')) out.add(account);
+  }
+  return out;
 }
 
 /** Reserved field names used for the name and tag list in the history. */
@@ -244,12 +269,23 @@ export class VaultSession {
   info: VaultInfo | null = null;
   state: SessionState = 'waiting';
 
+  /**
+   * `kind` is what this session registers its key as: `browser` in the app,
+   * `agent` in mero-bot. An agent session never creates a vault key, never
+   * admits anyone and never hands a key on; it only reads, and writes if its
+   * role lets it.
+   */
   constructor(
     private api: VaultApi,
     private device: DeviceKeyPair,
     private fingerprint: string,
     private label: string,
+    readonly kind: DeviceKind = 'browser',
   ) {}
+
+  private get isAgent(): boolean {
+    return this.kind === 'agent';
+  }
 
   private get current(): VaultKey | undefined {
     return this.info ? this.keyring.get(this.info.current_key) : undefined;
@@ -273,10 +309,10 @@ export class VaultSession {
       this.fingerprint,
       toB64(this.device.publicRaw),
       this.label,
-      'browser',
+      this.kind,
     );
     await this.refreshKeys();
-    if (this.info && !this.info.current_key && this.isAdmin) {
+    if (this.info && !this.info.current_key && this.isAdmin && !this.isAgent) {
       await this.bootstrap();
     }
     return this.state;
@@ -338,6 +374,9 @@ export class VaultSession {
     const wraps: WrapRecord[] = [];
     for (const d of entitled) {
       if (done.has(`${key.keyId}:${d.fingerprint}`)) continue;
+      // The contract stores only an admin's wrap to an agent; anyone else's
+      // would be dropped, so it is not sent.
+      if (d.kind === 'agent' && !this.isAdmin) continue;
       wraps.push({
         key_id: key.keyId,
         recipient: d.fingerprint,
@@ -369,6 +408,7 @@ export class VaultSession {
   ): Promise<{ admitted: number; wrapped: number; removed: number }> {
     let admitted = 0;
     let removed = 0;
+    if (this.isAgent) return { admitted, wrapped: 0, removed };
     if (this.isAdmin && this.info) {
       const me = this.info.my_account;
       const members = await this.api.listMembers();
@@ -383,9 +423,11 @@ export class VaultSession {
         if (removed > 0) await this.rotate(allowed);
       }
       const role = this.info.default_role === 'viewer' ? 'viewer' : 'editor';
+      const agents = agentOnlyAccounts(await this.api.listDevices());
       for (const m of members) {
         if (m.role !== 'pending') continue;
         if (allowed && !allowed.has(m.account)) continue;
+        if (agents.has(m.account)) continue;
         await this.api.setRole(m.account, role);
         admitted += 1;
       }
@@ -404,7 +446,7 @@ export class VaultSession {
     allowed: Set<string> | null,
     onProgress: (done: number, total: number) => void = () => {},
   ): Promise<number> {
-    if (!this.isAdmin)
+    if (!this.isAdmin || this.isAgent)
       throw new Error('Only a vault Admin can rotate the key.');
     const key = await generateVaultKey();
     this.keyring.add(key);
@@ -534,19 +576,20 @@ export class VaultSession {
   }
 
   /**
-   * Devices this one could approve: its own account's new devices, or
-   * everyone's for an admin. Empty unless this device holds the current key.
+   * Devices this one could approve: its own account's new browsers, or
+   * everyone's for an admin. An agent waits for an admin only. Empty unless
+   * this device holds the current key, and always for an agent.
    */
   async pendingApprovals(
     allowed: Set<string> | null = null,
   ): Promise<DeviceRecord[]> {
-    if (this.state !== 'ready' || !this.info) return [];
+    if (this.state !== 'ready' || !this.info || this.isAgent) return [];
     const me = this.info.my_account;
     const { awaiting } = await this.classify(allowed);
     return awaiting.filter(
       (d) =>
         d.fingerprint !== this.fingerprint &&
-        (this.isAdmin || d.account === me),
+        (this.isAdmin || (d.account === me && d.kind !== 'agent')),
     );
   }
 
@@ -554,6 +597,9 @@ export class VaultSession {
   async approve(device: DeviceRecord): Promise<number> {
     if (this.state !== 'ready')
       throw new Error('This device does not hold the vault key.');
+    if (this.isAgent) throw new Error('An agent cannot approve devices.');
+    if (device.kind === 'agent' && !this.isAdmin)
+      throw new Error('Only a vault Admin can let an agent in.');
     return this.grant(device.fingerprint, fromB64(device.public_key));
   }
 
@@ -568,13 +614,17 @@ export class VaultSession {
 
   /**
    * How many devices hold the current key. `browsers` counts the ones that
-   * can open the vault day to day, `recovery` the recovery keys. One browser
-   * and no recovery key means losing that browser loses the vault, unless
-   * someone else holds it.
+   * can open the vault day to day, `recovery` the recovery keys, `agents` the
+   * agents. One browser and no recovery key means losing that browser loses
+   * the vault, unless someone else holds it: an agent is not a way back in.
    */
-  async holders(): Promise<{ browsers: number; recovery: number }> {
+  async holders(): Promise<{
+    browsers: number;
+    recovery: number;
+    agents: number;
+  }> {
     const current = this.info?.current_key;
-    if (!current) return { browsers: 0, recovery: 0 };
+    if (!current) return { browsers: 0, recovery: 0, agents: 0 };
     const [devices, pairs] = await Promise.all([
       this.api.listDevices(),
       this.api.wrappedPairs(),
@@ -586,12 +636,14 @@ export class VaultSession {
     );
     let browsers = 0;
     let recovery = 0;
+    let agents = 0;
     for (const d of devices) {
       if (d.revoked || !holding.has(d.fingerprint)) continue;
       if (d.kind === 'recovery') recovery += 1;
+      else if (d.kind === 'agent') agents += 1;
       else browsers += 1;
     }
-    return { browsers, recovery };
+    return { browsers, recovery, agents };
   }
 
   // ── Secrets ─────────────────────────────────────────────────────────────

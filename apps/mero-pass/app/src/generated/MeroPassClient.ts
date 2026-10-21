@@ -58,7 +58,8 @@ export interface DeviceKey {
   label: string;
   /**
    * `browser` for a browser's device key; `recovery` for an account's
-   * offline recovery key, whose private half exists only on paper.
+   * offline recovery key, whose private half exists only on paper; `agent`
+   * for the key of software acting for its account, admitted by an admin.
    */
   kind: string;
   node_device: string;
@@ -278,7 +279,8 @@ export class MeroPassClient {
    *
    * Store wraps of a vault key. Any member holding the key may wrap it to
    * any registered, unrevoked device — that is how a newcomer or a new
-   * device gets in without the creator being online.
+   * device gets in without the creator being online. An agent's key is
+   * the exception: only an admin's wraps to it are stored.
    *
    * @intent mutating
    */
@@ -587,7 +589,8 @@ export class MeroPassClient {
    *
    * Clients also treat a device in this list as approved, so a wrap from
    * anyone else — a pending or removed account, which never held the key,
-   * writing a garbage wrap to its own device — must not count.
+   * writing a garbage wrap to its own device — must not count. Nor does a
+   * wrap to an agent's key from anyone but an admin.
    *
    * @intent read_only
    */

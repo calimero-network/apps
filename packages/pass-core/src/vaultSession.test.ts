@@ -16,7 +16,8 @@ import {
 //
 // Mirrors the contract's rules closely enough to exercise the session: roles,
 // the device registry, wraps that only land on registered unrevoked devices,
-// and field-level updates.
+// wraps that approve only when a role holder wrote them (and, to an agent,
+// only when an admin did), and field-level updates.
 
 class FakeVault {
   name = 'Team vault';
@@ -24,7 +25,7 @@ class FakeVault {
   defaultRole = 'editor';
   roles = new Map<string, Role>();
   devices = new Map<string, DeviceRecord>();
-  wraps = new Map<string, WrapRecord>();
+  wraps = new Map<string, WrapRecord & { by: string }>();
   secrets = new Map<string, SecretRecord>();
   history: { id: string; field: string; previous: string }[] = [];
 
@@ -88,16 +89,26 @@ class FakeVault {
         return [...v.wraps.values()].filter((w) => w.recipient === recipient);
       },
       async wrappedPairs() {
-        return [...v.wraps.values()].map((w) => `${w.key_id}:${w.recipient}`);
+        const held = (r: Role | undefined) =>
+          r === 'admin' || r === 'editor' || r === 'viewer';
+        return [...v.wraps.values()]
+          .filter((w) => {
+            const by = v.roles.get(w.by);
+            if (v.devices.get(w.recipient)?.kind === 'agent')
+              return by === 'admin';
+            return held(by);
+          })
+          .map((w) => `${w.key_id}:${w.recipient}`);
       },
       async addKeyWraps(wraps) {
         let n = 0;
         for (const w of wraps) {
           const d = v.devices.get(w.recipient);
           if (!d || d.revoked) continue;
+          if (d.kind === 'agent' && role() !== 'admin') continue;
           const slot = `${w.key_id}:${w.recipient}:${w.wrapper}`;
           if (v.wraps.has(slot)) continue;
-          v.wraps.set(slot, w);
+          v.wraps.set(slot, { ...w, by: account });
           n += 1;
         }
         return n;
@@ -471,7 +482,11 @@ describe('device approval', () => {
       .map((w) => w.recipient)
       .sort();
     expect(holding).toEqual([alice.fp, bob.fp, recFp].sort());
-    expect(await alice.session.holders()).toEqual({ browsers: 2, recovery: 1 });
+    expect(await alice.session.holders()).toEqual({
+      browsers: 2,
+      recovery: 1,
+      agents: 0,
+    });
   });
 
   it('a recovery key never needs, or grants, approval', async () => {
@@ -482,7 +497,11 @@ describe('device approval', () => {
     const recFp = await fingerprintOf(rec.publicRaw);
     await alice.session.handOver(rec, recFp, 'Recovery key', 'recovery');
     expect(await alice.session.pendingApprovals()).toEqual([]);
-    expect(await alice.session.holders()).toEqual({ browsers: 1, recovery: 1 });
+    expect(await alice.session.holders()).toEqual({
+      browsers: 1,
+      recovery: 1,
+      agents: 0,
+    });
 
     // Restoring: the recovery pair opens the vault and hands this browser
     // the keys.
@@ -524,5 +543,114 @@ describe('device approval', () => {
     expect(confirmationCode('ffffffff' + '0'.repeat(56))).toMatch(
       /^\d{3} \d{3}$/,
     );
+  });
+});
+
+describe('an agent', () => {
+  const BOT = 'c'.repeat(64);
+
+  async function agent(vault: FakeVault) {
+    const device = await generateDeviceKey();
+    const fp = await fingerprintOf(device.publicRaw);
+    return {
+      fp,
+      session: new VaultSession(vault.as(BOT), device, fp, 'mero-bot', 'agent'),
+    };
+  }
+
+  async function vaultWithASecret() {
+    const vault = new FakeVault(ALICE);
+    const alice = await person(vault, ALICE);
+    await alice.session.open();
+    const id = await alice.session.add({
+      kind: 'api_key',
+      name: 'X API',
+      tags: [],
+      fields: { api_key: 'xk-123' },
+    });
+    return { vault, alice, id };
+  }
+
+  it('is never admitted by housekeeping, and waits for an admin', async () => {
+    const { vault, alice } = await vaultWithASecret();
+    const bot = await agent(vault);
+    expect(await bot.session.open()).toBe('waiting');
+    expect(vault.devices.get(bot.fp)?.kind).toBe('agent');
+
+    await alice.session.housekeep();
+    expect(vault.roles.has(BOT)).toBe(false);
+
+    vault.roles.set(BOT, 'viewer');
+    await alice.session.housekeep();
+    expect(await bot.session.refreshKeys()).toBe('waiting');
+    expect(
+      (await alice.session.pendingApprovals()).map((d) => d.fingerprint),
+    ).toEqual([bot.fp]);
+  });
+
+  it('is let in by an admin, not by an editor', async () => {
+    const { vault, alice, id } = await vaultWithASecret();
+    vault.roles.set(BOB, 'editor');
+    const bob = await person(vault, BOB);
+    await bob.session.open();
+    await alice.session.housekeep();
+    expect(await bob.session.refreshKeys()).toBe('ready');
+
+    vault.roles.set(BOT, 'viewer');
+    const bot = await agent(vault);
+    await bot.session.open();
+
+    await bob.session.housekeep();
+    expect(await bob.session.pendingApprovals()).toEqual([]);
+    const listed = (await vault.as(BOB).listDevices()).find(
+      (d) => d.fingerprint === bot.fp,
+    )!;
+    await expect(bob.session.approve(listed)).rejects.toThrow(/Admin/);
+    expect(await bot.session.refreshKeys()).toBe('waiting');
+
+    const [request] = await alice.session.pendingApprovals();
+    await alice.session.approve(request!);
+    expect(await bot.session.refreshKeys()).toBe('ready');
+    const [secret] = await bot.session.list();
+    expect(secret?.id).toBe(id);
+    expect(secret?.fields.api_key).toBe('xk-123');
+  });
+
+  it('hands nothing on and approves nobody', async () => {
+    const { vault, alice } = await vaultWithASecret();
+    vault.roles.set(BOT, 'admin');
+    const bot = await agent(vault);
+    await bot.session.open();
+    const [request] = await alice.session.pendingApprovals();
+    await alice.session.approve(request!);
+    await bot.session.refreshKeys();
+
+    const second = await browser(vault, ALICE);
+    await second.session.open();
+    expect(await bot.session.pendingApprovals()).toEqual([]);
+    expect(await bot.session.housekeep()).toEqual({
+      admitted: 0,
+      wrapped: 0,
+      removed: 0,
+    });
+    const listed = (await vault.as(BOT).listDevices()).find(
+      (d) => d.fingerprint === second.fp,
+    )!;
+    await expect(bot.session.approve(listed)).rejects.toThrow(/agent/);
+    await expect(bot.session.rotate(null)).rejects.toThrow(/Admin/);
+  });
+
+  it('is counted apart from the browsers that can bring a vault back', async () => {
+    const { vault, alice } = await vaultWithASecret();
+    vault.roles.set(BOT, 'viewer');
+    const bot = await agent(vault);
+    await bot.session.open();
+    const [request] = await alice.session.pendingApprovals();
+    await alice.session.approve(request!);
+    expect(await alice.session.holders()).toEqual({
+      browsers: 1,
+      recovery: 0,
+      agents: 1,
+    });
   });
 });

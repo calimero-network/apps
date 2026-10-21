@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { defaultLogin, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
+import { passLockScreen, stepPastLock } from "./lockScreen";
 
 const SYNC = 90_000;
 
@@ -35,16 +36,11 @@ async function until(
   }
 }
 
-async function unlockIfLocked(page: Page): Promise<void> {
-  const unlock = page.getByTestId("unlock");
-  if ((await unlock.count()) > 0 && (await unlock.isEnabled().catch(() => false))) {
-    await unlock.click().catch(() => undefined);
-  }
-}
-
 async function vaultReady(page: Page): Promise<boolean> {
-  await unlockIfLocked(page);
-  if ((await page.getByTestId("lock-gate").count()) > 0) return false;
+  await stepPastLock(page).catch(() => false);
+  for (const id of ["lock-gate", "device-setup", "recovery-setup"]) {
+    if ((await page.getByTestId(id).count()) > 0) return false;
+  }
   for (const id of ["opening", "waiting-for-admission", "waiting-for-approval", "waiting-for-key", "no-identity"]) {
     if ((await page.getByTestId(id).count()) > 0) return false;
   }
@@ -333,7 +329,9 @@ export const driver: AppDriver = {
 
   async afterReload(actor) {
     const page = actor.page;
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 30_000 });
+    // A reload locks the sealed device key: a vault page shows the lock
+    // screen, whose heading is not an h1, until it is unlocked.
+    await passLockScreen(page, page.getByRole("heading", { level: 1 }), 60_000);
     const name = inVault[actor.name];
     if (name && /\/vault\//.test(page.url())) await ensureReady(actor, name);
   },

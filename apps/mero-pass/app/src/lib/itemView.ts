@@ -5,7 +5,7 @@
 import { shortAccount } from '@calimero-apps/names';
 
 import { KINDS, type Kind } from './secretKinds';
-import type { Secret } from './vaultSession';
+import type { Secret } from '@calimero-apps/pass-core';
 
 /** The list's categories: every kind, in the order the sidebar shows them. */
 export const CATEGORIES: { id: Kind; label: string }[] = [
@@ -15,6 +15,8 @@ export const CATEGORIES: { id: Kind; label: string }[] = [
   { id: 'identity', label: 'Identities' },
   { id: 'totp', label: 'Authenticators' },
   { id: 'ssh_key', label: 'SSH keys' },
+  { id: 'api_key', label: 'API keys' },
+  { id: 'oauth2', label: 'OAuth connections' },
 ];
 
 export function kindLabel(kind: string): string {
@@ -66,6 +68,10 @@ export function subtitleOf(s: Secret): string {
       );
     case 'ssh_key':
       return 'SSH key';
+    case 'api_key':
+      return f.service || hostOf(f.base_url) || 'API key';
+    case 'oauth2':
+      return [f.provider, f.account].filter(Boolean).join(' · ') || 'OAuth';
     default:
       return kindLabel(s.kind);
   }

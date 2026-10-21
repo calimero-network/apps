@@ -8,6 +8,8 @@ export const KINDS = [
   { id: 'ssh_key', label: 'SSH key' },
   { id: 'payment_card', label: 'Payment card' },
   { id: 'identity', label: 'Identity' },
+  { id: 'api_key', label: 'API key' },
+  { id: 'oauth2', label: 'OAuth connection' },
 ] as const;
 
 export type Kind = (typeof KINDS)[number]['id'];
@@ -80,6 +82,26 @@ export const FIELDS: Record<Kind, FieldSpec[]> = {
       half: true,
     },
     { key: 'address', label: 'Address', multiline: true },
+    { key: 'notes', label: 'Notes', multiline: true },
+  ],
+  // The credentials an agent's plugins reach an outside service with. Field
+  // names are the contract with mero-bot: it reads them by key.
+  api_key: [
+    { key: 'service', label: 'Service', half: true },
+    { key: 'base_url', label: 'API base URL', half: true },
+    { key: 'api_key', label: 'API key', secret: true },
+    { key: 'api_secret', label: 'API secret', secret: true },
+    { key: 'notes', label: 'Notes', multiline: true },
+  ],
+  oauth2: [
+    { key: 'provider', label: 'Provider', half: true },
+    { key: 'account', label: 'Account', half: true },
+    { key: 'client_id', label: 'Client ID', half: true },
+    { key: 'client_secret', label: 'Client secret', secret: true, half: true },
+    { key: 'access_token', label: 'Access token', secret: true },
+    { key: 'refresh_token', label: 'Refresh token', secret: true },
+    { key: 'expires_at', label: 'Access token expires', half: true },
+    { key: 'scopes', label: 'Scopes', half: true },
     { key: 'notes', label: 'Notes', multiline: true },
   ],
 };

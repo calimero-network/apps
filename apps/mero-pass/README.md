@@ -19,10 +19,16 @@ holds a readable secret.
 
 ### Encryption
 
-- Each browser has a **device key**: ECDH P-256, stored non-extractable in
-  IndexedDB. You can seal it under a **passkey** (Touch ID, Windows Hello or a
-  security key, through the WebAuthn PRF extension) or a **passphrase** of 8+
-  characters (PBKDF2, 600k iterations); then nothing usable is on disk.
+- Each browser has a **device key**: ECDH P-256, kept in IndexedDB sealed
+  under a **passkey** (Touch ID, Windows Hello or a security key, through the
+  WebAuthn PRF extension) or a **passphrase** of 8+ characters (PBKDF2, 600k
+  iterations), so nothing usable is on disk. Sealing is required: a new
+  browser's first screen makes the key sealed, and a browser holding an
+  unprotected key from an earlier version must seal it before anything else
+  opens (its vault keys move to the sealed key).
+- Every browser also has to have a **recovery key** before a vault opens:
+  the lock screen makes one and shows its code once, asking for its last
+  four characters back, or takes a code already made in another browser.
 - Each vault has a **vault key**: 32 random bytes for AES-256-GCM, identified by
   `SHA-256(key)`. It is **wrapped** (ECIES: ephemeral ECDH, then HKDF, then
   AES-GCM) to every entitled device, and the wraps are stored in the contract.
@@ -48,18 +54,19 @@ What you lose is **your copy** of each vault key, not the vault key itself:
 the contract keeps a wrap of it for every device that was given it. So the
 outcome depends on whether anything else still holds the vault key.
 
-**Your recovery key.** On the **Security** page, **Create recovery key**
-shows a 56-character code once. It is one more holder of every vault key
-this browser has, and vaults you open later in this browser get it too. In
-a browser with nothing, enter the code under **Restore**: it rebuilds the
-recovery key and hands every vault key it holds to the new browser. Keep
-the code on paper or in another password manager. Anyone who reads it can
-do the same.
+**Your recovery key.** The lock screen makes one the first time a browser
+is set up (and the **Security** page can replace it): a 56-character code,
+shown once. It is one more holder of every vault key this browser has, and
+vaults you open later in this browser get it too. In a browser with nothing,
+enter the code on the lock screen's recovery step, or under **Restore** on
+the Security page: it rebuilds the recovery key and hands every vault key it
+holds to the new browser. Keep the code on paper or in another password
+manager. Anyone who reads it can do the same.
 
 **Another of your devices, or a teammate, holds it.**
 
-1. Open Mero Pass in the new or cleared browser. It creates a fresh device
-   key and registers it in each vault you open.
+1. Open Mero Pass in the new or cleared browser. It has you seal a fresh
+   device key, and registers it in each vault you open.
 2. If your old browser is still listed, the new one waits for approval and
    shows a code. Approve it from another device of yours, or ask a vault
    admin, checking that the codes match.
@@ -69,8 +76,8 @@ do the same.
    the vault. Revoking also rotates the key, which matters if the device was
    stolen rather than wiped.
 
-**Nothing else held it** (a personal or solo vault, one browser, no recovery
-key). The secrets cannot be recovered. The node only ever had ciphertext and
+**Nothing else held it** (a personal or solo vault, one browser, and a
+recovery code that was never written down). The secrets cannot be recovered. The node only ever had ciphertext and
 wraps to a key that no longer exists, and nobody else can decrypt them: not
 the node operator, and not Calimero. This is the other side of "the node
 never sees your passwords". There is no reset.
@@ -86,8 +93,9 @@ into a new vault even if every device is gone.
   and a sealed key. A passkey needs your authenticator; a passphrase has to
   be guessed at 600k PBKDF2 rounds per try, which is why it must be 8+
   characters.
-- **Unlocked, or unprotected:** they can read what you can. Auto-lock and the
-  Lock button narrow that window.
+- **Unlocked:** they can read what you can. Auto-lock and the Lock button
+  narrow that window. (A browser set up before sealing was required held an
+  unprotected key until its owner next opened Mero Pass.)
 - **Using your node account from another browser:** their browser has to be
   approved, and the request appears on yours.
 - Either way, revoke the device from another one (or ask an admin). That
@@ -123,15 +131,16 @@ default role, Editor or Viewer, by the next admin who opens the vault.
 
 ## Features
 
-- Six kinds: login, secure note, TOTP, SSH key, payment card, identity.
+- Eight kinds: login, secure note, TOTP, SSH key, payment card, identity, and
+  for agents, API key and OAuth connection.
 - Live TOTP codes (RFC 6238, `otpauth://` URIs), computed in the browser.
 - Password generator and a strength meter.
 - Health tab: weak, reused and old passwords, plus an opt-in breach check (Have I Been
   Pwned k-anonymity: only 5 hex characters of a SHA-1 leave the browser).
 - Trash and restore; permanent deletion is admin-only.
 - Per-secret history with restore.
-- Device lock by passkey or passphrase, auto-lock (1/5/15/60 min) and a Lock
-  button. Copied values are cleared from
+- Device lock by passkey or passphrase (required), auto-lock (1/5/15/60 min)
+  and a Lock button. Copied values are cleared from
   the clipboard after 30 seconds.
 - Import from Bitwarden, 1Password and Chrome/Edge CSV. Export is an
   **encrypted** backup only; there is no plaintext export.
@@ -139,8 +148,12 @@ default role, Editor or Viewer, by the next admin who opens the vault.
   fragment (never sent to a server). A passphrase is optional and an expiry is
   enforced by the viewer. Links cannot be revoked; the dialog says so.
 - Live updates over SSE when another member changes something.
-- Device approval with confirmation codes, a recovery key, and a warning
-  when only one browser holds a vault's key.
+- Device approval with confirmation codes, a recovery key every browser sets
+  up, and a warning when only one browser holds a vault's key.
+- Agents: an agent (mero-bot) opens a vault with its own `agent` device key
+  and reads secrets the way a browser does. Only a vault admin can let one in,
+  it is never admitted by itself, and it never hands a key on. Give an agent
+  its own vault holding only what it should use: it can read all of it.
 - Team admin:
   - invite expiry (1h / 24h / 7d);
   - invite-only vaults;
@@ -217,8 +230,9 @@ logic/            Rust contract → WASM
   src/tests.rs    TestHost tests
   workflows/      two-node merobox scenario
 app/              React + Vite frontend
-  src/lib/        crypto, deviceKey, recoveryKey, vaultSession, vaults, totp,
-                  health, portability, shareLink
+  src/lib/        deviceKey, recoveryKey, vaults, totp, health, portability,
+                  shareLink (crypto and vaultSession live in
+                  packages/pass-core, shared with mero-bot)
   src/pages/      landing, teams, team, vault, security, share
   src/components/AppShell.tsx   the signed-in frame: rail, top bar, Lock, Log out
   src/auth/       signOut: lock, clear clipboard, forget the app, log out

@@ -1,7 +1,9 @@
 import { forwardRef } from 'react';
 import {
   Clock,
+  Cloud,
   FileText,
+  Globe,
   Lock,
   LockBox,
   LockStar,
@@ -10,7 +12,7 @@ import {
 
 import { CopyIcon, SearchIcon } from '../../components/icons';
 import { monogramOf, subtitleOf } from '../../lib/itemView';
-import type { Secret } from '../../lib/vaultSession';
+import type { Secret } from '@calimero-apps/pass-core';
 import styles from './items.module.css';
 
 /**
@@ -24,6 +26,8 @@ const KIND_ICON: Record<string, typeof Lock> = {
   ssh_key: LockStar,
   payment_card: LockBox,
   identity: ShieldCheck,
+  api_key: Globe,
+  oauth2: Cloud,
 };
 
 export function KindIcon({ kind, size = 16 }: { kind: string; size?: number }) {

@@ -80,18 +80,23 @@ const MAX_ENVELOPE_LEN: usize = 128 * 1024;
 const MAX_FIELDS: usize = 64;
 
 /// What a registered device key is. A recovery key is shown and handled
-/// differently by clients (never prompted for approval, listed separately), and
-/// nothing else.
-const DEVICE_KINDS: [&str; 2] = ["browser", "recovery"];
+/// differently by clients (never prompted for approval, listed separately). An
+/// agent key belongs to software acting for its account (mero-bot): clients
+/// never let it in by themselves, and only an admin's wrap admits it.
+const DEVICE_KINDS: [&str; 3] = ["browser", "recovery", "agent"];
+const DEVICE_AGENT: &str = "agent";
 
-/// The secret kinds the UI knows how to render.
-const SECRET_KINDS: [&str; 6] = [
+/// The secret kinds the UI knows how to render. `api_key` and `oauth2` are the
+/// credentials an agent's plugins connect to outside services with.
+const SECRET_KINDS: [&str; 8] = [
     "login",
     "secure_note",
     "totp",
     "ssh_key",
     "payment_card",
     "identity",
+    "api_key",
+    "oauth2",
 ];
 
 // ── Stored types ────────────────────────────────────────────────────────────
@@ -155,7 +160,8 @@ pub struct DeviceKey {
     public_key: String,
     label: String,
     /// `browser` for a browser's device key; `recovery` for an account's
-    /// offline recovery key, whose private half exists only on paper.
+    /// offline recovery key, whose private half exists only on paper; `agent`
+    /// for the key of software acting for its account, admitted by an admin.
     kind: String,
     node_device: String,
     added_at: u64,
@@ -698,7 +704,7 @@ impl MeroPassApp {
             app::bail!("fingerprint must be 64 hex characters");
         }
         if !DEVICE_KINDS.contains(&kind.as_str()) {
-            app::bail!("device kind must be browser or recovery");
+            app::bail!("device kind must be browser, recovery or agent");
         }
         Self::check_envelope(&public_key)?;
         // The caller's own registration only: keys are per owner, so another
@@ -771,15 +777,18 @@ impl MeroPassApp {
 
     /// Store wraps of a vault key. Any member holding the key may wrap it to
     /// any registered, unrevoked device — that is how a newcomer or a new
-    /// device gets in without the creator being online.
+    /// device gets in without the creator being online. An agent's key is
+    /// the exception: only an admin's wraps to it are stored.
     pub fn add_key_wraps(&mut self, wraps: Vec<KeyWrapInput>) -> app::Result<u32> {
         let revoked = self.revoked_set()?;
+        let is_admin = self.roles.is_admin(&Self::me());
         let mut added = 0;
         for w in wraps {
             Self::check_envelope(&w.envelope)?;
             if w.key_id.contains(':')
                 || revoked.contains(&w.recipient)
                 || self.devices.entries_at(&w.recipient)?.is_empty()
+                || (!is_admin && self.is_agent_device(&w.recipient)?)
             {
                 continue;
             }
@@ -811,6 +820,16 @@ impl MeroPassApp {
         Ok(added)
     }
 
+    /// Whether every registration at `fingerprint` is an agent's. Only an
+    /// admin's wrap admits an agent, so a member cannot hand the vault to
+    /// software by opening the vault. "Every", not "any": another account
+    /// filing an agent entry at a browser's fingerprint must not stop that
+    /// browser being given keys.
+    fn is_agent_device(&self, fingerprint: &str) -> app::Result<bool> {
+        let holders = self.devices.entries_at(&fingerprint.to_owned())?;
+        Ok(!holders.is_empty() && holders.iter().all(|(_, d)| d.kind == DEVICE_AGENT))
+    }
+
     /// Every wrap addressed to `recipient`. `wrapped_by` is the entry's owner
     /// stamp.
     pub fn key_wraps_for(&self, recipient: String) -> app::Result<Vec<KeyWrapView>> {
@@ -836,11 +855,19 @@ impl MeroPassApp {
     ///
     /// Clients also treat a device in this list as approved, so a wrap from
     /// anyone else — a pending or removed account, which never held the key,
-    /// writing a garbage wrap to its own device — must not count.
+    /// writing a garbage wrap to its own device — must not count. Nor does a
+    /// wrap to an agent's key from anyone but an admin.
     pub fn wrapped_pairs(&self) -> app::Result<Vec<String>> {
         let mut pairs = BTreeSet::new();
         for (who, _, w) in self.key_wraps.entries_with_owners()? {
-            if self.role_of(&who) != "pending" {
+            // An agent counts as approved only by an admin's wrap, the same
+            // rule `add_key_wraps` applies to new ones.
+            let counts = match self.role_of(&who) {
+                "admin" => true,
+                "editor" | "viewer" => !self.is_agent_device(&w.recipient)?,
+                _ => false,
+            };
+            if counts {
                 let _ = pairs.insert(format!("{}:{}", w.key_id, w.recipient));
             }
         }

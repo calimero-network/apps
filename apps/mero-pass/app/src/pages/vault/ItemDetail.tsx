@@ -11,7 +11,7 @@ import {
   isSensitive,
   isTotpField,
 } from '../../lib/secretKinds';
-import type { Revision, Secret } from '../../lib/vaultSession';
+import type { Revision, Secret } from '@calimero-apps/pass-core';
 import shell from '../../styles/shell.module.css';
 import { ItemTile } from './ItemList';
 import styles from './items.module.css';
