@@ -103,6 +103,39 @@ describe('loadCoreFolders', () => {
     expect(folders[0].shared).toBe(false);
   });
 
+  // Xabi is in Subfolder and in SUBSUB below it, and not in Private above
+  // them: both contexts are held, but SUBSUB is Subfolder's child, not a
+  // second Shared root.
+  it('nests a shared folder under another shared folder it sits in', async () => {
+    const admin = reader({
+      children: { [ROOT]: [], sub: ['subsub'] },
+      info: {
+        sub: { name: 'Subfolder', visibility: 'restricted' },
+        subsub: { name: 'SUBSUB', visibility: 'restricted' },
+      },
+      held: [{ groupId: 'sub' }, { groupId: 'subsub' }],
+    });
+    const folders = await loadCoreFolders(admin, ROOT, 'app');
+    expect(folders.map((f) => [f.id, f.parent_id, f.shared])).toEqual([
+      ['sub', null, true],
+      ['subsub', 'sub', false],
+    ]);
+  });
+
+  it('nests a shared folder found deeper, below a folder in between', async () => {
+    const admin = reader({
+      children: { [ROOT]: [], sub: ['mid'], mid: ['deep'] },
+      info: { sub: { name: 'Sub' }, mid: { name: 'Mid' }, deep: { name: 'Deep' } },
+      held: [{ groupId: 'deep' }, { groupId: 'sub' }],
+    });
+    const folders = await loadCoreFolders(admin, ROOT, 'app');
+    expect(Object.fromEntries(folders.map((f) => [f.id, [f.parent_id, f.shared]]))).toEqual({
+      sub: [null, true],
+      mid: ['sub', false],
+      deep: ['mid', false],
+    });
+  });
+
   it('keeps walking when one branch cannot be listed', async () => {
     const admin = reader({ children: { [ROOT]: ['a', 'b'] }, info: { a: { name: 'A' }, b: { name: 'B' } } });
     (admin.listSubgroups as ReturnType<typeof vi.fn>).mockImplementation(async (g: string) => {

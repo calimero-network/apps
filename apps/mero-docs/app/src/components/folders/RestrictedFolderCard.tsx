@@ -54,6 +54,9 @@ interface Props {
   /** Current subgroup visibility from core's GroupInfo. `undefined`
    *  while the per-folder fetch is still in flight. */
   visibility: 'Open' | 'Restricted' | undefined;
+  /** Who an Open folder lets in: the workspace, or the members of the
+   *  Restricted folder it sits in. */
+  openTo?: string;
   selfIdentity: string | null;
   /** Called after a successful join so the workspace re-checks
    *  membership and swaps to the real folder UI. Bind to
@@ -70,6 +73,7 @@ export function RestrictedFolderCard({
   folderId,
   folderAlias,
   visibility,
+  openTo = 'all workspace members',
   selfIdentity,
   refetch,
   refetchPerms,
@@ -193,7 +197,7 @@ export function RestrictedFolderCard({
                 <span className="font-medium text-foreground">
                   {folderAlias}
                 </span>{' '}
-                is open to all workspace members. Click{' '}
+                is open to {openTo}. Click{' '}
                 <strong>Join folder</strong> to start reading and editing.
               </>
             )}

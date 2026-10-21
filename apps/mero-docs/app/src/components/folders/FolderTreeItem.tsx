@@ -181,11 +181,15 @@ export function FolderTreeItem({
             {folderLabel(folder?.alias)}
           </button>
         )}
-        {folder?.visibility === 'Restricted' && !renaming && (
-          <Lock
-            className="h-3 w-3 text-muted-foreground"
-            aria-label="Restricted"
-          />
+        {folder && (folder.visibility === 'Restricted' || folder.restricted) && !renaming && (
+          // An Open folder inside a Restricted one is closed to the workspace
+          // too: it takes that folder's members and nobody else's.
+          <span title={restrictedTitle(folder, byId)} className="inline-flex">
+            <Lock
+              className="h-3 w-3 text-muted-foreground"
+              aria-label="Restricted"
+            />
+          </span>
         )}
         {folder && !renaming && (
           <FolderContextMenu
@@ -233,4 +237,15 @@ export function FolderTreeItem({
       )}
     </li>
   );
+}
+
+function restrictedTitle(
+  folder: MergedFolder,
+  byId: Map<string, MergedFolder>,
+): string {
+  if (folder.visibility === 'Restricted') return 'Restricted: only people added to this folder';
+  const wall = folder.restrictedBy ? byId.get(folder.restrictedBy) : undefined;
+  return wall
+    ? `Restricted: only members of ${folderLabel(wall.alias)}`
+    : 'Restricted: only members of the folder above';
 }

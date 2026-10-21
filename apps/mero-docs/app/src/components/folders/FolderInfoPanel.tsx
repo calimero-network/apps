@@ -23,6 +23,11 @@ interface Props {
   folderId: string;
   folderAlias: string;
   currentVisibility: 'Open' | 'Restricted' | undefined;
+  /** Inside a Restricted folder: an Open folder there is closed to the rest
+   *  of the workspace. */
+  restricted?: boolean;
+  /** Who an Open folder lets in (see `openAudience`). */
+  openTo?: string;
   onClose: () => void;
 }
 
@@ -30,6 +35,8 @@ export function FolderInfoPanel({
   folderId,
   folderAlias,
   currentVisibility,
+  restricted = false,
+  openTo = 'all workspace members',
   onClose,
 }: Props) {
   const [visError, setVisError] = useState<string | null>(null);
@@ -65,8 +72,12 @@ export function FolderInfoPanel({
               </>
             ) : currentVisibility === 'Open' ? (
               <>
-                <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                Open: all workspace members
+                {restricted ? (
+                  <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                ) : (
+                  <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                )}
+                Open: {openTo}
               </>
             ) : (
               'Loading visibility…'

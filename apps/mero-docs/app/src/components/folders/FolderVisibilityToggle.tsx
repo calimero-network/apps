@@ -24,6 +24,7 @@ import { openConnected } from '@/utils/ancestry';
 import { CAPABILITIES, hasCap } from '@/constants/config';
 import { isTeeRole, parseGroupRole } from '@/lib/roles';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
+import { openAudience } from '@/lib/folderRestriction';
 
 const READ_ONLY_NOT_CARRIED =
   "Opened, but the parent folder's Read only members could not be made Read only here.";
@@ -83,13 +84,16 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
     return ` ${names.join(', ')} ${names.length === 1 ? 'keeps' : 'keep'} access, because a role was set for them here.`;
   };
 
+  const here = folders.find((f) => f.id === folderId);
+  const labelOf = (id: string) => folders.find((f) => f.id === id)?.alias;
+
   const onToggle = async () => {
     // Restricting revokes everyone who only had inherited access; opening takes nothing away.
     if (
       next === 'Restricted' &&
       !(await confirm({
         title: 'Make this folder restricted?',
-        body: `Workspace members you have not added will lose access to this folder and its subfolders.${await keptNote()}`,
+        body: `${here?.restricted ? capitalize(openAudience(here, labelOf)) : 'Workspace members'} you have not added will lose access to this folder and its subfolders.${await keptNote()}`,
         confirmLabel: 'Make restricted',
         destructive: true,
       }))
@@ -148,4 +152,8 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
       )}
     </Button>
   );
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

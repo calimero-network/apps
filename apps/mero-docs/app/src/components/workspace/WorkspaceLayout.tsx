@@ -35,6 +35,7 @@ import { NamespaceSettingsPanel } from './NamespaceSettingsPanel';
 import { SidebarDrawer, WorkspaceSidebar } from './WorkspaceSidebar';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard';
+import { openAudience } from '@/lib/folderRestriction';
 import { EmptyState, QuietLoading } from '@/components/ui/empty-state';
 import { HomePage } from '@/components/home/HomePage';
 import { WorkspaceIndexProvider } from '@/context/WorkspaceIndexContext';
@@ -529,6 +530,10 @@ export function WorkspaceLayout() {
                     folderId={selectedFolder.id}
                     folderAlias={selectedFolder.alias}
                     visibility={selectedFolder.visibility}
+                    openTo={openAudience(
+                      selectedFolder,
+                      (id) => folders.find((f) => f.id === id)?.alias,
+                    )}
                     selfIdentity={selfIdentity}
                     refetch={refetch}
                     refetchPerms={selectedFolderPerms.refetch}

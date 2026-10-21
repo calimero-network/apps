@@ -42,9 +42,8 @@ export interface FolderPermissions {
    *  so they count; a failed fetch (`caps === 0, error !== null`) does
    *  NOT, so consumers don't render write affordances on error. */
   isMember: boolean;
-  /** Create a *sub*folder - note core only allows subgroups directly
-   *  under the namespace root, so this is effectively a namespace-scope
-   *  grant; kept here for the folder context menu's "new subfolder". */
+  /** Create a subfolder in this folder. Core lets only a namespace admin
+   *  create below the root, whatever the caller holds in the folder. */
   canCreateSubfolder: boolean;
   canRename: boolean; // isAdmin || CAN_MANAGE_METADATA
   canManageVisibility: boolean; // CAN_MANAGE_VISIBILITY
@@ -114,7 +113,14 @@ export function useFolderPermissions(
   const role = error ? null : documentRoleOf(isAdmin, isReadOnly, caps);
   const roleLoading = caps === null;
   const roleError = error;
-  const { isOwnerOrManager } = useDriveWorkspace().registryAdmin;
+  const { registryAdmin, rootGroupId } = useDriveWorkspace();
+  const { isOwnerOrManager } = registryAdmin;
+  // Core lets only a namespace admin create a subgroup below the root: a
+  // folder's own admin, or its CAN_CREATE_SUBGROUP bit, is refused
+  // (`GroupCreated` apply, crates/governance-store/src/ops/namespace/
+  // group_created.rs). Every peer must be able to check the creator, and only
+  // the root's rows are readable to all of them.
+  const { isAdmin: isNamespaceAdmin } = useMemberCaps(namespaceId, rootGroupId ?? '');
 
   const has = (bit: number) => isAdmin || (caps !== null && hasCap(caps, bit));
   const canRename = has(CAPABILITIES.CAN_MANAGE_METADATA);
@@ -122,7 +128,7 @@ export function useFolderPermissions(
   const hasDeleteCap = has(CAPABILITIES.CAN_DELETE_SUBGROUP);
   const canInviteMembers = has(CAPABILITIES.CAN_INVITE_MEMBERS);
   const canManageMembers = has(CAPABILITIES.MANAGE_MEMBERS);
-  const canCreateSubfolder = has(CAPABILITIES.CAN_CREATE_SUBGROUP);
+  const canCreateSubfolder = isNamespaceAdmin;
 
   const isMember = caps !== null && error === null;
 

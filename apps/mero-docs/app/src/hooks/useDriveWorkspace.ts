@@ -95,6 +95,7 @@ import {
 } from '@/constants/config';
 import { loadCoreFolders, type CoreFolder } from '@/lib/coreFolders';
 import { folderLabel } from '@/lib/folderLabel';
+import { restrictionOf } from '@/lib/folderRestriction';
 import { splitTeeMembers } from '@/lib/roles';
 
 /** Shared empty array so the "no duplicates" case keeps a stable identity. */
@@ -1009,20 +1010,20 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     [regFolders],
   );
 
-  const folders = useMemo<MergedFolder[]>(
-    () =>
-      rootGroupId
-        ? regFolders.map((f) => ({
-            id: f.id,
-            parent_id: f.parent_id,
-            alias: folderLabel(f.alias),
-            visibility: f.visibility,
-            color: f.color,
-            shared: f.shared,
-          }))
-        : [],
-    [rootGroupId, regFolders],
-  );
+  const folders = useMemo<MergedFolder[]>(() => {
+    if (!rootGroupId) return [];
+    const restriction = restrictionOf(regFolders);
+    return regFolders.map((f) => ({
+      id: f.id,
+      parent_id: f.parent_id,
+      alias: folderLabel(f.alias),
+      visibility: f.visibility,
+      color: f.color,
+      shared: f.shared,
+      restricted: restriction.get(f.id)?.restricted ?? false,
+      restrictedBy: restriction.get(f.id)?.by ?? null,
+    }));
+  }, [rootGroupId, regFolders]);
 
   // The tree's shape (id + parent_id) for structural operations - e.g. the
   // new-folder depth cap. Folders this caller cannot see are not in it.
