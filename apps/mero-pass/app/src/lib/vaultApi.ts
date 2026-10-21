@@ -2,7 +2,7 @@
 // Kept separate so `vaultSession.ts` stays testable without a node.
 
 import type { MeroPassClient } from '../generated/MeroPassClient';
-import type { Role, VaultApi } from './vaultSession';
+import type { Role, VaultApi } from '@calimero-apps/pass-core';
 
 export function vaultApiFor(client: MeroPassClient): VaultApi {
   return {

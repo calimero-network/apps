@@ -3,24 +3,36 @@ import { Lock } from '@calimero-network/mero-icons';
 
 import { useDeviceUnlocked } from '../hooks/useDeviceLock';
 import { type Protection, deviceKeeper } from '../lib/deviceKey';
+import { rememberedRecoveryKey } from '../lib/recoveryKey';
 import shell from '../styles/shell.module.css';
 import gate from '../styles/gate.module.css';
 import { describeError } from '../lib/errors';
+import { ProtectStep, RecoveryStep } from './DeviceSetup';
 
 /**
- * Nothing inside renders until this browser's device key is unlocked.
+ * Nothing inside renders until this browser's device key is unlocked, and,
+ * once per browser, until it is protected and has a recovery key.
  *
- * Unprotected, unlocking is one click (the key is non-extractable at rest,
- * and the click is the gesture that says someone is at the keyboard). With a
- * passphrase it is the passphrase; with a passkey, the authenticator.
- * Auto-lock (`useAutoLock`) sends the user back here.
+ *   1. No key yet: the browser makes its first one sealed under a passkey or
+ *      a passphrase (`ProtectStep`). There is no unprotected default.
+ *   2. Locked: the passphrase, or the authenticator. An unprotected key from
+ *      before protection was required opens without asking, and goes to 3.
+ *   3. Unprotected: it must be sealed before anything else shows.
+ *   4. No recovery key remembered here: make one, or enter one already made
+ *      (`RecoveryStep`).
  *
- * "Forgot it" resets this browser: a fresh key that must be approved, or
- * restored from a recovery key, before it opens anything.
+ * Auto-lock (`useAutoLock`) sends the user back to 2. "Forgot it" resets this
+ * browser to 1: a fresh key that must be approved, or restored from a
+ * recovery key, before it opens anything.
  */
 export default function LockGate({ children }: { children: ReactNode }) {
   const unlocked = useDeviceUnlocked();
-  const [protection, setProtection] = useState<Protection | null>(null);
+  const [protection, setProtection] = useState<Protection | 'missing' | null>(
+    null,
+  );
+  const [needsRecovery, setNeedsRecovery] = useState(
+    () => rememberedRecoveryKey() === null,
+  );
   const [passphrase, setPassphrase] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -28,21 +40,37 @@ export default function LockGate({ children }: { children: ReactNode }) {
   const [confirmReset, setConfirmReset] = useState(false);
 
   useEffect(() => {
-    if (unlocked) return;
+    let cancelled = false;
     deviceKeeper
       .protection()
       .then(async (p) => {
+        if (cancelled) return;
         setProtection(p);
-        // First open in this tab and unprotected: no reason to make them click.
-        if (p === 'none' && firstRun) {
+        // An unprotected key from before: open it without a click, so the
+        // next screen can be the one that protects it.
+        if (p === 'none' && firstRun && !deviceKeeper.isUnlocked) {
           setFirstRun(false);
           await deviceKeeper.unlock();
         }
       })
-      .catch(() => setProtection('none'));
+      .catch(() => {
+        if (!cancelled) setProtection('none');
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [unlocked, firstRun]);
 
-  if (unlocked) return <>{children}</>;
+  const refresh = () => {
+    void deviceKeeper.protection().then(setProtection);
+  };
+
+  if (protection === 'missing') return <ProtectStep fresh onDone={refresh} />;
+  if (unlocked && protection === 'none')
+    return <ProtectStep fresh={false} onDone={refresh} />;
+  if (unlocked && protection !== null && needsRecovery)
+    return <RecoveryStep onDone={() => setNeedsRecovery(false)} />;
+  if (unlocked && protection !== null) return <>{children}</>;
 
   const unlock = async () => {
     setBusy(true);
@@ -61,8 +89,7 @@ export default function LockGate({ children }: { children: ReactNode }) {
     setError(null);
     await deviceKeeper.reset();
     setConfirmReset(false);
-    setProtection('none');
-    await deviceKeeper.unlock();
+    setProtection('missing');
   };
 
   return (

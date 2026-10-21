@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { MeroPassClient } from '../generated/MeroPassClient';
 import { ADMIN_CAPABILITIES } from '../lib/roles';
-import type { VaultSession } from '../lib/vaultSession';
+import type { VaultSession } from '@calimero-apps/pass-core';
 
 // ── People by name, not by account key ─────────────────────────────────────
 //

@@ -2,18 +2,21 @@
 //
 // One ECDH key pair per browser profile. Every vault key this device can open
 // is wrapped to its public half, so whoever can USE the private half can read
-// every vault this browser was admitted to. Three ways to keep it:
+// every vault this browser was admitted to. It is kept one of two ways, and
+// the first key a browser makes is already one of them:
 //
-//   * Unprotected (default). IndexedDB holds a NON-EXTRACTABLE CryptoKey:
-//     script on this origin can use it but no code — including this one — can
-//     read its bytes out, so a copied disk image or a synced profile does not
-//     carry it. Anyone at the unlocked computer can open it, though.
 //   * Passphrase. IndexedDB holds only the pkcs8 bytes sealed under
 //     AES-GCM(PBKDF2-SHA256(passphrase, 600k)). Nothing usable is at rest.
 //   * Passkey. The same sealing, under a key the authenticator derives with
 //     the WebAuthn PRF extension: unlocking is Touch ID, Windows Hello or a
 //     security key, and the sealing key never exists outside the
 //     authenticator until it is asked, with user verification, for it.
+//
+// Browsers set up before that hold an UNPROTECTED key: a NON-EXTRACTABLE
+// CryptoKey in IndexedDB, usable by script on this origin by anyone at the
+// unlocked computer. This module still opens one (`protection()` says
+// `none`), and the lock screen makes its owner protect it before anything
+// else; nothing here creates one any more.
 //
 // Either sealed way, unlocking imports the private half as non-extractable
 // and keeps it in memory only; `lock()`, which the auto-lock timer calls,
@@ -24,10 +27,9 @@ import {
   type DeviceKeyPair,
   fingerprintOf,
   fromB64,
-  generateDeviceKey,
   randomBytes,
   toB64,
-} from './crypto';
+} from '@calimero-apps/pass-core';
 
 const DB_NAME = 'mero-pass';
 const STORE = 'device';
@@ -236,6 +238,13 @@ async function importPrivate(pkcs8: Uint8Array): Promise<CryptoKey> {
   );
 }
 
+/** No key is stored: the browser has to make a protected one first. */
+export class NoDeviceKeyError extends Error {
+  constructor() {
+    super('This browser has no device key yet. Protect one to continue.');
+  }
+}
+
 export class WrongPassphraseError extends Error {
   constructor(message = 'That passphrase does not unlock this device.') {
     super(message);
@@ -277,28 +286,27 @@ export class DeviceKeeper {
     return this.fp;
   }
 
-  /** What guards this device's key at rest. */
-  async protection(): Promise<Protection> {
+  /**
+   * What guards this device's key at rest, or `missing` when there is no key
+   * yet. `none` is a key from before protection was required.
+   */
+  async protection(): Promise<Protection | 'missing'> {
     const stored = await this.store.get();
-    return stored?.kind === 'sealed' ? stored.by : 'none';
+    if (!stored) return 'missing';
+    return stored.kind === 'sealed' ? stored.by : 'none';
   }
 
   /**
-   * Unlock, creating the device key on first use. A passphrase device needs
-   * `passphrase` (else `WrongPassphraseError`); a passkey device asks the
-   * authenticator, so call this from a click.
+   * Unlock. A passphrase device needs `passphrase` (else
+   * `WrongPassphraseError`); a passkey device asks the authenticator, so call
+   * this from a click. With no key stored this throws `NoDeviceKeyError`:
+   * the first key is made protected, by `setPassphrase` or `setPasskey`.
    */
   async unlock(passphrase?: string): Promise<DeviceKeyPair> {
     const stored = await this.store.get();
     let pair: DeviceKeyPair;
     if (!stored) {
-      pair = await generateDeviceKey();
-      await this.store.put({
-        kind: 'plain',
-        privateKey: pair.privateKey,
-        publicRaw: pair.publicRaw,
-        createdAt: Date.now(),
-      });
+      throw new NoDeviceKeyError();
     } else if (stored.kind === 'plain') {
       pair = { privateKey: stored.privateKey, publicRaw: stored.publicRaw };
     } else {
@@ -349,7 +357,11 @@ export class DeviceKeeper {
     this.emit();
   }
 
-  /** Protect this device with a passphrase of at least `MIN_PASSPHRASE`. */
+  /**
+   * Protect this device with a passphrase of at least `MIN_PASSPHRASE`. With
+   * no key stored yet this makes the browser's first key, and `handOver` has
+   * nothing to move.
+   */
   async setPassphrase(passphrase: string, handOver: HandOver): Promise<string> {
     if (passphrase.length < MIN_PASSPHRASE)
       throw new Error(`Use at least ${MIN_PASSPHRASE} characters.`);
@@ -440,7 +452,7 @@ export class DeviceKeeper {
 
   /**
    * Forget this browser's device key. For a forgotten passphrase or a lost
-   * passkey: the next unlock makes a fresh, unprotected key, which has to be
+   * passkey: the browser then makes a fresh protected key, which has to be
    * approved, or restored with a recovery key, to open anything again.
    */
   async reset(): Promise<void> {

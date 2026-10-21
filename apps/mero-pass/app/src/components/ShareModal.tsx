@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useDialogOpen } from '../hooks/useDialogOpen';
 import { copySecret } from '../lib/clipboard';
 import { createShareFragment, shareUrl } from '../lib/shareLink';
-import type { Secret } from '../lib/vaultSession';
+import type { Secret } from '@calimero-apps/pass-core';
 import shell from '../styles/shell.module.css';
 import { CloseIcon } from './icons';
 import styles from './SecretForm.module.css';

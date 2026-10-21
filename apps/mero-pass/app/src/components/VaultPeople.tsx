@@ -8,7 +8,7 @@ import type {
   DeviceRecord,
   MemberRecord,
   VaultSession,
-} from '../lib/vaultSession';
+} from '@calimero-apps/pass-core';
 import { vaultAudience } from '../lib/vaults';
 import shell from '../styles/shell.module.css';
 import { describeError } from '../lib/errors';
@@ -189,8 +189,11 @@ export default function VaultPeople({
           >
             <div className={shell.rowMain}>
               <div className={shell.rowName}>
-                {d.label || 'Browser'}
+                {d.label || (d.kind === 'agent' ? 'Agent' : 'Browser')}
                 {mine ? ' (this browser)' : ''}{' '}
+                {d.kind === 'agent' && (
+                  <span className={shell.badge}>agent</span>
+                )}{' '}
                 {d.revoked && <span className={shell.badge}>revoked</span>}
               </div>
               <div className={shell.rowSub}>

@@ -1,10 +1,16 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
-import { generateVaultKey, unwrapVaultKey, wrapVaultKey } from './crypto';
+import {
+  generateDeviceKey,
+  generateVaultKey,
+  unwrapVaultKey,
+  wrapVaultKey,
+} from '@calimero-apps/pass-core';
 import {
   DeviceKeeper,
   type DeviceStore,
+  NoDeviceKeyError,
   type PasskeyProvider,
   WrongPassphraseError,
 } from './deviceKey';
@@ -23,6 +29,19 @@ function memoryStore(): DeviceStore & { value: unknown } {
     },
   };
   return s;
+}
+
+/** A browser set up before protection was required: an unprotected key. */
+async function legacyStore() {
+  const store = memoryStore();
+  const pair = await generateDeviceKey();
+  await store.put({
+    kind: 'plain',
+    privateKey: pair.privateKey,
+    publicRaw: pair.publicRaw,
+    createdAt: 0,
+  });
+  return store;
 }
 
 /** An authenticator whose PRF is HMAC under a secret it never reveals. */
@@ -50,9 +69,23 @@ function fakePasskeys(): PasskeyProvider & { uses: number } {
 }
 
 describe('DeviceKeeper', () => {
-  it('creates a key on first unlock and reuses it after a lock', async () => {
+  it('never makes an unprotected key: the first one is sealed', async () => {
     const store = memoryStore();
     const keeper = new DeviceKeeper(store);
+    expect(await keeper.protection()).toBe('missing');
+    await expect(keeper.unlock()).rejects.toBeInstanceOf(NoDeviceKeyError);
+    expect(store.value).toBeUndefined();
+
+    let handedOver = false;
+    await keeper.setPassphrase('correct horse', async () => {
+      handedOver = true;
+    });
+    expect(handedOver).toBe(true);
+    expect(await keeper.protection()).toBe('passphrase');
+  }, 20_000);
+
+  it('still opens a key from before protection was required', async () => {
+    const keeper = new DeviceKeeper(await legacyStore());
     const first = await keeper.unlock();
     const fp = keeper.fingerprint;
     keeper.lock();
@@ -112,8 +145,7 @@ describe('DeviceKeeper', () => {
   });
 
   it('keeps the old key when the hand-over fails', async () => {
-    const store = memoryStore();
-    const keeper = new DeviceKeeper(store);
+    const keeper = new DeviceKeeper(await legacyStore());
     await keeper.unlock();
     const before = keeper.fingerprint;
     await expect(
@@ -125,15 +157,16 @@ describe('DeviceKeeper', () => {
     expect(keeper.fingerprint).toBe(before);
   });
 
-  it('reset forgets the key, and the next unlock makes a new one', async () => {
+  it('reset forgets the key, and the next one is protected again', async () => {
     const store = memoryStore();
     const keeper = new DeviceKeeper(store);
     await keeper.setPassphrase('correct horse', async () => {});
     const before = keeper.fingerprint;
     await keeper.reset();
     expect(keeper.isUnlocked).toBe(false);
-    await keeper.unlock();
+    expect(await keeper.protection()).toBe('missing');
+    await keeper.setPassphrase('battery staple', async () => {});
     expect(keeper.fingerprint).not.toBe(before);
-    expect(await keeper.protection()).toBe('none');
-  });
+    expect(await keeper.protection()).toBe('passphrase');
+  }, 20_000);
 });

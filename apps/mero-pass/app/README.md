@@ -48,6 +48,6 @@ Run these from this directory (`apps/mero-pass/app`):
 | `src/pages/security`          | Device key, auto-lock, approvals and Log out              |
 | `src/pages/share`             | Opening a share link (needs no node and no login)         |
 | `src/components/AppShell.tsx` | The signed-in frame: side rail, top bar, phone nav drawer |
-| `src/lib`                     | Crypto, device key, invites, clipboard, theme             |
+| `src/lib`                     | Device key, recovery key, invites, clipboard, theme       |
 | `src/auth`                    | Sign-out and desktop bootstrap                            |
 | `src/generated`               | The typed contract client (`pnpm codegen`)                |

@@ -6,7 +6,7 @@ import {
   toB64,
   unwrapVaultKey,
   wrapVaultKey,
-} from './crypto';
+} from '@calimero-apps/pass-core';
 import {
   RecoveryCodeError,
   createRecoveryKey,

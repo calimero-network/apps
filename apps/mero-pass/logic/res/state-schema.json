@@ -55,7 +55,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "`browser` for a browser's device key; `recovery` for an account's\noffline recovery key, whose private half exists only on paper."
+          "doc": "`browser` for a browser's device key; `recovery` for an account's\noffline recovery key, whose private half exists only on paper; `agent`\nfor the key of software acting for its account, admitted by an admin."
         },
         {
           "name": "node_device",

@@ -30,6 +30,10 @@ export default defineConfig({
         replacement: here('./session.mock.ts'),
       },
       {
+        find: /.*\/components\/LockGate$/,
+        replacement: here('./lockGate.mock.tsx'),
+      },
+      {
         find: /.*\/hooks\/useApplicationId$/,
         replacement: here('./hooks.mock.ts'),
       },

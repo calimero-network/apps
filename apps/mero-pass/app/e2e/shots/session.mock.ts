@@ -2,7 +2,7 @@
 // decrypted. The real hook needs a node, a device key and wraps; the pages
 // only need what it returns.
 import { VARIANT } from './fixtures';
-import type { DeviceRecord, Secret } from '../../src/lib/vaultSession';
+import type { DeviceRecord, Secret } from '@calimero-apps/pass-core';
 
 const ME = 'a'.repeat(64);
 const ANA = 'b'.repeat(64);
@@ -148,8 +148,8 @@ const VIEW = {
   awaitingApproval: waiting,
   holders:
     VARIANT === 'personal'
-      ? { browsers: 1, recovery: 0 }
-      : { browsers: 3, recovery: 1 },
+      ? { browsers: 1, recovery: 0, agents: 0 }
+      : { browsers: 3, recovery: 1, agents: 0 },
   reload: async () => {},
 };
 

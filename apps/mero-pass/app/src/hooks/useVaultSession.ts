@@ -10,7 +10,7 @@ import {
   type Secret,
   type SessionState,
   VaultSession,
-} from '../lib/vaultSession';
+} from '@calimero-apps/pass-core';
 import { vaultAudience } from '../lib/vaults';
 import { useDeviceUnlocked } from './useDeviceLock';
 import { describeError, isTransient } from '../lib/errors';
@@ -27,7 +27,7 @@ export interface VaultSessionView {
   /** This device waits for approval, not just for a key holder to come by. */
   awaitingApproval: boolean;
   /** Devices holding the current key; see `VaultSession.holders`. */
-  holders: { browsers: number; recovery: number } | null;
+  holders: { browsers: number; recovery: number; agents: number } | null;
   reload: () => Promise<void>;
   /** Try opening again after a failure that did not clear on its own. */
   retry: () => void;
