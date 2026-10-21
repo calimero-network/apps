@@ -151,4 +151,76 @@ final class SpaceFlowTests: XCTestCase {
             XCTAssertEqual(error as? SpaceDirectoryError, .noRelay)
         }
     }
+
+    // MARK: A saved space the relay can't serve right now
+
+    /// Launch with a saved space, as a restored Cloud session does.
+    private func launch(_ transport: FakeTransport) async -> AppState {
+        let defaults = isolatedDefaults()
+        SpacePreferences(defaults: defaults).space = SpaceSelection(contextId: Fixtures.context, displayName: "Fran")
+        let app = AppState(
+            client: await signedInClient(), preferences: SpacePreferences(defaults: defaults),
+            makeTransport: { _ in transport }, makeDirectory: { _ in FakeDirectory() })
+        app.syncDelay = 0
+        await app.restore()
+        return app
+    }
+
+    /// 2026-10-21: the relay's hostname stopped resolving. Not reaching the
+    /// space is not "you have no space": it is offered back, not replaced.
+    func testAnUnreachableSavedSpaceIsOfferedBackNotTreatedAsMissing() async throws {
+        let transport = Fixtures.transport()
+        transport.failures["get_space"] = MeroError.network("A server with the specified hostname could not be found.")
+        let app = await launch(transport)
+
+        XCTAssertEqual(app.phase, .choosingSpace)
+        XCTAssertEqual(app.unreachableSpace, SpaceSelection(contextId: Fixtures.context, displayName: "Fran"))
+        let error = try XCTUnwrap(app.spaceError)
+        XCTAssertFalse(error.contains("member"), "a failed read says nothing about membership: \(error)")
+        XCTAssertTrue(error.contains("Can't reach your relay"), error)
+
+        // The relay is back: one tap reopens the same space.
+        transport.failures = [:]
+        await app.retryUnreachableSpace()
+        XCTAssertEqual(app.phase, .ready)
+        XCTAssertNil(app.unreachableSpace)
+        XCTAssertNil(app.spaceError)
+        XCTAssertEqual(app.space?.contextId, Fixtures.context)
+    }
+
+    func testARelayThatCannotServeYetIsAlsoRetryable() async {
+        let transport = Fixtures.transport()
+        transport.failures["get_space"] = MeroError.http(
+            HTTPError(status: 503, statusText: "Service Unavailable", url: "", headers: [:]))
+        let app = await launch(transport)
+        XCTAssertNotNil(app.unreachableSpace)
+    }
+
+    /// The retry goes with the error it came with: a retry that is then
+    /// refused shows the refusal alone, not a stale "Try again".
+    func testARetryThatIsRefusedDropsTheRetry() async throws {
+        let transport = Fixtures.transport()
+        transport.failures["get_space"] = MeroError.network("The network connection was lost.")
+        let app = await launch(transport)
+        XCTAssertNotNil(app.unreachableSpace)
+
+        transport.failures["get_space"] = MeroError.http(
+            HTTPError(status: 403, statusText: "Forbidden", url: "", headers: [:]))
+        await app.retryUnreachableSpace()
+        XCTAssertNil(app.unreachableSpace)
+        let error = try XCTUnwrap(app.spaceError)
+        XCTAssertTrue(error.contains("member"), error)
+    }
+
+    /// A refusal is an answer: that one still points at membership, with no retry.
+    func testARefusedSavedSpaceStillAsksAboutMembership() async throws {
+        let transport = Fixtures.transport()
+        transport.failures["get_space"] = MeroError.http(
+            HTTPError(status: 403, statusText: "Forbidden", url: "", headers: [:]))
+        let app = await launch(transport)
+        XCTAssertEqual(app.phase, .choosingSpace)
+        XCTAssertNil(app.unreachableSpace)
+        let error = try XCTUnwrap(app.spaceError)
+        XCTAssertTrue(error.contains("member"), error)
+    }
 }

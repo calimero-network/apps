@@ -36,6 +36,14 @@ struct SpaceSetupView: View {
                             .accessibilityIdentifier("spaceError")
                     }
 
+                    if app.unreachableSpace != nil {
+                        LoadingButton(
+                            title: "Try again", systemImage: "arrow.clockwise", isLoading: app.isOpeningSpace,
+                            action: { Task { await app.retryUnreachableSpace() } })
+                            .disabled(isBusy)
+                            .accessibilityIdentifier("retrySpaceButton")
+                    }
+
                     SectionLabel(title: "Join with an invite")
                     joinCard
 
