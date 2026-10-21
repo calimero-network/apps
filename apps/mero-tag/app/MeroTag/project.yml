@@ -10,13 +10,15 @@ options:
 packages:
   # The official Calimero Swift SDK (MeroKit + MeroKitUI): Cloud sign-in,
   # the relay, and the node admin API / JSON-RPC used by node sign-in.
-  # Pinned to a release (0.2.0 brings typed login failures and
-  # MeroError.callFailureReason), not `master`, so an unreleased SDK change
+  # Pinned to a release (0.3.0 brings typed login failures,
+  # MeroError.callFailureReason, and an account whose relay is dead or whose
+  # listing failed reported as such, never as empty), not `master`, so an
+  # unreleased SDK change
   # can't break the build. To build against a local checkout instead, swap
   # `url`/`from` for `path: ../../../swift-sdk` — but never commit that.
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    from: 0.2.0
+    from: 0.3.0
 
 targets:
   MeroTag:
