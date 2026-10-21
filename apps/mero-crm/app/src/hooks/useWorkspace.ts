@@ -103,6 +103,13 @@ export interface UseWorkspaceReturn {
   applicationId: string | null;
   /** True while the node is still being asked which installed app this is. */
   resolvingApplicationId: boolean;
+  /** The workspace list has not answered for this app yet. On an account the
+   *  id itself lands from the registry after sign-in, so until then too. An
+   *  empty list meanwhile is "not asked yet", not "no workspaces". */
+  namespacesPending: boolean;
+  /** The workspace list failed: an empty list is not "no workspaces" either. */
+  namespacesFailed: boolean;
+  retryNamespaces: () => void;
 
   // namespaces
   namespaces: Namespace[];
@@ -198,6 +205,12 @@ export function useWorkspace(): UseWorkspaceReturn {
   } = useNamespacesForApplication(applicationId);
   // The list reads `[]` until the node answers, and again on every scope change.
   const nsListed = useAnswered(nsLoading, nsError, [mero, applicationId]);
+  // On a node a null id is final (the app is not installed), and nothing is
+  // listed under it. On an account it only means the provider has not heard
+  // from the registry yet: offering "Create workspace" then would tell an
+  // account that has workspaces it has none, and creating one founds a duplicate.
+  const namespacesPending =
+    !nsListed && !nsError && (applicationId !== null || isDelegated);
   const { createNamespaceInvitation, loading: inviteLoading } =
     useCreateNamespaceInvitation();
   const { setMemberMetadata } = useSetMemberMetadata();
@@ -755,6 +768,9 @@ export function useWorkspace(): UseWorkspaceReturn {
     dismissSyncing,
     applicationId,
     resolvingApplicationId,
+    namespacesPending,
+    namespacesFailed: !!nsError && !nsListed,
+    retryNamespaces: () => void refetchNamespaces(),
     namespaces,
     activeNs,
     resolvingCallback,

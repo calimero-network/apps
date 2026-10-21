@@ -11,9 +11,10 @@
  * and tested beside it.)
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetAccountId } from "../../api/identity";
+import { readLastVisit, rememberTeam } from "../../utils/lastVisit";
 
 const NS = "a1".repeat(32);
 const ME = "d4".repeat(32);
@@ -41,7 +42,9 @@ const stub = vi.hoisted(() => {
     listNamespacesForApplication: vi.fn(),
   };
   const showToast = vi.fn();
-  return { admin, rawAdmin, showToast };
+  // The registry-derived id lands after sign-in; a test may hold it back.
+  const session = { applicationId: "app-from-registry" as string | null };
+  return { admin, rawAdmin, showToast, session };
 });
 
 vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
@@ -50,7 +53,7 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
     admin: stub.admin,
     mero: { admin: stub.rawAdmin },
     isDelegated: true,
-    applicationId: "app-from-registry",
+    applicationId: stub.session.applicationId,
     isAuthenticated: true,
     isLoading: false,
     logout: vi.fn(),
@@ -78,11 +81,53 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   resetAccountId();
+  stub.session.applicationId = "app-from-registry";
   stub.admin.getNodeIdentity.mockResolvedValue({ accountId: ME });
   stub.admin.listGroupMembers.mockResolvedValue({ members: [{ identity: ME, role: "Admin" }] });
   stub.admin.listNamespacesForApplication.mockResolvedValue([]);
   stub.admin.createNamespace.mockResolvedValue({ namespaceId: NS, haEnabled: true });
   stub.admin.createNamespaceInvitation.mockResolvedValue({ invitation: SIGNED });
+});
+
+describe("an account whose application id has not landed yet", () => {
+  it("waits for it instead of reading an empty list as no teams", async () => {
+    stub.session.applicationId = null;
+    rememberTeam(undefined, NS);
+    stub.admin.listNamespacesForApplication.mockResolvedValue([
+      { namespaceId: NS, targetApplicationId: "app-from-registry", name: "Design" },
+    ]);
+    const page = () => (
+      <MemoryRouter initialEntries={[{ pathname: "/teams", state: { resume: true } }]}>
+        <Routes>
+          <Route path="/teams" element={<TeamsPage />} />
+          <Route path="/teams/:teamId" element={<p>team page</p>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const view = render(page());
+    // Nothing can be listed for no application: no "no teams", and the team
+    // you had open is not forgotten.
+    await act(async () => {});
+    expect(screen.queryByTestId("empty-teams")).toBeNull();
+    expect(readLastVisit(undefined).team).toBe(NS);
+
+    stub.session.applicationId = "app-from-registry";
+    view.rerender(page());
+    // The remembered team, still listed, is the one opened.
+    await screen.findByText("team page");
+    expect(stub.admin.listNamespacesForApplication).toHaveBeenCalledWith("app-from-registry");
+  });
+
+  it("does not found a team without one", async () => {
+    stub.session.applicationId = null;
+    open();
+    fireEvent.change(await screen.findByTestId("new-team-input"), {
+      target: { value: "Design" },
+    });
+    fireEvent.click(screen.getByTestId("create-team-btn"));
+    await waitFor(() => expect(stub.showToast).toHaveBeenCalled());
+    expect(stub.admin.createNamespace).not.toHaveBeenCalled();
+  });
 });
 
 describe("an account creating a team", () => {
