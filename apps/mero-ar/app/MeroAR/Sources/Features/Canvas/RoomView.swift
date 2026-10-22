@@ -1,4 +1,5 @@
 import MeroKit
+import PhotosUI
 import SwiftUI
 import simd
 
@@ -74,6 +75,15 @@ extension Transform {
         return t
     }
 
+    /// How furniture is placed: upright, at real size (scale 1), where the
+    /// placement landed — on the floor (y = 0) unless `keepHeight` (live AR,
+    /// where the camera found a surface).
+    func standing(keepHeight: Bool) -> Transform {
+        var p = position
+        if !keepHeight { p.y = 0 }
+        return .at(p)
+    }
+
     /// An identity transform at `position`.
     static func at(_ position: Vec3) -> Transform {
         Transform(position: position, rotation: Quat(0, 0, 0, 1), scale: Vec3(1, 1, 1))
@@ -97,6 +107,22 @@ enum ObjectKind: String, CaseIterable, Identifiable {
     }
 
     static func symbol(for kind: String) -> String { ObjectKind(rawValue: kind)?.symbol ?? "cube.fill" }
+
+    /// The icon for any object: its furniture piece, a photo, or its shape.
+    static func symbol(for data: ObjectData) -> String {
+        if let piece = data.furniture { return piece.symbol }
+        if data.kind == "image" { return "photo.artframe" }
+        return symbol(for: data.kind)
+    }
+}
+
+/// What the library hands back to place.
+enum LibraryChoice {
+    case shape(ObjectKind, color: String)
+    case label(String, color: String)
+    case furniture(FurnitureItem)
+    /// A photo's bytes, straight from the picker.
+    case photo(Data)
 }
 
 // MARK: - The editor (shared chrome)
@@ -124,6 +150,9 @@ struct RoomEditor<Canvas: View>: View {
     @State private var lastAdd = Date.distantPast
     @State private var floorPlan = false
     @State private var showScan = false
+    #if canImport(UIKit)
+    @ObservedObject private var pictures = PictureCache.shared
+    #endif
 
     var body: some View {
         ZStack {
@@ -158,8 +187,8 @@ struct RoomEditor<Canvas: View>: View {
             .animation(.easeOut(duration: 0.2), value: store.lastError)
         }
         .sheet(isPresented: $showLibrary) {
-            ObjectLibrary { kind, color, content in place(kind, color: color, content: content) }
-                .presentationDetents([.height(430)])
+            ObjectLibrary(canAddPhotos: service.hasBearerSession) { choice in place(choice) }
+                .presentationDetents([.large, .medium])
                 .presentationBackground(.ultraThinMaterial)
                 .presentationCornerRadius(32)
         }
@@ -205,16 +234,24 @@ struct RoomEditor<Canvas: View>: View {
         .onChange(of: store.comments) { _, _ in resync() }
         .onChange(of: store.presence) { _, _ in resync() }
         .onChange(of: selected) { _, _ in resync() }
+        #if canImport(UIKit)
+        .onChange(of: pictures.version) { _, _ in resync() }
+        #endif
     }
 
     private func resync() {
         if let id = selected, store.objects[id] == nil { selected = nil }
+        #if canImport(UIKit)
+        for object in store.objects.values where object.data.kind == "image" {
+            if let blob = object.data.blobId { pictures.request(blob, service: service) }
+        }
+        #endif
         controller.sync(
             objects: store.sortedObjects, selected: selected, presence: Array(store.presence.values),
             comments: store.comments, me: store.memberId)
     }
 
-    private func place(_ kind: ObjectKind, color: String, content: String?) {
+    private func place(_ choice: LibraryChoice) {
         guard Date().timeIntervalSince(lastAdd) > 0.8 else { return }
         lastAdd = Date()
         showLibrary = false
@@ -224,8 +261,36 @@ struct RoomEditor<Canvas: View>: View {
             return
         }
         Haptics.success()
-        Task { await store.addObject(kind: kind.rawValue, content: content, transform: transform, color: color) }
+        switch choice {
+        case .shape(let kind, let color):
+            Task { await store.addObject(kind: kind.rawValue, transform: transform, color: color) }
+        case .label(let text, let color):
+            Task { await store.addObject(kind: ObjectKind.text.rawValue, content: text, transform: transform, color: color) }
+        case .furniture(let piece):
+            Task {
+                await store.addObject(
+                    data: ObjectData(furniture: piece), transform: standing(transform), color: piece.defaultColor)
+            }
+        case .photo(let data):
+            #if canImport(UIKit)
+            status = "Hanging your photo…"
+            Task {
+                guard let prepared = await Task.detached(operation: { PictureCache.prepare(data) }).value else {
+                    store.lastError = "That photo couldn't be read. Try another one."
+                    return
+                }
+                await store.addPicture(
+                    jpeg: prepared.jpeg, width: prepared.width, height: prepared.height, transform: standing(transform))
+                if store.lastError == nil { status = "Photo hung for everyone here" }
+            }
+            #endif
+        }
     }
+
+    /// Furniture stands upright at real size: on the floor in the 3D room, at
+    /// the surface the camera found in live AR. Not the ×3 the preview gives
+    /// tabletop shapes.
+    private func standing(_ transform: Transform) -> Transform { transform.standing(keepHeight: isLiveAR) }
 
     // MARK: The 3D room
 
@@ -246,6 +311,15 @@ struct RoomEditor<Canvas: View>: View {
                     tryTheSampleRoom()
                 } label: {
                     Label("Try a sample room", systemImage: "sofa")
+                }
+            }
+            if store.canEdit, let model = store.roomModel,
+                model.objects.contains(where: { FurnitureItem.forScanCategory($0.category) != nil })
+            {
+                Button {
+                    makeScanMovable()
+                } label: {
+                    Label("Make scanned furniture movable", systemImage: "hand.draw")
                 }
             }
             if store.roomModel != nil && !isLiveAR {
@@ -276,6 +350,17 @@ struct RoomEditor<Canvas: View>: View {
         }
         .accessibilityLabel("Room")
         .accessibilityIdentifier("roomMenuButton")
+    }
+
+    private func makeScanMovable() {
+        Haptics.tap()
+        Task {
+            let count = await store.makeScannedFurnitureMovable()
+            if count > 0 {
+                Haptics.success()
+                status = "\(count) piece\(count == 1 ? "" : "s") of furniture can be moved now"
+            }
+        }
     }
 
     private func tryTheSampleRoom() {
@@ -525,9 +610,9 @@ private struct Inspector: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                IconTile(systemName: ObjectKind.symbol(for: object.data.kind), size: 40, gradient: true)
+                IconTile(systemName: ObjectKind.symbol(for: object.data), size: 40, gradient: true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(object.data.kind == "text" ? (object.data.content ?? "Text") : object.data.kind.capitalized)
+                    Text(object.data.displayTitle)
                         .font(.system(size: 16, weight: .bold)).foregroundStyle(Theme.text).lineLimit(1)
                     Text(lockedByOther ? "Locked by \(store.name(of: object.lockedBy ?? ""))" : "Placed by \(store.name(of: object.createdBy))")
                         .font(.system(size: 12.5)).foregroundStyle(lockedByOther ? Theme.warning : Theme.textFaint)
@@ -621,68 +706,128 @@ private struct Inspector: View {
 
 // MARK: - Object library
 
-/// Pick a shape (and a colour) to place.
+/// Pick furniture, a photo, a shape or a label to place.
 private struct ObjectLibrary: View {
-    let place: (ObjectKind, String, String?) -> Void
+    /// Photos travel as blobs, which need the relay's Bearer session.
+    let canAddPhotos: Bool
+    let place: (LibraryChoice) -> Void
     @State private var color = Theme.objectColorHex
     @State private var text = ""
+    @State private var photo: PhotosPickerItem?
+    @State private var loadingPhoto = false
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SheetHeader(title: "Add to the room", subtitle: "Everyone in the room sees it at once.")
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(ObjectKind.allCases.filter { $0 != .text }) { kind in
-                    Button {
-                        place(kind, color, nil)
-                    } label: {
-                        VStack(spacing: 10) {
-                            Image(systemName: kind.symbol)
-                                .font(.system(size: 26, weight: .semibold))
-                                .foregroundStyle(Color(hexString: color))
-                            Text(kind.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                SheetHeader(title: "Add to the room", subtitle: "Everyone in the room sees it at once.")
+
+                Eyebrow(text: "Furniture")
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(FurnitureItem.allCases) { piece in
+                        tile(title: piece.title, symbol: piece.symbol, tint: Theme.text, id: "place-furniture-\(piece.rawValue)") {
+                            place(.furniture(piece))
                         }
-                        .frame(maxWidth: .infinity, minHeight: 86)
-                        .glass(cornerRadius: 20)
                     }
-                    .buttonStyle(PressableStyle())
-                    .accessibilityIdentifier("place-\(kind.rawValue)")
                 }
-            }
-            HStack(spacing: 10) {
-                TextInput(placeholder: "Add a 3D label", text: $text, icon: "textformat", identifier: "labelInput")
-                    .submitLabel(.done)
-                    .onSubmit {
-                        if !text.trimmingCharacters(in: .whitespaces).isEmpty { place(.text, color, text) }
+
+                Eyebrow(text: "Your photos")
+                photoRow
+
+                Eyebrow(text: "Shapes and labels")
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(ObjectKind.allCases.filter { $0 != .text }) { kind in
+                        tile(title: kind.title, symbol: kind.symbol, tint: Color(hexString: color), id: "place-\(kind.rawValue)") {
+                            place(.shape(kind, color: color))
+                        }
                     }
-                Button {
-                    place(.text, color, text)
-                } label: {
-                    Image(systemName: "arrow.up")
                 }
-                .buttonStyle(CircleButtonStyle(size: 54, active: true))
-                .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
-                .accessibilityLabel("Place label")
-                .accessibilityIdentifier("place-text")
-            }
-            HStack(spacing: 12) {
-                ForEach(Theme.objectColors, id: \.self) { hex in
+                HStack(spacing: 10) {
+                    TextInput(placeholder: "Add a 3D label", text: $text, icon: "textformat", identifier: "labelInput")
+                        .submitLabel(.done)
+                        .onSubmit {
+                            if !text.trimmingCharacters(in: .whitespaces).isEmpty { place(.label(text, color: color)) }
+                        }
                     Button {
-                        Haptics.soft()
-                        color = hex
+                        place(.label(text, color: color))
                     } label: {
-                        Circle().fill(Color(hexString: hex)).frame(width: 30, height: 30)
-                            .overlay(Circle().strokeBorder(.white, lineWidth: color == hex ? 2.5 : 0))
+                        Image(systemName: "arrow.up")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Colour \(hex)")
+                    .buttonStyle(CircleButtonStyle(size: 54, active: true))
+                    .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityLabel("Place label")
+                    .accessibilityIdentifier("place-text")
+                }
+                HStack(spacing: 12) {
+                    ForEach(Theme.objectColors, id: \.self) { hex in
+                        Button {
+                            Haptics.soft()
+                            color = hex
+                        } label: {
+                            Circle().fill(Color(hexString: hex)).frame(width: 30, height: 30)
+                                .overlay(Circle().strokeBorder(.white, lineWidth: color == hex ? 2.5 : 0))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Colour \(hex)")
+                    }
                 }
             }
-            Spacer(minLength: 0)
+            .padding(24)
         }
-        .padding(24)
         .preferredColorScheme(.dark)
+        .onChange(of: photo) { _, item in
+            guard let item else { return }
+            loadingPhoto = true
+            Task {
+                let data = try? await item.loadTransferable(type: Data.self)
+                loadingPhoto = false
+                photo = nil
+                if let data { place(.photo(data)) }
+            }
+        }
+    }
+
+    @ViewBuilder private var photoRow: some View {
+        if canAddPhotos {
+            PhotosPicker(selection: $photo, matching: .images) {
+                HStack(spacing: 14) {
+                    IconTile(systemName: "photo.on.rectangle.angled", size: 44, gradient: true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Hang a photo").font(Theme.title(17)).foregroundStyle(Theme.text)
+                        Text("Framed on the wall, for everyone in the room")
+                            .font(.system(size: 13)).foregroundStyle(Theme.textFaint)
+                    }
+                    Spacer()
+                    if loadingPhoto { ProgressView().tint(Theme.textDim) }
+                }
+                .padding(14)
+                .glass(cornerRadius: 20)
+            }
+            .buttonStyle(PressableStyle())
+            .accessibilityIdentifier("place-photo")
+        } else {
+            Callout(
+                tone: .info, title: "Photos need a live connection",
+                message: "Your relay's session isn't up yet, so photos can't be shared. Furniture and shapes still work.")
+        }
+    }
+
+    private func tile(title: String, symbol: String, tint: Color, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(height: 28)
+                Text(title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Theme.text)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity, minHeight: 86)
+            .glass(cornerRadius: 20)
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityIdentifier(id)
     }
 }
 

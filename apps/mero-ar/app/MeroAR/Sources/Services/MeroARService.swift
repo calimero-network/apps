@@ -307,7 +307,10 @@ public final class MeroARService: @unchecked Sendable {
     /// Fetch the room's shared world map through the SDK blob API, naming the
     /// context so the node can find a blob a peer holds. A blob id is hex
     /// (core#3691) and used verbatim, never re-encoded.
-    public func downloadWorldMap(blobId: String) async throws -> Data {
+    public func downloadWorldMap(blobId: String) async throws -> Data { try await downloadBlob(blobId: blobId) }
+
+    /// Fetch any blob of this room (a world map, a photo), naming the context.
+    public func downloadBlob(blobId: String) async throws -> Data {
         guard let mero else { throw MeroARError.readsUnavailable }
         return try await mero.admin.getBlob(blobId, contextId: contextId)
     }

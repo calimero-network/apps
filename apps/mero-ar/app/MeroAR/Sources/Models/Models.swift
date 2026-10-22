@@ -58,16 +58,17 @@ public struct Transform: Codable, Equatable {
 /// kind-tagged object data. Optional fields are omitted when nil (matches the
 /// contract's per-variant fields: cube/sphere/arrow/marker carry none).
 public struct ObjectData: Codable, Equatable {
-    public var kind: String                 // cube | sphere | arrow | marker | text | image
+    public var kind: String                 // cube | sphere | arrow | marker | text | image | furniture
     public var content: String?             // text
     public var blobId: String?              // image
     public var naturalWidth: Int?           // image
     public var naturalHeight: Int?          // image
+    public var item: String?                // furniture: a ``FurnitureItem`` raw value
 
     public init(kind: String, content: String? = nil, blobId: String? = nil,
-                naturalWidth: Int? = nil, naturalHeight: Int? = nil) {
+                naturalWidth: Int? = nil, naturalHeight: Int? = nil, item: String? = nil) {
         self.kind = kind; self.content = content; self.blobId = blobId
-        self.naturalWidth = naturalWidth; self.naturalHeight = naturalHeight
+        self.naturalWidth = naturalWidth; self.naturalHeight = naturalHeight; self.item = item
     }
 }
 

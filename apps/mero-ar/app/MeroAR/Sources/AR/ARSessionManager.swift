@@ -90,7 +90,7 @@ public final class ARSessionManager: NSObject, ObservableObject, @preconcurrency
             signatures[id] = nil
         }
         for obj in objects {
-            let signature = "\(obj.data.kind)|\(obj.color)|\(obj.data.content ?? "")|\(obj.id == selected)"
+            let signature = PreviewScene.signature(obj, selected: obj.id == selected)
             if let entity = entities[obj.id], signatures[obj.id] == signature {
                 entity.move(
                     to: RealityKit.Transform(matrix: obj.transform.matrix), relativeTo: rootAnchor, duration: 0.25)
@@ -121,7 +121,55 @@ public final class ARSessionManager: NSObject, ObservableObject, @preconcurrency
         }
     }
 
+    /// A furniture piece or a framed photo, at real size, from its catalogue parts.
+    private func makeFurnitureEntity(for obj: SceneObject, parts: [FurniturePart], selected: Bool) -> ModelEntity {
+        let entity = ModelEntity()
+        var photo: TextureResource?
+        if let blob = obj.data.blobId, let cg = PictureCache.shared.image(for: blob)?.cgImage {
+            photo = try? TextureResource.generate(from: cg, options: .init(semantic: .color))
+        }
+        for part in parts {
+            let s = part.size
+            let mesh: MeshResource
+            switch part.shape {
+            case .box: mesh = .generateBox(size: s, cornerRadius: min(0.02, min(s.x, s.y, s.z) * 0.2))
+            case .sphere: mesh = .generateSphere(radius: s.x / 2)
+            case .cylinder:
+                if #available(iOS 18.0, *) {
+                    mesh = .generateCylinder(height: s.y, radius: s.x / 2)
+                } else {
+                    mesh = .generateBox(size: s, cornerRadius: s.x * 0.45)
+                }
+            }
+            let material: RealityKit.Material
+            if part.role == .art, let photo {
+                var unlit = UnlitMaterial()
+                unlit.color = .init(texture: .init(photo))
+                material = unlit
+            } else {
+                var pbr = PhysicallyBasedMaterial()
+                pbr.baseColor = .init(tint: Self.color(from: part.role.hex ?? obj.color))
+                pbr.roughness = .init(floatLiteral: part.role == .screen ? 0.15 : 0.7)
+                pbr.metallic = 0.0
+                if selected, part.role == .primary {
+                    pbr.emissiveColor = .init(color: UIColor.white.withAlphaComponent(0.35))
+                }
+                material = pbr
+            }
+            let child = ModelEntity(mesh: mesh, materials: [material])
+            child.position = part.centre
+            entity.addChild(child)
+        }
+        entity.transform = RealityKit.Transform(matrix: obj.transform.matrix)
+        entity.generateCollisionShapes(recursive: true)
+        entity.name = obj.id
+        return entity
+    }
+
     private func makeEntity(for obj: SceneObject, selected: Bool) -> ModelEntity {
+        if let parts = obj.data.furnitureParts {
+            return makeFurnitureEntity(for: obj, parts: parts, selected: selected)
+        }
         let mesh: MeshResource
         switch obj.data.kind {
         case "sphere": mesh = .generateSphere(radius: 0.05)

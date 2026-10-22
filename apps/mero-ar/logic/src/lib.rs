@@ -129,6 +129,20 @@ pub mod pure {
         Ok(())
     }
 
+    /// The longest furniture item name the room accepts.
+    pub const MAX_FURNITURE_ITEM_LEN: usize = 32;
+
+    /// A furniture item names a catalogue entry: non-empty, short.
+    pub fn validate_furniture_item(item: &str) -> Result<(), &'static str> {
+        if item.trim().is_empty() {
+            return Err("a furniture object needs an item");
+        }
+        if item.len() > MAX_FURNITURE_ITEM_LEN {
+            return Err("that furniture item name is too long");
+        }
+        Ok(())
+    }
+
     /// The version a newly published scan gets: one past the scan it replaces.
     pub fn next_scan_version(current: Option<u64>) -> u64 {
         current.map_or(1, |v| v.saturating_add(1))
@@ -198,6 +212,12 @@ pub enum ObjectData {
         natural_width: u32,
         #[serde(rename = "naturalHeight", default)]
         natural_height: u32,
+    },
+    /// A piece of furniture from the app's catalogue (`sofa`, `tv`, `picture`…),
+    /// drawn by the client at real size. Last, so borsh keeps every earlier
+    /// variant's tag.
+    Furniture {
+        item: String,
     },
 }
 
@@ -847,6 +867,11 @@ impl MeroAR {
     pub fn add_object(&mut self, object: SceneObject) -> app::Result<String> {
         self.require_editor()?;
         let id = object.id.clone();
+        if let ObjectData::Furniture { item } = &object.data {
+            if let Err(reason) = pure::validate_furniture_item(item) {
+                app::bail!("{}", reason);
+            }
+        }
         if let ObjectData::Image { blob_id, .. } = &object.data {
             if let Ok(b) = blob_id.parse::<BlobId>() {
                 sdk_env::blob_announce_to_context(b.as_ref(), &sdk_env::context_id());
@@ -1069,6 +1094,33 @@ mod tests {
     #[test]
     fn lower_version_rejected() {
         assert!(!should_replace(3, 10, 2, 9999));
+    }
+
+    #[test]
+    fn furniture_item_must_be_named() {
+        assert!(validate_furniture_item("sofa").is_ok());
+        assert!(validate_furniture_item("").is_err());
+        assert!(validate_furniture_item("   ").is_err());
+        assert!(validate_furniture_item(&"x".repeat(MAX_FURNITURE_ITEM_LEN)).is_ok());
+        assert!(validate_furniture_item(&"x".repeat(MAX_FURNITURE_ITEM_LEN + 1)).is_err());
+    }
+
+    #[test]
+    fn furniture_wire_shape() {
+        let data = super::ObjectData::Furniture { item: "sofa".to_owned() };
+        let json = calimero_sdk::serde_json::to_string(&data).unwrap();
+        assert_eq!(json, r#"{"kind":"furniture","item":"sofa"}"#);
+        let back: super::ObjectData = calimero_sdk::serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, super::ObjectData::Furniture { item } if item == "sofa"));
+    }
+
+    #[test]
+    fn furniture_keeps_earlier_borsh_tags() {
+        // Adding a variant must not shift the tags of objects already stored.
+        let cube = calimero_sdk::borsh::to_vec(&super::ObjectData::Cube).unwrap();
+        assert_eq!(cube, vec![0]);
+        let furniture = calimero_sdk::borsh::to_vec(&super::ObjectData::Furniture { item: "tv".into() }).unwrap();
+        assert_eq!(furniture[0], 6);
     }
 
     #[test]
