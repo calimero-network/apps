@@ -37,7 +37,8 @@ A branch matching several rules deploys if any of them is `true`, so `main`
 deploys and nothing else does. Vercel does not even start a deployment for a PR
 push, so there is no clone and no ignore step to pay for. A PR is checked by
 CI (`ci.yml` builds and tests every app it reaches), not by a preview. To look
-at a branch on Vercel, deploy it by hand with `vercel` from `apps/<app>/app`.
+at a branch on Vercel, deploy it by hand from `apps/<app>/app` with
+`vercel deploy -b VERCEL_FORCE_BUILD=1`, which the ignore step always builds.
 
 **Only the apps a push reaches.** Each `vercel.json` also sets
 
@@ -48,16 +49,21 @@ at a branch on Vercel, deploy it by hand with `vercel` from `apps/<app>/app`.
 which diffs the push against the project's last successful deploy
 (`VERCEL_GIT_PREVIOUS_SHA`) and skips the build unless the app's `app/`
 directory, a workspace package it imports, its resolution in `pnpm-lock.yaml`
-or the catalog, the root `package.json` or `tsconfig.base.json` changed. It uses
-the same rules as CI's frontend scope (`scripts/ci-scope.py`,
-`scripts/lockfile-fanout.py`). A skipped deploy shows as *Canceled* in the
+or the catalog, the root `package.json` (anything but `scripts`) or
+`tsconfig.base.json` changed. It uses the same rules as CI's frontend scope
+(`scripts/ci-scope.py`, `scripts/lockfile-fanout.py`), except that
+`packages/e2e-node`, the test harness no app's `src/` imports, reaches no app.
+Editing the ignore and scope scripts themselves rebuilds nothing: after fixing a
+wrongly skipped app, redeploy it from the dashboard. A skipped deploy shows as *Canceled* in the
 dashboard, and the previous deploy keeps serving. Anything the script cannot
 prove (no previous deploy, an unfetchable commit, an error) builds. It also
 skips any ref other than `main`, in case a branch reaches it anyway.
 
-A catalog bump (mero-js, mero-react, vite) still rebuilds every app, because it
-changes every app's bundle. That is the bulk of what is left of the bill, one
-build per app per bump merged.
+Moving any catalog pin still rebuilds every app: mero-js, mero-react and vite
+change every bundle, and a test-only pin (vitest, playwright) rewrites the
+shared lockfile maps the same way, which the script cannot tell apart safely.
+That is the bulk of what is left of the bill, one build per app per bump merged,
+so batching dependency bumps into fewer merges is the next lever.
 
 `check-vercel-output.sh` fails an app whose `vercel.json` lacks either setting.
 The dashboard's own *Ignored Build Step* setting must stay at its default

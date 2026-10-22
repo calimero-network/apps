@@ -47,9 +47,14 @@ def workspace(tmp: pathlib.Path) -> pathlib.Path:
     pj("packages/join-sync", {"name": "@calimero-apps/join-sync"})
     pj("packages/invite", {"name": "@calimero-apps/invite",
                            "dependencies": {"@calimero-apps/join-sync": "workspace:*"}})
+    pj("packages/e2e-node", {"name": "@calimero-apps/e2e-node"})
     pj("apps/mero-forum/app", {"name": "mero-forum",
-                               "dependencies": {"@calimero-apps/invite": "workspace:*"}})
-    pj("apps/mero-chat/app", {"name": "mero-chat", "dependencies": {"react": "catalog:"}})
+                               "dependencies": {"@calimero-apps/invite": "workspace:*"},
+                               "devDependencies": {"@calimero-apps/e2e-node": "workspace:*"}})
+    pj("apps/mero-chat/app", {"name": "mero-chat", "dependencies": {"react": "catalog:"},
+                              "devDependencies": {"@calimero-apps/e2e-node": "workspace:*"}})
+    (tmp / "package.json").write_text(json.dumps(
+        {"name": "root", "scripts": {"build": "pnpm -r build"}, "packageManager": "pnpm@9.6.0"}))
     return tmp
 
 
@@ -75,6 +80,12 @@ with tempfile.TemporaryDirectory() as t:
     check("a lockfile change to a package this app does not import",
           builds(CHAT, "pnpm-lock.yaml", lock=["packages/invite"]), False)
     check("a catalog addition (fan-out empty)", builds(FORUM, "pnpm-workspace.yaml", catalog=[]), False)
+    check("the e2e harness package", builds(FORUM, "packages/e2e-node/src/journey.ts"), False)
+    check("the e2e harness package's lockfile importer",
+          builds(FORUM, "pnpm-lock.yaml", lock=["packages/e2e-node"]), False)
+    check("the CI scope scripts", builds(FORUM, "scripts/ci-scope.py",
+                                         "scripts/lockfile-fanout.py",
+                                         "scripts/vercel-ignore-build.py"), False)
     check("nothing changed", builds(FORUM), False)
 
     print("── what must BUILD")
@@ -89,6 +100,16 @@ with tempfile.TemporaryDirectory() as t:
     check("a catalog pin moving", builds(CHAT, "pnpm-workspace.yaml", catalog=["all"]), True)
     for f in sorted(vib.EVERY_APP_FILES):
         check(f"{f} reaches every app", builds(CHAT, f), True)
+
+print("── no app ships a test-only package")
+
+for src in sorted((HERE.parent.parent / "apps").glob("*/app/src")):
+    names = {json.loads((HERE.parent.parent / t / "package.json").read_text())["name"]
+             for t in vib.TEST_ONLY_PACKAGES}
+    hits = [str(f.relative_to(src.parent.parent.parent.parent))
+            for f in src.rglob("*") if f.is_file() and f.suffix in (".ts", ".tsx", ".js", ".jsx")
+            and any(n in f.read_text(errors="replace") for n in names)]
+    check(f"{src.parent.parent.name} src/ imports no test-only package", hits, [])
 
 print("── the script end to end, in a scratch repo")
 
@@ -142,6 +163,30 @@ with tempfile.TemporaryDirectory() as t:
           run(repo, FORUM, VERCEL_GIT_COMMIT_REF="main", VERCEL_GIT_PREVIOUS_SHA=base), vib.SKIP)
     check("main builds with no previous deploy",
           run(repo, FORUM, VERCEL_GIT_COMMIT_REF="main"), vib.BUILD)
+    check("main builds when the previous commit id is malformed",
+          run(repo, FORUM, VERCEL_GIT_COMMIT_REF="main", VERCEL_GIT_PREVIOUS_SHA="--upload-pack=x"),
+          vib.BUILD)
+    check("a forced deploy of a branch builds",
+          run(repo, FORUM, VERCEL_GIT_COMMIT_REF="pr", VERCEL_FORCE_BUILD="1"), vib.BUILD)
+
+    def commit(path: str, body: str, msg: str) -> None:
+        (repo / path).write_text(body)
+        g("-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", msg)
+
+    # The root package.json: a new script reaches no app, a new override does.
+    on_main = dict(VERCEL_GIT_COMMIT_REF="main")
+    before = g("rev-parse", "HEAD")
+    root_pj = json.loads((repo / "package.json").read_text())
+    root_pj["scripts"]["landing:generate"] = "node scripts/landing/generate.mjs"
+    commit("package.json", json.dumps(root_pj), "root: a script")
+    check("a root package.json script reaches no app",
+          run(repo, FORUM, VERCEL_GIT_PREVIOUS_SHA=before, **on_main), vib.SKIP)
+    before = g("rev-parse", "HEAD")
+    root_pj["pnpm"] = {"overrides": {"base-x": "3.0.11"}}
+    commit("package.json", json.dumps(root_pj), "root: an override")
+    check("a root package.json override reaches every app",
+          run(repo, FORUM, VERCEL_GIT_PREVIOUS_SHA=before, **on_main), vib.BUILD)
 
 print("── every app's vercel.json turns off Git deployments of other branches")
 

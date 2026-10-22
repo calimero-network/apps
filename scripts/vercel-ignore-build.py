@@ -35,7 +35,14 @@ copied so the two cannot drift:
     actually moved (scripts/lockfile-fanout.py), which for a catalog bump is all
     of them. A moved `packages/<p>` importer reaches <p>'s dependents, as a
     change to <p>'s own files does.
-  * The root `package.json`, `tsconfig.base.json` and this script reach every app.
+  * The root `package.json` (anything but its `scripts`) and `tsconfig.base.json`
+    reach every app.
+  * `packages/e2e-node` reaches no app. It is the browser e2e harness, a
+    devDependency of every app that no app's `src/` imports
+    (TEST_ONLY_PACKAGES).
+  * This script and the CI scope scripts it imports reach no app. Changing
+    them changes no bundle; after fixing a skip that was wrong, redeploy the
+    app that missed out (see FORCE_ENV).
 
 Anything it cannot prove — no previous deploy to compare with, a base commit it
 cannot fetch, a git error — BUILDS. A wasted build costs minutes; a skipped one
@@ -47,8 +54,10 @@ Run the tests: python3 scripts/tests/vercel-ignore-build-test.py
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -60,14 +69,22 @@ BUILD = 1
 
 PRODUCTION_BRANCH = "main"
 
+# Set in a deployment's build environment (`vercel deploy -b VERCEL_FORCE_BUILD=1`)
+# to build whatever the branch and the diff say.
+FORCE_ENV = "VERCEL_FORCE_BUILD"
+
 # Workspace-wide files with no finer-grained rule: any edit reaches every app.
+# The root package.json only counts when more than its `scripts` moved; see
+# why_rebuild().
 EVERY_APP_FILES = {
     "package.json",
     "tsconfig.base.json",
-    "scripts/vercel-ignore-build.py",
-    "scripts/ci-scope.py",
-    "scripts/lockfile-fanout.py",
 }
+
+# Workspace packages that only tests import. A change to one cannot change a
+# bundle, though ci-scope.py rightly maps it to every app for CI.
+# scripts/tests/vercel-ignore-build-test.py fails if an app's src/ imports one.
+TEST_ONLY_PACKAGES = {"packages/e2e-node"}
 
 
 def _load(name: str, file: str):
@@ -104,14 +121,19 @@ def reaches(
         if fanout.ALL in answer:
             return f"{what} changed for every app"
 
-    # Importers arrive as bare dirs (`apps/x/app`, `packages/p`); give each a
-    # file so it maps the way a changed source file does, as ci.yml does.
-    importers = [f"{d}/package.json" for d in pnpm_lock_fanout + catalog_fanout]
+    def shipped(paths: list[str]) -> list[str]:
+        return [p for p in paths
+                if not any(p.startswith(f"{t}/") for t in TEST_ONLY_PACKAGES)]
+
+    # pnpm-lock importers arrive as bare dirs (`apps/x/app`, `packages/p`);
+    # give each a file so it maps the way a changed source file does, as
+    # ci.yml does. catalog_fanout is only ever [] or [ALL], handled above.
+    importers = shipped([f"{d}/package.json" for d in pnpm_lock_fanout])
     if app_dir in ci_scope.scope(importers, root)["frontend_dirs"]:
         return f"the lockfile moved {app_dir} or a package it imports"
 
     # The deployed bundle never reads logic/; see the module docstring.
-    frontend_paths = [p for p in changed if "/logic/" not in p]
+    frontend_paths = shipped([p for p in changed if "/logic/" not in p])
     dirs = ci_scope.scope(frontend_paths, root)["frontend_dirs"]
     if app_dir in dirs:
         return f"{app_dir} or a package it imports changed"
@@ -159,13 +181,11 @@ def ensure(rev: str) -> bool:
     commit's worth of history is enough."""
     if have(rev):
         return True
-    remote = rev.removeprefix("origin/")
-    refspec = f"{remote}:refs/remotes/origin/{remote}" if remote != rev else rev
     for source in ("origin", repo_url()):
         if not source:
             continue
         try:
-            git("fetch", "--quiet", "--depth=1", source, refspec)
+            git("fetch", "--quiet", "--depth=1", "--end-of-options", source, rev)
         except subprocess.CalledProcessError as e:
             print(f"note: cannot fetch {rev} from {source}: {e.stderr.strip()[:200]}")
             continue
@@ -184,6 +204,21 @@ def changed_between(base: str, head: str) -> list[str] | None:
         return None
 
 
+def root_manifest_moved(base: str, head: str) -> bool:
+    """Whether the root package.json changed outside `scripts`, which no app
+    build runs. Unreadable or unparsable counts as moved."""
+    try:
+        b, h = (json.loads(fanout.read_rev(r, "package.json") or "")
+                for r in (base, head))
+    except ValueError:
+        return True
+    if not (isinstance(b, dict) and isinstance(h, dict)):
+        return True
+    b.pop("scripts", None)
+    h.pop("scripts", None)
+    return b != h
+
+
 def why_rebuild(app_dir: str, base: str, head: str, changed: list[str]) -> str | None:
     def lock(kind: str, path: str) -> list[str]:
         if path not in changed:
@@ -192,6 +227,9 @@ def why_rebuild(app_dir: str, base: str, head: str, changed: list[str]) -> str |
         if b is None or h is None:
             return [fanout.ALL]
         return {"pnpm": fanout.pnpm_fanout, "catalog": fanout.catalog_fanout}[kind](b, h)
+
+    if "package.json" in changed and not root_manifest_moved(base, head):
+        changed = [p for p in changed if p != "package.json"]
 
     return reaches(app_dir, changed,
                    lock("pnpm", "pnpm-lock.yaml"),
@@ -204,11 +242,21 @@ def main() -> int:
     head = os.environ.get("VERCEL_GIT_COMMIT_SHA", "").strip() or "HEAD"
     ref = os.environ.get("VERCEL_GIT_COMMIT_REF", "")
 
+    if os.environ.get(FORCE_ENV) == "1":
+        print(f"build: {FORCE_ENV}=1")
+        return BUILD
+
     # Previews are off (see the module docstring). Only an unknown ref falls
     # through to the diff, because that cannot prove it is not production.
     if ref and ref != PRODUCTION_BRANCH:
         print(f"skip: {ref} is not {PRODUCTION_BRANCH}; only {PRODUCTION_BRANCH} deploys")
         return SKIP
+
+    # Vercel sets it; anything but a full commit id is treated as absent
+    # rather than handed to git.
+    if previous and not re.fullmatch(r"[0-9a-f]{40}", previous):
+        print(f"note: ignoring VERCEL_GIT_PREVIOUS_SHA={previous[:60]!r}")
+        previous = ""
 
     if not previous:
         print(f"build: no previous deploy of {app_dir} on this branch to compare with")
