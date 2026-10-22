@@ -17,6 +17,7 @@ public final class SceneStore: ObservableObject {
     @Published public private(set) var roomScan: RoomScanRecord?
     @Published public private(set) var roomModel: RoomModel?
     @Published public private(set) var isPublishingScan = false
+    @Published public private(set) var isUploadingPicture = false
     /// Notes pinned to points in the room, oldest first.
     @Published public private(set) var comments: [SpatialComment] = []
     @Published public private(set) var roles: [MemberRole] = []
@@ -218,13 +219,70 @@ public final class SceneStore: ObservableObject {
     // ── Mutations (optimistic + echo-suppressed) ──────────────────────────────
 
     public func addObject(kind: String, content: String? = nil, transform: Transform, color: String) async {
-        let object = SceneObject(id: UUID().uuidString, data: ObjectData(kind: kind, content: content),
+        await addObject(data: ObjectData(kind: kind, content: content), transform: transform, color: color)
+    }
+
+    @discardableResult
+    public func addObject(data: ObjectData, transform: Transform, color: String) async -> Bool {
+        let object = SceneObject(id: UUID().uuidString, data: data,
                                  transform: transform, color: color, lockedBy: nil,
                                  createdBy: service.memberId,
                                  createdAt: now(), updatedAt: now(), version: 0)
         objects[object.id] = object
         localEchoes.insert(object.id)
-        do { try await service.addObject(object) } catch { await revert(object.id, error) }
+        do {
+            try await service.addObject(object)
+            return true
+        } catch {
+            await revert(object.id, error)
+            return false
+        }
+    }
+
+    /// Hang a photo in the room: upload the JPEG into the room's blob space
+    /// (peers fetch it through the room's context), then add an `image` object
+    /// naming it. Blobs travel over the relay's Bearer session, so without one
+    /// this says so instead of failing somewhere deeper.
+    public func addPicture(jpeg: Data, width: Int, height: Int, transform: Transform) async {
+        guard service.hasBearerSession else {
+            lastError = "Photos need the live connection to your relay, which isn't up yet. Try again in a moment."
+            return
+        }
+        isUploadingPicture = true
+        defer { isUploadingPicture = false }
+        do {
+            let blobId = try await service.uploadBlob(jpeg)
+            PictureCache.shared.seed(blobId: blobId, data: jpeg)
+            await addObject(
+                data: ObjectData(kind: "image", blobId: blobId, naturalWidth: width, naturalHeight: height),
+                transform: transform, color: FurnitureItem.picture.defaultColor)
+        } catch {
+            lastError = message(error)
+        }
+    }
+
+    /// Turn the scan's detected furniture into movable scene objects, then
+    /// share the room again without those static boxes, so everyone sees
+    /// pieces they can drag, turn and repaint. Fixtures with no catalogue piece
+    /// (a sink, stairs) stay part of the room. Returns how many were converted.
+    @discardableResult
+    public func makeScannedFurnitureMovable() async -> Int {
+        guard var model = roomModel else { return 0 }
+        var converted: Set<String> = []
+        for item in model.objects {
+            guard let (data, transform) = FurnitureItem.sceneData(fromScanned: item),
+                let piece = data.furniture
+            else { continue }
+            guard await addObject(data: data, transform: transform, color: piece.defaultColor) else { break }
+            converted.insert(item.id)
+        }
+        guard !converted.isEmpty else {
+            if lastError == nil { lastError = "Nothing in this scan can be made movable." }
+            return 0
+        }
+        model.objects.removeAll { converted.contains($0.id) }
+        _ = await publishRoomScan(model)
+        return converted.count
     }
 
     public func updateTransform(id: String, transform: Transform) async {

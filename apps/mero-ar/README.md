@@ -36,7 +36,11 @@ A dark, spatial design of its own: glass panels over the camera, an aurora
   from the app registry if needed and creates the room; **Join** takes an invite
   link or a room ID.
 - **The room**: a tool dock (Add, Notes, Share scan, People); an object library
-  (cube, sphere, arrow, marker, 3D labels, six colours); an inspector for the
+  with **furniture** at real size (sofa, armchair, chair, dining and coffee
+  tables, bed, bookcase, floor lamp, plant, rug, TV on a media unit, wall TV,
+  picture frame), **your photos** framed on the wall (uploaded as a blob into
+  the room, so every peer sees the picture), and shapes (cube, sphere, arrow,
+  marker, 3D labels, six colours); an inspector for the
   selected object (move, turn, resize, paint, lock, delete); notes pinned in
   space; other people's viewpoints; Apple's coaching overlay while scanning.
 - **People**: roles (admin / editor / viewer), editor toggles for admins, and
@@ -70,6 +74,11 @@ room, and decorate it together.
   add them from the library, **drag them across the floor** (snapped to the
   floor, kept inside the walls), and turn, resize, paint, lock or delete them
   with the inspector. Everyone's edits sync as before.
+- **Make scanned furniture movable** (Room menu): the sofa, chairs, tables,
+  bed, storage and TV the scan detected become catalogue furniture placed,
+  turned and sized as scanned, and the room is shared again without the static
+  boxes, so anyone can rearrange the real room's furniture. Fixtures (sinks,
+  stairs, a fireplace) stay part of the room.
 - **Live AR:** with a 3D room shared, the dock offers *3D room*; *Align to my
   room* shares the AR world map so devices in the same physical room line up.
 - **Try a sample room:** a built-in 5.2 × 4.2 m living room (walls, a door,

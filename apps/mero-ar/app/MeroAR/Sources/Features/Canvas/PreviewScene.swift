@@ -32,6 +32,8 @@ final class PreviewScene: NSObject, ObservableObject, RoomCanvas {
     private let root = SCNNode()
     private var nodes: [String: SCNNode] = [:]
     private var signatures: [String: String] = [:]
+    /// Accessibility names of furniture and photos, which have no single geometry to name them by.
+    private var labels: [String: String] = [:]
     private var overlays = SCNNode()
     private var spin: Float = 0
 
@@ -149,9 +151,10 @@ final class PreviewScene: NSObject, ObservableObject, RoomCanvas {
             node.removeFromParentNode()
             nodes[id] = nil
             signatures[id] = nil
+            labels[id] = nil
         }
         for object in objects {
-            let signature = "\(object.data.kind)|\(object.color)|\(object.data.content ?? "")|\(object.id == selected)"
+            let signature = Self.signature(object, selected: object.id == selected)
             let node: SCNNode
             if let existing = nodes[object.id], signatures[object.id] == signature {
                 node = existing
@@ -164,6 +167,7 @@ final class PreviewScene: NSObject, ObservableObject, RoomCanvas {
                 }
                 nodes[object.id] = node
                 signatures[object.id] = signature
+                labels[object.id] = object.data.furnitureParts == nil ? nil : object.data.displayTitle
                 root.addChildNode(node)
             }
             let t = object.transform
@@ -206,7 +210,69 @@ final class PreviewScene: NSObject, ObservableObject, RoomCanvas {
         }
     }
 
+    /// What a node is drawn from: a change in any of it rebuilds the node.
+    static func signature(_ object: SceneObject, selected: Bool) -> String {
+        var loaded = false
+        #if canImport(UIKit)
+        if let blob = object.data.blobId { loaded = PictureCache.shared.image(for: blob) != nil }
+        #endif
+        return "\(object.data.kind)|\(object.data.item ?? "")|\(object.color)|\(object.data.content ?? "")|\(selected)|\(loaded)"
+    }
+
+    /// A furniture piece or a framed photo, built from its catalogue parts.
+    static func makeFurnitureNode(for object: SceneObject, parts: [FurniturePart], selected: Bool) -> SCNNode {
+        let node = SCNNode()
+        node.name = object.id
+        var photo: Any?
+        #if canImport(UIKit)
+        if let blob = object.data.blobId { photo = PictureCache.shared.image(for: blob) }
+        #endif
+        for part in parts {
+            let s = part.size
+            let geometry: SCNGeometry
+            switch part.shape {
+            case .box:
+                geometry = SCNBox(
+                    width: CGFloat(s.x), height: CGFloat(s.y), length: CGFloat(s.z),
+                    chamferRadius: CGFloat(min(0.02, min(s.x, s.y, s.z) * 0.2)))
+            case .cylinder: geometry = SCNCylinder(radius: CGFloat(s.x / 2), height: CGFloat(s.y))
+            case .sphere: geometry = SCNSphere(radius: CGFloat(s.x / 2))
+            }
+            let material = SCNMaterial()
+            material.lightingModel = .physicallyBased
+            material.diffuse.contents = PlatformColor(hexString: part.role.hex ?? object.color)
+            material.roughness.contents = part.role == .screen ? 0.15 : 0.7
+            material.metalness.contents = 0.0
+            if part.role == .art, let photo {
+                material.diffuse.contents = photo
+                material.lightingModel = .constant
+            }
+            if part.role == .screen {
+                material.emission.contents = PlatformColor(red: 0.08, green: 0.1, blue: 0.2, alpha: 1)
+            }
+            if selected, part.role == .primary {
+                material.emission.contents = PlatformColor(hexString: object.color).withAlphaComponent(0.35)
+            }
+            geometry.materials = [material]
+            let child = SCNNode(geometry: geometry)
+            child.simdPosition = part.centre
+            node.addChildNode(child)
+        }
+        if selected {
+            let footprint = parts.reduce(Float(0.1)) { max($0, abs($1.centre.x) + $1.size.x / 2, abs($1.centre.z) + $1.size.z / 2) }
+            let ring = SCNNode(geometry: SCNTorus(ringRadius: CGFloat(footprint * 1.08), pipeRadius: 0.01))
+            ring.geometry?.firstMaterial?.emission.contents = PlatformColor.white
+            ring.geometry?.firstMaterial?.diffuse.contents = PlatformColor.white
+            ring.position.y = 0.004
+            node.addChildNode(ring)
+        }
+        return node
+    }
+
     static func makeNode(for object: SceneObject, selected: Bool) -> SCNNode {
+        if let parts = object.data.furnitureParts {
+            return makeFurnitureNode(for: object, parts: parts, selected: selected)
+        }
         let geometry: SCNGeometry
         switch object.data.kind {
         case "sphere": geometry = SCNSphere(radius: 0.06)
@@ -441,7 +507,7 @@ final class PreviewScene: NSObject, ObservableObject, RoomCanvas {
         nodes.compactMap { id, node in
             let p = view.projectPoint(node.presentation.worldPosition)
             guard p.z > 0, p.z < 1 else { return nil }
-            let kind = node.childNodes.first?.geometry.map { Self.kindName(of: $0) } ?? "Object"
+            let kind = labels[id] ?? node.childNodes.first?.geometry.map { Self.kindName(of: $0) } ?? "Object"
             return (id, kind, CGRect(x: CGFloat(p.x) - 22, y: CGFloat(p.y) - 22, width: 44, height: 44))
         }
         .sorted { $0.id < $1.id }
