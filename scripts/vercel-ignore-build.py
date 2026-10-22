@@ -35,14 +35,14 @@ copied so the two cannot drift:
     actually moved (scripts/lockfile-fanout.py), which for a catalog bump is all
     of them. A moved `packages/<p>` importer reaches <p>'s dependents, as a
     change to <p>'s own files does.
-  * The root `package.json` (anything but its `scripts`) and `tsconfig.base.json`
-    reach every app.
-  * `packages/e2e-node` reaches no app. It is the browser e2e harness, a
-    devDependency of every app that no app's `src/` imports
-    (TEST_ONLY_PACKAGES).
+  * The root `package.json` and `tsconfig.base.json` reach every app, except
+    a root `package.json` edit confined to scripts no install runs.
+  * `packages/e2e-node` reaches no app. It is the browser e2e harness: apps
+    list it only as a devDependency and import it only from tests and
+    Playwright configs (TEST_ONLY_PACKAGES).
   * This script and the CI scope scripts it imports reach no app. Changing
     them changes no bundle; after fixing a skip that was wrong, redeploy the
-    app that missed out (see FORCE_ENV).
+    app that missed out from the dashboard.
 
 Anything it cannot prove — no previous deploy to compare with, a base commit it
 cannot fetch, a git error — BUILDS. A wasted build costs minutes; a skipped one
@@ -83,8 +83,11 @@ EVERY_APP_FILES = {
 
 # Workspace packages that only tests import. A change to one cannot change a
 # bundle, though ci-scope.py rightly maps it to every app for CI.
-# scripts/tests/vercel-ignore-build-test.py fails if an app's src/ imports one.
+# scripts/tests/vercel-ignore-build-test.py fails if anything shipped depends on
+# or imports one.
 TEST_ONLY_PACKAGES = {"packages/e2e-node"}
+
+LOGIC_RE = re.compile(r"^apps/[^/]+/logic/")
 
 
 def _load(name: str, file: str):
@@ -133,7 +136,7 @@ def reaches(
         return f"the lockfile moved {app_dir} or a package it imports"
 
     # The deployed bundle never reads logic/; see the module docstring.
-    frontend_paths = shipped([p for p in changed if "/logic/" not in p])
+    frontend_paths = shipped([p for p in changed if not LOGIC_RE.match(p)])
     dirs = ci_scope.scope(frontend_paths, root)["frontend_dirs"]
     if app_dir in dirs:
         return f"{app_dir} or a package it imports changed"
@@ -204,8 +207,13 @@ def changed_between(base: str, head: str) -> list[str] | None:
         return None
 
 
+# Root scripts pnpm runs during Vercel's install; editing one can change a build.
+INSTALL_SCRIPTS = {"preinstall", "install", "postinstall",
+                   "preprepare", "prepare", "postprepare", "pnpm:devPreinstall"}
+
+
 def root_manifest_moved(base: str, head: str) -> bool:
-    """Whether the root package.json changed outside `scripts`, which no app
+    """Whether the root package.json changed outside the `scripts` no app
     build runs. Unreadable or unparsable counts as moved."""
     try:
         b, h = (json.loads(fanout.read_rev(r, "package.json") or "")
@@ -214,8 +222,12 @@ def root_manifest_moved(base: str, head: str) -> bool:
         return True
     if not (isinstance(b, dict) and isinstance(h, dict)):
         return True
-    b.pop("scripts", None)
-    h.pop("scripts", None)
+    for m in (b, h):
+        scripts = m.pop("scripts", None)
+        if isinstance(scripts, dict):
+            m["scripts"] = {k: v for k, v in scripts.items() if k in INSTALL_SCRIPTS}
+        elif scripts is not None:
+            m["scripts"] = scripts
     return b != h
 
 

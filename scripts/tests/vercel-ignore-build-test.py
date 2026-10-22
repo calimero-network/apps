@@ -93,6 +93,8 @@ with tempfile.TemporaryDirectory() as t:
     check("this app's vercel.json", builds(FORUM, "apps/mero-forum/app/vercel.json"), True)
     check("a package it imports directly", builds(FORUM, "packages/invite/src/index.ts"), True)
     check("a package it imports transitively", builds(FORUM, "packages/join-sync/src/a.ts"), True)
+    check("a src/logic directory in its frontend, which is not the contract",
+          builds(FORUM, "apps/mero-forum/app/src/logic/state.ts"), True)
     check("a lockfile change in its own importer", builds(FORUM, "pnpm-lock.yaml", lock=[FORUM]), True)
     check("a lockfile change to a package it imports",
           builds(FORUM, "pnpm-lock.yaml", lock=["packages/join-sync"]), True)
@@ -101,15 +103,41 @@ with tempfile.TemporaryDirectory() as t:
     for f in sorted(vib.EVERY_APP_FILES):
         check(f"{f} reaches every app", builds(CHAT, f), True)
 
-print("── no app ships a test-only package")
+print("── nothing shipped depends on or imports a test-only package")
 
-for src in sorted((HERE.parent.parent / "apps").glob("*/app/src")):
-    names = {json.loads((HERE.parent.parent / t / "package.json").read_text())["name"]
+REPO = HERE.parent.parent
+TEST_ONLY = {json.loads((REPO / t / "package.json").read_text())["name"]: t
              for t in vib.TEST_ONLY_PACKAGES}
-    hits = [str(f.relative_to(src.parent.parent.parent.parent))
-            for f in src.rglob("*") if f.is_file() and f.suffix in (".ts", ".tsx", ".js", ".jsx")
-            and any(n in f.read_text(errors="replace") for n in names)]
-    check(f"{src.parent.parent.name} src/ imports no test-only package", hits, [])
+# Where an app may use the harness: its tests and their Playwright configs.
+TEST_PARTS = {"e2e", "tests", "test", "__tests__", "node_modules", "dist"}
+
+# An app may list one as a devDependency; a shipped package may not list one at
+# all, or a change to the harness would reach that package's bundle.
+for pj in sorted(REPO.glob("apps/*/app/package.json")) + sorted(REPO.glob("packages/*/package.json")):
+    member = str(pj.parent.relative_to(REPO))
+    if member in vib.TEST_ONLY_PACKAGES:
+        continue
+    m = json.loads(pj.read_text())
+    fields = ["dependencies", "peerDependencies", "optionalDependencies"]
+    if member.startswith("packages/"):
+        fields.append("devDependencies")
+    listed = sorted(n for f in fields for n in (m.get(f) or {}) if n in TEST_ONLY)
+    check(f"{member} lists no test-only package where it ships", listed, [])
+
+needles = list(TEST_ONLY) + sorted(vib.TEST_ONLY_PACKAGES)
+for app in sorted(REPO.glob("apps/*/app")):
+    hits = []
+    for f in app.rglob("*"):
+        rel = f.relative_to(app)
+        if (not f.is_file() or TEST_PARTS & set(rel.parts[:-1])
+                or f.name.startswith("playwright") or f.name == "package.json"
+                or ".test." in f.name or ".spec." in f.name
+                or f.suffix not in (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx",
+                                    ".mjs", ".cjs", ".html", ".json")):
+            continue
+        if any(n in f.read_text(errors="replace") for n in needles):
+            hits.append(str(rel))
+    check(f"{app.parent.name} ships nothing that imports a test-only package", sorted(hits), [])
 
 print("── the script end to end, in a scratch repo")
 
@@ -182,6 +210,11 @@ with tempfile.TemporaryDirectory() as t:
     commit("package.json", json.dumps(root_pj), "root: a script")
     check("a root package.json script reaches no app",
           run(repo, FORUM, VERCEL_GIT_PREVIOUS_SHA=before, **on_main), vib.SKIP)
+    before = g("rev-parse", "HEAD")
+    root_pj["scripts"]["postinstall"] = "node scripts/patch.mjs"
+    commit("package.json", json.dumps(root_pj), "root: an install hook")
+    check("a root install hook reaches every app",
+          run(repo, FORUM, VERCEL_GIT_PREVIOUS_SHA=before, **on_main), vib.BUILD)
     before = g("rev-parse", "HEAD")
     root_pj["pnpm"] = {"overrides": {"base-x": "3.0.11"}}
     commit("package.json", json.dumps(root_pj), "root: an override")

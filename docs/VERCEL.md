@@ -49,10 +49,11 @@ at a branch on Vercel, deploy it by hand from `apps/<app>/app` with
 which diffs the push against the project's last successful deploy
 (`VERCEL_GIT_PREVIOUS_SHA`) and skips the build unless the app's `app/`
 directory, a workspace package it imports, its resolution in `pnpm-lock.yaml`
-or the catalog, the root `package.json` (anything but `scripts`) or
-`tsconfig.base.json` changed. It uses the same rules as CI's frontend scope
+or the catalog, the root `package.json` (anything but scripts no install runs)
+or `tsconfig.base.json` changed. It uses the same rules as CI's frontend scope
 (`scripts/ci-scope.py`, `scripts/lockfile-fanout.py`), except that
-`packages/e2e-node`, the test harness no app's `src/` imports, reaches no app.
+`packages/e2e-node`, the test harness only tests and Playwright configs import,
+reaches no app.
 Editing the ignore and scope scripts themselves rebuilds nothing: after fixing a
 wrongly skipped app, redeploy it from the dashboard. A skipped deploy shows as *Canceled* in the
 dashboard, and the previous deploy keeps serving. Anything the script cannot
@@ -62,8 +63,10 @@ skips any ref other than `main`, in case a branch reaches it anyway.
 Moving any catalog pin still rebuilds every app: mero-js, mero-react and vite
 change every bundle, and a test-only pin (vitest, playwright) rewrites the
 shared lockfile maps the same way, which the script cannot tell apart safely.
-That is the bulk of what is left of the bill, one build per app per bump merged,
-so batching dependency bumps into fewer merges is the next lever.
+So does any dependency bump that drops a version from the lockfile's shared
+`packages:`/`snapshots:` maps, even one only a single app used. That is the bulk
+of what is left of the bill, one build per app per bump merged, so batching
+dependency bumps into fewer merges is the next lever.
 
 `check-vercel-output.sh` fails an app whose `vercel.json` lacks either setting.
 The dashboard's own *Ignored Build Step* setting must stay at its default
