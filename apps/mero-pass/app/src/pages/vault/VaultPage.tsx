@@ -16,6 +16,7 @@ import HealthPanel from '../../components/HealthPanel';
 import ImportExport from '../../components/ImportExport';
 import InviteModal from '../../components/InviteModal';
 import LockGate from '../../components/LockGate';
+import ConnectService from '../../components/ConnectService';
 import SecretForm from '../../components/SecretForm';
 import ShareModal from '../../components/ShareModal';
 import VaultPeople from '../../components/VaultPeople';
@@ -144,6 +145,8 @@ function VaultBody() {
   const [toast, setToast] = useState<string | null>(null);
   const [editing, setEditing] = useState<Secret | null>(null);
   const [adding, setAdding] = useState<Kind | null>(null);
+  // Connecting a service (X) for this vault's agent.
+  const [connecting, setConnecting] = useState(false);
   const [sharing, setSharing] = useState<Secret | null>(null);
   const [minting, setMinting] = useState(false);
   const [invite, setInvite] = useState<{
@@ -316,7 +319,7 @@ function VaultBody() {
 
   const heading =
     view.type === 'kind'
-      ? (CATEGORIES.find((c) => c.id === view.kind)?.label ?? 'Items')
+      ? CATEGORIES.find((c) => c.id === view.kind)?.label ?? 'Items'
       : view.type === 'tag'
         ? `Tagged “${view.tag}”`
         : 'All items';
@@ -375,6 +378,16 @@ function VaultBody() {
               {minting ? 'Minting…' : 'Invite'}
             </button>
           )}
+          <button
+            type="button"
+            className={shell.btnGhost}
+            onClick={() => setConnecting(true)}
+            disabled={!canWrite}
+            title="Keys mero-bot uses to reach X for you"
+            data-testid="connect-agent-service"
+          >
+            Connect X
+          </button>
           <button
             type="button"
             className={shell.btn}
@@ -650,6 +663,20 @@ function VaultBody() {
           onSuccess={(id) => {
             setAdding(null);
             setEditing(null);
+            if (id) setSelected(id);
+            void reload();
+          }}
+        />
+      )}
+
+      {session && connecting && (
+        <ConnectService
+          session={session}
+          secrets={secrets}
+          open
+          onClose={() => setConnecting(false)}
+          onSuccess={(id) => {
+            setConnecting(false);
             if (id) setSelected(id);
             void reload();
           }}
