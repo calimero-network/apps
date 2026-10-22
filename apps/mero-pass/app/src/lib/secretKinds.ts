@@ -91,6 +91,9 @@ export const FIELDS: Record<Kind, FieldSpec[]> = {
     { key: 'base_url', label: 'API base URL', half: true },
     { key: 'api_key', label: 'API key', secret: true },
     { key: 'api_secret', label: 'API secret', secret: true },
+    // For a service that signs each request with a user's token too (X).
+    { key: 'access_token', label: 'Access token', secret: true },
+    { key: 'access_token_secret', label: 'Access token secret', secret: true },
     { key: 'notes', label: 'Notes', multiline: true },
   ],
   oauth2: [
