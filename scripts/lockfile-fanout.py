@@ -122,9 +122,10 @@ def cargo_fanout(base: str, head: str) -> list[str]:
 # ── pnpm-lock.yaml ──────────────────────────────────────────────────────────
 
 # Sections small enough, and global enough, that any difference at all is a
-# workspace-wide change: the lockfile format itself, install settings, and
-# forced overrides.
-PNPM_GLOBAL_SECTIONS = ("lockfileVersion", "settings", "overrides")
+# workspace-wide change: the lockfile format itself, install settings, forced
+# overrides, the install hooks file and dependency patches.
+PNPM_GLOBAL_SECTIONS = ("lockfileVersion", "settings", "overrides",
+                        "pnpmfileChecksum", "patchedDependencies")
 # Shared maps where an ADDITION is harmless but a REMOVAL or REWRITE is not.
 #
 # `catalogs:` belongs here and not above: pnpm records only the catalog entries
@@ -191,11 +192,14 @@ def pnpm_fanout(base: str, head: str) -> list[str]:
     touched: list[str] = []
     for path, block in after_imp.items():
         if before_imp.get(path) != block:
-            # An importer outside apps/ — the workspace root — carries the
-            # dev tooling every app's checks run through, and maps to no app
-            # in the matrix. Escalate rather than let it be dropped silently,
-            # which is exactly what the caller's path→app mapping would do.
-            if not path.startswith("apps/"):
+            # The workspace root importer carries the dev tooling every app's
+            # checks run through, and maps to no app in the matrix. Escalate
+            # rather than let it be dropped silently, which is exactly what the
+            # caller's path→app mapping would do. A `packages/<p>` importer is
+            # not that: the caller maps it to <p>'s dependents (ci-scope.py),
+            # the same as a change to <p>'s own files. Escalating it rebuilt
+            # every app when one package's devDependencies moved (#610).
+            if not path.startswith(("apps/", "packages/")):
                 return [ALL]
             touched.append(path)
     # An importer that disappeared belongs to an app that is gone; its own app

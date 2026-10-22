@@ -196,6 +196,20 @@ PNPM_ADD_IMPORTER = PNPM_BASE.replace(
   apps/kv-store/app:""",
 )
 
+# A workspace package's own importer (#610 renamed packages/pass-core to
+# packages/mero-pass): the caller maps it to that package's dependents, so it is
+# returned like an app's importer, not escalated like the root's.
+PNPM_ADD_PACKAGE_IMPORTER = PNPM_BASE.replace(
+    """  apps/kv-store/app:""",
+    """  packages/mero-pass:
+    devDependencies:
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+
+  apps/kv-store/app:""",
+)
+
 PNPM_CHANGE_OTHER_IMPORTER = PNPM_BASE.replace(
     """      react:
         specifier: 'catalog:'
@@ -267,6 +281,11 @@ def test_pnpm() -> None:
         "a new app's importer → that app only",
         lf.pnpm_fanout(PNPM_BASE, PNPM_ADD_IMPORTER),
         ["apps/mero-calendar/app"],
+    )
+    check(
+        "a workspace package's importer → that package, not all",
+        lf.pnpm_fanout(PNPM_BASE, PNPM_ADD_PACKAGE_IMPORTER),
+        ["packages/mero-pass"],
     )
     check(
         "a new catalog entry nobody dropped → no fan-out",
