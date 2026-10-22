@@ -35,8 +35,9 @@ copied so the two cannot drift:
     actually moved (scripts/lockfile-fanout.py), which for a catalog bump is all
     of them. A moved `packages/<p>` importer reaches <p>'s dependents, as a
     change to <p>'s own files does.
-  * The root `package.json` and `tsconfig.base.json` reach every app, except
-    a root `package.json` edit confined to scripts no install runs.
+  * The root `package.json`, `tsconfig.base.json`, `.npmrc`, `.pnpmfile.*` and
+    `patches/` reach every app, except
+    a root `package.json` edit confined to scripts that no install runs.
   * `packages/e2e-node` reaches no app. It is the browser e2e harness: apps
     list it only as a devDependency and import it only from tests and
     Playwright configs (TEST_ONLY_PACKAGES).
@@ -74,12 +75,17 @@ PRODUCTION_BRANCH = "main"
 FORCE_ENV = "VERCEL_FORCE_BUILD"
 
 # Workspace-wide files with no finer-grained rule: any edit reaches every app.
-# The root package.json only counts when more than its `scripts` moved; see
-# why_rebuild().
+# The root package.json only counts when more than its non-install `scripts`
+# moved; see root_manifest_moved(). The pnpm config and hook files change how
+# every app installs without necessarily moving the lockfile.
 EVERY_APP_FILES = {
     "package.json",
     "tsconfig.base.json",
+    ".npmrc",
+    ".pnpmfile.cjs",
+    ".pnpmfile.mjs",
 }
+EVERY_APP_DIRS = ("patches/",)
 
 # Workspace packages that only tests import. A change to one cannot change a
 # bundle, though ci-scope.py rightly maps it to every app for CI.
@@ -116,7 +122,7 @@ def reaches(
     when the file did not change.
     """
     for p in changed:
-        if p in EVERY_APP_FILES:
+        if p in EVERY_APP_FILES or p.startswith(EVERY_APP_DIRS):
             return f"{p} changed"
 
     for answer, what in ((pnpm_lock_fanout, "pnpm-lock.yaml"),

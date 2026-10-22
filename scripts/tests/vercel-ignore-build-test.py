@@ -102,6 +102,7 @@ with tempfile.TemporaryDirectory() as t:
     check("a catalog pin moving", builds(CHAT, "pnpm-workspace.yaml", catalog=["all"]), True)
     for f in sorted(vib.EVERY_APP_FILES):
         check(f"{f} reaches every app", builds(CHAT, f), True)
+    check("a dependency patch reaches every app", builds(CHAT, "patches/react@19.2.8.patch"), True)
 
 print("── nothing shipped depends on or imports a test-only package")
 

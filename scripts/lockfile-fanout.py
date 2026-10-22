@@ -122,9 +122,10 @@ def cargo_fanout(base: str, head: str) -> list[str]:
 # ── pnpm-lock.yaml ──────────────────────────────────────────────────────────
 
 # Sections small enough, and global enough, that any difference at all is a
-# workspace-wide change: the lockfile format itself, install settings, and
-# forced overrides.
-PNPM_GLOBAL_SECTIONS = ("lockfileVersion", "settings", "overrides")
+# workspace-wide change: the lockfile format itself, install settings, forced
+# overrides, the install hooks file and dependency patches.
+PNPM_GLOBAL_SECTIONS = ("lockfileVersion", "settings", "overrides",
+                        "pnpmfileChecksum", "patchedDependencies")
 # Shared maps where an ADDITION is harmless but a REMOVAL or REWRITE is not.
 #
 # `catalogs:` belongs here and not above: pnpm records only the catalog entries
