@@ -21,11 +21,25 @@ dashboard has to know is the Root Directory. `scripts/check-vercel-output.sh`
 (run by CI) asserts each declared `outputDirectory` is the directory the build
 actually writes, and that the SPA rewrite is present.
 
-## Only the apps a push touches are built
+## Only `main` deploys, and only the apps it touches
 
 Every project is linked to this one repository, so Vercel's Git integration
 starts a build of **every** app on **every** push, to `main` and to each PR
-branch. Each `vercel.json` therefore sets
+branch. Two settings in each `vercel.json` cut that down.
+
+**No previews.** Git deployments are off for every branch but `main`:
+
+```json
+"git": { "deploymentEnabled": { "**": false, "main": true } }
+```
+
+A branch matching several rules deploys if any of them is `true`, so `main`
+deploys and nothing else does. Vercel does not even start a deployment for a PR
+push, so there is no clone and no ignore step to pay for. A PR is checked by
+CI (`ci.yml` builds and tests every app it reaches), not by a preview. To look
+at a branch on Vercel, deploy it by hand with `vercel` from `apps/<app>/app`.
+
+**Only the apps a push reaches.** Each `vercel.json` also sets
 
 ```json
 "ignoreCommand": "python3 ../../../scripts/vercel-ignore-build.py"
@@ -38,12 +52,16 @@ or the catalog, the root `package.json` or `tsconfig.base.json` changed. It uses
 the same rules as CI's frontend scope (`scripts/ci-scope.py`,
 `scripts/lockfile-fanout.py`). A skipped deploy shows as *Canceled* in the
 dashboard, and the previous deploy keeps serving. Anything the script cannot
-prove (no previous deploy, an unfetchable commit, an error) builds.
+prove (no previous deploy, an unfetchable commit, an error) builds. It also
+skips any ref other than `main`, in case a branch reaches it anyway.
 
-Replayed over `main` from 24 Sep to 11 Oct 2026 (190 commits), this cuts
-4,560 project builds to 807. `check-vercel-output.sh` fails an app whose
-`vercel.json` lacks the `ignoreCommand`. The dashboard's own *Ignored Build Step*
-setting must stay at its default (*Automatic*) so `vercel.json` wins.
+A catalog bump (mero-js, mero-react, vite) still rebuilds every app, because it
+changes every app's bundle. That is the bulk of what is left of the bill, one
+build per app per bump merged.
+
+`check-vercel-output.sh` fails an app whose `vercel.json` lacks either setting.
+The dashboard's own *Ignored Build Step* setting must stay at its default
+(*Automatic*) so `vercel.json` wins.
 
 Two dashboard settings are not expressible in the repo and must be checked by hand:
 

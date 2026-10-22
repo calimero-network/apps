@@ -191,11 +191,14 @@ def pnpm_fanout(base: str, head: str) -> list[str]:
     touched: list[str] = []
     for path, block in after_imp.items():
         if before_imp.get(path) != block:
-            # An importer outside apps/ — the workspace root — carries the
-            # dev tooling every app's checks run through, and maps to no app
-            # in the matrix. Escalate rather than let it be dropped silently,
-            # which is exactly what the caller's path→app mapping would do.
-            if not path.startswith("apps/"):
+            # The workspace root importer carries the dev tooling every app's
+            # checks run through, and maps to no app in the matrix. Escalate
+            # rather than let it be dropped silently, which is exactly what the
+            # caller's path→app mapping would do. A `packages/<p>` importer is
+            # not that: the caller maps it to <p>'s dependents (ci-scope.py),
+            # the same as a change to <p>'s own files. Escalating it rebuilt
+            # every app when one package's devDependencies moved (#610).
+            if not path.startswith(("apps/", "packages/")):
                 return [ALL]
             touched.append(path)
     # An importer that disappeared belongs to an app that is gone; its own app

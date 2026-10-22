@@ -3,6 +3,12 @@
   "framework": "vite",
   "outputDirectory": "dist",
   "ignoreCommand": "python3 ../../../scripts/vercel-ignore-build.py",
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "main": true
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",

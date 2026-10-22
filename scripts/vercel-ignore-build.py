@@ -9,6 +9,12 @@ to `main` and to each PR branch alike. So a one-line change to mero-chess paid
 for twenty full `tsc -b && vite build` runs, nineteen of them producing the
 exact bytes already deployed. That is most of the Vercel build bill.
 
+Only `main` deploys. Each `vercel.json` disables Git deployments for every
+other branch (`git.deploymentEnabled`), so a PR never reaches this script; if
+one does anyway (a branch cut before that setting, a re-linked project), it is
+skipped here too. No preview is worth a build of every app a catalog bump
+touches.
+
 Each `apps/<app>/app/vercel.json` names this script as its `ignoreCommand`.
 Vercel runs it from the project's Root Directory before installing anything:
 
@@ -27,7 +33,8 @@ copied so the two cannot drift:
     (scripts/ci-scope.py).
   * `pnpm-lock.yaml` and `pnpm-workspace.yaml` reach the apps whose resolution
     actually moved (scripts/lockfile-fanout.py), which for a catalog bump is all
-    of them.
+    of them. A moved `packages/<p>` importer reaches <p>'s dependents, as a
+    change to <p>'s own files does.
   * The root `package.json`, `tsconfig.base.json` and this script reach every app.
 
 Anything it cannot prove — no previous deploy to compare with, a base commit it
@@ -96,8 +103,12 @@ def reaches(
                          (catalog_fanout, "pnpm-workspace.yaml")):
         if fanout.ALL in answer:
             return f"{what} changed for every app"
-        if app_dir in answer:
-            return f"{what} changed for {app_dir}"
+
+    # Importers arrive as bare dirs (`apps/x/app`, `packages/p`); give each a
+    # file so it maps the way a changed source file does, as ci.yml does.
+    importers = [f"{d}/package.json" for d in pnpm_lock_fanout + catalog_fanout]
+    if app_dir in ci_scope.scope(importers, root)["frontend_dirs"]:
+        return f"the lockfile moved {app_dir} or a package it imports"
 
     # The deployed bundle never reads logic/; see the module docstring.
     frontend_paths = [p for p in changed if "/logic/" not in p]
@@ -130,9 +141,8 @@ def have(rev: str) -> bool:
 def repo_url() -> str | None:
     """The repository's public URL, from Vercel's own variables.
 
-    Vercel's checkout has no `origin` that main can be fetched from, so a PR's
-    first push could not read main and built every app. The repository is
-    public, so its URL serves main without credentials.
+    Vercel's checkout has no `origin` that an older commit can be fetched from.
+    The repository is public, so its URL serves it without credentials.
     """
     if url := os.environ.get("VERCEL_IGNORE_REPO_URL", "").strip():
         return url
@@ -194,24 +204,11 @@ def main() -> int:
     head = os.environ.get("VERCEL_GIT_COMMIT_SHA", "").strip() or "HEAD"
     ref = os.environ.get("VERCEL_GIT_COMMIT_REF", "")
 
-    # A PR branch previews only the apps the PR itself changes. Compared with
-    # main's tip, a branch that has merged main differs only by its own work, so
-    # an app the PR leaves alone skips even when merging main moved it since the
-    # branch's last deploy. (A branch behind main also counts main's newer
-    # changes here: that over-builds, never under-builds.) If main cannot be
-    # read, fall through to the previous-deploy rule below.
-    if ref and ref != PRODUCTION_BRANCH and ensure(f"origin/{PRODUCTION_BRANCH}"):
-        main_tip = git("rev-parse", f"origin/{PRODUCTION_BRANCH}").strip()
-        vs_main = changed_between(main_tip, head)
-        if vs_main is not None and not why_rebuild(app_dir, main_tip, head, vs_main):
-            print(f"skip: this branch does not change {app_dir} relative to "
-                  f"{PRODUCTION_BRANCH} ({len(vs_main)} files changed elsewhere)")
-            return SKIP
-        if not previous:
-            # A branch's first push has no deploy of its own; the PR changes
-            # this app, so build it.
-            print(f"build: this branch changes {app_dir} relative to {PRODUCTION_BRANCH}")
-            return BUILD
+    # Previews are off (see the module docstring). Only an unknown ref falls
+    # through to the diff, because that cannot prove it is not production.
+    if ref and ref != PRODUCTION_BRANCH:
+        print(f"skip: {ref} is not {PRODUCTION_BRANCH}; only {PRODUCTION_BRANCH} deploys")
+        return SKIP
 
     if not previous:
         print(f"build: no previous deploy of {app_dir} on this branch to compare with")

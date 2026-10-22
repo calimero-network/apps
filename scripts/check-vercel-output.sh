@@ -42,6 +42,12 @@ print(any(r.get('destination')=='/index.html' for r in c.get('rewrites') or []))
 import json
 print(json.load(open('$cfg')).get('ignoreCommand') == 'python3 ../../../scripts/vercel-ignore-build.py')")"
 
+  # Only main deploys. Without this Vercel starts a preview of the app on every
+  # push to every PR branch (docs/VERCEL.md).
+  main_only="$(python3 -c "
+import json
+print(json.load(open('$cfg')).get('git') == {'deploymentEnabled': {'**': False, 'main': True}})")"
+
   if (( BUILD )); then
     pnpm --filter "./$d" build >/tmp/vercel-check-$app.log 2>&1 || {
       printf '  %-19s BUILD FAILED (see /tmp/vercel-check-%s.log)\n' "$app" "$app"; fail=1; continue; }
@@ -57,6 +63,7 @@ print(json.load(open('$cfg')).get('ignoreCommand') == 'python3 ../../../scripts/
     "$app" "$out" "$n" "$has_spa"
   [[ "$has_spa" == "True" ]] || { echo "      ^ missing SPA rewrite"; fail=1; }
   [[ "$has_ignore" == "True" ]] || { echo "      ^ missing ignoreCommand (scripts/vercel-ignore-build.py)"; fail=1; }
+  [[ "$main_only" == "True" ]] || { echo "      ^ git.deploymentEnabled must be {\"**\": false, \"main\": true}"; fail=1; }
 done
 
 exit $fail

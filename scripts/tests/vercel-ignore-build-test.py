@@ -72,6 +72,8 @@ with tempfile.TemporaryDirectory() as t:
     check("a package this app does not import", builds(CHAT, "packages/invite/src/index.ts"), False)
     check("a lockfile change confined to another importer",
           builds(FORUM, "pnpm-lock.yaml", lock=[CHAT]), False)
+    check("a lockfile change to a package this app does not import",
+          builds(CHAT, "pnpm-lock.yaml", lock=["packages/invite"]), False)
     check("a catalog addition (fan-out empty)", builds(FORUM, "pnpm-workspace.yaml", catalog=[]), False)
     check("nothing changed", builds(FORUM), False)
 
@@ -81,6 +83,8 @@ with tempfile.TemporaryDirectory() as t:
     check("a package it imports directly", builds(FORUM, "packages/invite/src/index.ts"), True)
     check("a package it imports transitively", builds(FORUM, "packages/join-sync/src/a.ts"), True)
     check("a lockfile change in its own importer", builds(FORUM, "pnpm-lock.yaml", lock=[FORUM]), True)
+    check("a lockfile change to a package it imports",
+          builds(FORUM, "pnpm-lock.yaml", lock=["packages/join-sync"]), True)
     check("a lockfile change for everyone", builds(FORUM, "pnpm-lock.yaml", lock=["all"]), True)
     check("a catalog pin moving", builds(CHAT, "pnpm-workspace.yaml", catalog=["all"]), True)
     for f in sorted(vib.EVERY_APP_FILES):
@@ -124,39 +128,32 @@ with tempfile.TemporaryDirectory() as t:
     check("builds when the previous commit cannot be fetched",
           run(repo, FORUM, VERCEL_GIT_PREVIOUS_SHA="0" * 40), vib.BUILD)
 
-    # A PR branch that changes chat, then merges main after main changed forum.
-    # Diffed against its previous deploy, forum moved; diffed against main, the
-    # branch only changes chat, so forum's preview is skipped.
-    def commit(path: str, body: str, msg: str) -> str:
-        (repo / path).write_text(body)
-        g("-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
-        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", msg)
-        return g("rev-parse", "HEAD")
+    # Only main deploys. A branch is skipped whatever it changes, even an app
+    # it touches and even with no previous deploy to compare with.
+    check("a branch skips an app it does not change",
+          run(repo, FORUM, VERCEL_GIT_COMMIT_REF="pr", VERCEL_GIT_PREVIOUS_SHA=base), vib.SKIP)
+    check("a branch skips the app it changes",
+          run(repo, CHAT, VERCEL_GIT_COMMIT_REF="pr", VERCEL_GIT_PREVIOUS_SHA=base), vib.SKIP)
+    check("a branch's first push skips",
+          run(repo, CHAT, VERCEL_GIT_COMMIT_REF="pr"), vib.SKIP)
+    check("main builds the app it changes",
+          run(repo, CHAT, VERCEL_GIT_COMMIT_REF="main", VERCEL_GIT_PREVIOUS_SHA=base), vib.BUILD)
+    check("main skips the app it does not change",
+          run(repo, FORUM, VERCEL_GIT_COMMIT_REF="main", VERCEL_GIT_PREVIOUS_SHA=base), vib.SKIP)
+    check("main builds with no previous deploy",
+          run(repo, FORUM, VERCEL_GIT_COMMIT_REF="main"), vib.BUILD)
 
-    g("checkout", "-q", "-b", "pr", base)
-    pr_deploy = commit("apps/mero-chat/app/pr.html", "<p>pr</p>", "pr: chat")
-    g("checkout", "-q", "main")
-    commit("apps/mero-forum/app/index.html", "<p>main</p>", "main: forum")
-    g("update-ref", "refs/remotes/origin/main", "main")
-    g("checkout", "-q", "pr")
-    g("-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit", "main")
-    pr = dict(VERCEL_GIT_COMMIT_REF="pr", VERCEL_GIT_PREVIOUS_SHA=pr_deploy)
+print("── every app's vercel.json turns off Git deployments of other branches")
 
-    check("a PR skips an app only merging main moved",
-          run(repo, FORUM, **pr), vib.SKIP)
-    check("a PR builds the app it changes",
-          run(repo, CHAT, **pr), vib.BUILD)
-    check("a PR's first push skips apps it does not change",
-          run(repo, FORUM, VERCEL_GIT_COMMIT_REF="pr"), vib.SKIP)
-    check("a PR's first push builds the app it changes",
-          run(repo, CHAT, VERCEL_GIT_COMMIT_REF="pr"), vib.BUILD)
-    check("main still diffs against its previous deploy",
-          run(repo, FORUM, VERCEL_GIT_COMMIT_REF="main", VERCEL_GIT_PREVIOUS_SHA=base), vib.BUILD)
+for cfg in sorted((HERE.parent.parent / "apps").glob("*/app/vercel.json")):
+    check(f"{cfg.parent.parent.name} deploys main only",
+          json.loads(cfg.read_text()).get("git"),
+          {"deploymentEnabled": {"**": False, "main": True}})
 
-print("── main read from the repository URL when origin cannot serve it")
+print("── an older commit read from the repository URL when origin cannot serve it")
 
-# Vercel's checkout has no `origin` it can fetch main from, so a PR's first
-# push fell back to building every app. The repository is public: main is read
+# Vercel's checkout has no `origin`, and its clone is shallow, so the previous
+# deploy's commit is often missing. The repository is public: the commit is read
 # from its URL instead. Here a local clone stands in for that URL.
 with tempfile.TemporaryDirectory() as t:
     upstream = workspace(pathlib.Path(t) / "upstream")
@@ -168,25 +165,27 @@ with tempfile.TemporaryDirectory() as t:
         return subprocess.run(["git", "-C", str(cwd), *a], check=True,
                               capture_output=True, text=True).stdout.strip()
 
+    ident = ("-c", "user.name=t", "-c", "user.email=t@t")
     u("init", "-q", "-b", "main")
-    u("-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
-    u("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+    u(*ident, "add", "-A")
+    u(*ident, "commit", "-qm", "base")
+    previous = u("rev-parse", "HEAD")
+    (upstream / "apps/mero-chat/app/index.html").write_text("<p>hi</p>")
+    u(*ident, "add", "-A")
+    u(*ident, "commit", "-qm", "chat")
 
-    # Vercel's view: a one-commit-deep checkout of the PR head, no origin.
+    # Vercel's view: a one-commit-deep checkout of main's head, no origin.
     clone = pathlib.Path(t) / "clone"
-    subprocess.run(["git", "clone", "-q", "--no-local", str(upstream), str(clone)], check=True)
+    subprocess.run(["git", "clone", "-q", "--depth=1", f"file://{upstream}", str(clone)],
+                   check=True)
     u("remote", "remove", "origin", cwd=clone)
-    u("checkout", "-q", "-b", "pr", cwd=clone)
-    (clone / "apps/mero-chat/app/pr.html").write_text("<p>pr</p>")
-    u("-c", "user.name=t", "-c", "user.email=t@t", "add", "-A", cwd=clone)
-    u("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "pr: chat", cwd=clone)
-    u("update-ref", "-d", "refs/remotes/origin/main", cwd=clone)
 
-    first_push = dict(VERCEL_GIT_COMMIT_REF="pr", VERCEL_IGNORE_REPO_URL=str(upstream))
-    check("a PR's first push skips an app it does not change, with no origin",
-          run(clone, FORUM, **first_push), vib.SKIP)
+    on_main = dict(VERCEL_GIT_COMMIT_REF="main", VERCEL_GIT_PREVIOUS_SHA=previous,
+                   VERCEL_IGNORE_REPO_URL=f"file://{upstream}")
+    check("main skips an app it does not change, with no origin",
+          run(clone, FORUM, **on_main), vib.SKIP)
     check("and still builds the app it changes",
-          run(clone, CHAT, **first_push), vib.BUILD)
+          run(clone, CHAT, **on_main), vib.BUILD)
 
 if FAILURES:
     print(f"\n{len(FAILURES)} failed: {', '.join(FAILURES)}")
