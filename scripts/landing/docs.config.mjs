@@ -855,6 +855,73 @@ export const DOCS = {
   },
 
 
+  'mero-board': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'A board here is shaped like the kanban boards you know: lists across, cards down. What is different is that each folder of boards is a Calimero context, held by its members’ own nodes.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'A workspace: the team. Its members can be invited into its folders.' },
+          { term: 'Folder', def: 'One context in the workspace. All of a folder’s boards replicate to everyone who joined it; boards nobody else should see go in another folder.' },
+          { term: 'Board', def: 'A set of lists inside a folder. Any member may rename, reorder or archive it; only its creator may delete it.' },
+          { term: 'List', def: 'A column on a board. Lists are yours to define, and a list holding unarchived cards cannot be deleted.' },
+          { term: 'Card', def: 'A title, description, assignee, due date, labels, a checklist and a comment thread. Any member may edit or move it; only its creator may delete it.' },
+          { term: 'Rank', def: 'A short string that sorts siblings. Moving a card writes a rank between its new neighbours, so two people reordering different cards never collide.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node and pick your node in the popup.' },
+          { title: 'Create a workspace and a folder', body: 'A workspace you own, with one folder in it for the boards your team shares.' },
+          { title: 'Add a board and its lists', body: 'Name the board, then add the columns you work in, in the order you want them.' },
+          { title: 'Add cards and drag them', body: 'File a card in a list, open it for its details, and drag it across as the work moves.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Working with an agent',
+        paragraphs: [
+          'The MCP server exposes a folder’s boards to an AI agent over Model Context Protocol, by talking to your own node. Point it at a workspace with BOARD_NAMESPACE and, optionally, a default folder with BOARD_FOLDER.',
+          'The agent can list boards, read a board, file cards, move them by position, set assignees and due dates, tick checklist items and comment. It never handles ranks: the server reads the board and computes them.',
+          'Ownership is enforced in the contract, not the client: only a board’s or card’s creator may delete it, and only a comment’s author may edit or delete the comment, whether the call comes from the app or an agent.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Boards, lists and cards, keyed by id, with a rank that orders each among its siblings.',
+          'An immutable creator header for each board and card, which is what the delete rule checks.',
+          'Checklist items keyed by id, each with its own done flag and rank.',
+          'A flat label index keyed by card and label together, so concurrent adds converge to one entry.',
+          'Comments, each carrying an immutable author.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'A card jumped back', def: 'A teammate moved it at the same time. Both moves are ranks on the same card, so the later one wins and every node agrees.' },
+          { term: 'A list will not delete', def: 'It still holds unarchived cards. Move or archive them first.' },
+          { term: 'A teammate’s board is stale', def: 'Their node is behind. The board catches up on sync without any action.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'Lists across', body: 'Todo, doing, done: the board every member of the folder replicates, with no service hosting it.' },
+      { title: 'A card moves', body: 'Moving a card writes its list and a rank between its new neighbours, and touches nothing else on it.' },
+      { title: 'A teammate drags one too', body: 'Concurrent moves converge: every node lands on the same order.' },
+      { title: 'An agent files one', body: 'The same board is available over MCP, so an agent can file and move cards for you.' },
+    ],
+  },
+
+
   'mero-pixart': {
     docs: [
       {

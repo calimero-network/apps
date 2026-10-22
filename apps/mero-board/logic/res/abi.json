@@ -1,0 +1,1843 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Board": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "board_headers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "BoardHeader"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "boards",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "BoardRow"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "lists",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ListRow"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "card_headers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CardHeader"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "cards",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CardRow"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "checklist",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ChecklistItemRow"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "labels",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "LabelTag"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Comment"
+            },
+            "crdt_type": "authored_map"
+          }
+        }
+      ]
+    },
+    "BoardDetail": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "board",
+          "type": {
+            "$ref": "BoardView"
+          }
+        },
+        {
+          "name": "lists",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ListView"
+            }
+          },
+          "doc": "Sorted by rank."
+        },
+        {
+          "name": "cards",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CardView"
+            }
+          },
+          "doc": "Every card of the board, archived ones included, sorted by rank;\nfilter `archived` for the board view."
+        }
+      ]
+    },
+    "BoardHeader": {
+      "kind": "record",
+      "doc": "Who created a board. Owned by the creator: only they can delete the board.",
+      "fields": [
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "BoardRow": {
+      "kind": "record",
+      "doc": "A board's shared fields.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "BoardView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The creator's account id (64 hex)."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Unix milliseconds."
+        }
+      ]
+    },
+    "CardDetail": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "card",
+          "type": {
+            "$ref": "CardView"
+          }
+        },
+        {
+          "name": "checklist",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ChecklistItemView"
+            }
+          }
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CommentView"
+            }
+          }
+        }
+      ]
+    },
+    "CardHeader": {
+      "kind": "record",
+      "doc": "Who created a card and on which board. Owned by the creator.",
+      "fields": [
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CardRow": {
+      "kind": "record",
+      "doc": "A card's shared fields.",
+      "fields": [
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "list_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "assignee",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "due_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "CardView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "list_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Empty when the card's shared row is missing."
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "assignee",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "due_at",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "labels",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Sorted."
+        },
+        {
+          "name": "checklist_done",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "checklist_total",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ChecklistItemRow": {
+      "kind": "record",
+      "doc": "One checklist line on a card. Shared.",
+      "fields": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "done",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "ChecklistItemView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "done",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Comment": {
+      "kind": "record",
+      "doc": "A comment on a card. Owned by its author; `thread` is one card's comments.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "edited_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        }
+      ]
+    },
+    "CommentView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "edited_at",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "Event_BoardChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_BoardCreated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_BoardDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CardChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CardCreated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CardDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CardMoved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "list_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ChecklistChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CommentAdded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CommentDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CommentEdited": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ListChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ListCreated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ListDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "LabelTag": {
+      "kind": "record",
+      "doc": "One label on one card, keyed `\"{card_id}\\u{1}{label}\"`.",
+      "fields": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        }
+      ]
+    },
+    "ListRow": {
+      "kind": "record",
+      "doc": "A list (column) on a board. Shared.",
+      "fields": [
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "ListView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "add_checklist_item",
+      "doc": "Add a checklist line to a card and return its id (`item-<ms>-<8 hex>`).\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"text\":\"Book the venue\",\"rank\":null}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_comment",
+      "doc": "Post a comment on a card and return its id (`comment-<ms>-<8 hex>`).\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"body\":\"Venue confirmed.\"}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_label",
+      "doc": "Add a label (1 to 32 characters) to a card. Adding it twice keeps one.\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"label\":\"marketing\"}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "create_board",
+      "doc": "Create a board in this folder and return its id (`board-<ms>-<8 hex>`).\n\n# Examples\n```json\n{\"name\":\"Q4 launch\",\"rank\":null}\n```",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "1 to 64 characters."
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "optional position among the folder's boards; omitted appends last."
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_card",
+      "doc": "Create a card in a list and return its id (`card-<ms>-<8 hex>`).\n\n# Examples\n```json\n{\"board_id\":\"<board id>\",\"list_id\":\"<list id>\",\"title\":\"Write the launch post\",\"description\":null,\"assignee\":null,\"due_at\":null,\"labels\":[\"marketing\"],\"rank\":null}\n```",
+      "params": [
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "list_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "1 to 64 characters."
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "optional free text."
+        },
+        {
+          "name": "assignee",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "optional; conventionally a member's account id."
+        },
+        {
+          "name": "due_at",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true,
+          "doc": "optional unix milliseconds."
+        },
+        {
+          "name": "labels",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "nullable": true,
+          "doc": "optional; each 1 to 32 characters."
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "optional position in the list; omitted appends last."
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_list",
+      "doc": "Add a list (column) to a board and return its id (`list-<ms>-<8 hex>`).\n\n# Examples\n```json\n{\"board_id\":\"<board id>\",\"name\":\"In progress\",\"rank\":null}\n```",
+      "params": [
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "1 to 64 characters."
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "optional position among the board's lists; omitted appends last."
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_board",
+      "doc": "Delete a board with its lists, every card's shared rows, checklist\nitems and labels, and the caller's own card headers and comments. Only\nthe board's creator may delete it. Other people's cards and comments\nbecome unreachable.\n\n# Examples\n```json\n{\"board_id\":\"<board id>\"}\n```",
+      "params": [
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "destructive": true
+    },
+    {
+      "name": "delete_card",
+      "doc": "Delete a card with its checklist, labels and the caller's own comments.\nOnly the card's creator may delete it. Other people's comments are not\nremoved but become unreachable.\n\n# Examples\n```json\n{\"card_id\":\"<card id>\"}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "destructive": true
+    },
+    {
+      "name": "delete_comment",
+      "doc": "Delete a comment. Only its author may delete it.\n\n# Examples\n```json\n{\"comment_id\":\"<comment id>\"}\n```",
+      "params": [
+        {
+          "name": "comment_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "destructive": true
+    },
+    {
+      "name": "delete_list",
+      "doc": "Delete a list. Fails while it still holds an unarchived card.\n\n# Examples\n```json\n{\"list_id\":\"<list id>\"}\n```",
+      "params": [
+        {
+          "name": "list_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "destructive": true
+    },
+    {
+      "name": "edit_comment",
+      "doc": "Replace a comment's text. Only its author may edit it.\n\n# Examples\n```json\n{\"comment_id\":\"<comment id>\",\"body\":\"Venue confirmed for the 12th.\"}\n```",
+      "params": [
+        {
+          "name": "comment_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "get_board",
+      "doc": "A board with its lists and every card (archived ones included, each\nflagged `archived`), both sorted by rank. One call renders a board;\nfilter `archived` for the board view.\n\n# Examples\n```json\n{\"board_id\":\"<board id>\"}\n```",
+      "params": [
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "BoardDetail"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_card",
+      "doc": "One card with its checklist (by rank) and comments (oldest first).\n\n# Examples\n```json\n{\"card_id\":\"<card id>\"}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "CardDetail"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "doc": "Create an empty folder. Runs once, when the folder's context is created.\n\n# Examples\n```json\n{}\n```",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_boards",
+      "doc": "The folder's boards sorted by rank.\n\n# Examples\n```json\n{\"include_archived\":false}\n```",
+      "params": [
+        {
+          "name": "include_archived",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "`false` hides archived boards."
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "BoardView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_cards",
+      "doc": "Cards across the folder, filtered. `null` means no filter. Sorted by\n`(board_id, rank)`.\n\n# Examples\n```json\n{\"board_id\":null,\"list_id\":null,\"assignee\":\"<account id>\",\"label\":null,\"include_archived\":false}\n```",
+      "params": [
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "exact board match, or `null`."
+        },
+        {
+          "name": "list_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "exact list match, or `null`."
+        },
+        {
+          "name": "assignee",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "exact account id, or `null`."
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "exact label, or `null`."
+        },
+        {
+          "name": "include_archived",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "`false` hides archived cards."
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CardView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "move_board",
+      "doc": "Reorder a board among the folder's boards.\n\n# Examples\n```json\n{\"board_id\":\"<board id>\",\"rank\":\"n\"}\n```",
+      "params": [
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "a rank strictly between its new neighbours' ranks."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "move_card",
+      "doc": "Move a card to a list (on the same board) at a rank. This is the drag.\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"list_id\":\"<list id>\",\"rank\":\"n\"}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "list_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "move_checklist_item",
+      "doc": "Reorder a checklist line.\n\n# Examples\n```json\n{\"item_id\":\"<item id>\",\"rank\":\"n\"}\n```",
+      "params": [
+        {
+          "name": "item_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "move_list",
+      "doc": "Reorder a list among its board's lists.\n\n# Examples\n```json\n{\"list_id\":\"<list id>\",\"rank\":\"n\"}\n```",
+      "params": [
+        {
+          "name": "list_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rank",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "remove_checklist_item",
+      "doc": "Remove a checklist line.\n\n# Examples\n```json\n{\"item_id\":\"<item id>\"}\n```",
+      "params": [
+        {
+          "name": "item_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "destructive": true
+    },
+    {
+      "name": "remove_label",
+      "doc": "Remove a label from a card; removing one it lacks succeeds.\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"label\":\"marketing\"}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "destructive": true,
+      "idempotent": true
+    },
+    {
+      "name": "rename_board",
+      "doc": "Rename a board. Any member may call it.\n\n# Examples\n```json\n{\"board_id\":\"<board id>\",\"name\":\"Q4 launch (final)\"}\n```",
+      "params": [
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "rename_list",
+      "doc": "Rename a list.\n\n# Examples\n```json\n{\"list_id\":\"<list id>\",\"name\":\"Doing\"}\n```",
+      "params": [
+        {
+          "name": "list_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "set_board_archived",
+      "doc": "Archive or unarchive a board. Archived boards are hidden from `list_boards` by default.\n\n# Examples\n```json\n{\"board_id\":\"<board id>\",\"archived\":true}\n```",
+      "params": [
+        {
+          "name": "board_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "set_card_archived",
+      "doc": "Archive or unarchive a card. Archived cards stay in `get_board`, flagged\n`archived`, and are hidden from the board view by clients.\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"archived\":true}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "set_card_assignee",
+      "doc": "Set or clear (`null`) a card's assignee.\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"assignee\":\"<account id>\"}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "assignee",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "set_card_description",
+      "doc": "Replace a card's description; empty clears it.\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"description\":\"Draft is in the shared doc.\"}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "set_card_due",
+      "doc": "Set or clear (`null`) a card's due date, unix milliseconds.\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"due_at\":1767225600000}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "due_at",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "set_card_title",
+      "doc": "Replace a card's title (1 to 64 characters).\n\n# Examples\n```json\n{\"card_id\":\"<card id>\",\"title\":\"Write the launch post\"}\n```",
+      "params": [
+        {
+          "name": "card_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "set_checklist_item_done",
+      "doc": "Tick or untick a checklist line.\n\n# Examples\n```json\n{\"item_id\":\"<item id>\",\"done\":true}\n```",
+      "params": [
+        {
+          "name": "item_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "done",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    },
+    {
+      "name": "set_checklist_item_text",
+      "doc": "Replace a checklist line's text.\n\n# Examples\n```json\n{\"item_id\":\"<item id>\",\"text\":\"Book the venue by Friday\"}\n```",
+      "params": [
+        {
+          "name": "item_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "idempotent": true
+    }
+  ],
+  "events": [
+    {
+      "name": "BoardChanged",
+      "payload": {
+        "$ref": "Event_BoardChanged"
+      }
+    },
+    {
+      "name": "BoardCreated",
+      "payload": {
+        "$ref": "Event_BoardCreated"
+      }
+    },
+    {
+      "name": "BoardDeleted",
+      "payload": {
+        "$ref": "Event_BoardDeleted"
+      }
+    },
+    {
+      "name": "CardChanged",
+      "payload": {
+        "$ref": "Event_CardChanged"
+      }
+    },
+    {
+      "name": "CardCreated",
+      "payload": {
+        "$ref": "Event_CardCreated"
+      }
+    },
+    {
+      "name": "CardDeleted",
+      "payload": {
+        "$ref": "Event_CardDeleted"
+      }
+    },
+    {
+      "name": "CardMoved",
+      "payload": {
+        "$ref": "Event_CardMoved"
+      }
+    },
+    {
+      "name": "ChecklistChanged",
+      "payload": {
+        "$ref": "Event_ChecklistChanged"
+      }
+    },
+    {
+      "name": "CommentAdded",
+      "payload": {
+        "$ref": "Event_CommentAdded"
+      }
+    },
+    {
+      "name": "CommentDeleted",
+      "payload": {
+        "$ref": "Event_CommentDeleted"
+      }
+    },
+    {
+      "name": "CommentEdited",
+      "payload": {
+        "$ref": "Event_CommentEdited"
+      }
+    },
+    {
+      "name": "ListChanged",
+      "payload": {
+        "$ref": "Event_ListChanged"
+      }
+    },
+    {
+      "name": "ListCreated",
+      "payload": {
+        "$ref": "Event_ListCreated"
+      }
+    },
+    {
+      "name": "ListDeleted",
+      "payload": {
+        "$ref": "Event_ListDeleted"
+      }
+    }
+  ],
+  "state_root": "Board",
+  "state_version": 1
+}
