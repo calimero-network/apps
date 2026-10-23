@@ -1,6 +1,194 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "BookingLinkView": {
+      "kind": "record",
+      "doc": "What the owner sees of a link.",
+      "fields": [
+        {
+          "name": "linkId",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "grantId",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "durationMinutes",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "weeklyHours",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WeeklyWindow"
+            }
+          }
+        },
+        {
+          "name": "utcOffsetMinutes",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "horizonDays",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "minNoticeMinutes",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "createdAtMs",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "expiresAtMs",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "booking",
+          "type": {
+            "$ref": "BookingView"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "BookingPage": {
+      "kind": "record",
+      "doc": "What a guest sees of a link.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ownerName",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "durationMinutes",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`open`, `booked` or `cancelled`."
+        },
+        {
+          "name": "expiresAtMs",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "booking",
+          "type": {
+            "$ref": "BookingView"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "BookingView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "startMs",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "endMs",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "guestName",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "guestEmail",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "guestNote",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bookedAtMs",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "rescheduledCount",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
     "CalendarEvent": {
       "kind": "record",
       "doc": "A calendar event as returned to the frontend. `private` distinguishes\nnode-local entries from shared ones so the UI can render them uniformly.",
@@ -176,6 +364,79 @@
         }
       ]
     },
+    "CreateBookingLink": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "tokenHash",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Hex SHA-256 of the access grant's token. The token itself never reaches\nthe contract from the owner."
+        },
+        {
+          "name": "grantId",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "durationMinutes",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "weeklyHours",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WeeklyWindow"
+            }
+          }
+        },
+        {
+          "name": "utcOffsetMinutes",
+          "type": {
+            "kind": "i32"
+          },
+          "doc": "The owner's UTC offset in minutes, east positive (UTC+2 is 120)."
+        },
+        {
+          "name": "horizonDays",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How far ahead a guest may book."
+        },
+        {
+          "name": "minNoticeMinutes",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How soon a guest may book."
+        },
+        {
+          "name": "expiresAtMs",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        }
+      ]
+    },
     "CreateCalendarEvent": {
       "kind": "record",
       "fields": [
@@ -223,6 +484,29 @@
               "kind": "bytes",
               "size": 32
             }
+          }
+        }
+      ]
+    },
+    "GuestDetails": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "email",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
           }
         }
       ]
@@ -315,9 +599,93 @@
           "nullable": true
         }
       ]
+    },
+    "WeeklyWindow": {
+      "kind": "record",
+      "doc": "One stretch of the week the owner takes bookings in: `weekday` 0 is Monday,\nminutes are wall-clock minutes of that day at the link's UTC offset.",
+      "fields": [
+        {
+          "name": "weekday",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "startMinute",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "endMinute",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
     }
   },
   "methods": [
+    {
+      "name": "book_slot",
+      "doc": "Book the slot starting at `start_ms`. A link books once: after this it\ncan only reschedule or cancel.",
+      "params": [
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "start_ms",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "guest",
+          "type": {
+            "$ref": "GuestDetails"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "BookingView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "cancel_booking",
+      "doc": "Cancel the link's meeting. The link is spent afterwards.",
+      "params": [
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_booking_link",
+      "doc": "Create a booking link for the access-grant token whose SHA-256 is\n`link.token_hash`. The owner's client issued the grant first; the token\nitself never reaches the contract from the owner.",
+      "params": [
+        {
+          "name": "link",
+          "type": {
+            "$ref": "CreateBookingLink"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "BookingLinkView"
+      },
+      "intent": "mutating"
+    },
     {
       "name": "create_event",
       "doc": "Create an event, routing it to private or shared storage BY WHETHER\nANYONE ELSE IS IN IT.\n\nAn event with no peers is one person's own entry. Writing it to\n`#[app::state]` would replicate it to every node in the context and put\nit in the DAG permanently — for data that, by definition, nobody else is\nparty to. So it goes to `#[app::private]` instead: node-local, never\ngossiped, no DAG growth.\n\nPeers are what make an event shared. The moment there is someone to share\nit WITH, replication is the point, and it goes to the DAG.\n\n⚠️ This is enforced HERE and not in the client, deliberately. The\nfrontend already had a `private` flag it could route on, but a client\nchoosing whether data enters the permanent replicated log is a client\ndeciding someone else's privacy. The contract is the only place that\ncannot be bypassed.\n\n`create_private_event` remains for \"private even though peers were\nnamed\" — an explicit override rather than the default path.",
@@ -363,6 +731,22 @@
       "intent": "mutating"
     },
     {
+      "name": "delete_booking_link",
+      "doc": "Delete a link. A meeting it booked stays in the calendar; delete that\nevent to drop it. The caller revokes the link's access grant too.",
+      "params": [
+        {
+          "name": "link_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "delete_event",
       "params": [
         {
@@ -391,6 +775,53 @@
         "kind": "string"
       },
       "intent": "mutating"
+    },
+    {
+      "name": "get_available_slots",
+      "doc": "The start times, in Unix milliseconds, the link behind `token` offers in\n`[from_ms, to_ms)`. At most `MAX_SLOT_RANGE_DAYS` wide.",
+      "params": [
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "from_ms",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "to_ms",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "u64"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_booking_page",
+      "doc": "What the link behind `token` offers, and its booking if it has one.",
+      "params": [
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "BookingPage"
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_events",
@@ -432,6 +863,40 @@
       "returns": {
         "kind": "unit"
       }
+    },
+    {
+      "name": "list_booking_links",
+      "doc": "Every booking link this node holds, newest first.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "BookingLinkView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "reschedule_booking",
+      "doc": "Move the link's meeting to the slot starting at `start_ms`.",
+      "params": [
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "start_ms",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "BookingView"
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_username",
