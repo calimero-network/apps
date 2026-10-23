@@ -24,6 +24,30 @@ your own nodes, shared only with the people you invite.
   top bar (`app/src/components/common/logout-button/LogoutButton.tsx`): it
   calls mero-react's `logout()` and returns to the landing page.
 
+## Booking links
+
+Calendly-style booking for people with no account. From a calendar, **Booking
+links** makes a link with a length, weekly hours, how far ahead and how soon
+someone may book. Whoever opens it (`/book#…`) sees the open times in their own
+time zone, books **one** meeting, and can later reschedule or cancel it with the
+same link. A cancelled link is spent.
+
+- **The key is a core access grant.** Making a link issues one
+  (`POST /admin-api/contexts/:id/grants`) naming only the five guest methods
+  (`get_booking_page`, `get_available_slots`, `book_slot`,
+  `reschedule_booking`, `cancel_booking`). The guest calls the node's public
+  `POST /admin-api/contexts/:id/grant-calls` with the token and reaches nothing
+  else in the calendar. Deleting the link revokes the grant.
+- **Everything lives on the owner's node, privately.** Links, guests' names and
+  emails, and the booked meetings are `#[app::private]` state and never
+  replicate; a booking shows up as a private event in the owner's calendar.
+  The contract keys a link by the SHA-256 of its token and keeps no secret.
+- **Your node must be reachable from the guest's browser**, at the URL you are
+  connected to, and its CORS must allow this app's origin. An account session
+  (no node of its own) cannot make booking links.
+- **Weekly hours use the UTC offset your browser has when you make the link.**
+  A daylight-saving change shifts them by an hour until the link is re-made.
+
 ## Architecture
 
 | Layer | Path | Stack |

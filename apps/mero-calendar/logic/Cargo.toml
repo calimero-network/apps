@@ -71,6 +71,8 @@ hex                     = { workspace = true }
 calimero-sdk            = { workspace = true }
 calimero-storage        = { workspace = true }
 calimero-storage-macros = { workspace = true }
+# Booking links are keyed by the SHA-256 of their access-grant token.
+sha2                    = { workspace = true }
 thiserror               = { workspace = true }
 
 [dev-dependencies]

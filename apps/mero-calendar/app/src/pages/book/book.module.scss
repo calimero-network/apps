@@ -1,0 +1,49 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 48px 16px;
+  background: var(--bg);
+  position: relative;
+}
+.toggle { position: absolute; top: 16px; right: 16px; }
+.card {
+  width: min(640px, 100%);
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: 24px;
+  box-shadow: var(--glass-shadow-float);
+  padding: 28px 24px;
+}
+.eyebrow { font-size: 13px; font-weight: 650; color: var(--accent); margin-bottom: 4px; }
+.title { font-size: 24px; font-weight: 750; letter-spacing: -0.02em; color: var(--text); margin-bottom: 6px; }
+.subhead { font-size: 16px; font-weight: 700; color: var(--text); margin: 20px 0 10px; }
+.dim { font-size: 13.5px; color: var(--text-dim); line-height: 1.5; }
+.notice {
+  margin: 16px 0;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+.slots { display: flex; flex-direction: column; gap: 14px; }
+.dayName { font-size: 13.5px; font-weight: 650; color: var(--text); margin-bottom: 6px; }
+.times { display: flex; flex-wrap: wrap; gap: 6px; }
+.time,
+.timeOn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  font: 600 13px/1 var(--font);
+  cursor: pointer;
+}
+.timeOn { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--accent-text); }
+.form { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.form textarea { height: auto; padding: 10px 14px; resize: vertical; }
+.error { color: var(--danger); font-size: 13.5px; margin-top: 12px; }
+.footnote { font-size: 12px; color: var(--text-dim); margin-top: 22px; }

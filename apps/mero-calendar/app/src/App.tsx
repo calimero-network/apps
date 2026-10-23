@@ -7,6 +7,7 @@ import LandingPage from "./pages/landing/LandingPage";
 import TeamsPage from "./pages/teams/TeamsPage";
 import TeamCalendarsPage from "./pages/teams/TeamCalendarsPage";
 import CalendarPage from "./pages/calendar";
+import BookPage from "./pages/book/BookPage";
 import { ToastProvider } from "./contexts/ToastContext";
 import InvitationPrompt from "./components/common/invitation-prompt/InvitationPrompt";
 
@@ -103,6 +104,9 @@ export default function App() {
             already pressed to get there. The path stays as a redirect so a
             bookmark lands on the front door instead of a blank route. */}
         <Route path="/login" element={<Navigate to="/" replace />} />
+        {/* A booking link's guest: no session, the link's token is the whole
+            credential. Outside RequireAuth on purpose. */}
+        <Route path="/book" element={<BookPage />} />
         <Route
           path="/teams"
           element={
