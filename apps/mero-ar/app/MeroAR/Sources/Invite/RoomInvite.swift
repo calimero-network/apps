@@ -18,10 +18,14 @@ import MeroKit
 public struct RoomInvite: Codable {
     /// The namespace (root group) the room lives in.
     public let namespaceId: String
-    /// The room context, so the joiner can enter without guessing.
+    /// The room context, so the joiner can enter without guessing. Empty on
+    /// an invitation to a whole home (``isHomeInvite``).
     public let contextId: String
     /// The room's display name, so the joiner sees a name and not an id.
     public let roomName: String
+    /// The home's (namespace's) display name. Absent from invitations minted
+    /// before homes existed.
+    public let homeName: String?
     /// The node's signed invitation.
     public let invitation: SignedGroupOpenInvitation
 
@@ -29,12 +33,24 @@ public struct RoomInvite: Codable {
         namespaceId: String,
         contextId: String,
         roomName: String,
+        homeName: String? = nil,
         invitation: SignedGroupOpenInvitation
     ) {
         self.namespaceId = namespaceId
         self.contextId = contextId
         self.roomName = roomName
+        self.homeName = homeName
         self.invitation = invitation
+    }
+
+    /// An invitation to a home rather than to one room in it: the joiner
+    /// lands in the lobby with the home's rooms listed.
+    public var isHomeInvite: Bool { contextId.isEmpty }
+
+    /// What the invitation is to, in words: the room, else the home.
+    public var title: String {
+        if !roomName.isEmpty { return roomName }
+        return homeName ?? ""
     }
 
     /// This app's deep-link slug — its registry package, which is what the

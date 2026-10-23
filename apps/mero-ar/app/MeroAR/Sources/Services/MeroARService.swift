@@ -137,7 +137,9 @@ public final class MeroARService: @unchecked Sendable {
         let namespaceId = await Self.namespace(containing: group, mero: mero)
         let signed = try await mintInvitation(namespaceId)
         let name = (try? await getRoom().name) ?? ""
-        return RoomInvite(namespaceId: namespaceId, contextId: contextId, roomName: name, invitation: signed)
+        let home = (try? await mero.admin.getNamespace(namespaceId))?.name
+        return RoomInvite(
+            namespaceId: namespaceId, contextId: contextId, roomName: name, homeName: home, invitation: signed)
     }
 
     /// The namespace (root group) a room's group sits in. A room made in a
@@ -429,6 +431,8 @@ public enum MeroARError: LocalizedError, Equatable {
     case readsUnavailable
     /// The invitation was redeemed but the room never reached the relay.
     case roomNotSynced
+    /// The invitation was redeemed but the home never listed.
+    case homeNotSynced
     case invitationRefused(String)
 
     public var errorDescription: String? {
@@ -439,6 +443,8 @@ public enum MeroARError: LocalizedError, Equatable {
             return "The relay session isn't fully established yet, so this isn't available. Try again shortly."
         case .roomNotSynced:
             return "You joined the space, but the room hasn't reached your relay yet. Try again in a moment."
+        case .homeNotSynced:
+            return "You joined the home, but it hasn't reached your relay yet. Pull to refresh in a moment."
         case .invitationRefused(let reason):
             return "This invitation wasn't accepted: \(reason)"
         }

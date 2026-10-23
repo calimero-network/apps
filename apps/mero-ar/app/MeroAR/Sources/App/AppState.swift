@@ -2,8 +2,7 @@ import Foundation
 import MeroKit
 import MeroKitUI
 
-/// A room the lobby can list: one this person opened before, or one on the
-/// node they signed in to.
+/// A room the lobby can list: one in a home, or one this person opened before.
 public struct RoomSummary: Identifiable, Equatable, Codable {
     public let id: String
     public var name: String
@@ -36,16 +35,24 @@ public final class AppState: ObservableObject {
     public static let registry = "https://apps.calimero.network"
 
     @Published public private(set) var phase: Phase = .restoring
-    /// Display name sent to the room's roster on `join`.
-    @Published public var displayName: String
+    /// The nickname others see: sent to a room's roster on `join`, and kept
+    /// across launches.
+    @Published public var displayName: String {
+        didSet { defaults.set(displayName.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Key.displayName) }
+    }
     @Published public private(set) var recentRooms: [RoomSummary] = []
-    /// Rooms on the signed-in node (node sessions only).
-    @Published public private(set) var nodeRooms: [RoomSummary] = []
+    /// The homes (namespaces) this session can see, each with its rooms.
+    @Published public private(set) var homes: [Home] = []
+    /// Rooms of this app in no visible home (rooms a node made before homes).
+    @Published public private(set) var looseRooms: [RoomSummary] = []
     @Published public private(set) var isEntering = false
-    @Published public private(set) var isLoadingRooms = false
-    /// Why the node's rooms couldn't be listed. Set only when the listing
-    /// itself failed, so the lobby never reads a failure as "no rooms yet".
-    @Published public private(set) var roomsError: String?
+    @Published public private(set) var isCreating = false
+    @Published public private(set) var isLoadingHomes = false
+    /// Why the homes couldn't be listed. Set only when the listing itself
+    /// failed, so the lobby never reads a failure as "no homes yet".
+    @Published public private(set) var homesError: String?
+    /// Something worth knowing after creating or joining a home.
+    @Published public var homeNotice: String?
     @Published public var roomError: String?
 
     // Node sign-in.
@@ -59,10 +66,13 @@ public final class AppState: ObservableObject {
     public private(set) var service: MeroARService?
     public private(set) var store: SceneStore?
     private var nodeMero: Mero?
-    /// Bumped by every ``loadNodeRooms()``; an older load that finishes late
+    /// Bumped by every ``loadHomes()``; an older load that finishes late
     /// drops its result instead of overwriting a newer one.
-    private var roomsLoad = 0
+    private var homesLoad = 0
     private let urlSession: URLSession
+    /// How long to wait for a room or home just created or joined to reach the relay.
+    var syncAttempts = 8
+    var syncDelay: UInt64 = 1_500_000_000
 
     private let defaults: UserDefaults
 
@@ -98,6 +108,13 @@ public final class AppState: ObservableObject {
     /// Signed in to a node directly (not through Cloud).
     public var isNodeSession: Bool { nodeMero != nil }
 
+    /// Whether this session can found homes: a node always can, a Cloud
+    /// account once a relay serves it.
+    public var canCreateHomes: Bool { nodeMero != nil || client.connection?.relay != nil }
+
+    /// Whether a nickname has been chosen yet (asked for once, after sign-in).
+    public var hasNickname: Bool { !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
     /// The last room entered, offered as "Continue where you left off".
     public var lastRoomId: String { recentRooms.first?.id ?? "" }
     public var lastRoomName: String { recentRooms.first?.name ?? "" }
@@ -123,19 +140,26 @@ public final class AppState: ObservableObject {
             return
         }
         phase = .lobby
+        await loadHomes()
     }
 
     /// "Continue with Calimero Cloud".
     public func signIn() async {
         await client.signInWithCloud(callbackScheme: Self.callbackScheme)
-        if client.isAuthenticated { phase = .lobby }
+        if client.isAuthenticated {
+            phase = .lobby
+            await loadHomes()
+        }
     }
 
     /// A wallet callback delivered by the system (`onOpenURL`) rather than
     /// through the auth sheet.
     public func handle(url: URL) async {
         guard await client.handleEnrolmentCallback(url) else { return }
-        if client.isAuthenticated, phase == .signedOut { phase = .lobby }
+        if client.isAuthenticated, phase == .signedOut {
+            phase = .lobby
+            await loadHomes()
+        }
     }
 
     /// "Manually enter node URL": sign in to a node with its admin username and
@@ -162,9 +186,8 @@ public final class AppState: ObservableObject {
             _ = try await mero.authenticate(Credentials(username: username, password: password))
             nodeMero = mero
             nodeURL = urlString
-            if displayName.isEmpty { displayName = username }
             phase = .lobby
-            await loadNodeRooms()
+            await loadHomes()
         } catch {
             nodeError = Self.nodeLoginMessage(error, url: urlString)
         }
@@ -196,11 +219,13 @@ public final class AppState: ObservableObject {
             await nodeMero.logout()
             self.nodeMero = nil
             nodeURL = nil
-            nodeRooms = []
-            roomsError = nil
         } else {
             await client.logout()
         }
+        homes = []
+        looseRooms = []
+        homesError = nil
+        homeNotice = nil
         phase = .signedOut
     }
 
@@ -214,107 +239,136 @@ public final class AppState: ObservableObject {
         return "Guest \(account.prefix(4))"
     }
 
-    /// The node's Mero AR rooms: its contexts running this app.
+    /// The homes this session can open rooms in: the Cloud account's
+    /// namespaces through its relay, or the node's own.
+    private func directory() -> HomeDirectory? {
+        if let nodeMero { return NodeHomes(mero: nodeMero, nodeURL: nodeURL ?? "") }
+        guard let connection = client.connection, connection.relay != nil else { return nil }
+        return CloudHomes(cloud: client.cloudSignIn, connection: connection, urlSession: urlSession)
+    }
+
+    /// List the homes and their rooms.
     ///
-    /// A failed listing is not an empty one: it keeps the rooms already shown
-    /// and sets ``roomsError``, so a slow or unreachable node never reads as
-    /// "No rooms yet" (which invites creating a duplicate room).
-    public func loadNodeRooms() async {
-        guard let nodeMero else { return }
-        roomsLoad += 1
-        let load = roomsLoad
-        isLoadingRooms = true
-        defer { if load == roomsLoad { isLoadingRooms = false } }
-        let mine: [ContextWithGroup]
+    /// A failed listing is not an empty one: it keeps the homes already shown
+    /// and sets ``homesError``, so a slow or unreachable relay or node never
+    /// reads as "No homes yet" (which invites creating a duplicate).
+    public func loadHomes() async {
+        guard let directory = directory() else { return }
+        let session = nodeMero
+        homesLoad += 1
+        let load = homesLoad
+        isLoadingHomes = true
+        defer { if load == homesLoad { isLoadingHomes = false } }
+        let listing: HomeListing
         do {
-            let appIds = Set(
-                try await nodeMero.admin.listApplications().apps.filter { $0.package == Self.package }.map(\.id))
-            mine = appIds.isEmpty ? [] : try await nodeMero.admin.getContexts().contexts.filter {
-                appIds.contains($0.applicationId)
-            }
+            listing = try await directory.list()
         } catch {
             // A cancelled load (pull-to-refresh torn down as the lobby is
-            // replaced) didn't fail: it says nothing about the node.
-            guard load == roomsLoad, self.nodeMero === nodeMero, !Task.isCancelled else { return }
-            roomsError = userMessage(error)
+            // replaced) didn't fail: it says nothing about the session.
+            guard load == homesLoad, nodeMero === session, !Task.isCancelled else { return }
+            homesError = userMessage(error)
             return
         }
-        var rooms: [RoomSummary] = []
-        let transport = NodeTransport(mero: nodeMero, nodeURL: nodeURL ?? "")
-        for context in mine {
-            let info = try? await transport.query(RoomInfo.self, contextId: context.id, method: "get_room")
-            rooms.append(
-                RoomSummary(
-                    id: context.id, name: info?.name ?? "",
-                    lastOpened: recentRooms.first { $0.id == context.id }?.lastOpened,
-                    objectCount: info?.objectCount, memberCount: info?.memberCount))
+        guard load == homesLoad, nodeMero === session else { return }
+        homesError = nil
+        homes = listing.homes.map { home in
+            var home = home
+            home.rooms = sortedByRecent(home.rooms)
+            return home
         }
-        guard load == roomsLoad, self.nodeMero === nodeMero else { return }
-        roomsError = nil
-        nodeRooms = rooms.sorted { ($0.lastOpened ?? .distantPast) > ($1.lastOpened ?? .distantPast) }
+        looseRooms = sortedByRecent(listing.looseRooms)
     }
 
-    /// Create a room on the signed-in node: Mero AR from the registry (if the
-    /// node doesn't have it yet), a namespace, an open group, and the room's
-    /// context named `name`. Then enter it.
-    public func createRoom(named rawName: String) async {
-        guard let nodeMero else { return }
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else {
-            roomError = "Give the room a name."
-            return
+    private func sortedByRecent(_ rooms: [RoomSummary]) -> [RoomSummary] {
+        rooms.map { room in
+            var room = room
+            room.lastOpened = recentRooms.first { $0.id == room.id }?.lastOpened
+            return room
         }
-        isEntering = true
-        roomError = nil
-        defer { isEntering = false }
-        do {
-            let appId: String
-            if let bundle = ProcessInfo.processInfo.environment["MEROAR_APP_BUNDLE"], !bundle.isEmpty {
-                // Development: a locally built .mpk (a path on the node's own
-                // machine), for a contract newer than the registry's.
-                appId = try await nodeMero.admin.installDevApplication(InstallDevApplicationRequest(path: bundle))
-                    .applicationId
-            } else if let installed = try await installedAppId(on: nodeMero) {
-                appId = installed
-            } else {
-                guard
-                    let version = try await nodeMero.admin.getRegistryVersions(
-                        registryUrl: Self.registry, packageName: Self.package
-                    ).first
-                else { throw MeroError.decoding("\(Self.package) is not on the app registry") }
-                appId = try await nodeMero.admin.installFromRegistry(packageName: Self.package, version: version)
-                    .applicationId
+        .sorted {
+            if ($0.lastOpened ?? .distantPast) != ($1.lastOpened ?? .distantPast) {
+                return ($0.lastOpened ?? .distantPast) > ($1.lastOpened ?? .distantPast)
             }
-            let namespace = try await nodeMero.admin.createNamespace(
-                CreateNamespaceRequest(applicationId: appId, name: name))
-            let group = try await nodeMero.admin.createGroupInNamespace(
-                namespace.namespaceId, request: CreateGroupInNamespaceRequest(groupName: name, visibility: "open"))
-            let params = try JSONSerialization.data(withJSONObject: ["name": name])
-            let context = try await nodeMero.admin.createContext(
-                CreateContextRequest(
-                    applicationId: appId, groupId: group.groupId, initializationParams: params.map { Int($0) },
-                    name: name))
-            remember(roomId: context.contextId, name: name)
-            isEntering = false
-            await enter(roomOrInvite: context.contextId)
-            await loadNodeRooms()
-        } catch {
-            roomError = userMessage(error)
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
     }
 
-    /// Throws when the node can't list its apps, rather than reading that as
-    /// "not installed" and installing a second copy.
-    private func installedAppId(on mero: Mero) async throws -> String? {
-        let apps = try await mero.admin.listApplications().apps
-        // The newest install of the package (a dev bundle and a registry
-        // install can sit side by side on a development node).
-        return apps.last { $0.package == Self.package }?.id
+    /// Found a home (a namespace running Mero AR) and its first room, then
+    /// enter the room.
+    public func createHome(named rawName: String, firstRoom rawRoom: String) async {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let room = rawRoom.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { roomError = "Give the home a name."; return }
+        guard !room.isEmpty else { roomError = "Name the first room."; return }
+        guard let directory = directory() else { roomError = MeroARError.noRelay.errorDescription; return }
+        isCreating = true
+        roomError = nil
+        homeNotice = nil
+        defer { isCreating = false }
+        let home: CreatedHome
+        do {
+            home = try await directory.createHome(named: name)
+        } catch {
+            roomError = "Couldn't create the home. (\(userMessage(error)))"
+            return
+        }
+        if let note = home.hostingNote {
+            homeNotice = "\(name) isn't hosted in Calimero Cloud yet, so people without their own node may not "
+                + "be able to join." + (note.isEmpty ? "" : " (\(note))")
+        }
+        await createRoom(named: room, inHome: home.id, directory: directory)
+    }
+
+    /// Create a room in a home and enter it.
+    public func createRoom(named rawName: String, inHome homeId: String) async {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { roomError = "Give the room a name."; return }
+        guard let directory = directory() else { roomError = MeroARError.noRelay.errorDescription; return }
+        isCreating = true
+        roomError = nil
+        defer { isCreating = false }
+        await createRoom(named: name, inHome: homeId, directory: directory)
+    }
+
+    private func createRoom(named name: String, inHome homeId: String, directory: HomeDirectory) async {
+        let contextId: String
+        do {
+            contextId = try await directory.createRoom(named: name, inHome: homeId)
+        } catch {
+            roomError = "Couldn't create the room. (\(userMessage(error)))"
+            await loadHomes()
+            return
+        }
+        remember(roomId: contextId, name: name)
+        isCreating = false
+        // A room just created reaches the relay asynchronously.
+        await enter(roomOrInvite: contextId, attempts: syncAttempts)
+        await loadHomes()
+    }
+
+    /// A shareable link inviting someone to a home and every room in it.
+    public func inviteLink(toHome home: Home) async throws -> String {
+        guard let directory = directory() else { throw MeroARError.noRelay }
+        return try await directory.invite(toHome: home.id, homeName: home.name).shareableLink()
+    }
+
+    /// Change the nickname, and tell the open room so its roster shows it.
+    public func setNickname(_ raw: String) async {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        displayName = name
+        guard let service, let store else { return }
+        do {
+            try await service.updateUsername(name)
+            await store.refreshRoster()
+        } catch {
+            store.lastError = userMessage(error)
+        }
     }
 
     /// Enter a room from whatever was pasted: an invitation link, a bare
     /// invitation token, or a room id.
-    public func enter(roomOrInvite input: String, quiet: Bool = false) async {
+    public func enter(roomOrInvite input: String, quiet: Bool = false, attempts: Int = 1) async {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             roomError = "Paste an invite link, or the room's ID."
@@ -328,23 +382,14 @@ public final class AppState: ObservableObject {
             var contextId = text
             var invitedName = ""
             if let invite = RoomInvite.decode(pasted: text) {
+                if invite.isHomeInvite {
+                    try await joinHome(invite)
+                    return
+                }
                 contextId = try await redeem(invite)
                 invitedName = invite.roomName
             }
-            let service: MeroARService
-            if let nodeMero {
-                service = try await MeroARService.open(
-                    transport: NodeTransport(mero: nodeMero, nodeURL: nodeURL ?? ""), mero: nodeMero,
-                    contextId: contextId, account: "", mintInvitation: MeroARService.nodeMinter(nodeMero))
-            } else {
-                guard let connection = client.connection, let relay = connection.relay else {
-                    throw MeroARError.noRelay
-                }
-                service = try await MeroARService.open(
-                    relay: relay, mero: connection.mero, contextId: contextId,
-                    account: connection.session.account,
-                    mintInvitation: MeroARService.cloudMinter(client.cloudSignIn, connection: connection))
-            }
+            let service = try await openService(contextId: contextId, attempts: attempts)
             let store = SceneStore(service: service)
             let name = effectiveDisplayName
 
@@ -358,6 +403,70 @@ public final class AppState: ObservableObject {
         } catch {
             if !quiet { roomError = userMessage(error) }
         }
+    }
+
+    /// Open the room's contract, retrying while a room just created or joined
+    /// reaches the relay.
+    private func openService(contextId: String, attempts: Int) async throws -> MeroARService {
+        var attempt = 1
+        while true {
+            do {
+                if let nodeMero {
+                    return try await MeroARService.open(
+                        transport: NodeTransport(mero: nodeMero, nodeURL: nodeURL ?? ""), mero: nodeMero,
+                        contextId: contextId, account: "", mintInvitation: MeroARService.nodeMinter(nodeMero))
+                }
+                guard let connection = client.connection, let relay = connection.relay else {
+                    throw MeroARError.noRelay
+                }
+                return try await MeroARService.open(
+                    relay: relay, mero: connection.mero, contextId: contextId,
+                    account: connection.session.account,
+                    mintInvitation: MeroARService.cloudMinter(client.cloudSignIn, connection: connection))
+            } catch MeroARError.noRelay {
+                throw MeroARError.noRelay
+            } catch {
+                guard attempt < attempts else { throw error }
+                attempt += 1
+                try? await Task.sleep(nanoseconds: syncDelay)
+            }
+        }
+    }
+
+    /// Redeem an invitation to a whole home, then list it in the lobby.
+    private func joinHome(_ invite: RoomInvite) async throws {
+        let name = invite.homeName.flatMap { $0.isEmpty ? nil : $0 } ?? "the home"
+        if let nodeMero {
+            do {
+                _ = try await nodeMero.admin.joinNamespace(
+                    invite.namespaceId, request: JoinNamespaceRequest(invitation: invite.invitation))
+            } catch {
+                // Already a member is fine; whether the home lists decides.
+            }
+            _ = try? await nodeMero.admin.syncGroupContexts(invite.namespaceId)
+        } else {
+            let hadRelay = client.connection?.relay != nil
+            var refusal: Error?
+            do {
+                _ = try await client.cloudSignIn.join(namespaceId: invite.namespaceId, invitation: invite.invitation)
+            } catch {
+                refusal = error
+            }
+            if !hadRelay { await client.restoreCloudSession() }
+            if let refusal, client.connection?.relay == nil {
+                throw MeroARError.invitationRefused(userMessage(refusal))
+            }
+        }
+        // Cross-node sync is asynchronous: wait for the home to list.
+        for attempt in 1...max(syncAttempts, 1) {
+            await loadHomes()
+            if homes.contains(where: { $0.id == invite.namespaceId }) {
+                homeNotice = "You joined \(name). Pick a room to enter."
+                return
+            }
+            if attempt < syncAttempts { try? await Task.sleep(nanoseconds: syncDelay) }
+        }
+        throw MeroARError.homeNotSynced
     }
 
     public func leaveRoom() {

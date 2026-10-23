@@ -1,16 +1,18 @@
 import MeroKitUI
 import SwiftUI
 
-/// After sign-in: your rooms, a new room (on a node), and joining one by
-/// invitation.
+/// After sign-in: your homes (Calimero namespaces) and the rooms in them,
+/// founding a new home, and joining one by invitation.
 struct LobbyView: View {
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var client: MeroClient
 
-    @State private var input = ""
     @State private var showSettings = false
-    @State private var showCreate = false
+    @State private var showCreateHome = false
     @State private var showJoin = false
+    @State private var askNickname = false
+    @State private var newRoomIn: Home?
+    @State private var inviteTo: Home?
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -20,7 +22,8 @@ struct LobbyView: View {
                     header
                     notices
                     actions
-                    roomsSection
+                    homesSection
+                    recentSection
                 }
                 .padding(.horizontal, Theme.gutter)
                 .padding(.top, 8)
@@ -28,17 +31,30 @@ struct LobbyView: View {
                 .frame(maxWidth: 620)
                 .frame(maxWidth: .infinity)
             }
-            .refreshable { await app.loadNodeRooms() }
+            .refreshable { await app.loadHomes() }
         }
         .preferredColorScheme(.dark)
+        .task {
+            if !app.hasNickname { askNickname = true }
+            if app.homes.isEmpty { await app.loadHomes() }
+        }
         .sheet(isPresented: $showSettings) {
             SettingsSheet().presentationDetents([.medium, .large]).presentationBackground(.ultraThinMaterial)
         }
-        .sheet(isPresented: $showCreate) {
-            CreateRoomSheet().presentationDetents([.height(360)]).presentationBackground(.ultraThinMaterial)
+        .sheet(isPresented: $showCreateHome) {
+            CreateHomeSheet().presentationDetents([.medium, .large]).presentationBackground(.ultraThinMaterial)
         }
         .sheet(isPresented: $showJoin) {
             JoinRoomSheet().presentationDetents([.medium, .large]).presentationBackground(.ultraThinMaterial)
+        }
+        .sheet(item: $newRoomIn) { home in
+            CreateRoomSheet(home: home).presentationDetents([.height(380)]).presentationBackground(.ultraThinMaterial)
+        }
+        .sheet(item: $inviteTo) { home in
+            HomeInviteSheet(home: home).presentationDetents([.medium, .large]).presentationBackground(.ultraThinMaterial)
+        }
+        .sheet(isPresented: $askNickname) {
+            NicknameSheet(isFirstRun: true).presentationDetents([.height(340)]).presentationBackground(.ultraThinMaterial)
         }
     }
 
@@ -50,7 +66,7 @@ struct LobbyView: View {
                 Text(greeting)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Theme.textDim)
-                Text("Your rooms")
+                Text("Your homes")
                     .font(Theme.display(36))
                     .tracking(-1)
                     .foregroundStyle(Theme.text)
@@ -75,14 +91,19 @@ struct LobbyView: View {
     }
 
     @ViewBuilder private var notices: some View {
+        if let notice = app.homeNotice {
+            Callout(tone: .success, title: nil, message: notice)
+                .onTapGesture { app.homeNotice = nil }
+                .accessibilityIdentifier("homeNotice")
+        }
         if app.isNodeSession {
             Callout(
                 tone: .accent, title: "Signed in to your node",
-                message: "\(app.nodeURL ?? "") · rooms you create live on this node.")
+                message: "\(app.nodeURL ?? "") · homes you create live on this node.")
         } else if client.isSignedInWithoutRelay {
             Callout(
                 tone: .info, title: "No relay yet",
-                message: "Your account gets a relay when you redeem your first invitation.")
+                message: "Your account gets a relay when you redeem your first invitation. Then you can create homes too.")
         } else if let note = client.cloudNote {
             Callout(tone: .warning, title: "Limited connection", message: note)
         }
@@ -92,14 +113,14 @@ struct LobbyView: View {
 
     private var actions: some View {
         HStack(spacing: 12) {
-            if app.isNodeSession {
+            if app.canCreateHomes {
                 actionTile(
-                    title: "New room", subtitle: "Start a shared space", icon: "plus", gradient: true,
-                    id: "createRoomButton"
-                ) { showCreate = true }
+                    title: "New home", subtitle: "Rooms you share", icon: "house.fill", gradient: true,
+                    id: "createHomeButton"
+                ) { showCreateHome = true }
             }
             actionTile(
-                title: "Join", subtitle: "Paste an invite", icon: "link", gradient: !app.isNodeSession,
+                title: "Join", subtitle: "Paste an invite", icon: "link", gradient: !app.canCreateHomes,
                 id: "joinRoomButton"
             ) { showJoin = true }
         }
@@ -127,42 +148,80 @@ struct LobbyView: View {
         .accessibilityIdentifier(id)
     }
 
-    // MARK: - Rooms
+    // MARK: - Homes
 
-    private var rooms: [RoomSummary] {
-        var seen = Set<String>()
+    @ViewBuilder private var homesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Eyebrow(text: app.isNodeSession ? "On this node" : "Homes")
+                Spacer()
+                if app.isLoadingHomes { ProgressView().controlSize(.small).tint(Theme.textDim) }
+            }
+            if let error = app.roomError {
+                Callout(tone: .danger, title: "Couldn't open the room", message: error)
+                    .accessibilityIdentifier("roomError")
+            }
+            if let error = app.homesError {
+                Callout(tone: .danger, title: "Couldn't load your homes", message: error)
+                    .accessibilityIdentifier("homesError")
+            }
+            if app.homes.isEmpty, app.homesError == nil, !app.isLoadingHomes {
+                emptyHomes
+            }
+            ForEach(app.homes) { home in
+                HomeCard(
+                    home: home, isEntering: app.isEntering || app.isCreating,
+                    newRoom: { newRoomIn = home }, invite: { inviteTo = home },
+                    enter: { room in Task { await app.enter(roomOrInvite: room.id) } })
+            }
+        }
+    }
+
+    @ViewBuilder private var emptyHomes: some View {
+        if app.canCreateHomes {
+            EmptyState(
+                icon: "house",
+                title: "No homes yet",
+                message: "Create a home, add rooms to it, then invite people to scan, see and decorate them with you."
+            ) {
+                Button {
+                    Haptics.tap()
+                    showCreateHome = true
+                } label: {
+                    ButtonLabel(title: "Create your first home", icon: "plus")
+                }
+                .buttonStyle(PrimaryButtonStyle(height: 50))
+                .padding(.top, 6)
+                .accessibilityIdentifier("createFirstHomeButton")
+            }
+        } else {
+            EmptyState(
+                icon: "link",
+                title: "No homes yet",
+                message: "Paste an invitation with Join. Once you're in someone's home you can create your own.")
+        }
+    }
+
+    // MARK: - Recent
+
+    /// Rooms opened before that aren't in any listed home (a node's older
+    /// rooms, or the last ones opened when the listing failed).
+    private var otherRooms: [RoomSummary] {
+        let listed = Set(app.homes.flatMap { $0.rooms.map(\.id) })
+        var seen = listed
         var list: [RoomSummary] = []
-        for room in app.nodeRooms + app.recentRooms where !seen.contains(room.id) {
+        for room in app.looseRooms + app.recentRooms where !seen.contains(room.id) {
             seen.insert(room.id)
             list.append(room)
         }
         return list
     }
 
-    @ViewBuilder private var roomsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Eyebrow(text: app.isNodeSession ? "On this node" : "Recent")
-                Spacer()
-                if app.isLoadingRooms { ProgressView().controlSize(.small).tint(Theme.textDim) }
-            }
-            if let error = app.roomError {
-                Callout(tone: .danger, title: "Couldn't open the room", message: error)
-                    .accessibilityIdentifier("roomError")
-            }
-            if let error = app.roomsError {
-                Callout(tone: .danger, title: "Couldn't load this node's rooms", message: error)
-                    .accessibilityIdentifier("roomsError")
-            }
-            if rooms.isEmpty, app.roomsError == nil {
-                EmptyState(
-                    icon: "cube.transparent",
-                    title: "No rooms yet",
-                    message: app.isNodeSession
-                        ? "Create a room, then invite people to build in it with you."
-                        : "Rooms open by invitation. Paste one with Join.")
-            } else {
-                ForEach(Array(rooms.enumerated()), id: \.element.id) { index, room in
+    @ViewBuilder private var recentSection: some View {
+        if !otherRooms.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Eyebrow(text: "Other rooms")
+                ForEach(Array(otherRooms.enumerated()), id: \.element.id) { index, room in
                     RoomCard(room: room, isEntering: app.isEntering) {
                         Haptics.tap()
                         Task { await app.enter(roomOrInvite: room.id) }
@@ -178,6 +237,86 @@ struct LobbyView: View {
                 }
             }
         }
+    }
+}
+
+/// A home: its name and people, its rooms, and the actions on it.
+private struct HomeCard: View {
+    let home: Home
+    let isEntering: Bool
+    let newRoom: () -> Void
+    let invite: () -> Void
+    let enter: (RoomSummary) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(AvatarTone.gradient(for: home.id))
+                    Image(systemName: "house.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                }
+                .frame(width: 44, height: 44)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(home.name.isEmpty ? "Untitled home" : home.name)
+                        .font(Theme.title(19)).foregroundStyle(Theme.text).lineLimit(1)
+                    HStack(spacing: 10) {
+                        Label("\(home.rooms.count) room\(home.rooms.count == 1 ? "" : "s")", systemImage: "cube.transparent")
+                        if let members = home.memberCount {
+                            Label("\(members)", systemImage: "person.2")
+                        }
+                    }
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Theme.textFaint)
+                    .monospacedDigit()
+                }
+                Spacer(minLength: 8)
+                Button {
+                    Haptics.tap()
+                    invite()
+                } label: {
+                    Image(systemName: "person.badge.plus")
+                }
+                .buttonStyle(CircleButtonStyle(size: 40))
+                .accessibilityLabel("Invite to \(home.name)")
+                .accessibilityIdentifier("inviteHomeButton")
+                Button {
+                    Haptics.tap()
+                    newRoom()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(CircleButtonStyle(size: 40, active: true))
+                .accessibilityLabel("New room in \(home.name)")
+                .accessibilityIdentifier("createRoomButton")
+            }
+            if let error = home.roomsError {
+                Callout(tone: .warning, message: "Couldn't list this home's rooms: \(error)")
+            } else if home.rooms.isEmpty {
+                Button(action: newRoom) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Add the first room")
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.textDim)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(Theme.glassStroke, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+                }
+                .buttonStyle(PressableStyle())
+                .accessibilityIdentifier("addFirstRoomButton")
+            }
+            ForEach(home.rooms) { room in
+                RoomCard(room: room, isEntering: isEntering) {
+                    Haptics.tap()
+                    enter(room)
+                }
+                .accessibilityIdentifier("roomRow-\(room.id.prefix(8))")
+            }
+        }
+        .padding(14)
+        .glass()
     }
 }
 
@@ -244,43 +383,6 @@ struct PressableStyle: ButtonStyle {
 
 // MARK: - Sheets
 
-/// Name a new room; it is created on the signed-in node.
-struct CreateRoomSheet: View {
-    @EnvironmentObject private var app: AppState
-    @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SheetHeader(title: "New room", subtitle: "A shared space on your node. You'll be its admin.")
-            TextInput(placeholder: "Living room", text: $name, icon: "cube.transparent", identifier: "roomNameInput")
-                .submitLabel(.go)
-                .onSubmit(create)
-            if let error = app.roomError {
-                Callout(tone: .danger, message: error)
-            }
-            Button(action: create) {
-                ButtonLabel(title: "Create and enter", icon: "sparkles", isLoading: app.isEntering)
-            }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || app.isEntering)
-            .accessibilityIdentifier("confirmCreateRoomButton")
-            Spacer(minLength: 0)
-        }
-        .padding(24)
-        .preferredColorScheme(.dark)
-    }
-
-    private func create() {
-        guard !name.trimmingCharacters(in: .whitespaces).isEmpty, !app.isEntering else { return }
-        Haptics.tap()
-        Task {
-            await app.createRoom(named: name)
-            if app.roomError == nil { dismiss() }
-        }
-    }
-}
-
 /// Paste an invitation (or a room id) and choose the name others see.
 struct JoinRoomSheet: View {
     @EnvironmentObject private var app: AppState
@@ -292,10 +394,10 @@ struct JoinRoomSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                SheetHeader(title: "Join a room", subtitle: "Paste the invite link someone sent you.")
+                SheetHeader(title: "Join", subtitle: "Paste the invite link someone sent you, to a home or a room.")
                 Field(
                     label: "Invite link or room ID",
-                    hint: looksLikeInvite ? nil : "An invite joins you to the room's space first; a room ID opens one you're in."
+                    hint: looksLikeInvite ? nil : "An invite joins you to its home first; a room ID opens one you're in."
                 ) {
                     HStack(spacing: 10) {
                         TextInput(
@@ -313,9 +415,13 @@ struct JoinRoomSheet: View {
                     }
                 }
                 if looksLikeInvite {
-                    Callout(tone: .success, title: inviteTitle, message: "You'll join the room's space, then enter.")
+                    Callout(
+                        tone: .success, title: inviteTitle,
+                        message: isHomeInvite
+                            ? "You'll join the home, then pick a room in it."
+                            : "You'll join the room's home, then enter.")
                 }
-                Field(label: "Your name in rooms", hint: "Shown to others in the room.") {
+                Field(label: "Your nickname", hint: "Shown to others in the room.") {
                     TextInput(
                         placeholder: app.effectiveDisplayName, text: $app.displayName, icon: "person.fill",
                         identifier: "displayNameInput")
@@ -332,7 +438,8 @@ struct JoinRoomSheet: View {
                     }
                 } label: {
                     ButtonLabel(
-                        title: looksLikeInvite ? "Join and enter" : "Enter room", icon: "arrow.right",
+                        title: looksLikeInvite ? (isHomeInvite ? "Join home" : "Join and enter") : "Enter room",
+                        icon: "arrow.right",
                         isLoading: app.isEntering)
                 }
                 .buttonStyle(PrimaryButtonStyle())
@@ -344,8 +451,10 @@ struct JoinRoomSheet: View {
         .preferredColorScheme(.dark)
     }
 
+    private var isHomeInvite: Bool { RoomInvite.decode(pasted: input)?.isHomeInvite ?? false }
+
     private var inviteTitle: String {
-        if let name = RoomInvite.decode(pasted: input)?.roomName, !name.isEmpty { return "Invite to \(name)" }
+        if let name = RoomInvite.decode(pasted: input)?.title, !name.isEmpty { return "Invite to \(name)" }
         return "Invite recognised"
     }
 }
@@ -400,7 +509,7 @@ struct SettingsSheet: View {
                                 Pill(text: connectionText, tone: connectionTone, dot: true)
                             }
                         }
-                        Field(label: "Your name in rooms") {
+                        Field(label: "Your nickname") {
                             TextInput(
                                 placeholder: app.effectiveDisplayName, text: $app.displayName, icon: "person.fill",
                                 identifier: "settingsNameInput")
