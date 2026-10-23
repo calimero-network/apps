@@ -10,12 +10,13 @@ import CalendarSidebar from './components/calendar-sidebar/CalendarSidebar';
 
 interface CalendarProps {
   onBack?: () => void;
+  onOpenBookingLinks?: () => void;
 }
 
 // The app shell: the floating top bar, then the rail beside the grid. The
 // shell fills the viewport and only the grid scrolls, so the bar and the rail
 // stay put.
-export default function Calendar({ onBack }: CalendarProps) {
+export default function Calendar({ onBack, onOpenBookingLinks }: CalendarProps) {
   const { state, functions } = useCalendar({ selectedDate: new Date() });
   return (
     <div className="calendar-shell">
@@ -25,6 +26,7 @@ export default function Calendar({ onBack }: CalendarProps) {
         onChangeOption={functions.setMode}
         selectedOption={state.mode}
         onBack={onBack}
+        onOpenBookingLinks={onOpenBookingLinks}
       />
       <div className="calendar-shell__body">
         <CalendarSidebar

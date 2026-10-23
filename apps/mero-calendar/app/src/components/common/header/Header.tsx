@@ -15,6 +15,8 @@ interface IHeaderProps {
   onChangeOption: (option: IModes) => void;
   selectedOption: string;
   onBack?: () => void;
+  /** Opens the booking links; absent where they cannot be made (an account). */
+  onOpenBookingLinks?: () => void;
 }
 
 const modes = ["week", "month", "year"];
@@ -31,6 +33,7 @@ const Header: FC<IHeaderProps> = ({
   onChangeOption,
   selectedOption,
   onBack,
+  onOpenBookingLinks,
 }) => {
   const changeToPrev = () => onClickArrow("left");
   const changeToNext = () => onClickArrow("right");
@@ -86,6 +89,16 @@ const Header: FC<IHeaderProps> = ({
         />
       </div>
       <div className={styles.session}>
+        {onOpenBookingLinks && (
+          <button
+            type="button"
+            className={styles.today}
+            onClick={onOpenBookingLinks}
+            data-testid="open-booking-links"
+          >
+            Booking links
+          </button>
+        )}
         <ThemeToggle />
         {/* ⚠️ Was a copy icon next to a truncated account id ("b627…f78a"),
             and clicking the ID logged you out — announced only by a `title`

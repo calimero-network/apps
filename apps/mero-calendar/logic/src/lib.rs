@@ -35,7 +35,13 @@ use calimero_storage::collections::{
 };
 use thiserror::Error;
 use types::id;
+mod booking;
 mod types;
+
+use booking::{BookingLinkState, BookingLinks, BookingState, LinkStatus};
+pub use booking::{
+    BookingLinkView, BookingPage, BookingView, CreateBookingLink, GuestDetails, WeeklyWindow,
+};
 
 // 64, not 44: the second parameter is the length of the STRING form, and
 // core 0.11.0-rc.27 made every id hex (core#3691). 44 was the base58 upper
@@ -712,7 +718,284 @@ impl CalendarState {
         Ok(event_id)
     }
 
+    // ── Booking links (owner) ───────────────────────────────────────────────────
+    //
+    // See `booking.rs` for how a guest reaches the five methods after these.
+
+    /// Create a booking link for the access-grant token whose SHA-256 is
+    /// `link.token_hash`. The owner's client issued the grant first; the token
+    /// itself never reaches the contract from the owner.
+    pub fn create_booking_link(&mut self, link: CreateBookingLink) -> app::Result<BookingLinkView> {
+        booking::validate_link(&link)?;
+        let mut links = BookingLinks::private_load_or_default()?;
+        if links.links.contains(&link.token_hash)? {
+            app::bail!("a booking link already exists for this token");
+        }
+        let state = BookingLinkState {
+            grant_id: link.grant_id,
+            title: link.title.trim().to_owned(),
+            description: link.description,
+            duration_minutes: link.duration_minutes,
+            weekly_hours: link.weekly_hours,
+            utc_offset_minutes: link.utc_offset_minutes,
+            horizon_days: link.horizon_days,
+            min_notice_minutes: link.min_notice_minutes,
+            created_at_ms: booking::now_ms(),
+            expires_at_ms: link.expires_at_ms,
+            status: LinkStatus::Open,
+            booking: None,
+        };
+        let view = state.owner_view(link.token_hash.clone());
+        links.as_mut().links.insert(link.token_hash, state)?;
+        Ok(view)
+    }
+
+    /// Every booking link this node holds, newest first.
+    pub fn list_booking_links(&self) -> app::Result<Vec<BookingLinkView>> {
+        let links = BookingLinks::private_load_or_default()?;
+        let mut views: Vec<BookingLinkView> = links
+            .links
+            .entries()?
+            .map(|(id, link)| link.owner_view(id))
+            .collect();
+        views.sort_by_key(|view| core::cmp::Reverse(view.created_at_ms));
+        Ok(views)
+    }
+
+    /// Delete a link. A meeting it booked stays in the calendar; delete that
+    /// event to drop it. The caller revokes the link's access grant too.
+    pub fn delete_booking_link(&mut self, link_id: String) -> app::Result<String> {
+        let mut links = BookingLinks::private_load_or_default()?;
+        if links.as_mut().links.remove(&link_id)?.is_none() {
+            app::bail!(Error::NotFound(link_id));
+        }
+        Ok(link_id)
+    }
+
+    // ── Booking links (guest, by token) ───────────────────────────────────────
+
+    /// What the link behind `token` offers, and its booking if it has one.
+    pub fn get_booking_page(&self, token: String) -> app::Result<BookingPage> {
+        let link = Self::link_for(&token)?;
+        let owner_name = self.members.get()?.map(|member| member.username.clone());
+        Ok(link.guest_page(owner_name))
+    }
+
+    /// The start times, in Unix milliseconds, the link behind `token` offers in
+    /// `[from_ms, to_ms)`.
+    ///
+    /// The window is clamped, never refused: it starts no earlier than now and
+    /// spans at most `MAX_SLOT_RANGE_DAYS`. So `(0, u64::MAX)` asks for the next
+    /// open slots without the caller knowing the time.
+    pub fn get_available_slots(
+        &self,
+        token: String,
+        from_ms: u64,
+        to_ms: u64,
+    ) -> app::Result<Vec<u64>> {
+        let link = Self::link_for(&token)?;
+        let now = booking::now_ms();
+        Self::require_live(&link, now)?;
+        if link.status == LinkStatus::Cancelled {
+            return Ok(Vec::new());
+        }
+        let (from, to) = Self::slot_range(from_ms, to_ms, now);
+        // The link's own meeting blocks its slot here like any other event, so
+        // a guest choosing a new time is not offered the one they hold.
+        let busy = self.busy_intervals(None)?;
+        Ok(booking::available_slots(&link, &busy, now as i64, from, to))
+    }
+
+    /// Book the slot starting at `start_ms`. A link books once: after this it
+    /// can only reschedule or cancel.
+    pub fn book_slot(
+        &mut self,
+        token: String,
+        start_ms: u64,
+        guest: GuestDetails,
+    ) -> app::Result<BookingView> {
+        booking::validate_guest(&guest)?;
+        let link_id = booking::link_id_of(&token);
+        let mut link = Self::link_for(&token)?;
+        let now = booking::now_ms();
+        Self::require_live(&link, now)?;
+        match link.status {
+            LinkStatus::Open => {}
+            LinkStatus::Booked => {
+                app::bail!("this link already booked a meeting; reschedule it instead")
+            }
+            LinkStatus::Cancelled => {
+                app::bail!("this link's meeting was cancelled; ask for a new link")
+            }
+        }
+        self.require_offered(&link, start_ms, now, None)?;
+
+        let end_ms = start_ms + u64::from(link.duration_minutes) * 60_000;
+        let (title, description, color) = booking::booking_event_text(&link, &guest);
+        let event_id = self.create_private_event(
+            CreateCalendarEvent {
+                title,
+                description,
+                start: booking::format_iso_utc(start_ms),
+                end: booking::format_iso_utc(end_ms),
+                event_type: "event".to_owned(),
+                color,
+                peers: Vec::new(),
+            },
+            now,
+        )?;
+
+        let state = BookingState {
+            event_id,
+            start_ms,
+            end_ms,
+            guest_name: guest.name.trim().to_owned(),
+            guest_email: guest.email.trim().to_owned(),
+            guest_note: guest.note.trim().to_owned(),
+            booked_at_ms: now,
+            rescheduled_count: 0,
+        };
+        let view = state.view();
+        link.status = LinkStatus::Booked;
+        link.booking = Some(state);
+        Self::store_link(link_id, link)?;
+        app::log!("Booking link booked a meeting");
+        Ok(view)
+    }
+
+    /// Move the link's meeting to the slot starting at `start_ms`.
+    pub fn reschedule_booking(&mut self, token: String, start_ms: u64) -> app::Result<BookingView> {
+        let link_id = booking::link_id_of(&token);
+        let mut link = Self::link_for(&token)?;
+        let now = booking::now_ms();
+        Self::require_live(&link, now)?;
+        let Some(mut state) = link
+            .booking
+            .clone()
+            .filter(|_| link.status == LinkStatus::Booked)
+        else {
+            app::bail!("this link has no booked meeting to reschedule");
+        };
+        self.require_offered(&link, start_ms, now, Some(&state.event_id))?;
+
+        state.start_ms = start_ms;
+        state.end_ms = start_ms + u64::from(link.duration_minutes) * 60_000;
+        state.rescheduled_count += 1;
+        self.update_private_event(
+            state.event_id.clone(),
+            UpdateCalendarEvent {
+                title: None,
+                description: None,
+                start: Some(booking::format_iso_utc(state.start_ms)),
+                end: Some(booking::format_iso_utc(state.end_ms)),
+                event_type: None,
+                color: None,
+                peers: None,
+            },
+            now,
+        )?;
+        let view = state.view();
+        link.booking = Some(state);
+        Self::store_link(link_id, link)?;
+        Ok(view)
+    }
+
+    /// Cancel the link's meeting. The link is spent afterwards.
+    pub fn cancel_booking(&mut self, token: String) -> app::Result<()> {
+        let link_id = booking::link_id_of(&token);
+        let mut link = Self::link_for(&token)?;
+        let Some(state) = link
+            .booking
+            .as_ref()
+            .filter(|_| link.status == LinkStatus::Booked)
+        else {
+            app::bail!("this link has no booked meeting to cancel");
+        };
+        // The owner may already have deleted the event by hand; the
+        // cancellation still stands.
+        let _ = self.delete_private_event(state.event_id.clone());
+        link.status = LinkStatus::Cancelled;
+        Self::store_link(link_id, link)?;
+        Ok(())
+    }
+
     // ── Internal ────────────────────────────────────────────────────────────────
+
+    /// The link `token` opens. One message whether it never existed or was
+    /// deleted, so a guess learns nothing.
+    fn link_for(token: &str) -> app::Result<BookingLinkState> {
+        let links = BookingLinks::private_load_or_default()?;
+        let Some(link) = links.links.get(&booking::link_id_of(token))? else {
+            app::bail!(Error::NotFound("booking link".to_owned()));
+        };
+        Ok((*link).clone())
+    }
+
+    fn store_link(link_id: String, link: BookingLinkState) -> app::Result<()> {
+        let mut links = BookingLinks::private_load_or_default()?;
+        links.as_mut().links.insert(link_id, link)?;
+        Ok(())
+    }
+
+    fn require_live(link: &BookingLinkState, now_ms: u64) -> app::Result<()> {
+        if link.expired(now_ms) {
+            app::bail!("this booking link has expired");
+        }
+        Ok(())
+    }
+
+    /// `[from_ms, to_ms)` clamped to start no earlier than `now_ms` and to span
+    /// at most `MAX_SLOT_RANGE_DAYS`, so a guest cannot make this node walk a
+    /// year of slots in one call. An empty window offers nothing.
+    fn slot_range(from_ms: u64, to_ms: u64, now_ms: u64) -> (i64, i64) {
+        let clamp = |ms: u64| i64::try_from(ms).unwrap_or(i64::MAX);
+        let from = clamp(from_ms).max(clamp(now_ms));
+        let to = clamp(to_ms).min(from.saturating_add(booking::MAX_SLOT_RANGE_DAYS * 86_400_000));
+        (from, to)
+    }
+
+    /// Refuse `start_ms` unless the link offers it right now. `own_event` is
+    /// the meeting being moved, which must not block its own new slot.
+    fn require_offered(
+        &self,
+        link: &BookingLinkState,
+        start_ms: u64,
+        now_ms: u64,
+        own_event: Option<&str>,
+    ) -> app::Result<()> {
+        let Ok(start) = i64::try_from(start_ms) else {
+            app::bail!("time out of range");
+        };
+        let busy = self.busy_intervals(own_event)?;
+        let offered = booking::available_slots(
+            link,
+            &busy,
+            now_ms as i64,
+            start - 86_400_000,
+            start + 86_400_000,
+        );
+        if offered.binary_search(&start_ms).is_err() {
+            app::bail!("that time is not available");
+        }
+        Ok(())
+    }
+
+    /// Everything on the owner's calendar, as busy intervals: their private
+    /// events and the shared events they own or are invited to. An event whose
+    /// stored times this contract cannot read blocks nothing.
+    fn busy_intervals(&self, except_event: Option<&str>) -> app::Result<Vec<booking::Busy>> {
+        let mut events = self.get_events()?;
+        events.extend(self.get_private_events()?);
+        Ok(events
+            .into_iter()
+            .filter(|event| Some(event.id.as_str()) != except_event)
+            .filter_map(|event| {
+                let start = booking::parse_event_time_ms(&event.start)?;
+                let end = booking::parse_event_time_ms(&event.end)?;
+                (start < end).then_some((start, end))
+            })
+            .collect())
+    }
 
     /// A readable error for what storage refuses anyway: only the owner may
     /// change or remove an event.
@@ -1206,6 +1489,217 @@ mod tests {
         let left = app.view(|s| s.get_events()).unwrap();
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].owner, me);
+    }
+
+    // ── Booking links ────────────────────────────────────────────────────────
+
+    const TOKEN: &str = "6a1f0c0ffee0ddba11";
+
+    /// A link open around the clock, so a slot exists whatever the wall clock
+    /// the native host reads.
+    fn always_open_link(token: &str) -> CreateBookingLink {
+        CreateBookingLink {
+            token_hash: booking::link_id_of(token),
+            grant_id: "grant".to_owned(),
+            title: "Intro call".to_owned(),
+            description: String::new(),
+            duration_minutes: 30,
+            weekly_hours: (0..7)
+                .map(|weekday| WeeklyWindow {
+                    weekday,
+                    start_minute: 0,
+                    end_minute: 1440,
+                })
+                .collect(),
+            utc_offset_minutes: 0,
+            horizon_days: 7,
+            min_notice_minutes: 0,
+            expires_at_ms: None,
+        }
+    }
+
+    fn guest() -> GuestDetails {
+        GuestDetails {
+            name: "Grace".to_owned(),
+            email: "grace@example.com".to_owned(),
+            note: "About the demo".to_owned(),
+        }
+    }
+
+    fn slots(app: &TestHost<CalendarState>, token: &str) -> Vec<u64> {
+        let now = booking::now_ms();
+        app.view(|s| s.get_available_slots(token.to_owned(), now, now + 2 * 86_400_000))
+            .unwrap()
+    }
+
+    #[test]
+    fn a_link_books_once_then_reschedules_and_cancels() {
+        let mut app = new_app();
+        app.call(|s| s.create_booking_link(always_open_link(TOKEN)))
+            .unwrap();
+
+        let offered = slots(&app, TOKEN);
+        assert!(offered.len() > 10, "an always-open link offers slots");
+        let first = offered[2];
+
+        let booked = app
+            .call(|s| s.book_slot(TOKEN.to_owned(), first, guest()))
+            .unwrap();
+        assert_eq!(booked.start_ms, first);
+        assert_eq!(booked.end_ms, first + 30 * 60_000);
+
+        // The meeting is in the owner's calendar, privately, and its slot is gone.
+        let private = app.view(|s| s.get_private_events()).unwrap();
+        assert_eq!(private.len(), 1);
+        assert_eq!(private[0].title, "Intro call with Grace");
+        assert!(!slots(&app, TOKEN).contains(&first));
+
+        // One booking per link.
+        assert!(app
+            .call(|s| s.book_slot(TOKEN.to_owned(), offered[5], guest()))
+            .is_err());
+
+        // The same token moves it; its old slot frees up, the event follows.
+        let moved = app
+            .call(|s| s.reschedule_booking(TOKEN.to_owned(), offered[5]))
+            .unwrap();
+        assert_eq!(moved.start_ms, offered[5]);
+        assert_eq!(moved.rescheduled_count, 1);
+        let private = app.view(|s| s.get_private_events()).unwrap();
+        assert_eq!(private.len(), 1);
+        assert_eq!(
+            booking::parse_event_time_ms(&private[0].start),
+            Some(offered[5] as i64)
+        );
+        assert!(slots(&app, TOKEN).contains(&first));
+
+        let page = app.view(|s| s.get_booking_page(TOKEN.to_owned())).unwrap();
+        assert_eq!(page.status, "booked");
+        assert_eq!(page.booking.unwrap().guest_email, "grace@example.com");
+
+        // Cancelled: the event goes, and the link is spent.
+        app.call(|s| s.cancel_booking(TOKEN.to_owned())).unwrap();
+        assert!(app.view(|s| s.get_private_events()).unwrap().is_empty());
+        assert!(app
+            .call(|s| s.book_slot(TOKEN.to_owned(), offered[7], guest()))
+            .is_err());
+        assert!(app
+            .call(|s| s.reschedule_booking(TOKEN.to_owned(), offered[7]))
+            .is_err());
+        assert_eq!(
+            app.view(|s| s.get_booking_page(TOKEN.to_owned()))
+                .unwrap()
+                .status,
+            "cancelled"
+        );
+    }
+
+    #[test]
+    fn a_slot_must_be_one_the_link_offers() {
+        let mut app = new_app();
+        app.call(|s| s.create_booking_link(always_open_link(TOKEN)))
+            .unwrap();
+        let offered = slots(&app, TOKEN);
+
+        // Off the half-hour grid.
+        assert!(app
+            .call(|s| s.book_slot(TOKEN.to_owned(), offered[3] + 60_000, guest()))
+            .is_err());
+        // Beyond the horizon.
+        assert!(app
+            .call(|s| s.book_slot(TOKEN.to_owned(), offered[3] + 30 * 86_400_000, guest()))
+            .is_err());
+        // Over one of the owner's own events.
+        app.call(|s| {
+            s.create_private_event(
+                CreateCalendarEvent {
+                    title: "Dentist".to_owned(),
+                    description: String::new(),
+                    start: booking::format_iso_utc(offered[3]),
+                    end: booking::format_iso_utc(offered[4]),
+                    event_type: "event".to_owned(),
+                    color: String::new(),
+                    peers: vec![],
+                },
+                1,
+            )
+        })
+        .unwrap();
+        assert!(app
+            .call(|s| s.book_slot(TOKEN.to_owned(), offered[3], guest()))
+            .is_err());
+        assert!(app
+            .call(|s| s.book_slot(TOKEN.to_owned(), offered[4], guest()))
+            .is_ok());
+    }
+
+    #[test]
+    fn a_token_opens_only_its_own_link() {
+        let mut app = new_app();
+        app.call(|s| s.create_booking_link(always_open_link(TOKEN)))
+            .unwrap();
+        app.call(|s| s.create_booking_link(always_open_link("other-token")))
+            .unwrap();
+        let offered = slots(&app, TOKEN);
+        app.call(|s| s.book_slot(TOKEN.to_owned(), offered[1], guest()))
+            .unwrap();
+
+        // The other link is untouched, and an unknown token opens nothing.
+        assert_eq!(
+            app.view(|s| s.get_booking_page("other-token".to_owned()))
+                .unwrap()
+                .status,
+            "open"
+        );
+        assert!(app
+            .view(|s| s.get_booking_page("guessed".to_owned()))
+            .is_err());
+        assert!(app
+            .call(|s| s.cancel_booking("guessed".to_owned()))
+            .is_err());
+
+        // The owner sees both, and deleting one leaves the other.
+        let links = app.view(|s| s.list_booking_links()).unwrap();
+        assert_eq!(links.len(), 2);
+        app.call(|s| s.delete_booking_link(booking::link_id_of("other-token")))
+            .unwrap();
+        assert_eq!(app.view(|s| s.list_booking_links()).unwrap().len(), 1);
+        assert!(app
+            .view(|s| s.get_booking_page("other-token".to_owned()))
+            .is_err());
+    }
+
+    #[test]
+    fn a_slot_window_is_clamped_to_now_and_its_maximum_width() {
+        let mut app = new_app();
+        app.call(|s| s.create_booking_link(always_open_link(TOKEN)))
+            .unwrap();
+        let everything = app
+            .view(|s| s.get_available_slots(TOKEN.to_owned(), 0, u64::MAX))
+            .unwrap();
+        let now = booking::now_ms();
+        assert!(!everything.is_empty());
+        assert!(everything.iter().all(|&slot| slot >= now));
+        // A backwards window offers nothing rather than failing.
+        assert!(app
+            .view(|s| s.get_available_slots(TOKEN.to_owned(), now + 10, now))
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn an_expired_link_offers_and_books_nothing() {
+        let mut app = new_app();
+        let mut link = always_open_link(TOKEN);
+        link.expires_at_ms = Some(booking::now_ms() - 1);
+        app.call(|s| s.create_booking_link(link)).unwrap();
+        let now = booking::now_ms();
+        assert!(app
+            .view(|s| s.get_available_slots(TOKEN.to_owned(), now, now + 86_400_000))
+            .is_err());
+        assert!(app
+            .call(|s| s.book_slot(TOKEN.to_owned(), now + 3_600_000, guest()))
+            .is_err());
     }
 
     #[test]

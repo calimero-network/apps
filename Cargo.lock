@@ -851,6 +851,7 @@ dependencies = [
  "calimero-storage",
  "calimero-storage-macros",
  "hex",
+ "sha2 0.10.9",
  "thiserror 1.0.69",
 ]
 

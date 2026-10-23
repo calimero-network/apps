@@ -14,6 +14,8 @@ import { rememberCalendar } from "../../utils/lastVisit";
 import { ClientApiDataSource } from "../../api/dataSource/ClientApiDataSource";
 import Calendar from "../../components/calendar/Calendar";
 import UsernameModal from "../../components/common/modals/username-modal/UsernameModal";
+import BookingLinksModal from "../../components/common/modals/booking-links-modal/BookingLinksModal";
+import type { OwnerNode } from "../../api/accessGrants";
 
 import "../../common.scss";
 import { useActions, useModal, useSse } from "../../hooks";
@@ -29,8 +31,9 @@ export default function CalendarPage() {
   // `admin`, not `mero.admin`: the session-aware client. On an account its
   // `getNodeIdentity` is the ACCOUNT and its `getContextIdentitiesOwned` is the
   // account too — where the relay's own routes would name the relay.
-  const { admin, nodeUrl } = useMero();
+  const { admin, nodeUrl, mero, isDelegated } = useMero();
   const [ready, setReady] = useState(false);
+  const [showBookingLinks, setShowBookingLinks] = useState(false);
   const [askUsername, setAskUsername] = useState(false);
   const setupDone = useRef(false);
 
@@ -155,6 +158,17 @@ export default function CalendarPage() {
     return pk ? `user-${pk.slice(0, 6)}` : "";
   })();
 
+  // Booking links need this node: a link's guest calls it directly, under an
+  // access grant it issues. An account has no node of its own to issue one.
+  const ownerNode: OwnerNode | null =
+    !isDelegated && nodeUrl && mero && "getTokenData" in mero && admin
+      ? {
+          nodeUrl,
+          token: () => mero.getTokenData()?.access_token ?? null,
+          refresh: () => admin.getNodeIdentity(),
+        }
+      : null;
+
   return (
     <div data-testid="calendar-container">
       {askUsername && myName.ready && !myTeamName && (
@@ -170,6 +184,15 @@ export default function CalendarPage() {
           // team can hold several, so jumping straight out made switching
           // between two calendars a two-step trip through an unrelated page.
           onBack={teamId ? () => navigate(`/teams/${teamId}`) : undefined}
+          onOpenBookingLinks={ownerNode ? () => setShowBookingLinks(true) : undefined}
+        />
+      )}
+      {showBookingLinks && ownerNode && mero && contextId && (
+        <BookingLinksModal
+          node={ownerNode}
+          rpc={mero.rpc}
+          contextId={contextId}
+          onClose={() => setShowBookingLinks(false)}
         />
       )}
     </div>

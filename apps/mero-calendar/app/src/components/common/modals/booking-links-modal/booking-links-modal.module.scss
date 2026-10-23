@@ -1,0 +1,68 @@
+.modal {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: 24px;
+  box-shadow: var(--glass-shadow-float);
+  padding: 22px 24px;
+  animation: mc-fade-in 0.15s ease-out;
+}
+.head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.title { font-size: 19px; font-weight: 750; letter-spacing: -0.02em; color: var(--text); }
+.subhead { font-size: 15px; font-weight: 700; color: var(--text); margin: 18px 0 8px; }
+.sub { font-size: 13.5px; color: var(--text-dim); margin: 6px 0 14px; line-height: 1.5; }
+.form { display: flex; flex-direction: column; gap: 10px; }
+.row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+.label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-dim); }
+.days { display: flex; flex-wrap: wrap; gap: 6px; }
+.day,
+.dayOn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  font: 600 13px/1 var(--font);
+  cursor: pointer;
+}
+.dayOn { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--accent-text); }
+.actions { display: flex; justify-content: flex-end; }
+.created {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  label { flex: 1; min-width: 0; }
+}
+.error { color: var(--danger); font-size: 13.5px; margin-top: 10px; }
+.list { list-style: none; display: flex; flex-direction: column; gap: 6px; padding: 0; margin: 0; }
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-edge);
+}
+.itemTitle { font-weight: 650; color: var(--text); font-size: 14px; }
+.itemSub { color: var(--text-dim); font-size: 12.5px; margin-top: 2px; }
+.status {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--glass-sunken);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 600;
+}

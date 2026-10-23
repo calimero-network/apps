@@ -1,0 +1,360 @@
+name: Booking Links
+description: >
+  A booking link on a real node: the owner makes one, the link's guest methods
+  find open times, book one meeting, reschedule it and cancel it, and the owner
+  sees the meeting in their private calendar and deletes the link.
+
+# The guest methods are called here over JSON-RPC by the node owner, passing
+# the token exactly as a guest's call under a core access grant passes it. The
+# grant itself (`/grant-calls`) is core's to test; what this scenario covers is
+# the contract over the wire. The token is fixed so its hash can be written
+# here: sha256("merobox-booking-token").
+#
+# merobox assertion traps are listed at the top of logic-test.yml; the same
+# rules hold here (every needle is comma-free, `result.output` when a value is
+# fed back into another step).
+stop_all_nodes: true
+restart: false
+wait_timeout: 120
+
+# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
+# `KeyDelivery timed out`.
+#
+# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
+# calimero devnet boot-node. Every container then spends its startup dialing
+# unreachable public addresses, and the node log fills with
+#
+#     libp2p_relay: Dropping in-flight connect request because we are at capacity
+#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
+#
+# until the join gives up with
+#
+#     join_group: direct namespace-join request found no reachable mesh peer
+#     join_group: join response contained no group key
+#     KeyDelivery timed out for group ContextGroupId(...)
+#
+# The peers never found each other; it was never a timing race. `e2e_mode`
+# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
+# turns multicast discovery on (which is what populates the kad table on a
+# single Docker bridge) and tightens the sync intervals. merobox's own
+# `apply_e2e_defaults` documents measuring this exact failure with it off.
+e2e_mode: true
+
+nodes:
+  chain_id: testnet-1
+  count: 1
+  # Must move in LOCKSTEP with the merobox pin in .github/workflows/. merobox
+  # talks to the node's admin API directly, so an image older than the merobox
+  # driving it fails on the FIRST step with a payload error that reads like a
+  # contract bug: rc.20 and older require `upgradePolicy` on create_namespace,
+  # and merobox 0.6.54+ stopped sending it (core#3393 dropped the concept in
+  # rc.21). rc.22 pairs with merobox >= 0.6.54; this repo pins 0.6.55.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.90
+  prefix: calimero-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620):
+  # `merod init` now writes `discovery.mdns = false`, where every earlier release
+  # left it on. merobox does not pass the flag, so this scenario's peer discovery
+  # changed behaviour at the image bump without a line of it changing.
+  mdns: true
+
+steps:
+  - name: Install Application
+    type: install_application
+    node: calimero-node-1
+    path: dist/com.calimero.mero-calendar.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # merobox waits for container health, which is not the same as ready.
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - name: Create Namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create Calendar Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  - name: Set Username (Ada)
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: set_username
+    args:
+      username: "Ada"
+      timestamp: 1000000
+
+  # ── The owner makes a link ────────────────────────────────────────────────
+  # Open around the clock on every day, so a slot exists whenever this runs.
+  - name: Create Booking Link
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: create_booking_link
+    args:
+      link:
+        tokenHash: "b8ca91489e6222328b707ba0b272f602800f544debaa14d79c6fb1449979afee"
+        grantId: "merobox-grant"
+        title: "Intro call"
+        description: "A first chat"
+        durationMinutes: 30
+        weeklyHours:
+          - { weekday: 0, startMinute: 0, endMinute: 1440 }
+          - { weekday: 1, startMinute: 0, endMinute: 1440 }
+          - { weekday: 2, startMinute: 0, endMinute: 1440 }
+          - { weekday: 3, startMinute: 0, endMinute: 1440 }
+          - { weekday: 4, startMinute: 0, endMinute: 1440 }
+          - { weekday: 5, startMinute: 0, endMinute: 1440 }
+          - { weekday: 6, startMinute: 0, endMinute: 1440 }
+        utcOffsetMinutes: 0
+        horizonDays: 7
+        minNoticeMinutes: 0
+    outputs:
+      link_id: result.output.linkId
+
+  - name: List Booking Links
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: list_booking_links
+    args: {}
+    outputs:
+      links: result
+
+  - name: Assert the link is listed and open
+    type: assert
+    statements:
+      - "is_set({{link_id}})"
+      - "contains({{links}}, 'Intro call')"
+      - "contains({{links}}, 'open')"
+
+  # ── The guest's view ──────────────────────────────────────────────────────
+  - name: Get Booking Page
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_booking_page
+    args:
+      token: "merobox-booking-token"
+    outputs:
+      page: result
+
+  - name: Assert the page names the link and its owner
+    type: assert
+    statements:
+      - "contains({{page}}, 'Intro call')"
+      - "contains({{page}}, 'Ada')"
+
+  - name: An unknown token opens nothing
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_booking_page
+    args:
+      token: "a-guessed-token"
+    expected_failure: true
+    outputs:
+      unknown_err: error
+
+  # (0, far future): the contract clamps the window to now and 62 days, so
+  # the next open slots come back without this scenario knowing the time.
+  - name: Get Available Slots
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_available_slots
+    args:
+      token: "merobox-booking-token"
+      from_ms: 0
+      to_ms: 99999999999999
+    outputs:
+      first_slot: result.output.0
+      later_slot: result.output.3
+
+  - name: Assert slots came back
+    type: assert
+    statements:
+      - "is_set({{unknown_err}})"
+      - "is_set({{first_slot}})"
+      - "is_set({{later_slot}})"
+
+  # ── Book, reschedule, cancel ──────────────────────────────────────────────
+  - name: Book a Slot
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: book_slot
+    args:
+      token: "merobox-booking-token"
+      start_ms: "{{first_slot}}"
+      guest:
+        name: "Grace"
+        email: "grace@example.com"
+        note: "About the demo"
+    outputs:
+      booked: result
+
+  - name: The same link books once
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: book_slot
+    args:
+      token: "merobox-booking-token"
+      start_ms: "{{later_slot}}"
+      guest:
+        name: "Mallory"
+        email: "mallory@example.com"
+        note: ""
+    expected_failure: true
+    outputs:
+      second_book_err: error
+
+  - name: Owner Private Events After Booking
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_private_events
+    args: {}
+    outputs:
+      private_after_book: result
+
+  - name: Assert the meeting is booked and in the owner's calendar
+    type: assert
+    statements:
+      - "contains({{booked}}, 'grace@example.com')"
+      - "is_set({{second_book_err}})"
+      - "contains({{private_after_book}}, 'Intro call with Grace')"
+      - "not_contains({{private_after_book}}, 'Mallory')"
+
+  - name: Reschedule Booking
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: reschedule_booking
+    args:
+      token: "merobox-booking-token"
+      start_ms: "{{later_slot}}"
+    outputs:
+      moved: result
+
+  - name: Booking Page After Reschedule
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_booking_page
+    args:
+      token: "merobox-booking-token"
+    outputs:
+      page_after_move: result
+
+  - name: Assert the meeting moved
+    type: assert
+    statements:
+      - "contains({{moved}}, 'rescheduledCount')"
+      - "contains({{page_after_move}}, 'booked')"
+
+  - name: Cancel Booking
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: cancel_booking
+    args:
+      token: "merobox-booking-token"
+
+  - name: Booking Page After Cancel
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_booking_page
+    args:
+      token: "merobox-booking-token"
+    outputs:
+      page_after_cancel: result
+
+  - name: Owner Private Events After Cancel
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_private_events
+    args: {}
+    outputs:
+      private_after_cancel: result
+
+  - name: A cancelled link is spent
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: book_slot
+    args:
+      token: "merobox-booking-token"
+      start_ms: "{{first_slot}}"
+      guest:
+        name: "Grace"
+        email: "grace@example.com"
+        note: ""
+    expected_failure: true
+    outputs:
+      rebook_err: error
+
+  - name: Assert the cancellation
+    type: assert
+    statements:
+      - "contains({{page_after_cancel}}, 'cancelled')"
+      - "not_contains({{private_after_cancel}}, 'Intro call with Grace')"
+      - "is_set({{rebook_err}})"
+
+  # ── The owner deletes the link ────────────────────────────────────────────
+  - name: Delete Booking Link
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: delete_booking_link
+    args:
+      link_id: "{{link_id}}"
+
+  - name: Booking Page After Delete
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_booking_page
+    args:
+      token: "merobox-booking-token"
+    expected_failure: true
+    outputs:
+      deleted_err: error
+
+  - name: Assert the link is gone
+    type: assert
+    statements:
+      - "is_set({{deleted_err}})"
