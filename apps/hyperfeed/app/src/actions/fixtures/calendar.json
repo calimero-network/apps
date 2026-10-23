@@ -41,7 +41,8 @@
     "writes": true,
     "methods": [
       "delete_event",
-      "delete_private_event"
+      "delete_private_event",
+      "delete_booking_link"
     ]
   },
   {
@@ -52,6 +53,40 @@
     "writes": true,
     "methods": [
       "set_username"
+    ]
+  },
+  {
+    "id": "bookings-read",
+    "label": "See booking links",
+    "description": "Your booking links, the page a guest sees, and the free slots on it.",
+    "category": "",
+    "writes": false,
+    "methods": [
+      "list_booking_links",
+      "get_booking_page",
+      "get_available_slots"
+    ]
+  },
+  {
+    "id": "booking-links",
+    "label": "Make booking links",
+    "description": "Create a link others use to book time with you.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "create_booking_link"
+    ]
+  },
+  {
+    "id": "bookings",
+    "label": "Book, move and cancel slots",
+    "description": "Book a slot on a booking link, move a booking, or cancel one.",
+    "category": "",
+    "writes": true,
+    "methods": [
+      "book_slot",
+      "reschedule_booking",
+      "cancel_booking"
     ]
   }
 ]
