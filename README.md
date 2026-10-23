@@ -80,6 +80,7 @@ Start here. These exist to be read, not shipped.
 | [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | Threads and comments replicated across your own nodes, with no server in the middle. | `com.calimero.mero-forum` |
 | [mero-updates](apps/mero-updates) | — | Investor updates, two-way: categories, KPI deltas, asks answered in one click, investor Q&A and read receipts, between the company's and its investors' nodes. | `com.calimero.mero-updates` |
 | [mero-standup](apps/mero-standup) | — | Async standups and a decision log for a small team: each member's own update per day (started from yesterday's), help on blockers, a weekly digest, and tagged write-once decisions superseded rather than edited. Small on purpose — the second app to read after kv-store, and the worked example of migrating a live app's state (v1 → v2). | `com.calimero.mero-standup` |
+| [mero-forms](apps/mero-forms) | — | Forms with the questions you choose — typed and checked answers, a builder, responses with a summary and CSV — filled in by hand or by a website through a key that can answer one form; any response goes on to [Mero CRM](apps/mero-crm) as a contact and a deal. | `com.calimero.mero-forms` |
 
 ### Secrets, documents & governance
 

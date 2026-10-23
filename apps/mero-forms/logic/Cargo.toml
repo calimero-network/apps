@@ -1,0 +1,55 @@
+[package]
+# Directory == cargo package == npm package, which publish-bundle.yml relies on
+# (it uses one value as both `apps/$APP/logic` and `pnpm -F $APP`).
+name        = "mero-forms"
+description = "Forms a team designs, the responses they collect, and a hand-off to Mero CRM; websites submit through delegated execution"
+version     = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+publish = false
+
+[lib]
+# `rlib` beside cdylib so the TestHost tests in src/tests.rs can link the crate.
+crate-type = ["cdylib", "rlib"]
+
+# Read by `cargo mero build` / `cargo mero bundle`. `appVersion` is absent on
+# purpose: the release workflow resolves it from the registry.
+[package.metadata.calimero]
+package     = "com.calimero.mero-forms"
+name        = "Mero Forms"
+description = "Build forms with the fields you need, collect responses from your website or by hand, and send any response to Mero CRM. A website submits with a key that can answer one form and nothing else; responses live on your team's own nodes."
+author      = "Calimero"
+# The slug IS the package id: a deep link resolves by `Application.package`.
+slug        = "com.calimero.mero-forms"
+# A real icon, not cargo-mero's "default" placeholder (check-app-icons.py).
+# Regenerate with `node app/scripts/gen-icons.mjs`.
+icon        = "../app/public/icon-512.png"
+category    = "productivity"
+tags        = ["forms", "surveys", "leads", "crm", "productivity"]
+github      = "https://github.com/calimero-network/apps"
+# Asserted equal to [workspace.metadata.mero-apps] in CI.
+min-runtime-version = "0.11.0-rc.90"
+# The registered login callback origin, compared by EXACT origin, so no
+# trailing slash. ⚠️ Resolves to nothing until the Vercel project exists:
+# Root Directory `apps/mero-forms/app`, project named `mero-forms`.
+frontend    = "https://mero-forms.vercel.app"
+
+# ⚠️ Keep the dependency tables AFTER the calimero table: the landing generator
+# reads that table up to the next `[` header and finds nothing at end of file.
+[dependencies]
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+# Form and response ids are random bytes from the host, rendered as hex.
+hex                     = { workspace = true }
+
+[dev-dependencies]
+# The native mock host, so TestHost can drive real CRDT state under cargo test.
+calimero-storage = { workspace = true, features = ["testing"] }
+
+# NOTE: no [profile.*] — cargo ignores profiles in a workspace member.
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(calimero_abi)"] }

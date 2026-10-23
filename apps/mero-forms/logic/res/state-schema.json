@@ -1,0 +1,513 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Answer": {
+      "kind": "record",
+      "doc": "One stored answer: the field as it was when the response was sent.",
+      "fields": [
+        {
+          "name": "field_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "values",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Empty when an optional field was left blank."
+        }
+      ]
+    },
+    "CrmLink": {
+      "kind": "record",
+      "doc": "Where a form's responses go in Mero CRM, and which field fills what.\nEmpty strings mean \"not set\".",
+      "fields": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The Mero CRM context (pipeline) the deals go to. Empty: no CRM."
+        },
+        {
+          "name": "stage_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The stage a new deal starts in."
+        },
+        {
+          "name": "name_field",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Field ids whose answers fill the contact and the deal."
+        },
+        {
+          "name": "email_field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "phone_field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "organization_field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title_field",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The answer that titles the deal; empty uses the contact's name."
+        }
+      ]
+    },
+    "Field": {
+      "kind": "record",
+      "doc": "One field of a form.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Stable, chosen when the field is added: what a website's backend sends\nthe answer under, e.g. `email`. Lowercase letters, digits, `_` and `-`."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`FIELD_KINDS`]."
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "help",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A line under the label, or empty."
+        },
+        {
+          "name": "required",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "options",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "The choices, for `choice` and `checkboxes`; empty for the rest."
+        }
+      ]
+    },
+    "Form": {
+      "kind": "record",
+      "doc": "A form. Every field is a register, so two teammates changing different\nparts of one form both keep their change; the field list is edited whole.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "list",
+              "items": {
+                "$ref": "Field"
+              }
+            }
+          }
+        },
+        {
+          "name": "open",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          },
+          "doc": "A closed form refuses new responses."
+        },
+        {
+          "name": "crm",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "$ref": "CrmLink"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        }
+      ]
+    },
+    "FormKey": {
+      "kind": "record",
+      "doc": "A website form's key, as the admins registered it.",
+      "fields": [
+        {
+          "name": "label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "What the admins call it, e.g. \"calimero.network contact page\"."
+        },
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The one form it may submit to."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "MeroForms": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "responses",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "Response"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "forms",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Form"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "triage",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "ResponseState"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "settings",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "string"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "form_keys",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "FormKey"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        }
+      ]
+    },
+    "Response": {
+      "kind": "record",
+      "doc": "What a respondent sent, exactly. Inserted once, never edited.",
+      "fields": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "answers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Answer"
+            }
+          },
+          "doc": "One per field of the form, in the form's order."
+        },
+        {
+          "name": "source",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Where it was sent from, e.g. `/contact/`, or empty."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When the node accepted it, in nanoseconds since the Unix epoch."
+        },
+        {
+          "name": "submitted_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The account that called `submit_response` (hex): which form key, or\nwhich teammate entered it."
+        }
+      ]
+    },
+    "ResponseState": {
+      "kind": "record",
+      "doc": "The team's state for one response.",
+      "fields": [
+        {
+          "name": "archived",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          },
+          "doc": "Out of the way, e.g. spam, without being deleted."
+        },
+        {
+          "name": "crm_context",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The CRM context and deal it became, or empty."
+        },
+        {
+          "name": "crm_deal",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "crm_sent_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "crm_sent_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "MeroForms",
+  "state_version": 1
+}

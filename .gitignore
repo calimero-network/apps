@@ -32,6 +32,8 @@ apps/*/logic/workflows/data/
 # Signed bundles are build output; the registry is the distribution channel
 dist/*.mpk
 apps/*/logic/dist/
+# Bundle fixtures an app's build-multi-service-bundle.sh writes for its tests.
+apps/*/logic/res/*.mpk
 
 # Local env
 .env
