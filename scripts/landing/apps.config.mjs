@@ -586,6 +586,65 @@ export const APPS = {
     ],
   },
 
+  'mero-forms': {
+    displayName: 'Mero Forms',
+    e2eDir: 'e2e',
+    // Same light/dark key as the app shell (src/ui.tsx), so the landing
+    // choice carries through sign-in.
+    themeStorageKey: 'mero-forms:theme',
+    availability: 'web+desktop',
+    overview: {
+      headline: 'Forms whose answers stay on your nodes.',
+      comparison: {
+        heading: 'A form builder, without the form vendor',
+        sub: 'The builder, the questions and the response table you expect. The difference is who holds the answers.',
+        themLabel: 'A typical online form service',
+        rows: [
+          { label: 'Where responses live', them: 'In the vendor’s database', us: 'On your team’s own nodes, nobody else’s' },
+          { label: 'Who can read them', them: 'Your team, and the vendor', us: 'Your team. A website key can add a response and read nothing' },
+          { label: 'Checking answers', them: 'In the form page, if at all', us: 'In the contract, against every question, whoever sends it' },
+          { label: 'Your website’s form', them: 'An embed or a third-party script', us: 'Your own backend, answering with a key issued from the app' },
+          { label: 'Following up', them: 'An integration, or a copy and paste', us: 'Send to Mero CRM as a contact and a deal, in one click' },
+        ],
+      },
+      closing: {
+        title: 'Build your first form',
+        body: 'Connect a node, or install the desktop app that bundles one, then start from a template.',
+      },
+    },
+    trust: ['No form vendor', 'Answers checked by the contract', 'Hands off to Mero CRM'],
+    explainer: [
+      'A form builder for a team: short answer, paragraph, email, phone, number, website, date, multiple choice and checkboxes, each required or not, with help text. Responses come in from your website or are entered by hand, and read back as a summary, a table and one response at a time, with a CSV export.',
+      'A workspace of forms is a Calimero context replicated between your team’s own nodes. A website answers through a key that is bound to one form and can do nothing else, and any response worth following up goes on to Mero CRM as a contact and a deal.',
+    ],
+    features: [
+      { icon: 'FileCheck', title: 'Nine kinds of question', body: 'Short answer to checkboxes, required or optional, with help text, reordered and duplicated in a builder that reads like the form it makes.' },
+      { icon: 'LockCheck', title: 'Every answer checked', body: 'The contract checks each answer against its question: an email is an email, a choice is one of the options. A tampered website fails loudly instead of storing junk.' },
+      { icon: 'ExternalLink', title: 'Your website, your backend', body: 'Issue a form key from the app and your site’s backend answers with it through a relay. The key can add a response to its one form and nothing else.' },
+      { icon: 'BarChart', title: 'Responses at a glance', body: 'A summary of every choice question, a searchable table, the full response in a panel, and a CSV with one column per question.' },
+      { icon: 'ArrowUpRight', title: 'Straight into Mero CRM', body: 'Map which question is the name, email and company once. Each response becomes a contact and a deal with every answer in a note.' },
+      { icon: 'Shield', title: 'Kept exactly as sent', body: 'A response stores every question as it was when it was answered, so editing the form never rewrites what people told you.' },
+    ],
+    faq: [
+      {
+        q: 'Can my website read the responses?',
+        a: 'No. A form key is an account bound to one form: it can add a response to that form and nothing else. Only the team can read responses, and the website never holds a node.',
+      },
+      {
+        q: 'What happens to old responses when I change a question?',
+        a: 'Nothing. Each response keeps every question’s label and kind as they were when it was answered, and a question you removed still shows on the responses that answered it.',
+      },
+      {
+        q: 'Do I need Mero CRM?',
+        a: 'No. Forms works on its own, with a summary, a table and a CSV export. Linking a form to a Mero CRM pipeline only adds the one-click hand-off.',
+      },
+      {
+        q: 'Can I take a response by hand?',
+        a: 'Yes. Preview is the form as a respondent sees it, and submitting it there stores a response like any other, with where it came from.',
+      },
+    ],
+  },
+
   'mero-issue-tracker': {
     e2eDir: 'e2e',
     // Same light/dark key as the app shell (src/theme.ts), so the landing

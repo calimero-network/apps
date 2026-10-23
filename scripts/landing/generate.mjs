@@ -574,6 +574,7 @@ const TINTS = {
   'mero-crm': '#2dd4bf',
   'mero-design': '#bef264',
   'mero-docs': '#a3e635',
+  'mero-forms': '#7c5cff',
   'mero-forum': '#fb923c',
   'mero-issue-tracker': '#84cc16',
   'mero-kombat': '#f43f5e',
