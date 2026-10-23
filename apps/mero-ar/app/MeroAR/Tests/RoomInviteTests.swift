@@ -11,11 +11,12 @@ import MeroKit
 /// login screen — that a plain room id is NOT mistaken for an invitation.
 final class RoomInviteTests: XCTestCase {
 
-    private func invite(room: String = "Studio") -> RoomInvite {
+    private func invite(room: String = "Studio", context: String = "ctx-123", home: String? = nil) -> RoomInvite {
         RoomInvite(
             namespaceId: "ns-abc",
-            contextId: "ctx-123",
+            contextId: context,
             roomName: room,
+            homeName: home,
             invitation: SignedGroupOpenInvitation(
                 invitation: GroupInvitationFromAdmin(
                     inviterIdentity: Array(0..<32),
@@ -34,6 +35,25 @@ final class RoomInviteTests: XCTestCase {
         XCTAssertEqual(back?.namespaceId, "ns-abc")
         XCTAssertEqual(back?.contextId, "ctx-123")
         XCTAssertEqual(back?.roomName, "Studio")
+    }
+
+    /// An invitation to a whole home carries no room: the joiner lands in the
+    /// lobby with the home listed, rather than entering a room.
+    func testAHomeInviteRoundTripsAndIsRecognisedAsOne() throws {
+        let link = try invite(room: "", context: "", home: "Our flat").shareableLink()
+        let back = try XCTUnwrap(RoomInvite.decode(pasted: link))
+        XCTAssertTrue(back.isHomeInvite)
+        XCTAssertEqual(back.homeName, "Our flat")
+        XCTAssertEqual(back.title, "Our flat")
+        XCTAssertFalse(invite().isHomeInvite)
+        XCTAssertEqual(invite(home: "Our flat").title, "Studio", "a room invite is titled by its room")
+    }
+
+    /// Links minted before homes existed have no `homeName`, and still decode.
+    func testAnInviteWithoutAHomeNameStillDecodes() throws {
+        let back = try XCTUnwrap(RoomInvite.decode(pasted: try invite().shareableLink()))
+        XCTAssertNil(back.homeName)
+        XCTAssertEqual(back.title, "Studio")
     }
 
     func testTheLinkPointsAtThisAppsRegistryPackage() throws {

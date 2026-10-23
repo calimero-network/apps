@@ -2,7 +2,11 @@ import SwiftUI
 
 @main
 struct MeroARApp: App {
+    #if DEBUG
+    @StateObject private var app = AppState.launch()
+    #else
     @StateObject private var app = AppState()
+    #endif
 
     var body: some Scene {
         WindowGroup {

@@ -49,11 +49,11 @@ final class MeroARUITests: XCTestCase {
         password.tap()
         password.typeText(pass)
         pause(1)
-        let create = app.buttons["createRoomButton"]
+        let create = app.buttons["createHomeButton"]
         signIn(app, password: password, until: create)
         dismissSavePassword(app)
         pause(2)
-        let name = app.textFields["roomNameInput"]
+        let name = app.textFields["homeNameInput"]
         tap(create, until: name)
         name.tap()
         name.typeText((env["MEROAR_TEST_ROOM"] ?? "Living room") + "\n")
@@ -93,7 +93,7 @@ final class MeroARUITests: XCTestCase {
         pause(4)
 
         app.buttons["leaveButton"].tap()
-        expect(app.buttons["createRoomButton"], 10)
+        expect(app.buttons["createHomeButton"], 10)
         pause(3)
     }
 
@@ -115,10 +115,10 @@ final class MeroARUITests: XCTestCase {
         expect(password, 5)
         password.tap()
         password.typeText(pass)
-        let create = app.buttons["createRoomButton"]
+        let create = app.buttons["createHomeButton"]
         signIn(app, password: password, until: create)
         dismissSavePassword(app)
-        let name = app.textFields["roomNameInput"]
+        let name = app.textFields["homeNameInput"]
         tap(create, until: name)
         name.tap()
         name.typeText((env["MEROAR_TEST_ROOM"] ?? "Sample room test") + "\n")
@@ -192,11 +192,11 @@ final class MeroARUITests: XCTestCase {
         password.tap()
         password.typeText(env["MEROAR_TEST_PASS"] ?? "")
         Thread.sleep(forTimeInterval: 0.8)
-        let create = app.buttons["createRoomButton"]
+        let create = app.buttons["createHomeButton"]
         signIn(app, password: password, until: create)
         dismissSavePassword(app)
         Thread.sleep(forTimeInterval: 2)
-        let name = app.textFields["roomNameInput"]
+        let name = app.textFields["homeNameInput"]
         tap(create, until: name)
         name.tap()
         name.typeText(env["MEROAR_TEST_ROOM"] ?? "Studio")

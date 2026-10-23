@@ -31,10 +31,17 @@ A dark, spatial design of its own: glass panels over the camera, an aurora
 
 - **Sign in** with Calimero Cloud, or **Manually enter node URL** for a node you
   run (URL + admin username and password).
-- **Your rooms**: on a node session, the node's Mero AR rooms; otherwise the ones
-  you opened before. **New room** (node sessions) installs `com.calimero.mero-ar`
-  from the app registry if needed and creates the room; **Join** takes an invite
-  link or a room ID.
+- **Nickname**: asked once after sign-in; it's the name on the roster, on
+  notes and on what you place. Change it in Settings or from your row in People.
+- **Your homes**: a *home* is a Calimero namespace running Mero AR, and its
+  rooms are the namespace's contexts. **New home** founds one with its first
+  room: on Calimero Cloud through the account's relay
+  (`CloudSignIn.foundNamespace`, hosted in the cloud when it agrees), on a node
+  with the node's admin API (installing `com.calimero.mero-ar` from the registry
+  if needed). Each home lists its rooms, with **+** for another room and
+  **Invite** for a link to the whole home. **Join** takes a home or room invite
+  link, or a room ID. A Cloud account with no relay yet gets one from its first
+  invitation, and can found homes after that.
 - **The room**: a tool dock (Add, Notes, Share scan, People); an object library
   with **furniture** at real size (sofa, armchair, chair, dining and coffee
   tables, bed, bookcase, floor lamp, plant, rug, TV on a media unit, wall TV,
@@ -44,7 +51,7 @@ A dark, spatial design of its own: glass panels over the camera, an aurora
   selected object (move, turn, resize, paint, lock, delete); notes pinned in
   space; other people's viewpoints; Apple's coaching overlay while scanning.
 - **People**: roles (admin / editor / viewer), editor toggles for admins, and
-  invites as a signed link (Share or Copy link).
+  invites as a signed link (Share or Copy link) to the room's home.
 - **No ARKit?** In the Simulator, on a Mac or an older device, the room opens as
   a **3D preview** (SceneKit, orbit with a finger) with the same tools. The UI
   says so; live AR needs an ARKit iPhone or iPad. `MEROAR_PREVIEW=1` forces the
@@ -151,6 +158,24 @@ space (namespace), created on a node (the app's node sign-in, `make node`, or
 the web build); the phone joins it by invitation. On a node session, **New
 room** creates one there: a namespace, an open group in it, and the room's
 context.
+
+### Tests without a node
+
+Debug builds carry `FixtureNode` (`Sources/Debug/`): an in-memory node with
+Mero AR's contract, answering the admin API, JSON-RPC and blobs as a
+`URLProtocol`. The app's real code runs against it with no network.
+
+- **`AppFlowTests`** (unit): two people on one fixture. They cover homes and
+  rooms, home and room invitations (including a forged one), roles and edit
+  grants, locks, objects, notes, the shared 3D room and world map, nicknames
+  and sign-out.
+- **`FixtureUITests`** (UI): the app launched with `MEROAR_FIXTURE=1`. One
+  person goes through every screen: nickname, new home, objects, label, sample
+  3D room, floor plan, inspector, notes, People and a second room. A second
+  person, played by relaunching as someone else, joins by link, sees the room
+  view-only, is made an editor, and adds an object.
+
+`make app-test` runs them along with the rest.
 
 ### Building against an unmerged SDK
 

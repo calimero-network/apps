@@ -8,20 +8,19 @@ import SwiftUI
 /// rule regardless; this just avoids offering taps that would be refused.
 struct MembersSheet: View {
     @ObservedObject var store: SceneStore
-
-    /// The invite link, once minted. Held so a second tap does not mint a
-    /// second invitation.
-    @State private var inviteLink: String?
-    @State private var inviting = false
-    @State private var inviteError: String?
-    @State private var copied = false
+    @State private var editNickname = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 SheetHeader(
                     title: "People", subtitle: "\(rows.count) in this room · \(store.onlineMembers.count) here now")
-                inviteCard
+                InviteLinkCard(
+                    title: "Invite someone",
+                    subtitle: "They join this room's home, then build with you."
+                ) {
+                    try await store.service.createRoomInvite().shareableLink()
+                }
                 membersCard
                 detailsCard
             }
@@ -30,70 +29,8 @@ struct MembersSheet: View {
         .refreshable { await store.refreshRoster() }
         .preferredColorScheme(.dark)
         .task { await store.refreshRoster() }
-    }
-
-    // MARK: - Invite
-
-    private var inviteCard: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 12) {
-                    IconTile(systemName: "person.badge.plus", size: 42, gradient: true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Invite someone").font(Theme.title(17)).foregroundStyle(Theme.text)
-                        Text("They join the room's space, then build with you.")
-                            .font(.system(size: 13)).foregroundStyle(Theme.textFaint)
-                    }
-                }
-                if let link = inviteLink {
-                    HStack(spacing: 10) {
-                        Image(systemName: "link").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.accent)
-                        Text(link)
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundStyle(Theme.textDim)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .textSelection(.enabled)
-                    }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.black.opacity(0.25)))
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Invite link")
-                    .accessibilityIdentifier("inviteLink")
-                    HStack(spacing: 10) {
-                        ShareLink(item: link) {
-                            ButtonLabel(title: "Share", icon: "square.and.arrow.up")
-                        }
-                        .buttonStyle(PrimaryButtonStyle(height: 46))
-                        .accessibilityIdentifier("shareInviteButton")
-                        Button {
-                            #if canImport(UIKit) && os(iOS)
-                            UIPasteboard.general.string = link
-                            #endif
-                            Haptics.success()
-                            copied = true
-                        } label: {
-                            ButtonLabel(title: copied ? "Copied" : "Copy link", icon: copied ? "checkmark" : "doc.on.doc")
-                        }
-                        .buttonStyle(GlassButtonStyle(height: 46))
-                        .accessibilityIdentifier("copyInviteButton")
-                    }
-                } else {
-                    Button {
-                        Haptics.tap()
-                        Task { await mintInvite() }
-                    } label: {
-                        ButtonLabel(title: "Create invite link", icon: "link", isLoading: inviting)
-                    }
-                    .buttonStyle(PrimaryButtonStyle(height: 50))
-                    .disabled(inviting)
-                    .accessibilityIdentifier("createInviteButton")
-                }
-                if let inviteError {
-                    Callout(tone: .danger, message: inviteError)
-                }
-            }
+        .sheet(isPresented: $editNickname) {
+            NicknameSheet().presentationDetents([.height(340)]).presentationBackground(.ultraThinMaterial)
         }
     }
 
@@ -136,6 +73,17 @@ struct MembersSheet: View {
                 Text(online ? "Here now" : "Away").font(.system(size: 12)).foregroundStyle(Theme.textFaint)
             }
             Spacer()
+            if isMe {
+                Button {
+                    Haptics.tap()
+                    editNickname = true
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .buttonStyle(CircleButtonStyle(size: 34))
+                .accessibilityLabel("Change your nickname")
+                .accessibilityIdentifier("editNicknameButton")
+            }
             if store.isAdmin && row.role != "admin" {
                 Toggle(
                     "Editor",
@@ -184,20 +132,6 @@ struct MembersSheet: View {
     }
 
     // MARK: - Data
-
-    /// Mint a namespace invitation for this room and build its shareable link.
-    private func mintInvite() async {
-        inviting = true
-        inviteError = nil
-        defer { inviting = false }
-        do {
-            let invite = try await store.service.createRoomInvite()
-            inviteLink = try invite.shareableLink()
-            Haptics.success()
-        } catch {
-            inviteError = userMessage(error)
-        }
-    }
 
     private var footerText: String {
         if store.isAdmin { return "Editors can place, move and delete objects, and share the room scan." }
