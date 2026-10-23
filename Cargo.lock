@@ -967,6 +967,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mero-leads"
+version = "0.1.0"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
+]
+
+[[package]]
 name = "mero-models"
 version = "0.0.1"
 dependencies = [
