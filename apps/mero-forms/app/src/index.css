@@ -710,6 +710,8 @@ select {
 .crm-grid .field { display: grid; gap: 4px; align-content: start; }
 .crm-grid select { width: 100%; }
 .hint-plain { font-size: 0.78rem; color: var(--text-dim); }
+.pipeline-id { margin: 4px 0 12px; }
+.pipeline-id input { flex: 1 1 320px; font-size: 0.82rem; }
 
 .issued { margin-top: 16px; padding: 14px; border-radius: 12px; border: 1px solid var(--link); background: var(--glass-busy-bg); }
 .issued h3 { color: var(--text); text-transform: none; letter-spacing: 0; font-size: 0.95rem; }

@@ -87,10 +87,30 @@ calimero.network's contact page is wired this way: see "Contact form" in the
 ## Sending to Mero CRM
 
 The hand-off runs in the browser of the teammate who clicks it
-(`app/src/useCrm.ts`), against the pipeline's own context, as that node's
-identity in the pipeline. So the node has to be a member of the pipeline: the
-Connect tab lists the Mero CRM pipelines this node is in (found by the
-`com.calimero.mero-crm` package among its contexts) with their stages.
+(`app/src/useCrm.ts`), against the pipeline's own context, as that person. So
+they have to be a member of the pipeline, which lives in its own namespace:
+join it from Mero CRM's invite link. Keep it out of the forms workspace's
+namespace: Mero CRM lets every member write deals and contacts, and website
+form keys are members of the workspace's namespace.
+
+How the pipeline is found and written to depends on how you signed in:
+
+- **A node** (Calimero Desktop or `merod`): the Connect tab lists the Mero CRM
+  pipelines this node has joined (by the `com.calimero.mero-crm` package among
+  its installed apps), and the hand-off writes through the node as its
+  identity in the pipeline.
+- **A Calimero Cloud account**: the Connect tab asks every Cloud relay the
+  account knows for its contexts (`listDelegatedContexts`) and keeps the Mero
+  CRM ones, matched by the application id the registry gives for that package.
+  The hand-off writes through the relay that serves the pipeline, under the
+  account's warrant, which may be a different relay from the one the workspace
+  is on. Mero CRM stamps who created each record in an entry only that account
+  owns, and core lets a relay sign such an entry on someone's behalf only when
+  it is an attested TEE relay (a `RelayTee`). Calimero Cloud's relays are; a
+  team's own node relaying for an account is not, and the error says so.
+
+When the list cannot be fetched (the registry or a relay is down), paste the
+pipeline's id into the Connect tab: it is tried directly.
 
 One send is: reuse the CRM contact with the same email or create one, create a
 deal in the chosen stage, add a note with every answer, then
@@ -189,7 +209,7 @@ app/src/FormFill.tsx        the form as a respondent sees it
 app/src/Responses.tsx       summary, table, one response, Send to CRM
 app/src/FormConnect.tsx     form keys and the relay
 app/src/CrmSettings.tsx     the CRM pipeline, stage and field mapping
-app/src/useCrm.ts           finding pipelines and sending a response
+app/src/useCrm.ts           finding pipelines (node or Cloud account) and sending a response
 app/src/lib/                pure, unit-tested: questions and answers, CRM mapping, form keys
 app/src/useWorkspace.ts     the generated client + re-read on sync events
 app/src/{ContextPicker,InviteCard,TeamCard,useJoinFromInvitation}.tsx, utils/
