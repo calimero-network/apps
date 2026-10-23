@@ -758,7 +758,7 @@ impl CalendarState {
             .entries()?
             .map(|(id, link)| link.owner_view(id))
             .collect();
-        views.sort_by(|a, b| b.created_at_ms.cmp(&a.created_at_ms));
+        views.sort_by_key(|view| core::cmp::Reverse(view.created_at_ms));
         Ok(views)
     }
 
