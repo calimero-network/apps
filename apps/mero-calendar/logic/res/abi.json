@@ -778,7 +778,7 @@
     },
     {
       "name": "get_available_slots",
-      "doc": "The start times, in Unix milliseconds, the link behind `token` offers in\n`[from_ms, to_ms)`. At most `MAX_SLOT_RANGE_DAYS` wide.",
+      "doc": "The start times, in Unix milliseconds, the link behind `token` offers in\n`[from_ms, to_ms)`.\n\nThe window is clamped, never refused: it starts no earlier than now and\nspans at most `MAX_SLOT_RANGE_DAYS`. So `(0, u64::MAX)` asks for the next\nopen slots without the caller knowing the time.",
       "params": [
         {
           "name": "token",

@@ -782,7 +782,11 @@ impl CalendarState {
     }
 
     /// The start times, in Unix milliseconds, the link behind `token` offers in
-    /// `[from_ms, to_ms)`. At most `MAX_SLOT_RANGE_DAYS` wide.
+    /// `[from_ms, to_ms)`.
+    ///
+    /// The window is clamped, never refused: it starts no earlier than now and
+    /// spans at most `MAX_SLOT_RANGE_DAYS`. So `(0, u64::MAX)` asks for the next
+    /// open slots without the caller knowing the time.
     pub fn get_available_slots(
         &self,
         token: String,
@@ -795,7 +799,7 @@ impl CalendarState {
         if link.status == LinkStatus::Cancelled {
             return Ok(Vec::new());
         }
-        let (from, to) = Self::slot_range(from_ms, to_ms)?;
+        let (from, to) = Self::slot_range(from_ms, to_ms, now);
         // The link's own meeting blocks its slot here like any other event, so
         // a guest choosing a new time is not offered the one they hold.
         let busy = self.busy_intervals(None)?;
@@ -940,20 +944,14 @@ impl CalendarState {
         Ok(())
     }
 
-    fn slot_range(from_ms: u64, to_ms: u64) -> app::Result<(i64, i64)> {
-        let (Ok(from), Ok(to)) = (i64::try_from(from_ms), i64::try_from(to_ms)) else {
-            app::bail!("time out of range");
-        };
-        if from >= to {
-            app::bail!("fromMs must be before toMs");
-        }
-        if to - from > booking::MAX_SLOT_RANGE_DAYS * 86_400_000 {
-            app::bail!(
-                "a slot range is at most {} days",
-                booking::MAX_SLOT_RANGE_DAYS
-            );
-        }
-        Ok((from, to))
+    /// `[from_ms, to_ms)` clamped to start no earlier than `now_ms` and to span
+    /// at most `MAX_SLOT_RANGE_DAYS`, so a guest cannot make this node walk a
+    /// year of slots in one call. An empty window offers nothing.
+    fn slot_range(from_ms: u64, to_ms: u64, now_ms: u64) -> (i64, i64) {
+        let clamp = |ms: u64| i64::try_from(ms).unwrap_or(i64::MAX);
+        let from = clamp(from_ms).max(clamp(now_ms));
+        let to = clamp(to_ms).min(from.saturating_add(booking::MAX_SLOT_RANGE_DAYS * 86_400_000));
+        (from, to)
     }
 
     /// Refuse `start_ms` unless the link offers it right now. `own_event` is
@@ -1669,6 +1667,24 @@ mod tests {
         assert!(app
             .view(|s| s.get_booking_page("other-token".to_owned()))
             .is_err());
+    }
+
+    #[test]
+    fn a_slot_window_is_clamped_to_now_and_its_maximum_width() {
+        let mut app = new_app();
+        app.call(|s| s.create_booking_link(always_open_link(TOKEN)))
+            .unwrap();
+        let everything = app
+            .view(|s| s.get_available_slots(TOKEN.to_owned(), 0, u64::MAX))
+            .unwrap();
+        let now = booking::now_ms();
+        assert!(!everything.is_empty());
+        assert!(everything.iter().all(|&slot| slot >= now));
+        // A backwards window offers nothing rather than failing.
+        assert!(app
+            .view(|s| s.get_available_slots(TOKEN.to_owned(), now + 10, now))
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
