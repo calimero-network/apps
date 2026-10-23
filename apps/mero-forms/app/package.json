@@ -1,0 +1,44 @@
+{
+  "name": "mero-forms",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Mero Forms — build forms, collect responses, send them to Mero CRM, on Calimero",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name FormsClient --import-path @calimero-network/mero-js && calimero-abi-codegen -i ../../mero-crm/logic/res/abi.json -o src/generated/crm --client-name CrmClient --import-path @calimero-network/mero-js",
+    "test:e2e": "playwright test",
+    "icons": "node scripts/gen-icons.mjs"
+  },
+  "dependencies": {
+    "@calimero-apps/glass": "workspace:*",
+    "@calimero-apps/names": "workspace:*",
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-network/mero-platform-react": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
+    "bs58": "catalog:",
+    "fflate": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
+    "@calimero-network/abi-codegen": "catalog:",
+    "@playwright/test": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

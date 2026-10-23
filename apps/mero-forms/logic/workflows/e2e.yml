@@ -1,0 +1,609 @@
+name: Mero Forms — a form, its responses and a form key across two nodes (2-node e2e)
+description: >
+  The access rules the contract is built on, on real nodes over a signed delta
+  path, which no single-node test can exercise:
+
+    1. a form built on one node reads the same on the other;
+    2. a member who is not on the team (a form key, here Bob) can answer the
+       form it was issued for, is held to the questions, and cannot read
+       responses or change forms;
+    3. the admin sees the response on the other node, attributed to the
+       account that signed it, and the key's register counts it;
+    4. once added to the team, Bob reads every response and his changes
+       (archive, the CRM record, a form edit) reach the admin's node: the
+       shared state's writer set followed the roles;
+    5. removed from the team, Bob loses the workspace again.
+
+force_pull_image: true
+
+# Required: clears the public boot-node from `bootstrap.nodes`, turns on
+# multicast discovery and tightens sync. Without it namespace joins die on
+# `KeyDelivery timed out` (see mero-forum's scenario for the full story).
+e2e_mode: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  # Must match the `calimero-*` tag in the root Cargo.toml. check-app-metadata.sh
+  # asserts this against [workspace.metadata.mero-apps].merod-image.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.90
+  prefix: calimero-node
+  # rc.26 made mDNS opt-in and merobox does not pass the flag.
+  mdns: true
+  # Off every other app's pair so this can run beside another scenario.
+  base_port: 3160
+  base_rpc_port: 3260
+
+steps:
+  # ── Bootstrap ───────────────────────────────────────────────────────────────
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: dist/com.calimero.mero-forms.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: dist/com.calimero.mero-forms.mpk
+    dev: true
+
+  # Container health is not readiness: on a cold host the first admin call
+  # 500s a few seconds in.
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - name: Create namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Set default member capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  - name: Generate identity for Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      bob_identity: publicKey
+
+  - name: Wait for identity propagation
+    type: wait
+    seconds: 3
+
+  - name: Node 1 creates invitation for Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invite_bob: invitation
+
+  # The group key's gossip window has to cover peer discovery on a loaded
+  # runner too. Without this the join 500s intermittently.
+  - name: Settle before the namespace join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
+
+  - name: Node 2 joins namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invite_bob}}"
+
+  - name: Settle after namespace join
+    type: wait
+    seconds: 5
+
+  - name: Node 1 creates the workspace
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{}'
+    outputs:
+      ws_id: contextId
+      alice_key: memberPublicKey
+
+  - name: Force Node 2 to sync namespace state
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle after sync
+    type: wait
+    seconds: 5
+
+  - name: Bob joins the workspace
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    outputs:
+      bob_key: memberPublicKey
+
+  - name: Wait for workspace sync
+    type: wait_for_sync
+    context_id: "{{ws_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Who is who ──────────────────────────────────────────────────────────────
+  - name: Alice learns her account
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: my_account
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_account: result.output
+  - name: Bob learns his account
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: my_account
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_account: result.output
+  - name: Alice checks she is an admin
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: am_i_admin
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_admin: result.output
+  - name: Bob checks whether he is on the team
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: am_i_team
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_team_before: result.output
+  - name: Read the field kinds
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: field_kinds
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      kinds: result
+
+  - name: Assert the installer is the admin and Bob starts outside the team
+    type: json_assert
+    statements:
+      - 'json_equal({{alice_admin}}, true)'
+      - 'json_equal({{bob_team_before}}, false)'
+
+  - name: Assert the field kinds
+    type: assert
+    statements:
+      - 'contains({{kinds}}, "checkboxes")'
+
+  # ── 1. A form built on node 1 reads the same on node 2 ──────────────────────
+  - name: Alice creates a form
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: create_form
+    args:
+      title: "Contact us"
+      description: ""
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      form_id: result.output
+  - name: Alice gives it questions
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: update_form
+    args:
+      form_id: "{{form_id}}"
+      title: "Contact us"
+      description: "Tell us about you"
+      fields:
+        - { id: "name", kind: "text", label: "Name", help: "", required: true, options: [] }
+        - { id: "email", kind: "email", label: "Email", help: "", required: true, options: [] }
+        - { id: "topic", kind: "choice", label: "Topic", help: "", required: true, options: ["Cloud", "Desktop"] }
+        - { id: "message", kind: "paragraph", label: "Message", help: "", required: false, options: [] }
+    executor_public_key: "{{alice_key}}"
+  - name: Alice names the workspace
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: set_workspace_name
+    args:
+      name: "Marketing"
+    executor_public_key: "{{alice_key}}"
+  - name: A throwaway form
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: create_form
+    args:
+      title: "Draft"
+      description: ""
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      draft_id: result.output
+  - name: Alice deletes the throwaway form, which has no responses
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: delete_form
+    args:
+      form_id: "{{draft_id}}"
+    executor_public_key: "{{alice_key}}"
+  - name: Sync the form
+    type: wait_for_sync
+    context_id: "{{ws_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+  - name: Bob reads the form, as a website may
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: get_form
+    args:
+      form_id: "{{form_id}}"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_form: result
+  - name: Bob reads the workspace name
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: workspace_name
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_ws_name: result.output
+
+  - name: Assert the form reached node 2
+    type: assert
+    statements:
+      - 'contains({{bob_form}}, "Contact us")'
+      - 'contains({{bob_form}}, "Desktop")'
+      - 'equal({{bob_ws_name}}, "Marketing")'
+
+  # ── 2. A form key answers and can do nothing else ─────────────────────────
+  - name: Alice registers Bob's account as the form's key
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: register_form_key
+    args:
+      account: "{{bob_account}}"
+      form_id: "{{form_id}}"
+      label: "Contact page"
+    executor_public_key: "{{alice_key}}"
+  - name: Sync the key
+    type: wait_for_sync
+    context_id: "{{ws_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+  - name: Bob answers with a topic that is not an option
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: submit_response
+    args:
+      form_id: "{{form_id}}"
+      answers:
+        - { field_id: "name", values: ["Ada Lovelace"] }
+        - { field_id: "email", values: ["ada@example.com"] }
+        - { field_id: "topic", values: ["Mobile"] }
+        - { field_id: "message", values: ["We would like a demo."] }
+      source: "/contact/"
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      bad_answer_error: error
+  - name: Bob answers the form, as the website would
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: submit_response
+    args:
+      form_id: "{{form_id}}"
+      answers:
+        - { field_id: "name", values: ["Ada Lovelace"] }
+        - { field_id: "email", values: ["ada@example.com"] }
+        - { field_id: "topic", values: ["Cloud"] }
+        - { field_id: "message", values: ["We would like a demo."] }
+      source: "/contact/"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      response_id: result.output
+  - name: Bob tries to read the responses
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: list_responses
+    args:
+      form_id: "{{form_id}}"
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      bob_read_error: error
+  - name: Bob tries to change the form
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: set_form_open
+    args:
+      form_id: "{{form_id}}"
+      open: false
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      bob_edit_error: error
+
+  - name: Assert a form key can answer and nothing else
+    type: assert
+    statements:
+      - 'is_set({{bad_answer_error}})'
+      - 'is_set({{response_id}})'
+      - 'is_set({{bob_read_error}})'
+      - 'is_set({{bob_edit_error}})'
+
+  # ── 3. The admin sees it on node 1 ─────────────────────────────────────────
+  - name: Sync the response
+    type: wait_for_sync
+    context_id: "{{ws_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+  - name: Alice reads the responses
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: list_responses
+    args:
+      form_id: "{{form_id}}"
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_responses: result
+  - name: Alice reads the forms
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: list_forms
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_form_row: result.output.0
+  - name: Alice reads the form keys
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: list_form_keys
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_key_row: result.output.0
+
+  - name: Assert the response reached node 1, attributed to the key
+    type: assert
+    statements:
+      - 'contains({{alice_responses}}, "Ada Lovelace")'
+      - 'contains({{alice_responses}}, {{response_id}})'
+      - 'contains({{alice_responses}}, {{bob_account}})'
+      - 'contains({{alice_responses}}, "/contact/")'
+
+  - name: Assert the counts
+    type: json_assert
+    statements:
+      - 'json_subset({{alice_form_row}}, {"title": "Contact us", "responses": 1, "new_responses": 1})'
+      - 'json_subset({{alice_key_row}}, {"label": "Contact page", "responses": 1})'
+
+  # ── 4. Bob joins the team and works the response from his own node ─────────
+  # A form key is never offered the team, so Alice forgets the key first.
+  - name: Alice forgets Bob's form key
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: forget_form_key
+    args:
+      account: "{{bob_account}}"
+    executor_public_key: "{{alice_key}}"
+  - name: Alice adds Bob to the team
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: add_team_member
+    args:
+      who: "{{bob_account}}"
+    executor_public_key: "{{alice_key}}"
+  - name: Sync the team change
+    type: wait_for_sync
+    context_id: "{{ws_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+  - name: Bob reads the team
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: list_team
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_team: result
+  - name: Bob reads the response
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: get_response
+    args:
+      id: "{{response_id}}"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_response: result
+  - name: Bob links the form to a CRM pipeline
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: set_crm_link
+    args:
+      form_id: "{{form_id}}"
+      link:
+        context_id: "{{ws_id}}"
+        stage_id: "stage-lead"
+        name_field: "name"
+        email_field: "email"
+        phone_field: ""
+        organization_field: ""
+        title_field: ""
+    executor_public_key: "{{bob_key}}"
+  - name: Bob records the CRM deal the response became
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: record_crm_deal
+    args:
+      id: "{{response_id}}"
+      crm_context: "{{ws_id}}"
+      crm_deal: "deal-e2e-1"
+    executor_public_key: "{{bob_key}}"
+  - name: Bob tries to record a second deal for it
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: record_crm_deal
+    args:
+      id: "{{response_id}}"
+      crm_context: "{{ws_id}}"
+      crm_deal: "deal-e2e-2"
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      second_deal_error: error
+  - name: Bob archives the response
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: set_archived
+    args:
+      id: "{{response_id}}"
+      archived: true
+    executor_public_key: "{{bob_key}}"
+  - name: Bob closes the form
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: set_form_open
+    args:
+      form_id: "{{form_id}}"
+      open: false
+    executor_public_key: "{{bob_key}}"
+
+  - name: Assert Bob is on the team and reads the response
+    type: assert
+    statements:
+      - 'contains({{bob_team}}, {{bob_account}})'
+      - 'contains({{bob_team}}, {{alice_account}})'
+      - 'contains({{bob_response}}, "We would like a demo.")'
+      - 'is_set({{second_deal_error}})'
+  - name: Sync Bob's changes
+    type: wait_for_sync
+    context_id: "{{ws_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+  - name: Alice reads the response
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: get_response
+    args:
+      id: "{{response_id}}"
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_response: result
+  - name: Alice reads the form
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: get_form
+    args:
+      form_id: "{{form_id}}"
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_form: result
+  - name: Alice tries to delete the form that has a response
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: delete_form
+    args:
+      form_id: "{{form_id}}"
+    executor_public_key: "{{alice_key}}"
+    expected_failure: true
+    outputs:
+      delete_error: error
+
+  - name: Assert Bob's changes reached node 1
+    type: json_assert
+    statements:
+      - 'json_subset({{alice_response}}, {"output": {"archived": true, "crm_deal": "deal-e2e-1"}})'
+      - 'json_subset({{alice_form}}, {"output": {"open": false, "crm": {"stage_id": "stage-lead", "name_field": "name"}}})'
+
+  - name: Assert a form with responses is not deleted
+    type: assert
+    statements:
+      - 'is_set({{delete_error}})'
+
+  # ── 5. Removed, Bob loses the workspace ────────────────────────────────────
+  - name: Alice removes Bob from the team
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: remove_team_member
+    args:
+      who: "{{bob_account}}"
+    executor_public_key: "{{alice_key}}"
+  - name: Sync the removal
+    type: wait_for_sync
+    context_id: "{{ws_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+  - name: Bob tries to read the response again
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: get_response
+    args:
+      id: "{{response_id}}"
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      bob_removed_error: error
+
+  - name: Assert the workspace is closed to Bob again
+    type: assert
+    statements:
+      - 'is_set({{bob_removed_error}})'

@@ -1,0 +1,1299 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Answer": {
+      "kind": "record",
+      "doc": "One stored answer: the field as it was when the response was sent.",
+      "fields": [
+        {
+          "name": "field_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "values",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Empty when an optional field was left blank."
+        }
+      ]
+    },
+    "AnswerInput": {
+      "kind": "record",
+      "doc": "One answer as a website's backend or the app sends it.",
+      "fields": [
+        {
+          "name": "field_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "values",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "One value for most kinds; any number of the options for `checkboxes`."
+        }
+      ]
+    },
+    "CrmLink": {
+      "kind": "record",
+      "doc": "Where a form's responses go in Mero CRM, and which field fills what.\nEmpty strings mean \"not set\".",
+      "fields": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The Mero CRM context (pipeline) the deals go to. Empty: no CRM."
+        },
+        {
+          "name": "stage_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The stage a new deal starts in."
+        },
+        {
+          "name": "name_field",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Field ids whose answers fill the contact and the deal."
+        },
+        {
+          "name": "email_field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "phone_field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "organization_field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title_field",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The answer that titles the deal; empty uses the contact's name."
+        }
+      ]
+    },
+    "Event_FormChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ResponseChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Submitted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Field": {
+      "kind": "record",
+      "doc": "One field of a form.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Stable, chosen when the field is added: what a website's backend sends\nthe answer under, e.g. `email`. Lowercase letters, digits, `_` and `-`."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`FIELD_KINDS`]."
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "help",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A line under the label, or empty."
+        },
+        {
+          "name": "required",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "options",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "The choices, for `choice` and `checkboxes`; empty for the rest."
+        }
+      ]
+    },
+    "Form": {
+      "kind": "record",
+      "doc": "A form. Every field is a register, so two teammates changing different\nparts of one form both keep their change; the field list is edited whole.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "list",
+              "items": {
+                "$ref": "Field"
+              }
+            }
+          }
+        },
+        {
+          "name": "open",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          },
+          "doc": "A closed form refuses new responses."
+        },
+        {
+          "name": "crm",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "$ref": "CrmLink"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        }
+      ]
+    },
+    "FormKey": {
+      "kind": "record",
+      "doc": "A website form's key, as the admins registered it.",
+      "fields": [
+        {
+          "name": "label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "What the admins call it, e.g. \"calimero.network contact page\"."
+        },
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The one form it may submit to."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "FormKeyView": {
+      "kind": "record",
+      "doc": "A registered form key, with what it has sent.",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "responses",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How many responses this account has submitted."
+        },
+        {
+          "name": "last_response_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When it last submitted one, or zero."
+        }
+      ]
+    },
+    "FormSummary": {
+      "kind": "record",
+      "doc": "A form in the list, with what it has collected.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "open",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "responses",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "new_responses",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Not archived and not yet sent to the CRM."
+        },
+        {
+          "name": "last_response_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "FormView": {
+      "kind": "record",
+      "doc": "A form in full.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Field"
+            }
+          }
+        },
+        {
+          "name": "open",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "crm",
+          "type": {
+            "$ref": "CrmLink"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroForms": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "responses",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "Response"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "forms",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Form"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "triage",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "ResponseState"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "settings",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "string"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "form_keys",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "FormKey"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        }
+      ]
+    },
+    "Response": {
+      "kind": "record",
+      "doc": "What a respondent sent, exactly. Inserted once, never edited.",
+      "fields": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "answers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Answer"
+            }
+          },
+          "doc": "One per field of the form, in the form's order."
+        },
+        {
+          "name": "source",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Where it was sent from, e.g. `/contact/`, or empty."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When the node accepted it, in nanoseconds since the Unix epoch."
+        },
+        {
+          "name": "submitted_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The account that called `submit_response` (hex): which form key, or\nwhich teammate entered it."
+        }
+      ]
+    },
+    "ResponseState": {
+      "kind": "record",
+      "doc": "The team's state for one response.",
+      "fields": [
+        {
+          "name": "archived",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          },
+          "doc": "Out of the way, e.g. spam, without being deleted."
+        },
+        {
+          "name": "crm_context",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The CRM context and deal it became, or empty."
+        },
+        {
+          "name": "crm_deal",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "crm_sent_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "crm_sent_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "ResponseView": {
+      "kind": "record",
+      "doc": "A response as the team sees it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "answers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Answer"
+            }
+          }
+        },
+        {
+          "name": "source",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "submitted_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "crm_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "crm_deal",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "crm_sent_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "crm_sent_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "TeamMember": {
+      "kind": "record",
+      "doc": "One entry of the team.",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "admin",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "add_team_member",
+      "doc": "Adds `who` to the team. Admin only, enforced at merge.",
+      "params": [
+        {
+          "name": "who",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "am_i_admin",
+      "doc": "Whether the caller is an admin.",
+      "params": [],
+      "returns": {
+        "kind": "bool"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "am_i_team",
+      "doc": "Whether the caller is on the team.",
+      "params": [],
+      "returns": {
+        "kind": "bool"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "create_form",
+      "doc": "Creates a form with no fields, open, and returns its id. Team only.",
+      "params": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_form",
+      "doc": "Deletes a form that has no responses. A form with responses is closed\ninstead, so nothing anyone sent disappears. Team only.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "field_kinds",
+      "doc": "The kinds of field a form can ask for.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "forget_form_key",
+      "doc": "Drops `account` from the register. Admin only. Removing its membership\nis what actually stops it writing; the app does both.",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "get_form",
+      "doc": "One form. Any member, form keys included: a website may read the\nquestions it is about to answer.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FormView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_response",
+      "doc": "One response. Team only.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ResponseView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "doc": "Creates an empty workspace. The installer is its first admin and, until\nteammates are added, the only one who can build forms or read responses.",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_form_keys",
+      "doc": "The registered form keys, newest first, with what each has sent. Admin\nonly.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FormKeyView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_forms",
+      "doc": "Every form, newest first, with its response counts. Team only.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FormSummary"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_responses",
+      "doc": "A form's responses, newest first. Team only.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ResponseView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_team",
+      "doc": "The team: the admins and the `team` role. Team only.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "TeamMember"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "my_account",
+      "doc": "The caller's account, as hex.",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "record_crm_deal",
+      "doc": "Records the CRM deal a response became, after the app created it in\nthat CRM context. Team only. Refuses a response this node already\nknows was sent; two teammates sending the same response at the same\nmoment from two nodes can still both create a deal, and the later\nrecord wins here.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "crm_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "crm_deal",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ResponseView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "register_form_key",
+      "doc": "Records `account` as a website form key for `form_id`, called `label`.\nAdmin only.\n\nThe app calls this after it has made the account a member of the\nnamespace; the register is what binds it to one form and labels it.",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_team_member",
+      "doc": "Removes `who` from the team. Admin only, enforced at merge.",
+      "params": [
+        {
+          "name": "who",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_archived",
+      "doc": "Archives a response, or brings it back. Team only.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ResponseView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_crm_link",
+      "doc": "Where the form's responses go in Mero CRM, or `context_id` empty for\nnowhere. The mapped fields must be on the form. Team only.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "link",
+          "type": {
+            "$ref": "CrmLink"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FormView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_form_open",
+      "doc": "Opens or closes a form to new responses. Team only.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "open",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FormView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_workspace_name",
+      "doc": "Names the workspace. Team only.",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "submit_response",
+      "doc": "Stores a response to an open form and returns its id. What a website's\nbackend calls with its form key; a teammate may also enter one.\n\nEvery answer is checked against its field. Answers for fields the form\ndoes not have are refused, so a stale website fails loudly. A form key\nmay only answer the form it was issued for. Emits `Submitted` with ids\nonly.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "answers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AnswerInput"
+            }
+          }
+        },
+        {
+          "name": "source",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_form",
+      "doc": "Replaces a form's title, description and fields. Team only.\n\nResponses already sent keep the fields as they were; a removed field\nstays readable on them.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Field"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FormView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "workspace_name",
+      "doc": "The workspace's display name, or empty. Anyone in the context may read it.",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    }
+  ],
+  "events": [
+    {
+      "name": "FormChanged",
+      "payload": {
+        "$ref": "Event_FormChanged"
+      },
+      "doc": "A teammate created or changed a form."
+    },
+    {
+      "name": "ResponseChanged",
+      "payload": {
+        "$ref": "Event_ResponseChanged"
+      },
+      "doc": "A teammate changed a response's state."
+    },
+    {
+      "name": "Submitted",
+      "payload": {
+        "$ref": "Event_Submitted"
+      },
+      "doc": "A response was submitted."
+    }
+  ],
+  "state_root": "MeroForms",
+  "state_version": 1
+}

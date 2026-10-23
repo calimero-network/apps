@@ -852,6 +852,15 @@ jobs:
           echo "KV_MPK_PATH=$PWD/$mpk" >> "$GITHUB_ENV"
           echo "using $mpk ($(wc -c <"$mpk") bytes)"
 
+      # Any bundle fixture the wasm job built for this app
+      # (logic/build-multi-service-bundle.sh) lands in its logic/res/ — e.g.
+      # the Mero CRM bundle mero-forms' journey sends a response to. `path:
+      # apps` for the same reason as the merobox job's download of it.
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm-${{ matrix.app }}-${{ github.sha }}
+          path: apps
+
       - uses: ./.github/actions/setup-merod
 
       - name: Enable corepack (pnpm)

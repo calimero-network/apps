@@ -1,0 +1,5 @@
+# Generated, but COMMITTED on purpose: CI regenerates and diffs it, which is
+# what turns a contract/frontend mismatch into a failed build. Marked so it
+# collapses in review — the diff that matters is the ABI it came from.
+FormsClient.ts linguist-generated=true
+crm/CrmClient.ts linguist-generated=true

@@ -1282,6 +1282,79 @@ importers:
         specifier: ^4.1.0
         version: 4.1.11(@types/node@16.18.126)(jsdom@29.1.1(@noble/hashes@2.4.0)(canvas@3.2.3))(vite@6.4.5(@types/node@16.18.126)(jiti@1.21.7)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
 
+  apps/mero-forms/app:
+    dependencies:
+      '@calimero-apps/glass':
+        specifier: workspace:*
+        version: link:../../../packages/glass
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
+      '@calimero-network/mero-js':
+        specifier: 26.6.0
+        version: 26.6.0
+      '@calimero-network/mero-platform':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@calimero-network/mero-platform-react':
+        specifier: 'catalog:'
+        version: 0.1.0(react@19.2.8)
+      '@calimero-network/mero-react':
+        specifier: 'catalog:'
+        version: 10.2.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      bs58:
+        specifier: 'catalog:'
+        version: 6.0.0
+      fflate:
+        specifier: 'catalog:'
+        version: 0.8.3
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+      tweetnacl:
+        specifier: ^1.0.3
+        version: 1.0.3
+    devDependencies:
+      '@calimero-apps/e2e-node':
+        specifier: workspace:*
+        version: link:../../../packages/e2e-node
+      '@calimero-network/abi-codegen':
+        specifier: 'catalog:'
+        version: 2.4.0
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.62.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
+      jsdom:
+        specifier: 'catalog:'
+        version: 25.0.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
+
   apps/mero-forum/app:
     dependencies:
       '@calimero-apps/glass':
@@ -1545,79 +1618,6 @@ importers:
       tweetnacl:
         specifier: ^1.0.3
         version: 1.0.3
-      typescript:
-        specifier: 'catalog:'
-        version: 5.8.3
-      vite:
-        specifier: 'catalog:'
-        version: 6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
-
-  apps/mero-leads/app:
-    dependencies:
-      '@calimero-apps/glass':
-        specifier: workspace:*
-        version: link:../../../packages/glass
-      '@calimero-apps/names':
-        specifier: workspace:*
-        version: link:../../../packages/names
-      '@calimero-network/mero-js':
-        specifier: 26.6.0
-        version: 26.6.0
-      '@calimero-network/mero-platform':
-        specifier: 'catalog:'
-        version: 0.1.0
-      '@calimero-network/mero-platform-react':
-        specifier: 'catalog:'
-        version: 0.1.0(react@19.2.8)
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.2.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      bs58:
-        specifier: 'catalog:'
-        version: 6.0.0
-      fflate:
-        specifier: 'catalog:'
-        version: 0.8.3
-      react:
-        specifier: 'catalog:'
-        version: 19.2.8
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.8(react@19.2.8)
-      tweetnacl:
-        specifier: ^1.0.3
-        version: 1.0.3
-    devDependencies:
-      '@calimero-apps/e2e-node':
-        specifier: workspace:*
-        version: link:../../../packages/e2e-node
-      '@calimero-network/abi-codegen':
-        specifier: 'catalog:'
-        version: 2.4.0
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.62.1
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.20.1
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.5(@types/react@19.2.18)
-      '@vitejs/plugin-react':
-        specifier: 'catalog:'
-        version: 4.7.0(vite@6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
-      jsdom:
-        specifier: 'catalog:'
-        version: 25.0.1
       typescript:
         specifier: 'catalog:'
         version: 5.8.3
@@ -11161,7 +11161,7 @@ snapshots:
 
   '@iframe-resizer/react@5.1.5(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@babel/runtime': 7.29.7
+      '@babel/runtime': 7.29.10
       '@iframe-resizer/core': 5.1.5
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
@@ -16496,7 +16496,7 @@ snapshots:
 
   redux@4.2.1:
     dependencies:
-      '@babel/runtime': 7.29.7
+      '@babel/runtime': 7.29.10
 
   redux@5.0.1: {}
 
