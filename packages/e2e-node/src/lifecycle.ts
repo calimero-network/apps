@@ -1,5 +1,6 @@
 import path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
+import { appOrigin, fromNode } from "./appOrigin";
 import { loginWithModal } from "./auth";
 import { adminApi, freshRig, readRigState, restartNode, type RigNode, type RigState } from "./rig";
 import {
@@ -88,7 +89,9 @@ export async function openActor(
   desktop = false,
 ): Promise<{ actor: Actor; context: BrowserContext }> {
   const record = process.env["JOURNEY_VIDEO"] === "1";
+  const origin = fromNode() ? appOrigin(node) : undefined;
   const context = await browser.newContext({
+    ...(origin ? { baseURL: origin } : {}),
     permissions: ["clipboard-read", "clipboard-write", ...permissions],
     // Opt-in: a context made by hand is outside Playwright's `use.video`, so a
     // journey records only when asked, one file per actor.
@@ -97,7 +100,7 @@ export async function openActor(
   const page = await context.newPage();
   if (record) recordings.set(context, { name, page, startedAt: Date.now() });
   if (desktop) await installDesktopBridge(page);
-  await traffic.watch(page, name, nodeUrls);
+  await traffic.watch(page, name, origin ? [...nodeUrls, origin] : nodeUrls);
   return { actor: { name, page, node, run }, context };
 }
 
@@ -305,6 +308,16 @@ export function defineLifecycle(driver: AppDriver): void {
       if (first) {
         await test.step("alice reloads and still sees the data", async () => {
           await alice.page.reload();
+          if (driver.afterReload) await driver.afterReload(alice);
+          await first.seen(alice, alice);
+        });
+      }
+
+      if (first && fromNode()) {
+        await test.step("alice opens a deep link under the app's path and the app still boots", async () => {
+          // The node answers an unknown client route with the entry page, so its relative assets resolve below the link.
+          expect(new URL(alice.page.url()).origin, "the page is the one the node serves").toBe(appOrigin(n1));
+          await alice.page.goto(new URL("deep/link", alice.page.url()).href);
           if (driver.afterReload) await driver.afterReload(alice);
           await first.seen(alice, alice);
         });

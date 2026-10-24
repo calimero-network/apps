@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
+import { fromNode } from "./appOrigin";
 import { ADMIN_PASSWORD, ADMIN_USER } from "./rig";
 
 export interface Credentials {
@@ -127,7 +128,8 @@ export async function completeNodeLogin(
   await leftNode;
 }
 
+/** A page a node serves has no node to choose: the connect click goes straight to the node's login page. */
 export async function loginWithModal(page: Page, nodeUrl: string, creds?: Credentials): Promise<void> {
-  await chooseNodeInLoginModal(page, nodeUrl);
+  if (!fromNode()) await chooseNodeInLoginModal(page, nodeUrl);
   await completeNodeLogin(page, nodeUrl, creds);
 }

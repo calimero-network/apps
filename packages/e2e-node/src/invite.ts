@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { fromNode } from "./appOrigin";
 import { loginWithModal } from "./auth";
 
 /**
@@ -58,13 +59,21 @@ export async function installDesktopBridge(page: Page): Promise<void> {
   });
 }
 
+/** Where the node's `/` leads: its redirect to the current version drops the query, so a link opens there directly. */
+async function versionRoot(page: Page): Promise<string> {
+  const root = await page.request.get("/", { maxRedirects: 0 });
+  const location = root.headers()["location"];
+  if (!location) throw new Error(`the node did not redirect / to the app's version (status ${root.status()})`);
+  return location;
+}
+
 /** Open `link` in `page` by the given route. */
 export async function openInviteLink(page: Page, link: string, route: InviteRoute = "url"): Promise<void> {
   const { slug, query } = parseInviteLink(link);
   if (!query.includes("invitation=")) throw new Error(`not an invitation link: ${link.slice(0, 120)}`);
 
   if (route === "url") {
-    await page.goto(`/${query}`);
+    await page.goto(`${fromNode() ? await versionRoot(page) : "/"}${query}`);
     return;
   }
 
