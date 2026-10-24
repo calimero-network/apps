@@ -1,19 +1,18 @@
 import { useEffect, useState } from "react";
-import { bootstrapFromInvitation, readDelegatedSession, relayForContext } from "@calimero-network/mero-js";
+import { bootstrapFromInvitation } from "@calimero-network/mero-js";
 import { useMero } from "@calimero-network/mero-react";
 import type { FormKeyView, FormView } from "./generated/FormsClient";
 import { CrmSettings } from "./CrmSettings";
+import { PublicLinks } from "./PublicLinks";
 import { ago, examplePayload } from "./lib/fields";
-import { envBlock, mintFormIdentity, type FormIdentity } from "./lib/formKey";
-import { publicLinkFrom, publicLinkUrl } from "./lib/publicLink";
+import { envBlock, mintFormIdentity } from "./lib/formKey";
 import { shortAccount } from "./lib/people";
 import { useRead, type Workspace } from "./useWorkspace";
 
-/** A key just made, as the env block or the link: shown once, then gone with the page. */
+/** The env block for a key just made: shown once, then gone with the page. */
 interface Issued {
   label: string;
-  env?: string;
-  link?: string;
+  env: string;
 }
 
 type Step = "minting" | "inviting" | "joining" | "registering";
@@ -134,6 +133,7 @@ export function FormConnect({
 }) {
   return (
     <>
+      <PublicLinks form={form} workspace={workspace} contextId={contextId} />
       {isAdmin ? (
         <FormKeys form={form} workspace={workspace} contextId={contextId} namespaceId={namespaceId} />
       ) : (
@@ -145,19 +145,6 @@ export function FormConnect({
       <CrmSettings form={form} workspace={workspace} />
     </>
   );
-}
-
-/**
- * The relay a public link should name: for an account session, the one that
- * serves this workspace; for a node session, the node itself, which only works
- * once it relays and is reachable at that address (the admin can change it).
- */
-function defaultRelay(contextId: string, isDelegated: boolean, nodeUrl: string | null | undefined): string {
-  if (isDelegated) {
-    const session = readDelegatedSession();
-    if (session) return relayForContext(session.account, contextId) ?? session.relayUrl ?? "";
-  }
-  return nodeUrl ?? "";
 }
 
 export function FormKeys({
@@ -181,61 +168,43 @@ export function FormKeys({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
-  const [linkLabel, setLinkLabel] = useState("");
-  /** Which of the two cards the step in progress, or the last error, belongs to. */
-  const [kind, setKind] = useState<"website" | "link">("website");
-  const [relayUrl, setRelayUrl] = useState(() => defaultRelay(contextId, isDelegated, nodeUrl));
 
-  /** Mint a key, add it to the namespace and register it for this form under `keyLabel`. */
-  async function makeKey(keyLabel: string): Promise<FormIdentity> {
-    if (!admin || !namespaceId) throw new Error("not connected to this workspace's namespace yet");
-    setStep("minting");
-    const identity = await mintFormIdentity();
-
-    setStep("inviting");
-    const created = await admin.createNamespaceInvitation(namespaceId);
-    const invitation = (created as { invitation?: unknown }).invitation;
-    if (!invitation) throw new Error("the node returned no invitation for this namespace");
-
-    setStep("joining");
-    const joined = await bootstrapFromInvitation({
-      namespaceId,
-      invitation: invitation as Parameters<typeof bootstrapFromInvitation>[0]["invitation"],
-      credential: {
-        account: identity.account,
-        credential: identity.credential,
-        deviceSecret: identity.deviceSecret,
-      },
-      // This node admits it. An account session has no node of its own, so
-      // Calimero Cloud names the admitter instead.
-      nodeUrl: isDelegated ? undefined : (nodeUrl ?? undefined),
-    });
-    if (!joined.ok) throw new Error(`could not add the key to the namespace (${joined.step}): ${joined.reason}`);
-
-    setStep("registering");
-    await workspace.act((c) =>
-      c.registerFormKey({ account: identity.account, form_id: form.id, label: keyLabel }),
-    );
-    return identity;
-  }
-
-  async function issue(what: "website" | "link") {
-    const name = what === "website" ? label.trim() : `Public link${linkLabel.trim() ? ` · ${linkLabel.trim()}` : ""}`;
-    if (!name || (what === "link" && !relayUrl.trim())) return;
-    setKind(what);
+  async function issue() {
+    if (!admin || !namespaceId || !label.trim()) return;
     setError(null);
     setIssued(null);
     setCopied(false);
     try {
-      const identity = await makeKey(name);
-      if (what === "website") {
-        setIssued({ label: name, env: envBlock(identity, contextId, form.id) });
-        setLabel("");
-      } else {
-        const link = publicLinkFrom(identity, relayUrl.trim(), contextId, form.id);
-        setIssued({ label: name, link: publicLinkUrl(window.location.origin, link) });
-        setLinkLabel("");
-      }
+      setStep("minting");
+      const identity = await mintFormIdentity();
+
+      setStep("inviting");
+      const created = await admin.createNamespaceInvitation(namespaceId);
+      const invitation = (created as { invitation?: unknown }).invitation;
+      if (!invitation) throw new Error("the node returned no invitation for this namespace");
+
+      setStep("joining");
+      const joined = await bootstrapFromInvitation({
+        namespaceId,
+        invitation: invitation as Parameters<typeof bootstrapFromInvitation>[0]["invitation"],
+        credential: {
+          account: identity.account,
+          credential: identity.credential,
+          deviceSecret: identity.deviceSecret,
+        },
+        // This node admits it. An account session has no node of its own, so
+        // Calimero Cloud names the admitter instead.
+        nodeUrl: isDelegated ? undefined : (nodeUrl ?? undefined),
+      });
+      if (!joined.ok) throw new Error(`could not add the key to the namespace (${joined.step}): ${joined.reason}`);
+
+      setStep("registering");
+      await workspace.act((c) =>
+        c.registerFormKey({ account: identity.account, form_id: form.id, label: label.trim() }),
+      );
+
+      setIssued({ label: label.trim(), env: envBlock(identity, contextId, form.id) });
+      setLabel("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -245,7 +214,7 @@ export function FormKeys({
 
   async function revoke(key: FormKeyView) {
     if (!admin || !namespaceId) return;
-    if (!window.confirm(`Revoke "${key.label}"? Whatever uses it, a website or a public link, stops sending responses.`)) return;
+    if (!window.confirm(`Revoke "${key.label}"? The website using it stops sending responses.`)) return;
     setRevoking(key.account);
     setError(null);
     try {
@@ -262,7 +231,7 @@ export function FormKeys({
   async function copy() {
     if (!issued) return;
     try {
-      await navigator.clipboard.writeText(issued.env ?? issued.link ?? "");
+      await navigator.clipboard.writeText(issued.env);
       setCopied(true);
     } catch {
       setCopied(false);
@@ -282,7 +251,7 @@ export function FormKeys({
           className="row"
           onSubmit={(e) => {
             e.preventDefault();
-            void issue("website");
+            void issue();
           }}
         >
           <input
@@ -293,13 +262,13 @@ export function FormKeys({
             onChange={(e) => setLabel(e.target.value)}
           />
           <button type="submit" disabled={!label.trim() || step !== null || !namespaceId || !admin}>
-            {step && kind === "website" ? STEP_TEXT[step] : "Create form key"}
+            {step ? STEP_TEXT[step] : "Create form key"}
           </button>
         </form>
         {!namespaceId && <p className="note">Resolving this workspace&apos;s namespace…</p>}
-        {error && kind === "website" && <pre className="err">{error}</pre>}
+        {error && <pre className="err">{error}</pre>}
 
-        {issued?.env && (
+        {issued && (
           <div className="issued" data-testid="issued-key">
             <h3>{issued.label}</h3>
             <p>
@@ -319,68 +288,6 @@ export function FormKeys({
               Calimero Desktop (signed in to Calimero Cloud), or point the site&apos;s{" "}
               <code>CALIMERO_RELAY_URL</code> at a node that relays for it.
             </p>
-          </div>
-        )}
-      </section>
-
-      <section className="card" data-testid="public-link">
-        <h2>Share a public link</h2>
-        <p className="empty">
-          Anyone with the link can answer this form in their browser, without signing in. The
-          link carries its own form key after the <code>#</code>, which browsers never send to a
-          server: the visitor&apos;s browser signs the response and the relay writes it here.
-          Whoever has the link can send responses, as many as they like, so share it where you
-          would share a form; revoke it below to stop it.
-        </p>
-        <form
-          className="row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void issue("link");
-          }}
-        >
-          <input
-            aria-label="public link label"
-            placeholder="Where you will share it (optional), e.g. newsletter"
-            maxLength={80}
-            value={linkLabel}
-            onChange={(e) => setLinkLabel(e.target.value)}
-          />
-          <button type="submit" disabled={!relayUrl.trim() || step !== null || !namespaceId || !admin}>
-            {step && kind === "link" ? STEP_TEXT[step] : "Create public link"}
-          </button>
-        </form>
-        <label className="field">
-          <span className="label">Relay the link writes through</span>
-          <input
-            aria-label="public link relay"
-            placeholder="https://…"
-            value={relayUrl}
-            onChange={(e) => setRelayUrl(e.target.value)}
-          />
-        </label>
-        <p className="note">
-          A relay that serves this workspace&apos;s namespace and that visitors&apos; browsers can
-          reach: a Calimero Cloud relay, or a node of yours run with{" "}
-          <code>--delegated-access</code> at a public address.
-        </p>
-        {error && kind === "link" && <pre className="err">{error}</pre>}
-        {issued?.link && (
-          <div className="issued" data-testid="issued-link">
-            <h3>{issued.label}</h3>
-            <p>
-              <strong>Shown once.</strong> If it is lost, revoke it below and make another.
-            </p>
-            <pre className="env mono link-out">{issued.link}</pre>
-            <div className="row">
-              <button onClick={copy}>{copied ? "Copied" : "Copy link"}</button>
-              <button className="ghost" onClick={() => window.open(issued.link, "_blank", "noopener")}>
-                Open
-              </button>
-              <button className="ghost" onClick={() => setIssued(null)}>
-                Done
-              </button>
-            </div>
           </div>
         )}
       </section>

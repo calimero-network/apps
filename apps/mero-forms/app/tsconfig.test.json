@@ -15,6 +15,8 @@
     "src/useJoinFromInvitation.ts",
     "src/ContextPicker.tsx",
     "src/FormConnect.tsx",
+    "src/PublicLinks.tsx",
+    "src/PublicForm.tsx",
     "src/CrmSettings.tsx",
     "src/useCrm.ts",
     "src/useWorkspace.ts",

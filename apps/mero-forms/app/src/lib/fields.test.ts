@@ -35,6 +35,7 @@ function response(answers: [string, string, string, string[]][], extra: Partial<
     crm_deal: "",
     crm_sent_at: 0,
     crm_sent_by: "",
+    link: "",
     ...extra,
   };
 }

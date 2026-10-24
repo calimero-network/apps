@@ -1,167 +1,66 @@
-import { IntentRefusedError, type NonceSource } from "@calimero-network/mero-js";
-import type { FormIdentity } from "./formKey";
+import { AccessGrantError } from "./accessGrants";
 
 /**
- * A public link: a form key carried in the link itself, so anyone who opens
- * it can answer the form from their browser, signed in or not.
+ * A public link: a form anyone can answer without signing in.
  *
- * The key rides in the URL's fragment (`/f#…`). A browser never sends the
+ * The link is a core access grant on a teammate's node (see
+ * `accessGrants.ts`). Its URL carries the node, the workspace and the grant's
+ * token in the fragment (`/f#n=…&c=…&t=…`). A browser never sends the
  * fragment to the server it loads the page from, and never puts it in a
- * `Referer`, so Vercel serves the page without ever seeing the key; the page
- * reads it, signs each response with it and hands that to the relay. It is
- * not secret from whoever holds the link, and is not meant to be: it is the
- * same key a website's backend would hold, and it can answer this one form
- * and nothing else (see `formKey.ts` for why it can read nothing).
+ * `Referer`, so the token reaches only the node it is for. The contract knows
+ * the link by the token's SHA-256 and keeps no secret.
+ *
+ * The token is not a member's key: whoever holds it can call `link_form` and
+ * `submit_via_link` in this one workspace and nothing else, and the contract
+ * takes a response only while the form is public, under the link's hourly
+ * cap, and with a captcha pass when the form asks for one.
  */
-export interface PublicLink {
-  /** The relay the page writes through: one that serves the workspace's namespace. */
-  relayUrl: string;
+export interface LinkTarget {
+  /** The node holding the grant: what the visitor's browser calls. */
+  nodeUrl: string;
   contextId: string;
-  formId: string;
-  account: string;
-  credential: string;
-  deviceSecret: string;
+  /** The grant's token, 64 hex. */
+  token: string;
 }
 
 /** The fill page's path. Its own path, so it is never mistaken for the app's hash routes. */
 export const PUBLIC_PATH = "/f";
 
-const toBase64Url = (s: string) =>
-  btoa(String.fromCharCode(...new TextEncoder().encode(s)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-
-function fromBase64Url(s: string): string {
-  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
-  const bin = atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
-  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+export function publicLinkUrl(origin: string, target: LinkTarget): string {
+  const fragment = new URLSearchParams({ n: target.nodeUrl, c: target.contextId, t: target.token });
+  return `${origin.replace(/\/+$/, "")}${PUBLIC_PATH}#${fragment.toString()}`;
 }
 
-/** Short keys keep the link short; `v` lets a later shape be told apart. */
-interface Wire {
-  v: 1;
-  r: string;
-  c: string;
-  f: string;
-  a: string;
-  p: string;
-  s: string;
+/** The target a `/f` URL's fragment names, or null for anything that is not a whole one. */
+export function parsePublicLink(hash: string): LinkTarget | null {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const nodeUrl = params.get("n");
+  const contextId = params.get("c");
+  const token = params.get("t");
+  if (!nodeUrl || !contextId || !token) return null;
+  if (!/^https?:\/\/\S+$/i.test(nodeUrl)) return null;
+  if (!/^[0-9a-f]{64}$/i.test(contextId)) return null;
+  if (!/^[0-9a-f]{64}$/i.test(token)) return null;
+  return { nodeUrl, contextId, token };
 }
 
-export function publicLinkUrl(origin: string, link: PublicLink): string {
-  const wire: Wire = {
-    v: 1,
-    r: link.relayUrl,
-    c: link.contextId,
-    f: link.formId,
-    a: link.account,
-    p: link.credential,
-    s: link.deviceSecret,
-  };
-  return `${origin.replace(/\/+$/, "")}${PUBLIC_PATH}#${toBase64Url(JSON.stringify(wire))}`;
+/** A captcha pass's nonce: 16 random bytes, hex. Each is accepted once. */
+export function newNonce(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export function publicLinkFrom(identity: FormIdentity, relayUrl: string, contextId: string, formId: string): PublicLink {
-  return { relayUrl, contextId, formId, ...identity };
-}
-
-const HEX64 = /^[0-9a-f]{64}$/;
-
-/** The link in a URL fragment, or null for anything that is not a whole, well-formed one. */
-export function parsePublicLink(hash: string): PublicLink | null {
-  const raw = hash.replace(/^#/, "");
-  if (!raw) return null;
-  let wire: Partial<Wire>;
-  try {
-    wire = JSON.parse(fromBase64Url(raw)) as Partial<Wire>;
-  } catch {
-    return null;
-  }
-  if (wire?.v !== 1) return null;
-  const { r, c, f, a, p, s } = wire;
-  if (typeof r !== "string" || !/^https?:\/\/[^\s]+$/.test(r)) return null;
-  if (typeof c !== "string" || !HEX64.test(c)) return null;
-  if (typeof f !== "string" || !/^[0-9a-f]{1,64}$/.test(f)) return null;
-  if (typeof a !== "string" || !HEX64.test(a)) return null;
-  if (typeof p !== "string" || !/^[0-9a-f]+$/.test(p)) return null;
-  if (typeof s !== "string" || !HEX64.test(s)) return null;
-  return { relayUrl: r, contextId: c, formId: f, account: a, credential: p, deviceSecret: s };
-}
-
-/**
- * Nonces for a key that many browsers share.
- *
- * A relay keeps one replay window per (context, author device, relay): the
- * highest nonce seen and the 64 below it. Every visitor's browser signs with
- * the same device, so a per-browser counter starting at 1 would be refused as
- * soon as anyone else had sent. The clock is the one sequence they share:
- * microseconds since the epoch, made strictly increasing within a tab.
- *
- * `skipMs` moves the sequence forward, for a send refused because a visitor
- * whose clock runs ahead of this one sent more recently.
- */
-export function clockNonces(now: () => number = Date.now, jitter: () => number = randomJitter): NonceSource & {
-  skipMs(ms: number): void;
-} {
-  let last = 0n;
-  let ahead = 0n;
-  return {
-    next() {
-      const stamp = (BigInt(Math.floor(now())) + ahead) * 1000n + BigInt(jitter());
-      last = stamp > last ? stamp : last + 1n;
-      return Promise.resolve(last);
-    },
-    advanceTo(floor: bigint) {
-      if (floor > last) last = floor - 1n;
-      return Promise.resolve();
-    },
-    skipMs(ms: number) {
-      ahead += BigInt(ms);
-    },
-  };
-}
-
-/** 0..999: two visitors sending in the same millisecond rarely pick the same nonce. */
-const randomJitter = () => crypto.getRandomValues(new Uint16Array(1))[0]! % 1000;
-
-/**
- * How far a refused send skips ahead, try by try. The last is the relay's own
- * limit: a warrant lives five minutes, so a clock further off than that is
- * refused for its deadline anyway.
- */
-export const SKIPS_MS = [0, 1_000, 10_000, 60_000, 300_000];
-
-/**
- * Sends with fresh warrants until one is accepted. Only a refusal the relay
- * marks retryable (a nonce spent, or too old to judge) is tried again, each
- * time further ahead; anything else is the answer.
- */
-export async function sendWithSkips<T>(
-  nonces: ReturnType<typeof clockNonces>,
-  send: () => Promise<T>,
-  skips: number[] = SKIPS_MS,
-): Promise<T> {
-  let skipped = 0;
-  for (let i = 0; ; i++) {
-    try {
-      return await send();
-    } catch (e) {
-      const next = skips[i + 1];
-      if (!(e instanceof IntentRefusedError) || !e.retryable || next === undefined) throw e;
-      nonces.skipMs(next - skipped);
-      skipped = next;
-    }
-  }
-}
-
-/** What a visitor is told when the relay refuses, in their words rather than the relay's. */
+/** What a visitor is told when a call fails, in their words rather than the node's. */
 export function publicRefusal(e: unknown): string {
   const why = e instanceof Error ? e.message : String(e);
+  // The contract's word for a deleted link, and the node's for a revoked or expired grant.
+  if (/no longer works|access grant is not valid|access grant has expired/i.test(why)) {
+    return "This link no longer works. Ask whoever shared it for a new one.";
+  }
+  if (/not taking responses from links/.test(why)) return "This form is not taking responses right now.";
   if (/form is closed/.test(why)) return "This form is closed and is not taking responses.";
-  if (/another form|not a member|no longer|revoked/i.test(why)) return "This link no longer works. Ask whoever shared it for a new one.";
-  if (/no form /.test(why)) return "This form no longer exists.";
-  if (e instanceof IntentRefusedError) return `The response was not accepted: ${e.reason}`;
+  if (/this hour/.test(why)) return "This form has had a lot of responses in the last hour. Try again later.";
+  if (/captcha/i.test(why)) return "The human check did not go through. Please try again.";
+  if (e instanceof AccessGrantError) return `The response was not accepted: ${why}`;
   if (e instanceof TypeError) return "Could not reach the form. Check your connection and try again.";
   return why;
 }

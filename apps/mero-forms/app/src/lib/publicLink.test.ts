@@ -1,82 +1,54 @@
-import { IntentRefusedError } from "@calimero-network/mero-js";
-import { describe, expect, it, vi } from "vitest";
-import { clockNonces, parsePublicLink, publicLinkUrl, publicRefusal, sendWithSkips, type PublicLink } from "./publicLink";
+import { describe, expect, it } from "vitest";
+import { AccessGrantError } from "./accessGrants";
+import { newNonce, parsePublicLink, publicLinkUrl, publicRefusal, type LinkTarget } from "./publicLink";
 
-const link: PublicLink = {
-  relayUrl: "https://relay.example",
+const target: LinkTarget = {
+  nodeUrl: "https://node.example:2428",
   contextId: "c0".repeat(32),
-  formId: "f".repeat(32),
-  account: "ac".repeat(32),
-  credential: "0123abcd".repeat(20),
-  deviceSecret: "5e".repeat(32),
+  token: "7a".repeat(32),
 };
 
 describe("a public link", () => {
-  it("carries the key in the fragment, which a browser never sends to the server", () => {
-    const url = new URL(publicLinkUrl("https://mero-forms.vercel.app/", link));
+  it("carries the node, the workspace and the grant token in the fragment only", () => {
+    const url = new URL(publicLinkUrl("https://mero-forms.vercel.app/", target));
     expect(url.origin + url.pathname).toBe("https://mero-forms.vercel.app/f");
     expect(url.search).toBe("");
-    expect(url.hash.length).toBeGreaterThan(1);
-    expect(parsePublicLink(url.hash)).toEqual(link);
+    expect(url.hash).toContain(target.token);
+    expect(parsePublicLink(url.hash)).toEqual(target);
   });
 
   it("refuses anything that is not a whole link", () => {
     expect(parsePublicLink("")).toBeNull();
-    expect(parsePublicLink("#not-base64-json")).toBeNull();
-    const hash = new URL(publicLinkUrl("https://x.example", { ...link, deviceSecret: "short" })).hash;
-    expect(parsePublicLink(hash)).toBeNull();
-    // The app's own routes, and an auth callback, are not links.
     expect(parsePublicLink("#/form/abc/edit")).toBeNull();
     expect(parsePublicLink("#access_token=x")).toBeNull();
+    const short = new URL(publicLinkUrl("https://x.example", { ...target, token: "abc" })).hash;
+    expect(parsePublicLink(short)).toBeNull();
+    const notHttp = new URL(publicLinkUrl("https://x.example", { ...target, nodeUrl: "javascript:alert(1)" })).hash;
+    expect(parsePublicLink(notHttp)).toBeNull();
   });
 });
 
-describe("nonces shared by every visitor", () => {
-  it("follow the clock in microseconds, strictly increasing within a tab", async () => {
-    let t = 1_700_000_000_000;
-    const nonces = clockNonces(() => t, () => 7);
-    expect(await nonces.next()).toBe(1_700_000_000_000_007n);
-    // Same millisecond: still a new nonce.
-    expect(await nonces.next()).toBe(1_700_000_000_000_008n);
-    t += 1;
-    expect(await nonces.next()).toBe(1_700_000_000_001_007n);
-  });
-
-  it("skip ahead when a visitor whose clock runs ahead sent more recently", async () => {
-    const t = 1_700_000_000_000;
-    const nonces = clockNonces(() => t, () => 0);
-    nonces.skipMs(10_000);
-    expect(await nonces.next()).toBe(BigInt(t + 10_000) * 1000n);
+describe("a captcha nonce", () => {
+  it("is 16 random bytes in hex, new each time", () => {
+    const a = newNonce();
+    expect(a).toMatch(/^[0-9a-f]{32}$/);
+    expect(newNonce()).not.toBe(a);
   });
 });
 
-describe("sending", () => {
-  const spent = () => new IntentRefusedError("this warrant's nonce has already been spent by this author device", true, 403);
-
-  it("retries a spent nonce further ahead each time, then gives up", async () => {
-    const nonces = clockNonces(() => 0, () => 0);
-    const skip = vi.spyOn(nonces, "skipMs");
-    const send = vi.fn().mockRejectedValueOnce(spent()).mockRejectedValueOnce(spent()).mockResolvedValue("ok");
-    await expect(sendWithSkips(nonces, send, [0, 1_000, 10_000])).resolves.toBe("ok");
-    expect(skip.mock.calls).toEqual([[1_000], [9_000]]);
-
-    const never = vi.fn().mockRejectedValue(spent());
-    await expect(sendWithSkips(nonces, never, [0, 1_000])).rejects.toBeInstanceOf(IntentRefusedError);
-    expect(never).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not retry a refusal that a fresh warrant cannot fix", async () => {
-    const send = vi.fn().mockRejectedValue(
-      new IntentRefusedError("the author's account is not a member of the group owning this context", false, 403),
+describe("what a visitor is told", () => {
+  it("names a dead link, a paused or closed form, the cap and the captcha plainly", () => {
+    expect(publicRefusal(new AccessGrantError("this access grant is not valid for this context", 403))).toMatch(
+      /no longer works/,
     );
-    await expect(sendWithSkips(clockNonces(), send)).rejects.toThrow(/not a member/);
-    expect(send).toHaveBeenCalledTimes(1);
-  });
-
-  it("tells a visitor what went wrong in plain words", () => {
-    expect(publicRefusal(new Error("execute failed: this form is closed"))).toMatch(/closed/);
-    expect(
-      publicRefusal(new IntentRefusedError("the author's account is not a member of the group owning this context", false, 403)),
-    ).toMatch(/no longer works/);
+    expect(publicRefusal(new AccessGrantError("this access grant has expired", 403))).toMatch(/no longer works/);
+    expect(publicRefusal(new Error("execute failed: this link no longer works"))).toMatch(/no longer works/);
+    expect(publicRefusal(new Error("this form is not taking responses from links"))).toMatch(/not taking responses/);
+    expect(publicRefusal(new Error("this form is closed"))).toMatch(/closed/);
+    expect(publicRefusal(new Error("this link has taken as many responses as it may this hour"))).toMatch(
+      /last hour/,
+    );
+    expect(publicRefusal(new Error("this captcha was already used; solve it again"))).toMatch(/human check/);
+    expect(publicRefusal(new TypeError("Failed to fetch"))).toMatch(/connection/);
   });
 });

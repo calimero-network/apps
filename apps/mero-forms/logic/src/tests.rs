@@ -405,6 +405,8 @@ fn shared_state_is_writable_by_exactly_the_team() {
     assert_eq!(app.view(|s| s.forms.writers()), both);
     assert_eq!(app.view(|s| s.triage.writers()), both);
     assert_eq!(app.view(|s| s.settings.writers()), both);
+    assert_eq!(app.view(|s| s.links.writers()), both);
+    assert_eq!(app.view(|s| s.captcha_seen.writers()), both);
 
     app.call(|s| s.remove_team_member(account(BOB).to_string()))
         .unwrap();
@@ -611,4 +613,240 @@ fn shape_checks() {
         looks_like_url("http://x") && !looks_like_url("https://") && !looks_like_url("https://a b")
     );
     assert!(is_field_id("company_size") && !is_field_id("") && !is_field_id(&"a".repeat(41)));
+}
+
+// ── Public links ────────────────────────────────────────────────────────────
+
+const LINK: &str = "aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11";
+const VERIFIER_KEY: &str = "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e";
+
+/// A public contact form with one link.
+fn public_form(app: &mut TestHost<MeroForms>) -> String {
+    let form_id = contact_form(app);
+    let f = form_id.clone();
+    app.call(move |s| s.set_form_public(f, true)).unwrap();
+    let f = form_id.clone();
+    app.call(move |s| {
+        s.create_link(
+            f,
+            LINK.to_owned(),
+            "grant-1".to_owned(),
+            "newsletter".to_owned(),
+        )
+    })
+    .unwrap();
+    form_id
+}
+
+fn via_link(
+    app: &mut TestHost<MeroForms>,
+    name: &str,
+    captcha: Option<CaptchaPass>,
+) -> app::Result<String> {
+    let answers = contact_answers(name);
+    app.call(move |s| s.submit_via_link(LINK.to_owned(), answers, captcha))
+}
+
+fn now_ms() -> u64 {
+    env::time_now() / 1_000_000
+}
+
+/// A pass the test verifier accepts: its signature's first byte is 1, and it
+/// signs exactly the message the contract builds.
+fn pass(form_id: &str, nonce: &str, expires_ms: u64) -> CaptchaPass {
+    let message = captcha_message(form_id, LINK, nonce, expires_ms);
+    let mut signature = [0u8; 64];
+    signature[0] = 1;
+    signature[1..33].copy_from_slice(&simple_digest(message.as_bytes()));
+    CaptchaPass {
+        nonce: nonce.to_owned(),
+        expires_ms,
+        signature: hex::encode(signature),
+    }
+}
+
+/// Not cryptography: a stand-in binding of signature to message for the test
+/// verifier, so a pass for one message fails for another.
+fn simple_digest(bytes: &[u8]) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    for (i, b) in bytes.iter().enumerate() {
+        out[i % 32] = out[i % 32].wrapping_mul(31).wrapping_add(*b);
+    }
+    out
+}
+
+fn test_verifier(signature: &[u8; 64], public_key: &[u8; 32], message: &[u8]) -> bool {
+    signature[0] == 1
+        && signature[1..33] == simple_digest(message)
+        && hex::encode(public_key) == VERIFIER_KEY
+}
+
+#[test]
+fn a_link_takes_responses_only_while_its_form_is_public() {
+    let mut app = workspace();
+    let form_id = contact_form(&mut app);
+    let f = form_id.clone();
+    app.call(move |s| {
+        s.create_link(
+            f,
+            LINK.to_owned(),
+            "grant-1".to_owned(),
+            "newsletter".to_owned(),
+        )
+    })
+    .unwrap();
+
+    // Off by default: the visitor sees the form but cannot answer it.
+    let shown = app.view(|s| s.link_form(LINK.to_owned())).unwrap();
+    assert_eq!(shown.form_id, form_id);
+    assert_eq!(shown.fields, contact_fields());
+    assert!(!shown.accepting);
+    assert!(via_link(&mut app, "Ada", None)
+        .msg()
+        .contains("not taking responses from links"));
+
+    let f = form_id.clone();
+    app.call(move |s| s.set_form_public(f, true)).unwrap();
+    let id = via_link(&mut app, "Ada", None).unwrap();
+    let response = app.view(|s| s.get_response(id)).unwrap();
+    assert_eq!(response.link, LINK);
+    assert_eq!(response.source, "public link · newsletter");
+
+    // Switching it off again stops the link without deleting it.
+    let f = form_id.clone();
+    app.call(move |s| s.set_form_public(f, false)).unwrap();
+    assert!(via_link(&mut app, "Grace", None).is_err());
+    let f = form_id.clone();
+    let links = app.view(move |s| s.list_links(f)).unwrap();
+    assert_eq!(links.len(), 1);
+    assert_eq!((links[0].responses, links[0].last_hour), (1, 1));
+
+    // A closed form refuses it too.
+    let f = form_id.clone();
+    app.call(move |s| s.set_form_public(f, true)).unwrap();
+    let f = form_id.clone();
+    app.call(move |s| s.set_form_open(f, false)).unwrap();
+    assert!(via_link(&mut app, "Grace", None).msg().contains("closed"));
+}
+
+#[test]
+fn a_deleted_or_unknown_link_answers_nothing() {
+    let mut app = workspace();
+    let _ = public_form(&mut app);
+    let gone = app.call(|s| s.delete_link(LINK.to_owned())).unwrap();
+    assert_eq!(gone.grant_id, "grant-1");
+    assert!(app
+        .view(|s| s.link_form(LINK.to_owned()))
+        .msg()
+        .contains("no longer works"));
+    assert!(via_link(&mut app, "Ada", None)
+        .msg()
+        .contains("no longer works"));
+}
+
+#[test]
+fn a_link_is_capped_per_hour() {
+    let mut app = workspace();
+    let form_id = public_form(&mut app);
+    let f = form_id.clone();
+    app.call(move |s| s.set_link_cap(f, 2)).unwrap();
+    via_link(&mut app, "One", None).unwrap();
+    via_link(&mut app, "Two", None).unwrap();
+    assert!(via_link(&mut app, "Three", None)
+        .msg()
+        .contains("this hour"));
+    // The team's own entries do not count against a link.
+    let f = form_id.clone();
+    app.call(move |s| s.submit_response(f, contact_answers("By hand"), String::new()))
+        .unwrap();
+    let f = form_id.clone();
+    assert!(app.call(move |s| s.set_link_cap(f, 0)).is_err());
+}
+
+#[test]
+fn a_captcha_pass_is_checked_and_spent_once() {
+    tests_support::set_verifier(test_verifier);
+    let mut app = workspace();
+    let form_id = public_form(&mut app);
+    let f = form_id.clone();
+    app.call(move |s| s.set_captcha_key(f, VERIFIER_KEY.to_owned()))
+        .unwrap();
+    assert!(app.view(|s| s.link_form(LINK.to_owned())).unwrap().captcha);
+
+    let nonce = "0123456789abcdef0123456789abcdef";
+    let later = now_ms() + 5 * 60 * 1_000;
+
+    assert!(via_link(&mut app, "Ada", None)
+        .msg()
+        .contains("needs a captcha"));
+    // Signed for another form: refused.
+    assert!(via_link(&mut app, "Ada", Some(pass("other", nonce, later)))
+        .msg()
+        .contains("not valid for this form"));
+    // Expired, or valid for too long: refused.
+    assert!(via_link(
+        &mut app,
+        "Ada",
+        Some(pass(&form_id, nonce, now_ms() - 60_000))
+    )
+    .msg()
+    .contains("expired"));
+    assert!(via_link(
+        &mut app,
+        "Ada",
+        Some(pass(&form_id, nonce, now_ms() + 3_600_000))
+    )
+    .msg()
+    .contains("too long"));
+
+    via_link(&mut app, "Ada", Some(pass(&form_id, nonce, later))).unwrap();
+    // The same pass again: refused.
+    assert!(
+        via_link(&mut app, "Ada", Some(pass(&form_id, nonce, later)))
+            .msg()
+            .contains("already used")
+    );
+    // A fresh one: taken.
+    via_link(
+        &mut app,
+        "Grace",
+        Some(pass(&form_id, "fedcba9876543210fedcba9876543210", later)),
+    )
+    .unwrap();
+
+    let f = form_id.clone();
+    assert!(app
+        .call(move |s| s.set_captcha_key(f, "not hex".to_owned()))
+        .is_err());
+}
+
+#[test]
+fn only_the_team_manages_links() {
+    let mut app = workspace();
+    let form_id = public_form(&mut app);
+    let f = form_id.clone();
+    assert!(app
+        .call_as_account(BOB, BOB_DEVICE, move |s| s.set_form_public(f, false))
+        .msg()
+        .contains("only the team"));
+    let f = form_id.clone();
+    assert!(app
+        .call_as_account(BOB, BOB_DEVICE, move |s| s.list_links(f))
+        .is_err());
+    assert!(app
+        .call_as_account(BOB, BOB_DEVICE, |s| s.delete_link(LINK.to_owned()))
+        .is_err());
+    // A link id is the token's SHA-256, nothing else.
+    let f = form_id.clone();
+    assert!(app
+        .call(move |s| s.create_link(f, "short".to_owned(), "g".to_owned(), String::new()))
+        .is_err());
+}
+
+#[test]
+fn deleting_a_form_takes_its_links_with_it() {
+    let mut app = workspace();
+    let form_id = public_form(&mut app);
+    app.call(move |s| s.delete_form(form_id)).unwrap();
+    assert!(app.view(|s| s.link_form(LINK.to_owned())).is_err());
 }

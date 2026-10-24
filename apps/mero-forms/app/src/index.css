@@ -671,6 +671,9 @@ select {
 
 /* A form opened from its public link: no top bar, just the form. */
 .public-form { padding-top: 32px; }
+.link-settings { display: grid; gap: 10px; margin: 12px 0 16px; }
+.cap-row { gap: 8px; }
+.cap-input { width: 90px; flex: none; }
 .link-out { white-space: pre-wrap; word-break: break-all; }
 .public-foot { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 24px 0 0; font-size: 0.8rem; color: var(--text-dim); }
 

@@ -13,10 +13,10 @@ What using it looks like:
   and carry help text; questions reorder, duplicate and delete. Close a form to
   stop new responses.
 - **Collect responses** three ways: a public link anyone can open and answer
-  without signing in, a website's backend answering with a form key (below),
-  or a teammate entering one by hand from **Preview**. The contract
-  checks every answer against its question, so a stale or tampered website
-  fails loudly instead of storing junk.
+  without signing in (below), a website's backend answering with a form key,
+  or a teammate entering one by hand from **Preview**. The contract checks
+  every answer against its question, so a stale or tampered website fails
+  loudly instead of storing junk.
 - **Read them**: a summary of every choice question, a searchable table
   (New, All, In CRM, Archived), one response in full, CSV export.
 - **Send to CRM**: link a form to a Mero CRM pipeline once, map which question
@@ -87,40 +87,68 @@ calimero.network's contact page is wired this way: see "Contact form" in the
 
 ## Public links
 
-A public link is a form key carried in the link itself:
-`https://mero-forms.vercel.app/f#<key>`. An admin makes one from the form's
-**Connect** tab ("Share a public link"), the same four steps as a website key,
-and the app shows the link once. Anyone who opens it gets the form alone, with
-no sign-in and no node (`app/src/PublicForm.tsx`): the page reads the questions
-with `get_form` and sends the answers with `submit_response`, both signed in
-the visitor's browser and run by the relay as the key's account.
+A public link lets anyone answer a form in their browser, signed in or not,
+like a Google Form. A teammate makes one from the form's **Connect** tab
+("Public links"); the visitor opens `https://mero-forms.vercel.app/f#n=…&c=…&t=…`
+and sees the form alone (`app/src/PublicForm.tsx`).
 
-The key sits after the `#`. A browser never sends the fragment to the server
-it loads the page from and never puts it in a `Referer`, so the host serving
-the page (Vercel) never sees it; only the relay sees the signed requests. The
-key is not secret from whoever has the link, and is not meant to be: it can
-answer this one form and nothing else, exactly like a website's key, and it
-reads nothing (`app/src/lib/formKey.ts` says why).
+**A link is a core access grant, not a member's key.** Making one does two
+things, as Mero Calendar's booking links do (`app/src/PublicLinks.tsx`):
 
-What a link cannot do that a website's backend can:
+1. the teammate's node issues an access grant
+   (`POST /admin-api/contexts/:id/grants`) that names `link_form` and
+   `submit_via_link` and nothing else;
+2. the contract records the link under the SHA-256 of the grant's token
+   (`create_link`), with the form it is for and a label.
 
-- **Rate-limit or filter.** Whoever has the link can send as many responses as
-  they like. Share it where you would share any form; revoke it in **Keys for
-  this form** to stop it, and make a new one.
-- **Keep one nonce counter.** Every visitor signs with the same device, and the
-  relay keeps one 64-wide replay window per author device. So the page takes
-  its nonces from the clock (`clockNonces` in `app/src/lib/publicLink.ts`), and
-  a send refused as a replay, which happens when a visitor whose clock runs
-  ahead sent moments earlier, is retried further ahead, up to the five minutes
-  a warrant lives. Someone holding the link can also sign a nonce far in the
-  future on purpose and stop the link working for everyone; revoking it and
-  making a new one is the fix.
+The URL's fragment carries the node, the workspace and the token. A browser
+never sends the fragment to the server that serves the page, so the token
+reaches only the node, on its public `/grant-calls` route. The visitor is a
+member of nothing: no account, no key that could ever receive the workspace's
+data, and no call but those two. A grant call runs as the node that issued it,
+a teammate, so those two methods are the link's own: `submit_via_link` takes a
+response only through a link the contract knows, and the visitor never reaches
+`submit_response` or anything that reads responses.
 
-The relay the link names is chosen when it is made: for a Calimero Cloud
-sign-in, the relay serving the workspace; for a node, the node itself, which
-works only if it relays (`--delegated-access` and "Let this node write for form
-keys") and visitors can reach it at that address. The admin can change it
-before making the link.
+**What the team controls, enforced by the contract:**
+
+- **Public.** Off by default. While off, every link shows the form but
+  refuses responses; turning it back on brings them all back.
+- **An hourly cap per link** (30 by default), counted from the link's own
+  responses. Over it, the link is refused until the hour rolls over.
+- **A captcha**, optional. The contract makes no network calls, so it cannot
+  ask Cloudflare itself. The `/f` page shows a Cloudflare Turnstile widget,
+  and the app's own Vercel function (`app/api/captcha.ts`,
+  `app/src/lib/captchaVerifier.ts`) checks the solved widget with Cloudflare.
+  It then signs a pass, `mero-forms/captcha/v1|<form>|<link>|<nonce>|<expiry>`,
+  with an ed25519 key. The contract checks that signature with the host's
+  `ed25519_verify` against the key the form saved, and accepts each nonce once
+  and only until it expires (at most ten minutes ahead). The function sees the
+  form, the link and a random nonce, never the answers, and holds no key or
+  grant.
+- **Deleting a link** removes its record, which stops it at once, and revokes
+  its grant when the link was made on this node. A link made on a teammate's
+  node keeps a grant there that reaches nothing, until they remove it.
+
+**What a link needs:**
+
+- **Core 0.11.0 or later on the teammate's node.** Access grants are not in
+  0.11.0-rc.90.
+- **A node signed in, not a Calimero Cloud account session.** Core runs a
+  granted call as the node, so an account session cannot issue one.
+- **A node visitors' browsers can reach**, at the URL the app is connected
+  to, with CORS allowing the app's origin: a Calimero Cloud node, or your own
+  `merod` at a public address. Calimero Desktop on a laptop is not.
+- **For the captcha, three variables on the Vercel project:**
+  `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` from a Cloudflare Turnstile
+  widget, and `CAPTCHA_SIGNING_SEED`, 32 random bytes in hex
+  (`openssl rand -hex 32`). Changing the seed changes the key, so re-enable
+  "Require a captcha" on each form that uses it.
+
+A grant limits *which* methods may be called, not their arguments, and
+nothing in core limits how often the node's `/grant-calls` route is called:
+the hourly cap is the contract's, and a rate limit per IP belongs to the
+node's reverse proxy.
 
 ## Sending to Mero CRM
 
@@ -166,12 +194,14 @@ team sends to the same place.
 
 | State | Tier | Why |
 | --- | --- | --- |
-| `responses: UnorderedMap<id, LwwRegister<Response>>` | public, insert-only | The answers as sent, with each question's label at the time, `source`, `created_at` and `submitted_by`. `submit_response` refuses an existing id and nothing else writes it. |
-| `forms: SharedStorage<UnorderedMap<id, Form>>` | writers = the team | Title, description, questions, open, CRM link. Each part a register; the question list is replaced whole on save. |
+| `responses: UnorderedMap<id, LwwRegister<Response>>` | public, insert-only | The answers as sent, with each question's label at the time, `source`, `created_at`, `submitted_by` and the public link it came through. `submit_response` and `submit_via_link` refuse an existing id and nothing else writes it. |
+| `forms: SharedStorage<UnorderedMap<id, Form>>` | writers = the team | Title, description, questions, open, CRM link, and for public links: public, the hourly cap, the captcha key. Each part a register; the question list is replaced whole on save. |
 | `triage: SharedStorage<UnorderedMap<id, ResponseState>>` | writers = the team | Archived, and the CRM deal a response became. |
 | `settings: SharedStorage<UnorderedMap<key, LwwRegister<String>>>` | writers = the team | The workspace's name. |
 | `form_keys: SharedStorage<UnorderedMap<account, FormKey>>` | writers = the admins | Which members are form keys, the form each may answer, and a label. The register, not the grant: membership is the grant. |
-| `roles: AccessControl` | admins | The admins (the installer to start with) and the `team` role. Adding or removing a teammate rotates the writers of `forms`, `triage` and `settings`. |
+| `links: SharedStorage<UnorderedMap<sha256(token), Link>>` | writers = the team | Each public link: its form, label, access grant id and the teammate whose node holds the grant. Deleting the row stops the link. |
+| `captcha_seen: SharedStorage<UnorderedMap<nonce, expiry>>` | writers = the team | Captcha passes already spent, until they expire. |
+| `roles: AccessControl` | admins | The admins (the installer to start with) and the `team` role. Adding or removing a teammate rotates the writers of `forms`, `triage`, `settings`, `links` and `captcha_seen`. |
 
 **Why responses are not owned storage.** `WriteOnce` would make a response
 immutable for every node, but core lets only an attested TEE relay
@@ -205,6 +235,9 @@ Events carry ids only, never answers.
 | `list_team()` / `add_team_member(who)` / `remove_team_member(who)` | team / admin | The team |
 | `workspace_name()` / `set_workspace_name(name)` | anyone / team | The workspace's name |
 | `register_form_key(account, form_id, label)` / `forget_form_key(account)` / `list_form_keys()` | admin | The form key register, with each key's response count |
+| `set_form_public(form_id, public)` / `set_link_cap(form_id, per_hour)` / `set_captcha_key(form_id, key)` | team | Whether links take responses, how many per hour, and the captcha verifier's key (empty for none) |
+| `create_link(form_id, link, grant_id, label)` / `delete_link(link)` / `list_links(form_id)` | team | The public link register, with each link's response counts |
+| `link_form(link)` / `submit_via_link(link, answers, captcha)` | a link's grant | The two calls a public link may make: the questions, and a response |
 | `am_i_team()` / `am_i_admin()` / `my_account()` | anyone | Identity |
 
 ## Run it
@@ -226,9 +259,12 @@ cd apps/mero-forms/logic && merobox bootstrap run workflows/e2e.yml   # two node
 The Playwright journey is the whole product path on one node, with a real Mero
 CRM pipeline beside it: build a form from a template and add a question, enter
 a response by hand, issue a form key, answer as a website through
-`RelayClient`, make a public link and answer it as a visitor with no session,
-read the summary and the response, link the pipeline, send the response, check
-the contact and deal in Mero CRM's own state, reload, and revoke both keys.
+`RelayClient`, make a public link and answer it as a visitor with no session
+(paused until the form is public, through a stubbed captcha whose pass the
+contract really verifies, and refused over the hourly cap), read the summary
+and the response, link the pipeline, send the response, check the contact and
+deal in Mero CRM's own state, reload, delete the link and revoke the key. The
+link steps need a merod with access grants (core 0.11.0).
 
 `codegen` generates two clients: `FormsClient` from this contract, and
 `CrmClient` from `apps/mero-crm/logic/res/abi.json` for the hand-off.
@@ -245,8 +281,10 @@ app/src/FormView.tsx        one form: Responses, Edit, Preview, Connect
 app/src/FormBuilder.tsx     the question editor
 app/src/FormFill.tsx        the form as a respondent sees it
 app/src/Responses.tsx       summary, table, one response, Send to CRM
-app/src/FormConnect.tsx     form keys, public links and the relay
+app/src/FormConnect.tsx     form keys and the relay
+app/src/PublicLinks.tsx     public links: Public, the cap, the captcha, make and delete
 app/src/PublicForm.tsx      the form opened from a public link (`/f#…`)
+app/api/captcha.ts          the captcha verifier (a Vercel function)
 app/src/CrmSettings.tsx     the CRM pipeline, stage and field mapping
 app/src/useCrm.ts           finding pipelines (node or Cloud account) and sending a response
 app/src/lib/                pure, unit-tested: questions and answers, CRM mapping, form keys

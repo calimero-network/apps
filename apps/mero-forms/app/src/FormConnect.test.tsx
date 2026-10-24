@@ -17,6 +17,9 @@ const FORM: FormView = {
   created_at: 0,
   created_by: "",
   updated_at: 0,
+  public: false,
+  link_cap: 30,
+  captcha_key: "",
 };
 
 const calls: string[] = [];
