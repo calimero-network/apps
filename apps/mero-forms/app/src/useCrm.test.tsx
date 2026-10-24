@@ -85,6 +85,9 @@ const form: FormView = {
   created_at: 0,
   created_by: "",
   updated_at: 0,
+  public: false,
+  link_cap: 30,
+  captcha_key: "",
 };
 
 const response: ResponseView = {
@@ -102,6 +105,7 @@ const response: ResponseView = {
   crm_deal: "",
   crm_sent_at: 0,
   crm_sent_by: "",
+  link: "",
 };
 
 function fakeWorkspace() {

@@ -23,6 +23,7 @@ const response: ResponseView = {
   crm_deal: "",
   crm_sent_at: 0,
   crm_sent_by: "",
+  link: "",
 };
 
 const link = {

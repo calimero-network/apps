@@ -39,10 +39,28 @@
 //!   may submit to, and a label. It is the app's register, not the grant.
 //!   What lets a form key write is being a member of the namespace, which the
 //!   app adds and removes through the node.
+//! * `links` is `SharedStorage<UnorderedMap<id, Link>>`, writable by the team:
+//!   the form's public links. A link is a core access grant on a teammate's
+//!   node that may call `link_form` and `submit_via_link` and nothing else;
+//!   its id here is the SHA-256 of the grant's token, which only the link
+//!   carries. Deleting the row stops the link even before the grant is
+//!   revoked on that node.
+//! * `captcha_seen` is `SharedStorage<UnorderedMap<nonce, expiry>>`, writable
+//!   by the team: captcha passes already spent, until they expire.
 //! * `roles` is `AccessControl`: the admins (the installer to start with) and
 //!   the `team` role. Only admins change it, enforced at merge. Adding or
-//!   removing a teammate rotates the writers of `forms`, `triage` and
-//!   `settings`.
+//!   removing a teammate rotates the writers of `forms`, `triage`,
+//!   `settings`, `links` and `captcha_seen`.
+//!
+//! # Public links
+//!
+//! A grant call runs as the node that issued the grant, a teammate, so the
+//! contract cannot tell a link's visitor from that teammate by the caller.
+//! That is why a link has its own methods: `link_form` shows the one form a
+//! link is for, and `submit_via_link` takes a response only when that form is
+//! public and open, under its hourly cap, and with a captcha pass when the
+//! form asks for one. The grant names only those two methods, so a visitor
+//! never reaches `submit_response` or anything that reads responses.
 //!
 //! # Answers
 //!
@@ -111,6 +129,16 @@ const MAX_URL: usize = 2_000;
 const MAX_SOURCE: usize = 300;
 const MAX_KEY_LABEL: usize = 100;
 const MAX_ID: usize = 100;
+
+/// Public links.
+const LINK_ID_HEX: usize = 64;
+const MAX_GRANT_ID: usize = 128;
+const DEFAULT_LINK_CAP: u32 = 30;
+const MAX_LINK_CAP: u32 = 10_000;
+const HOUR_NS: u64 = 3_600 * 1_000_000_000;
+/// The longest a captcha pass may be valid for, from when it is spent.
+const MAX_PASS_MS: u64 = 10 * 60 * 1_000;
+const PASS_NONCE_HEX: usize = 32;
 
 /// The `settings` key the workspace's display name is kept under.
 const WORKSPACE_NAME: &str = "name";
@@ -201,8 +229,11 @@ pub struct Response {
     /// When the node accepted it, in nanoseconds since the Unix epoch.
     pub created_at: u64,
     /// The account that called `submit_response` (hex): which form key, or
-    /// which teammate entered it.
+    /// which teammate entered it. For a public link, the node that holds the
+    /// link's grant.
     pub submitted_by: String,
+    /// The public link it came through, or empty.
+    pub link: String,
 }
 
 /// A form. Every field is a register, so two teammates changing different
@@ -216,9 +247,42 @@ pub struct Form {
     /// A closed form refuses new responses.
     pub open: LwwRegister<bool>,
     pub crm: LwwRegister<CrmLink>,
+    /// Whether its public links take responses. Off: every link is refused,
+    /// and works again when it is turned back on.
+    pub public: LwwRegister<bool>,
+    /// Responses each public link may send per hour.
+    pub link_cap: LwwRegister<u32>,
+    /// The captcha verifier's ed25519 public key, hex, or empty for no
+    /// captcha. A link's response then needs a pass it signed.
+    pub captcha_key: LwwRegister<String>,
     pub created_at: LwwRegister<u64>,
     pub created_by: LwwRegister<String>,
     pub updated_at: LwwRegister<u64>,
+}
+
+/// A public link, as the team made it.
+#[derive(BorshSerialize, BorshDeserialize, AbiType, app::Mergeable)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct Link {
+    pub form_id: LwwRegister<String>,
+    pub label: LwwRegister<String>,
+    /// The access grant behind it, on `created_by`'s node.
+    pub grant_id: LwwRegister<String>,
+    pub created_at: LwwRegister<u64>,
+    pub created_by: LwwRegister<String>,
+}
+
+/// A captcha pass: the verifier's signature over
+/// `mero-forms/captcha/v1|<form>|<link>|<nonce>|<expires_ms>`. The nonce is
+/// the visitor's, random, and each one is accepted once.
+#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct CaptchaPass {
+    pub nonce: String,
+    /// Milliseconds since the Unix epoch.
+    pub expires_ms: u64,
+    /// 64 bytes, hex.
+    pub signature: String,
 }
 
 /// The team's state for one response.
@@ -253,6 +317,8 @@ pub struct MeroForms {
     triage: SharedStorage<UnorderedMap<String, ResponseState>>,
     settings: SharedStorage<UnorderedMap<String, LwwRegister<String>>>,
     form_keys: SharedStorage<UnorderedMap<String, FormKey>>,
+    links: SharedStorage<UnorderedMap<String, Link>>,
+    captcha_seen: SharedStorage<UnorderedMap<String, LwwRegister<u64>>>,
     roles: AccessControl,
 }
 
@@ -277,9 +343,42 @@ pub struct FormView {
     pub fields: Vec<Field>,
     pub open: bool,
     pub crm: CrmLink,
+    pub public: bool,
+    pub link_cap: u32,
+    pub captcha_key: String,
     pub created_at: u64,
     pub created_by: String,
     pub updated_at: u64,
+}
+
+/// A form as a public link's visitor sees it: the questions, and nothing the
+/// team keeps about it.
+#[derive(AbiType, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct LinkFormView {
+    pub form_id: String,
+    pub title: String,
+    pub description: String,
+    pub fields: Vec<Field>,
+    /// Open and public: a response would be taken.
+    pub accepting: bool,
+    /// Whether a response needs a captcha pass.
+    pub captcha: bool,
+}
+
+/// A public link, with what it has sent.
+#[derive(AbiType, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct LinkView {
+    pub id: String,
+    pub form_id: String,
+    pub label: String,
+    pub grant_id: String,
+    pub created_at: u64,
+    pub created_by: String,
+    pub responses: u32,
+    pub last_hour: u32,
+    pub last_response_at: u64,
 }
 
 /// A form in the list, with what it has collected.
@@ -308,6 +407,7 @@ pub struct ResponseView {
     pub source: String,
     pub created_at: u64,
     pub submitted_by: String,
+    pub link: String,
     pub archived: bool,
     pub crm_context: String,
     pub crm_deal: String,
@@ -587,6 +687,8 @@ impl MeroForms {
             triage: SharedStorage::new(BTreeSet::from([me]), false),
             settings: SharedStorage::new(BTreeSet::from([me]), false),
             form_keys: SharedStorage::new(BTreeSet::from([me]), false),
+            links: SharedStorage::new(BTreeSet::from([me]), false),
+            captcha_seen: SharedStorage::new(BTreeSet::from([me]), false),
             roles: AccessControl::new(me),
         }
     }
@@ -617,6 +719,9 @@ impl MeroForms {
             fields: LwwRegister::new(Vec::new()),
             open: LwwRegister::new(true),
             crm: LwwRegister::new(CrmLink::default()),
+            public: LwwRegister::new(false),
+            link_cap: LwwRegister::new(DEFAULT_LINK_CAP),
+            captcha_key: LwwRegister::new(String::new()),
             created_at: LwwRegister::new(now),
             created_by: LwwRegister::new(me().to_string()),
             updated_at: LwwRegister::new(now),
@@ -727,6 +832,16 @@ impl MeroForms {
                 ));
             }
         }
+        let links = self.links.get_mut().map_err(store_err("links.get_mut"))?;
+        let gone: Vec<String> = links
+            .entries()
+            .map_err(store_err("links.entries"))?
+            .filter(|(_, row)| *row.form_id.get() == form_id)
+            .map(|(id, _)| id)
+            .collect();
+        for id in gone {
+            let _removed = links.remove(&id).map_err(store_err("links.remove"))?;
+        }
         let _removed = self
             .forms
             .get_mut()
@@ -822,62 +937,178 @@ impl MeroForms {
             }
         }
         let form = self.form(&form_id)?;
+        let source = source.trim().to_owned();
+        check("source", &source, MAX_SOURCE, false)?;
+        self.store_response(&form_id, &form, answers, source, String::new())
+    }
+
+    // ── Public links ────────────────────────────────────────────────────────
+
+    /// Lets the form's public links take responses, or stops them all.
+    /// Team only. Links are kept either way.
+    pub fn set_form_public(&mut self, form_id: String, public: bool) -> app::Result<FormView> {
+        self.only_team()?;
+        self.edit_form(&form_id, |form| {
+            form.public.set(public);
+            Ok(())
+        })
+    }
+
+    /// How many responses each of the form's links may send per hour. Team only.
+    pub fn set_link_cap(&mut self, form_id: String, per_hour: u32) -> app::Result<FormView> {
+        self.only_team()?;
+        if per_hour == 0 || per_hour > MAX_LINK_CAP {
+            return Err(AppError::msg(format!(
+                "a link may send between 1 and {MAX_LINK_CAP} responses per hour"
+            )));
+        }
+        self.edit_form(&form_id, |form| {
+            form.link_cap.set(per_hour);
+            Ok(())
+        })
+    }
+
+    /// Requires a captcha pass signed by `key` (an ed25519 public key, hex)
+    /// on every response through the form's links, or none when `key` is
+    /// empty. Team only.
+    pub fn set_captcha_key(&mut self, form_id: String, key: String) -> app::Result<FormView> {
+        self.only_team()?;
+        let key = key.trim().to_lowercase();
+        if !key.is_empty() && decode_fixed::<32>(&key).is_none() {
+            return Err(AppError::msg("the captcha key must be 32 bytes of hex"));
+        }
+        self.edit_form(&form_id, |form| {
+            form.captcha_key.set(key);
+            Ok(())
+        })
+    }
+
+    /// Records a public link for `form_id`: `link` is the SHA-256 (hex) of
+    /// the access grant's token, `grant_id` the grant on the caller's node.
+    /// Team only.
+    pub fn create_link(
+        &mut self,
+        form_id: String,
+        link: String,
+        grant_id: String,
+        label: String,
+    ) -> app::Result<LinkView> {
+        self.only_team()?;
+        let link = link.trim().to_lowercase();
+        if link.len() != LINK_ID_HEX || decode_fixed::<32>(&link).is_none() {
+            return Err(AppError::msg(
+                "a link id is the SHA-256 of its token, in hex",
+            ));
+        }
+        let grant_id = grant_id.trim().to_owned();
+        check("grant id", &grant_id, MAX_GRANT_ID, true)?;
+        let label = label.trim().to_owned();
+        check("label", &label, MAX_KEY_LABEL, false)?;
+        let _ = self.form(&form_id)?;
+        let links = self.links.get_mut().map_err(store_err("links.get_mut"))?;
+        if links.contains(&link).map_err(store_err("links.contains"))? {
+            return Err(AppError::msg("this link already exists"));
+        }
+        let row = Link {
+            form_id: LwwRegister::new(form_id),
+            label: LwwRegister::new(label),
+            grant_id: LwwRegister::new(grant_id),
+            created_at: LwwRegister::new(env::time_now()),
+            created_by: LwwRegister::new(me().to_string()),
+        };
+        let view = link_view(link.clone(), &row, (0, 0, 0));
+        let _previous = links.insert(link, row).map_err(store_err("links.insert"))?;
+        Ok(view)
+    }
+
+    /// Stops a public link and returns what it was, so the app can revoke its
+    /// grant on the node that holds it. Team only.
+    pub fn delete_link(&mut self, link: String) -> app::Result<LinkView> {
+        self.only_team()?;
+        let link = link.trim().to_lowercase();
+        let row = self
+            .links
+            .get_mut()
+            .map_err(store_err("links.get_mut"))?
+            .remove(&link)
+            .map_err(store_err("links.remove"))?
+            .ok_or_else(|| AppError::msg("no such link"))?;
+        let counts = self.link_counts(&link)?;
+        Ok(link_view(link, &row, counts))
+    }
+
+    /// The form's public links, newest first, with what each has sent. Team only.
+    pub fn list_links(&self, form_id: String) -> app::Result<Vec<LinkView>> {
+        self.only_team()?;
+        let links = self.links.get().map_err(store_err("links.get"))?;
+        let mut views = Vec::new();
+        for (id, row) in links.entries().map_err(store_err("links.entries"))? {
+            if *row.form_id.get() != form_id {
+                continue;
+            }
+            let counts = self.link_counts(&id)?;
+            views.push(link_view(id, &row, counts));
+        }
+        views.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
+        Ok(views)
+    }
+
+    /// The form a public link is for, as its visitor sees it. One of the two
+    /// methods a link's grant names.
+    pub fn link_form(&self, link: String) -> app::Result<LinkFormView> {
+        let (form_id, _) = self.link(&link)?;
+        let form = self.form(&form_id)?;
+        Ok(LinkFormView {
+            form_id,
+            title: form.title.get().clone(),
+            description: form.description.get().clone(),
+            fields: form.fields.get().clone(),
+            accepting: *form.open.get() && *form.public.get(),
+            captcha: !form.captcha_key.get().is_empty(),
+        })
+    }
+
+    /// Stores a response that came through a public link and returns its id.
+    /// The other method a link's grant names.
+    ///
+    /// Refused unless the form is open and public, the link is under its
+    /// hourly cap, and, when the form asks for one, `captcha` is a pass the
+    /// form's verifier signed for this form and link, unexpired and unused.
+    pub fn submit_via_link(
+        &mut self,
+        link: String,
+        answers: Vec<AnswerInput>,
+        captcha: Option<CaptchaPass>,
+    ) -> app::Result<String> {
+        let link = link.trim().to_lowercase();
+        let (form_id, label) = self.link(&link)?;
+        let form = self.form(&form_id)?;
+        if !*form.public.get() {
+            return Err(AppError::msg(
+                "this form is not taking responses from links",
+            ));
+        }
         if !*form.open.get() {
             return Err(AppError::msg("this form is closed"));
         }
-        let source = source.trim().to_owned();
-        check("source", &source, MAX_SOURCE, false)?;
-
-        let mut given: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        for answer in answers {
-            let id = answer.field_id.trim().to_owned();
-            if given.insert(id.clone(), answer.values).is_some() {
-                return Err(AppError::msg(format!("field {id:?} was answered twice")));
-            }
+        let (_, last_hour, _) = self.link_counts(&link)?;
+        if last_hour >= *form.link_cap.get() {
+            return Err(AppError::msg(
+                "this link has taken as many responses as it may this hour; try again later",
+            ));
         }
-        let fields = form.fields.get();
-        if fields.is_empty() {
-            return Err(AppError::msg("this form has no fields yet"));
+        let key = form.captcha_key.get().clone();
+        if !key.is_empty() {
+            let pass = captcha.ok_or_else(|| AppError::msg("this form needs a captcha"))?;
+            self.spend_pass(&key, &form_id, &link, pass)?;
         }
-        let mut stored = Vec::with_capacity(fields.len());
-        for field in fields {
-            let values = check_answer(field, given.remove(&field.id).unwrap_or_default())?;
-            stored.push(Answer {
-                field_id: field.id.clone(),
-                label: field.label.clone(),
-                kind: field.kind.clone(),
-                values,
-            });
-        }
-        if let Some(unknown) = given.keys().next() {
-            return Err(AppError::msg(format!("the form has no field {unknown:?}")));
-        }
-
-        let id = random_id(16);
-        if self
-            .responses
-            .contains(&id)
-            .map_err(store_err("responses.contains"))?
-        {
-            return Err(AppError::msg("response id collision; submit again"));
-        }
-        let response = Response {
-            form_id: form_id.clone(),
-            answers: stored,
-            source,
-            created_at: env::time_now(),
-            submitted_by: caller.to_string(),
+        let source = if label.is_empty() {
+            "public link".to_owned()
+        } else {
+            format!("public link · {label}")
         };
-        self.responses
-            .insert(id.clone(), LwwRegister::new(response))
-            .map_err(store_err("responses.insert"))?;
-        app::emit!(Event::Submitted {
-            id: &id,
-            form_id: &form_id,
-        });
-        Ok(id)
+        self.store_response(&form_id, &form, answers, source, link)
     }
-
     /// A form's responses, newest first. Team only.
     pub fn list_responses(&self, form_id: String) -> app::Result<Vec<ResponseView>> {
         self.only_team()?;
@@ -1128,9 +1359,74 @@ fn form_view(id: String, form: &Form) -> FormView {
         fields: form.fields.get().clone(),
         open: *form.open.get(),
         crm: form.crm.get().clone(),
+        public: *form.public.get(),
+        link_cap: *form.link_cap.get(),
+        captcha_key: form.captcha_key.get().clone(),
         created_at: *form.created_at.get(),
         created_by: form.created_by.get().clone(),
         updated_at: *form.updated_at.get(),
+    }
+}
+
+fn link_view(
+    id: String,
+    row: &Link,
+    (responses, last_hour, last_response_at): (u32, u32, u64),
+) -> LinkView {
+    LinkView {
+        id,
+        form_id: row.form_id.get().clone(),
+        label: row.label.get().clone(),
+        grant_id: row.grant_id.get().clone(),
+        created_at: *row.created_at.get(),
+        created_by: row.created_by.get().clone(),
+        responses,
+        last_hour,
+        last_response_at,
+    }
+}
+
+/// What a captcha pass signs. The verifier builds the same string.
+pub fn captcha_message(form_id: &str, link: &str, nonce: &str, expires_ms: u64) -> String {
+    format!("mero-forms/captcha/v1|{form_id}|{link}|{nonce}|{expires_ms}")
+}
+
+fn decode_fixed<const N: usize>(value: &str) -> Option<[u8; N]> {
+    hex::decode(value).ok()?.try_into().ok()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn verify_signature(signature: &[u8; 64], public_key: &[u8; 32], message: &[u8]) -> bool {
+    env::ed25519_verify(signature, public_key, message)
+}
+
+/// The test host has no ed25519; tests decide the verdict (see tests.rs).
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_signature(signature: &[u8; 64], public_key: &[u8; 32], message: &[u8]) -> bool {
+    tests_support::verify(signature, public_key, message)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod tests_support {
+    use std::cell::RefCell;
+
+    type Verifier = fn(&[u8; 64], &[u8; 32], &[u8]) -> bool;
+
+    thread_local! {
+        static VERIFIER: RefCell<Option<Verifier>> = const { RefCell::new(None) };
+    }
+
+    /// Which signatures the test host accepts. Unset, it accepts none.
+    #[cfg(test)]
+    pub(crate) fn set_verifier(verifier: Verifier) {
+        VERIFIER.with(|v| *v.borrow_mut() = Some(verifier));
+    }
+
+    pub(crate) fn verify(signature: &[u8; 64], public_key: &[u8; 32], message: &[u8]) -> bool {
+        VERIFIER.with(|v| {
+            v.borrow()
+                .is_some_and(|f| f(signature, public_key, message))
+        })
     }
 }
 
@@ -1142,6 +1438,7 @@ fn response_view(id: String, r: Response, s: Option<&ResponseState>) -> Response
         source: r.source,
         created_at: r.created_at,
         submitted_by: r.submitted_by,
+        link: r.link,
         archived: s.is_some_and(|s| *s.archived.get()),
         crm_context: s.map(|s| s.crm_context.get().clone()).unwrap_or_default(),
         crm_deal: s.map(|s| s.crm_deal.get().clone()).unwrap_or_default(),
@@ -1160,6 +1457,9 @@ impl Form {
             fields: self.fields.clone(),
             open: self.open.clone(),
             crm: self.crm.clone(),
+            public: self.public.clone(),
+            link_cap: self.link_cap.clone(),
+            captcha_key: self.captcha_key.clone(),
             created_at: self.created_at.clone(),
             created_by: self.created_by.clone(),
             updated_at: self.updated_at.clone(),
@@ -1190,6 +1490,155 @@ impl ResponseState {
 }
 
 impl MeroForms {
+    /// Checks every answer against the form and stores the response.
+    fn store_response(
+        &mut self,
+        form_id: &str,
+        form: &Form,
+        answers: Vec<AnswerInput>,
+        source: String,
+        link: String,
+    ) -> app::Result<String> {
+        if !*form.open.get() {
+            return Err(AppError::msg("this form is closed"));
+        }
+        let mut given: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for answer in answers {
+            let id = answer.field_id.trim().to_owned();
+            if given.insert(id.clone(), answer.values).is_some() {
+                return Err(AppError::msg(format!("field {id:?} was answered twice")));
+            }
+        }
+        let fields = form.fields.get();
+        if fields.is_empty() {
+            return Err(AppError::msg("this form has no fields yet"));
+        }
+        let mut stored = Vec::with_capacity(fields.len());
+        for field in fields {
+            let values = check_answer(field, given.remove(&field.id).unwrap_or_default())?;
+            stored.push(Answer {
+                field_id: field.id.clone(),
+                label: field.label.clone(),
+                kind: field.kind.clone(),
+                values,
+            });
+        }
+        if let Some(unknown) = given.keys().next() {
+            return Err(AppError::msg(format!("the form has no field {unknown:?}")));
+        }
+
+        let id = random_id(16);
+        if self
+            .responses
+            .contains(&id)
+            .map_err(store_err("responses.contains"))?
+        {
+            return Err(AppError::msg("response id collision; submit again"));
+        }
+        let response = Response {
+            form_id: form_id.to_owned(),
+            answers: stored,
+            source,
+            created_at: env::time_now(),
+            submitted_by: me().to_string(),
+            link,
+        };
+        self.responses
+            .insert(id.clone(), LwwRegister::new(response))
+            .map_err(store_err("responses.insert"))?;
+        app::emit!(Event::Submitted { id: &id, form_id });
+        Ok(id)
+    }
+
+    /// The form a link is for, and its label.
+    fn link(&self, link: &str) -> app::Result<(String, String)> {
+        let links = self.links.get().map_err(store_err("links.get"))?;
+        let row = links
+            .get(&link.trim().to_lowercase())
+            .map_err(store_err("links.get"))?
+            .ok_or_else(|| AppError::msg("this link no longer works"))?;
+        Ok((row.form_id.get().clone(), row.label.get().clone()))
+    }
+
+    /// A link's responses: in all, in the last hour, and the latest one's time.
+    fn link_counts(&self, link: &str) -> app::Result<(u32, u32, u64)> {
+        let since = env::time_now().saturating_sub(HOUR_NS);
+        let (mut all, mut hour, mut last) = (0u32, 0u32, 0u64);
+        for (_, response) in self
+            .responses
+            .entries()
+            .map_err(store_err("responses.entries"))?
+        {
+            let response = response.get();
+            if response.link != link {
+                continue;
+            }
+            all += 1;
+            if response.created_at >= since {
+                hour += 1;
+            }
+            last = last.max(response.created_at);
+        }
+        Ok((all, hour, last))
+    }
+
+    /// Checks a captcha pass and records its nonce as spent, dropping spent
+    /// nonces that have expired.
+    fn spend_pass(
+        &mut self,
+        key: &str,
+        form_id: &str,
+        link: &str,
+        pass: CaptchaPass,
+    ) -> app::Result<()> {
+        let nonce = pass.nonce.trim().to_lowercase();
+        if nonce.len() != PASS_NONCE_HEX || hex::decode(&nonce).is_err() {
+            return Err(AppError::msg("the captcha pass is malformed"));
+        }
+        let now_ms = env::time_now() / 1_000_000;
+        if pass.expires_ms < now_ms {
+            return Err(AppError::msg("the captcha has expired; solve it again"));
+        }
+        if pass.expires_ms > now_ms + MAX_PASS_MS {
+            return Err(AppError::msg("the captcha pass is valid for too long"));
+        }
+        let (Some(signature), Some(public_key)) = (
+            decode_fixed::<64>(pass.signature.trim()),
+            decode_fixed::<32>(key),
+        ) else {
+            return Err(AppError::msg("the captcha pass is malformed"));
+        };
+        let message = captcha_message(form_id, link, &nonce, pass.expires_ms);
+        if !verify_signature(&signature, &public_key, message.as_bytes()) {
+            return Err(AppError::msg("the captcha pass is not valid for this form"));
+        }
+        let seen = self
+            .captcha_seen
+            .get_mut()
+            .map_err(store_err("captcha_seen.get_mut"))?;
+        if seen
+            .contains(&nonce)
+            .map_err(store_err("captcha_seen.contains"))?
+        {
+            return Err(AppError::msg(
+                "this captcha was already used; solve it again",
+            ));
+        }
+        let expired: Vec<String> = seen
+            .entries()
+            .map_err(store_err("captcha_seen.entries"))?
+            .filter(|(_, expiry)| *expiry.get() < now_ms)
+            .map(|(n, _)| n)
+            .collect();
+        for n in expired {
+            let _removed = seen.remove(&n).map_err(store_err("captcha_seen.remove"))?;
+        }
+        let _previous = seen
+            .insert(nonce, LwwRegister::new(pass.expires_ms))
+            .map_err(store_err("captcha_seen.insert"))?;
+        Ok(())
+    }
+
     fn is_team(&self, who: &AccountId) -> app::Result<bool> {
         Ok(self.roles.is_admin(who)
             || self
@@ -1228,8 +1677,14 @@ impl MeroForms {
             .rotate_writers(writers.clone())
             .map_err(store_err("triage.rotate_writers"))?;
         self.settings
-            .rotate_writers(writers)
+            .rotate_writers(writers.clone())
             .map_err(store_err("settings.rotate_writers"))?;
+        self.links
+            .rotate_writers(writers.clone())
+            .map_err(store_err("links.rotate_writers"))?;
+        self.captcha_seen
+            .rotate_writers(writers)
+            .map_err(store_err("captcha_seen.rotate_writers"))?;
         Ok(())
     }
 

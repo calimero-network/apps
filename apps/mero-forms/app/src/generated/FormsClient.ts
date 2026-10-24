@@ -31,6 +31,23 @@ export interface AnswerInput {
 }
 
 /**
+ * A captcha pass: the verifier's signature over
+ * `mero-forms/captcha/v1|<form>|<link>|<nonce>|<expires_ms>`. The nonce is
+ * the visitor's, random, and each one is accepted once.
+ */
+export interface CaptchaPass {
+  nonce: string;
+  /**
+   * Milliseconds since the Unix epoch.
+   */
+  expires_ms: number;
+  /**
+   * 64 bytes, hex.
+   */
+  signature: string;
+}
+
+/**
  * Where a form's responses go in Mero CRM, and which field fills what.
  * Empty strings mean "not set".
  */
@@ -107,6 +124,20 @@ export interface Form {
    */
   open: boolean;
   crm: CrmLink;
+  /**
+   * Whether its public links take responses. Off: every link is refused,
+   * and works again when it is turned back on.
+   */
+  public: boolean;
+  /**
+   * Responses each public link may send per hour.
+   */
+  link_cap: number;
+  /**
+   * The captcha verifier's ed25519 public key, hex, or empty for no
+   * captcha. A link's response then needs a pass it signed.
+   */
+  captcha_key: string;
   created_at: number;
   created_by: string;
   updated_at: number;
@@ -175,9 +206,60 @@ export interface FormView {
   fields: Field[];
   open: boolean;
   crm: CrmLink;
+  public: boolean;
+  link_cap: number;
+  captcha_key: string;
   created_at: number;
   created_by: string;
   updated_at: number;
+}
+
+/**
+ * A public link, as the team made it.
+ */
+export interface Link {
+  form_id: string;
+  label: string;
+  /**
+   * The access grant behind it, on `created_by`'s node.
+   */
+  grant_id: string;
+  created_at: number;
+  created_by: string;
+}
+
+/**
+ * A form as a public link's visitor sees it: the questions, and nothing the
+ * team keeps about it.
+ */
+export interface LinkFormView {
+  form_id: string;
+  title: string;
+  description: string;
+  fields: Field[];
+  /**
+   * Open and public: a response would be taken.
+   */
+  accepting: boolean;
+  /**
+   * Whether a response needs a captcha pass.
+   */
+  captcha: boolean;
+}
+
+/**
+ * A public link, with what it has sent.
+ */
+export interface LinkView {
+  id: string;
+  form_id: string;
+  label: string;
+  grant_id: string;
+  created_at: number;
+  created_by: string;
+  responses: number;
+  last_hour: number;
+  last_response_at: number;
 }
 
 export interface MeroForms {
@@ -186,6 +268,8 @@ export interface MeroForms {
   triage: Record<string, ResponseState>;
   settings: Record<string, string>;
   form_keys: Record<string, FormKey>;
+  links: Record<string, Link>;
+  captcha_seen: Record<string, number>;
   roles: Record<string, boolean>;
 }
 
@@ -208,9 +292,14 @@ export interface Response {
   created_at: number;
   /**
    * The account that called `submit_response` (hex): which form key, or
-   * which teammate entered it.
+   * which teammate entered it. For a public link, the node that holds the
+   * link's grant.
    */
   submitted_by: string;
+  /**
+   * The public link it came through, or empty.
+   */
+  link: string;
 }
 
 /**
@@ -240,6 +329,7 @@ export interface ResponseView {
   source: string;
   created_at: number;
   submitted_by: string;
+  link: string;
   archived: boolean;
   crm_context: string;
   crm_deal: string;
@@ -345,6 +435,20 @@ export class FormsClient {
   }
 
   /**
+   * create_link
+   *
+   * Records a public link for `form_id`: `link` is the SHA-256 (hex) of
+   * the access grant's token, `grant_id` the grant on the caller's node.
+   * Team only.
+   *
+   * @intent mutating
+   */
+  public async createLink(params: { form_id: string; link: string; grant_id: string; label: string }): Promise<LinkView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'create_link', argsJson: params });
+    return response as LinkView;
+  }
+
+  /**
    * delete_form
    *
    * Deletes a form that has no responses. A form with responses is closed
@@ -355,6 +459,19 @@ export class FormsClient {
   public async deleteForm(params: { form_id: string }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'delete_form', argsJson: params });
     return response as void;
+  }
+
+  /**
+   * delete_link
+   *
+   * Stops a public link and returns what it was, so the app can revoke its
+   * grant on the node that holds it. Team only.
+   *
+   * @intent mutating
+   */
+  public async deleteLink(params: { link: string }): Promise<LinkView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'delete_link', argsJson: params });
+    return response as LinkView;
   }
 
   /**
@@ -419,6 +536,19 @@ export class FormsClient {
   }
 
   /**
+   * link_form
+   *
+   * The form a public link is for, as its visitor sees it. One of the two
+   * methods a link's grant names.
+   *
+   * @intent read_only
+   */
+  public async linkForm(params: { link: string }): Promise<LinkFormView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'link_form', argsJson: params });
+    return response as LinkFormView;
+  }
+
+  /**
    * list_form_keys
    *
    * The registered form keys, newest first, with what each has sent. Admin
@@ -441,6 +571,18 @@ export class FormsClient {
   public async listForms(): Promise<FormSummary[]> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'list_forms', argsJson: {} });
     return response as FormSummary[];
+  }
+
+  /**
+   * list_links
+   *
+   * The form's public links, newest first, with what each has sent. Team only.
+   *
+   * @intent read_only
+   */
+  public async listLinks(params: { form_id: string }): Promise<LinkView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'list_links', argsJson: params });
+    return response as LinkView[];
   }
 
   /**
@@ -536,6 +678,20 @@ export class FormsClient {
   }
 
   /**
+   * set_captcha_key
+   *
+   * Requires a captcha pass signed by `key` (an ed25519 public key, hex)
+   * on every response through the form's links, or none when `key` is
+   * empty. Team only.
+   *
+   * @intent mutating
+   */
+  public async setCaptchaKey(params: { form_id: string; key: string }): Promise<FormView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_captcha_key', argsJson: params });
+    return response as FormView;
+  }
+
+  /**
    * set_crm_link
    *
    * Where the form's responses go in Mero CRM, or `context_id` empty for
@@ -557,6 +713,31 @@ export class FormsClient {
    */
   public async setFormOpen(params: { form_id: string; open: boolean }): Promise<FormView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'set_form_open', argsJson: params });
+    return response as FormView;
+  }
+
+  /**
+   * set_form_public
+   *
+   * Lets the form's public links take responses, or stops them all.
+   * Team only. Links are kept either way.
+   *
+   * @intent mutating
+   */
+  public async setFormPublic(params: { form_id: string; public: boolean }): Promise<FormView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_form_public', argsJson: params });
+    return response as FormView;
+  }
+
+  /**
+   * set_link_cap
+   *
+   * How many responses each of the form's links may send per hour. Team only.
+   *
+   * @intent mutating
+   */
+  public async setLinkCap(params: { form_id: string; per_hour: number }): Promise<FormView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_link_cap', argsJson: params });
     return response as FormView;
   }
 
@@ -587,6 +768,23 @@ export class FormsClient {
    */
   public async submitResponse(params: { form_id: string; answers: AnswerInput[]; source: string }): Promise<string> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'submit_response', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * submit_via_link
+   *
+   * Stores a response that came through a public link and returns its id.
+   * The other method a link's grant names.
+   *
+   * Refused unless the form is open and public, the link is under its
+   * hourly cap, and, when the form asks for one, `captcha` is a pass the
+   * form's verifier signed for this form and link, unexpired and unused.
+   *
+   * @intent mutating
+   */
+  public async submitViaLink(params: { link: string; answers: AnswerInput[]; captcha: CaptchaPass | null }): Promise<string> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'submit_via_link', argsJson: params });
     return response as string;
   }
 
