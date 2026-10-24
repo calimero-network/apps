@@ -8,6 +8,7 @@ import {
 import { App } from "./App";
 import { adoptDesktopSession } from "./utils/desktopSso";
 import { APP_SLUG } from "./utils/invitation";
+import { SERVED_BY_NODE } from "./utils/servedByNode";
 import "./index.css";
 
 const root = document.getElementById("root");
@@ -71,7 +72,7 @@ createRoot(root).render(
       localhost logs in fine and only the deployed origin breaks, after
       credentials are already accepted.
     */}
-    <MeroProvider mode={AppMode.MultiContext} packageName={APP_SLUG}>
+    <MeroProvider mode={AppMode.MultiContext} packageName={APP_SLUG} servedByNode={SERVED_BY_NODE}>
       <App />
     </MeroProvider>
   </Wrapper>,
