@@ -505,6 +505,9 @@ jobs:
       - name: Assert no lockfile lives inside a workspace member
         run: python3 scripts/tests/no-nested-lockfiles-test.py
 
+      - name: Assert frontend-dir is read from the TOML, not grepped
+        run: python3 scripts/tests/frontend-dir-test.py
+
   rust:
     name: Rust (fmt, clippy, test)
     needs: changes
