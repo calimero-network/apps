@@ -11,6 +11,8 @@ import { btn, login, state, waitForTeam } from "./helpers";
  *   → an admin issues a form key, and a "website" answers with ONLY that key,
  *     by delegated execution, the way calimero-network/landing's
  *     api/contact.ts does (here the node itself is the relay)
+ *   → an admin makes a public link, and a visitor with no session answers
+ *     from the link alone, the key never leaving the fragment
  *   → the responses read back, with a summary of the choice question
  *   → the form is linked to the CRM pipeline, and one response is sent there:
  *     a contact and a deal appear in Mero CRM's own state
@@ -126,11 +128,43 @@ test("a form collects responses from a website and by hand, and one goes to the 
   });
   expect(sent.returns).toMatch(/^[0-9a-f]{32}$/);
 
+  // ── a public link: a visitor with no session answers from the link alone ─
+  const share = page.getByTestId("public-link");
+  await expect(share.getByLabel("public link relay")).toHaveValue(state().nodeUrl);
+  await share.getByLabel("public link label").fill("newsletter");
+  await share.getByRole("button", { name: "Create public link" }).click();
+  const link = (await page.getByTestId("issued-link").locator("pre").textContent({ timeout: 60_000 }))!.trim();
+  const url = new URL(link);
+  expect(url.pathname).toBe("/f");
+  expect(url.search).toBe("");
+  // The key is in the fragment only, which no request carries.
+  const linkSecret = (JSON.parse(Buffer.from(url.hash.slice(1), "base64url").toString()) as { s: string }).s;
+  expect(linkSecret).toMatch(/^[0-9a-f]{64}$/);
+
+  const visitorContext = await page.context().browser()!.newContext();
+  const visitor = await visitorContext.newPage();
+  const requests: string[] = [];
+  visitor.on("request", (r) => requests.push(`${r.url()} ${JSON.stringify(r.headers())} ${r.postData() ?? ""}`));
+  await visitor.goto(link);
+  await expect(visitor.getByRole("heading", { name: "Contact us" })).toBeVisible({ timeout: 30_000 });
+  await visitor.getByLabel("Name", { exact: true }).fill("Alan Turing");
+  await visitor.getByLabel("Email", { exact: true }).fill("alan@example.com");
+  await visitor.getByLabel("Message", { exact: true }).fill("Found you through the newsletter.");
+  await visitor.getByRole("button", { name: "Submit", exact: true }).click();
+  await expect(visitor.getByText("Still needed: Topic")).toBeVisible();
+  await visitor.getByRole("radio", { name: "Cloud" }).check();
+  await visitor.getByRole("button", { name: "Submit", exact: true }).click();
+  await expect(visitor.getByTestId("public-sent")).toContainText("Your response has been recorded.", { timeout: 30_000 });
+  expect(requests.length).toBeGreaterThan(0);
+  expect(requests.filter((r) => r.includes(linkSecret) || r.includes(url.hash.slice(1)))).toEqual([]);
+  await btn(page, "Done").click();
+
   // ── read them back ───────────────────────────────────────────────────────
   await tab(page, "Responses").click();
   const rows = page.locator(".response-row");
-  await expect(rows).toHaveCount(2, { timeout: 30_000 });
-  await expect(page.locator(".summary-q", { hasText: "Topic" })).toContainText("1 · 50%");
+  await expect(rows).toHaveCount(3, { timeout: 30_000 });
+  await expect(page.locator(".summary-q", { hasText: "Topic" })).toContainText("2 · 67%");
+  await expect(rows.filter({ hasText: "Alan Turing" })).toBeVisible();
   await rows.filter({ hasText: "Ada Lovelace" }).click();
   const panel = page.getByRole("dialog");
   await expect(panel).toContainText("We'd like to run a sealed node.");
@@ -176,11 +210,19 @@ test("a form collects responses from a website and by hand, and one goes to the 
   // ── it is the contract's state, not the page's ───────────────────────────
   await page.reload();
   await waitForTeam(page);
-  await expect(page.locator(".response-row")).toHaveCount(2, { timeout: 30_000 });
+  await expect(page.locator(".response-row")).toHaveCount(3, { timeout: 30_000 });
   await expect(page.locator(".response-row", { hasText: "Ada Lovelace" })).toContainText("In CRM");
 
   // ── the key's register counts what it sent; revoking it stops the site ───
   await tab(page, "Connect").click();
+  const linkRow = page.locator(".key-row", { hasText: "Public link · newsletter" });
+  await expect(linkRow).toContainText("1 response");
+  await linkRow.getByRole("button", { name: "Revoke" }).click();
+  await expect(linkRow).toHaveCount(0, { timeout: 30_000 });
+  await visitor.reload();
+  await expect(visitor.getByText("This link no longer works.")).toBeVisible({ timeout: 30_000 });
+  await visitorContext.close();
+
   const row = page.locator(".key-row", { hasText: "calimero.network contact page" });
   await expect(row).toContainText("1 response");
   await row.getByRole("button", { name: "Revoke" }).click();

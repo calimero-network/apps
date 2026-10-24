@@ -12,8 +12,9 @@ What using it looks like:
   number, website, date, multiple choice and checkboxes. Each can be required
   and carry help text; questions reorder, duplicate and delete. Close a form to
   stop new responses.
-- **Collect responses** two ways: a website's backend answers with a form key
-  (below), or a teammate enters one by hand from **Preview**. The contract
+- **Collect responses** three ways: a public link anyone can open and answer
+  without signing in, a website's backend answering with a form key (below),
+  or a teammate entering one by hand from **Preview**. The contract
   checks every answer against its question, so a stale or tampered website
   fails loudly instead of storing junk.
 - **Read them**: a summary of every choice question, a searchable table
@@ -83,6 +84,43 @@ its namespace membership (what lets it write) and then its registration.
 
 calimero.network's contact page is wired this way: see "Contact form" in the
 [landing README](https://github.com/calimero-network/landing).
+
+## Public links
+
+A public link is a form key carried in the link itself:
+`https://mero-forms.vercel.app/f#<key>`. An admin makes one from the form's
+**Connect** tab ("Share a public link"), the same four steps as a website key,
+and the app shows the link once. Anyone who opens it gets the form alone, with
+no sign-in and no node (`app/src/PublicForm.tsx`): the page reads the questions
+with `get_form` and sends the answers with `submit_response`, both signed in
+the visitor's browser and run by the relay as the key's account.
+
+The key sits after the `#`. A browser never sends the fragment to the server
+it loads the page from and never puts it in a `Referer`, so the host serving
+the page (Vercel) never sees it; only the relay sees the signed requests. The
+key is not secret from whoever has the link, and is not meant to be: it can
+answer this one form and nothing else, exactly like a website's key, and it
+reads nothing (`app/src/lib/formKey.ts` says why).
+
+What a link cannot do that a website's backend can:
+
+- **Rate-limit or filter.** Whoever has the link can send as many responses as
+  they like. Share it where you would share any form; revoke it in **Keys for
+  this form** to stop it, and make a new one.
+- **Keep one nonce counter.** Every visitor signs with the same device, and the
+  relay keeps one 64-wide replay window per author device. So the page takes
+  its nonces from the clock (`clockNonces` in `app/src/lib/publicLink.ts`), and
+  a send refused as a replay, which happens when a visitor whose clock runs
+  ahead sent moments earlier, is retried further ahead, up to the five minutes
+  a warrant lives. Someone holding the link can also sign a nonce far in the
+  future on purpose and stop the link working for everyone; revoking it and
+  making a new one is the fix.
+
+The relay the link names is chosen when it is made: for a Calimero Cloud
+sign-in, the relay serving the workspace; for a node, the node itself, which
+works only if it relays (`--delegated-access` and "Let this node write for form
+keys") and visitors can reach it at that address. The admin can change it
+before making the link.
 
 ## Sending to Mero CRM
 
@@ -188,9 +226,9 @@ cd apps/mero-forms/logic && merobox bootstrap run workflows/e2e.yml   # two node
 The Playwright journey is the whole product path on one node, with a real Mero
 CRM pipeline beside it: build a form from a template and add a question, enter
 a response by hand, issue a form key, answer as a website through
-`RelayClient`, read the summary and the response, link the pipeline, send the
-response, check the contact and deal in Mero CRM's own state, reload, and
-revoke the key.
+`RelayClient`, make a public link and answer it as a visitor with no session,
+read the summary and the response, link the pipeline, send the response, check
+the contact and deal in Mero CRM's own state, reload, and revoke both keys.
 
 `codegen` generates two clients: `FormsClient` from this contract, and
 `CrmClient` from `apps/mero-crm/logic/res/abi.json` for the hand-off.
@@ -207,7 +245,8 @@ app/src/FormView.tsx        one form: Responses, Edit, Preview, Connect
 app/src/FormBuilder.tsx     the question editor
 app/src/FormFill.tsx        the form as a respondent sees it
 app/src/Responses.tsx       summary, table, one response, Send to CRM
-app/src/FormConnect.tsx     form keys and the relay
+app/src/FormConnect.tsx     form keys, public links and the relay
+app/src/PublicForm.tsx      the form opened from a public link (`/f#…`)
 app/src/CrmSettings.tsx     the CRM pipeline, stage and field mapping
 app/src/useCrm.ts           finding pipelines (node or Cloud account) and sending a response
 app/src/lib/                pure, unit-tested: questions and answers, CRM mapping, form keys

@@ -620,7 +620,7 @@ export const APPS = {
     features: [
       { icon: 'FileCheck', title: 'Nine kinds of question', body: 'Short answer to checkboxes, required or optional, with help text, reordered and duplicated in a builder that reads like the form it makes.' },
       { icon: 'LockCheck', title: 'Every answer checked', body: 'The contract checks each answer against its question: an email is an email, a choice is one of the options. A tampered website fails loudly instead of storing junk.' },
-      { icon: 'ExternalLink', title: 'Your website, your backend', body: 'Issue a form key from the app and your site’s backend answers with it through a relay. The key can add a response to its one form and nothing else.' },
+      { icon: 'ExternalLink', title: 'A link, or your website', body: 'Share a public link anyone can answer without signing in, or give your site’s backend a form key. Either can add responses to its one form and nothing else.' },
       { icon: 'BarChart', title: 'Responses at a glance', body: 'A summary of every choice question, a searchable table, the full response in a panel, and a CSV with one column per question.' },
       { icon: 'ArrowUpRight', title: 'Straight into Mero CRM', body: 'Map which question is the name, email and company once. Each response becomes a contact and a deal with every answer in a note.' },
       { icon: 'Shield', title: 'Kept exactly as sent', body: 'A response stores every question as it was when it was answered, so editing the form never rewrites what people told you.' },
