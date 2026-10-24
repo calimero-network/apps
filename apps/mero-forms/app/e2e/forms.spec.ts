@@ -185,8 +185,10 @@ test("a form collects responses from a website and by hand, and one goes to the 
   // A form is not public until the team says so.
   await expect(visitor.getByText("This form is not taking responses right now.")).toBeVisible();
 
-  await share.getByLabel("public", { exact: true }).check();
-  await share.getByLabel("require a captcha").check();
+  // Each switch shows the contract's state, so it flips once the call lands.
+  await share.getByLabel("public", { exact: true }).click();
+  await expect(share.getByLabel("public", { exact: true })).toBeChecked({ timeout: 30_000 });
+  await share.getByLabel("require a captcha").click();
   await expect(share.getByLabel("require a captcha")).toBeChecked({ timeout: 30_000 });
   await visitor.reload();
   await expect(visitor.getByTestId("captcha")).toBeVisible({ timeout: 30_000 });
