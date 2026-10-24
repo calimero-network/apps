@@ -93,3 +93,5 @@ min-runtime-version = "0.12.0-rc.1"
 # name decides the domain — a project named anything else yields a different
 # `<project>.vercel.app` and silently invalidates this value.
 frontend = "https://mero-kv-store.vercel.app"
+# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+frontend-dir = "../app/dist"
