@@ -2,6 +2,7 @@
 """frontend-dir.py reads the TOML key, never greps for it."""
 
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -37,5 +38,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert r.returncode != 0 and "frontend-dir" in r.stderr, r
     r = run(root, "missing")
     assert r.returncode != 0, r
+    shutil.rmtree(root / "apps" / "not-a-string")
+    assert run(root, "--list").stdout.split() == ["with"], run(root, "--list")
 
 print("ok")

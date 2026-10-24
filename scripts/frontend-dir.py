@@ -22,9 +22,18 @@ def frontend_dir(root, app):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("app")
+    parser.add_argument("app", nargs="?")
+    parser.add_argument("--list", action="store_true", help="print every app that ships a frontend")
     parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[1])
     args = parser.parse_args()
-    found = frontend_dir(args.root, args.app)
-    if found:
-        print(found)
+    if args.list:
+        for logic in sorted((args.root / "apps").glob("*/logic/Cargo.toml")):
+            app = logic.parent.parent.name
+            if frontend_dir(args.root, app):
+                print(app)
+    elif args.app:
+        found = frontend_dir(args.root, args.app)
+        if found:
+            print(found)
+    else:
+        parser.error("give an app or --list")
