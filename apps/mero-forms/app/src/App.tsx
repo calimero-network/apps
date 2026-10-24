@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ConnectButton,
   InvitationDialog,
   InvitationGate,
   clearContextId,
@@ -8,6 +7,7 @@ import {
   useMero,
 } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
+import LandingPage from "./pages/landing/LandingPage";
 import { FormView as FormPage } from "./FormView";
 import { FormsHome } from "./FormsHome";
 import { TeamCard } from "./TeamCard";
@@ -64,6 +64,24 @@ export function App() {
   );
 }
 
+/** The paths the shared landing page serves besides `/`. See src/pages/landing. */
+const LANDING_PATHS = ["/docs", "/preview"];
+const isLandingPath = (path: string) => LANDING_PATHS.includes(path.replace(/\/+$/, ""));
+
+/**
+ * Re-render on back and forward, so leaving `/docs` for the app (or the other
+ * way) swaps the page. The landing page pushes its own paths.
+ */
+function usePathname() {
+  const [path, setPath] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const on = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", on);
+    return () => window.removeEventListener("popstate", on);
+  }, []);
+  return path;
+}
+
 /** Whichever of the four states the session is in. */
 function Screen({
   isLoading,
@@ -84,6 +102,7 @@ function Screen({
   setTheme: (t: Theme) => void;
   logout: () => void;
 }) {
+  const path = usePathname();
   if (isLoading) {
     return (
       <Shell>
@@ -94,23 +113,19 @@ function Screen({
     );
   }
 
-  if (!isAuthenticated) {
+  // The shared landing page: the front door when signed out, and its `/docs`
+  // and `/preview` pages for anyone, since a signed-in teammate is exactly who
+  // is likely to read them. It manages those three paths itself; the app's own
+  // routes live in the hash, so the two never meet.
+  if (!isAuthenticated || isLandingPath(path)) {
     return (
-      <Shell>
-        <section className="hero card">
-          <h1>Mero Forms</h1>
-          <p className="lede">
-            Build forms with the questions you need, collect the answers, and send any response
-            on to Mero CRM.
-          </p>
-          <ul className="hero-points">
-            <li>Responses live on your team&apos;s own nodes — no SaaS in the middle, nobody else can read them.</li>
-            <li>Your website gets a key that can answer one form and nothing else, issued from this app.</li>
-            <li>Every answer is checked against its question, and kept exactly as it was sent.</li>
-          </ul>
-          <ConnectButton />
-        </section>
-      </Shell>
+      <LandingPage
+        isAuthenticated={isAuthenticated}
+        onOpenApp={() => {
+          window.history.pushState(null, "", "/");
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }}
+      />
     );
   }
 

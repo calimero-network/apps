@@ -790,6 +790,72 @@ export const DOCS = {
     ],
   },
 
+  'mero-forms': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'A workspace holds your team’s forms. Each form has its questions, and each answer a respondent gives is checked against the question it answers.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'Your team, plus one member per website form key. Its members are who can reach the workspace; only the team reads responses.' },
+          { term: 'Workspace', def: 'One Calimero context holding the forms, their responses, the team and the form key register.' },
+          { term: 'Form', def: 'A title, a description and a list of questions, open or closed to new responses. A form with responses can be closed but not deleted.' },
+          { term: 'Question', def: 'A kind (short answer, paragraph, email, phone, number, website, date, multiple choice or checkboxes), a label, help text, whether it is required, and choices where it has them. Its id is what a website sends the answer under.' },
+          { term: 'Response', def: 'Every answer to a form, as sent, with each question’s label and kind at the time, where it came from and who sent it.' },
+          { term: 'Form key', def: 'An account with one certified device and no node, bound to one form. A website’s backend answers with it through a relay; it can do nothing else.' },
+          { term: 'Team', def: 'The admins and the people they add. Only the team builds forms and reads responses; only admins issue form keys.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node and pick your node in the popup.' },
+          { title: 'Start a workspace', body: 'Name it for your team. You are its first admin; invite teammates and add them to the team from Team.' },
+          { title: 'Build a form', body: 'Start from Contact us, Request a demo or Feedback, or a blank form, and add the questions you need.' },
+          { title: 'Collect responses', body: 'Issue a form key for your website from the form’s Connect tab, or enter a response by hand from Preview.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Your website, and Mero CRM',
+        paragraphs: [
+          'An admin issues a form key from the form’s Connect tab. The app mints the key in the browser, adds it to the namespace and registers it with the form, then shows its environment variables once for the website’s backend. The backend signs each response with it and a relay writes it into the workspace.',
+          'A relay is a Calimero Cloud node when the namespace is always-on, or a node of your own that an admin lets write for form keys. Revoking a key removes its membership, and the website stops being able to send.',
+          'Link a form to a Mero CRM pipeline you are a member of, choose the stage new deals start in and which question fills the name, email, phone and organization. Send to CRM then makes a contact (reusing one with the same email), a deal, and a note with every answer.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Responses in a map keyed by id, insert-only: the contract refuses an id that exists and nothing else writes them.',
+          'Forms, the team’s marks on responses (archived, the CRM deal it became) and the workspace name in shared storage that only the team can write, enforced on every node.',
+          'The form key register in shared storage only admins can write. Being a member of the namespace is what lets a key write; the register is what binds it to one form.',
+          'Every answer checked against its question before it is stored, and stored with the question’s label and kind so it reads the same after the form changes.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'A website’s response is refused', def: 'An answer does not fit its question (an option the form does not have, a required question left blank), the form is closed, or the key was issued for another form.' },
+          { term: 'Send to CRM offers no pipeline', def: 'You are not a member of a Mero CRM pipeline yet. Join one from its invite link, or paste its id in the Connect tab.' },
+          { term: 'A form will not delete', def: 'It has responses. Close it instead, so nothing anyone sent disappears.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'A form takes shape', body: 'Questions of the kinds you need, each with its own id, in a builder that reads like the form it makes.' },
+      { title: 'A website answers', body: 'The site’s backend signs the response with its form key, a relay writes it, and the contract checks every answer.' },
+      { title: 'The responses add up', body: 'The choice questions summarise themselves, and every response is one row, kept exactly as it was sent.' },
+      { title: 'One goes to the CRM', body: 'Send to CRM makes a contact and a deal in the pipeline, with every answer in a note on it.' },
+    ],
+  },
+
   'mero-issue-tracker': {
     docs: [
       {

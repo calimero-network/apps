@@ -6,7 +6,7 @@ import { primeInvitationCapture } from "@calimero-network/mero-react";
 import { App } from "./App";
 import { applyStoredTheme } from "./ui";
 import { adoptDesktopSession } from "./utils/desktopSso";
-import { APP_SLUG } from "./utils/invitation";
+import { APP_SLUG, REGISTRY_URL } from "./utils/invitation";
 import "./index.css";
 
 const root = document.getElementById("root");
@@ -80,7 +80,7 @@ createRoot(root).render(
       packageName={APP_SLUG}
       // Passed explicitly, as most of the fleet does: kv-store's omission is
       // an open question in docs/SESSION-AND-INVITES.md, not a pattern.
-      registryUrl="https://apps.calimero.network"
+      registryUrl={REGISTRY_URL}
     >
       <App />
     </MeroProvider>

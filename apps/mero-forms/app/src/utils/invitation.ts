@@ -27,6 +27,9 @@ import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
  */
 export const APP_SLUG = "com.calimero.mero-forms";
 
+/** The app registry this app resolves packages against. */
+export const REGISTRY_URL = "https://apps.calimero.network";
+
 /** What a Mero Forms invitation actually carries. */
 export interface TeamInvitationPayload {
   /**

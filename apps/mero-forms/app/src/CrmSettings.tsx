@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useMero } from "@calimero-network/mero-react";
 import type { CrmLink, Field, FormView } from "./generated/FormsClient";
 import { NO_LINK, isLinked } from "./lib/crm";
+import { parsePipelineId } from "./lib/pipelines";
 import { shortAccount } from "./lib/people";
 import { usePipelines } from "./useCrm";
 import type { Workspace } from "./useWorkspace";
@@ -32,7 +34,10 @@ const MAPPED: [keyof CrmLink, string, string][] = [
  * whole team sends to the same place.
  */
 export function CrmSettings({ form, workspace }: { form: FormView; workspace: Workspace }) {
-  const { pipelines, error: listError, reload } = usePipelines(true);
+  const { isDelegated } = useMero();
+  const [pasted, setPasted] = useState("");
+  const [tried, setTried] = useState<string | null>(null);
+  const { pipelines, error: listError, reload } = usePipelines(true, [form.crm.context_id, tried ?? ""]);
   const [draft, setDraft] = useState<CrmLink>(() =>
     isLinked(form.crm) ? form.crm : { ...NO_LINK, ...guessMapping(form.fields) },
   );
@@ -52,6 +57,13 @@ export function CrmSettings({ form, workspace }: { form: FormView; workspace: Wo
   }, [pipelines, draft.context_id]);
 
   const pipeline = pipelines?.find((p) => p.contextId === draft.context_id) ?? null;
+
+  // A pipeline chosen by id gets its first stage once its stages are read.
+  useEffect(() => {
+    if (pipeline && !draft.stage_id && pipeline.stages[0]) {
+      setDraft((d) => ({ ...d, stage_id: pipeline.stages[0]!.id }));
+    }
+  }, [pipeline, draft.stage_id]);
   const dirty = JSON.stringify(draft) !== JSON.stringify(form.crm);
 
   function save(link: CrmLink) {
@@ -70,20 +82,24 @@ export function CrmSettings({ form, workspace }: { form: FormView; workspace: Wo
       <h2>Send responses to Mero CRM</h2>
       <p className="empty">
         Each response becomes a contact and a deal in a pipeline, with every answer in a note on
-        the deal. This node writes them as your identity in that pipeline, so it has to be a
-        member of it.
+        the deal. They are written as you, so you have to be a member of the pipeline:{" "}
+        {isDelegated
+          ? "your Calimero account, through the Calimero Cloud relay that serves it."
+          : "this node's identity in it."}
       </p>
 
       {listError && <pre className="err">{listError}</pre>}
       {pipelines === null && !listError && <p className="empty">Looking for pipelines on this node…</p>}
       {pipelines !== null && pipelines.length === 0 && (
         <p className="note">
-          This node is not in any Mero CRM pipeline. Install Mero CRM, create a pipeline or join
-          one, then{" "}
+          {isDelegated
+            ? "Your account is not in any Mero CRM pipeline that Calimero Cloud can see."
+            : "This node is not in any Mero CRM pipeline."}{" "}
+          Create a pipeline in Mero CRM or join one from its invite link, then{" "}
           <button className="link" onClick={reload}>
             look again
           </button>
-          .
+          , or paste the pipeline&apos;s id below.
         </p>
       )}
 
@@ -141,6 +157,33 @@ export function CrmSettings({ form, workspace }: { form: FormView; workspace: Wo
             </label>
           ))}
         </div>
+      )}
+
+      <form
+        className="row pipeline-id"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const id = parsePipelineId(pasted);
+          if (!id) return;
+          setTried(id);
+          setDraft((d) => ({ ...d, context_id: id, stage_id: "" }));
+        }}
+      >
+        <input
+          aria-label="pipeline id"
+          className="mono"
+          placeholder="Or paste a pipeline id (64 hex, from Mero CRM)"
+          value={pasted}
+          onChange={(e) => setPasted(e.target.value)}
+        />
+        <button type="submit" className="ghost" disabled={!parsePipelineId(pasted)}>
+          Use pipeline
+        </button>
+      </form>
+      {tried && pipelines !== null && !pipelines.some((p) => p.contextId === tried) && (
+        <p className="err-inline" role="alert">
+          That pipeline did not answer: check the id, and that you are a member of it.
+        </p>
       )}
 
       {error && <pre className="err">{error}</pre>}
