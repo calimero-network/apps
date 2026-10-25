@@ -29,10 +29,10 @@ HERE=$(pwd)
 
 # The core commit the live tests are pinned to. CI (build-merod-mock-tee) builds
 # and caches merod per this value, so a bump is this one line. It moves with the
-# workspace's core pin: a bundle built against 0.11.0-rc.90 refuses to install
-# on an older runtime. This is the 0.11.0-rc.90 release commit, which carries
+# workspace's core pin: a bundle built against 0.11.0 refuses to install on an
+# older runtime. This is the 0.11.0 release commit (tag 0.11.0), which carries
 # core#4611.
-CORE_REF=528c1a636712a40e3c8d6cd4194f856fedc70a8a
+CORE_REF=055b1572bb443145d5871890bda28fc13c074936
 export CORE_REF
 
 ENV_FILE="$HERE/.relay.env"
