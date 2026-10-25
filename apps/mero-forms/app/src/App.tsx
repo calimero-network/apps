@@ -10,6 +10,8 @@ import { ContextPicker } from "./ContextPicker";
 import LandingPage from "./pages/landing/LandingPage";
 import { FormView as FormPage } from "./FormView";
 import { FormsHome } from "./FormsHome";
+import { PublicForm } from "./PublicForm";
+import { PUBLIC_PATH } from "./lib/publicLink";
 import { TeamCard } from "./TeamCard";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
 import { PersonName, TeamNamespace, useSpaceNames } from "./names";
@@ -103,6 +105,9 @@ function Screen({
   logout: () => void;
 }) {
   const path = usePathname();
+  // A form opened from its public link: whoever opened it, signed in or not,
+  // sees only the form, answered with the key the link carries.
+  if (path.replace(/\/+$/, "") === PUBLIC_PATH) return <PublicForm />;
   if (isLoading) {
     return (
       <Shell>

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { RelayClient, createMemoryNonceSource } from "@calimero-network/mero-js";
+import nacl from "tweetnacl";
 import { btn, login, state, waitForTeam } from "./helpers";
 
 /**
@@ -11,6 +12,9 @@ import { btn, login, state, waitForTeam } from "./helpers";
  *   → an admin issues a form key, and a "website" answers with ONLY that key,
  *     by delegated execution, the way calimero-network/landing's
  *     api/contact.ts does (here the node itself is the relay)
+ *   → a teammate makes a public link (a core access grant on this node), and a
+ *     visitor with no session answers it once the form is public, through a
+ *     captcha, and is stopped by the hourly cap; deleting the link stops it
  *   → the responses read back, with a summary of the choice question
  *   → the form is linked to the CRM pipeline, and one response is sent there:
  *     a contact and a deal appear in Mero CRM's own state
@@ -126,11 +130,101 @@ test("a form collects responses from a website and by hand, and one goes to the 
   });
   expect(sent.returns).toMatch(/^[0-9a-f]{32}$/);
 
+  // ── a public link: a visitor with no session answers from the link alone ─
+  // The captcha's two outside parties are stood in for: Cloudflare's widget
+  // (solved by a click) and the Vercel verifier, which here signs with a key
+  // this test holds. The pass is a real ed25519 signature the contract checks
+  // with the host's ed25519_verify.
+  const verifier = nacl.sign.keyPair.fromSeed(new Uint8Array(32).fill(7));
+  const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
+  const stubCaptcha = async (p: Page) => {
+    await p.route("https://challenges.cloudflare.com/**", (route) =>
+      route.fulfill({
+        contentType: "application/javascript",
+        body: `window.turnstile = { render(el, o) { const b = document.createElement("button"); b.type = "button";
+          b.textContent = "I am human"; b.onclick = () => o.callback("solved-" + o.cData); el.appendChild(b); return "w"; },
+          remove() {} };`,
+      }),
+    );
+    await p.route("**/api/captcha", async (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({ json: { siteKey: "test-site", publicKey: hex(verifier.publicKey) } });
+      }
+      const req = route.request().postDataJSON() as { token: string; formId: string; link: string; nonce: string };
+      if (req.token !== `solved-${req.nonce}`) return route.fulfill({ status: 403, json: { error: "not solved" } });
+      const expires_ms = Date.now() + 5 * 60_000;
+      const message = new TextEncoder().encode(
+        `mero-forms/captcha/v1|${req.formId}|${req.link}|${req.nonce}|${expires_ms}`,
+      );
+      return route.fulfill({
+        json: { nonce: req.nonce, expires_ms, signature: hex(nacl.sign.detached(message, verifier.secretKey)) },
+      });
+    });
+  };
+  await stubCaptcha(page);
+
+  const share = page.getByTestId("public-links");
+  await share.getByLabel("public link label").fill("newsletter");
+  await share.getByRole("button", { name: "Create public link" }).click();
+  const link = (await page.getByTestId("issued-link").locator("pre").textContent({ timeout: 60_000 }))!.trim();
+  const url = new URL(link);
+  expect(url.pathname).toBe("/f");
+  expect(url.search).toBe("");
+  const token = new URLSearchParams(url.hash.slice(1)).get("t")!;
+  expect(token).toMatch(/^[0-9a-f]{64}$/);
+
+  const visitorContext = await page.context().browser()!.newContext();
+  const visitor = await visitorContext.newPage();
+  await stubCaptcha(visitor);
+  const toApp: string[] = [];
+  visitor.on("request", (r) => {
+    if (new URL(r.url()).origin === url.origin) toApp.push(`${r.url()} ${JSON.stringify(r.headers())} ${r.postData() ?? ""}`);
+  });
+  await visitor.goto(link);
+  await expect(visitor.getByRole("heading", { name: "Contact us" })).toBeVisible({ timeout: 30_000 });
+  // A form is not public until the team says so.
+  await expect(visitor.getByText("This form is not taking responses right now.")).toBeVisible();
+
+  // Each switch shows the contract's state, so it flips once the call lands.
+  await share.getByLabel("public", { exact: true }).click();
+  await expect(share.getByLabel("public", { exact: true })).toBeChecked({ timeout: 30_000 });
+  await share.getByLabel("require a captcha").click();
+  await expect(share.getByLabel("require a captcha")).toBeChecked({ timeout: 30_000 });
+  await visitor.reload();
+  await expect(visitor.getByTestId("captcha")).toBeVisible({ timeout: 30_000 });
+  await visitor.getByLabel("Name", { exact: true }).fill("Alan Turing");
+  await visitor.getByLabel("Email", { exact: true }).fill("alan@example.com");
+  await visitor.getByLabel("Message", { exact: true }).fill("Found you through the newsletter.");
+  await visitor.getByRole("radio", { name: "Cloud" }).check();
+  await visitor.getByRole("button", { name: "Submit", exact: true }).click();
+  await expect(visitor.getByText("Please complete the human check first.")).toBeVisible();
+  await visitor.getByRole("button", { name: "I am human" }).click();
+  await visitor.getByRole("button", { name: "Submit", exact: true }).click();
+  await expect(visitor.getByTestId("public-sent")).toContainText("Your response has been recorded.", { timeout: 30_000 });
+  // The token went to the node only: nothing sent to the app's own origin carries it.
+  expect(toApp.length).toBeGreaterThan(0);
+  expect(toApp.filter((r) => r.includes(token))).toEqual([]);
+
+  // The hourly cap: one per hour now, and this link has sent one.
+  await share.getByLabel("responses per hour").fill("1");
+  await share.getByRole("button", { name: "Save" }).click();
+  await expect(share.getByRole("button", { name: "Save" })).toHaveCount(0, { timeout: 30_000 });
+  await visitor.getByRole("button", { name: "Submit another response" }).click();
+  await visitor.getByLabel("Name", { exact: true }).fill("Too Many");
+  await visitor.getByLabel("Email", { exact: true }).fill("many@example.com");
+  await visitor.getByLabel("Message", { exact: true }).fill("Again.");
+  await visitor.getByRole("radio", { name: "Desktop" }).check();
+  await visitor.getByRole("button", { name: "I am human" }).click();
+  await visitor.getByRole("button", { name: "Submit", exact: true }).click();
+  await expect(visitor.getByText(/a lot of responses in the last hour/)).toBeVisible({ timeout: 30_000 });
+  await btn(page, "Done").click();
+
   // ── read them back ───────────────────────────────────────────────────────
   await tab(page, "Responses").click();
   const rows = page.locator(".response-row");
-  await expect(rows).toHaveCount(2, { timeout: 30_000 });
-  await expect(page.locator(".summary-q", { hasText: "Topic" })).toContainText("1 · 50%");
+  await expect(rows).toHaveCount(3, { timeout: 30_000 });
+  await expect(page.locator(".summary-q", { hasText: "Topic" })).toContainText("2 · 67%");
+  await expect(rows.filter({ hasText: "Alan Turing" })).toBeVisible();
   await rows.filter({ hasText: "Ada Lovelace" }).click();
   const panel = page.getByRole("dialog");
   await expect(panel).toContainText("We'd like to run a sealed node.");
@@ -176,11 +270,19 @@ test("a form collects responses from a website and by hand, and one goes to the 
   // ── it is the contract's state, not the page's ───────────────────────────
   await page.reload();
   await waitForTeam(page);
-  await expect(page.locator(".response-row")).toHaveCount(2, { timeout: 30_000 });
+  await expect(page.locator(".response-row")).toHaveCount(3, { timeout: 30_000 });
   await expect(page.locator(".response-row", { hasText: "Ada Lovelace" })).toContainText("In CRM");
 
   // ── the key's register counts what it sent; revoking it stops the site ───
   await tab(page, "Connect").click();
+  const linkRow = page.locator(".link-row", { hasText: "newsletter" });
+  await expect(linkRow).toContainText("1 response");
+  await linkRow.getByRole("button", { name: "Delete" }).click();
+  await expect(linkRow).toHaveCount(0, { timeout: 30_000 });
+  await visitor.reload();
+  await expect(visitor.getByText("This link no longer works.")).toBeVisible({ timeout: 30_000 });
+  await visitorContext.close();
+
   const row = page.locator(".key-row", { hasText: "calimero.network contact page" });
   await expect(row).toContainText("1 response");
   await row.getByRole("button", { name: "Revoke" }).click();

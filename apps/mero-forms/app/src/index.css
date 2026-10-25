@@ -669,6 +669,14 @@ select {
 .option { display: flex; align-items: center; gap: 10px; padding: 4px 0; cursor: pointer; }
 .option input { flex: none; width: 18px; height: 18px; accent-color: var(--link); }
 
+/* A form opened from its public link: no top bar, just the form. */
+.public-form { padding-top: 32px; }
+.link-settings { display: grid; gap: 10px; margin: 12px 0 16px; }
+.cap-row { gap: 8px; }
+.cap-input { width: 90px; flex: none; }
+.link-out { white-space: pre-wrap; word-break: break-all; }
+.public-foot { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 24px 0 0; font-size: 0.8rem; color: var(--text-dim); }
+
 /* Responses. */
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
 .summary-q h3 { color: var(--text); text-transform: none; letter-spacing: 0; font-size: 0.95rem; margin: 0; }

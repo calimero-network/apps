@@ -14,6 +14,10 @@ description: >
        shared state's writer set followed the roles;
     5. removed from the team, Bob loses the workspace again.
 
+  Between 3 and 4, a public link's contract half: refused until the form is
+  public, held to a captcha the form requires, managed by the team only, and
+  answering nothing once deleted.
+
 force_pull_image: true
 
 # Required: clears the public boot-node from `bootstrap.nodes`, turns on
@@ -415,6 +419,180 @@ steps:
     statements:
       - 'json_subset({{alice_form_row}}, {"title": "Contact us", "responses": 1, "new_responses": 1})'
       - 'json_subset({{alice_key_row}}, {"label": "Contact page", "responses": 1})'
+
+  # ── 3b. A public link, as its access grant reaches the contract ────────────
+  # A grant call runs as the node that issued the grant, so Alice calling
+  # link_form / submit_via_link here is exactly what a link's visitor makes
+  # her node do. The grant itself is core's (tested in the Playwright journey);
+  # this is the contract's half on two nodes: off until the form is public,
+  # captcha-gated when the form asks, and team-only to manage.
+  - name: Alice records a public link
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: create_link
+    args:
+      form_id: "{{form_id}}"
+      link: "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+      grant_id: "grant-from-node-1"
+      label: "newsletter"
+    executor_public_key: "{{alice_key}}"
+  - name: The link shows the form, not yet accepting
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: link_form
+    args:
+      link: "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      link_view_off: result.output
+  - name: A response through the link before the form is public
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: submit_via_link
+    args:
+      link: "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+      answers:
+        - { field_id: "name", values: ["Grace Hopper"] }
+        - { field_id: "email", values: ["grace@example.com"] }
+        - { field_id: "topic", values: ["Desktop"] }
+        - { field_id: "message", values: ["From the newsletter."] }
+      captcha: null
+    executor_public_key: "{{alice_key}}"
+    expected_failure: true
+    outputs:
+      link_paused_error: error
+  - name: Bob, off the team, tries to make the form public
+    type: call
+    node: calimero-node-2
+    context_id: "{{ws_id}}"
+    method: set_form_public
+    args:
+      form_id: "{{form_id}}"
+      public: true
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      bob_public_error: error
+  - name: Alice makes the form public
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: set_form_public
+    args:
+      form_id: "{{form_id}}"
+      public: true
+    executor_public_key: "{{alice_key}}"
+  - name: Alice sets the hourly cap
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: set_link_cap
+    args:
+      form_id: "{{form_id}}"
+      per_hour: 5
+    executor_public_key: "{{alice_key}}"
+  - name: Alice requires a captcha
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: set_captcha_key
+    args:
+      form_id: "{{form_id}}"
+      key: "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+    executor_public_key: "{{alice_key}}"
+  - name: A response through the link with a captcha pass that is not current
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: submit_via_link
+    args:
+      link: "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+      answers:
+        - { field_id: "name", values: ["Grace Hopper"] }
+        - { field_id: "email", values: ["grace@example.com"] }
+        - { field_id: "topic", values: ["Desktop"] }
+        - { field_id: "message", values: ["From the newsletter."] }
+      captcha:
+        nonce: "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
+        expires_ms: 4102444800000
+        signature: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    executor_public_key: "{{alice_key}}"
+    expected_failure: true
+    outputs:
+      link_captcha_error: error
+  - name: Alice drops the captcha
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: set_captcha_key
+    args:
+      form_id: "{{form_id}}"
+      key: ""
+    executor_public_key: "{{alice_key}}"
+  - name: A response through the link, now taken
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: submit_via_link
+    args:
+      link: "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+      answers:
+        - { field_id: "name", values: ["Grace Hopper"] }
+        - { field_id: "email", values: ["grace@example.com"] }
+        - { field_id: "topic", values: ["Desktop"] }
+        - { field_id: "message", values: ["From the newsletter."] }
+      captcha: null
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      link_response_id: result.output
+  - name: Alice lists the links
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: list_links
+    args:
+      form_id: "{{form_id}}"
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      link_row: result.output.0
+  - name: Alice deletes the link
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: delete_link
+    args:
+      link: "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      deleted_link: result.output
+  - name: The deleted link answers nothing
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: link_form
+    args:
+      link: "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+    executor_public_key: "{{alice_key}}"
+    expected_failure: true
+    outputs:
+      link_gone_error: error
+  - name: Assert the link's rules held
+    type: json_assert
+    statements:
+      - 'json_subset({{link_view_off}}, {"accepting": false, "captcha": false})'
+      - 'json_subset({{link_row}}, {"label": "newsletter", "grant_id": "grant-from-node-1", "responses": 1, "last_hour": 1})'
+      - 'json_subset({{deleted_link}}, {"grant_id": "grant-from-node-1"})'
+  - name: Assert the link's refusals
+    type: assert
+    statements:
+      - 'is_set({{link_paused_error}})'
+      - 'is_set({{bob_public_error}})'
+      - 'is_set({{link_captcha_error}})'
+      - 'is_set({{link_response_id}})'
+      - 'is_set({{link_gone_error}})'
 
   # ── 4. Bob joins the team and works the response from his own node ─────────
   # A form key is never offered the team, so Alice forgets the key first.
