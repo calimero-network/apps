@@ -1,24 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { isNodeAppHost } from "./servedByNode";
+import { isServedByNode } from "./servedByNode";
 
 const LABEL = "a".repeat(52);
 
-describe("isNodeAppHost", () => {
-  it("accepts a node's app host", () => {
-    expect(isNodeAppHost(`${LABEL}.localhost`)).toBe(true);
-    expect(isNodeAppHost(`${LABEL}.apps.example`)).toBe(true);
+describe("isServedByNode", () => {
+  it("accepts a node's app host and the desktop's app origins", () => {
+    for (const url of [
+      `http://${LABEL}.localhost:2428/0.0.1/`,
+      `https://${LABEL}.apps.example/0.0.1/`,
+      `calimero-app://${LABEL}/0.0.1/`,
+      `http://calimero-app.${LABEL}/0.0.1/`,
+    ]) {
+      expect(isServedByNode(new URL(url))).toBe(true);
+    }
   });
 
-  it("rejects every other host", () => {
-    for (const host of [
-      "localhost",
-      "mero-kv-store.vercel.app",
-      `${"a".repeat(51)}.localhost`,
-      `${"A".repeat(52)}.localhost`,
-      `${"a".repeat(53)}.localhost`,
-      LABEL,
+  it("rejects every other origin", () => {
+    for (const url of [
+      "http://localhost:5173/",
+      "https://mero-kv-store.vercel.app/",
+      `http://${"a".repeat(51)}.localhost/`,
+      `http://${"a".repeat(53)}.localhost/`,
+      `http://${LABEL}/`,
+      `calimero-app://${"a".repeat(51)}/`,
+      `http://calimero-app.${LABEL}.evil.example/`,
     ]) {
-      expect(isNodeAppHost(host)).toBe(false);
+      expect(isServedByNode(new URL(url))).toBe(false);
     }
   });
 });
