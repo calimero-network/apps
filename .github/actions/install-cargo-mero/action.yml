@@ -8,7 +8,7 @@ inputs:
   version:
     description: The core tag to install cargo-mero from. Keep matched to the SDK tag in the root Cargo.toml.
     required: false
-    default: "0.11.0-rc.90"
+    default: "0.11.1"
 
 runs:
   using: composite
@@ -40,7 +40,11 @@ runs:
           echo "::error::cargo-mero version '$VERSION' is not a semver tag"
           exit 1
         fi
-        cargo install --locked \
+        # --force: `actions/cache` treats the key as a prefix when nothing
+        # matches it exactly, so the first run on `0.11.0` restores the
+        # `0.11.0-rc.90` binary, reports no hit, and a plain install then
+        # refuses the binary already in place. Replace it with the pinned one.
+        cargo install --locked --force \
           --git https://github.com/calimero-network/core.git \
           --tag "$VERSION" \
           cargo-mero
