@@ -505,6 +505,9 @@ jobs:
       - name: Assert no lockfile lives inside a workspace member
         run: python3 scripts/tests/no-nested-lockfiles-test.py
 
+      - name: Assert frontend-dir is read from the TOML, not grepped
+        run: python3 scripts/tests/frontend-dir-test.py
+
   rust:
     name: Rust (fmt, clippy, test)
     needs: changes
@@ -640,6 +643,12 @@ jobs:
       - name: Build
         run: cargo mero build -p ${{ matrix.app }}
 
+      # Before the bundle: cargo-mero packs `frontend-dir` as it finds it.
+      - uses: ./.github/actions/build-frontend
+        id: frontend
+        with:
+          app: ${{ matrix.app }}
+
       # Prove the app is PUBLISHABLE, not merely compilable.
       #
       # This exists because of a gap it would have caught: kv-store had no `icon`
@@ -665,6 +674,10 @@ jobs:
             --dev \
             --app-version 0.0.0 \
             --output "dist/dry-run-${{ matrix.app }}.mpk"
+
+      - name: Check the bundle's frontend
+        if: steps.frontend.outputs.dir != ''
+        run: cargo mero bundle --check-frontend "dist/dry-run-${{ matrix.app }}.mpk"
 
       # After the bundle, not the build: only the bundle rebuilds every service the
       # manifest lists, so only then is each logic/crates/<name>/res/ ABI current.

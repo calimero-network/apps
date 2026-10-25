@@ -1,0 +1,44 @@
+name: Build an app's frontend for its bundle
+description: >
+  When the app's logic/Cargo.toml sets `frontend-dir`, build the frontend so
+  `cargo mero bundle` packs it. Does nothing for an app without the key.
+
+inputs:
+  app:
+    description: The app directory under apps/ (also the pnpm package name).
+    required: true
+
+outputs:
+  dir:
+    description: The frontend directory from the repo root, empty when the app ships none.
+    value: ${{ steps.dir.outputs.dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the frontend directory
+      id: dir
+      shell: bash
+      env:
+        APP: ${{ inputs.app }}
+      run: echo "dir=$(python3 scripts/frontend-dir.py "$APP")" >> "$GITHUB_OUTPUT"
+
+    - name: Enable corepack (pnpm)
+      if: steps.dir.outputs.dir != ''
+      shell: bash
+      run: corepack enable
+
+    - uses: actions/setup-node@v4
+      if: steps.dir.outputs.dir != ''
+      with:
+        node-version: "22"
+        cache: pnpm
+
+    - name: Build the frontend
+      if: steps.dir.outputs.dir != ''
+      shell: bash
+      env:
+        APP: ${{ inputs.app }}
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm -F "$APP" build
