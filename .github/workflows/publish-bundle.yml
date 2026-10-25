@@ -295,6 +295,10 @@ jobs:
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
           echo "::notice::signing a bundle built against core $rev"
 
+      - uses: ./.github/actions/build-frontend
+        with:
+          app: ${{ inputs.app }}
+
       # `--app-version`, not `--bump`: the check job already resolved the number
       # against the registry, and cargo-mero's own --bump floors an empty
       # registry at 0.1.0 rather than the 0.0.1 this fleet restarts from. (They
