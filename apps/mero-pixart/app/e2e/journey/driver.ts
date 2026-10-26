@@ -95,7 +95,7 @@ async function contextIdOf(card: Locator): Promise<string> {
 
 async function gotoTeam(actor: Actor): Promise<void> {
   const page = actor.page;
-  if (new URL(page.url()).pathname !== teamPath()) await page.goto(teamPath());
+  if (!new URL(page.url()).pathname.endsWith(teamPath())) await page.goto(teamPath().slice(1));
   await expect(projectsTab(page)).toBeVisible({ timeout: 30_000 });
   await projectsTab(page).click();
 }
@@ -147,8 +147,8 @@ async function waitEditor(actor: Actor): Promise<void> {
 
 async function ensureEditor(actor: Actor): Promise<void> {
   const path = projectPath(mainProject);
-  if (new URL(actor.page.url()).pathname !== path) {
-    await actor.page.goto(path);
+  if (!new URL(actor.page.url()).pathname.endsWith(path)) {
+    await actor.page.goto(path.slice(1));
     await waitEditor(actor);
   }
   await nameIfAsked(actor, 0);
@@ -386,7 +386,7 @@ export const driver: AppDriver = {
       .toBe(true);
     projects[name] = await contextIdOf(card);
     await card.click();
-    await page.waitForURL((u) => u.pathname === projectPath(name), { timeout: 60_000 });
+    await page.waitForURL((u) => u.pathname.endsWith(projectPath(name)), { timeout: 60_000 });
     await waitEditor(actor);
     const alice = actors.alice;
     if (name === mainProject && !granted && alice && alice !== actor) {

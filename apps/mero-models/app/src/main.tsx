@@ -8,6 +8,7 @@ import { APP_SLUG } from "./utils/invitation";
 import { adoptDesktopSession } from "./utils/desktopSso";
 import { PACKAGE_NAME, REGISTRY_URL } from "./config";
 import "./index.css";
+import { isServedByNode } from "@calimero-apps/node-served";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root is missing from index.html");
@@ -78,6 +79,7 @@ createRoot(root).render(
       mode={AppMode.MultiContext}
       packageName={PACKAGE_NAME}
       registryUrl={REGISTRY_URL}
+      servedByNode={isServedByNode(new URL(window.location.href))}
     >
       <App />
     </MeroProvider>

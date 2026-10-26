@@ -2,6 +2,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import pkg from "./package.json" with { type: "json" };
+import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 
 // Mero Stream is a desktop-first Task-3 capacity probe: tauri-app opens it in a
 // WebviewWindow and proxies node traffic through its Rust backend. On the plain
@@ -13,7 +14,9 @@ import pkg from "./package.json" with { type: "json" };
 // contract encodes/decodes in WASM), so there are no external media runtimes to
 // sync into public/.
 export default defineConfig({
-  plugins: [react()],
+  // Relative, so the same build runs at / and under the node's /{version}/.
+  base: "./",
+  plugins: [react(), servedAssetsFallback()],
   // App version (from package.json), shown in the diagnostics UI — so a capacity
   // run recorded in a report says WHICH build produced the numbers.
   define: {

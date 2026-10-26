@@ -14,6 +14,7 @@ import {
 } from './icons';
 import { useSignOut } from '../auth/signOut';
 import { JoinSyncBanner } from '@calimero-network/mero-react';
+import { nodeBasename } from '@calimero-apps/node-served';
 
 export interface SidebarProps {
   totalIssues: number;
@@ -85,7 +86,7 @@ export default function Sidebar({
   return (
     <Aside $variant={variant} data-variant={variant}>
       <Brand>
-        <img src="/favicon.svg" alt="" width={30} height={30} />
+        <img src={`${nodeBasename(new URL(window.location.href), "/")}favicon.svg`} alt="" width={30} height={30} />
         <span className="name">{PRODUCT_NAME}</span>
       </Brand>
 

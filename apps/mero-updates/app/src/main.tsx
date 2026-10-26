@@ -12,6 +12,7 @@ import "./index.css";
 import "./app.css";
 import { APP_SLUG } from "./lib/inviteLink";
 import { captureSessionFromHash } from "./lib/session";
+import { nodeBasename, isServedByNode } from "@calimero-apps/node-served";
 
 captureSessionFromHash();
 
@@ -49,9 +50,10 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
         "com.calimero.mero-updates"
       }
       registryUrl="https://apps.calimero.network"
+      servedByNode={isServedByNode(new URL(window.location.href))}
       allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
     >
-      <BrowserRouter>
+      <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
         <App />
       </BrowserRouter>
     </MeroProvider>
