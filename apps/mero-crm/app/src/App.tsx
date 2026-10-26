@@ -16,6 +16,7 @@ import MembersPage from "./pages/app/MembersPage";
 import InvitationHost from "./components/InvitationHost";
 import { AppThemeProvider } from "./theme";
 import { APP_PACKAGE, APP_ROUTE } from "./config";
+import { nodeBasename, isServedByNode } from "@calimero-apps/node-served";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -60,10 +61,11 @@ export default function App() {
       mode={AppMode.MultiContext}
       packageName={packageName}
       registryUrl={registryUrl}
+      servedByNode={isServedByNode(new URL(window.location.href))}
     >
       <ToastProvider>
         <AppThemeProvider>
-          <BrowserRouter basename="/">
+          <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
             {/* An invitation link can land on ANY route, so the prompt that
                 offers it lives above the router's outlet. */}
             <InvitationHost />

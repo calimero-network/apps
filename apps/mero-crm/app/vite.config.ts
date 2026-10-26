@@ -1,9 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { servedAssetsFallback } from '@calimero-apps/node-served/vite';
 
 export default defineConfig({
-  plugins: [react(), nodePolyfills()],
+  // Relative, so the same build runs at / and under the node's /{version}/.
+  base: './',
+  plugins: [react(), nodePolyfills(), servedAssetsFallback()],
   server: {
     // PINNED, and `strictPort` so a clash fails loudly instead of silently
     // sliding to the next free port.

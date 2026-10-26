@@ -22,6 +22,7 @@ import {
 } from "./icons";
 import { useSignOut } from "../auth/signOut";
 import { JoinSyncBanner } from "@calimero-network/mero-react";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 /** The product name as people say it (studio.config's `metadata.name` is the
  *  package slug, `mero-crm`); matches index.html's <title>. */
@@ -103,7 +104,7 @@ export default function Sidebar({
   return (
     <Aside $variant={variant} data-variant={variant}>
       <Brand>
-        <img src="/favicon.svg" alt="" width={30} height={30} />
+        <img src={`${nodeBasename(new URL(window.location.href), "/")}favicon.svg`} alt="" width={30} height={30} />
         <span className="name">{PRODUCT_NAME}</span>
       </Brand>
 

@@ -31,6 +31,8 @@ min-runtime-version = "0.12.0-rc.1"
 # A BARE https origin — it doubles as the login callback's registered redirect
 # URI and is compared by EXACT ORIGIN.
 frontend    = "https://mero-crm.vercel.app"
+# The built frontend `cargo mero bundle` packs, so the node serves it from the app\'s own origin.
+frontend-dir = "../app/dist"
 
 # One service, named `crm`. Context creation passes `serviceName`, so the name
 # is part of how every pipeline is created.
