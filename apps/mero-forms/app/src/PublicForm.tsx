@@ -178,7 +178,7 @@ export function PublicForm() {
           </>
         )}
         <p className="public-foot">
-          <img src="/favicon.svg" alt="" width={16} height={16} /> Made with Mero Forms
+          <img src="./favicon.svg" alt="" width={16} height={16} /> Made with Mero Forms
         </p>
       </div>
     </div>

@@ -12,6 +12,7 @@ import { fetchCaptchaConfig } from "./lib/captcha";
 import { ago } from "./lib/fields";
 import { shortAccount } from "./lib/people";
 import { publicLinkUrl } from "./lib/publicLink";
+import { BASE } from "./route";
 import { useRead, type Workspace } from "./useWorkspace";
 
 /**
@@ -106,7 +107,7 @@ export function PublicLinks({
       }
       setMade({
         label: name || "Public link",
-        url: publicLinkUrl(window.location.origin, { nodeUrl: ownerNode.nodeUrl, contextId, token: grant.token }),
+        url: publicLinkUrl(window.location.origin + BASE.slice(0, -1), { nodeUrl: ownerNode.nodeUrl, contextId, token: grant.token }),
       });
       setLabel("");
     });

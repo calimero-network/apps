@@ -1,6 +1,7 @@
 import "@calimero-apps/glass/glass.css";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { isServedByNode } from "@calimero-apps/node-served";
 import { AppMode, MeroProvider } from "@calimero-network/mero-react";
 import { primeInvitationCapture } from "@calimero-network/mero-react";
 import { App } from "./App";
@@ -81,6 +82,7 @@ createRoot(root).render(
       // Passed explicitly, as most of the fleet does: kv-store's omission is
       // an open question in docs/SESSION-AND-INVITES.md, not a pattern.
       registryUrl={REGISTRY_URL}
+      servedByNode={isServedByNode(new URL(window.location.href))}
     >
       <App />
     </MeroProvider>
