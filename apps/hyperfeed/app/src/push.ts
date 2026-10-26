@@ -1,4 +1,5 @@
 import type { PushDeviceInput } from "./generated/HyperfeedClient";
+import { nodeBasename } from "./servedByNode";
 
 /**
  * Push to your phone: this browser subscribes with its push service, using
@@ -39,14 +40,14 @@ export function inputOf(sub: PushSubscriptionJSON, name: string, quiet: boolean,
 }
 
 async function registration(): Promise<ServiceWorkerRegistration> {
-  await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  await navigator.serviceWorker.register(`${nodeBasename()}sw.js`, { scope: nodeBasename() });
   return navigator.serviceWorker.ready;
 }
 
 /** This browser's subscription's endpoint, or null when it has none. */
 export async function currentEndpoint(): Promise<string | null> {
   if (!pushSupported()) return null;
-  const reg = await navigator.serviceWorker.getRegistration("/");
+  const reg = await navigator.serviceWorker.getRegistration(nodeBasename());
   const sub = await reg?.pushManager.getSubscription();
   return sub?.endpoint ?? null;
 }
@@ -74,7 +75,7 @@ export async function subscribe(key: string): Promise<PushSubscriptionJSON> {
 /** Drop this browser's subscription, if it has one. */
 export async function unsubscribe(): Promise<void> {
   if (!pushSupported()) return;
-  const reg = await navigator.serviceWorker.getRegistration("/");
+  const reg = await navigator.serviceWorker.getRegistration(nodeBasename());
   const sub = await reg?.pushManager.getSubscription();
   await sub?.unsubscribe();
 }

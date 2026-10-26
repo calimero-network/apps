@@ -22,6 +22,7 @@ import LandingPage from "./pages/landing/LandingPage";
 import DocsPage from "./pages/landing/DocsPage";
 import { BrandLockup } from "./brand";
 import { AppLauncher } from "./AppLauncher";
+import { nodeBasename } from "./servedByNode";
 
 /**
  * Two ways in, one set of screens.
@@ -35,7 +36,7 @@ import { AppLauncher } from "./AppLauncher";
  */
 export function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={nodeBasename()}>
       <Routes>
         <Route path="/" element={<NodeApp page="feed" />} />
         {/* Hyperfeed's own docs, signed in or not. /preview was the shared

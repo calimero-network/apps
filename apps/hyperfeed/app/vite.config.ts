@@ -2,6 +2,8 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
+  base: "./",
+  resolve: { dedupe: ["react", "react-dom"] },
   plugins: [react()],
   server: {
     // A port of this app's own, and a hard failure if it is taken: two apps on

@@ -35,6 +35,7 @@ import { RefCards, useMergeContext } from "./RefCards";
 import { findRefs } from "./github";
 import { AttachButton, PickedImages, useImagePicker } from "./ImagePicker";
 import type { CheckpointView } from "./checkpoint";
+import { isServedByNode } from "@calimero-apps/node-served";
 
 const appName = (key: string) => appLook(key).name;
 
@@ -162,7 +163,9 @@ export function FeedView({
     async (item: FeedItem) => {
       if (!openLink) return;
       const url = await openLink(item);
-      if (url) setPanel({ url, title: `${appName(item.app)}${item.source_label ? ` · ${item.source_label}` : ""}` });
+      // A node-served app may frame only its own origin, so an app opens in a tab instead.
+      if (url && isServedByNode(new URL(window.location.href))) window.open(url, "_blank", "noopener,noreferrer");
+      else if (url) setPanel({ url, title: `${appName(item.app)}${item.source_label ? ` · ${item.source_label}` : ""}` });
     },
     [openLink],
   );
