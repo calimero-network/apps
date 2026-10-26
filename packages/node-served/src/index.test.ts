@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isServedByNode } from "./servedByNode";
+import { isServedByNode, nodeBasename } from "./index";
 
 const LABEL = "a".repeat(52);
 
@@ -27,5 +27,21 @@ describe("isServedByNode", () => {
     ]) {
       expect(isServedByNode(new URL(url))).toBe(false);
     }
+  });
+});
+
+describe("nodeBasename", () => {
+  it("is the version prefix when served by a node", () => {
+    for (const url of [
+      `http://${LABEL}.localhost:2428/0.0.1/projects/1`,
+      `calimero-app://${LABEL}/0.0.1/`,
+      `http://calimero-app.${LABEL}/0.0.1`,
+    ]) {
+      expect(nodeBasename(new URL(url), "/")).toBe("/0.0.1/");
+    }
+  });
+
+  it("is the dev base everywhere else", () => {
+    expect(nodeBasename(new URL("http://localhost:5173/projects/1"), "/")).toBe("/");
   });
 });
