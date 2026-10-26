@@ -1,7 +1,10 @@
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig } from "vitest/config";
+import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 
 export default defineConfig({
+  // Relative, so the same build runs at / and under the node's /{version}/.
+  base: "./",
   server: {
     port: 5176,
     strictPort: false,
@@ -20,5 +23,5 @@ export default defineConfig({
       },
     },
   },
-  plugins: [react()],
+  plugins: [react(), servedAssetsFallback()],
 });
