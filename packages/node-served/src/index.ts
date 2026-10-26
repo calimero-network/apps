@@ -8,4 +8,6 @@ export const isServedByNode = (url: URL): boolean =>
     ? DESKTOP_SCHEME_HOST.test(url.hostname)
     : NODE_APP_HOST.test(url.hostname) || DESKTOP_HTTP_HOST.test(url.hostname);
 
-export const SERVED_BY_NODE = isServedByNode(new URL(window.location.href));
+// A node serves an installed app from /{version}/, so routes and assets live under that prefix.
+export const nodeBasename = (url: URL, devBase: string): string =>
+  isServedByNode(url) ? `/${url.pathname.split("/")[1]}/` : devBase;

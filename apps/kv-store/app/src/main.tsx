@@ -8,7 +8,7 @@ import {
 import { App } from "./App";
 import { adoptDesktopSession } from "./utils/desktopSso";
 import { APP_SLUG } from "./utils/invitation";
-import { SERVED_BY_NODE } from "./utils/servedByNode";
+import { isServedByNode } from "@calimero-apps/node-served";
 import "./index.css";
 
 const root = document.getElementById("root");
@@ -72,7 +72,7 @@ createRoot(root).render(
       localhost logs in fine and only the deployed origin breaks, after
       credentials are already accepted.
     */}
-    <MeroProvider mode={AppMode.MultiContext} packageName={APP_SLUG} servedByNode={SERVED_BY_NODE}>
+    <MeroProvider mode={AppMode.MultiContext} packageName={APP_SLUG} servedByNode={isServedByNode(new URL(window.location.href))}>
       <App />
     </MeroProvider>
   </Wrapper>,

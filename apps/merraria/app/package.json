@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@calimero-apps/glass": "workspace:*",
+    "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
