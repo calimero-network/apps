@@ -83,6 +83,40 @@
         }
       ]
     },
+    "CaptchaSettings": {
+      "kind": "record",
+      "doc": "The team's own Turnstile setup, as the settings page shows it. Never the\nsecret: it is sealed, and no member's node can read it.",
+      "fields": [
+        {
+          "name": "site_key",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The public site key the widget shows, or empty."
+        },
+        {
+          "name": "secret_set",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "A secret is stored, sealed to the namespace's TEE."
+        },
+        {
+          "name": "tee_available",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "The namespace has a TEE that can keep a secret now. Without one,\n`set_captcha_secret` is refused."
+        },
+        {
+          "name": "needs_resealing",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "The secret was sealed to a TEE key the namespace no longer seals to\n(its TEEs changed): set it again so new TEEs can open it."
+        }
+      ]
+    },
     "CrmLink": {
       "kind": "record",
       "doc": "Where a form's responses go in Mero CRM, and which field fills what.\nEmpty strings mean \"not set\".",
@@ -714,6 +748,13 @@
             "kind": "bool"
           },
           "doc": "The captcha is checked by the node: send the Turnstile token as\n`captcha_token`, not a pass."
+        },
+        {
+          "name": "captcha_site_key",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The team's Turnstile site key, for the widget, when it set its own;\nempty otherwise."
         }
       ]
     },
@@ -1180,6 +1221,24 @@
       "intent": "read_only"
     },
     {
+      "name": "captcha_settings",
+      "doc": "The team's Turnstile setup. Team only.",
+      "params": [],
+      "returns": {
+        "$ref": "CaptchaSettings"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "clear_captcha_secret",
+      "doc": "Removes the team's Turnstile keys; `turnstile` forms fall back to the\nnode operator's secret, if it has one. Admin only.",
+      "params": [],
+      "returns": {
+        "$ref": "CaptchaSettings"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "create_form",
       "doc": "Creates a form with no fields, open, and returns its id. Team only.",
       "params": [
@@ -1547,6 +1606,28 @@
       ],
       "returns": {
         "$ref": "FormView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_captcha_secret",
+      "doc": "Stores the team's own Cloudflare Turnstile keys, so a `turnstile` form\nneeds nothing from any node's operator. Admin only.\n\nThe secret is sealed to the namespace's TEE before it is stored: what\nreplicates is an envelope only a TEE of the namespace can open, and only\nto send to Cloudflare. A teammate's node that serves a link hands the\ncheck to a TEE, which fills the secret in. Refused when the namespace\nhas no TEE, since then nothing could ever open it.",
+      "params": [
+        {
+          "name": "site_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "secret",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "CaptchaSettings"
       },
       "intent": "mutating"
     },

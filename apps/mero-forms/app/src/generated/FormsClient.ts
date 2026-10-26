@@ -48,6 +48,31 @@ export interface CaptchaPass {
 }
 
 /**
+ * The team's own Turnstile setup, as the settings page shows it. Never the
+ * secret: it is sealed, and no member's node can read it.
+ */
+export interface CaptchaSettings {
+  /**
+   * The public site key the widget shows, or empty.
+   */
+  site_key: string;
+  /**
+   * A secret is stored, sealed to the namespace's TEE.
+   */
+  secret_set: boolean;
+  /**
+   * The namespace has a TEE that can keep a secret now. Without one,
+   * `set_captcha_secret` is refused.
+   */
+  tee_available: boolean;
+  /**
+   * The secret was sealed to a TEE key the namespace no longer seals to
+   * (its TEEs changed): set it again so new TEEs can open it.
+   */
+  needs_resealing: boolean;
+}
+
+/**
  * Where a form's responses go in Mero CRM, and which field fills what.
  * Empty strings mean "not set".
  */
@@ -252,6 +277,11 @@ export interface LinkFormView {
    * `captcha_token`, not a pass.
    */
   captcha_by_node: boolean;
+  /**
+   * The team's Turnstile site key, for the widget, when it set its own;
+   * empty otherwise.
+   */
+  captcha_site_key: string;
 }
 
 /**
@@ -427,6 +457,31 @@ export class FormsClient {
   public async amITeam(): Promise<boolean> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'am_i_team', argsJson: {} });
     return response as boolean;
+  }
+
+  /**
+   * captcha_settings
+   *
+   * The team's Turnstile setup. Team only.
+   *
+   * @intent read_only
+   */
+  public async captchaSettings(): Promise<CaptchaSettings> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'captcha_settings', argsJson: {} });
+    return response as CaptchaSettings;
+  }
+
+  /**
+   * clear_captcha_secret
+   *
+   * Removes the team's Turnstile keys; `turnstile` forms fall back to the
+   * node operator's secret, if it has one. Admin only.
+   *
+   * @intent mutating
+   */
+  public async clearCaptchaSecret(): Promise<CaptchaSettings> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'clear_captcha_secret', argsJson: {} });
+    return response as CaptchaSettings;
   }
 
   /**
@@ -697,6 +752,25 @@ export class FormsClient {
   public async setCaptchaKey(params: { form_id: string; key: string }): Promise<FormView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'set_captcha_key', argsJson: params });
     return response as FormView;
+  }
+
+  /**
+   * set_captcha_secret
+   *
+   * Stores the team's own Cloudflare Turnstile keys, so a `turnstile` form
+   * needs nothing from any node's operator. Admin only.
+   *
+   * The secret is sealed to the namespace's TEE before it is stored: what
+   * replicates is an envelope only a TEE of the namespace can open, and only
+   * to send to Cloudflare. A teammate's node that serves a link hands the
+   * check to a TEE, which fills the secret in. Refused when the namespace
+   * has no TEE, since then nothing could ever open it.
+   *
+   * @intent mutating
+   */
+  public async setCaptchaSecret(params: { site_key: string; secret: string }): Promise<CaptchaSettings> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_captcha_secret', argsJson: params });
+    return response as CaptchaSettings;
   }
 
   /**

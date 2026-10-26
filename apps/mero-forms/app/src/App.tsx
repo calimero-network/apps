@@ -12,6 +12,7 @@ import { FormView as FormPage } from "./FormView";
 import { FormsHome } from "./FormsHome";
 import { PublicForm } from "./PublicForm";
 import { PUBLIC_PATH } from "./lib/publicLink";
+import { CaptchaCard } from "./CaptchaCard";
 import { TeamCard } from "./TeamCard";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
 import { PersonName, TeamNamespace, useSpaceNames } from "./names";
@@ -293,13 +294,16 @@ function WorkspaceView({
         />
       )}
       {route.page === "team" && (
-        <TeamCard
-          workspace={workspace}
-          contextId={contextId}
-          namespaceId={namespaceId}
-          isAdmin={isAdmin.data === true}
-          me={me.data}
-        />
+        <>
+          <TeamCard
+            workspace={workspace}
+            contextId={contextId}
+            namespaceId={namespaceId}
+            isAdmin={isAdmin.data === true}
+            me={me.data}
+          />
+          <CaptchaCard workspace={workspace} isAdmin={isAdmin.data === true} />
+        </>
       )}
     </>,
   );

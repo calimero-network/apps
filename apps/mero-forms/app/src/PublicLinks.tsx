@@ -8,7 +8,7 @@ import {
   sha256Hex,
   type OwnerNode,
 } from "./lib/accessGrants";
-import { fetchCaptchaConfig } from "./lib/captcha";
+import { NODE_VERIFIES_TURNSTILE, fetchCaptchaConfig } from "./lib/captcha";
 import { ago } from "./lib/fields";
 import { shortAccount } from "./lib/people";
 import { publicLinkUrl } from "./lib/publicLink";
@@ -77,9 +77,17 @@ export function PublicLinks({
   const saveCap = () =>
     run("cap", () => workspace.act((c) => c.setLinkCap({ form_id: form.id, per_hour: Number(cap) })));
 
+  // The team's own Turnstile keys, when set, have the contract check the
+  // token through the namespace's TEE; otherwise this deployment's verifier
+  // signs a pass.
+  const captchaSettings = useRead(workspace.client, workspace.version, (c) => c.captchaSettings(), []);
   const setCaptcha = (on: boolean) =>
     run("captcha", async () => {
-      const key = on ? (await fetchCaptchaConfig()).publicKey : "";
+      const key = !on
+        ? ""
+        : captchaSettings.data?.secret_set
+          ? NODE_VERIFIES_TURNSTILE
+          : (await fetchCaptchaConfig()).publicKey;
       await workspace.act((c) => c.setCaptchaKey({ form_id: form.id, key }));
     });
 
@@ -168,7 +176,14 @@ export function PublicLinks({
             disabled={busy !== null}
             onChange={(e) => void setCaptcha(e.target.checked)}
           />
-          <span>Require a captcha</span>
+          <span>
+            Require a captcha
+            {form.captcha_key === NODE_VERIFIES_TURNSTILE && " (checked with your team's keys)"}
+            {form.captcha_key !== "" &&
+              form.captcha_key !== NODE_VERIFIES_TURNSTILE &&
+              captchaSettings.data?.secret_set &&
+              " (turn off and on to use your team's keys)"}
+          </span>
         </label>
         <form
           className="row cap-row"

@@ -15,7 +15,9 @@ import { newNonce, parsePublicLink, publicRefusal } from "./lib/publicLink";
  * `/grant-calls` route with the token, for `link_form` to show the questions
  * and `submit_via_link` to send the answers. The grant names nothing else, and
  * the contract takes a response only while the form is public, under the
- * link's hourly cap, and with a captcha pass when the form asks for one.
+ * link's hourly cap, and with a captcha when the form asks for one: a pass
+ * this deployment's verifier signed, or the Turnstile token itself, which the
+ * contract checks with the team's own keys.
  */
 export function PublicForm() {
   // Read once, on the first render: the fragment is the whole input.
@@ -50,8 +52,12 @@ export function PublicForm() {
       setForm(view);
       document.title = `${view.title} · Mero Forms`;
       if (view.captcha && view.accepting) {
-        const config = await fetchCaptchaConfig();
-        if (live) setSiteKey(config.siteKey);
+        // A form the contract checks itself uses the team's own site key; one
+        // checked with a pass uses this deployment's verifier's.
+        const key = view.captcha_by_node && view.captcha_site_key
+          ? view.captcha_site_key
+          : (await fetchCaptchaConfig()).siteKey;
+        if (live) setSiteKey(key);
       }
     })().catch((e: unknown) => live && setLoadError(publicRefusal(e)));
     return () => {
@@ -88,11 +94,19 @@ export function PublicForm() {
     setBusy(true);
     setError(null);
     try {
+      // The contract checks the token itself, or takes a pass the verifier
+      // signed for it.
+      const byNode = form.captcha && form.captcha_by_node;
       const captcha =
-        form.captcha && captchaToken
+        form.captcha && !byNode && captchaToken
           ? await requestPass({ token: captchaToken, formId: form.form_id, link: linkId, nonce })
           : null;
-      await call<string>("submit_via_link", { link: linkId, answers: toAnswers(form, draft), captcha });
+      await call<string>("submit_via_link", {
+        link: linkId,
+        answers: toAnswers(form, draft),
+        captcha,
+        captcha_token: byNode ? captchaToken : null,
+      });
       setSent(true);
       setDraft({});
     } catch (e) {
