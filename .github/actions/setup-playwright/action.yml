@@ -64,6 +64,28 @@ runs:
         # or timeout mid-fetch. apt does not retry by default, and the retry
         # loops below can only re-run the whole install.
         printf 'Acquire::Retries "3";\n' | sudo tee /etc/apt/apt.conf.d/99-ci-retries >/dev/null
+
+    # The OS deps are ~25 MB of .debs that the Azure Ubuntu mirror can take longer than every
+    # retry to serve; installing them from a cache keyed on the image and Playwright skips it.
+    - name: Resolve the runner image
+      id: image
+      shell: bash
+      run: echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@v4
+      id: deb-cache
+      with:
+        path: ~/.cache/playwright-debs
+        key: playwright-debs-${{ runner.arch }}-${{ steps.image.outputs.image }}-${{ steps.pw.outputs.version }}
+
+    - name: Install OS packages from the cache
+      shell: bash
+      run: |
+        printf 'APT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+          | sudo tee /etc/apt/apt.conf.d/99-ci-keep-debs >/dev/null
+        if compgen -G "$HOME/.cache/playwright-debs/*.deb" >/dev/null; then
+          sudo cp "$HOME"/.cache/playwright-debs/*.deb /var/cache/apt/archives/
+        fi
     # ⚠️ `playwright install --with-deps` has no timeout of its own and has
     # been observed running to the 6-hour job default elsewhere in the fleet.
     # Capped, and the OS deps are installed separately on a cache hit so the
@@ -152,3 +174,10 @@ runs:
         echo "::error::playwright install-deps failed three times — an apt stall or a broken index, not the app"
         echo "apt sources still in play:"; cat /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
         exit 1
+
+    - name: Keep the downloaded OS packages for the next run
+      if: steps.deb-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        mkdir -p "$HOME/.cache/playwright-debs"
+        cp /var/cache/apt/archives/*.deb "$HOME/.cache/playwright-debs/" 2>/dev/null || true
