@@ -24,6 +24,7 @@ import {
   readDelegatedSession,
   type DelegatedAccountSession,
 } from "@calimero-network/mero-js";
+import { isServedByNode } from "@calimero-apps/node-served";
 import { takePendingNodeUrl } from "./auth";
 
 const STORE_KEY = "mt-session";
@@ -90,7 +91,11 @@ export function captureSessionFromHash(): CaptureResult {
   if (!accessToken) return "none";
 
   // node url: hash > the one stashed before the web-login redirect > stored
-  const nodeUrl = p.get("node_url") ?? takePendingNodeUrl() ?? session.nodeUrl;
+  // A page the node serves talks to that origin only; the hash names the bare host, which its CSP refuses.
+  const pendingNodeUrl = takePendingNodeUrl();
+  const nodeUrl = isServedByNode(new URL(window.location.href))
+    ? window.location.origin
+    : (p.get("node_url") ?? pendingNodeUrl ?? session.nodeUrl);
   if (!nodeUrl) return "none";
   session.kind = "node";
   session.nodeUrl = nodeUrl;
