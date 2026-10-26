@@ -74,14 +74,26 @@
 //!   nonce once.
 //! * `turnstile`: with the Turnstile token itself, which `submit_via_link`
 //!   sends to Cloudflare's `siteverify` through the node
-//!   (`env::http_request`). The node fills in `{{secret:TURNSTILE_SECRET_KEY}}`
-//!   from its operator's secrets, so neither the app nor its state ever holds
-//!   it, and Cloudflare spends the token, so it is accepted once. This needs
-//!   the node's operator to allow `challenges.cloudflare.com` and hold the
-//!   secret, and the namespace to approve the prefix the manifest declares;
-//!   on a node without them the response is refused, never stored unchecked.
-//!   Only the outcome replicates: peers store the response the serving node
-//!   accepted and never call Cloudflare themselves.
+//!   (`env::http_request`). Cloudflare spends the token, so it is accepted
+//!   once, and the namespace must approve the prefix the manifest declares.
+//!   The secret is never in the app or readable in its state, and comes from
+//!   one of two places:
+//!   - **The team's own** (`set_captcha_secret`, admin only), sealed to the
+//!     namespace's TEE before it is stored, so what replicates is an envelope
+//!     only a TEE of the namespace can open, and only for Cloudflare's host.
+//!     The request names it as `{{sealed:…}}`; a teammate's node that serves
+//!     the link hands that one request to a TEE, which fills it in, sends it
+//!     and returns the redacted answer. Without a TEE in the namespace the
+//!     secret cannot be set. When the namespace's TEEs change it keeps working
+//!     on the TEEs that hold the old key, and `captcha_settings` says to set
+//!     it again so new ones can open it too.
+//!   - **The node operator's** `{{secret:TURNSTILE_SECRET_KEY}}`, when the
+//!     team set none: it needs the operator to allow
+//!     `challenges.cloudflare.com` and hold the secret.
+//!
+//!   On a node that cannot check, the response is refused, never stored
+//!   unchecked. Only the outcome replicates: peers store the response the
+//!   serving node accepted and never call Cloudflare themselves.
 //!
 //! # Answers
 //!
@@ -166,8 +178,21 @@ pub const NODE_VERIFIES_TURNSTILE: &str = "turnstile";
 /// Cloudflare's token check. Under the `outbound` prefix the manifest
 /// declares, which is all the namespace is asked to approve.
 pub const TURNSTILE_SITEVERIFY: &str = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
-/// The node's operator binds this secret to this app and Cloudflare's host.
+/// The node's operator binds this secret to this app and Cloudflare's host:
+/// what a `turnstile` form uses when the team has not set its own.
 const TURNSTILE_SECRET: &str = "{{secret:TURNSTILE_SECRET_KEY}}";
+/// Cloudflare's host, the only one the team's sealed secret may be sent to.
+const TURNSTILE_HOST: &str = "challenges.cloudflare.com";
+/// `settings` rows for the team's own Turnstile widget: its public site key,
+/// the secret sealed to the namespace's TEE (`{{sealed:…}}`), and the TEE key
+/// it was sealed to.
+const CAPTCHA_SITE_KEY: &str = "captcha_site_key";
+const CAPTCHA_SECRET: &str = "captcha_secret";
+const CAPTCHA_SEALED_TO: &str = "captcha_sealed_to";
+/// Turnstile site keys are short public ids; this is generous.
+const MAX_SITE_KEY: usize = 200;
+/// Turnstile secrets are short; this is generous.
+const MAX_TURNSTILE_SECRET: usize = 500;
 /// Turnstile documents tokens of up to 2048 characters.
 const MAX_TURNSTILE_TOKEN: usize = 2048;
 
@@ -400,6 +425,26 @@ pub struct LinkFormView {
     /// The captcha is checked by the node: send the Turnstile token as
     /// `captcha_token`, not a pass.
     pub captcha_by_node: bool,
+    /// The team's Turnstile site key, for the widget, when it set its own;
+    /// empty otherwise.
+    pub captcha_site_key: String,
+}
+
+/// The team's own Turnstile setup, as the settings page shows it. Never the
+/// secret: it is sealed, and no member's node can read it.
+#[derive(AbiType, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct CaptchaSettings {
+    /// The public site key the widget shows, or empty.
+    pub site_key: String,
+    /// A secret is stored, sealed to the namespace's TEE.
+    pub secret_set: bool,
+    /// The namespace has a TEE that can keep a secret now. Without one,
+    /// `set_captcha_secret` is refused.
+    pub tee_available: bool,
+    /// The secret was sealed to a TEE key the namespace no longer seals to
+    /// (its TEEs changed): set it again so new TEEs can open it.
+    pub needs_resealing: bool,
 }
 
 /// A public link, with what it has sent.
@@ -1105,6 +1150,7 @@ impl MeroForms {
             accepting: *form.open.get() && *form.public.get(),
             captcha: !form.captcha_key.get().is_empty(),
             captcha_by_node: form.captcha_key.get() == NODE_VERIFIES_TURNSTILE,
+            captcha_site_key: self.setting(CAPTCHA_SITE_KEY)?,
         })
     }
 
@@ -1144,7 +1190,7 @@ impl MeroForms {
         let key = form.captcha_key.get().clone();
         if key == NODE_VERIFIES_TURNSTILE {
             let token = captcha_token.ok_or_else(|| AppError::msg("this form needs a captcha"))?;
-            let request = turnstile_request(&token)?;
+            let request = turnstile_request(&token, &self.turnstile_secret()?)?;
             turnstile_verdict(env::http_request(&request))?;
         } else if !key.is_empty() {
             let pass = captcha.ok_or_else(|| AppError::msg("this form needs a captcha"))?;
@@ -1272,6 +1318,107 @@ impl MeroForms {
             .revoke(TEAM, &who)
             .map_err(store_err("roles.revoke"))?;
         self.sync_team_writers()
+    }
+
+    // ── Captcha secret ──────────────────────────────────────────────────────
+
+    /// Stores the team's own Cloudflare Turnstile keys, so a `turnstile` form
+    /// needs nothing from any node's operator. Admin only.
+    ///
+    /// The secret is sealed to the namespace's TEE before it is stored: what
+    /// replicates is an envelope only a TEE of the namespace can open, and only
+    /// to send to Cloudflare. A teammate's node that serves a link hands the
+    /// check to a TEE, which fills the secret in. Refused when the namespace
+    /// has no TEE, since then nothing could ever open it.
+    pub fn set_captcha_secret(
+        &mut self,
+        site_key: String,
+        secret: String,
+    ) -> app::Result<CaptchaSettings> {
+        self.only_admin()?;
+        let site_key = site_key.trim().to_owned();
+        check("site key", &site_key, MAX_SITE_KEY, true)?;
+        if !site_key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        {
+            return Err(AppError::msg("the site key is malformed"));
+        }
+        let secret = secret.trim();
+        if secret.is_empty() || secret.len() > MAX_TURNSTILE_SECRET {
+            return Err(AppError::msg("the secret key is missing or too long"));
+        }
+        let Some(sealed) = env::seal_outbound_secret(secret, &[TURNSTILE_HOST]) else {
+            return Err(AppError::msg(
+                "your team's namespace has no TEE node, and only a TEE can keep a captcha \
+                 secret: add a TEE node to the namespace, then set the secret again",
+            ));
+        };
+        let settings = self
+            .settings
+            .get_mut()
+            .map_err(store_err("settings.get_mut"))?;
+        for (name, value) in [
+            (CAPTCHA_SITE_KEY, site_key),
+            (CAPTCHA_SECRET, sealed.placeholder()),
+            (CAPTCHA_SEALED_TO, hex::encode(sealed.key)),
+        ] {
+            let _previous = settings
+                .insert(name.to_owned(), LwwRegister::new(value))
+                .map_err(store_err("settings.insert"))?;
+        }
+        self.captcha_settings()
+    }
+
+    /// Removes the team's Turnstile keys; `turnstile` forms fall back to the
+    /// node operator's secret, if it has one. Admin only.
+    pub fn clear_captcha_secret(&mut self) -> app::Result<CaptchaSettings> {
+        self.only_admin()?;
+        let settings = self
+            .settings
+            .get_mut()
+            .map_err(store_err("settings.get_mut"))?;
+        for name in [CAPTCHA_SITE_KEY, CAPTCHA_SECRET, CAPTCHA_SEALED_TO] {
+            let _previous = settings
+                .remove(name)
+                .map_err(store_err("settings.remove"))?;
+        }
+        self.captcha_settings()
+    }
+
+    /// The team's Turnstile setup. Team only.
+    pub fn captcha_settings(&self) -> app::Result<CaptchaSettings> {
+        self.only_team()?;
+        let current = env::tee_sealing_key().map(hex::encode);
+        let sealed_to = self.setting(CAPTCHA_SEALED_TO)?;
+        let secret_set = !self.setting(CAPTCHA_SECRET)?.is_empty();
+        Ok(CaptchaSettings {
+            site_key: self.setting(CAPTCHA_SITE_KEY)?,
+            secret_set,
+            tee_available: current.is_some(),
+            needs_resealing: secret_set && current.is_some_and(|key| key != sealed_to),
+        })
+    }
+
+    /// What a Turnstile check sends as the secret: the team's sealed one, or
+    /// the node operator's named one.
+    fn turnstile_secret(&self) -> app::Result<String> {
+        let sealed = self.setting(CAPTCHA_SECRET)?;
+        Ok(if sealed.is_empty() {
+            TURNSTILE_SECRET.to_owned()
+        } else {
+            sealed
+        })
+    }
+
+    /// A `settings` row, or empty.
+    fn setting(&self, name: &str) -> app::Result<String> {
+        let settings = self.settings.get().map_err(store_err("settings.get"))?;
+        Ok(settings
+            .get(name)
+            .map_err(store_err("settings.get"))?
+            .map(|v| v.get().clone())
+            .unwrap_or_default())
     }
 
     /// The workspace's display name, or empty. Anyone in the context may read it.
@@ -1436,7 +1583,9 @@ fn link_view(
 
 /// Cloudflare's check of a Turnstile token, with the node's secret named and
 /// not held. Refuses a token that cannot be one before anything is sent.
-pub fn turnstile_request(token: &str) -> app::Result<OutboundRequest> {
+/// `secret` is what goes in the body: a `{{sealed:…}}` or `{{secret:…}}`
+/// placeholder, which the node fills in; never the secret itself.
+pub fn turnstile_request(token: &str, secret: &str) -> app::Result<OutboundRequest> {
     let token = token.trim();
     if token.is_empty()
         || token.len() > MAX_TURNSTILE_TOKEN
@@ -1454,7 +1603,7 @@ pub fn turnstile_request(token: &str) -> app::Result<OutboundRequest> {
             "application/x-www-form-urlencoded".to_owned(),
         )],
         // The token's characters need no escaping in a form body.
-        body: format!("secret={TURNSTILE_SECRET}&response={token}").into_bytes(),
+        body: format!("secret={secret}&response={token}").into_bytes(),
     })
 }
 
@@ -1477,6 +1626,12 @@ pub fn turnstile_verdict(
             return Err(AppError::msg(
                 "this form checks captchas through its node, and an admin has not yet \
                  approved Cloudflare's address for this version of Mero Forms",
+            ))
+        }
+        Err(reason) if reason.starts_with("SealedUnavailable:") => {
+            return Err(AppError::msg(
+                "this form's captcha is checked by your team's TEE node, and none could be \
+                 reached right now; try again in a moment",
             ))
         }
         Err(reason) => {

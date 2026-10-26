@@ -116,7 +116,7 @@ response only through a link the contract knows, and the visitor never reaches
   refuses responses; turning it back on brings them all back.
 - **An hourly cap per link** (30 by default), counted from the link's own
   responses. Over it, the link is refused until the hour rolls over.
-- **A captcha**, optional, checked one of two ways. The `/f` page shows a
+- **A captcha**, optional, checked one of three ways. The `/f` page shows a
   Cloudflare Turnstile widget either way.
 - **Checked by the node** (`set_captcha_key(form, "turnstile")`). The page
   sends the widget's token as `submit_via_link`'s `captcha_token`, and the
@@ -132,6 +132,21 @@ response only through a link the contract knows, and the visitor never reaches
     the one prefix the manifest declares (offered when Mero Forms is installed
     or upgraded; until then the response is refused, never stored unchecked);
   - core 0.12.0-rc.1 or later.
+- **Checked with the team's own keys** (Team → Captcha, admins). The admin
+  enters the Turnstile site key and secret. The contract seals the secret to
+  the namespace's TEE (`env::seal_outbound_secret`) before storing it, so no
+  teammate's node and no page can read it, and only a TEE of the namespace can
+  fill it in, and only for `challenges.cloudflare.com`. Turning on "Require a
+  captcha" then sets `turnstile`, the public page shows the team's site key,
+  and the check names `{{sealed:…}}` in place of the operator's secret. The
+  node serving the link hands that one request to a TEE of the namespace,
+  which sends it and returns Cloudflare's answer, so the response is still
+  checked and stored in the same call. Without a TEE in the namespace the
+  secret is refused ("add a TEE node to the namespace"), and the card says so
+  first. When the namespace's TEEs change, the card asks for the keys again.
+  Needs the core release that adds sealed outbound secrets, the TEE nodes'
+  operators to allow `challenges.cloudflare.com`, and the namespace approval
+  above.
 - **Checked by a verifier** (`set_captcha_key(form, <ed25519 key>)`), for
   nodes without the above. The app's own Vercel function (`app/api/captcha.ts`,
   `app/src/lib/captchaVerifier.ts`) checks the solved widget with Cloudflare.
