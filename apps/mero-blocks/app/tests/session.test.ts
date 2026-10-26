@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureSessionFromHash,
   clearSession,
@@ -10,6 +10,9 @@ import {
   resetSession,
   updateSession,
 } from "../src/net/session";
+
+const served = vi.hoisted(() => ({ on: false }));
+vi.mock("@calimero-apps/node-served", () => ({ isServedByNode: () => served.on }));
 
 const FULL_HASH =
   "#node_url=http://localhost:2660&access_token=at-1&refresh_token=rt-1" +
@@ -24,6 +27,7 @@ function jwt(expMs: number): string {
 }
 
 beforeEach(() => {
+  served.on = false;
   localStorage.clear();
   resetSession();
   window.history.replaceState({}, "", "/");
@@ -43,6 +47,13 @@ describe("desktop SSO capture", () => {
     expect(getAccessToken()).toBe("at-1");
     expect(window.location.hash).toBe("");
     expect(hasConnection()).toBe(true);
+  });
+
+  it("keeps the page's own origin as the node when a node serves the page", () => {
+    served.on = true;
+    window.location.hash = FULL_HASH;
+    captureSessionFromHash();
+    expect(getSession().nodeUrl).toBe(window.location.origin);
   });
 
   it("tolerates the application_id spelling too", () => {

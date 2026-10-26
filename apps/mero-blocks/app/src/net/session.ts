@@ -17,6 +17,7 @@ import {
   clearDelegatedSession,
   readDelegatedSession,
 } from "@calimero-network/mero-js";
+import { isServedByNode } from "@calimero-apps/node-served";
 import { takePendingNodeUrl } from "./auth";
 import { TOKENS_KEY, jwtExpiryMs, readStoredTokens, shouldSeedTokens } from "./authTokens";
 
@@ -91,7 +92,11 @@ export function captureSessionFromHash(): CaptureResult {
   // Capture the node we were last pointed at BEFORE overwriting it — a different
   // node means the stored token bundle belongs to a foreign token family.
   const previousNodeUrl = session.nodeUrl;
-  const nodeUrl = p.get("node_url") ?? takePendingNodeUrl() ?? session.nodeUrl;
+  // A page the node serves talks to that origin only; the hash names the bare host, which its CSP refuses.
+  const pendingNodeUrl = takePendingNodeUrl();
+  const nodeUrl = isServedByNode(new URL(window.location.href))
+    ? window.location.origin
+    : (p.get("node_url") ?? pendingNodeUrl ?? session.nodeUrl);
   if (!nodeUrl) return "none";
   // A node login replaces whatever account session this tab held: one kind
   // of session at a time, and the hash is the newer intent.
