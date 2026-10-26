@@ -38,6 +38,7 @@ import {
   useRevision,
   useUpdatesClient,
 } from "../lib/updates";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 /** Idle time before an edit is saved as a draft. */
 const AUTOSAVE_MS = 1500;
@@ -128,7 +129,7 @@ export default function ComposePage() {
         if (!draftId) {
           setDraftId(id);
           // Keep the URL resumable without adding a history entry.
-          window.history.replaceState(null, "", `/a/compose?draft=${id}`);
+          window.history.replaceState(null, "", `${nodeBasename(new URL(window.location.href), "/")}a/compose?draft=${id}`);
         }
         setSavedAt(Date.now());
       } catch {
