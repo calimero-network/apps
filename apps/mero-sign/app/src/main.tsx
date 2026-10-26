@@ -11,6 +11,7 @@ import App from './App';
 // last app in this repo still on it. See `lib/useCalimero`.
 import { AppMode, MeroProvider } from '@calimero-network/mero-react';
 import { LoginGate } from './lib/loginGate';
+import { isServedByNode } from '@calimero-apps/node-served';
 import { MeroBridge } from './lib/MeroBridge';
 import { PACKAGE_NAME, REGISTRY_URL } from './constants/config';
 import { primeInvitationCapture } from '@calimero-network/mero-react';
@@ -88,6 +89,7 @@ createRoot(document.getElementById('root')!).render(
       // desktop open rejects the session it was just handed and drops the
       // tokens with only a console error.
       allowedNodeUrls={trustedNodeUrl ? [trustedNodeUrl] : undefined}
+      servedByNode={isServedByNode(new URL(window.location.href))}
     >
       <MeroBridge />
       <LoginGate>
