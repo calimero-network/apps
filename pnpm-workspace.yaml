@@ -97,7 +97,7 @@ catalog:
   # `merod-image`: rc.89 refuses 26 and rc.90 refuses 25. 26.2.2 (mero-js#284)
   # binds a cloud link grant to the browser that began the link and makes the
   # handoff async; delegated-execution is the only app that links.
-  "@calimero-network/mero-js": 26.9.1
+  "@calimero-network/mero-js": 26.10.0
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
