@@ -14,6 +14,7 @@
     "test:rig": "node scripts/test-rig.mjs"
   },
   "dependencies": {
+    "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-react": "catalog:",
     "react": "catalog:",

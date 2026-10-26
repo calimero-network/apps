@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/test";
+import { fromNode } from "./appOrigin";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -48,14 +49,17 @@ export function journeyConfig(opts: JourneyConfigOptions): PlaywrightTestConfig 
       ...devices["Desktop Chrome"],
       ...opts.use,
     },
-    webServer: {
-      command:
-        opts.webServerCommand ??
-        `pnpm exec vite build && pnpm exec vite preview --port ${port} --strictPort`,
-      cwd: opts.appDir,
-      url: `http://localhost:${port}`,
-      reuseExistingServer: !ci,
-      timeout: 240_000,
-    },
+    // From a node there is nothing to serve: each actor's context is based on its node's app origin.
+    webServer: fromNode()
+      ? undefined
+      : {
+          command:
+            opts.webServerCommand ??
+            `pnpm exec vite build && pnpm exec vite preview --port ${port} --strictPort`,
+          cwd: opts.appDir,
+          url: `http://localhost:${port}`,
+          reuseExistingServer: !ci,
+          timeout: 240_000,
+        },
   });
 }

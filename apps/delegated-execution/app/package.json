@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-js": "catalog:",
     "@phala/dcap-qvl": "0.5.3",
     "react": "catalog:",

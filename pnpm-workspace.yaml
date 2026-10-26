@@ -158,7 +158,7 @@ catalog:
   # no app used; 10.1.0 (#113) says when a link was already used or the person
   # was removed; 10.1.2 (#116) signs in an app Calimero Desktop opens, which
   # mero-js 26 otherwise refuses as a login this page did not begin.
-  "@calimero-network/mero-react": ^10.2.1
+  "@calimero-network/mero-react": ^10.3.0
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"

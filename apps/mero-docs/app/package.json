@@ -8,6 +8,7 @@
     "@blocknote/mantine": "^0.51.4",
     "@blocknote/react": "^0.51.4",
     "@calimero-apps/glass": "workspace:*",
+    "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-react": "catalog:",

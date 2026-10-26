@@ -36,6 +36,7 @@
     "@braintree/sanitize-url": "^7.1.2",
     "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/members": "workspace:*",
+    "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
