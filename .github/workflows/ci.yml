@@ -339,7 +339,10 @@ jobs:
           with_journey=$(jq -r '.[]' <<<"$APPS" | while read -r app; do
             if [ -f "apps/$app/app/playwright.journey.config.ts" ]; then echo "$app"; fi
           done | jq -Rsc 'split("\n") | map(select(length > 0))')
-          matrix=$(jq -c --argjson legs "$legs" '[.[] as $app | $legs[] | . + {app: $app}]' <<<"$with_journey")
+          # An app that ships its frontend in its bundle also runs from the one its node serves.
+          node_legs=$(python3 scripts/frontend-dir.py --list | jq -Rsc --arg pin "$pin" --argjson apps "$with_journey" \
+            'split("\n") | map(select(length > 0 and . as $a | $apps | index($a))) | map({app: ., leg: "node", merod: $pin})')
+          matrix=$(jq -c --argjson legs "$legs" --argjson node "$node_legs" '[.[] as $app | $legs[] | . + {app: $app}] + $node' <<<"$with_journey")
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "::notice::journey: pin $pin, desktop ${desktop:-unknown}; $matrix"
 
@@ -980,6 +983,7 @@ jobs:
         env:
           JOURNEY_APP: ${{ matrix.app }}
           JOURNEY_MEROD_LABEL: ${{ matrix.leg }} ${{ matrix.merod }}
+          JOURNEY_FROM_NODE: ${{ matrix.leg == 'node' && '1' || '' }}
           JOURNEY_DATA_DIR: ${{ runner.temp }}/journey
         run: npx playwright test -c playwright.journey.config.ts
 
