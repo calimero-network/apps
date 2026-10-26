@@ -6,6 +6,7 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { nodeBasename } from '../lib/servedByNode';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
 import { Lock, LockUnlock } from '@calimero-network/mero-icons';
@@ -196,7 +197,7 @@ function Rail({ slotRef }: { slotRef: (el: HTMLElement | null) => void }) {
         data-testid="brand"
       >
         <img
-          src="/favicon.svg"
+          src={`${nodeBasename()}favicon.svg`}
           alt=""
           width={32}
           height={32}

@@ -17,6 +17,7 @@
 // password if it went to the wrong place.
 
 import { fromB64, randomBytes, toB64 } from '@calimero-network/mero-pass';
+import { nodeBasename } from './servedByNode';
 
 export interface SharedSecret {
   name: string;
@@ -103,7 +104,7 @@ export function shareUrl(
   fragment: string,
   origin = window.location.origin,
 ): string {
-  return `${origin}/share#${fragment}`;
+  return `${origin}${nodeBasename().slice(0, -1)}/share#${fragment}`;
 }
 
 export function needsPassphrase(fragment: string): boolean {

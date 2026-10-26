@@ -96,7 +96,7 @@ async function ensureReady(actor: Actor, name: string): Promise<void> {
 }
 
 async function openTeam(page: Page): Promise<void> {
-  await page.goto("/teams");
+  await page.goto("teams");
   await waitForTeams(page);
   const cards = page.getByTestId("team-card");
   const named = cards.filter({ hasText: teamName });

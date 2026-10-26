@@ -9,7 +9,8 @@ import { defineConfig } from "vitest/config";
 // The node polyfill plugin is gone too — nothing in src/ needs it, and it was
 // pulling a browserify shim set into every bundle.
 export default defineConfig({
-  base: "/",
+  base: "./",
+  resolve: { dedupe: ["react", "react-dom"] },
   plugins: [react()],
   // ── Pin the dev port ────────────────────────────────────────────────────────
   //

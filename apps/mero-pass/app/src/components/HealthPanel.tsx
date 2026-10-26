@@ -5,6 +5,7 @@ import type { Secret } from '@calimero-network/mero-pass';
 import shell from '../styles/shell.module.css';
 import styles from '../pages/vault/vault.module.css';
 import { describeError } from '../lib/errors';
+import { SERVED_BY_NODE } from '../lib/servedByNode';
 
 const ISSUE_TEXT: Record<string, string> = {
   weak: 'weak',
@@ -58,7 +59,7 @@ export default function HealthPanel({
           type="button"
           className={shell.btnGhost}
           onClick={() => void check()}
-          disabled={checking}
+          disabled={checking || SERVED_BY_NODE}
           data-testid="breach-check"
         >
           {checking
@@ -68,8 +69,9 @@ export default function HealthPanel({
               : 'Check for breaches'}
         </button>
         <span className={shell.rowSub}>
-          Sends only the first 5 characters of each password’s SHA-1 to Have I
-          Been Pwned; the match happens here.
+          {SERVED_BY_NODE
+            ? 'Breach checks are unavailable in the node-hosted app: it may not contact Have I Been Pwned.'
+            : 'Sends only the first 5 characters of each password’s SHA-1 to Have I Been Pwned; the match happens here.'}
         </span>
       </div>
       {error && <p className={shell.error}>{error}</p>}
