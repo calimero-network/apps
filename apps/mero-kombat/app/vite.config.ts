@@ -3,9 +3,11 @@
 // fails `tsc -b` with "Object literal may only specify known properties".
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 
 export default defineConfig({
-  plugins: [react()],
+  base: "./",
+  plugins: [servedAssetsFallback(), react()],
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
