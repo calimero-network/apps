@@ -4,6 +4,8 @@ import { VitePWA } from "vite-plugin-pwa";
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "./",
+  resolve: { dedupe: ["react", "react-dom"] },
   test: {
     environment: "jsdom",
     globals: true,
@@ -22,6 +24,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      injectRegister: false,
       includeAssets: ["curb-pwa.svg", "logo.svg", "section-name.svg"],
       manifest: {
         name: "Calimero Chat",
@@ -32,8 +35,8 @@ export default defineConfig({
         background_color: "#f6f7fb",
         display: "standalone",
         orientation: "portrait-primary",
-        scope: "/",
-        start_url: "/",
+        scope: "./",
+        start_url: "./",
         icons: [
           {
             src: "icons/icon-72x72.png",

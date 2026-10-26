@@ -346,7 +346,7 @@ test.describe("send_message / get_messages", () => {
 
   test("send_message with mentions stores them correctly", async () => {
     const client = makeClient();
-    const env = getEnv();
+    getEnv();
     const ts = Math.floor(Date.now() / 1000);
 
     const msg = await client.call<MessageOut>("send_message", {
@@ -399,7 +399,7 @@ test.describe("update_reaction", () => {
 
   test("get_messages shows reaction after add", async () => {
     const client = makeClient();
-    const env = getEnv();
+    getEnv();
     const marker = `react-verify-${Date.now()}`;
     const msg = await seedMessage(marker);
 
@@ -423,7 +423,7 @@ test.describe("update_reaction", () => {
 
   test("update_reaction remove clears the reaction", async () => {
     const client = makeClient();
-    const env = getEnv();
+    getEnv();
     const marker = `react-remove-${Date.now()}`;
     const msg = await seedMessage(marker);
 
@@ -452,7 +452,7 @@ test.describe("update_reaction", () => {
 
   test("adding same reaction twice is idempotent", async () => {
     const client = makeClient();
-    const env = getEnv();
+    getEnv();
     const marker = `react-dedup-${Date.now()}`;
     const msg = await seedMessage(marker);
 
@@ -773,7 +773,7 @@ test.describe("threads (send_message with parent_message)", () => {
 
   test("reactions work on thread replies", async () => {
     const client = makeClient();
-    const env = getEnv();
+    getEnv();
     const parent = await seedMessage(`thread-react-parent-${Date.now()}`);
     const reply = await client.call<MessageOut>("send_message", {
       message: `thread-react-reply-${Date.now()}`,
@@ -1144,7 +1144,7 @@ test.describe("multi-user (2-node)", () => {
     await makeClient().call<string>("set_profile", { username: "Alice", avatar: null });
     await makeClient2().call<string>("set_profile", { username: "Bob", avatar: null });
 
-    const env = getEnv();
+    getEnv();
     const profiles = await makeClient().call<Array<{ identity: string; username: string }>>(
       "get_profiles", {},
     );
@@ -1291,7 +1291,7 @@ test.describe("multi-user (2-node)", () => {
   // ── Multi-user reactions ───────────────────────────────────────────────────
 
   test("Alice and Bob can both react to the same message", async () => {
-    const env = getEnv();
+    getEnv();
     const marker = `multi-react-${Date.now()}`;
     const msg = await aliceSends(marker);
 
@@ -1323,7 +1323,7 @@ test.describe("multi-user (2-node)", () => {
   });
 
   test("Alice and Bob can react with different emojis", async () => {
-    const env = getEnv();
+    getEnv();
     const marker = `multi-emoji-${Date.now()}`;
     const msg = await aliceSends(marker);
 

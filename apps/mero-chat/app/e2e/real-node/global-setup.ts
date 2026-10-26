@@ -40,7 +40,6 @@ const NODES = [
   { name: "chat-pw-2", server: (Number(process.env.PW_SERVER_PORT) || 2620) + 1, swarm: (Number(process.env.PW_SWARM_PORT) || 2520) + 1 },
 ];
 const urlOf = (n: (typeof NODES)[number]) => `http://localhost:${n.server}`;
-const NODE_URL = urlOf(NODES[0]);
 
 // Throwaway credentials for a loopback node deleted at teardown (8-char min).
 const ADMIN_USER = "admin";
