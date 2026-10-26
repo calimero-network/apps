@@ -1,0 +1,27 @@
+{
+  "_comment": "init arguments for scripts/cloud-v2-smoke.py, per contract (wasm file stem). Values only need to satisfy each init's types.",
+  "battleships_game": {
+    "player1": "1111111111111111111111111111111111111111111111111111111111111111",
+    "player2": "2222222222222222222222222222222222222222222222222222222222222222",
+    "player2_account": "2222222222222222222222222222222222222222222222222222222222222222",
+    "lobby_context_id": null,
+    "match_id": "smoke"
+  },
+  "mero_blocks": { "name": "smoke", "seed": 1, "now": 1 },
+  "mero_chat": {
+    "name": "smoke",
+    "context_type": "Channel",
+    "description": "smoke",
+    "created_at": 1,
+    "creator_username": "smoke"
+  },
+  "mero_chess": { "title": "smoke", "now": 1 },
+  "mero_design": { "name": "smoke", "description": "smoke" },
+  "mero_kombat": { "title": "smoke", "now": 1 },
+  "mero_models": { "name": "smoke" },
+  "mero_pass": { "name": "smoke" },
+  "mero_pixart": { "name": "smoke", "description": "smoke", "width": 16, "height": 16 },
+  "mero_sign": { "is_private": false, "context_name": "smoke" },
+  "mero_stream": { "name": "smoke" },
+  "merraria": { "name": "smoke", "seed": 1, "now": 1 }
+}
