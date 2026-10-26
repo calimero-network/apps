@@ -39,7 +39,7 @@ github = "https://github.com/calimero-network/mero-design"
 # placeholder floor, not a claim anyone verified — while the contract called
 # host functions no runtime that old has, so the bundle advertised that it ran
 # on a node where it cannot even instantiate.
-min-runtime-version = "0.12.0-rc.1"
+min-runtime-version = "0.12.0-rc.2"
 # Doubles as the registered login callback origin, compared by exact origin:
 # the node's sign-in page hands tokens only to the frontend (or an alias) the
 # registry or the installed bundle declares for this package.
