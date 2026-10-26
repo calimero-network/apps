@@ -13,6 +13,9 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+root=$(git rev-parse --show-toplevel)
+# cargo-mero packs mero-crm's frontend-dir as it finds it, so build it first.
+[ -z "$(python3 "$root/scripts/frontend-dir.py" mero-crm)" ] || pnpm -F mero-crm build
 mkdir -p res
 cargo mero bundle \
   --manifest-path ../../mero-crm/logic/Cargo.toml \
