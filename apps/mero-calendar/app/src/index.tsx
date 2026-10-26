@@ -1,3 +1,4 @@
+import "./styles/normalize.css";
 // The fleet's shared light-glass look. First, so this app's own stylesheets
 // (styles/theme.css maps its tokens onto these) override it, never the reverse.
 import "@calimero-apps/glass/glass.css";
@@ -21,6 +22,7 @@ import { store } from "./store/store";
 import { ModalProvider } from "./providers/ModalProvider";
 import { PopupProvider } from "./providers/PopupProvider";
 import { ThemeProvider } from "./providers/ThemeProvider";
+import { nodeBasename, isServedByNode } from "@calimero-apps/node-served";
 
 // ── Inbound invitation links ──────────────────────────────────────────────────
 //
@@ -78,7 +80,7 @@ function readTauriHashContext() {
   // is the only copy of the auth callback. It strips the hash itself once it has
   // consumed it, which is what leaves the address bar clean.
   const target = contextId ? `/teams/t/calendar/${contextId}` : "/teams";
-  window.history.replaceState({}, "", `${target}${hash}`);
+  window.history.replaceState({}, "", `${nodeBasename(new URL(window.location.href), "/").slice(0, -1)}${target}${hash}`);
 }
 
 // mero-react ≥4.1 REJECTS SSO tokens whose node_url is not explicitly trusted
@@ -107,13 +109,14 @@ root.render(
       // is not allowed". That is exactly what shipped on mero-design.
       packageName={import.meta.env.VITE_APPLICATION_PACKAGE?.trim() || "com.calimero.mero-calendar"}
       registryUrl="https://apps.calimero.network"
+      servedByNode={isServedByNode(new URL(window.location.href))}
       allowedNodeUrls={tauriHashNodeUrl ? [tauriHashNodeUrl] : undefined}
     >
       <ThemeProvider>
         <StoreProvider store={store}>
           <ModalProvider>
             <PopupProvider>
-              <BrowserRouter>
+              <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
                 <App />
               </BrowserRouter>
             </PopupProvider>

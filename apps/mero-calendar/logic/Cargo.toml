@@ -58,6 +58,8 @@ min-runtime-version = "0.12.0-rc.1"
 # login AFTER credentials are accepted, while loopback/desktop login keeps
 # working — which is exactly how it goes unnoticed.
 frontend    = "https://mero-calendar.vercel.app"
+# The built frontend `cargo mero bundle` packs, so the node serves it from the app\'s own origin.
+frontend-dir = "../app/dist"
 
 [dependencies]
 base64                  = "0.22.1"

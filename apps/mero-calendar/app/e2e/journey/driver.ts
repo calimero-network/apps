@@ -46,7 +46,7 @@ async function waitForCalendar(actor: Actor): Promise<void> {
 }
 
 async function goTeams(page: Page): Promise<void> {
-  if (!(await page.getByTestId("create-team-btn").isVisible())) await page.goto("/teams");
+  if (!(await page.getByTestId("create-team-btn").isVisible())) await page.goto("teams");
   await expect(page.getByTestId("create-team-btn")).toBeVisible({ timeout: 60_000 });
 }
 
@@ -291,7 +291,7 @@ export const driver: AppDriver = {
   async joined(actor) {
     const page = actor.page;
     // The prompt opens the joined team's calendars.
-    const landed = page.waitForURL((u) => u.pathname === `/teams/${teamId}`, { timeout: 120_000 });
+    const landed = page.waitForURL((u) => u.pathname.endsWith(`/teams/${teamId}`), { timeout: 120_000 });
     const failed = page
       .locator('[data-testid="invite-prompt"][data-stage="failed"]')
       .waitFor({ state: "visible", timeout: 120_000 })

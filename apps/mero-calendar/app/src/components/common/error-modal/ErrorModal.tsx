@@ -1,6 +1,7 @@
 import React, { FC } from 'react';
 import styles from './error-modal.module.scss';
 import { useAuth } from '../../../hooks/useAuth';
+import { nodeBasename } from '@calimero-apps/node-served';
 
 interface IErrorModalProps {
   message: string;
@@ -19,7 +20,7 @@ const ErrorModal: FC<IErrorModalProps> = ({
     if (errorType === 'websocket') {
       closeError();
       logout();
-      window.location.href = '/';
+      window.location.href = nodeBasename(new URL(window.location.href), '/');
     } else {
       closeError();
       window.location.reload();
