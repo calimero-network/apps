@@ -212,6 +212,72 @@ struct UserProfile: Decodable, Equatable, Sendable {
     }
 }
 
+/// `Role`: a member's standing in a channel. `User` is everyone not listed.
+enum ChatRole: String, Sendable, Hashable, CaseIterable {
+    case user = "User"
+    case mod = "Mod"
+    case admin = "Admin"
+    case banned = "Banned"
+
+    /// May change the channel's info and other members' roles.
+    var isAdmin: Bool { self == .admin }
+    /// May delete other members' messages.
+    var canModerate: Bool { self == .admin || self == .mod }
+}
+
+/// `SearchHit` (`search_messages`).
+struct SearchHit: Decodable, Equatable, Identifiable, Sendable {
+    let id: String
+    /// Set for a thread reply: the top-level message it replies to.
+    let parentMessageId: String?
+    let timestamp: UInt64
+    let sender: String
+    /// Plain text around the first match.
+    let snippet: String
+    /// The match inside `snippet`, in UTF-16 code units.
+    let matchStart: Int
+    let matchEnd: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case id, timestamp, sender, snippet
+        case parentMessageId = "parent_message_id"
+        case matchStart = "match_start"
+        case matchEnd = "match_end"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        parentMessageId = try c.decodeIfPresent(String.self, forKey: .parentMessageId)
+        timestamp = try c.lenientUInt64(.timestamp) ?? 0
+        sender = try c.decodeIfPresent(String.self, forKey: .sender) ?? ""
+        snippet = try c.decodeIfPresent(String.self, forKey: .snippet) ?? ""
+        matchStart = Int(try c.lenientUInt64(.matchStart) ?? 0)
+        matchEnd = Int(try c.lenientUInt64(.matchEnd) ?? 0)
+    }
+
+    /// `snippet` split around the match, safe for any offsets the relay sends.
+    var highlighted: (before: String, match: String, after: String) {
+        let units = Array(snippet.utf16)
+        let start = min(max(0, matchStart), units.count)
+        let end = min(max(start, matchEnd), units.count)
+        func text(_ range: Range<Int>) -> String { String(decoding: units[range], as: UTF16.self) }
+        return (text(0..<start), text(start..<end), text(end..<units.count))
+    }
+}
+
+/// `SearchPage` (`search_messages`).
+struct SearchPage: Decodable, Equatable, Sendable {
+    let hits: [SearchHit]
+    /// Pass back for the next page; `nil` once the oldest message was read.
+    let nextCursor: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case hits
+        case nextCursor = "next_cursor"
+    }
+}
+
 // MARK: - App models
 
 /// A workspace: a namespace this account is a member of.
