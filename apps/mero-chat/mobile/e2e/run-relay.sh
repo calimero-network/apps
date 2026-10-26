@@ -27,12 +27,12 @@ set -euo pipefail
 cd "$(dirname "$0")"
 HERE=$(pwd)
 
-# The core commit the live tests are pinned to. CI (build-merod-mock-tee) builds
-# and caches merod per this value, so a bump is this one line. It moves with the
-# workspace's core pin: a bundle built against 0.11.0-rc.90 refuses to install
-# on an older runtime. This is the 0.11.0-rc.90 release commit, which carries
-# core#4611.
-CORE_REF=528c1a636712a40e3c8d6cd4194f856fedc70a8a
+# The core commit the live tests are pinned to: the release commit of the core
+# tag the workspace pins, which carries core#4611. CI (build-merod-mock-tee)
+# builds and caches merod per this value. It moves with the workspace's core pin,
+# because a bundle built against a release refuses to install on an older
+# runtime; core's fleet-bump rewrites it with the other pins on every release.
+CORE_REF=bd82bae8d68c896a23cae127c38ce12023f227af
 export CORE_REF
 
 ENV_FILE="$HERE/.relay.env"

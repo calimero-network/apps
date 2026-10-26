@@ -57,6 +57,32 @@
         }
       ]
     },
+    "CaptchaPass": {
+      "kind": "record",
+      "doc": "A captcha pass: the verifier's signature over\n`mero-forms/captcha/v1|<form>|<link>|<nonce>|<expires_ms>`. The nonce is\nthe visitor's, random, and each one is accepted once.",
+      "fields": [
+        {
+          "name": "nonce",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "expires_ms",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Milliseconds since the Unix epoch."
+        },
+        {
+          "name": "signature",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "64 bytes, hex."
+        }
+      ]
+    },
     "CrmLink": {
       "kind": "record",
       "doc": "Where a form's responses go in Mero CRM, and which field fills what.\nEmpty strings mean \"not set\".",
@@ -259,6 +285,42 @@
               "$ref": "CrmLink"
             }
           }
+        },
+        {
+          "name": "public",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          },
+          "doc": "Whether its public links take responses. Off: every link is refused,\nand works again when it is turned back on."
+        },
+        {
+          "name": "link_cap",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          },
+          "doc": "Responses each public link may send per hour."
+        },
+        {
+          "name": "captcha_key",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The captcha verifier's ed25519 public key, hex, or empty for no\ncaptcha. A link's response then needs a pass it signed."
         },
         {
           "name": "created_at",
@@ -502,6 +564,24 @@
           }
         },
         {
+          "name": "public",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "link_cap",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "captcha_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
           "name": "created_at",
           "type": {
             "kind": "u64"
@@ -515,6 +595,175 @@
         },
         {
           "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Link": {
+      "kind": "record",
+      "doc": "A public link, as the team made it.",
+      "fields": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "grant_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The access grant behind it, on `created_by`'s node."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "LinkFormView": {
+      "kind": "record",
+      "doc": "A form as a public link's visitor sees it: the questions, and nothing the\nteam keeps about it.",
+      "fields": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Field"
+            }
+          }
+        },
+        {
+          "name": "accepting",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Open and public: a response would be taken."
+        },
+        {
+          "name": "captcha",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether a response needs a captcha pass."
+        }
+      ]
+    },
+    "LinkView": {
+      "kind": "record",
+      "doc": "A public link, with what it has sent.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "grant_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "responses",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "last_hour",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "last_response_at",
           "type": {
             "kind": "u64"
           }
@@ -620,6 +869,47 @@
           }
         },
         {
+          "name": "links",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Link"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "captcha_seen",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "u64"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
           "name": "roles",
           "type": {
             "kind": "map",
@@ -673,7 +963,14 @@
           "type": {
             "kind": "string"
           },
-          "doc": "The account that called `submit_response` (hex): which form key, or\nwhich teammate entered it."
+          "doc": "The account that called `submit_response` (hex): which form key, or\nwhich teammate entered it. For a public link, the node that holds the\nlink's grant."
+        },
+        {
+          "name": "link",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The public link it came through, or empty."
         }
       ]
     },
@@ -779,6 +1076,12 @@
         },
         {
           "name": "submitted_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "link",
           "type": {
             "kind": "string"
           }
@@ -892,6 +1195,40 @@
       "intent": "mutating"
     },
     {
+      "name": "create_link",
+      "doc": "Records a public link for `form_id`: `link` is the SHA-256 (hex) of\nthe access grant's token, `grant_id` the grant on the caller's node.\nTeam only.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "link",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "grant_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "LinkView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "delete_form",
       "doc": "Deletes a form that has no responses. A form with responses is closed\ninstead, so nothing anyone sent disappears. Team only.",
       "params": [
@@ -904,6 +1241,22 @@
       ],
       "returns": {
         "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_link",
+      "doc": "Stops a public link and returns what it was, so the app can revoke its\ngrant on the node that holds it. Team only.",
+      "params": [
+        {
+          "name": "link",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "LinkView"
       },
       "intent": "mutating"
     },
@@ -976,6 +1329,22 @@
       }
     },
     {
+      "name": "link_form",
+      "doc": "The form a public link is for, as its visitor sees it. One of the two\nmethods a link's grant names.",
+      "params": [
+        {
+          "name": "link",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "LinkFormView"
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "list_form_keys",
       "doc": "The registered form keys, newest first, with what each has sent. Admin\nonly.",
       "params": [],
@@ -995,6 +1364,25 @@
         "kind": "list",
         "items": {
           "$ref": "FormSummary"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_links",
+      "doc": "The form's public links, newest first, with what each has sent. Team only.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "LinkView"
         }
       },
       "intent": "read_only"
@@ -1134,6 +1522,28 @@
       "intent": "mutating"
     },
     {
+      "name": "set_captcha_key",
+      "doc": "Requires a captcha pass signed by `key` (an ed25519 public key, hex)\non every response through the form's links, or none when `key` is\nempty. Team only.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FormView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "set_crm_link",
       "doc": "Where the form's responses go in Mero CRM, or `context_id` empty for\nnowhere. The mapped fields must be on the form. Team only.",
       "params": [
@@ -1169,6 +1579,50 @@
           "name": "open",
           "type": {
             "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FormView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_form_public",
+      "doc": "Lets the form's public links take responses, or stops them all.\nTeam only. Links are kept either way.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "public",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FormView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_link_cap",
+      "doc": "How many responses each of the form's links may send per hour. Team only.",
+      "params": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "per_hour",
+          "type": {
+            "kind": "u32"
           }
         }
       ],
@@ -1217,6 +1671,38 @@
           "type": {
             "kind": "string"
           }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "submit_via_link",
+      "doc": "Stores a response that came through a public link and returns its id.\nThe other method a link's grant names.\n\nRefused unless the form is open and public, the link is under its\nhourly cap, and, when the form asks for one, `captcha` is a pass the\nform's verifier signed for this form and link, unexpired and unused.",
+      "params": [
+        {
+          "name": "link",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "answers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AnswerInput"
+            }
+          }
+        },
+        {
+          "name": "captcha",
+          "type": {
+            "$ref": "CaptchaPass"
+          },
+          "nullable": true
         }
       ],
       "returns": {

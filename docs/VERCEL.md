@@ -2,7 +2,8 @@
 
 One Vercel project per app, all seventeen configured identically. Everything a
 project needs is committed — there is **nothing to set in the dashboard beyond
-the Root Directory**, and in particular **no environment variables**.
+the Root Directory**, and in particular **no environment variables** (mero-forms'
+optional captcha is the one exception, below).
 
 ## The convention
 
@@ -104,6 +105,21 @@ if (opts.packageName) {
 so every app commits both a package default and the literal registry URL. See
 PR #35.
 
+⚠️ **mero-forms has three optional server variables.** Its `api/captcha.ts`
+is a Vercel function: the captcha check for public links (see
+`apps/mero-forms/README.md`, "Public links"). Without the variables the app
+works and links work; only "Require a captcha" is unavailable.
+
+| variable | what it is |
+|---|---|
+| `TURNSTILE_SITE_KEY` | the Cloudflare Turnstile widget's site key (public) |
+| `TURNSTILE_SECRET_KEY` | the widget's secret key, for Cloudflare's `siteverify` |
+| `CAPTCHA_SIGNING_SEED` | 32 random bytes in hex (`openssl rand -hex 32`): the ed25519 key the function signs passes with. Changing it means re-ticking "Require a captcha" on each form |
+
+Mark the last two **Sensitive**. They are read by the function only, never
+built into the page. `vercel.json` keeps `/api/` out of the SPA rewrite for
+this reason.
+
 ⚠️ **mero-sign is the exception.** It does not use mero-react at all, and its
 `VITE_APPLICATION_ID` / `VITE_APPLICATION_PATH` / `VITE_CONTEXT_ID` default to
 stale ids pointing at a `.wasm` on S3. No environment variable will make it
@@ -133,6 +149,7 @@ keep them that way, and republish the bundle if a domain changes.
 | `mero-kombat` | `mero-kombat` | `apps/mero-kombat/app` | `dist` | https://mero-kombat.vercel.app ⚠️ not created yet |
 | `mero-models` | `mero-models` | `apps/mero-models/app` | `dist` | https://mero-models.vercel.app ⚠️ not created yet |
 | `mero-docs` | `mero-docs` | `apps/mero-docs/app` | `dist` | https://mero-docs.vercel.app |
+| `mero-forms` | `mero-forms` (to create) | `apps/mero-forms/app` | `dist` | https://mero-forms.vercel.app |
 | `mero-forum` | `mero-forum` | `apps/mero-forum/app` | `dist` | https://mero-forum.vercel.app |
 | `mero-crm` | `mero-crm` (to create) | `apps/mero-crm/app` | `dist` | https://mero-crm.vercel.app |
 | `mero-issue-tracker` | `mero-issue-tracker-app` | `apps/mero-issue-tracker/app` | `dist` | https://mero-issue-tracker-app.vercel.app |

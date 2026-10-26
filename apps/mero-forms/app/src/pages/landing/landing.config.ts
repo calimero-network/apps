@@ -42,8 +42,8 @@ export const CONFIG: LandingConfig = {
     },
     {
       icon: ExternalLink,
-      title: "Your website, your backend",
-      body: "Issue a form key from the app and your site’s backend answers with it through a relay. The key can add a response to its one form and nothing else.",
+      title: "A link, or your website",
+      body: "Share a public link anyone can answer without signing in, or give your site’s backend a form key. Either can add responses to its one form and nothing else.",
     },
     {
       icon: BarChart,

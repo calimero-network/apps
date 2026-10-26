@@ -200,6 +200,42 @@
           }
         },
         {
+          "name": "public",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          },
+          "doc": "Whether its public links take responses. Off: every link is refused,\nand works again when it is turned back on."
+        },
+        {
+          "name": "link_cap",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          },
+          "doc": "Responses each public link may send per hour."
+        },
+        {
+          "name": "captcha_key",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The captcha verifier's ed25519 public key, hex, or empty for no\ncaptcha. A link's response then needs a pass it signed."
+        },
+        {
           "name": "created_at",
           "type": {
             "kind": "record",
@@ -261,6 +297,68 @@
             }
           },
           "doc": "The one form it may submit to."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Link": {
+      "kind": "record",
+      "doc": "A public link, as the team made it.",
+      "fields": [
+        {
+          "name": "form_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "grant_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The access grant behind it, on `created_by`'s node."
         },
         {
           "name": "created_at",
@@ -385,6 +483,47 @@
           }
         },
         {
+          "name": "links",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Link"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "captcha_seen",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "u64"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
           "name": "roles",
           "type": {
             "kind": "map",
@@ -438,7 +577,14 @@
           "type": {
             "kind": "string"
           },
-          "doc": "The account that called `submit_response` (hex): which form key, or\nwhich teammate entered it."
+          "doc": "The account that called `submit_response` (hex): which form key, or\nwhich teammate entered it. For a public link, the node that holds the\nlink's grant."
+        },
+        {
+          "name": "link",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The public link it came through, or empty."
         }
       ]
     },

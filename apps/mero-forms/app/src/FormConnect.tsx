@@ -3,6 +3,7 @@ import { bootstrapFromInvitation } from "@calimero-network/mero-js";
 import { useMero } from "@calimero-network/mero-react";
 import type { FormKeyView, FormView } from "./generated/FormsClient";
 import { CrmSettings } from "./CrmSettings";
+import { PublicLinks } from "./PublicLinks";
 import { ago, examplePayload } from "./lib/fields";
 import { envBlock, mintFormIdentity } from "./lib/formKey";
 import { shortAccount } from "./lib/people";
@@ -132,6 +133,7 @@ export function FormConnect({
 }) {
   return (
     <>
+      <PublicLinks form={form} workspace={workspace} contextId={contextId} />
       {isAdmin ? (
         <FormKeys form={form} workspace={workspace} contextId={contextId} namespaceId={namespaceId} />
       ) : (
