@@ -8,6 +8,7 @@ import HomePage from './pages/home';
 import LandingPage from './pages/landing/LandingPage';
 import PlayPage from './pages/play';
 import InvitationPrompt from './components/InvitationPrompt';
+import { isServedByNode, nodeBasename } from '@calimero-apps/node-served';
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
@@ -118,10 +119,11 @@ export default function App() {
       mode={AppMode.MultiContext}
       packageName={packageName}
       registryUrl={registryUrl}
+      servedByNode={isServedByNode(new URL(window.location.href))}
       allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
     >
       <ToastProvider>
-        <BrowserRouter basename="/">
+        <BrowserRouter basename={nodeBasename(new URL(window.location.href), '/')}>
           {/* Above the routes: an opened invitation link can land on any page. */}
           <InvitationPrompt />
           <Routes>

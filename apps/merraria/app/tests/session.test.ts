@@ -12,11 +12,15 @@ import {
   updateSession,
 } from "../src/net/session";
 
+const served = vi.hoisted(() => ({ on: false }));
+vi.mock("@calimero-apps/node-served", () => ({ isServedByNode: () => served.on }));
+
 const FULL_HASH =
   "#node_url=http://localhost:2660&access_token=at-1&refresh_token=rt-1" +
   "&app-id=app-1&context_id=ctx-1&executor_public_key=pk-1&expires_at=999&dev_mode=1";
 
 beforeEach(() => {
+  served.on = false;
   localStorage.clear();
   resetSession();
   window.history.replaceState({}, "", "/");
@@ -36,6 +40,13 @@ describe("desktop SSO capture", () => {
     expect(getAccessToken()).toBe("at-1");
     expect(window.location.hash).toBe("");
     expect(hasConnection()).toBe(true);
+  });
+
+  it("keeps the page's own origin as the node when a node serves the page", () => {
+    served.on = true;
+    window.location.hash = FULL_HASH;
+    captureSessionFromHash();
+    expect(getSession().nodeUrl).toBe(window.location.origin);
   });
 
   it("tolerates the application_id spelling too", () => {

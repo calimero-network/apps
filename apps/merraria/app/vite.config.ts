@@ -1,7 +1,10 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vite";
+import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 
 export default defineConfig({
+  base: "./",
+  plugins: [servedAssetsFallback()],
   server: {
     port: Number(process.env.PW_PORT ?? process.env.PORT ?? 5184),
   },

@@ -7,6 +7,7 @@ import { App } from "./App";
 import { applyStoredTheme } from "./ui";
 import { adoptDesktopSession } from "./utils/desktopSso";
 import { APP_SLUG } from "./utils/invitation";
+import { isServedByNode } from "@calimero-apps/node-served";
 import "./index.css";
 
 const root = document.getElementById("root");
@@ -81,6 +82,7 @@ createRoot(root).render(
       // Passed explicitly, as most of the fleet does: kv-store's omission is
       // an open question in docs/SESSION-AND-INVITES.md, not a pattern.
       registryUrl="https://apps.calimero.network"
+      servedByNode={isServedByNode(new URL(window.location.href))}
     >
       <App />
     </MeroProvider>

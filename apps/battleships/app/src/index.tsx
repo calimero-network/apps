@@ -2,6 +2,7 @@ import '@calimero-apps/glass/glass.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import '@calimero-network/mero-ui/styles.css';
+import '@fontsource-variable/jetbrains-mono';
 import './index.css';
 import App from './App';
 import { primeInvitationCapture } from '@calimero-network/mero-react';

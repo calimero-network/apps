@@ -28,6 +28,7 @@ import {
 } from "../net/admin";
 import { beginAccountEnrolment } from "../net/account";
 import { beginWebLogin } from "../net/auth";
+import { isServedByNode } from "@calimero-apps/node-served";
 import { inviteLink } from "../net/inviteLink";
 import {
   clearSession,
@@ -623,6 +624,11 @@ export class Landing {
    * certificate). `note` is what the last enrolment had to say.
    */
   private openConnectModal(tab: ConnectTab = "node", note: string | null = null): void {
+    // A page the node serves has one node: its own origin.
+    if (isServedByNode(new URL(window.location.href))) {
+      beginWebLogin(window.location.origin);
+      return;
+    }
     const shade = document.createElement("div");
     shade.className = "mbl-modal-shade";
     shade.dataset.testid = "connect-modal";

@@ -30,6 +30,7 @@ import {
 } from "../net/admin";
 import { inviteLink } from "../net/inviteLink";
 import { beginWebLogin } from "../net/auth";
+import { isServedByNode } from "@calimero-apps/node-served";
 import { goToWallet, isReturningFromWallet, shortAccount, type EnrolmentResult } from "../net/account";
 import { deleteWorld } from "../state/persistence";
 import { setInviteJoiner } from "./invitePrompt";
@@ -712,6 +713,11 @@ export class Landing {
    *           wallet. Opens here when the page comes back from the wallet.
    */
   private openConnectModal(opts: { tab?: "node" | "cloud"; note?: string | null } = {}): void {
+    // A page the node serves has one node: its own origin.
+    if (isServedByNode(new URL(window.location.href))) {
+      beginWebLogin(window.location.origin);
+      return;
+    }
     const shade = document.createElement("div");
     shade.className = "mtl-modal-shade";
     shade.dataset.testid = "connect-modal";

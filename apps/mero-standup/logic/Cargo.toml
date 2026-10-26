@@ -39,6 +39,8 @@ min-runtime-version = "0.12.0-rc.1"
 # trailing slash. ⚠️ Resolves to nothing until the Vercel project exists:
 # Root Directory `apps/mero-standup/app`, project named `mero-standup`.
 frontend    = "https://mero-standup.vercel.app"
+# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+frontend-dir = "../app/dist"
 
 # ⚠️ Keep the dependency tables AFTER the calimero table: the landing generator
 # reads that table up to the next `[` header and finds nothing at end of file.

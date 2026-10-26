@@ -2,8 +2,6 @@
    Battleships — Naval Command Terminal Design System
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
-
 :root {
   /* ============================================================
      The fleet's light glass (@calimero-apps/glass, imported first in
@@ -84,7 +82,7 @@
      `--font-mono` survives for IDs and board coordinates, where a fixed
      advance is the point; it is no longer the voice of the whole app. */
   --font-display: var(--glass-font);
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Timing */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
