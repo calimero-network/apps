@@ -21,8 +21,8 @@ export default function SheetsAnimation() {
   return (
     <div className="cal-lp-a" style={{ padding: 0 }}>
       <video
-        src="/landing/hero.webm"
-        poster="/landing/hero-poster.jpg"
+        src="landing/hero.webm"
+        poster="landing/hero-poster.jpg"
         autoPlay={!still}
         muted
         loop

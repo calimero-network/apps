@@ -1,9 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { servedAssetsFallback } from '@calimero-apps/node-served/vite';
 
 export default defineConfig({
-  plugins: [react(), nodePolyfills()],
+  // Relative, so the same build runs at / and under the node's /{version}/.
+  base: './',
+  plugins: [react(), servedAssetsFallback(), nodePolyfills()],
   server: {
     // Pinned, and NOT 5173. Every mero app served from the same origin shares one
     // `localStorage`, so running this on a port another Calimero app had used

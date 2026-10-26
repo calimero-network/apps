@@ -17,6 +17,9 @@ import { ContextPicker } from "./ContextPicker";
 import { TablePage } from "./TablePage";
 import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
 import LandingPage from "./pages/landing/LandingPage";
+import { nodeBasename } from "@calimero-apps/node-served";
+
+const basename = () => nodeBasename(new URL(window.location.href), "/");
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -97,7 +100,7 @@ function PlayPage({ joinedContextId }: { joinedContextId: string | null }) {
     return (
       <section className="connect">
         <div className="connect-card">
-          <img className="connect-mark" src="/favicon.svg" alt="" />
+          <img className="connect-mark" src={`${basename()}favicon.svg`} alt="" />
           <h1>Connect a node</h1>
           <p className="lede">
             Mero Chess plays through your own Calimero node. The login modal
@@ -153,7 +156,7 @@ function AppShell({ joinedContextId }: { joinedContextId: string | null }) {
             // back. See the guard for why this is router state and not a query.
             onClick={() => navigate("/", { state: { fromApp: true } })}
           >
-            <img src="/favicon.svg" alt="" width={28} height={28} />
+            <img src={`${basename()}favicon.svg`} alt="" width={28} height={28} />
             <span>Mero Chess</span>
           </button>
           {isAuthenticated && (
@@ -183,7 +186,7 @@ function shortId(id: string) {
 
 export function App() {
   return (
-    <BrowserRouter basename="/">
+    <BrowserRouter basename={basename()}>
       <AppRoutes />
     </BrowserRouter>
   );
