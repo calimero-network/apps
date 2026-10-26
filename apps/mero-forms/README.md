@@ -116,9 +116,24 @@ response only through a link the contract knows, and the visitor never reaches
   refuses responses; turning it back on brings them all back.
 - **An hourly cap per link** (30 by default), counted from the link's own
   responses. Over it, the link is refused until the hour rolls over.
-- **A captcha**, optional. The contract makes no network calls, so it cannot
-  ask Cloudflare itself. The `/f` page shows a Cloudflare Turnstile widget,
-  and the app's own Vercel function (`app/api/captcha.ts`,
+- **A captcha**, optional, checked one of two ways. The `/f` page shows a
+  Cloudflare Turnstile widget either way.
+- **Checked by the node** (`set_captcha_key(form, "turnstile")`). The page
+  sends the widget's token as `submit_via_link`'s `captcha_token`, and the
+  contract asks Cloudflare's `siteverify` itself through the node
+  (`env::http_request`). The request names `{{secret:TURNSTILE_SECRET_KEY}}`,
+  which the node fills in from its operator's secrets, so the secret is in no
+  state and no response. Cloudflare accepts a token once. The token is checked
+  last, after the form, link and cap checks, so a refused response spends
+  none. It needs three things on the node that serves the link:
+  - its operator turned outbound requests on for `challenges.cloudflare.com`
+    and bound `TURNSTILE_SECRET_KEY` to `com.calimero.mero-forms`;
+  - the namespace approved `https://challenges.cloudflare.com/turnstile/v0/`,
+    the one prefix the manifest declares (offered when Mero Forms is installed
+    or upgraded; until then the response is refused, never stored unchecked);
+  - core 0.12.0-rc.1 or later.
+- **Checked by a verifier** (`set_captcha_key(form, <ed25519 key>)`), for
+  nodes without the above. The app's own Vercel function (`app/api/captcha.ts`,
   `app/src/lib/captchaVerifier.ts`) checks the solved widget with Cloudflare.
   It then signs a pass, `mero-forms/captcha/v1|<form>|<link>|<nonce>|<expiry>`,
   with an ed25519 key. The contract checks that signature with the host's
@@ -235,9 +250,9 @@ Events carry ids only, never answers.
 | `list_team()` / `add_team_member(who)` / `remove_team_member(who)` | team / admin | The team |
 | `workspace_name()` / `set_workspace_name(name)` | anyone / team | The workspace's name |
 | `register_form_key(account, form_id, label)` / `forget_form_key(account)` / `list_form_keys()` | admin | The form key register, with each key's response count |
-| `set_form_public(form_id, public)` / `set_link_cap(form_id, per_hour)` / `set_captcha_key(form_id, key)` | team | Whether links take responses, how many per hour, and the captcha verifier's key (empty for none) |
+| `set_form_public(form_id, public)` / `set_link_cap(form_id, per_hour)` / `set_captcha_key(form_id, key)` | team | Whether links take responses, how many per hour, and the captcha: a verifier's key, `turnstile` for the node to check, or empty for none |
 | `create_link(form_id, link, grant_id, label)` / `delete_link(link)` / `list_links(form_id)` | team | The public link register, with each link's response counts |
-| `link_form(link)` / `submit_via_link(link, answers, captcha)` | a link's grant | The two calls a public link may make: the questions, and a response |
+| `link_form(link)` / `submit_via_link(link, answers, captcha, captcha_token)` | a link's grant | The two calls a public link may make: the questions, and a response with a verifier's pass or a Turnstile token |
 | `am_i_team()` / `am_i_admin()` / `my_account()` | anyone | Identity |
 
 ## Run it

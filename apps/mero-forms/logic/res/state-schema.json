@@ -233,7 +233,7 @@
               "kind": "string"
             }
           },
-          "doc": "The captcha verifier's ed25519 public key, hex, or empty for no\ncaptcha. A link's response then needs a pass it signed."
+          "doc": "How a link's response proves a captcha: empty for no captcha, the\nverifier's ed25519 public key (hex) for a pass it signed, or\n`turnstile` for a token the node checks with Cloudflare. See the\ncrate docs, \"Captchas\"."
         },
         {
           "name": "created_at",

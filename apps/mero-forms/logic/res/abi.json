@@ -320,7 +320,7 @@
               "kind": "string"
             }
           },
-          "doc": "The captcha verifier's ed25519 public key, hex, or empty for no\ncaptcha. A link's response then needs a pass it signed."
+          "doc": "How a link's response proves a captcha: empty for no captcha, the\nverifier's ed25519 public key (hex) for a pass it signed, or\n`turnstile` for a token the node checks with Cloudflare. See the\ncrate docs, \"Captchas\"."
         },
         {
           "name": "created_at",
@@ -706,7 +706,14 @@
           "type": {
             "kind": "bool"
           },
-          "doc": "Whether a response needs a captcha pass."
+          "doc": "Whether a response needs a captcha."
+        },
+        {
+          "name": "captcha_by_node",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "The captcha is checked by the node: send the Turnstile token as\n`captcha_token`, not a pass."
         }
       ]
     },
@@ -1523,7 +1530,7 @@
     },
     {
       "name": "set_captcha_key",
-      "doc": "Requires a captcha pass signed by `key` (an ed25519 public key, hex)\non every response through the form's links, or none when `key` is\nempty. Team only.",
+      "doc": "Requires a captcha on every response through the form's links: a pass\nsigned by `key` (an ed25519 public key, hex), or with `key` =\n`turnstile` the Turnstile token itself, which this contract checks with\nCloudflare through the node. Empty requires none. Team only.",
       "params": [
         {
           "name": "form_id",
@@ -1680,7 +1687,7 @@
     },
     {
       "name": "submit_via_link",
-      "doc": "Stores a response that came through a public link and returns its id.\nThe other method a link's grant names.\n\nRefused unless the form is open and public, the link is under its\nhourly cap, and, when the form asks for one, `captcha` is a pass the\nform's verifier signed for this form and link, unexpired and unused.",
+      "doc": "Stores a response that came through a public link and returns its id.\nThe other method a link's grant names.\n\nRefused unless the form is open and public, the link is under its\nhourly cap, and, when the form asks for a captcha, either `captcha` is\na pass the form's verifier signed for this form and link, unexpired\nand unused, or (a `turnstile` form) Cloudflare accepts\n`captcha_token`. The token is checked last, after everything that\ncosts nothing, so a refused response never spends one.",
       "params": [
         {
           "name": "link",
@@ -1701,6 +1708,13 @@
           "name": "captcha",
           "type": {
             "$ref": "CaptchaPass"
+          },
+          "nullable": true
+        },
+        {
+          "name": "captcha_token",
+          "type": {
+            "kind": "string"
           },
           "nullable": true
         }

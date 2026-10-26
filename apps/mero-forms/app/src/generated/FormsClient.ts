@@ -134,8 +134,10 @@ export interface Form {
    */
   link_cap: number;
   /**
-   * The captcha verifier's ed25519 public key, hex, or empty for no
-   * captcha. A link's response then needs a pass it signed.
+   * How a link's response proves a captcha: empty for no captcha, the
+   * verifier's ed25519 public key (hex) for a pass it signed, or
+   * `turnstile` for a token the node checks with Cloudflare. See the
+   * crate docs, "Captchas".
    */
   captcha_key: string;
   created_at: number;
@@ -242,9 +244,14 @@ export interface LinkFormView {
    */
   accepting: boolean;
   /**
-   * Whether a response needs a captcha pass.
+   * Whether a response needs a captcha.
    */
   captcha: boolean;
+  /**
+   * The captcha is checked by the node: send the Turnstile token as
+   * `captcha_token`, not a pass.
+   */
+  captcha_by_node: boolean;
 }
 
 /**
@@ -680,9 +687,10 @@ export class FormsClient {
   /**
    * set_captcha_key
    *
-   * Requires a captcha pass signed by `key` (an ed25519 public key, hex)
-   * on every response through the form's links, or none when `key` is
-   * empty. Team only.
+   * Requires a captcha on every response through the form's links: a pass
+   * signed by `key` (an ed25519 public key, hex), or with `key` =
+   * `turnstile` the Turnstile token itself, which this contract checks with
+   * Cloudflare through the node. Empty requires none. Team only.
    *
    * @intent mutating
    */
@@ -778,12 +786,15 @@ export class FormsClient {
    * The other method a link's grant names.
    *
    * Refused unless the form is open and public, the link is under its
-   * hourly cap, and, when the form asks for one, `captcha` is a pass the
-   * form's verifier signed for this form and link, unexpired and unused.
+   * hourly cap, and, when the form asks for a captcha, either `captcha` is
+   * a pass the form's verifier signed for this form and link, unexpired
+   * and unused, or (a `turnstile` form) Cloudflare accepts
+   * `captcha_token`. The token is checked last, after everything that
+   * costs nothing, so a refused response never spends one.
    *
    * @intent mutating
    */
-  public async submitViaLink(params: { link: string; answers: AnswerInput[]; captcha: CaptchaPass | null }): Promise<string> {
+  public async submitViaLink(params: { link: string; answers: AnswerInput[]; captcha: CaptchaPass | null; captcha_token: string | null }): Promise<string> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'submit_via_link', argsJson: params });
     return response as string;
   }
