@@ -62,7 +62,7 @@ dark, in Figtree (bundled, SIL OFL, `Resources/Fonts`):
 **Attachments and avatars** work as on the web. The composer's attach button
 offers a photo (sent as JPEG, so a browser shows it) or a file from Files. A
 message carries at most one image and one file, uploaded as blobs against the
-channel (`AccountAdmin.uploadBlob` on the relay, calimero-network/swift-sdk#78)
+channel (`AccountAdmin.uploadBlob` on the relay, calimero-network/swift-sdk#79)
 and sent as `send_message`'s `images` / `files`. Images show as 80×80 tiles
 that open full screen. Files are chips that download and open the share sheet.
 Tap your picture in Settings to set it for the open channel
@@ -106,11 +106,10 @@ in Xcode (Signing & Capabilities).
 ### The SDK pin
 
 The delegated parity work in swift-sdk is unreleased, so `project.yml` pins the
-package to an exact commit that carries calimero-network/swift-sdk#77 (a join
-re-signed at schema 26 when the admitting relay is on core 0.11.0-rc.90 and
-says so) and #78 (blob upload and download for an account, through the relay).
-Until both are on swift-sdk's `master`, the pin is the merge of the two on its
-`integration/mero-chat-ios` branch; move it to `master` once they land:
+package to an exact commit: the head of calimero-network/swift-sdk#79, which
+re-signs a join at schema 26 when the admitting relay is on core 0.11.0-rc.90
+and says so, and adds blob upload and download for an account through the
+relay. Move it to `master` once #79 lands:
 
 ```yaml
 packages:
