@@ -1,7 +1,10 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Start a 3-node release-v2 cluster on :2601-2603 with `merod-v2 local`.
@@ -9,7 +12,7 @@ import { join, resolve } from "node:path";
  */
 export default async function globalSetup() {
   const binary =
-    process.env["MEROD_V2_BINARY"] ?? resolve(__dirname, "../../../../../core/target/debug/merod-v2");
+    process.env["MEROD_V2_BINARY"] ?? resolve(here, "../../../../../core/target/debug/merod-v2");
   const dir = mkdtempSync(join(tmpdir(), "kv-cloud-e2e-"));
   const child = spawn(
     binary,

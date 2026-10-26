@@ -16,6 +16,10 @@ export default defineConfig({
     baseURL: "http://localhost:5173",
     trace: "on-first-retry",
     actionTimeout: 15_000,
+    // A preinstalled Chromium from another Playwright release, when given.
+    ...(process.env["PW_CHROMIUM_PATH"]
+      ? { launchOptions: { executablePath: process.env["PW_CHROMIUM_PATH"] } }
+      : {}),
   },
   webServer: {
     command: "npx vite --port 5173 --strictPort",

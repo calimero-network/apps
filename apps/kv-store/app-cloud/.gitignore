@@ -1,0 +1,6 @@
+# Copied from the contract build by scripts/copy-wasm.mjs.
+public/kv_store.wasm
+dist
+dist-types
+test-results
+playwright-report
