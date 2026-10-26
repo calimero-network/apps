@@ -5,6 +5,7 @@ import { execFile } from 'child_process';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { promisify } from 'util';
+import { servedAssetsFallback } from '@calimero-apps/node-served/vite';
 
 const run = promisify(execFile);
 const ENV_FILE = resolve(__dirname, '.env.integration');
@@ -198,7 +199,7 @@ export default defineConfig({
       },
     },
   },
-  plugins: [nodePolyfills(), react(), devRig()],
+  plugins: [servedAssetsFallback(), nodePolyfills(), react(), devRig()],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),

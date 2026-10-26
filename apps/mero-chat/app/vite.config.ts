@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig } from "vitest/config";
 import { VitePWA } from "vite-plugin-pwa";
+import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -21,6 +22,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    servedAssetsFallback(),
     react(),
     VitePWA({
       registerType: "autoUpdate",
