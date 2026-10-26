@@ -59,6 +59,10 @@ jobs:
           f="apps/${{ matrix.app }}/logic/wasm-rustflags"
           [ -f "$f" ] && echo "RUSTFLAGS=$(tr -d '\n' < "$f")" >> "$GITHUB_ENV" || true
 
+      - uses: ./.github/actions/build-frontend
+        with:
+          app: ${{ matrix.app }}
+
       # The same dev bundle ci.yml's wasm job builds, written straight to the
       # name the scenarios install: `dist/<package id>.mpk`.
       - name: Build the dev bundle

@@ -70,6 +70,11 @@ jobs:
       - name: Install merobox
         run: pip install 'merobox==0.6.75' 'calimero-client-py==0.7.0'
 
+      # run-relay.sh bundles mero-chat, which ships its frontend: build it first.
+      - uses: ./.github/actions/build-frontend
+        with:
+          app: mero-chat
+
       - name: Boot the relay
         timeout-minutes: 20
         working-directory: apps/mero-chat/mobile/e2e
