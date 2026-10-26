@@ -32,8 +32,12 @@ plus `calimero://`); list and create channels and join open ones; list and open 
 paged message history, send, edit and delete your own messages, reactions, your display name
 (`set_profile`), unread counts and mark-as-read.
 
-Not yet: threads, attachments and avatars, starting a DM, search, drafts, mentions, roles,
-presence, push notifications. Each README lists them with the reason.
+iOS also has the web app's phone design (light and dark), threads, mentions, search, drafts,
+channel roles and moderation, and reads and writes message bodies as the web editor's HTML.
+Android does not have these yet.
+
+Not yet on either: attachments and avatars, starting a DM, presence, push notifications. Each
+README lists them with the reason.
 
 ## Open points
 

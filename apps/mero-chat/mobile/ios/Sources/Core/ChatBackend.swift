@@ -102,8 +102,12 @@ struct DelegatedChatBackend: ChatBackend {
         var out: [ChannelGroupListing] = []
         for subgroup in subgroups {
             let contexts = (try? await admin.listGroupContexts(subgroup.groupId)) ?? []
+            let info = try? await admin.getGroupInfo(subgroup.groupId)
+            let visibility = info?.effectiveVisibility ?? info?.subgroupVisibility
             out.append(
-                ChannelGroupListing(groupId: subgroup.groupId, name: subgroup.name, contextIds: contexts.map(\.contextId)))
+                ChannelGroupListing(
+                    groupId: subgroup.groupId, name: subgroup.name, contextIds: contexts.map(\.contextId),
+                    isPrivate: visibility?.lowercased() == "restricted"))
         }
         return out
     }

@@ -48,6 +48,8 @@ struct ChatMessage: Decodable, Equatable, Identifiable, Sendable {
     let reactions: [String: [String]]
     let deleted: Bool
     let threadCount: UInt32
+    /// When the newest reply landed (seconds), `0` with no replies.
+    let threadLastTimestamp: UInt64
     let parentMessageId: String?
 
     private enum CodingKeys: String, CodingKey {
@@ -55,6 +57,7 @@ struct ChatMessage: Decodable, Equatable, Identifiable, Sendable {
         case mentionsUsernames = "mentions_usernames"
         case editedOn = "edited_on"
         case threadCount = "thread_count"
+        case threadLastTimestamp = "thread_last_timestamp"
         case parentMessageId = "parent_message_id"
     }
 
@@ -75,6 +78,7 @@ struct ChatMessage: Decodable, Equatable, Identifiable, Sendable {
         self.reactions = reactions
         self.deleted = deleted
         self.threadCount = 0
+        self.threadLastTimestamp = 0
         self.parentMessageId = nil
     }
 
@@ -93,6 +97,7 @@ struct ChatMessage: Decodable, Equatable, Identifiable, Sendable {
         reactions = try c.decodeIfPresent([String: [String]].self, forKey: .reactions) ?? [:]
         deleted = try c.decodeIfPresent(Bool.self, forKey: .deleted) ?? false
         threadCount = UInt32(clamping: try c.lenientUInt64(.threadCount) ?? 0)
+        threadLastTimestamp = try c.lenientUInt64(.threadLastTimestamp) ?? 0
         parentMessageId = try c.decodeIfPresent(String.self, forKey: .parentMessageId)
     }
 
@@ -294,6 +299,8 @@ struct ChannelGroupListing: Equatable, Sendable {
     let groupId: String
     let name: String?
     let contextIds: [String]
+    /// A restricted subgroup: only members it adds see it (the lock icon).
+    var isPrivate = false
 }
 
 /// A channel or DM as the lists show it.
@@ -306,6 +313,9 @@ struct ChannelEntry: Identifiable, Hashable, Sendable {
     /// Whether this account is a member of the channel's group (its contract calls work).
     let isJoined: Bool
     var unread: Int
+    /// Unread messages that mention this account (`get_unread_mentions`).
+    var mentions = 0
+    var isPrivate = false
 }
 
 /// The outcome of founding a workspace.

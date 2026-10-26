@@ -108,6 +108,16 @@ final class ChannelModel: ObservableObject {
         !message.deleted && isMine(message)
     }
 
+    /// The composer's text as the HTML the web editor writes, mentions wrapped.
+    func html(_ text: String) -> String {
+        ChatComposerText.html(from: text, members: Array(names.values))
+    }
+
+    /// What the composer starts with when `message` is edited.
+    func composerText(for message: ChatMessage) -> String {
+        ChatComposerText.text(from: RichText.parse(html: message.text))
+    }
+
     /// The members a mention can name, by display name.
     var mentionCandidates: [(userId: String, name: String)] {
         names.filter { $0.key != me }.map { (userId: $0.key, name: $0.value) }.sorted { $0.name < $1.name }
@@ -250,7 +260,7 @@ final class ChannelModel: ObservableObject {
         do {
             let mentioned = Self.mentions(in: text, names: names)
             try await api.sendMessage(
-                channel.id, text: text, parentMessage: parentId, mentions: mentioned.ids,
+                channel.id, text: html(text), parentMessage: parentId, mentions: mentioned.ids,
                 mentionsUsernames: mentioned.usernames)
             errorText = nil
             if thread == nil { clearDraft() }
@@ -264,9 +274,9 @@ final class ChannelModel: ObservableObject {
 
     func edit(_ message: ChatMessage, to rawText: String) async {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isMine(message), !text.isEmpty, text != message.text else { return }
+        guard isMine(message), !text.isEmpty, html(text) != message.text else { return }
         do {
-            try await api.editMessage(channel.id, messageId: message.id, text: text, parentId: parentId)
+            try await api.editMessage(channel.id, messageId: message.id, text: html(text), parentId: parentId)
             await refreshMessage(at: message.index)
         } catch {
             errorText = ChatErrorText.describe(error)
@@ -334,6 +344,43 @@ final class ChannelModel: ObservableObject {
         }
         await loadProfiles()
         return names[me] != nil
+    }
+
+    // MARK: Channel details, roles, search
+
+    func channelInfo() async -> ChannelInfo? {
+        do {
+            return try await api.getInfo(channel.id)
+        } catch {
+            errorText = ChatErrorText.describe(error)
+            return nil
+        }
+    }
+
+    /// Members with a role other than `User`.
+    func roles() async -> [String: ChatRole] {
+        (try? await api.listRoles(channel.id)) ?? [:]
+    }
+
+    /// Change a member's role (the contract decides who may: admins anything, mods only bans).
+    @discardableResult
+    func setRole(of userId: String, to role: ChatRole) async -> Bool {
+        do {
+            try await api.setMemberRole(channel.id, target: userId, role: role)
+            return true
+        } catch {
+            errorText = ChatErrorText.describe(error)
+            return false
+        }
+    }
+
+    func search(_ query: String, cursor: String?) async -> SearchPage? {
+        do {
+            return try await api.searchMessages(channel.id, query: query, cursor: cursor)
+        } catch {
+            errorText = ChatErrorText.describe(error)
+            return nil
+        }
     }
 
     // MARK: Drafts
