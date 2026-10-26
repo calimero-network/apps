@@ -1,0 +1,446 @@
+# Ported from e2e-test.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   invite_open x1: v1 open invitations
+#   join_open x1: v1 open invitations
+#   upload_blob x4: release-v2 has no blob API yet
+#   wait_for_sync x5: replication is synchronous: a read sees every committed write
+# NOTE: no wasm for bundle 'logic/res/mero_sign.wasm' service None: add it to the wasm map
+# NOTE: no wasm for bundle 'logic/res/mero_sign.wasm' service None: add it to the wasm map
+# NOTE: no wasm for bundle 'logic/res/mero_sign.wasm' service None: add it to the wasm map
+name: MeroSign E2E Test Workflow
+description: Comprehensive E2E test workflow for MeroSign e-signature platform
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3480
+accounts:
+- merosign-e2e-1
+- merosign-e2e-2
+- merosign-e2e-1-id1
+- merosign-e2e-2-id1
+steps:
+- name: Install MeroSign on Node 1
+  type: upload_bundle
+  wasm: '{{env.APP_WASM}}'
+  outputs:
+    app_id: hash
+  account: merosign-e2e-1
+- name: Assert application installed
+  type: assert
+  statements:
+  - is_set({{app_id}})
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create Identity on Node 1
+  type: whoami
+  account: merosign-e2e-1-id1
+  outputs:
+    node1_identity: publicKey
+- name: Create Identity on Node 2
+  type: whoami
+  account: merosign-e2e-2-id1
+  outputs:
+    node2_identity: publicKey
+- name: Wait for Identity Creation
+  type: wait
+  seconds: 1.0
+- name: Assert identities created
+  type: assert
+  statements:
+  - is_set({{node1_identity}})
+  - is_set({{node2_identity}})
+- name: Create Private Context on Node 1
+  type: deploy
+  account: merosign-e2e-1
+  wasm: '{{env.APP_WASM}}'
+  app_name: Create Private Context on Node 1
+  init_args: '{"is_private": true, "context_name": "default"}'
+  access:
+    kind: accounts
+    accounts:
+    - merosign-e2e-1
+    - merosign-e2e-2
+    - merosign-e2e-1-id1
+    - merosign-e2e-2-id1
+  outputs:
+    private_ctx_1: appId
+    private_key_1: memberPublicKey
+- name: Create Private Context on Node 2
+  type: deploy
+  account: merosign-e2e-2
+  wasm: '{{env.APP_WASM}}'
+  app_name: Create Private Context on Node 2
+  init_args: '{"is_private": true, "context_name": "default"}'
+  access:
+    kind: accounts
+    accounts:
+    - merosign-e2e-1
+    - merosign-e2e-2
+    - merosign-e2e-1-id1
+    - merosign-e2e-2-id1
+  outputs:
+    private_ctx_2: appId
+    private_key_2: memberPublicKey
+- name: Assert private contexts created
+  type: assert
+  statements:
+  - is_set({{private_ctx_1}})
+  - is_set({{private_ctx_2}})
+- name: Wait for Private Contexts
+  type: wait
+  seconds: 1.0
+- name: Check Default Private Context - Node 1
+  type: call
+  app: '{{private_ctx_1}}'
+  method: is_default_private_context
+  args: {}
+  account: merosign-e2e-1
+  as_key: '{{private_key_1}}'
+  outputs:
+    is_default_result: result
+- name: Assert blob uploaded
+  type: assert
+  statements:
+  - is_set({{sig_blob_id}})
+- name: Create Signature - Node 1
+  type: call
+  app: '{{private_ctx_1}}'
+  method: create_signature
+  args:
+    name: John Doe Signature
+    blob_id_str: '{{sig_blob_id}}'
+    data_size: '{{sig_blob_size}}'
+  account: merosign-e2e-1
+  as_key: '{{private_key_1}}'
+  outputs:
+    signature_id: result
+- name: Assert signature created
+  type: assert
+  statements:
+  - is_set({{signature_id}})
+- name: List Signatures - Node 1
+  type: call
+  app: '{{private_ctx_1}}'
+  method: list_signatures
+  args: {}
+  account: merosign-e2e-1
+  as_key: '{{private_key_1}}'
+  outputs:
+    signatures_list: result
+- name: Assert signatures list not empty
+  type: assert
+  statements:
+  - is_set({{signatures_list}})
+- name: Create Shared Agreement Context
+  type: deploy
+  account: merosign-e2e-1
+  wasm: '{{env.APP_WASM}}'
+  app_name: Create Shared Agreement Context
+  init_args: '{"is_private": false, "context_name": "contract_agreement_e2e"}'
+  access:
+    kind: accounts
+    accounts:
+    - merosign-e2e-1
+    - merosign-e2e-2
+    - merosign-e2e-1-id1
+    - merosign-e2e-2-id1
+  outputs:
+    shared_ctx: appId
+    admin_key: memberPublicKey
+- name: Assert shared context created
+  type: assert
+  statements:
+  - is_set({{shared_ctx}})
+  - is_set({{admin_key}})
+- name: Assert invitation created
+  type: assert
+  statements:
+  - is_set({{open_invitation}})
+- name: Assert nodes joined
+  type: assert
+  statements:
+  - is_set({{joined_ctx_2}})
+- name: Register Node 2 as Participant
+  type: call
+  app: '{{shared_ctx}}'
+  method: register_self_as_participant
+  args: {}
+  account: merosign-e2e-2
+  as_key: '{{joined_key_2}}'
+  outputs:
+    register_result_2: result
+- name: List Participants - Node 1
+  type: call
+  app: '{{shared_ctx}}'
+  method: list_participants
+  args: {}
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  outputs:
+    participants_list: result
+- name: Assert participants list
+  type: assert
+  statements:
+  - is_set({{participants_list}})
+- name: Get Permission for Node 2
+  type: call
+  app: '{{shared_ctx}}'
+  method: get_user_permission
+  args:
+    user_id_str: '{{joined_key_2}}'
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  outputs:
+    node2_permission: result
+- name: Get Context Details
+  type: call
+  app: '{{shared_ctx}}'
+  method: get_context_details
+  args:
+    context_id_str: '{{shared_ctx}}'
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  outputs:
+    context_details: result
+- name: Assert context details
+  type: assert
+  statements:
+  - is_set({{context_details}})
+- name: Assert document blob uploaded
+  type: assert
+  statements:
+  - is_set({{doc_blob_id}})
+- name: Upload Document to Agreement
+  type: call
+  app: '{{shared_ctx}}'
+  method: upload_document
+  args:
+    name: Employment Contract
+    hash: abc123def456
+    pdf_blob_id_str: '{{doc_blob_id}}'
+    file_size: '{{doc_blob_size}}'
+    embeddings: null
+    extracted_text: This is a sample legal agreement document for MeroSign E2E testing.
+    chunks: null
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  outputs:
+    document_id: result
+- name: Assert document uploaded
+  type: assert
+  statements:
+  - is_set({{document_id}})
+- name: List Documents - Node 1
+  type: call
+  app: '{{shared_ctx}}'
+  method: list_documents
+  args: {}
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  outputs:
+    docs_node1: result
+- name: List Documents - Node 2
+  type: call
+  app: '{{shared_ctx}}'
+  method: list_documents
+  args: {}
+  account: merosign-e2e-2
+  as_key: '{{joined_key_2}}'
+  outputs:
+    docs_node2: result
+- name: Assert documents visible on all nodes
+  type: assert
+  statements:
+  - is_set({{docs_node1}})
+  - is_set({{docs_node2}})
+- name: Node 2 Gives Consent
+  type: call
+  app: '{{shared_ctx}}'
+  method: set_consent
+  args:
+    document_id: '{{document_id}}'
+  account: merosign-e2e-2
+  as_key: '{{joined_key_2}}'
+  outputs:
+    consent_result_2: result
+- name: Check Consent - Node 2
+  type: call
+  app: '{{shared_ctx}}'
+  method: has_consented
+  args:
+    user_id_str: '{{joined_key_2}}'
+    document_id: '{{document_id}}'
+  account: merosign-e2e-2
+  as_key: '{{joined_key_2}}'
+  outputs:
+    has_consent_2: result
+- name: Node 2 Signs Document
+  type: call
+  app: '{{shared_ctx}}'
+  method: sign_document
+  args:
+    document_id: '{{document_id}}'
+    base_hash: abc123def456
+    pdf_blob_id_str: '{{signed_blob_id}}'
+    file_size: '{{signed_blob_size}}'
+    new_hash: signed_hash_node2_abc123
+  account: merosign-e2e-2
+  as_key: '{{joined_key_2}}'
+  outputs:
+    sign_result_2: result
+- name: Get Document Signatures
+  type: call
+  app: '{{shared_ctx}}'
+  method: get_document_signatures
+  args:
+    document_id: '{{document_id}}'
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  outputs:
+    signatures: result
+- name: Assert signatures exist
+  type: assert
+  statements:
+  - is_set({{signatures}})
+- name: Expected Failure - Sign Without Consent
+  type: call
+  app: '{{shared_ctx}}'
+  method: sign_document
+  args:
+    document_id: '{{document_id}}'
+    base_hash: signed_hash_node2_abc123
+    pdf_blob_id_str: '{{signed_blob_id}}'
+    file_size: '{{signed_blob_size}}'
+    new_hash: should_fail_hash
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  expected_failure: true
+  outputs:
+    no_consent_error: error_message
+- name: Assert sign without consent failed
+  type: assert
+  statements:
+  - is_set({{no_consent_error}})
+- name: Expected Failure - Signature in Shared Context
+  type: call
+  app: '{{shared_ctx}}'
+  method: create_signature
+  args:
+    name: Should Fail
+    blob_id_str: '{{sig_blob_id}}'
+    data_size: '100'
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  expected_failure: true
+  outputs:
+    sig_shared_error: error_message
+- name: Assert signature in shared context failed
+  type: assert
+  statements:
+  - is_set({{sig_shared_error}})
+- name: Expected Failure - List Signatures in Shared Context
+  type: call
+  app: '{{shared_ctx}}'
+  method: list_signatures
+  args: {}
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  expected_failure: true
+  outputs:
+    list_sig_error: error_message
+- name: Assert list signatures in shared context failed
+  type: assert
+  statements:
+  - is_set({{list_sig_error}})
+- name: Node 1 Gives Consent
+  type: call
+  app: '{{shared_ctx}}'
+  method: set_consent
+  args:
+    document_id: '{{document_id}}'
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  outputs:
+    consent_result_1: result
+- name: Node 1 Signs Document
+  type: call
+  app: '{{shared_ctx}}'
+  method: sign_document
+  args:
+    document_id: '{{document_id}}'
+    base_hash: signed_hash_node2_abc123
+    pdf_blob_id_str: '{{signed_blob_id_1}}'
+    file_size: '{{signed_blob_size_1}}'
+    new_hash: signed_hash_node1_def456
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  outputs:
+    sign_result_1: result
+- name: Get Final Document Signatures
+  type: call
+  app: '{{shared_ctx}}'
+  method: get_document_signatures
+  args:
+    document_id: '{{document_id}}'
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  outputs:
+    final_signatures: result
+- name: Assert final signatures
+  type: assert
+  statements:
+  - is_set({{final_signatures}})
+- name: Final Document List - Node 1
+  type: call
+  app: '{{shared_ctx}}'
+  method: list_documents
+  args: {}
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  outputs:
+    final_docs_node1: result
+- name: Final Document List - Node 2
+  type: call
+  app: '{{shared_ctx}}'
+  method: list_documents
+  args: {}
+  account: merosign-e2e-2
+  as_key: '{{joined_key_2}}'
+  outputs:
+    final_docs_node2: result
+- name: Get Context ID
+  type: call
+  app: '{{shared_ctx}}'
+  method: get_context_id
+  args: {}
+  account: merosign-e2e-1
+  as_key: '{{admin_key}}'
+  outputs:
+    contract_context_id: result
+- name: Assert final state consistency
+  type: assert
+  statements:
+  - is_set({{final_docs_node1}})
+  - is_set({{final_docs_node2}})
+  - is_set({{contract_context_id}})
+- name: Delete Signature - Node 1
+  type: call
+  app: '{{private_ctx_1}}'
+  method: delete_signature
+  args:
+    signature_id: 0
+  account: merosign-e2e-1
+  as_key: '{{private_key_1}}'
+  outputs:
+    delete_sig_result: result
+- name: List Signatures After Delete
+  type: call
+  app: '{{private_ctx_1}}'
+  method: list_signatures
+  args: {}
+  account: merosign-e2e-1
+  as_key: '{{private_key_1}}'
+  outputs:
+    signatures_after_delete: result

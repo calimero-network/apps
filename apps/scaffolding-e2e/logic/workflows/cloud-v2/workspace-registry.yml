@@ -1,0 +1,415 @@
+# Ported from workspace-registry.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x4: replication is synchronous: a read sees every committed write
+name: Workspace Registry E2E
+description: 'The app-level directory: channels, groups, member roles, and the cross-context xcall ping.
+  Covers the two-layer membership model — a node member with no workspace role can read the directory
+  but not write to it — and the account-vs-device-key trap that makes a role grant look like it worked
+  when it did not.
+
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3790
+accounts:
+- e2e-node-1
+- e2e-node-2
+steps:
+- name: Install application on e2e-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
+  outputs:
+    app_id: hash
+  account: e2e-node-1
+- name: Assert application installed
+  type: assert
+  statements:
+  - is_set({{app_id}})
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace on node-1
+  type: create_org
+  org_name: Create namespace on node-1
+  outputs:
+    namespace_id: orgId
+  account: e2e-node-1
+- name: Create the workspace context
+  type: deploy
+  account: e2e-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
+  app_name: Create the workspace context
+  org: '{{namespace_id}}'
+  outputs:
+    ws_ctx: appId
+    ws_key_node1: memberPublicKey
+- name: Create the channel context (the xcall target)
+  type: deploy
+  account: e2e-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
+  app_name: Create the channel context (the xcall target)
+  org: '{{namespace_id}}'
+  outputs:
+    chan_ctx: appId
+    chan_key_node1: memberPublicKey
+- name: Assert both contexts created
+  type: assert
+  statements:
+  - is_set({{ws_ctx}})
+  - is_set({{chan_ctx}})
+- name: node-1 claims the workspace
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_init
+  args:
+    name: E2E Workspace
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+- name: node-1 reports its own account id
+  type: call
+  app: '{{ws_ctx}}'
+  method: whoami
+  args: {}
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+  outputs:
+    n1_account: result.account_id
+- name: Assert node-1 account id is populated
+  type: assert
+  statements:
+  - is_set({{n1_account}})
+- name: node-1 reads its own role
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_my_role
+  args: {}
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+  outputs:
+    n1_role: rpc
+- name: Assert node-1 is the admin
+  type: json_assert
+  statements:
+  - 'json_equal({{n1_role}}, {"output": "admin"})'
+- name: node-1 reads the workspace summary
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_get_info
+  args: {}
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+  outputs:
+    ws_info_name: result.name
+    ws_info_admin: result.admin
+    ws_info_members: result.member_count
+- name: Assert the summary reports the claimer as admin
+  type: json_assert
+  statements:
+  - json_equal({{ws_info_name}}, "E2E Workspace")
+  - json_equal({{ws_info_admin}}, "{{n1_account}}")
+  - json_equal({{ws_info_members}}, 1)
+- name: node-1 registers the channel context
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_register_channel
+  args:
+    context_id: '{{chan_ctx}}'
+    name: '#general'
+    topic: Announcements
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+- name: node-1 registers a group
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_register_group
+  args:
+    group_id: '{{namespace_id}}'
+    name: Engineering
+    description: the namespace, mirrored into app state
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+- name: node-1 lists channels
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_list_channels
+  args: {}
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+  outputs:
+    chan0_ctx: result.0.context_id
+    chan0_name: result.0.name
+    chan0_by: result.0.created_by
+- name: Assert the registered channel round-trips
+  type: json_assert
+  statements:
+  - json_equal({{chan0_ctx}}, "{{chan_ctx}}")
+  - json_equal({{chan0_name}}, "#general")
+  - json_equal({{chan0_by}}, "{{n1_account}}")
+- name: node-1 lists groups
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_list_groups
+  args: {}
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+  outputs:
+    grp0_id: result.0.group_id
+    grp0_name: result.0.name
+- name: Assert the registered group round-trips
+  type: json_assert
+  statements:
+  - json_equal({{grp0_id}}, "{{namespace_id}}")
+  - json_equal({{grp0_name}}, "Engineering")
+- name: Invite node-2 into the namespace
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: e2e-node-1
+  outputs:
+    ns_invitation: token
+- name: Settle before node-2 joins the namespace
+  type: wait
+  seconds: 1.0
+- name: node-2 joins the namespace
+  type: redeem_invite
+  token: '{{ns_invitation}}'
+  account: e2e-node-2
+- type: whoami
+  account: e2e-node-2
+  outputs:
+    n2_ns_identity: publicKey
+- name: node-2 joins the workspace context
+  type: whoami
+  account: e2e-node-2
+  outputs:
+    n2_ws_key: publicKey
+- name: Assert node-2 is in the namespace and the context
+  type: assert
+  statements:
+  - is_set({{n2_ns_identity}})
+  - is_set({{n2_ws_key}})
+- name: node-2 lists channels
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_list_channels
+  args: {}
+  account: e2e-node-2
+  as_key: '{{n2_ws_key}}'
+  outputs:
+    n2_chan0_ctx: result.0.context_id
+- name: Assert node-2 sees the synced channel
+  type: json_assert
+  statements:
+  - json_equal({{n2_chan0_ctx}}, "{{chan_ctx}}")
+- name: node-2 reports its own account id
+  type: call
+  app: '{{ws_ctx}}'
+  method: whoami
+  args: {}
+  account: e2e-node-2
+  as_key: '{{n2_ws_key}}'
+  outputs:
+    n2_account: result.account_id
+- name: node-2 reads its own role before any grant
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_my_role
+  args: {}
+  account: e2e-node-2
+  as_key: '{{n2_ws_key}}'
+  outputs:
+    n2_role_pre: rpc
+- name: Assert node-2 has no workspace role yet
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_role_pre}}, {"output": ""})'
+- name: node-1 grants node-2 the member role, keyed by ACCOUNT
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_set_member_role
+  args:
+    identity: '{{n2_account}}'
+    role: member
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+- name: node-2 reads its own role after the grant
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_my_role
+  args: {}
+  account: e2e-node-2
+  as_key: '{{n2_ws_key}}'
+  outputs:
+    n2_role_post: rpc
+- name: Assert the grant reached the account the caller presents
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_role_post}}, {"output": "member"})'
+- name: node-1 reads node-2's role by account
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_get_member_role
+  args:
+    identity: '{{n2_account}}'
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+  outputs:
+    n2_role_by_admin: rpc
+- name: Assert both sides agree on the role
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_role_by_admin}}, {"output": "member"})'
+- name: node-2 reads the admin's role from the synced registry
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_get_member_role
+  args:
+    identity: '{{n1_account}}'
+  account: e2e-node-2
+  as_key: '{{n2_ws_key}}'
+  outputs:
+    n2_sees_admin_role: rpc
+- name: Assert node-2 agrees the claimer is the admin
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_sees_admin_role}}, {"output": "admin"})'
+- name: node-2 lists members
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_list_members
+  args: {}
+  account: e2e-node-2
+  as_key: '{{n2_ws_key}}'
+  outputs:
+    n2_members: rpc
+- name: Assert the listing is populated
+  type: assert
+  statements:
+  - is_set({{n2_members}})
+- name: Assert the workspace now has two members
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_get_info
+  args: {}
+  account: e2e-node-2
+  as_key: '{{n2_ws_key}}'
+  outputs:
+    member_count_post: result.member_count
+- name: Assert member_count reflects the grant
+  type: json_assert
+  statements:
+  - json_equal({{member_count_post}}, 2)
+- name: node-2 registers a channel of its own
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_register_channel
+  args:
+    context_id: '{{ws_ctx}}'
+    name: '#node2'
+    topic: ''
+  account: e2e-node-2
+  as_key: '{{n2_ws_key}}'
+- name: node-1 reads the channel count
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_get_info
+  args: {}
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+  outputs:
+    chan_count_post: result.channel_count
+- name: Assert a member's write propagated
+  type: json_assert
+  statements:
+  - json_equal({{chan_count_post}}, 2)
+- name: node-1 unregisters node-2's channel
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_unregister_channel
+  args:
+    context_id: '{{ws_ctx}}'
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+- name: node-1 unregisters the group
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_unregister_group
+  args:
+    group_id: '{{namespace_id}}'
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+- name: node-2 reads the counts after the removals
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_get_info
+  args: {}
+  account: e2e-node-2
+  as_key: '{{n2_ws_key}}'
+  outputs:
+    chan_count_final: result.channel_count
+    grp_count_final: result.group_count
+- name: Assert the removals propagated
+  type: json_assert
+  statements:
+  - json_equal({{chan_count_final}}, 1)
+  - json_equal({{grp_count_final}}, 0)
+- name: node-2 lists groups after the removal
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_list_groups
+  args: {}
+  account: e2e-node-2
+  as_key: '{{n2_ws_key}}'
+  outputs:
+    groups_final: rpc
+- name: Assert the group listing is empty
+  type: json_assert
+  statements:
+  - 'json_equal({{groups_final}}, {"output": []})'
+- name: node-1 claims the channel context too
+  type: call
+  app: '{{chan_ctx}}'
+  method: ws_init
+  args:
+    name: Channel Workspace
+  account: e2e-node-1
+  as_key: '{{chan_key_node1}}'
+- name: The channel context starts with zero pongs
+  type: call
+  app: '{{chan_ctx}}'
+  method: ws_ping_count
+  args: {}
+  account: e2e-node-1
+  as_key: '{{chan_key_node1}}'
+  outputs:
+    pongs_pre: rpc
+- name: Assert no pongs yet
+  type: json_assert
+  statements:
+  - 'json_equal({{pongs_pre}}, {"output": 0})'
+- name: node-1 pings the channel context from the workspace context
+  type: call
+  app: '{{ws_ctx}}'
+  method: ws_ping_channel
+  args:
+    target_context_id: '{{chan_ctx}}'
+  account: e2e-node-1
+  as_key: '{{ws_key_node1}}'
+- name: Give the node a proposal cycle to dispatch the xcall
+  type: wait
+  seconds: 1.0
+- name: The channel context reports its pongs
+  type: call
+  app: '{{chan_ctx}}'
+  method: ws_ping_count
+  args: {}
+  account: e2e-node-1
+  as_key: '{{chan_key_node1}}'
+  outputs:
+    pongs_post: rpc
+- name: Assert the xcall landed on ws_pong
+  type: json_assert
+  statements:
+  - 'json_equal({{pongs_post}}, {"output": 1})'

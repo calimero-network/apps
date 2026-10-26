@@ -1,0 +1,506 @@
+# Ported from authored-shared.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x11: replication is synchronous: a read sees every committed write
+name: Authored Map + Shared Storage E2E
+description: Multi-node sync tests for AuthoredMap (per-entry ownership) and SharedStorage (rotatable
+  writer set)
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3620
+accounts:
+- e2e-node-1
+- e2e-node-2
+- e2e-node-3
+steps:
+- name: Install application on node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
+  outputs:
+    app_id: hash
+  account: e2e-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create the namespace on node-1
+  type: create_org
+  org_name: Create the namespace on node-1
+  outputs:
+    namespace_id: orgId
+  account: e2e-node-1
+- name: Create the context on node-1
+  type: deploy
+  account: e2e-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
+  app_name: Create the context on node-1
+  org: '{{namespace_id}}'
+  outputs:
+    context_id: appId
+    node1_key: memberPublicKey
+- name: Invitation for node-2
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: e2e-node-1
+  outputs:
+    invite_node2: token
+- name: Settle before node-2 joins
+  type: wait
+  seconds: 1.0
+- name: Node-2 joins the namespace
+  type: redeem_invite
+  token: '{{invite_node2}}'
+  account: e2e-node-2
+- name: Node-2 joins the context
+  type: whoami
+  account: e2e-node-2
+  outputs:
+    public_key_e2e-node-2: publicKey
+- name: Invitation for node-3
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: e2e-node-1
+  outputs:
+    invite_node3: token
+- name: Settle before node-3 joins
+  type: wait
+  seconds: 1.0
+- name: Node-3 joins the namespace
+  type: redeem_invite
+  token: '{{invite_node3}}'
+  account: e2e-node-3
+- name: Node-3 joins the context
+  type: whoami
+  account: e2e-node-3
+  outputs:
+    public_key_e2e-node-3: publicKey
+- name: Verify mesh keys are populated
+  type: assert
+  statements:
+  - is_set({{node1_key}})
+  - is_set({{public_key_e2e-node-2}})
+  - is_set({{public_key_e2e-node-3}})
+- name: node-1 reports its own account id
+  type: call
+  app: '{{context_id}}'
+  method: whoami
+  args: {}
+  account: e2e-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_account: result.account_id
+- name: Verify node-1 account id is populated
+  type: assert
+  statements:
+  - is_set({{n1_account}})
+- name: node-1 inserts authored entry
+  type: call
+  app: '{{context_id}}'
+  method: authored_insert
+  args:
+    key: alice_key
+    value: owned_by_node1
+  account: e2e-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 reads node-1's authored entry by owner
+  type: call
+  app: '{{context_id}}'
+  method: authored_get_by
+  args:
+    owner: '{{n1_account}}'
+    key: alice_key
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+  outputs:
+    n2_authored_get: rpc
+- name: Assert node-2 sees authored value
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_authored_get}}, {"output": "owned_by_node1"})'
+- name: node-3 lists the owners of the authored key
+  type: call
+  app: '{{context_id}}'
+  method: authored_owners
+  args:
+    key: alice_key
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    n3_owner: rpc
+- name: Assert node-1 is the key's only owner
+  type: json_assert
+  statements:
+  - 'json_equal({{n3_owner}}, {"output": ["{{n1_account}}"]})'
+- name: node-3 reads the authored key's holder
+  type: call
+  app: '{{context_id}}'
+  method: authored_get_owner
+  args:
+    key: alice_key
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    n3_holder: rpc
+- name: Assert the key's holder is node-1
+  type: json_assert
+  statements:
+  - 'json_equal({{n3_holder}}, {"output": "{{n1_account}}"})'
+- name: node-1 updates its own authored entry
+  type: call
+  app: '{{context_id}}'
+  method: authored_update
+  args:
+    key: alice_key
+    value: updated_by_owner
+  account: e2e-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 sees updated authored value
+  type: call
+  app: '{{context_id}}'
+  method: authored_get
+  args:
+    key: alice_key
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+  outputs:
+    n2_after_update: rpc
+- name: Assert authored update propagated
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_after_update}}, {"output": "updated_by_owner"})'
+- name: node-2 inserts its own authored entry
+  type: call
+  app: '{{context_id}}'
+  method: authored_insert
+  args:
+    key: bob_key
+    value: owned_by_node2
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+- name: node-1 reads node-2's authored entry
+  type: call
+  app: '{{context_id}}'
+  method: authored_get
+  args:
+    key: bob_key
+  account: e2e-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_bob_value: rpc
+- name: Assert cross-owner read works
+  type: json_assert
+  statements:
+  - 'json_equal({{n1_bob_value}}, {"output": "owned_by_node2"})'
+- name: node-3 enumerates authored_entries
+  type: call
+  app: '{{context_id}}'
+  method: authored_len
+  args: {}
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    n3_authored_len: rpc
+- name: Assert authored_len reflects both keys (>= 2)
+  type: json_assert
+  statements:
+  - 'json_equal({{n3_authored_len}}, {"output": 2})'
+- name: node-1 removes its authored entry
+  type: call
+  app: '{{context_id}}'
+  method: authored_remove
+  args:
+    key: alice_key
+  account: e2e-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 reads removed authored entry → null
+  type: call
+  app: '{{context_id}}'
+  method: authored_get
+  args:
+    key: alice_key
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+  outputs:
+    n2_after_remove: rpc
+- name: Assert removed entry is gone
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_after_remove}}, {"output": null})'
+- name: node-1 (initial writer) sets shared value
+  type: call
+  app: '{{context_id}}'
+  method: shared_set
+  args:
+    value: v1_from_node1
+  account: e2e-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 reads shared value
+  type: call
+  app: '{{context_id}}'
+  method: shared_get
+  args: {}
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+  outputs:
+    n2_shared_get: rpc
+- name: Assert shared value synced to node-2
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_shared_get}}, {"output": "v1_from_node1"})'
+- name: node-3 reads shared value
+  type: call
+  app: '{{context_id}}'
+  method: shared_get
+  args: {}
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    n3_shared_get: rpc
+- name: Assert shared value synced to node-3
+  type: json_assert
+  statements:
+  - 'json_equal({{n3_shared_get}}, {"output": "v1_from_node1"})'
+- name: node-2 reports its own account id
+  type: call
+  app: '{{context_id}}'
+  method: whoami
+  args: {}
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+  outputs:
+    n2_account: result.account_id
+- name: node-2 checks shared_is_writer for itself (should be false)
+  type: call
+  app: '{{context_id}}'
+  method: shared_is_writer
+  args:
+    account_hex: '{{n2_account}}'
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+  outputs:
+    n2_is_writer_pre: rpc
+- name: Assert node-2 not yet a writer
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_is_writer_pre}}, {"output": false})'
+- name: node-1 adds node-2 as shared writer
+  type: call
+  app: '{{context_id}}'
+  method: shared_add_writer
+  args:
+    account_hex: '{{n2_account}}'
+  account: e2e-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 checks shared_is_writer for itself (should now be true)
+  type: call
+  app: '{{context_id}}'
+  method: shared_is_writer
+  args:
+    account_hex: '{{n2_account}}'
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+  outputs:
+    n2_is_writer_post: rpc
+- name: Assert node-2 is now a writer
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_is_writer_post}}, {"output": true})'
+- name: node-2 writes shared value
+  type: call
+  app: '{{context_id}}'
+  method: shared_set
+  args:
+    value: v2_from_node2
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+- name: node-3 reads new shared value
+  type: call
+  app: '{{context_id}}'
+  method: shared_get
+  args: {}
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    n3_shared_get_v2: rpc
+- name: Assert second shared write propagated
+  type: json_assert
+  statements:
+  - 'json_equal({{n3_shared_get_v2}}, {"output": "v2_from_node2"})'
+- name: node-3 reads shared writer set
+  type: call
+  app: '{{context_id}}'
+  method: shared_get_writers
+  args: {}
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    n3_writers: rpc
+- name: Assert is_frozen is false
+  type: call
+  app: '{{context_id}}'
+  method: shared_is_frozen
+  args: {}
+  account: e2e-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    is_frozen: rpc
+- name: Assert shared_is_frozen returns false
+  type: json_assert
+  statements:
+  - 'json_equal({{is_frozen}}, {"output": false})'
+- name: node-1 pushes first authored vector entry
+  type: call
+  app: '{{context_id}}'
+  method: authored_vec_push
+  args:
+    value: slot0_from_node1
+  account: e2e-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    slot0_index: result
+- name: Assert slot0 index is 0
+  type: json_assert
+  statements:
+  - json_equal({{slot0_index}}, 0)
+- name: node-2 pushes second authored vector entry
+  type: call
+  app: '{{context_id}}'
+  method: authored_vec_push
+  args:
+    value: slot1_from_node2
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+  outputs:
+    slot1_index: result
+- name: Assert slot1 index is 1
+  type: json_assert
+  statements:
+  - json_equal({{slot1_index}}, 1)
+- name: node-3 reads slot0 pushed by node-1
+  type: call
+  app: '{{context_id}}'
+  method: authored_vec_get
+  args:
+    index: 0
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    n3_slot0: rpc
+- name: Assert node-3 sees slot0 value
+  type: json_assert
+  statements:
+  - 'json_equal({{n3_slot0}}, {"output": "slot0_from_node1"})'
+- name: node-3 reads owner of slot0
+  type: call
+  app: '{{context_id}}'
+  method: authored_vec_get_owner
+  args:
+    index: 0
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    slot0_owner: rpc
+- name: Assert slot0 owner is node-1
+  type: json_assert
+  statements:
+  - 'json_equal({{slot0_owner}}, {"output": "{{n1_account}}"})'
+- name: node-1 updates its own slot0
+  type: call
+  app: '{{context_id}}'
+  method: authored_vec_update
+  args:
+    index: 0
+    value: slot0_updated_by_node1
+  account: e2e-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 sees updated slot0
+  type: call
+  app: '{{context_id}}'
+  method: authored_vec_get
+  args:
+    index: 0
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+  outputs:
+    n2_slot0_updated: rpc
+- name: Assert slot0 update propagated to node-2
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_slot0_updated}}, {"output": "slot0_updated_by_node1"})'
+- name: node-2 tombstones its own slot1
+  type: call
+  app: '{{context_id}}'
+  method: authored_vec_remove
+  args:
+    index: 1
+  account: e2e-node-2
+  as_key: '{{public_key_e2e-node-2}}'
+- name: node-1 reads slot1 after tombstone
+  type: call
+  app: '{{context_id}}'
+  method: authored_vec_get
+  args:
+    index: 1
+  account: e2e-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_slot1_after_tombstone: rpc
+- name: Assert slot1 is tombstoned (empty string)
+  type: json_assert
+  statements:
+  - 'json_equal({{n1_slot1_after_tombstone}}, {"output": ""})'
+- name: node-3 checks vector length is 2
+  type: call
+  app: '{{context_id}}'
+  method: authored_vec_len
+  args: {}
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    vec_len: rpc
+- name: Assert authored vector length is 2
+  type: json_assert
+  statements:
+  - 'json_equal({{vec_len}}, {"output": 2})'
+- name: node-3 lists every authored map entry
+  type: call
+  app: '{{context_id}}'
+  method: authored_entries
+  args: {}
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    all_authored: rpc
+- name: Assert a non-author sees exactly the surviving entry
+  type: json_assert
+  statements:
+  - 'json_equal({{all_authored}}, {"output": {"bob_key": "owned_by_node2"}})'
+- name: node-3 lists every authored vector entry
+  type: call
+  app: '{{context_id}}'
+  method: authored_vec_entries
+  args: {}
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    all_authored_vec: rpc
+- name: Assert the vector lists both slots, tombstone included
+  type: assert
+  statements:
+  - is_set({{all_authored_vec}})
+- name: node-3 re-reads the vector length alongside the entries
+  type: call
+  app: '{{context_id}}'
+  method: authored_vec_len
+  args: {}
+  account: e2e-node-3
+  as_key: '{{public_key_e2e-node-3}}'
+  outputs:
+    vec_len_for_entries: rpc
+- name: Assert the iterator and the length agree
+  type: json_assert
+  statements:
+  - 'json_equal({{vec_len_for_entries}}, {"output": 2})'
+  - 'json_equal({{all_authored_vec}}, {"output": ["slot0_updated_by_node1", ""]})'

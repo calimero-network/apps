@@ -1,0 +1,227 @@
+# Ported from converge.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x5: replication is synchronous: a read sees every committed write
+name: KV Store convergence
+description: "What `simple-store.yml` cannot show: the CRDT properties.\nThat scenario walks the whole\
+  \ RPC surface, but it does so SEQUENTIALLY on one node and reads back on the other — which proves replication,\
+  \ not convergence. Every write there is already ordered before the next one, so a merge that simply\
+  \ kept the last delta to arrive would pass it end to end.\nThis one writes from BOTH nodes without an\
+  \ intervening sync and asserts the two properties that separates a CRDT from a race:\n\n  * distinct\
+  \ keys written concurrently must ALL survive — the map is a union,\n    not a last-writer-wins cell\
+  \ holding one key\n  * one key written concurrently by two nodes must converge to ONE value, the\n \
+  \   same value on both, and must not split into two entries\n\nIt then adds a THIRD node that joins\
+  \ after all of it, which is the cold-sync path: a joiner has no history, so everything it sees has to\
+  \ arrive by sync rather than by having been present at write time.\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3030
+accounts:
+- kvc-node-1
+- kvc-node-2
+- kvc-node-3
+steps:
+- name: Install application on kvc-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/kv_store.wasm'
+  outputs:
+    app_id: hash
+  account: kvc-node-1
+- name: Assert application installed
+  type: assert
+  statements:
+  - is_set({{app_id}})
+- name: Settle before the mesh joins
+  type: wait
+  seconds: 1.0
+- name: Create mesh with node-2
+  type: deploy
+  account: kvc-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/kv_store.wasm'
+  app_name: Create mesh with node-2
+  access:
+    kind: accounts
+    accounts:
+    - kvc-node-1
+    - kvc-node-2
+  outputs:
+    context_id: appId
+    node1_key: memberPublicKey
+- name: Verify mesh keys are populated
+  type: assert
+  statements:
+  - is_set({{context_id}})
+  - is_set({{node1_key}})
+  - is_set({{public_key_kvc-node-2}})
+- name: node-1 writes alpha
+  type: call
+  app: '{{context_id}}'
+  method: set
+  args:
+    key: alpha
+    value: from-node-1
+  account: kvc-node-1
+- name: node-2 writes beta at the same time
+  type: call
+  app: '{{context_id}}'
+  method: set
+  args:
+    key: beta
+    value: from-node-2
+  account: kvc-node-2
+- name: node-1 reads the key it did NOT write
+  type: call
+  app: '{{context_id}}'
+  method: get
+  args:
+    key: beta
+  account: kvc-node-1
+  outputs:
+    n1_beta: rpc
+- name: node-2 reads the key it did NOT write
+  type: call
+  app: '{{context_id}}'
+  method: get
+  args:
+    key: alpha
+  account: kvc-node-2
+  outputs:
+    n2_alpha: rpc
+- name: Assert neither concurrent write was lost
+  type: json_assert
+  statements:
+  - 'json_equal({{n1_beta}}, {"output": "from-node-2"})'
+  - 'json_equal({{n2_alpha}}, {"output": "from-node-1"})'
+- name: node-1 counts the entries
+  type: call
+  app: '{{context_id}}'
+  method: len
+  args: {}
+  account: kvc-node-1
+  outputs:
+    n1_len: result
+- name: node-2 counts the entries
+  type: call
+  app: '{{context_id}}'
+  method: len
+  args: {}
+  account: kvc-node-2
+  outputs:
+    n2_len: result
+- name: Assert both nodes agree on the size
+  type: assert
+  statements:
+  - '{{n1_len}} == 2'
+  - '{{n2_len}} == {{n1_len}}'
+- name: node-1 writes contended
+  type: call
+  app: '{{context_id}}'
+  method: set
+  args:
+    key: contended
+    value: written-by-node-1
+  account: kvc-node-1
+- name: node-2 writes contended at the same time
+  type: call
+  app: '{{context_id}}'
+  method: set
+  args:
+    key: contended
+    value: written-by-node-2
+  account: kvc-node-2
+- name: node-1 reads the contended key
+  type: call
+  app: '{{context_id}}'
+  method: get
+  args:
+    key: contended
+  account: kvc-node-1
+  outputs:
+    n1_contended: result
+- name: node-2 reads the contended key
+  type: call
+  app: '{{context_id}}'
+  method: get
+  args:
+    key: contended
+  account: kvc-node-2
+  outputs:
+    n2_contended: result
+- name: Assert the contended key converged to ONE value on BOTH nodes
+  type: assert
+  statements:
+  - is_set({{n1_contended}})
+  - '{{n1_contended}} == {{n2_contended}}'
+- name: node-1 counts the entries again
+  type: call
+  app: '{{context_id}}'
+  method: len
+  args: {}
+  account: kvc-node-1
+  outputs:
+    n1_len_after: result
+- name: Assert the contended key did not split into two entries
+  type: assert
+  statements:
+  - '{{n1_len_after}} == 3'
+- name: Invite node-3 into the namespace
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: kvc-node-1
+  outputs:
+    node3_invitation: token
+- name: Settle before the namespace join (cold-join KeyDelivery)
+  type: wait
+  seconds: 1.0
+- name: node-3 joins the namespace
+  type: redeem_invite
+  token: '{{node3_invitation}}'
+  account: kvc-node-3
+- name: node-3 lists everything it cold-synced
+  type: call
+  app: '{{context_id}}'
+  method: entries
+  args: {}
+  account: kvc-node-3
+  outputs:
+    n3_entries: rpc
+- name: node-3 counts the entries
+  type: call
+  app: '{{context_id}}'
+  method: len
+  args: {}
+  account: kvc-node-3
+  outputs:
+    n3_len: result
+- name: Assert the joiner received the whole map
+  type: assert
+  statements:
+  - is_set({{n3_entries}})
+  - '{{n3_len}} == 3'
+  - contains({{n3_entries}}, alpha)
+  - contains({{n3_entries}}, beta)
+  - contains({{n3_entries}}, from-node-1)
+  - contains({{n3_entries}}, from-node-2)
+- name: node-3 writes, proving the joiner is a full member
+  type: call
+  app: '{{context_id}}'
+  method: set
+  args:
+    key: gamma
+    value: from-node-3
+  account: kvc-node-3
+- name: node-1 reads the joiner's write
+  type: call
+  app: '{{context_id}}'
+  method: get
+  args:
+    key: gamma
+  account: kvc-node-1
+  outputs:
+    n1_gamma: rpc
+- name: Assert sync is bidirectional for a late joiner
+  type: json_assert
+  statements:
+  - 'json_equal({{n1_gamma}}, {"output": "from-node-3"})'

@@ -1,0 +1,722 @@
+# Ported from e2e.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   set_default_capabilities x1: capabilities are v1 governance
+#   sync_group x1: replication is synchronous
+#   wait_for_sync x7: replication is synchronous: a read sees every committed write
+name: Mero Forms — a form, its responses and a form key across two nodes (2-node e2e)
+description: "The access rules the contract is built on, on real nodes over a signed delta path, which\
+  \ no single-node test can exercise:\n\n  1. a form built on one node reads the same on the other;\n\
+  \  2. a member who is not on the team (a form key, here Bob) can answer the\n     form it was issued\
+  \ for, is held to the questions, and cannot read\n     responses or change forms;\n  3. the admin sees\
+  \ the response on the other node, attributed to the\n     account that signed it, and the key's register\
+  \ counts it;\n  4. once added to the team, Bob reads every response and his changes\n     (archive,\
+  \ the CRM record, a form edit) reach the admin's node: the\n     shared state's writer set followed\
+  \ the roles;\n  5. removed from the team, Bob loses the workspace again.\n\nBetween 3 and 4, a public\
+  \ link's contract half: refused until the form is public, held to a captcha the form requires, managed\
+  \ by the team only, and answering nothing once deleted.\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3350
+accounts:
+- calimero-node-1
+- calimero-node-2
+- calimero-node-2-id1
+steps:
+- name: Install application on Node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_forms.wasm'
+  outputs:
+    app_id: hash
+  account: calimero-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace
+  type: create_org
+  org_name: Create namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Generate identity for Node 2
+  type: whoami
+  account: calimero-node-2-id1
+  outputs:
+    bob_identity: publicKey
+- name: Wait for identity propagation
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates invitation for Node 2
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    invite_bob: token
+- name: Settle before the namespace join (cold-join KeyDelivery)
+  type: wait
+  seconds: 1.0
+- name: Node 2 joins namespace
+  type: redeem_invite
+  token: '{{invite_bob}}'
+  account: calimero-node-2
+- name: Settle after namespace join
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates the workspace
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_forms.wasm'
+  app_name: Node 1 creates the workspace
+  init_args: '{}'
+  org: '{{namespace_id}}'
+  outputs:
+    ws_id: appId
+    alice_key: memberPublicKey
+- name: Settle after sync
+  type: wait
+  seconds: 1.0
+- name: Bob joins the workspace
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_key: publicKey
+- name: Alice learns her account
+  type: call
+  app: '{{ws_id}}'
+  method: my_account
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_account: result
+- name: Bob learns his account
+  type: call
+  app: '{{ws_id}}'
+  method: my_account
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_account: result
+- name: Alice checks she is an admin
+  type: call
+  app: '{{ws_id}}'
+  method: am_i_admin
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_admin: result
+- name: Bob checks whether he is on the team
+  type: call
+  app: '{{ws_id}}'
+  method: am_i_team
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_team_before: result
+- name: Read the field kinds
+  type: call
+  app: '{{ws_id}}'
+  method: field_kinds
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    kinds: rpc
+- name: Assert the installer is the admin and Bob starts outside the team
+  type: json_assert
+  statements:
+  - json_equal({{alice_admin}}, true)
+  - json_equal({{bob_team_before}}, false)
+- name: Assert the field kinds
+  type: assert
+  statements:
+  - contains({{kinds}}, "checkboxes")
+- name: Alice creates a form
+  type: call
+  app: '{{ws_id}}'
+  method: create_form
+  args:
+    title: Contact us
+    description: ''
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    form_id: result
+- name: Alice gives it questions
+  type: call
+  app: '{{ws_id}}'
+  method: update_form
+  args:
+    form_id: '{{form_id}}'
+    title: Contact us
+    description: Tell us about you
+    fields:
+    - id: name
+      kind: text
+      label: Name
+      help: ''
+      required: true
+      options: []
+    - id: email
+      kind: email
+      label: Email
+      help: ''
+      required: true
+      options: []
+    - id: topic
+      kind: choice
+      label: Topic
+      help: ''
+      required: true
+      options:
+      - Cloud
+      - Desktop
+    - id: message
+      kind: paragraph
+      label: Message
+      help: ''
+      required: false
+      options: []
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice names the workspace
+  type: call
+  app: '{{ws_id}}'
+  method: set_workspace_name
+  args:
+    name: Marketing
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: A throwaway form
+  type: call
+  app: '{{ws_id}}'
+  method: create_form
+  args:
+    title: Draft
+    description: ''
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    draft_id: result
+- name: Alice deletes the throwaway form, which has no responses
+  type: call
+  app: '{{ws_id}}'
+  method: delete_form
+  args:
+    form_id: '{{draft_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob reads the form, as a website may
+  type: call
+  app: '{{ws_id}}'
+  method: get_form
+  args:
+    form_id: '{{form_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_form: rpc
+- name: Bob reads the workspace name
+  type: call
+  app: '{{ws_id}}'
+  method: workspace_name
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_ws_name: result
+- name: Assert the form reached node 2
+  type: assert
+  statements:
+  - contains({{bob_form}}, "Contact us")
+  - contains({{bob_form}}, "Desktop")
+  - equal({{bob_ws_name}}, "Marketing")
+- name: Alice registers Bob's account as the form's key
+  type: call
+  app: '{{ws_id}}'
+  method: register_form_key
+  args:
+    account: '{{bob_account}}'
+    form_id: '{{form_id}}'
+    label: Contact page
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob answers with a topic that is not an option
+  type: call
+  app: '{{ws_id}}'
+  method: submit_response
+  args:
+    form_id: '{{form_id}}'
+    answers:
+    - field_id: name
+      values:
+      - Ada Lovelace
+    - field_id: email
+      values:
+      - ada@example.com
+    - field_id: topic
+      values:
+      - Mobile
+    - field_id: message
+      values:
+      - We would like a demo.
+    source: /contact/
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    bad_answer_error: error
+- name: Bob answers the form, as the website would
+  type: call
+  app: '{{ws_id}}'
+  method: submit_response
+  args:
+    form_id: '{{form_id}}'
+    answers:
+    - field_id: name
+      values:
+      - Ada Lovelace
+    - field_id: email
+      values:
+      - ada@example.com
+    - field_id: topic
+      values:
+      - Cloud
+    - field_id: message
+      values:
+      - We would like a demo.
+    source: /contact/
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    response_id: result
+- name: Bob tries to read the responses
+  type: call
+  app: '{{ws_id}}'
+  method: list_responses
+  args:
+    form_id: '{{form_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    bob_read_error: error
+- name: Bob tries to change the form
+  type: call
+  app: '{{ws_id}}'
+  method: set_form_open
+  args:
+    form_id: '{{form_id}}'
+    open: false
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    bob_edit_error: error
+- name: Assert a form key can answer and nothing else
+  type: assert
+  statements:
+  - is_set({{bad_answer_error}})
+  - is_set({{response_id}})
+  - is_set({{bob_read_error}})
+  - is_set({{bob_edit_error}})
+- name: Alice reads the responses
+  type: call
+  app: '{{ws_id}}'
+  method: list_responses
+  args:
+    form_id: '{{form_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_responses: rpc
+- name: Alice reads the forms
+  type: call
+  app: '{{ws_id}}'
+  method: list_forms
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_form_row: result.0
+- name: Alice reads the form keys
+  type: call
+  app: '{{ws_id}}'
+  method: list_form_keys
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_key_row: result.0
+- name: Assert the response reached node 1, attributed to the key
+  type: assert
+  statements:
+  - contains({{alice_responses}}, "Ada Lovelace")
+  - contains({{alice_responses}}, {{response_id}})
+  - contains({{alice_responses}}, {{bob_account}})
+  - contains({{alice_responses}}, "/contact/")
+- name: Assert the counts
+  type: json_assert
+  statements:
+  - 'json_subset({{alice_form_row}}, {"title": "Contact us", "responses": 1, "new_responses": 1})'
+  - 'json_subset({{alice_key_row}}, {"label": "Contact page", "responses": 1})'
+- name: Alice records a public link
+  type: call
+  app: '{{ws_id}}'
+  method: create_link
+  args:
+    form_id: '{{form_id}}'
+    link: e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1
+    grant_id: grant-from-node-1
+    label: newsletter
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: The link shows the form, not yet accepting
+  type: call
+  app: '{{ws_id}}'
+  method: link_form
+  args:
+    link: e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    link_view_off: result
+- name: A response through the link before the form is public
+  type: call
+  app: '{{ws_id}}'
+  method: submit_via_link
+  args:
+    link: e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1
+    answers:
+    - field_id: name
+      values:
+      - Grace Hopper
+    - field_id: email
+      values:
+      - grace@example.com
+    - field_id: topic
+      values:
+      - Desktop
+    - field_id: message
+      values:
+      - From the newsletter.
+    captcha: null
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  expected_failure: true
+  outputs:
+    link_paused_error: error
+- name: Bob, off the team, tries to make the form public
+  type: call
+  app: '{{ws_id}}'
+  method: set_form_public
+  args:
+    form_id: '{{form_id}}'
+    public: true
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    bob_public_error: error
+- name: Alice makes the form public
+  type: call
+  app: '{{ws_id}}'
+  method: set_form_public
+  args:
+    form_id: '{{form_id}}'
+    public: true
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice sets the hourly cap
+  type: call
+  app: '{{ws_id}}'
+  method: set_link_cap
+  args:
+    form_id: '{{form_id}}'
+    per_hour: 5
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice requires a captcha
+  type: call
+  app: '{{ws_id}}'
+  method: set_captcha_key
+  args:
+    form_id: '{{form_id}}'
+    key: 5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: A response through the link with a captcha pass that is not current
+  type: call
+  app: '{{ws_id}}'
+  method: submit_via_link
+  args:
+    link: e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1
+    answers:
+    - field_id: name
+      values:
+      - Grace Hopper
+    - field_id: email
+      values:
+      - grace@example.com
+    - field_id: topic
+      values:
+      - Desktop
+    - field_id: message
+      values:
+      - From the newsletter.
+    captcha:
+      nonce: 0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f
+      expires_ms: 4102444800000
+      signature: '00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  expected_failure: true
+  outputs:
+    link_captcha_error: error
+- name: Alice drops the captcha
+  type: call
+  app: '{{ws_id}}'
+  method: set_captcha_key
+  args:
+    form_id: '{{form_id}}'
+    key: ''
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: A response through the link, now taken
+  type: call
+  app: '{{ws_id}}'
+  method: submit_via_link
+  args:
+    link: e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1
+    answers:
+    - field_id: name
+      values:
+      - Grace Hopper
+    - field_id: email
+      values:
+      - grace@example.com
+    - field_id: topic
+      values:
+      - Desktop
+    - field_id: message
+      values:
+      - From the newsletter.
+    captcha: null
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    link_response_id: result
+- name: Alice lists the links
+  type: call
+  app: '{{ws_id}}'
+  method: list_links
+  args:
+    form_id: '{{form_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    link_row: result.0
+- name: Alice deletes the link
+  type: call
+  app: '{{ws_id}}'
+  method: delete_link
+  args:
+    link: e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    deleted_link: result
+- name: The deleted link answers nothing
+  type: call
+  app: '{{ws_id}}'
+  method: link_form
+  args:
+    link: e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  expected_failure: true
+  outputs:
+    link_gone_error: error
+- name: Assert the link's rules held
+  type: json_assert
+  statements:
+  - 'json_subset({{link_view_off}}, {"accepting": false, "captcha": false})'
+  - 'json_subset({{link_row}}, {"label": "newsletter", "grant_id": "grant-from-node-1", "responses": 1,
+    "last_hour": 1})'
+  - 'json_subset({{deleted_link}}, {"grant_id": "grant-from-node-1"})'
+- name: Assert the link's refusals
+  type: assert
+  statements:
+  - is_set({{link_paused_error}})
+  - is_set({{bob_public_error}})
+  - is_set({{link_captcha_error}})
+  - is_set({{link_response_id}})
+  - is_set({{link_gone_error}})
+- name: Alice forgets Bob's form key
+  type: call
+  app: '{{ws_id}}'
+  method: forget_form_key
+  args:
+    account: '{{bob_account}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice adds Bob to the team
+  type: call
+  app: '{{ws_id}}'
+  method: add_team_member
+  args:
+    who: '{{bob_account}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob reads the team
+  type: call
+  app: '{{ws_id}}'
+  method: list_team
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_team: rpc
+- name: Bob reads the response
+  type: call
+  app: '{{ws_id}}'
+  method: get_response
+  args:
+    id: '{{response_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_response: rpc
+- name: Bob links the form to a CRM pipeline
+  type: call
+  app: '{{ws_id}}'
+  method: set_crm_link
+  args:
+    form_id: '{{form_id}}'
+    link:
+      context_id: '{{ws_id}}'
+      stage_id: stage-lead
+      name_field: name
+      email_field: email
+      phone_field: ''
+      organization_field: ''
+      title_field: ''
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob records the CRM deal the response became
+  type: call
+  app: '{{ws_id}}'
+  method: record_crm_deal
+  args:
+    id: '{{response_id}}'
+    crm_context: '{{ws_id}}'
+    crm_deal: deal-e2e-1
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob tries to record a second deal for it
+  type: call
+  app: '{{ws_id}}'
+  method: record_crm_deal
+  args:
+    id: '{{response_id}}'
+    crm_context: '{{ws_id}}'
+    crm_deal: deal-e2e-2
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    second_deal_error: error
+- name: Bob archives the response
+  type: call
+  app: '{{ws_id}}'
+  method: set_archived
+  args:
+    id: '{{response_id}}'
+    archived: true
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob closes the form
+  type: call
+  app: '{{ws_id}}'
+  method: set_form_open
+  args:
+    form_id: '{{form_id}}'
+    open: false
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Assert Bob is on the team and reads the response
+  type: assert
+  statements:
+  - contains({{bob_team}}, {{bob_account}})
+  - contains({{bob_team}}, {{alice_account}})
+  - contains({{bob_response}}, "We would like a demo.")
+  - is_set({{second_deal_error}})
+- name: Alice reads the response
+  type: call
+  app: '{{ws_id}}'
+  method: get_response
+  args:
+    id: '{{response_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_response: rpc
+- name: Alice reads the form
+  type: call
+  app: '{{ws_id}}'
+  method: get_form
+  args:
+    form_id: '{{form_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_form: rpc
+- name: Alice tries to delete the form that has a response
+  type: call
+  app: '{{ws_id}}'
+  method: delete_form
+  args:
+    form_id: '{{form_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  expected_failure: true
+  outputs:
+    delete_error: error
+- name: Assert Bob's changes reached node 1
+  type: json_assert
+  statements:
+  - 'json_subset({{alice_response}}, {"output": {"archived": true, "crm_deal": "deal-e2e-1"}})'
+  - 'json_subset({{alice_form}}, {"output": {"open": false, "crm": {"stage_id": "stage-lead", "name_field":
+    "name"}}})'
+- name: Assert a form with responses is not deleted
+  type: assert
+  statements:
+  - is_set({{delete_error}})
+- name: Alice removes Bob from the team
+  type: call
+  app: '{{ws_id}}'
+  method: remove_team_member
+  args:
+    who: '{{bob_account}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob tries to read the response again
+  type: call
+  app: '{{ws_id}}'
+  method: get_response
+  args:
+    id: '{{response_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    bob_removed_error: error
+- name: Assert the workspace is closed to Bob again
+  type: assert
+  statements:
+  - is_set({{bob_removed_error}})

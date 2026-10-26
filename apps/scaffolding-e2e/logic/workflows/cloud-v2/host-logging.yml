@@ -1,0 +1,130 @@
+# Ported from host-logging.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   assert_log_absent x3: v1 node logs
+#   assert_log_present x3: v1 node logs
+name: Host Logging E2E
+description: 'Proves the SDK''s `tracing` subscriber is actually compiled into this build, and that `set_log_level`
+  retunes a live filter.
+
+  This is the only coverage of the `tracing` cargo feature. Without it the macros are no-ops: the call
+  still SUCCEEDS and returns the same empty output, and the only symptom is that nothing was logged. So
+  an assertion on the call''s result proves nothing here — the real assertions are all log greps.
+
+  The SDK''s default level is WARN, so the default probe emits the warn line ONLY and both info and debug
+  are filtered out inside the guest. Raising to DEBUG surfaces the app''s debug line and `calimero_storage`''s
+  own output. Same expectations as core''s `crates/runtime/tests/tracing_logs.rs`.  Since core 0.11.0-rc.85
+  the node logs each guest line''s length and not its text, so the steps below tell the lines apart by
+  length.
+
+  Also covers `my_account`, which exists to be spelled the same as in core''s copy of this scaffold (`apps/scaffolding-e2e`)
+  so a scenario stays portable between the two.
+
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3750
+accounts:
+- e2e-node-1
+steps:
+- name: Install application on node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
+  outputs:
+    app_id: hash
+  account: e2e-node-1
+- name: Assert application installed
+  type: assert
+  statements:
+  - is_set({{app_id}})
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace on node-1
+  type: create_org
+  org_name: Create namespace on node-1
+  outputs:
+    namespace_id: orgId
+  account: e2e-node-1
+- name: Assert namespace created
+  type: assert
+  statements:
+  - is_set({{namespace_id}})
+- name: Create context in the namespace
+  type: deploy
+  account: e2e-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
+  app_name: Create context in the namespace
+  org: '{{namespace_id}}'
+  outputs:
+    context_id: appId
+    member_key: memberPublicKey
+- name: Assert the context and member key are populated
+  type: assert
+  statements:
+  - is_set({{context_id}})
+  - is_set({{member_key}})
+- name: Read the account through whoami
+  type: call
+  app: '{{context_id}}'
+  method: whoami
+  args: {}
+  account: e2e-node-1
+  as_key: '{{member_key}}'
+  outputs:
+    account_via_whoami: result.account_id
+- name: Read the account through my_account
+  type: call
+  app: '{{context_id}}'
+  method: my_account
+  args: {}
+  account: e2e-node-1
+  as_key: '{{member_key}}'
+  outputs:
+    account_via_my_account: result
+- name: Assert both accounts are populated
+  type: assert
+  statements:
+  - is_set({{account_via_whoami}})
+  - is_set({{account_via_my_account}})
+- name: Assert my_account returns exactly whoami's account_id
+  type: assert
+  statements:
+  - equal({{account_via_my_account}}, {{account_via_whoami}})
+- name: Probe tracing at the default level
+  type: call
+  app: '{{context_id}}'
+  method: tracing_probe
+  args:
+    debug: false
+  account: e2e-node-1
+  as_key: '{{member_key}}'
+  outputs:
+    default_probe: rpc
+- name: Assert the probe call succeeded
+  type: json_assert
+  statements:
+  - 'json_equal({{default_probe}}, {"output": null})'
+- name: Probe tracing with the level raised to DEBUG
+  type: call
+  app: '{{context_id}}'
+  method: tracing_probe
+  args:
+    debug: true
+  account: e2e-node-1
+  as_key: '{{member_key}}'
+- name: Read back the key the probe wrote
+  type: call
+  app: '{{context_id}}'
+  method: get
+  args:
+    key: probe_key
+  account: e2e-node-1
+  as_key: '{{member_key}}'
+  outputs:
+    probe_value: rpc
+- name: Assert the probe's KV write landed
+  type: json_assert
+  statements:
+  - 'json_equal({{probe_value}}, {"output": "probe_value"})'

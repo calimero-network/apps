@@ -1,0 +1,295 @@
+# Ported from e2e.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   set_default_capabilities x1: capabilities are v1 governance
+#   sync_group x1: replication is synchronous
+#   upload_blob x2: release-v2 has no blob API yet
+#   wait_for_sync x6: replication is synchronous: a read sees every committed write
+name: MeroSign — a shared agreement across two nodes (2-node e2e)
+description: 'Replaces three legacy scenarios that could not run at all: they used `invite_open`/`join_open`,
+  step types no app in this monorepo uses, and created a context per node with no namespace — two independently-created
+  contexts that never sync. See probes/README.md.
+
+  Proves the shared-agreement path: two members join one agreement context, a participant registers itself,
+  a document uploaded on one node is listed on the other, and a delete replicates.
+
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3460
+accounts:
+- calimero-node-1
+- calimero-node-2
+- calimero-node-2-id1
+steps:
+- name: Install application on Node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
+  outputs:
+    app_id: hash
+  account: calimero-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace
+  type: create_org
+  org_name: Create namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Generate identity for Node 2
+  type: whoami
+  account: calimero-node-2-id1
+  outputs:
+    bob_identity: publicKey
+- name: Wait for identity propagation
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates invitation for Node 2
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    invite_bob: token
+- name: Settle before the namespace join (cold-join KeyDelivery)
+  type: wait
+  seconds: 1.0
+- name: Node 2 joins namespace
+  type: redeem_invite
+  token: '{{invite_bob}}'
+  account: calimero-node-2
+- name: Settle after namespace join
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates the agreement
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
+  app_name: Node 1 creates the agreement
+  init_args: '{"is_private": false, "context_name": "Series A Agreement"}'
+  org: '{{namespace_id}}'
+  outputs:
+    agreement_id: appId
+    alice_key: memberPublicKey
+- name: Settle after sync
+  type: wait
+  seconds: 1.0
+- name: Bob joins the agreement
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_key: publicKey
+- name: Bob registers himself as a participant
+  type: call
+  app: '{{agreement_id}}'
+  method: register_self_as_participant
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice lists participants
+  type: call
+  app: '{{agreement_id}}'
+  method: list_participants
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    participants: rpc
+- name: Assert the registration replicated
+  type: assert
+  statements:
+  - is_set({{participants}})
+- name: Alice uploads the document
+  type: call
+  app: '{{agreement_id}}'
+  method: upload_document
+  args:
+    name: series-a.pdf
+    hash: '0000000000000000000000000000000000000000000000000000000000000000'
+    pdf_blob_id_str: '{{blob_id}}'
+    file_size: 1024
+    embeddings: null
+    extracted_text: null
+    chunks: null
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    document_id: result
+- name: Bob lists documents
+  type: call
+  app: '{{agreement_id}}'
+  method: list_documents
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_docs: rpc
+- name: Assert the document replicated
+  type: assert
+  statements:
+  - contains({{bob_docs}}, "series-a.pdf")
+- name: Bob asks the contract who he is
+  type: call
+  app: '{{agreement_id}}'
+  method: whoami
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_account: rpc
+- name: Assert the contract answered with an identity
+  type: assert
+  statements:
+  - is_set({{bob_account}})
+- name: Bob consents to sign
+  type: call
+  app: '{{agreement_id}}'
+  method: set_consent
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob signs
+  type: call
+  app: '{{agreement_id}}'
+  method: sign_document
+  args:
+    document_id: '{{document_id}}'
+    base_hash: '0000000000000000000000000000000000000000000000000000000000000000'
+    pdf_blob_id_str: '{{bob_blob_id}}'
+    file_size: 1024
+    new_hash: '1111111111111111111111111111111111111111111111111111111111111111'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob recomputes the document status
+  type: call
+  app: '{{agreement_id}}'
+  method: mark_participant_signed
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice reads the signatures
+  type: call
+  app: '{{agreement_id}}'
+  method: get_document_signatures
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    signatures: rpc
+- name: Assert Bob's signature replicated
+  type: assert
+  statements:
+  - is_set({{signatures}})
+- name: Alice consents and signs too
+  type: call
+  app: '{{agreement_id}}'
+  method: set_consent
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice tries to sign the version she still has open
+  type: call
+  app: '{{agreement_id}}'
+  method: sign_document
+  args:
+    document_id: '{{document_id}}'
+    base_hash: '0000000000000000000000000000000000000000000000000000000000000000'
+    pdf_blob_id_str: '{{blob_id}}'
+    file_size: 1024
+    new_hash: dead00000000000000000000000000000000000000000000000000000000dead
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  expected_failure: true
+- name: Read the document back after the refusal
+  type: call
+  app: '{{agreement_id}}'
+  method: list_documents
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    docs_after_stale: rpc
+- name: Bob's version survived and Alice's stale copy never landed
+  type: assert
+  statements:
+  - contains({{docs_after_stale}}, "1111111111111111111111111111111111111111111111111111111111111111")
+  - not_contains({{docs_after_stale}}, "dead00000000000000000000000000000000000000000000000000000000dead")
+- name: Alice signs
+  type: call
+  app: '{{agreement_id}}'
+  method: sign_document
+  args:
+    document_id: '{{document_id}}'
+    base_hash: '1111111111111111111111111111111111111111111111111111111111111111'
+    pdf_blob_id_str: '{{blob_id}}'
+    file_size: 1024
+    new_hash: '2222222222222222222222222222222222222222222222222222222222222222'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice recomputes the document status
+  type: call
+  app: '{{agreement_id}}'
+  method: mark_participant_signed
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob lists documents once everyone has signed
+  type: call
+  app: '{{agreement_id}}'
+  method: list_documents
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_docs_signed: rpc
+- name: Assert the document is fully signed on both nodes
+  type: assert
+  statements:
+  - contains({{bob_docs_signed}}, "FullySigned")
+- name: Bob cannot sign the completed document again
+  type: call
+  app: '{{agreement_id}}'
+  method: sign_document
+  args:
+    document_id: '{{document_id}}'
+    base_hash: '2222222222222222222222222222222222222222222222222222222222222222'
+    pdf_blob_id_str: '{{bob_blob_id}}'
+    file_size: 1024
+    new_hash: '3333333333333333333333333333333333333333333333333333333333333333'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    err_sign_completed: error
+- name: Assert the extra signature was refused
+  type: assert
+  statements:
+  - is_set({{err_sign_completed}})
+- name: Alice deletes the document
+  type: call
+  app: '{{agreement_id}}'
+  method: delete_document
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob lists documents again
+  type: call
+  app: '{{agreement_id}}'
+  method: list_documents
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_docs_after: rpc
+- name: Assert the delete reached Node 2
+  type: assert
+  statements:
+  - not_contains({{bob_docs_after}}, "series-a.pdf")

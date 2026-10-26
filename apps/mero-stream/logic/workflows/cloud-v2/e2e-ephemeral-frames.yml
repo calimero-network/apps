@@ -1,0 +1,77 @@
+# Ported from e2e-ephemeral-frames.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   assert_log_absent x1: v1 node logs
+#   script x1: scripts drive v1 node RPC URLs
+#   wait_for_sync x2: replication is synchronous: a read sees every committed write
+name: Mero Stream — approach 1, media on ephemeral presence (no DAG growth)
+description: "Approach 1: the encoded frame travels as an EPHEMERAL-PRESENCE slice (core 0.11.0-rc.24,\
+  \ core#3427) instead of as replicated state. Signed, encrypted under the context group key, gossiped\
+  \ between nodes, never persisted, never in the DAG, swept by the node after a 7 s TTL.\nThis scenario\
+  \ proves the three things only two real nodes can settle:\n\n  (a) a single-fragment frame published\
+  \ on node 1 with the JSON-RPC\n      `set_ephemeral` method reaches a live SSE subscriber on node 2\n\
+  \      BYTE-IDENTICALLY, attributed to node 1's identity, as a live delta\n      (no `ageMs`) — and\
+  \ the framing header survives the wire intact,\n  (b) a frame too large for one 16 KiB slice, published\
+  \ as sequential\n      fragments, is reassembled byte-identically on node 2 — best effort, so\n    \
+  \  the assertion allows the same retry the app's keyframe cadence provides,\n  (c) node 1's `contextStateHash`\
+  \ is IDENTICAL before and after every publish,\n      measured against a NON-NULL baseline. This is\
+  \ the load-bearing guard: it\n      is the entire difference between this transport and `post_chunk`,\
+  \ whose\n      every access unit becomes replicated state that then needs tombstones to\n      walk\
+  \ back.\n\nWhat this scenario CANNOT cover: the real encode/decode. That needs a browser with a camera\
+  \ (the `/live` route in Chrome, transport switched to \"ephemeral\"). It covers everything between.\
+  \ The framing itself — reassembly, out-of-order fragments, a lost fragment, a replayed slice, a foreign\
+  \ slice sharing the presence channel — is unit-tested in app/src/lib/ephemeralFrames.test.ts, which\
+  \ runs on every PR without a node.\nThe assertions run as a Node script rather than merobox `assert`\
+  \ steps because presence has NO read endpoint: a client learns it only by subscribing to the event stream.\
+  \ `set_ephemeral` is still an ordinary JSON-RPC call — SSE is server-to-client only — and merobox executes\
+  \ `script` steps through `sh`, so the .mjs has a one-line .sh wrapper. Nodes run in Proxy auth mode\
+  \ (default), so no Bearer token is required.\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3520
+accounts:
+- calimero-node-1
+- calimero-node-2
+steps:
+- name: Install application on calimero-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
+  outputs:
+    app_id: hash
+  account: calimero-node-1
+- name: Settle before the mesh joins
+  type: wait
+  seconds: 1.0
+- name: Create the stream mesh
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
+  app_name: Create the stream mesh
+  init_args: '{"name": "ephemeral"}'
+  access:
+    kind: accounts
+    accounts:
+    - calimero-node-1
+    - calimero-node-2
+- name: Alice joins (gives the no-DAG-growth guard a non-null baseline)
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Alice
+    now: 1755600000
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Bob joins
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Bob
+    now: 1755600001
+  account: calimero-node-2
+  as_key: '{{public_key}}'
+- name: Wait for the gossip mesh to settle
+  type: wait
+  seconds: 1.0

@@ -1,0 +1,198 @@
+# Ported from workflow-mero-docs-restricted-privacy.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   get_group_info x2: v1 group info
+#   get_group_metadata x3: group metadata is v1 governance
+#   list_group_contexts x1: v1 group listing
+#   list_subgroups x3: v1 group listing
+#   reparent_group x1: reparenting is v1 governance
+#   set_group_metadata x4: group metadata is v1 governance
+#   wait_for_sync x1: replication is synchronous: a read sees every committed write
+name: Mero Docs E2E - a Restricted folder never reaches a non-member
+description: "The privacy model mero-docs relies on now that folders live in core alone: a folder is a\
+  \ namespace subgroup, named in its own metadata, with its docs context the one context in it. Nothing\
+  \ about a folder is in the registry, which every workspace member replicates.\nTwo nodes. Alice (node-1)\
+  \ owns the workspace. Bob (node-2) is a member of the workspace only, then of single folders as Alice\
+  \ adds him.\nPinned here:\n  * a folder created Open is listed to Bob and its name reads for him;\n\
+  \  * a folder created Restricted is neither listed to Bob nor readable by him,\n    and its docs context\
+  \ cannot be joined, until Alice adds him - then all of\n    it is;\n  * a Restricted folder under a\
+  \ Restricted parent Bob is not in (\"Shared with\n    me\"): adding Bob to the child lets him read and\
+  \ join it, while the parent\n    stays hidden from him;\n  * the registry has no folder methods to put\
+  \ any of this in.\n\nEvery folder is created with its final visibility, never flipped, as the app now\
+  \ does: a Restricted->Open flip strands members outside the subgroup on nodes without core#4513.\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3330
+accounts:
+- calimero-node-1
+- calimero-node-2
+steps:
+- name: Install Mero Docs bundle on Alice
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  outputs:
+    app_id: hash
+  account: calimero-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Alice creates namespace
+  type: create_org
+  org_name: Alice creates namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Alice creates the per-namespace Registry context
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs_registry.wasm'
+  app_name: registry
+  org: '{{namespace_id}}'
+  outputs:
+    registry_ctx: appId
+    alice_key: memberPublicKey
+- name: Assert Alice's bootstrap shape
+  type: assert
+  statements:
+  - is_set({{namespace_id}})
+  - is_set({{registry_ctx}})
+  - is_set({{alice_key}})
+- name: Alice invites Bob to the workspace
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    ns_invite: token
+- name: Wait for namespace governance to gossip to Bob's node
+  type: wait
+  seconds: 1.0
+- name: Bob joins the workspace
+  type: redeem_invite
+  token: '{{ns_invite}}'
+  account: calimero-node-2
+- type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_identity: publicKey
+- name: Assert Bob's namespace identity is set
+  type: assert
+  statements:
+  - is_set({{bob_identity}})
+- name: Alice creates Plans, born Open
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: plans
+  outputs:
+    plans_group: teamId
+  account: calimero-node-1
+- name: Alice creates the Docs context inside Plans
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    plans_docs_ctx: appId
+- name: Alice creates Secret, born Restricted
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: secret
+  outputs:
+    secret_group: teamId
+  account: calimero-node-1
+- name: Alice creates the Docs context inside Secret
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    secret_docs_ctx: appId
+- name: Alice creates Board, born Restricted
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: board
+  outputs:
+    board_group: teamId
+  account: calimero-node-1
+- name: Alice creates Minutes, born Restricted
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: minutes
+  outputs:
+    minutes_group: teamId
+  account: calimero-node-1
+- name: Alice creates the Docs context inside Minutes
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    minutes_docs_ctx: appId
+- name: Wait for the folder governance to reach Bob's node
+  type: wait
+  seconds: 1.0
+- name: Assert Bob sees the Open folder and neither Restricted one
+  type: assert
+  statements:
+  - contains({{bob_folders}}, {{plans_group}})
+  - not_contains({{bob_folders}}, {{secret_group}})
+  - not_contains({{bob_folders}}, {{board_group}})
+- name: Assert the Open folder's name reads for Bob
+  type: assert
+  statements:
+  - equal({{bob_plans_name}}, 'Plans')
+- name: Bob cannot join the Restricted folder's docs context
+  type: http
+  method: get
+  path: apps/{{secret_docs_ctx}}
+  account: calimero-node-2
+  expected_failure: true
+- name: The registry has no folder list to read
+  type: call
+  app: '{{registry_ctx}}'
+  method: get_folders
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  expected_failure: true
+- name: Alice adds Bob to Secret
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{secret_group}}'
+  members:
+  - '{{bob_identity}}'
+  account: calimero-node-1
+- name: Wait for the membership and key to reach Bob's node
+  type: wait
+  seconds: 1.0
+- name: Assert Bob now sees Secret, and still not Board
+  type: assert
+  statements:
+  - contains({{bob_folders_added}}, {{secret_group}})
+  - not_contains({{bob_folders_added}}, {{board_group}})
+- name: Assert Secret's name reads for its new member
+  type: assert
+  statements:
+  - equal({{bob_secret_name}}, 'Secret')
+- name: Alice adds Bob to Minutes only
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{minutes_group}}'
+  members:
+  - '{{bob_identity}}'
+  account: calimero-node-1
+- name: Wait for the Minutes membership and key to reach Bob's node
+  type: wait
+  seconds: 1.0
+- name: Assert Board stays hidden from Bob
+  type: assert
+  statements:
+  - not_contains({{bob_folders_shared}}, {{board_group}})
+- name: Assert Minutes reads for Bob
+  type: assert
+  statements:
+  - equal({{bob_minutes_name}}, 'Minutes')

@@ -1,0 +1,146 @@
+# Ported from workflow-mero-docs-comment-two-devices.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   account_pair x1: devices: in release-v2 a person is their account
+#   start_node x2: a user's node going offline has no counterpart in a cluster
+#   stop_node x2: a user's node going offline has no counterpart in a cluster
+#   wait_for_sync x3: replication is synchronous: a read sees every committed write
+name: Mero Docs E2E - One Author's Comment Edited From Two Devices
+description: 'One account on two nodes: node-1 is Alice''s laptop, which founds the workspace and its
+  folder, and node-2 is her phone, paired onto the same account. Each device edits the same comment while
+  the other is offline. After they reconnect both read one body and hold one root hash.
+
+  A comment is an `#[app::mergeable]` value in an authored map, so both devices sign writes to one entry
+  and each receives the other''s write in the opposite order.
+
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3200
+accounts:
+- devices-node-1
+- devices-node-2
+steps:
+- name: Install bundle on the laptop
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  outputs:
+    app_id: hash
+  account: devices-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Alice creates namespace
+  type: create_org
+  org_name: Alice creates namespace
+  outputs:
+    namespace_id: orgId
+  account: devices-node-1
+- name: Alice creates a folder group
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: notes
+  outputs:
+    notes_group: teamId
+  account: devices-node-1
+- name: Alice creates the folder's docs context
+  type: deploy
+  account: devices-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    docs_ctx: appId
+    laptop_key: memberPublicKey
+- name: Alice creates a doc
+  type: call
+  app: '{{docs_ctx}}'
+  method: create_doc
+  args:
+    title: Plan
+  account: devices-node-1
+  as_key: '{{laptop_key}}'
+  outputs:
+    doc_id: result
+- name: Alice comments on it from the laptop
+  type: call
+  app: '{{docs_ctx}}'
+  method: add_comment
+  args:
+    doc_id: '{{doc_id}}'
+    body: first draft
+  account: devices-node-1
+  as_key: '{{laptop_key}}'
+  outputs:
+    comment_id: result
+- name: The laptop's account root
+  type: whoami
+  outputs:
+    root_key: publicKey
+  account: devices-node-1
+- name: The pairing delivered a key
+  type: json_assert
+  statements:
+  - json_equal({{key_delivered}}, true)
+- name: The phone follows the docs context
+  type: whoami
+  account: devices-node-2
+  outputs:
+    phone_key: publicKey
+- name: The phone edits the laptop's comment
+  type: call
+  app: '{{docs_ctx}}'
+  method: edit_comment
+  args:
+    id: '{{comment_id}}'
+    body: from both
+  account: devices-node-2
+  as_key: '{{phone_key}}'
+- name: The laptop edits the comment offline
+  type: call
+  app: '{{docs_ctx}}'
+  method: edit_comment
+  args:
+    id: '{{comment_id}}'
+    body: from the laptop
+  account: devices-node-1
+  as_key: '{{laptop_key}}'
+- name: The phone edits the comment offline
+  type: call
+  app: '{{docs_ctx}}'
+  method: edit_comment
+  args:
+    id: '{{comment_id}}'
+    body: from the phone
+  account: devices-node-2
+  as_key: '{{phone_key}}'
+- name: Wait for the nodes to find each other
+  type: wait
+  seconds: 1.0
+- name: The laptop reads the comment
+  type: call
+  app: '{{docs_ctx}}'
+  method: get_comment
+  args:
+    id: '{{comment_id}}'
+  account: devices-node-1
+  as_key: '{{laptop_key}}'
+  outputs:
+    laptop_body: result.body
+- name: The phone reads the comment
+  type: call
+  app: '{{docs_ctx}}'
+  method: get_comment
+  args:
+    id: '{{comment_id}}'
+  account: devices-node-2
+  as_key: '{{phone_key}}'
+  outputs:
+    phone_body: result.body
+- name: Both devices read the phone's edit
+  type: assert
+  statements:
+  - is_set({{healed_hash}})
+  - '{{laptop_body}} == "from the phone"'
+  - '{{phone_body}} == "from the phone"'

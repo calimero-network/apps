@@ -1,0 +1,694 @@
+# Ported from play-a-game.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x27: replication is synchronous: a read sees every committed write
+name: Mero Chess E2E
+description: 'Two nodes play a real game of chess through the contract and converge on it.
+
+  Covers the whole loop a player actually walks: take a seat, see the opponent take theirs, alternate
+  moves that each node validates locally, reach a checkmate the CONTRACT derives (nobody writes "1-0"
+  anywhere), and start a rematch with the colours swapped.
+
+  The assertions are the ones a single node cannot make: after every move the OTHER node is asked for
+  the table, so a move that never replicated, a SAN string computed differently on two nodes, or a result
+  derived from a divergent move list all fail here.
+
+  It also carries a load the Rust tests structurally cannot. Every row this contract writes is an owned
+  entry — `StorageType::User`, signed per-action and verified against its owner at apply, and write-once
+  for everything but presence — and `converge_app` cannot carry those at all ("need the node''s signing
+  identity ... test those with merobox workflows"). So this scenario is the only place where authored
+  state crossing a real network is exercised: if signing or owner verification were wrong for this app''s
+  writes, the seats and moves below would not replicate and every assertion after the first sync would
+  fail.
+
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3140
+accounts:
+- chess-node-1
+- chess-node-2
+steps:
+- name: Install application on chess-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_chess.wasm'
+  outputs:
+    app_id: hash
+  account: chess-node-1
+- name: Assert application installed
+  type: assert
+  statements:
+  - is_set({{app_id}})
+- name: Settle before the mesh joins
+  type: wait
+  seconds: 1.0
+- name: Create mesh with node-2
+  type: deploy
+  account: chess-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_chess.wasm'
+  app_name: Create mesh with node-2
+  init_args: '{"title": "Two nodes", "now": 1700000000000}'
+  access:
+    kind: accounts
+    accounts:
+    - chess-node-1
+    - chess-node-2
+  outputs:
+    context_id: appId
+    node1_key: memberPublicKey
+- name: Verify mesh keys are populated
+  type: assert
+  statements:
+  - is_set({{context_id}})
+  - is_set({{node1_key}})
+  - is_set({{public_key_chess-node-2}})
+- name: node-1 sits down as White
+  type: call
+  app: '{{context_id}}'
+  method: sit
+  args:
+    seat: white
+    name: Node One
+    now: 1700000001000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 sits down as Black
+  type: call
+  app: '{{context_id}}'
+  method: sit
+  args:
+    seat: black
+    name: Node Two
+    now: 1700000002000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+- name: node-1 reads the table
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000003000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_ready: rpc
+- name: Assert node-1 sees a playable table
+  type: json_assert
+  statements:
+  - 'json_subset({{n1_ready}}, {"output": {"status": "inProgress", "game": 0, "side_to_move": "white",
+    "my_turn": true, "my_color": "white"}})'
+  - 'json_subset({{n1_ready}}, {"output": {"white": {"name": "Node One"}, "black": {"name": "Node Two"}}})'
+- name: node-2 reads the table
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000003000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  outputs:
+    n2_ready: rpc
+- name: Assert node-2 sees itself as Black and waiting
+  type: json_assert
+  statements:
+  - 'json_subset({{n2_ready}}, {"output": {"status": "inProgress", "my_color": "black", "my_turn": false}})'
+- name: node-2 tries to take the seat node-1 is in
+  type: call
+  app: '{{context_id}}'
+  method: sit
+  args:
+    seat: white
+    name: Node Two
+    now: 1700000004000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  expected_failure: true
+  outputs:
+    seat_taken_error: error
+- name: Assert the second claim really was refused
+  type: assert
+  statements:
+  - is_set({{seat_taken_error}})
+- name: node-1 confirms it still holds White
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000005000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_still_white: rpc
+- name: Assert the seat did not move
+  type: json_assert
+  statements:
+  - 'json_subset({{n1_still_white}}, {"output": {"white": {"name": "Node One"}}})'
+- name: White plays e4
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: e2e4
+    now: 1700000010000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    san_e4: rpc
+- name: Assert the contract named the move
+  type: json_assert
+  statements:
+  - 'json_equal({{san_e4}}, {"output": "e4"})'
+- name: Black plays e5
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: e7e5
+    now: 1700000011000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  outputs:
+    san_e5: rpc
+- name: Assert Black's reply
+  type: json_assert
+  statements:
+  - 'json_equal({{san_e5}}, {"output": "e5"})'
+- name: White plays Bc4
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: f1c4
+    now: 1700000012000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    san_bc4: rpc
+- name: Assert the bishop move
+  type: json_assert
+  statements:
+  - 'json_equal({{san_bc4}}, {"output": "Bc4"})'
+- name: Black plays Nc6
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: b8c6
+    now: 1700000013000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+- name: White plays Qh5
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: d1h5
+    now: 1700000014000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: Black plays Nf6, missing the mate
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: g8f6
+    now: 1700000015000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+- name: Black tries to move twice in a row
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: d7d6
+    now: 1700000016000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  expected_failure: true
+  outputs:
+    out_of_turn_error: error
+- name: Assert moving out of turn was refused
+  type: assert
+  statements:
+  - is_set({{out_of_turn_error}})
+- name: White mates on f7
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: h5f7
+    now: 1700000017000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    san_mate: rpc
+- name: Assert the contract wrote the mate into the notation
+  type: json_assert
+  statements:
+  - 'json_equal({{san_mate}}, {"output": "Qxf7#"})'
+- name: node-2 reads the finished game
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000018000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  outputs:
+    n2_final: rpc
+- name: Assert node-2 sees the checkmate it walked into
+  type: json_assert
+  statements:
+  - 'json_subset({{n2_final}}, {"output": {"status": "finished", "result": "1-0", "reason": "checkmate",
+    "check": true}})'
+  - 'json_subset({{n2_final}}, {"output": {"fen": "r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR
+    b KQkq - 0 4"}})'
+- name: node-2 tries to play on into a finished game
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: e8f7
+    now: 1700000019000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  expected_failure: true
+  outputs:
+    finished_game_error: error
+- name: Assert a finished game takes no more moves
+  type: assert
+  statements:
+  - is_set({{finished_game_error}})
+- name: node-2 starts a rematch
+  type: call
+  app: '{{context_id}}'
+  method: rematch
+  args:
+    now: 1700000020000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  outputs:
+    next_game: rpc
+- name: Assert the rematch is game 1
+  type: json_assert
+  statements:
+  - 'json_equal({{next_game}}, {"output": 1})'
+- name: node-1 reads the new game
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000021000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_rematch: rpc
+- name: Assert the colours swapped
+  type: json_assert
+  statements:
+  - 'json_subset({{n1_rematch}}, {"output": {"game": 1, "result": "*", "my_color": "black", "my_turn":
+    false}})'
+  - 'json_subset({{n1_rematch}}, {"output": {"white": {"name": "Node Two"}, "black": {"name": "Node One"}}})'
+- name: node-1 reads the history
+  type: call
+  app: '{{context_id}}'
+  method: history
+  args: {}
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    history: rpc
+- name: Assert the finished game is still on the record
+  type: assert
+  statements:
+  - contains({{history}}, "checkmate")
+  - contains({{history}}, "1-0")
+- name: node-1 reads the table again
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000022000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_two_games: rpc
+- name: Assert the table holds two games and is playing the new one
+  type: json_assert
+  statements:
+  - 'json_subset({{n1_two_games}}, {"output": {"games_played": 2, "game": 1, "result": "*"}})'
+- name: node-1 says it is still here
+  type: call
+  app: '{{context_id}}'
+  method: heartbeat
+  args:
+    now: 1700000023000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 says it is still here
+  type: call
+  app: '{{context_id}}'
+  method: heartbeat
+  args:
+    now: 1700000023500
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+- name: node-1 reads presence
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000024000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_presence: rpc
+- name: Assert both players are seen as online
+  type: json_assert
+  statements:
+  - 'json_subset({{n1_presence}}, {"output": {"white": {"online": true}, "black": {"online": true}}})'
+- name: node-1 reads presence long after the heartbeats
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000099000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_stale: rpc
+- name: Assert presence expires rather than latching
+  type: json_assert
+  statements:
+  - 'json_subset({{n1_stale}}, {"output": {"white": {"online": false}, "black": {"online": false}}})'
+- name: White offers a draw
+  type: call
+  app: '{{context_id}}'
+  method: offer_draw
+  args:
+    now: 1700000025000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+- name: node-1 sees an offer standing against it
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000026000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_offer_from: result.draw_offer_from
+    n1_white_member: result.white.member
+    n1_me: result.me
+- name: Assert the offer is White's and not node-1's own
+  type: assert
+  statements:
+  - '{{n1_offer_from}} == {{n1_white_member}}'
+  - '{{n1_offer_from}} != {{n1_me}}'
+- name: node-1 declines it
+  type: call
+  app: '{{context_id}}'
+  method: decline_draw
+  args:
+    now: 1700000027000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: node-1 tries to accept the offer it just declined
+  type: call
+  app: '{{context_id}}'
+  method: accept_draw
+  args:
+    now: 1700000028000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  expected_failure: true
+  outputs:
+    declined_offer_error: error
+- name: Assert a declined offer cannot be accepted
+  type: assert
+  statements:
+  - is_set({{declined_offer_error}})
+- name: White opens game 1
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: g1f3
+    now: 1700000029000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  outputs:
+    san_nf3: rpc
+- name: Assert the knight move
+  type: json_assert
+  statements:
+  - 'json_equal({{san_nf3}}, {"output": "Nf3"})'
+- name: Black offers a draw in the new position
+  type: call
+  app: '{{context_id}}'
+  method: offer_draw
+  args:
+    now: 1700000030000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: White accepts
+  type: call
+  app: '{{context_id}}'
+  method: accept_draw
+  args:
+    now: 1700000031000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+- name: node-1 reads the agreed draw
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000032000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_agreed: rpc
+- name: Assert both nodes call it a draw by agreement
+  type: json_assert
+  statements:
+  - 'json_subset({{n1_agreed}}, {"output": {"status": "finished", "result": "1/2-1/2", "reason": "agreement",
+    "game": 1}})'
+- name: node-1 starts game 2
+  type: call
+  app: '{{context_id}}'
+  method: rematch
+  args:
+    now: 1700000033000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    third_game: rpc
+- name: Assert the rematch is game 2
+  type: json_assert
+  statements:
+  - 'json_equal({{third_game}}, {"output": 2})'
+- name: Shuffle ply 0 (Nf3)
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: g1f3
+    now: 1700000034000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: Shuffle ply 1 (Nf6)
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: g8f6
+    now: 1700000035000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+- name: Shuffle ply 2 (Ng1)
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: f3g1
+    now: 1700000036000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: Shuffle ply 3 (Ng8)
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: f6g8
+    now: 1700000037000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+- name: Shuffle ply 4 (Nf3)
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: g1f3
+    now: 1700000038000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: Shuffle ply 5 (Nf6)
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: g8f6
+    now: 1700000039000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+- name: Shuffle ply 6 (Ng1)
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: f3g1
+    now: 1700000040000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: Shuffle ply 7 (Ng8)
+  type: call
+  app: '{{context_id}}'
+  method: play
+  args:
+    uci: f6g8
+    now: 1700000041000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+- name: node-2 reads the repeated position
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000042000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  outputs:
+    n2_repetition: rpc
+- name: Assert the repetition is claimable but the game is still on
+  type: json_assert
+  statements:
+  - 'json_subset({{n2_repetition}}, {"output": {"claimable_draw": "threefold", "result": "*", "status":
+    "inProgress"}})'
+- name: node-1 claims the threefold draw
+  type: call
+  app: '{{context_id}}'
+  method: claim_draw
+  args:
+    now: 1700000043000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 reads the claimed draw
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000044000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  outputs:
+    n2_claimed: rpc
+- name: Assert the claimed draw is believed on the other node
+  type: json_assert
+  statements:
+  - 'json_subset({{n2_claimed}}, {"output": {"status": "finished", "result": "1/2-1/2", "reason": "threefold",
+    "game": 2}})'
+- name: node-2 starts game 3
+  type: call
+  app: '{{context_id}}'
+  method: rematch
+  args:
+    now: 1700000045000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  outputs:
+    fourth_game: rpc
+- name: Assert the rematch is game 3
+  type: json_assert
+  statements:
+  - 'json_equal({{fourth_game}}, {"output": 3})'
+- name: node-1 resigns game 3
+  type: call
+  app: '{{context_id}}'
+  method: resign
+  args:
+    now: 1700000046000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 reads the resignation
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000047000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  outputs:
+    n2_resigned: rpc
+- name: Assert the resignation went the right way
+  type: json_assert
+  statements:
+  - 'json_subset({{n2_resigned}}, {"output": {"status": "finished", "result": "1-0", "reason": "resignation",
+    "game": 3}})'
+- name: node-1 starts game 4
+  type: call
+  app: '{{context_id}}'
+  method: rematch
+  args:
+    now: 1700000048000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+- name: node-1 tries to leave the board
+  type: call
+  app: '{{context_id}}'
+  method: stand
+  args:
+    now: 1700000049000
+  account: chess-node-1
+  as_key: '{{node1_key}}'
+  expected_failure: true
+  outputs:
+    stand_error: error
+- name: Assert standing up was refused
+  type: assert
+  statements:
+  - is_set({{stand_error}})
+- name: node-2 reads the table
+  type: call
+  app: '{{context_id}}'
+  method: table
+  args:
+    now: 1700000050000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  outputs:
+    n2_kept: rpc
+- name: Assert both chairs are still held on the other node
+  type: json_assert
+  statements:
+  - 'json_subset({{n2_kept}}, {"output": {"status": "inProgress", "game": 4, "white": {"name": "Node One"},
+    "black": {"name": "Node Two"}}})'
+- name: node-2 tries to take node-1's chair
+  type: call
+  app: '{{context_id}}'
+  method: sit
+  args:
+    seat: white
+    name: Node Two
+    now: 1700000051000
+  account: chess-node-2
+  as_key: '{{public_key_chess-node-2}}'
+  expected_failure: true
+  outputs:
+    kept_seat_error: error
+- name: Assert the kept chair really was refused
+  type: assert
+  statements:
+  - is_set({{kept_seat_error}})

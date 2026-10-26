@@ -1,0 +1,305 @@
+# Ported from migrate-v1-v2.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   assert_migration_complete x1: v1 group migration
+#   get_migration_status x1: v1 group migration
+#   join_subgroup_inheritance x1: subgroup inheritance is v1 governance
+#   set_default_capabilities x1: capabilities are v1 governance
+#   set_subgroup_visibility x1: subgroup visibility is v1 governance
+#   upgrade_group x1: app upgrades are per app instance (http POST apps/{app}/upgrade)
+#   wait_for_sync x5: replication is synchronous: a read sees every committed write
+name: Mero Standup — upgrade a live v1 team to v2 (2-node migration)
+description: "merobox E2E runs one build on fresh state, so it never tests what happens to a team that\
+  \ already exists. This scenario does: two nodes build a v1 team (crates/v1, the contract frozen as it\
+  \ shipped) with updates, a blocker, names and a superseded decision, then the group is upgraded to the\
+  \ v2 bundle this tree builds. `migrate_v1_to_v2` runs independently on each node.\nIt proves:\n  1.\
+  \ both members reach ABI state version 2, with no residue;\n  2. every v1 record reads the same on both\
+  \ nodes afterwards, supersession\n     included;\n  3. v1 entries stay editable by their owners;\n \
+  \ 4. the v2 features (team name, help on a blocker, decision tags) work on\n     top of v1 data and\
+  \ replicate.\n\nThe v1 bundle is res/mero-standup-v1.mpk, built by build-multi-service-bundle.sh (CI\
+  \ runs it in the wasm job).\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3510
+accounts:
+- calimero-node-1
+- calimero-node-2
+- calimero-node-2-id1
+steps:
+- name: Install v1 on Node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_standup_v1.wasm'
+  outputs:
+    app_v1: hash
+  account: calimero-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace
+  type: create_org
+  org_name: Create namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Create the team's subgroup
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: standup-team
+  outputs:
+    group_id: teamId
+  account: calimero-node-1
+- name: Create the v1 team
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_standup_v1.wasm'
+  app_name: Create the v1 team
+  init_args: '{}'
+  org: '{{namespace_id}}'
+  outputs:
+    team_id: appId
+    alice_key: memberPublicKey
+- name: Generate identity for Node 2
+  type: whoami
+  account: calimero-node-2-id1
+  outputs:
+    bob_identity: publicKey
+- name: Node 1 invites Node 2
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    invite_bob: token
+- name: Settle before the namespace join (cold-join KeyDelivery)
+  type: wait
+  seconds: 1.0
+- name: Node 2 joins namespace
+  type: redeem_invite
+  token: '{{invite_bob}}'
+  account: calimero-node-2
+- name: Settle after the joins
+  type: wait
+  seconds: 1.0
+- name: Bob joins the team
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_key: publicKey
+- name: Alice learns her account
+  type: call
+  app: '{{team_id}}'
+  method: whoami
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_account: result
+- name: Alice names herself (v1)
+  type: call
+  app: '{{team_id}}'
+  method: set_name
+  args:
+    name: Alice
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice posts a blocked v1 update
+  type: call
+  app: '{{team_id}}'
+  method: post_update
+  args:
+    day: '2026-10-12'
+    done: Written under v1
+    next: Ship it
+    blockers: Waiting on a v1 review
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice logs a v1 decision
+  type: call
+  app: '{{team_id}}'
+  method: log_decision
+  args:
+    title: Deploy on Fridays
+    decision: We deploy on Fridays
+    rationale: v1 thinking
+    supersedes: null
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    v1_decision: result
+- name: Bob supersedes it under v1
+  type: call
+  app: '{{team_id}}'
+  method: log_decision
+  args:
+    title: Never deploy on Fridays
+    decision: Deploys stop Thursday evening
+    rationale: Weekends
+    supersedes: '{{v1_decision}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_v1_decision: result
+- name: set_team_name is not exported by v1
+  type: call
+  app: '{{team_id}}'
+  method: set_team_name
+  args:
+    name: too early
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  expected_failure: true
+  outputs:
+    pre_upgrade_error: error
+- name: Assert v1 refused the v2 method
+  type: assert
+  statements:
+  - is_set({{pre_upgrade_error}})
+- name: Install v2 on Node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_standup.wasm'
+  outputs:
+    app_v2: hash
+  account: calimero-node-1
+- name: Assert v1 and v2 share one application id
+  type: json_assert
+  statements:
+  - equal("{{app_v1}}", "{{app_v2}}")
+- name: Wait for the upgrade to reach Node 2
+  type: wait
+  seconds: 1.0
+- name: Alice reads the v1 day under v2
+  type: call
+  app: '{{team_id}}'
+  method: get_day
+  args:
+    day: '2026-10-12'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    day_node1: rpc
+- name: Bob reads the v1 day under v2
+  type: call
+  app: '{{team_id}}'
+  method: get_day
+  args:
+    day: '2026-10-12'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    day_node2: rpc
+- name: Assert both members migrated with no residue
+  type: json_assert
+  statements:
+  - equal({{mig_target}}, 2)
+  - equal({{mig_total}}, 2)
+  - equal({{mig_migrated}}, 2)
+  - equal({{mig_failed}}, 0)
+  - equal({{mig_residue}}, 0)
+- name: Bob reads the v1 decision under v2
+  type: call
+  app: '{{team_id}}'
+  method: get_decision
+  args:
+    id: '{{v1_decision}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    v1_decision_view: rpc
+- name: Assert every v1 record survived on both nodes
+  type: assert
+  statements:
+  - contains({{day_node1}}, "Written under v1")
+  - contains({{day_node1}}, "Waiting on a v1 review")
+  - contains({{day_node1}}, "Alice")
+  - contains({{day_node2}}, "Written under v1")
+  - contains({{day_node2}}, {{alice_account}})
+  - contains({{v1_decision_view}}, "Deploy on Fridays")
+  - contains({{v1_decision_view}}, {{bob_v1_decision}})
+- name: Alice edits her v1 update
+  type: call
+  app: '{{team_id}}'
+  method: post_update
+  args:
+    day: '2026-10-12'
+    done: Edited after the upgrade
+    next: Ship it
+    blockers: Still waiting on review
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice names the team
+  type: call
+  app: '{{team_id}}'
+  method: set_team_name
+  args:
+    name: Upgraded team
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob offers help on Alice's (v1) blocker
+  type: call
+  app: '{{team_id}}'
+  method: offer_help
+  args:
+    day: '2026-10-12'
+    author: '{{alice_account}}'
+    note: Reviewing now
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob logs a tagged v2 decision
+  type: call
+  app: '{{team_id}}'
+  method: log_decision
+  args:
+    title: Tag everything
+    decision: Decisions carry tags from v2 on
+    rationale: ''
+    supersedes: null
+    tags:
+    - process
+    with:
+    - '{{alice_account}}'
+    from_day: '2026-10-12'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice reads the day after
+  type: call
+  app: '{{team_id}}'
+  method: get_day
+  args:
+    day: '2026-10-12'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    day_after: rpc
+- name: Alice reads the team name
+  type: call
+  app: '{{team_id}}'
+  method: team_name
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    team_after: rpc
+- name: Alice filters the log by Bob's tag
+  type: call
+  app: '{{team_id}}'
+  method: list_decisions
+  args:
+    search: null
+    tag: process
+    from_day: null
+    standing_only: false
+    cursor: null
+    limit: 20
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    tagged_after: rpc
+- name: Assert v2 works on top of the migrated team
+  type: assert
+  statements:
+  - contains({{day_after}}, "Edited after the upgrade")
+  - contains({{day_after}}, "Reviewing now")
+  - contains({{team_after}}, "Upgraded team")
+  - contains({{tagged_after}}, "Tag everything")
+  - not_contains({{tagged_after}}, "Deploy on Fridays")

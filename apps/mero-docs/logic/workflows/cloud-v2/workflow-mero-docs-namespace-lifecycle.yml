@@ -1,0 +1,77 @@
+# Ported from workflow-mero-docs-namespace-lifecycle.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   delete_group x1: v1 group deletion
+#   delete_namespace x2: v1 namespace deletion
+#   get_group_metadata x2: group metadata is v1 governance
+#   list_namespace_groups x3: v1 namespace listing
+#   list_namespaces x3: v1 namespace listing
+#   set_group_metadata x2: group metadata is v1 governance
+name: Mero Docs E2E - Namespace Lifecycle + Multi-Namespace Isolation
+description: "Exercises namespace-level operations the app's NamespaceSwitcher / NamespaceCreateDialog\
+  \ / (future) namespace-settings surface hits, but which the main workflow-mero-docs-e2e.yml doesn't\
+  \ cover:\n\n  - set_group_metadata → the \"rename folder\" / \"rename workspace\"\n                \
+  \         user flow. Used by useFolderOperations.rename\n                         and the NamespaceCreateDialog's\
+  \ name field\n                         (replaces the removed set_group_alias step).\n  - delete_namespace\
+  \   → the namespace teardown path a future admin\n                         surface will call via useDeleteNamespace.\n\
+  \  - delete_group       → folder deletion: one core delete_group, which\n                         cascades\
+  \ to the folder's subtree and contexts.\n\nAlso tests multi-namespace isolation: folders created in\
+  \ namespace A should not appear in namespace B's list_namespace_groups output. This is the backend-side\
+  \ guarantee the NamespaceSwitcher relies on to display only the active workspace's content.\nSingle\
+  \ node is sufficient for these flows - everything is local admin-API, no cross-node sync required.\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3260
+accounts:
+- calimero-node-1
+steps:
+- name: Install bundle
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  outputs:
+    app_id: hash
+  account: calimero-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace A
+  type: create_org
+  org_name: Create namespace A
+  outputs:
+    ns_a: orgId
+  account: calimero-node-1
+- name: Create namespace B
+  type: create_org
+  org_name: Create namespace B
+  outputs:
+    ns_b: orgId
+  account: calimero-node-1
+- name: Assert the two namespaces are distinct ids
+  type: assert
+  statements:
+  - is_set({{ns_a}})
+  - is_set({{ns_b}})
+  - '"{{ns_a}}" != "{{ns_b}}"'
+- name: Folder in namespace A
+  type: create_team
+  org: '{{ns_a}}'
+  team_name: folder-in-A
+  outputs:
+    folder_a: teamId
+  account: calimero-node-1
+- name: Folder in namespace B
+  type: create_team
+  org: '{{ns_b}}'
+  team_name: folder-in-B
+  outputs:
+    folder_b: teamId
+  account: calimero-node-1
+- name: Assert folder-in-A renamed to 'renamed'
+  type: assert
+  statements:
+  - equal({{folder_a_name1}}, 'renamed')
+- name: Assert folder-in-A renamed to 'final-name'
+  type: assert
+  statements:
+  - equal({{folder_a_name2}}, 'final-name')

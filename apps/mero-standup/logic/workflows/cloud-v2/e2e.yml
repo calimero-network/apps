@@ -1,0 +1,473 @@
+# Ported from e2e.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   set_default_capabilities x1: capabilities are v1 governance
+#   sync_group x1: replication is synchronous
+#   wait_for_sync x9: replication is synchronous: a read sees every committed write
+name: Mero Standup — standups and decisions across two nodes (2-node e2e)
+description: "The properties the contract is built on, on real nodes over a signed delta path, which no\
+  \ single-node test can exercise:\n\n  1. an update posted on one node is read on the other, attributed\
+  \ to the\n     account that signed it;\n  2. two members posting the same day hold two entries, and\
+  \ one cannot\n     clear or rewrite the other's (keys are per owner);\n  3. the team's current blockers\
+  \ and member list converge;\n  4. a decision is write-once and anyone may supersede it, and the\n  \
+  \   supersession shows on BOTH ends on BOTH nodes, derived rather than\n     written onto the old decision;\n\
+  \  5. a display name set on one node renders on the other.\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3500
+accounts:
+- calimero-node-1
+- calimero-node-2
+- calimero-node-2-id1
+steps:
+- name: Install application on Node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_standup.wasm'
+  outputs:
+    app_id: hash
+  account: calimero-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace
+  type: create_org
+  org_name: Create namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Generate identity for Node 2
+  type: whoami
+  account: calimero-node-2-id1
+  outputs:
+    bob_identity: publicKey
+- name: Wait for identity propagation
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates invitation for Node 2
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    invite_bob: token
+- name: Settle before the namespace join (cold-join KeyDelivery)
+  type: wait
+  seconds: 1.0
+- name: Node 2 joins namespace
+  type: redeem_invite
+  token: '{{invite_bob}}'
+  account: calimero-node-2
+- name: Settle after namespace join
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates the team
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_standup.wasm'
+  app_name: Node 1 creates the team
+  init_args: '{}'
+  org: '{{namespace_id}}'
+  outputs:
+    team_id: appId
+    alice_key: memberPublicKey
+- name: Settle after sync
+  type: wait
+  seconds: 1.0
+- name: Bob joins the team
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_key: publicKey
+- name: Alice learns her account
+  type: call
+  app: '{{team_id}}'
+  method: whoami
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_account: result
+- name: Alice names herself
+  type: call
+  app: '{{team_id}}'
+  method: set_name
+  args:
+    name: Alice
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice posts her standup
+  type: call
+  app: '{{team_id}}'
+  method: post_update
+  args:
+    day: '2026-10-13'
+    done: Wrote the onboarding guide
+    next: Review the API proposal
+    blockers: ''
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob reads the day
+  type: call
+  app: '{{team_id}}'
+  method: get_day
+  args:
+    day: '2026-10-13'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_day: rpc
+- name: Assert the update and Alice's name reached Node 2
+  type: assert
+  statements:
+  - contains({{bob_day}}, "Wrote the onboarding guide")
+  - contains({{bob_day}}, {{alice_account}})
+  - contains({{bob_day}}, "Alice")
+- name: Bob posts for the same day, with a blocker
+  type: call
+  app: '{{team_id}}'
+  method: post_update
+  args:
+    day: '2026-10-13'
+    done: Fixed the flaky sync test
+    next: Ship the release
+    blockers: Waiting on the design review
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice tries to clear an update she does not hold for a day
+  type: call
+  app: '{{team_id}}'
+  method: clear_update
+  args:
+    day: '2026-10-14'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  expected_failure: true
+  outputs:
+    clear_error: error
+- name: Assert clearing an absent update is refused
+  type: assert
+  statements:
+  - is_set({{clear_error}})
+- name: Alice reads the day
+  type: call
+  app: '{{team_id}}'
+  method: get_day
+  args:
+    day: '2026-10-13'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_day: rpc
+- name: Assert both updates stand side by side on Node 1
+  type: assert
+  statements:
+  - contains({{alice_day}}, "Wrote the onboarding guide")
+  - contains({{alice_day}}, "Fixed the flaky sync test")
+- name: Alice reads the current blockers
+  type: call
+  app: '{{team_id}}'
+  method: current_blockers
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    blockers: rpc
+- name: Alice lists the days
+  type: call
+  app: '{{team_id}}'
+  method: list_days
+  args:
+    before: null
+    limit: 10
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    days: rpc
+- name: Alice lists the members
+  type: call
+  app: '{{team_id}}'
+  method: members
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    members: rpc
+- name: Assert the team view converged
+  type: assert
+  statements:
+  - contains({{blockers}}, "Waiting on the design review")
+  - not_contains({{blockers}}, "onboarding guide")
+  - contains({{days}}, "2026-10-13")
+  - contains({{members}}, {{alice_account}})
+- name: Bob clears his update
+  type: call
+  app: '{{team_id}}'
+  method: clear_update
+  args:
+    day: '2026-10-13'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice re-reads the day
+  type: call
+  app: '{{team_id}}'
+  method: get_day
+  args:
+    day: '2026-10-13'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    day_after_clear: rpc
+- name: Assert only Bob's update went
+  type: assert
+  statements:
+  - contains({{day_after_clear}}, "Wrote the onboarding guide")
+  - not_contains({{day_after_clear}}, "Fixed the flaky sync test")
+- name: Alice logs a decision
+  type: call
+  app: '{{team_id}}'
+  method: log_decision
+  args:
+    title: Release every two weeks
+    decision: Cut a release every other Tuesday
+    rationale: Weekly was too much overhead for a team of four
+    supersedes: null
+    tags:
+    - Release Process
+    - release process
+    with:
+    - '{{alice_account}}'
+    from_day: '2026-10-13'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    first_decision: result
+- name: Bob supersedes it
+  type: call
+  app: '{{team_id}}'
+  method: log_decision
+  args:
+    title: Release weekly again
+    decision: Cut a release every Tuesday
+    rationale: Two weeks let fixes sit too long
+    supersedes: '{{first_decision}}'
+    tags:
+    - release-process
+    with: []
+    from_day: null
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    second_decision: result
+- name: Alice reads her original decision
+  type: call
+  app: '{{team_id}}'
+  method: get_decision
+  args:
+    id: '{{first_decision}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    original: rpc
+- name: Alice lists the standing decisions
+  type: call
+  app: '{{team_id}}'
+  method: list_decisions
+  args:
+    search: null
+    tag: null
+    from_day: null
+    standing_only: true
+    cursor: null
+    limit: 20
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    standing: rpc
+- name: Bob searches the whole log
+  type: call
+  app: '{{team_id}}'
+  method: list_decisions
+  args:
+    search: two weeks
+    tag: null
+    from_day: null
+    standing_only: false
+    cursor: null
+    limit: 20
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    search_hits: rpc
+- name: Assert the original is unchanged and marked superseded everywhere
+  type: assert
+  statements:
+  - contains({{original}}, "Cut a release every other Tuesday")
+  - contains({{original}}, {{second_decision}})
+  - contains({{standing}}, "Release weekly again")
+  - not_contains({{standing}}, "Release every two weeks")
+  - contains({{search_hits}}, "Release every two weeks")
+  - contains({{search_hits}}, "Release weekly again")
+- name: Alice tries to supersede the already-replaced decision
+  type: call
+  app: '{{team_id}}'
+  method: log_decision
+  args:
+    title: Monthly
+    decision: Monthly releases
+    rationale: ''
+    supersedes: '{{first_decision}}'
+    tags: []
+    with: []
+    from_day: null
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  expected_failure: true
+  outputs:
+    resupersede_error: error
+- name: Assert a replaced decision cannot be replaced again
+  type: assert
+  statements:
+  - is_set({{resupersede_error}})
+- name: Bob reads Alice's name by her account
+  type: call
+  app: '{{team_id}}'
+  method: get_name
+  args:
+    account: '{{alice_account}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    alice_name: rpc
+- name: Assert the name reached Node 2
+  type: assert
+  statements:
+  - contains({{alice_name}}, "Alice")
+- name: Bob names the team
+  type: call
+  app: '{{team_id}}'
+  method: set_team_name
+  args:
+    name: Platform
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob learns his account
+  type: call
+  app: '{{team_id}}'
+  method: whoami
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_account: result
+- name: Bob is blocked again
+  type: call
+  app: '{{team_id}}'
+  method: post_update
+  args:
+    day: '2026-10-14'
+    done: Drafted the migration plan
+    next: Run it
+    blockers: Need prod read access
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice offers help on Bob's blocker
+  type: call
+  app: '{{team_id}}'
+  method: offer_help
+  args:
+    day: '2026-10-14'
+    author: '{{bob_account}}'
+    note: I can grant it after lunch
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob tries to offer help on his own blocker
+  type: call
+  app: '{{team_id}}'
+  method: offer_help
+  args:
+    day: '2026-10-14'
+    author: '{{bob_account}}'
+    note: ''
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    self_help_error: error
+- name: Alice reads the name Bob gave the team
+  type: call
+  app: '{{team_id}}'
+  method: team_name
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    team: rpc
+- name: Bob reads his week
+  type: call
+  app: '{{team_id}}'
+  method: get_week
+  args:
+    start: '2026-10-12'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    week: rpc
+- name: Bob reads the tags
+  type: call
+  app: '{{team_id}}'
+  method: tags
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    tag_counts: rpc
+- name: Bob filters the log by tag
+  type: call
+  app: '{{team_id}}'
+  method: list_decisions
+  args:
+    search: null
+    tag: release-process
+    from_day: '2026-10-13'
+    standing_only: false
+    cursor: null
+    limit: 20
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    tagged: rpc
+- name: Assert v2 state converged on both nodes
+  type: assert
+  statements:
+  - contains({{team}}, "Platform")
+  - contains({{week}}, "I can grant it after lunch")
+  - contains({{week}}, "Wrote the onboarding guide")
+  - contains({{week}}, "2026-10-18")
+  - contains({{tag_counts}}, "release-process")
+  - contains({{tagged}}, "Release every two weeks")
+  - not_contains({{tagged}}, "Release weekly again")
+  - is_set({{self_help_error}})
+- name: Alice withdraws her offer
+  type: call
+  app: '{{team_id}}'
+  method: withdraw_help
+  args:
+    day: '2026-10-14'
+    author: '{{bob_account}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob re-reads the blocker
+  type: call
+  app: '{{team_id}}'
+  method: current_blockers
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    blockers_after: rpc
+- name: Assert the withdrawal reached Node 2
+  type: assert
+  statements:
+  - contains({{blockers_after}}, "Need prod read access")
+  - not_contains({{blockers_after}}, "I can grant it after lunch")

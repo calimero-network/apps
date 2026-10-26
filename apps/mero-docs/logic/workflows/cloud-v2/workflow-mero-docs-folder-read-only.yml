@@ -1,0 +1,517 @@
+# Ported from workflow-mero-docs-folder-read-only.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   assert_api_response x1: v1 admin API
+#   join_subgroup_inheritance x2: subgroup inheritance is v1 governance
+#   leave_group x1: v1 group membership
+#   remove_group_members (team) x1: not supported by the port
+#   set_group_metadata x2: group metadata is v1 governance
+#   set_subgroup_visibility x2: subgroup visibility is v1 governance
+#   wait_for_sync x14: replication is synchronous: a read sees every committed write
+name: Mero Docs - a folder's Read only member cannot write its docs
+description: 'The app''s "Read only" folder role writes the core group role ReadOnly for the member in
+  that folder''s group; folder roles are core roles and capabilities. Core then refuses the member''s
+  doc writes on every node: the calls return success, but nothing is written on the member''s node or
+  on any peer.
+
+  Alice owns the workspace. In a Restricted folder, Bob is set to Read only and Carol stays an Editor:
+  Bob''s edit_doc, add_tag and add_comment change nothing, Carol''s writes land, and setting Bob back
+  to Editor restores his writes.
+
+  In an Open folder Bob is a member by inheritance only: his write lands (the control), then the direct
+  ReadOnly row the app adds refuses his rename and his comment, and setting him back to Member restores
+  them. Made Read only again, leaving the folder and rejoining it by inheritance does not shed it.
+
+  Finally Alice removes Bob from the workspace and, as the app does, from the folders that still list
+  him: his write to the Restricted folder is refused.
+
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3230
+accounts:
+- curo-node-1
+- curo-node-2
+- curo-node-3
+steps:
+- name: Install the bundle on Alice
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  outputs:
+    app_id: hash
+  account: curo-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Alice creates the namespace
+  type: create_org
+  org_name: Alice creates the namespace
+  outputs:
+    namespace_id: orgId
+  account: curo-node-1
+- name: Alice creates the Registry context
+  type: deploy
+  account: curo-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs_registry.wasm'
+  app_name: registry
+  org: '{{namespace_id}}'
+  outputs:
+    reg_ctx: appId
+    alice_key: memberPublicKey
+- name: Alice creates the Restricted folder
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: private
+  outputs:
+    folder: teamId
+  account: curo-node-1
+- name: Alice creates the Restricted folder's Docs context
+  type: deploy
+  account: curo-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    docs_ctx: appId
+    alice_docs_key: memberPublicKey
+- name: Alice creates a doc
+  type: call
+  app: '{{docs_ctx}}'
+  method: create_doc
+  args:
+    title: Original
+  account: curo-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    doc_id: result
+- name: Alice invites Bob to the namespace
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: curo-node-1
+  outputs:
+    bob_invite: token
+- name: Alice invites Carol to the namespace
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: curo-node-1
+  outputs:
+    carol_invite: token
+- name: Wait for namespace governance to reach Bob and Carol
+  type: wait
+  seconds: 1.0
+- name: Bob joins the namespace
+  type: redeem_invite
+  token: '{{bob_invite}}'
+  account: curo-node-2
+- type: whoami
+  account: curo-node-2
+  outputs:
+    bob_account: publicKey
+- name: Wait before Carol joins
+  type: wait
+  seconds: 1.0
+- name: Carol joins the namespace
+  type: redeem_invite
+  token: '{{carol_invite}}'
+  account: curo-node-3
+- type: whoami
+  account: curo-node-3
+  outputs:
+    carol_account: publicKey
+- name: Alice adds Bob and Carol to the Restricted folder
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{folder}}'
+  members:
+  - '{{bob_account}}'
+  - '{{carol_account}}'
+  account: curo-node-1
+- name: Bob joins the Docs context
+  type: whoami
+  account: curo-node-2
+  outputs:
+    bob_docs_key: publicKey
+- name: Carol joins the Docs context
+  type: whoami
+  account: curo-node-3
+  outputs:
+    carol_docs_key: publicKey
+- name: Alice makes Bob core ReadOnly in the folder's group
+  type: set_role
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  role: guest
+  account: curo-node-1
+- name: Read only Bob renames the doc
+  type: call
+  app: '{{docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{doc_id}}'
+    title: Edited while Read only
+  account: curo-node-2
+  as_key: '{{bob_docs_key}}'
+  allow_failure: true
+- name: Read only Bob tags the doc
+  type: call
+  app: '{{docs_ctx}}'
+  method: add_tag
+  args:
+    id: '{{doc_id}}'
+    tag: read-only-was-here
+  account: curo-node-2
+  as_key: '{{bob_docs_key}}'
+  allow_failure: true
+- name: Read only Bob comments
+  type: call
+  app: '{{docs_ctx}}'
+  method: add_comment
+  args:
+    doc_id: '{{doc_id}}'
+    body: a Read only member's comment
+  account: curo-node-2
+  as_key: '{{bob_docs_key}}'
+  allow_failure: true
+- name: Alice reads the doc
+  type: call
+  app: '{{docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{doc_id}}'
+  account: curo-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    alice_ro_title: result.title
+    alice_ro_tags: result.tags
+- name: Alice counts comments
+  type: call
+  app: '{{docs_ctx}}'
+  method: comment_count
+  args: {}
+  account: curo-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    alice_ro_comments: result
+- name: Bob reads the doc on his own node
+  type: call
+  app: '{{docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{doc_id}}'
+  account: curo-node-2
+  as_key: '{{bob_docs_key}}'
+  outputs:
+    bob_ro_title: result.title
+    bob_ro_tags: result.tags
+- name: Bob counts comments on his own node
+  type: call
+  app: '{{docs_ctx}}'
+  method: comment_count
+  args: {}
+  account: curo-node-2
+  as_key: '{{bob_docs_key}}'
+  outputs:
+    bob_ro_comments: result
+- name: Nothing Bob wrote landed on either node
+  type: json_assert
+  statements:
+  - json_equal({{alice_ro_title}}, "Original")
+  - json_equal({{alice_ro_tags}}, [])
+  - json_equal({{alice_ro_comments}}, 0)
+  - json_equal({{bob_ro_title}}, "Original")
+  - json_equal({{bob_ro_tags}}, [])
+  - json_equal({{bob_ro_comments}}, 0)
+- name: Editor Carol renames the doc
+  type: call
+  app: '{{docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{doc_id}}'
+    title: Edited by an Editor
+  account: curo-node-3
+  as_key: '{{carol_docs_key}}'
+- name: Editor Carol comments
+  type: call
+  app: '{{docs_ctx}}'
+  method: add_comment
+  args:
+    doc_id: '{{doc_id}}'
+    body: an Editor's comment
+  account: curo-node-3
+  as_key: '{{carol_docs_key}}'
+- name: Alice reads the doc after Carol's writes
+  type: call
+  app: '{{docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{doc_id}}'
+  account: curo-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    alice_editor_title: result.title
+- name: Alice counts comments after Carol's writes
+  type: call
+  app: '{{docs_ctx}}'
+  method: comment_count
+  args: {}
+  account: curo-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    alice_editor_comments: result
+- name: Carol's writes landed
+  type: json_assert
+  statements:
+  - json_equal({{alice_editor_title}}, "Edited by an Editor")
+  - json_equal({{alice_editor_comments}}, 1)
+- name: Alice makes Bob a core Member again
+  type: set_role
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  role: member
+  account: curo-node-1
+- name: Restored Bob renames the doc
+  type: call
+  app: '{{docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{doc_id}}'
+    title: Edited after the restore
+  account: curo-node-2
+  as_key: '{{bob_docs_key}}'
+- name: Alice reads the doc after the restore
+  type: call
+  app: '{{docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{doc_id}}'
+  account: curo-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    alice_restored_title: result.title
+- name: Bob's write landed once he was an Editor again
+  type: json_assert
+  statements:
+  - json_equal({{alice_restored_title}}, "Edited after the restore")
+- name: Alice creates the Open folder
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: open
+  outputs:
+    open_folder: teamId
+  account: curo-node-1
+- name: Alice creates the Open folder's Docs context
+  type: deploy
+  account: curo-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    open_ctx: appId
+    alice_open_key: memberPublicKey
+- name: Alice creates a doc in the Open folder
+  type: call
+  app: '{{open_ctx}}'
+  method: create_doc
+  args:
+    title: Open original
+  account: curo-node-1
+  as_key: '{{alice_open_key}}'
+  outputs:
+    open_doc: result
+- name: Bob has no direct row in the Open folder
+  type: json_assert
+  statements:
+  - json_equal({{bob_was_inherited}}, true)
+- name: Bob joins the Open folder's Docs context
+  type: whoami
+  account: curo-node-2
+  outputs:
+    bob_open_key: publicKey
+- name: Inherited Bob renames the Open doc before any Read only row
+  type: call
+  app: '{{open_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{open_doc}}'
+    title: Written while inherited
+  account: curo-node-2
+  as_key: '{{bob_open_key}}'
+- name: Alice reads the Open doc after Bob's inherited write
+  type: call
+  app: '{{open_ctx}}'
+  method: get_doc
+  args:
+    id: '{{open_doc}}'
+  account: curo-node-1
+  as_key: '{{alice_open_key}}'
+  outputs:
+    alice_open_control_title: result.title
+- name: Control - an inherited member writes before the Read only row
+  type: json_assert
+  statements:
+  - json_equal({{alice_open_control_title}}, "Written while inherited")
+- name: Alice adds a direct ReadOnly row for Bob in the Open folder
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{open_folder}}'
+  members:
+  - '{{bob_account}}'
+  account: curo-node-1
+- name: Inherited Read only Bob renames the Open doc
+  type: call
+  app: '{{open_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{open_doc}}'
+    title: Edited by an inherited Read only member
+  account: curo-node-2
+  as_key: '{{bob_open_key}}'
+  allow_failure: true
+- name: Inherited Read only Bob comments on the Open doc
+  type: call
+  app: '{{open_ctx}}'
+  method: add_comment
+  args:
+    doc_id: '{{open_doc}}'
+    body: an inherited Read only comment
+  account: curo-node-2
+  as_key: '{{bob_open_key}}'
+  allow_failure: true
+- name: Alice reads the Open doc
+  type: call
+  app: '{{open_ctx}}'
+  method: get_doc
+  args:
+    id: '{{open_doc}}'
+  account: curo-node-1
+  as_key: '{{alice_open_key}}'
+  outputs:
+    alice_open_ro_title: result.title
+- name: Alice counts the Open folder's comments
+  type: call
+  app: '{{open_ctx}}'
+  method: comment_count
+  args: {}
+  account: curo-node-1
+  as_key: '{{alice_open_key}}'
+  outputs:
+    alice_open_ro_comments: result
+- name: Bob reads the Open doc on his own node
+  type: call
+  app: '{{open_ctx}}'
+  method: get_doc
+  args:
+    id: '{{open_doc}}'
+  account: curo-node-2
+  as_key: '{{bob_open_key}}'
+  outputs:
+    bob_open_ro_title: result.title
+- name: The inherited Read only member's writes landed nowhere
+  type: json_assert
+  statements:
+  - json_equal({{alice_open_ro_title}}, "Written while inherited")
+  - json_equal({{bob_open_ro_title}}, "Written while inherited")
+  - json_equal({{alice_open_ro_comments}}, 0)
+- name: Alice makes Bob a Member of the Open folder again
+  type: set_role
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  role: member
+  account: curo-node-1
+- name: Restored Bob renames the Open doc
+  type: call
+  app: '{{open_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{open_doc}}'
+    title: Edited after the Open restore
+  account: curo-node-2
+  as_key: '{{bob_open_key}}'
+- name: Alice reads the Open doc after the restore
+  type: call
+  app: '{{open_ctx}}'
+  method: get_doc
+  args:
+    id: '{{open_doc}}'
+  account: curo-node-1
+  as_key: '{{alice_open_key}}'
+  outputs:
+    alice_open_restored_title: result.title
+- name: Bob's Open-folder write landed once he was a Member again
+  type: json_assert
+  statements:
+  - json_equal({{alice_open_restored_title}}, "Edited after the Open restore")
+- name: Alice makes Bob Read only in the Open folder again
+  type: set_role
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  role: guest
+  account: curo-node-1
+- name: Let the leave reach every node
+  type: wait
+  seconds: 1.0
+- name: Bob renames the Open doc after trying to rejoin
+  type: call
+  app: '{{open_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{open_doc}}'
+    title: Edited after leaving
+  account: curo-node-2
+  as_key: '{{bob_open_key}}'
+  allow_failure: true
+- name: Give a rejoined write time to sync
+  type: wait
+  seconds: 1.0
+- name: Alice reads the Open doc after Bob left
+  type: call
+  app: '{{open_ctx}}'
+  method: get_doc
+  args:
+    id: '{{open_doc}}'
+  account: curo-node-1
+  as_key: '{{alice_open_key}}'
+  outputs:
+    alice_open_left_title: result.title
+- name: Leaving did not shed Read only through inheritance
+  type: json_assert
+  statements:
+  - json_equal({{alice_open_left_title}}, "Edited after the Open restore")
+- name: Alice removes Bob from the workspace
+  type: remove_member
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  account: curo-node-1
+- name: Let the removals reach every node
+  type: wait
+  seconds: 1.0
+- name: Removed Bob renames the Restricted doc
+  type: call
+  app: '{{docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{doc_id}}'
+    title: Edited after removal
+  account: curo-node-2
+  as_key: '{{bob_docs_key}}'
+  allow_failure: true
+- name: Give a removed member's write time to sync
+  type: wait
+  seconds: 1.0
+- name: Alice reads the Restricted doc after the removal
+  type: call
+  app: '{{docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{doc_id}}'
+  account: curo-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    alice_removed_title: result.title
+- name: A member removed from the workspace no longer writes
+  type: json_assert
+  statements:
+  - json_equal({{alice_removed_title}}, "Edited after the restore")

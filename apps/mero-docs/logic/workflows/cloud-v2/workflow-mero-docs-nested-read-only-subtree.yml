@@ -1,0 +1,543 @@
+# Ported from workflow-mero-docs-nested-read-only-subtree.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   assert_api_response x3: v1 admin API
+#   join_subgroup_inheritance x3: subgroup inheritance is v1 governance
+#   reparent_group x5: reparenting is v1 governance
+#   set_group_metadata x6: group metadata is v1 governance
+#   set_member_capabilities x6: capabilities are v1 governance
+#   set_subgroup_visibility x7: subgroup visibility is v1 governance
+#   wait_for_sync x22: replication is synchronous: a read sees every committed write
+name: Mero Docs - folder Read only across nested folders
+description: 'Folder F (Open) holds an Open sub-folder G with an Open G2 below it, and a Restricted sub-folder
+  H that Bob was invited to. Each step does what the app does for the change named. Read only on F writes
+  Bob''s ReadOnly row in F and in each Open sub-folder reached through it (core lists him ReadOnly in
+  G by inheritance but refuses writes only by a direct row): his renames and comment in G and G2 land
+  nowhere, while H keeps his own role. A sub-folder created Open later (its row is written before it opens)
+  and one opened later take Read only too. Setting Bob back restores his writes.
+
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3280
+accounts:
+- curn-node-1
+- curn-node-2
+steps:
+- name: Install the bundle on Alice
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  outputs:
+    app_id: hash
+  account: curn-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Alice creates the namespace
+  type: create_org
+  org_name: Alice creates the namespace
+  outputs:
+    namespace_id: orgId
+  account: curn-node-1
+- name: Alice creates the Registry context (workspace-level data only; folders live in core)
+  type: deploy
+  account: curn-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs_registry.wasm'
+  app_name: registry
+  org: '{{namespace_id}}'
+  outputs:
+    reg_ctx: appId
+    alice_key: memberPublicKey
+- name: Alice creates folder F
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: f
+  outputs:
+    g_F: teamId
+  account: curn-node-1
+- name: Alice creates F's Docs context
+  type: deploy
+  account: curn-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    c_F: appId
+    a_F: memberPublicKey
+- name: Alice creates a doc in F
+  type: call
+  app: '{{c_F}}'
+  method: create_doc
+  args:
+    title: F original
+  account: curn-node-1
+  as_key: '{{a_F}}'
+  outputs:
+    d_F: result
+- name: Alice creates folder G
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: g
+  outputs:
+    g_G: teamId
+  account: curn-node-1
+- name: Alice creates G's Docs context
+  type: deploy
+  account: curn-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    c_G: appId
+    a_G: memberPublicKey
+- name: Alice creates a doc in G
+  type: call
+  app: '{{c_G}}'
+  method: create_doc
+  args:
+    title: G original
+  account: curn-node-1
+  as_key: '{{a_G}}'
+  outputs:
+    d_G: result
+- name: Alice creates folder G2
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: g2
+  outputs:
+    g_G2: teamId
+  account: curn-node-1
+- name: Alice creates G2's Docs context
+  type: deploy
+  account: curn-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    c_G2: appId
+    a_G2: memberPublicKey
+- name: Alice creates a doc in G2
+  type: call
+  app: '{{c_G2}}'
+  method: create_doc
+  args:
+    title: G2 original
+  account: curn-node-1
+  as_key: '{{a_G2}}'
+  outputs:
+    d_G2: result
+- name: Alice creates folder H
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: h
+  outputs:
+    g_H: teamId
+  account: curn-node-1
+- name: Alice creates H's Docs context
+  type: deploy
+  account: curn-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    c_H: appId
+    a_H: memberPublicKey
+- name: Alice creates a doc in H
+  type: call
+  app: '{{c_H}}'
+  method: create_doc
+  args:
+    title: H original
+  account: curn-node-1
+  as_key: '{{a_H}}'
+  outputs:
+    d_H: result
+- name: Alice invites Bob to the namespace
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: curn-node-1
+  outputs:
+    ns_invite: token
+- name: Settle before Bob joins the namespace
+  type: wait
+  seconds: 1.0
+- name: Bob joins the namespace
+  type: redeem_invite
+  token: '{{ns_invite}}'
+  account: curn-node-2
+- type: whoami
+  account: curn-node-2
+  outputs:
+    bob_account: publicKey
+- name: Bob joins F's Docs context
+  type: whoami
+  account: curn-node-2
+  outputs:
+    b_F: publicKey
+- name: Bob joins G's Docs context
+  type: whoami
+  account: curn-node-2
+  outputs:
+    b_G: publicKey
+- name: Bob joins G2's Docs context
+  type: whoami
+  account: curn-node-2
+  outputs:
+    b_G2: publicKey
+- name: Alice adds Bob to H
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{g_H}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
+- name: Bob joins H's Docs context
+  type: whoami
+  account: curn-node-2
+  outputs:
+    b_H: publicKey
+- name: Bob renames the G doc to 'G control'
+  type: call
+  app: '{{c_G}}'
+  method: edit_doc
+  args:
+    id: '{{d_G}}'
+    title: G control
+  account: curn-node-2
+  as_key: '{{b_G}}'
+- name: Alice reads the G doc (g_control)
+  type: call
+  app: '{{c_G}}'
+  method: get_doc
+  args:
+    id: '{{d_G}}'
+  account: curn-node-1
+  as_key: '{{a_G}}'
+  outputs:
+    g_control: result.title
+- name: Control - inherited Bob writes in G before Read only
+  type: json_assert
+  statements:
+  - json_equal({{g_control}}, "G control")
+- name: Alice adds a direct ReadOnly row for Bob in F
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{g_F}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
+- name: Alice adds a direct ReadOnly row for Bob in G
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
+- name: Alice adds a direct ReadOnly row for Bob in G2
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{g_G2}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
+- name: Bob renames the G doc to 'G while read only'
+  type: call
+  app: '{{c_G}}'
+  method: edit_doc
+  args:
+    id: '{{d_G}}'
+    title: G while read only
+  account: curn-node-2
+  as_key: '{{b_G}}'
+  allow_failure: true
+- name: Bob renames the G2 doc to 'G2 while read only'
+  type: call
+  app: '{{c_G2}}'
+  method: edit_doc
+  args:
+    id: '{{d_G2}}'
+    title: G2 while read only
+  account: curn-node-2
+  as_key: '{{b_G2}}'
+  allow_failure: true
+- name: Bob renames the H doc to 'H while read only'
+  type: call
+  app: '{{c_H}}'
+  method: edit_doc
+  args:
+    id: '{{d_H}}'
+    title: H while read only
+  account: curn-node-2
+  as_key: '{{b_H}}'
+- name: Read only Bob comments in G
+  type: call
+  app: '{{c_G}}'
+  method: add_comment
+  args:
+    doc_id: '{{d_G}}'
+    body: a read only comment
+  account: curn-node-2
+  as_key: '{{b_G}}'
+  allow_failure: true
+- name: Alice reads the G doc (g_ro)
+  type: call
+  app: '{{c_G}}'
+  method: get_doc
+  args:
+    id: '{{d_G}}'
+  account: curn-node-1
+  as_key: '{{a_G}}'
+  outputs:
+    g_ro: result.title
+- name: Alice reads the G2 doc (g2_ro)
+  type: call
+  app: '{{c_G2}}'
+  method: get_doc
+  args:
+    id: '{{d_G2}}'
+  account: curn-node-1
+  as_key: '{{a_G2}}'
+  outputs:
+    g2_ro: result.title
+- name: Alice reads the H doc (h_ro)
+  type: call
+  app: '{{c_H}}'
+  method: get_doc
+  args:
+    id: '{{d_H}}'
+  account: curn-node-1
+  as_key: '{{a_H}}'
+  outputs:
+    h_ro: result.title
+- name: Alice counts G's comments
+  type: call
+  app: '{{c_G}}'
+  method: comment_count
+  args: {}
+  account: curn-node-1
+  as_key: '{{a_G}}'
+  outputs:
+    g_comments: result
+- name: Read only on F reaches its Open sub-folders and leaves Restricted H alone
+  type: json_assert
+  statements:
+  - json_equal({{g_ro}}, "G control")
+  - json_equal({{g2_ro}}, "G2 original")
+  - json_equal({{h_ro}}, "H while read only")
+  - json_equal({{g_comments}}, 0)
+- name: Alice creates folder G3
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: g3
+  outputs:
+    g_G3: teamId
+  account: curn-node-1
+- name: Alice adds a ReadOnly row for Bob in G3 before it opens
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{g_G3}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
+- name: Alice creates G3's Docs context
+  type: deploy
+  account: curn-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    c_G3: appId
+    a_G3: memberPublicKey
+- name: Alice creates a doc in G3
+  type: call
+  app: '{{c_G3}}'
+  method: create_doc
+  args:
+    title: G3 original
+  account: curn-node-1
+  as_key: '{{a_G3}}'
+  outputs:
+    d_G3: result
+- name: Alice creates folder K
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: k
+  outputs:
+    g_K: teamId
+  account: curn-node-1
+- name: Alice creates K's Docs context
+  type: deploy
+  account: curn-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    c_K: appId
+    a_K: memberPublicKey
+- name: Alice creates a doc in K
+  type: call
+  app: '{{c_K}}'
+  method: create_doc
+  args:
+    title: K original
+  account: curn-node-1
+  as_key: '{{a_K}}'
+  outputs:
+    d_K: result
+- name: Alice adds a direct ReadOnly row for Bob in K
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{g_K}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
+- name: Bob joins G3's Docs context
+  type: whoami
+  account: curn-node-2
+  outputs:
+    b_G3: publicKey
+- name: Bob joins K's Docs context
+  type: whoami
+  account: curn-node-2
+  outputs:
+    b_K: publicKey
+- name: Bob renames the G3 doc to 'G3 while read only'
+  type: call
+  app: '{{c_G3}}'
+  method: edit_doc
+  args:
+    id: '{{d_G3}}'
+    title: G3 while read only
+  account: curn-node-2
+  as_key: '{{b_G3}}'
+  allow_failure: true
+- name: Bob renames the K doc to 'K while read only'
+  type: call
+  app: '{{c_K}}'
+  method: edit_doc
+  args:
+    id: '{{d_K}}'
+    title: K while read only
+  account: curn-node-2
+  as_key: '{{b_K}}'
+  allow_failure: true
+- name: Alice reads the G3 doc (g3_ro)
+  type: call
+  app: '{{c_G3}}'
+  method: get_doc
+  args:
+    id: '{{d_G3}}'
+  account: curn-node-1
+  as_key: '{{a_G3}}'
+  outputs:
+    g3_ro: result.title
+- name: Alice reads the K doc (k_ro)
+  type: call
+  app: '{{c_K}}'
+  method: get_doc
+  args:
+    id: '{{d_K}}'
+  account: curn-node-1
+  as_key: '{{a_K}}'
+  outputs:
+    k_ro: result.title
+- name: A later and a newly opened sub-folder are Read only too
+  type: json_assert
+  statements:
+  - json_equal({{g3_ro}}, "G3 original")
+  - json_equal({{k_ro}}, "K original")
+- name: Alice makes Bob core Member in F again
+  type: set_role
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  role: member
+  account: curn-node-1
+- name: Alice makes Bob core Member in G again
+  type: set_role
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  role: member
+  account: curn-node-1
+- name: Alice makes Bob core Member in G2 again
+  type: set_role
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  role: member
+  account: curn-node-1
+- name: Alice makes Bob core Member in G3 again
+  type: set_role
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  role: member
+  account: curn-node-1
+- name: Alice makes Bob core Member in K again
+  type: set_role
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  role: member
+  account: curn-node-1
+- name: Bob renames the G doc to 'G restored'
+  type: call
+  app: '{{c_G}}'
+  method: edit_doc
+  args:
+    id: '{{d_G}}'
+    title: G restored
+  account: curn-node-2
+  as_key: '{{b_G}}'
+- name: Bob renames the G2 doc to 'G2 restored'
+  type: call
+  app: '{{c_G2}}'
+  method: edit_doc
+  args:
+    id: '{{d_G2}}'
+    title: G2 restored
+  account: curn-node-2
+  as_key: '{{b_G2}}'
+- name: Bob renames the K doc to 'K restored'
+  type: call
+  app: '{{c_K}}'
+  method: edit_doc
+  args:
+    id: '{{d_K}}'
+    title: K restored
+  account: curn-node-2
+  as_key: '{{b_K}}'
+- name: Alice reads the G doc (g_back)
+  type: call
+  app: '{{c_G}}'
+  method: get_doc
+  args:
+    id: '{{d_G}}'
+  account: curn-node-1
+  as_key: '{{a_G}}'
+  outputs:
+    g_back: result.title
+- name: Alice reads the G2 doc (g2_back)
+  type: call
+  app: '{{c_G2}}'
+  method: get_doc
+  args:
+    id: '{{d_G2}}'
+  account: curn-node-1
+  as_key: '{{a_G2}}'
+  outputs:
+    g2_back: result.title
+- name: Alice reads the K doc (k_back)
+  type: call
+  app: '{{c_K}}'
+  method: get_doc
+  args:
+    id: '{{d_K}}'
+  account: curn-node-1
+  as_key: '{{a_K}}'
+  outputs:
+    k_back: result.title
+- name: Setting Bob back restores his writes across the subtree
+  type: json_assert
+  statements:
+  - json_equal({{g_back}}, "G restored")
+  - json_equal({{g2_back}}, "G2 restored")
+  - json_equal({{k_back}}, "K restored")

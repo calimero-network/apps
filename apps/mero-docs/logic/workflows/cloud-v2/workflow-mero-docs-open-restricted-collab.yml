@@ -1,0 +1,429 @@
+# Ported from workflow-mero-docs-open-restricted-collab.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   delete_namespace x1: v1 namespace deletion
+#   get_group_info x1: v1 group info
+#   get_group_metadata x1: group metadata is v1 governance
+#   join_subgroup_inheritance x1: subgroup inheritance is v1 governance
+#   set_default_capabilities x1: capabilities are v1 governance
+#   set_group_metadata x3: group metadata is v1 governance
+#   set_subgroup_visibility x3: subgroup visibility is v1 governance
+#   wait_for_sync x11: replication is synchronous: a read sees every committed write
+name: Mero Docs E2E - Open/Restricted folders + permissions (collab scenario)
+description: "End-to-end coverage for open/restricted folders: core's Open subgroup inheritance, per-member\
+  \ default capabilities, and the registry owner. Folders are core subgroups; each folder's name and colour\
+  \ are subgroup metadata (`data.color`) and its docs context is the one context in it.\nTwo nodes - Alice\
+  \ (calimero-node-1, the namespace creator / registry owner) and Bob (calimero-node-2). The scenario:\n\
+  \n  A. Alice creates a namespace, sets the default member capabilities new\n     members inherit (CAN_CREATE_CONTEXT\
+  \ | CAN_JOIN_OPEN_SUBGROUPS |\n     CAN_CREATE_SUBGROUP = 1|4|32 = 37), creates the per-namespace Registry\n\
+  \     context, which makes her its owner.\n  B. Alice creates an Open folder + Docs context + a doc\
+  \ - all before Bob\n     joins.\n  C. Bob joins ONLY the namespace (one invitation; no folder add_group_members).\n\
+  \  D. Bob joins the Registry context via namespace-root membership.\n  E. Bob joins the Open folder's\
+  \ Docs context purely via core's parent-walk\n     inheritance - NO add_group_members - reads Alice's\
+  \ doc, and reads the\n     folder's name from its subgroup metadata.\n  F. Cross-node edit/verify rounds\
+  \ on the shared doc (Bob→Alice ×2, Alice→Bob ×2).\n  G. Bob creates HIS OWN Open folder + Docs context\
+  \ + doc (allowed - he has\n     CAN_CREATE_SUBGROUP by default); Alice joins it via inheritance, reads,\n\
+  \     and edits.\n  H. Restricted folder: Bob's inherited join_context FAILS (Restricted wall);\n  \
+  \   Alice add_group_members him; the join now succeeds; cross edits both ways.\n     (A folder's Read\
+  \ only role is core ReadOnly; see\n     workflow-mero-docs-folder-read-only.yml.)\n  J. Alice tears\
+  \ the namespace down.\n\nSequential per merobox semantics - `wait_for_sync` hands writes off between\
+  \ writer and reader; `wait` blocks before joins are sized for governance gossip + group-store accept\
+  \ on slow docker networking, matching the sibling workflow-mero-docs-open-subgroup.yml.\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3310
+accounts:
+- calimero-node-1
+- calimero-node-2
+steps:
+- name: Install Mero Docs bundle on Alice
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  outputs:
+    app_id: hash
+  account: calimero-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Alice creates the namespace
+  type: create_org
+  org_name: Alice creates the namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Alice creates the per-namespace Registry context
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs_registry.wasm'
+  app_name: registry
+  org: '{{namespace_id}}'
+  outputs:
+    reg_ctx: appId
+    alice_key: memberPublicKey
+- name: get_owner returns Alice's registry principal
+  type: call
+  app: '{{reg_ctx}}'
+  method: get_owner
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    registry_owner: result
+- name: Assert bootstrap shape
+  type: assert
+  statements:
+  - is_set({{namespace_id}})
+  - is_set({{reg_ctx}})
+  - is_set({{alice_key}})
+  - is_set({{registry_owner}})
+- name: Alice creates folder subgroup (Shared)
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: shared
+  outputs:
+    open_folder: teamId
+  account: calimero-node-1
+- name: Alice creates the Docs context inside Shared (the folder's one context)
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    open_docs_ctx: appId
+    alice_docs_key: memberPublicKey
+- name: Alice creates the first doc inside Shared
+  type: call
+  app: '{{open_docs_ctx}}'
+  method: create_doc
+  args:
+    title: Shared plan
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    doc_id: result
+- name: Assert the doc id came back
+  type: assert
+  statements:
+  - is_set({{doc_id}})
+- name: Alice mints a namespace invitation for Bob
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    ns_invite: token
+- name: Wait for namespace governance to gossip to Bob's node
+  type: wait
+  seconds: 1.0
+  message: Namespace governance DAG needs to propagate before Bob can join
+- name: Bob joins ONLY the namespace (no folder add_group_members)
+  type: redeem_invite
+  token: '{{ns_invite}}'
+  account: calimero-node-2
+- type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_identity: publicKey
+- name: Assert Bob's namespace identity is set
+  type: assert
+  statements:
+  - is_set({{bob_identity}})
+- name: Wait for Open-subgroup inheritance to propagate to Bob
+  type: wait
+  seconds: 1.0
+  message: Folder Open-visibility metadata + parent-walk auth need to land on Bob's node
+- name: Bob joins the Registry context via namespace-root membership
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_reg_key: publicKey
+- type: set
+  values:
+    reg_ctx_bob: '{{reg_ctx}}'
+- name: Assert Bob's Registry-context join landed
+  type: assert
+  statements:
+  - is_set({{bob_reg_key}})
+- name: Assert was_inherited is true (Bob is a namespace-only member)
+  type: json_assert
+  statements:
+  - json_equal({{bob_was_inherited}}, true)
+- name: Bob joins the Shared Docs context (key already local)
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_docs_key: publicKey
+- type: set
+  values:
+    open_docs_ctx_bob: '{{open_docs_ctx}}'
+- name: Assert Bob's Docs context join produced an executor key
+  type: assert
+  statements:
+  - is_set({{bob_docs_key}})
+  - is_set({{bob_folder_key}})
+- name: Bob reads Alice's doc via inherited access
+  type: call
+  app: '{{open_docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{doc_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_docs_key}}'
+  outputs:
+    bob_read_v0: result
+- name: Assert Bob's read returned a doc
+  type: assert
+  statements:
+  - is_set({{bob_read_v0}})
+- name: Assert Bob sees the folder's name Alice set
+  type: assert
+  statements:
+  - equal({{bob_open_name}}, 'Shared')
+- name: Round 1 - Bob edits the shared doc
+  type: call
+  app: '{{open_docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{doc_id}}'
+    title: v1 by bob
+  account: calimero-node-2
+  as_key: '{{bob_docs_key}}'
+- name: Round 1 - Alice sees Bob's edit
+  type: call
+  app: '{{open_docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{doc_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: Round 2 - Bob edits again
+  type: call
+  app: '{{open_docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{doc_id}}'
+    title: v2 by bob
+  account: calimero-node-2
+  as_key: '{{bob_docs_key}}'
+- name: Round 2 - Alice sees Bob's edit
+  type: call
+  app: '{{open_docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{doc_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: Round 3 - Alice edits the shared doc
+  type: call
+  app: '{{open_docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{doc_id}}'
+    title: Shared plan (rev 3)
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: Round 3 - Bob sees Alice's edit
+  type: call
+  app: '{{open_docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{doc_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_docs_key}}'
+- name: Round 4 - Alice edits again
+  type: call
+  app: '{{open_docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{doc_id}}'
+    title: v4 by alice
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: Round 4 - Bob sees Alice's edit
+  type: call
+  app: '{{open_docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{doc_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_docs_key}}'
+- name: Bob creates his own folder subgroup (Bobs)
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: bobs
+  outputs:
+    bob_folder: teamId
+  account: calimero-node-2
+- name: Bob creates a Docs context inside his folder
+  type: deploy
+  account: calimero-node-2
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    bob_docs_own_ctx: appId
+    bob_own_docs_key: memberPublicKey
+- name: Bob writes the first doc in his folder
+  type: call
+  app: '{{bob_docs_own_ctx}}'
+  method: create_doc
+  args:
+    title: Bob's notes
+  account: calimero-node-2
+  as_key: '{{bob_own_docs_key}}'
+  outputs:
+    bob_doc_id: result
+- name: Assert Bob's doc id came back
+  type: assert
+  statements:
+  - is_set({{bob_doc_id}})
+- name: Wait for Bob's Open folder metadata to reach Alice's node
+  type: wait
+  seconds: 1.0
+  message: Bob's folder Open-visibility + parent-walk auth need to land on Alice's node
+- name: Alice joins Bob's Docs context via inheritance
+  type: whoami
+  account: calimero-node-1
+  outputs:
+    alice_on_bob_key: publicKey
+- type: set
+  values:
+    bob_docs_own_ctx_alice: '{{bob_docs_own_ctx}}'
+- name: Assert Alice's join of Bob's folder landed
+  type: assert
+  statements:
+  - is_set({{alice_on_bob_key}})
+- name: Alice reads Bob's doc via inherited access
+  type: call
+  app: '{{bob_docs_own_ctx}}'
+  method: get_doc
+  args:
+    id: '{{bob_doc_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_on_bob_key}}'
+- name: Alice edits Bob's doc
+  type: call
+  app: '{{bob_docs_own_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{bob_doc_id}}'
+    title: v1 by alice on bob's folder
+  account: calimero-node-1
+  as_key: '{{alice_on_bob_key}}'
+- name: Bob sees Alice's edit in his own folder
+  type: call
+  app: '{{bob_docs_own_ctx}}'
+  method: get_doc
+  args:
+    id: '{{bob_doc_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_own_docs_key}}'
+- name: Alice creates folder subgroup (Private)
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: private
+  outputs:
+    priv_folder: teamId
+  account: calimero-node-1
+- name: Alice creates a Docs context inside Private
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    priv_docs_ctx: appId
+    alice_priv_key: memberPublicKey
+- name: Alice writes a private doc
+  type: call
+  app: '{{priv_docs_ctx}}'
+  method: create_doc
+  args:
+    title: Confidential
+  account: calimero-node-1
+  as_key: '{{alice_priv_key}}'
+  outputs:
+    priv_doc_id: result
+- name: Wait for the Restricted folder metadata to gossip
+  type: wait
+  seconds: 1.0
+  message: Restricted subgroup metadata needs to reach Bob's node before the negative join attempt
+- name: Bob's inherited join of Private FAILS (Restricted wall)
+  type: http
+  method: get
+  path: apps/{{priv_docs_ctx}}
+  account: calimero-node-2
+  expected_failure: true
+- name: Alice explicitly adds Bob to Private
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{priv_folder}}'
+  members:
+  - '{{bob_identity}}'
+  account: calimero-node-1
+- name: Wait for Private membership to propagate to Bob
+  type: wait
+  seconds: 1.0
+  message: Private subgroup membership row needs to land on Bob's node before retry
+- name: Bob joins Private Docs context (now permitted)
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_priv_key: publicKey
+- type: set
+  values:
+    priv_docs_ctx_bob: '{{priv_docs_ctx}}'
+- name: Assert Bob's Private join produced an executor key
+  type: assert
+  statements:
+  - is_set({{bob_priv_key}})
+- name: Bob reads Alice's private doc after the explicit invite
+  type: call
+  app: '{{priv_docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{priv_doc_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_priv_key}}'
+  outputs:
+    bob_read_priv: result
+- name: Assert Bob's private read returned a doc
+  type: assert
+  statements:
+  - is_set({{bob_read_priv}})
+- name: Bob edits the private doc
+  type: call
+  app: '{{priv_docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{priv_doc_id}}'
+    title: s1 by bob
+  account: calimero-node-2
+  as_key: '{{bob_priv_key}}'
+- name: Alice sees Bob's private edit
+  type: call
+  app: '{{priv_docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{priv_doc_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_priv_key}}'
+- name: Alice edits the private doc back
+  type: call
+  app: '{{priv_docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{priv_doc_id}}'
+    title: s2 by alice
+  account: calimero-node-1
+  as_key: '{{alice_priv_key}}'
+- name: Bob sees Alice's private edit
+  type: call
+  app: '{{priv_docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{priv_doc_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_priv_key}}'

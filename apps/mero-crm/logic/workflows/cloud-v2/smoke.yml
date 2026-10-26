@@ -1,0 +1,453 @@
+# Ported from smoke.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x6: replication is synchronous: a read sees every committed write
+name: crm smoke
+description: Verify the CRM pipeline replicates deals, people, activities and automations across two nodes,
+  with its authorship gates enforced.
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3150
+accounts:
+- crm-node-1
+- crm-node-2
+steps:
+- name: Install the CRM bundle on node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_crm.wasm'
+  outputs:
+    app_id: hash
+  account: crm-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create the sales-team namespace on node 1
+  type: create_org
+  org_name: Create the sales-team namespace on node 1
+  outputs:
+    namespace_id: orgId
+  account: crm-node-1
+- name: Create a pipeline context on node 1
+  type: deploy
+  account: crm-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_crm.wasm'
+  app_name: crm
+  org: '{{namespace_id}}'
+  outputs:
+    ctx: appId
+- name: Invite node 2
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: crm-node-1
+  outputs:
+    invitation: token
+- type: wait
+  seconds: 1.0
+- name: Node 2 joins the namespace
+  type: redeem_invite
+  token: '{{invitation}}'
+  account: crm-node-2
+- name: Read the default settings
+  type: call
+  app: '{{ctx}}'
+  method: get_settings
+  args: {}
+  account: crm-node-1
+  outputs:
+    settings0: result
+- type: json_assert
+  name: A new pipeline starts in USD with a 14-day rotting threshold
+  statements:
+  - 'json_subset({{settings0}}, {"currency": "USD", "rotting_days": 14})'
+- name: Set the currency to EUR
+  type: call
+  app: '{{ctx}}'
+  method: set_currency
+  args:
+    currency: eur
+  account: crm-node-1
+- name: Set the rotting threshold to 7 days
+  type: call
+  app: '{{ctx}}'
+  method: set_rotting_days
+  args:
+    days: 7
+  account: crm-node-1
+- name: Add a stage
+  type: call
+  app: '{{ctx}}'
+  method: add_stage
+  args:
+    name: Contract sent
+    probability: 90
+  account: crm-node-1
+  outputs:
+    new_stage: result
+- name: Re-weight the new stage
+  type: call
+  app: '{{ctx}}'
+  method: update_stage
+  args:
+    stage_id: '{{new_stage}}'
+    name: Contract out
+    probability: 95
+  account: crm-node-1
+- name: Move the new stage to the front
+  type: call
+  app: '{{ctx}}'
+  method: reorder_stages
+  args:
+    stage_ids:
+    - '{{new_stage}}'
+    - stage-lead
+    - stage-qualified
+    - stage-meeting
+    - stage-proposal
+    - stage-negotiation
+  account: crm-node-1
+- name: Add an automation on the Proposal stage
+  type: call
+  app: '{{ctx}}'
+  method: add_automation
+  args:
+    stage_id: stage-proposal
+    kind: email
+    subject: Send proposal
+    due_in_days: 1
+  account: crm-node-1
+  outputs:
+    auto_id: result
+- name: Toggle the automation off and on
+  type: call
+  app: '{{ctx}}'
+  method: set_automation_enabled
+  args:
+    automation_id: '{{auto_id}}'
+    enabled: false
+  account: crm-node-1
+- name: Re-enable the automation
+  type: call
+  app: '{{ctx}}'
+  method: set_automation_enabled
+  args:
+    automation_id: '{{auto_id}}'
+    enabled: true
+  account: crm-node-1
+- name: Add a contact
+  type: call
+  app: '{{ctx}}'
+  method: create_contact
+  args:
+    name: Ada Lovelace
+    email: ada@example.com
+    phone: ''
+    organization: Analytical Engines
+    job_title: CTO
+  account: crm-node-1
+  outputs:
+    contact_id: result
+- name: Edit the contact
+  type: call
+  app: '{{ctx}}'
+  method: update_contact
+  args:
+    contact_id: '{{contact_id}}'
+    name: Ada Lovelace
+    email: ada@example.com
+    phone: +44 20 0000
+    organization: Analytical Engines
+    job_title: CTO
+  account: crm-node-1
+- name: Create a deal in the first default stage
+  type: call
+  app: '{{ctx}}'
+  method: create_deal
+  args:
+    title: Analytical Engines 50 seats
+    value: 24000
+    organization: Analytical Engines
+    contact_id: '{{contact_id}}'
+    stage_id: stage-lead
+    owner: alice
+    expected_close: null
+    source: Referral
+  account: crm-node-1
+  outputs:
+    deal_id: result
+- name: Edit the deal value and close date
+  type: call
+  app: '{{ctx}}'
+  method: update_deal
+  args:
+    deal_id: '{{deal_id}}'
+    title: Analytical Engines 50 seats
+    value: 30000
+    organization: Analytical Engines
+    contact_id: '{{contact_id}}'
+    owner: alice
+    expected_close: 1893456000000
+    source: Referral
+  account: crm-node-1
+- name: Move the deal to Proposal (fires the automation)
+  type: call
+  app: '{{ctx}}'
+  method: move_deal
+  args:
+    deal_id: '{{deal_id}}'
+    stage_id: stage-proposal
+  account: crm-node-1
+- name: Node 2 sees the open deal
+  type: call
+  app: '{{ctx}}'
+  method: list_deals
+  args:
+    status: open
+    stage_id: null
+    owner: null
+  account: crm-node-2
+  outputs:
+    open_deal_0: result.0
+- type: json_assert
+  name: The deal replicated with its edit, stage and contact name
+  statements:
+  - 'json_subset({{open_deal_0}}, {"title": "Analytical Engines 50 seats", "value": 30000, "stage_id":
+    "stage-proposal", "probability": 60, "contact_name": "Ada Lovelace"})'
+- name: Node 2 reads the deal page
+  type: call
+  app: '{{ctx}}'
+  method: get_deal
+  args:
+    deal_id: '{{deal_id}}'
+  account: crm-node-2
+  outputs:
+    auto_activity: result.activities.0
+- type: json_assert
+  name: The automation scheduled its activity, owned by the deal owner
+  statements:
+  - 'json_subset({{auto_activity}}, {"kind": "email", "subject": "Send proposal", "owner": "alice", "done":
+    false})'
+- name: Node 2 reads the stages
+  type: call
+  app: '{{ctx}}'
+  method: list_stages
+  args: {}
+  account: crm-node-2
+  outputs:
+    first_stage: result.0
+- type: json_assert
+  name: The reordered, re-weighted stage replicated first
+  statements:
+  - 'json_subset({{first_stage}}, {"name": "Contract out", "probability": 95})'
+- name: Node 2 reads the settings
+  type: call
+  app: '{{ctx}}'
+  method: get_settings
+  args: {}
+  account: crm-node-2
+  outputs:
+    settings1: result
+- type: json_assert
+  name: The settings replicated
+  statements:
+  - 'json_subset({{settings1}}, {"currency": "EUR", "rotting_days": 7})'
+- name: Node 2 reads the automations
+  type: call
+  app: '{{ctx}}'
+  method: list_automations
+  args: {}
+  account: crm-node-2
+  outputs:
+    auto0: result.0
+- type: json_assert
+  name: The automation replicated enabled
+  statements:
+  - 'json_subset({{auto0}}, {"stage_id": "stage-proposal", "enabled": true})'
+- name: Node 2 reads the address book
+  type: call
+  app: '{{ctx}}'
+  method: list_contacts
+  args: {}
+  account: crm-node-2
+  outputs:
+    contact0: result.0
+- type: json_assert
+  name: The contact replicated with its edit and open-deal count
+  statements:
+  - 'json_subset({{contact0}}, {"phone": "+44 20 0000", "open_deals": 1})'
+- name: Node 2 schedules a call
+  type: call
+  app: '{{ctx}}'
+  method: add_activity
+  args:
+    deal_id: '{{deal_id}}'
+    contact_id: null
+    kind: call
+    subject: Pricing call
+    due_at: 1893456000000
+    owner: bob
+    note: ''
+  account: crm-node-2
+  outputs:
+    activity_id: result
+- name: Node 2 reschedules it
+  type: call
+  app: '{{ctx}}'
+  method: reschedule_activity
+  args:
+    activity_id: '{{activity_id}}'
+    due_at: 1893542400000
+  account: crm-node-2
+- name: Node 2 marks it done
+  type: call
+  app: '{{ctx}}'
+  method: set_activity_done
+  args:
+    activity_id: '{{activity_id}}'
+    done: true
+  account: crm-node-2
+- name: Node 1 lists done activities
+  type: call
+  app: '{{ctx}}'
+  method: list_activities
+  args:
+    deal_id: '{{deal_id}}'
+    done: true
+  account: crm-node-1
+  outputs:
+    done0: result.0
+- type: json_assert
+  name: The completed, rescheduled call replicated
+  statements:
+  - 'json_subset({{done0}}, {"subject": "Pricing call", "due_at": 1893542400000, "done": true})'
+- name: Node 1 deletes the call
+  type: call
+  app: '{{ctx}}'
+  method: delete_activity
+  args:
+    activity_id: '{{activity_id}}'
+  account: crm-node-1
+- name: Node 1 adds a note
+  type: call
+  app: '{{ctx}}'
+  method: add_note
+  args:
+    deal_id: '{{deal_id}}'
+    body: Budget approved for Q3
+  account: crm-node-1
+  outputs:
+    note_id: result
+- name: Node 2 (not the author) cannot delete the note
+  type: call
+  app: '{{ctx}}'
+  method: delete_note
+  args:
+    note_id: '{{note_id}}'
+  account: crm-node-2
+  expected_failure: true
+  outputs:
+    note_delete_error: error
+- type: assert
+  name: The rejection must actually have happened
+  statements:
+  - is_set({{note_delete_error}})
+- name: Node 1 (the author) deletes the note
+  type: call
+  app: '{{ctx}}'
+  method: delete_note
+  args:
+    note_id: '{{note_id}}'
+  account: crm-node-1
+- name: Win the deal
+  type: call
+  app: '{{ctx}}'
+  method: mark_won
+  args:
+    deal_id: '{{deal_id}}'
+  account: crm-node-1
+- name: Reopen it
+  type: call
+  app: '{{ctx}}'
+  method: reopen_deal
+  args:
+    deal_id: '{{deal_id}}'
+  account: crm-node-1
+- name: Lose it, with a reason
+  type: call
+  app: '{{ctx}}'
+  method: mark_lost
+  args:
+    deal_id: '{{deal_id}}'
+    reason: Price
+  account: crm-node-1
+- name: Node 2 reads the closed deal
+  type: call
+  app: '{{ctx}}'
+  method: get_deal
+  args:
+    deal_id: '{{deal_id}}'
+  account: crm-node-2
+  outputs:
+    lost_deal: result.deal
+- type: json_assert
+  name: The loss and its reason replicated
+  statements:
+  - 'json_subset({{lost_deal}}, {"status": "lost", "lost_reason": "Price", "probability": 0})'
+- name: Delete the added stage (it holds no deals)
+  type: call
+  app: '{{ctx}}'
+  method: delete_stage
+  args:
+    stage_id: '{{new_stage}}'
+  account: crm-node-1
+- name: Delete the automation
+  type: call
+  app: '{{ctx}}'
+  method: delete_automation
+  args:
+    automation_id: '{{auto_id}}'
+  account: crm-node-1
+- name: Node 2 (not the creator) cannot delete the deal
+  type: call
+  app: '{{ctx}}'
+  method: delete_deal
+  args:
+    deal_id: '{{deal_id}}'
+  account: crm-node-2
+  expected_failure: true
+  outputs:
+    deal_delete_error: error
+- type: assert
+  name: The rejection must actually have happened
+  statements:
+  - is_set({{deal_delete_error}})
+- name: Node 1 (the creator) deletes the deal
+  type: call
+  app: '{{ctx}}'
+  method: delete_deal
+  args:
+    deal_id: '{{deal_id}}'
+  account: crm-node-1
+- name: Node 1 (the creator) deletes the contact
+  type: call
+  app: '{{ctx}}'
+  method: delete_contact
+  args:
+    contact_id: '{{contact_id}}'
+  account: crm-node-1
+- name: Node 2 lists deals after the delete
+  type: call
+  app: '{{ctx}}'
+  method: list_deals
+  args:
+    status: null
+    stage_id: null
+    owner: null
+  account: crm-node-2
+  outputs:
+    deals_after: result
+- type: json_assert
+  name: The deal is gone on node 2
+  statements:
+  - json_equal({{deals_after}}, [])

@@ -1,0 +1,692 @@
+# Ported from e2e.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   set_default_capabilities x1: capabilities are v1 governance
+#   sync_group x1: replication is synchronous
+#   wait_for_sync x6: replication is synchronous: a read sees every committed write
+name: Mero Updates — a founder publishes, an investor answers back (2-node e2e)
+description: "The investor-relations loop across two real nodes, and the gates that make it trustworthy:\n\
+  \n  1. the context creator is the team; a second node's account is a reader,\n     and a reader's publish,\
+  \ settings change or self-promotion is REJECTED;\n  2. categories, settings and an update with sections,\
+  \ KPIs and an ask\n     replicate to the investor by a stable id;\n  3. the investor answers on every\
+  \ two-way channel — read receipt, reaction,\n     reply, an offer of help, and a question of their own\
+  \ — and each one\n     reaches the founder's node;\n  4. the founder triages: accepts the offer (it\
+  \ becomes a contribution),\n     resolves the ask, answers the question, and sees the read report;\n\
+  \  5. drafts stay on the author's node — the investor's node never lists them.\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3580
+accounts:
+- calimero-node-1
+- calimero-node-2
+- calimero-node-2-id1
+steps:
+- name: Install application on Node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_updates.wasm'
+  outputs:
+    app_id: hash
+  account: calimero-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace
+  type: create_org
+  org_name: Create namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Generate identity for Node 2
+  type: whoami
+  account: calimero-node-2-id1
+  outputs:
+    bob_identity: publicKey
+- name: Wait for identity propagation
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates invitation for Node 2
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    invite_bob: token
+- name: Settle before the namespace join (cold-join KeyDelivery)
+  type: wait
+  seconds: 1.0
+- name: Node 2 joins namespace
+  type: redeem_invite
+  token: '{{invite_bob}}'
+  account: calimero-node-2
+- name: Settle after namespace join
+  type: wait
+  seconds: 1.0
+- name: Node 1 (the founder) creates the audience
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_updates.wasm'
+  app_name: Node 1 (the founder) creates the audience
+  init_args: '{}'
+  org: '{{namespace_id}}'
+  outputs:
+    audience_id: appId
+    alice_key: memberPublicKey
+- name: Settle after sync
+  type: wait
+  seconds: 1.0
+- name: Bob (an investor) joins the audience
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_key: publicKey
+- name: Who is Node 2, as an account
+  type: whoami
+  outputs:
+    bob_account: publicKey
+  account: calimero-node-2
+- name: Alice reads her role
+  type: call
+  app: '{{audience_id}}'
+  method: get_me
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_me: result
+- name: Assert the creator is admin and team
+  type: json_assert
+  statements:
+  - 'json_subset({{alice_me}}, {"is_admin": true, "is_team": true})'
+- name: Bob reads his role
+  type: call
+  app: '{{audience_id}}'
+  method: get_me
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_me: result
+- name: Assert the investor is a reader
+  type: json_assert
+  statements:
+  - 'json_subset({{bob_me}}, {"is_admin": false, "is_team": false})'
+- name: Bob tries to promote himself
+  type: call
+  app: '{{audience_id}}'
+  method: add_teammate
+  args:
+    account: '{{bob_account}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    promote_error: error
+- name: Bob tries to change the company settings
+  type: call
+  app: '{{audience_id}}'
+  method: set_settings
+  args:
+    company_name: Hijacked
+    cadence_days: 1
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    settings_error: error
+- name: Assert both were rejected
+  type: assert
+  statements:
+  - is_set({{promote_error}})
+  - is_set({{settings_error}})
+- name: Alice makes Bob a teammate
+  type: call
+  app: '{{audience_id}}'
+  method: add_teammate
+  args:
+    account: '{{bob_account}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice removes Bob from the team again
+  type: call
+  app: '{{audience_id}}'
+  method: remove_teammate
+  args:
+    account: '{{bob_account}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice names herself
+  type: call
+  app: '{{audience_id}}'
+  method: set_profile
+  args:
+    name: Ana Founder
+    firm: CEO
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice names the company and sets a monthly cadence
+  type: call
+  app: '{{audience_id}}'
+  method: set_settings
+  args:
+    company_name: Acme
+    cadence_days: 30
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice creates a category
+  type: call
+  app: '{{audience_id}}'
+  method: create_category
+  args:
+    name: Monthly
+    emoji: 📅
+    color: '#2563eb'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    monthly_id: result
+- name: Alice renames it
+  type: call
+  app: '{{audience_id}}'
+  method: edit_category
+  args:
+    category_id: '{{monthly_id}}'
+    name: Monthly update
+    emoji: 📅
+    color: '#2563eb'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice creates and archives a category she does not want
+  type: call
+  app: '{{audience_id}}'
+  method: create_category
+  args:
+    name: Scratch
+    emoji: ''
+    color: ''
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    scratch_id: result
+- name: Archive it
+  type: call
+  app: '{{audience_id}}'
+  method: archive_category
+  args:
+    category_id: '{{scratch_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice saves a draft on her own node
+  type: call
+  app: '{{audience_id}}'
+  method: save_draft
+  args:
+    draft_id: null
+    title: July — draft
+    payload: '{"title":"July"}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    draft_id: result
+- name: Alice publishes the June update
+  type: call
+  app: '{{audience_id}}'
+  method: publish_update
+  args:
+    input:
+      title: June 2026 update
+      summary: First enterprise customer.
+      category_id: '{{monthly_id}}'
+      sections:
+      - kind: highlights
+        title: Highlights
+        body: Closed Globex.
+      metrics:
+      - name: MRR
+        value: $48k
+        unit: ''
+      asks:
+      - id: null
+        kind: intro
+        title: Intro to a fintech CFO
+        detail: ''
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    update_id: result
+- name: Bob tries to publish
+  type: call
+  app: '{{audience_id}}'
+  method: publish_update
+  args:
+    input:
+      title: Fake
+      summary: ''
+      category_id: ''
+      sections: []
+      metrics: []
+      asks: []
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    publish_error: error
+- name: Assert a reader cannot publish
+  type: assert
+  statements:
+  - is_set({{publish_error}})
+- name: Alice fixes a typo in the update
+  type: call
+  app: '{{audience_id}}'
+  method: edit_update
+  args:
+    post_id: '{{update_id}}'
+    input:
+      title: June 2026 update
+      summary: First enterprise customer — Globex.
+      category_id: '{{monthly_id}}'
+      sections:
+      - kind: highlights
+        title: Highlights
+        body: Closed Globex.
+      metrics:
+      - name: MRR
+        value: $48k
+        unit: ''
+      asks:
+      - id: null
+        kind: intro
+        title: Intro to a fintech CFO
+        detail: ''
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob reads the feed
+  type: call
+  app: '{{audience_id}}'
+  method: list_posts
+  args:
+    kind: update
+    category_id: null
+    cursor: null
+    limit: 20
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_feed: rpc
+- name: Bob reads the overview, categories and settings
+  type: call
+  app: '{{audience_id}}'
+  method: get_overview
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_overview: result
+- name: Bob lists the categories
+  type: call
+  app: '{{audience_id}}'
+  method: list_categories
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_categories: rpc
+- name: Bob reads the settings
+  type: call
+  app: '{{audience_id}}'
+  method: get_settings
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_settings: rpc
+- name: Assert the update, category and settings replicated
+  type: assert
+  statements:
+  - contains({{bob_feed}}, "June 2026 update")
+  - contains({{bob_categories}}, "Monthly update")
+  - not_contains({{bob_categories}}, "Scratch")
+  - contains({{bob_settings}}, "Acme")
+- name: Assert the update is unread for Bob
+  type: json_assert
+  statements:
+  - 'json_subset({{bob_overview}}, {"company_name": "Acme", "unread_updates": 1, "open_asks": 1, "is_team":
+    false})'
+- name: Bob opens the update
+  type: call
+  app: '{{audience_id}}'
+  method: get_post
+  args:
+    post_id: '{{update_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_post: result
+    ask_id: result.asks.0.id
+- name: Assert the edit and the ask replicated
+  type: assert
+  statements:
+  - contains({{bob_post}}, "Globex")
+  - is_set({{ask_id}})
+- name: Bob names himself
+  type: call
+  app: '{{audience_id}}'
+  method: set_profile
+  args:
+    name: Ben Investor
+    firm: Seed Fund
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob's read receipt
+  type: call
+  app: '{{audience_id}}'
+  method: mark_read
+  args:
+    post_id: '{{update_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob reacts
+  type: call
+  app: '{{audience_id}}'
+  method: react
+  args:
+    post_id: '{{update_id}}'
+    emoji: 🎉
+    'on': true
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob replies
+  type: call
+  app: '{{audience_id}}'
+  method: add_comment
+  args:
+    post_id: '{{update_id}}'
+    parent_id: null
+    body: Congrats on Globex!
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    comment_id: result
+- name: Bob edits his reply
+  type: call
+  app: '{{audience_id}}'
+  method: edit_comment
+  args:
+    comment_id: '{{comment_id}}'
+    body: Congrats on Globex! Who ran procurement?
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob offers help, withdraws, and offers again with a note
+  type: call
+  app: '{{audience_id}}'
+  method: offer_help
+  args:
+    ask_id: '{{ask_id}}'
+    note: ''
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Withdraw
+  type: call
+  app: '{{audience_id}}'
+  method: withdraw_offer
+  args:
+    ask_id: '{{ask_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Offer again
+  type: call
+  app: '{{audience_id}}'
+  method: offer_help
+  args:
+    ask_id: '{{ask_id}}'
+    note: I know two CFOs there
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob asks the team a question
+  type: call
+  app: '{{audience_id}}'
+  method: ask_question
+  args:
+    title: What is the runway after the hires?
+    body: ''
+    category_id: null
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    question_id: result
+- name: Bob mutes the category
+  type: call
+  app: '{{audience_id}}'
+  method: set_muted_categories
+  args:
+    category_ids:
+    - '{{monthly_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob's node lists no drafts — Alice's never left her node
+  type: call
+  app: '{{audience_id}}'
+  method: list_drafts
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_drafts: rpc
+- name: Assert the draft is not on Bob's node
+  type: assert
+  statements:
+  - not_contains({{bob_drafts}}, "July")
+- name: Bob tries to read the engagement report
+  type: call
+  app: '{{audience_id}}'
+  method: get_engagement
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    engagement_error: error
+- name: Assert the read report is team-only
+  type: assert
+  statements:
+  - is_set({{engagement_error}})
+- name: Alice reads the thread
+  type: call
+  app: '{{audience_id}}'
+  method: list_comments
+  args:
+    post_id: '{{update_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    thread: rpc
+- name: Alice reads the asks
+  type: call
+  app: '{{audience_id}}'
+  method: list_asks
+  args:
+    status: open
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    asks: rpc
+- name: Alice reads the questions
+  type: call
+  app: '{{audience_id}}'
+  method: list_posts
+  args:
+    kind: question
+    category_id: null
+    cursor: null
+    limit: 20
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    questions: rpc
+- name: Alice reads the engagement report
+  type: call
+  app: '{{audience_id}}'
+  method: get_engagement
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    engagement: rpc
+- name: Alice lists the people
+  type: call
+  app: '{{audience_id}}'
+  method: list_people
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    people: rpc
+- name: Assert every channel reached the founder
+  type: assert
+  statements:
+  - contains({{thread}}, "Who ran procurement?")
+  - contains({{asks}}, "I know two CFOs there")
+  - contains({{questions}}, "What is the runway after the hires?")
+  - contains({{engagement}}, "Ben Investor")
+  - contains({{people}}, "Seed Fund")
+- name: Alice accepts Bob's offer
+  type: call
+  app: '{{audience_id}}'
+  method: set_offer_status
+  args:
+    ask_id: '{{ask_id}}'
+    account: '{{bob_account}}'
+    status: accepted
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice resolves the ask
+  type: call
+  app: '{{audience_id}}'
+  method: set_ask_status
+  args:
+    ask_id: '{{ask_id}}'
+    status: resolved
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice answers the question and marks it answered
+  type: call
+  app: '{{audience_id}}'
+  method: add_comment
+  args:
+    post_id: '{{question_id}}'
+    parent_id: null
+    body: 19 months.
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Mark it answered
+  type: call
+  app: '{{audience_id}}'
+  method: set_question_status
+  args:
+    post_id: '{{question_id}}'
+    status: answered
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice reads the contributions ledger
+  type: call
+  app: '{{audience_id}}'
+  method: list_contributions
+  args:
+    since: 0
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    contributions: rpc
+- name: Alice reads the KPI series
+  type: call
+  app: '{{audience_id}}'
+  method: list_metrics
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    metrics: rpc
+- name: Alice's draft is still on her node
+  type: call
+  app: '{{audience_id}}'
+  method: list_drafts
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_drafts: rpc
+- name: Assert the offer became a contribution, the KPI a series, the draft stayed
+  type: assert
+  statements:
+  - contains({{contributions}}, "Ben Investor")
+  - contains({{metrics}}, "$48k")
+  - contains({{alice_drafts}}, "July")
+- name: Alice discards the draft
+  type: call
+  app: '{{audience_id}}'
+  method: delete_draft
+  args:
+    draft_id: '{{draft_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice moderates Bob's reply away
+  type: call
+  app: '{{audience_id}}'
+  method: delete_comment
+  args:
+    comment_id: '{{comment_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob sees his offer accepted
+  type: call
+  app: '{{audience_id}}'
+  method: list_asks
+  args:
+    status: resolved
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_asks: rpc
+- name: Bob sees the answer
+  type: call
+  app: '{{audience_id}}'
+  method: get_post
+  args:
+    post_id: '{{question_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_question: result.card
+- name: Assert the triage replicated
+  type: assert
+  statements:
+  - contains({{bob_asks}}, "accepted")
+- name: Assert the question reads answered
+  type: json_assert
+  statements:
+  - 'json_subset({{bob_question}}, {"status": "answered", "comment_count": 1})'
+- name: Alice deletes the update
+  type: call
+  app: '{{audience_id}}'
+  method: delete_post
+  args:
+    post_id: '{{update_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob reads the feed again
+  type: call
+  app: '{{audience_id}}'
+  method: list_posts
+  args:
+    kind: update
+    category_id: null
+    cursor: null
+    limit: 20
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    feed_after_delete: rpc
+- name: Assert the delete reached Node 2
+  type: assert
+  statements:
+  - not_contains({{feed_after_delete}}, "June 2026 update")

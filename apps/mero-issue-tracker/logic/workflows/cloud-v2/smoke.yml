@@ -1,0 +1,240 @@
+# Ported from smoke.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x9: replication is synchronous: a read sees every committed write
+name: issue-tracker spec smoke
+description: Verify the issue-tracker service replicates issues/comments and gates comment edits across
+  two nodes.
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3370
+accounts:
+- app-node-1
+- app-node-2
+steps:
+- name: Install issue-tracker bundle on node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_issue_tracker.wasm'
+  outputs:
+    app_id: hash
+  account: app-node-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace on node 1
+  type: create_org
+  org_name: Create namespace on node 1
+  outputs:
+    namespace_id: orgId
+  account: app-node-1
+- name: Create issue-tracker context on node 1
+  type: deploy
+  account: app-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_issue_tracker.wasm'
+  app_name: issue-tracker
+  org: '{{namespace_id}}'
+  outputs:
+    issue_tracker_ctx: appId
+- name: Issue namespace invitation
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: app-node-1
+  outputs:
+    invitation: token
+- type: wait
+  seconds: 1.0
+- name: Node 2 joins namespace
+  type: redeem_invite
+  token: '{{invitation}}'
+  account: app-node-2
+- name: Exercise create_issue on app-node-1
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: create_issue
+  args:
+    title: Login button broken
+    summary: Clicking login does nothing on Safari
+    impact: Safari users cannot sign in at all
+    repro: Open the app in Safari 17, click Login, observe no navigation
+    resolution_criteria: Clicking Login starts the auth flow in Safari
+    priority: high
+    labels:
+    - bug
+  account: app-node-1
+  outputs:
+    issue_id: result
+- name: Confirm the new issue is visible + Open on node-2
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: list_issues
+  args:
+    status: Open
+    assignee: null
+    label: null
+  account: app-node-2
+  outputs:
+    open_issue_0: result.0
+- type: json_assert
+  name: create_issue produced an Open issue visible on node-2
+  statements:
+  - 'json_subset({{open_issue_0}}, {"title": "Login button broken", "status": "Open", "priority": "high"})'
+- name: Exercise set_status on app-node-1
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: set_status
+  args:
+    issue_id: '{{issue_id}}'
+    status: In progress
+  account: app-node-1
+- name: Read the issue back on node-2 after set_status
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: get_issue
+  args:
+    issue_id: '{{issue_id}}'
+  account: app-node-2
+  outputs:
+    issue_after_status: result.issue
+- type: json_assert
+  name: set_status moved the issue to In progress
+  statements:
+  - 'json_subset({{issue_after_status}}, {"status": "In progress"})'
+- name: Exercise set_priority on app-node-1
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: set_priority
+  args:
+    issue_id: '{{issue_id}}'
+    priority: urgent
+  account: app-node-1
+- name: Read the issue back on node-2 after set_priority
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: get_issue
+  args:
+    issue_id: '{{issue_id}}'
+  account: app-node-2
+  outputs:
+    issue_after_priority: result.issue
+- type: json_assert
+  name: set_priority updated the priority to urgent
+  statements:
+  - 'json_subset({{issue_after_priority}}, {"priority": "urgent"})'
+- name: Exercise set_assignee on app-node-1
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: set_assignee
+  args:
+    issue_id: '{{issue_id}}'
+    assignee: alice
+  account: app-node-1
+- name: Read the issue back on node-2 after set_assignee
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: get_issue
+  args:
+    issue_id: '{{issue_id}}'
+  account: app-node-2
+  outputs:
+    issue_after_assignee: result.issue
+- type: json_assert
+  name: set_assignee set the assignee to alice
+  statements:
+  - 'json_subset({{issue_after_assignee}}, {"assignee": "alice"})'
+- name: Exercise add_label on app-node-1
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: add_label
+  args:
+    issue_id: '{{issue_id}}'
+    label: frontend
+  account: app-node-1
+- name: Exercise remove_label on app-node-1
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: remove_label
+  args:
+    issue_id: '{{issue_id}}'
+    label: bug
+  account: app-node-1
+- name: Exercise add_comment on app-node-1
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: add_comment
+  args:
+    issue_id: '{{issue_id}}'
+    body: 'Filed a fix in PR #42'
+  account: app-node-1
+  outputs:
+    comment_id: result
+- name: Read the thread on node-2 after add_comment
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: get_issue
+  args:
+    issue_id: '{{issue_id}}'
+  account: app-node-2
+  outputs:
+    comment_0: result.comments.0
+- type: json_assert
+  name: add_comment produced a visible comment on node-2
+  statements:
+  - 'json_subset({{comment_0}}, {"body": "Filed a fix in PR #42"})'
+- name: Non-author edit_comment from node-2 must be rejected
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: edit_comment
+  args:
+    comment_id: '{{comment_id}}'
+    new_body: malicious edit
+  account: app-node-2
+  expected_failure: true
+  outputs:
+    non_author_edit_error: error
+- type: assert
+  name: The rejection must actually have happened
+  statements:
+  - is_set({{non_author_edit_error}})
+- name: Exercise edit_comment on app-node-1 (the author)
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: edit_comment
+  args:
+    comment_id: '{{comment_id}}'
+    new_body: 'Filed and merged fix in PR #42'
+  account: app-node-1
+- name: Read the thread on node-2 after edit_comment
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: get_issue
+  args:
+    issue_id: '{{issue_id}}'
+  account: app-node-2
+  outputs:
+    comment_edited: result.comments.0
+- type: json_assert
+  name: edit_comment updated the comment body
+  statements:
+  - 'json_subset({{comment_edited}}, {"body": "Filed and merged fix in PR #42"})'
+- name: Exercise delete_comment on app-node-1 (the author)
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: delete_comment
+  args:
+    comment_id: '{{comment_id}}'
+  account: app-node-1
+- name: Read the thread on node-2 after delete_comment
+  type: call
+  app: '{{issue_tracker_ctx}}'
+  method: get_issue
+  args:
+    issue_id: '{{issue_id}}'
+  account: app-node-2
+  outputs:
+    thread_after_delete: result.comments
+- type: json_assert
+  name: delete_comment emptied the issue's comment thread
+  statements:
+  - json_equal({{thread_after_delete}}, [])

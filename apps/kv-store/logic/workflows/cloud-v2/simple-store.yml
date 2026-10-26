@@ -1,0 +1,275 @@
+# Ported from simple-store.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x5: replication is synchronous: a read sees every committed write
+name: KV Store E2E
+description: "Two nodes converge on one UnorderedMap<String, LwwRegister<String>>.\nCovers the whole RPC\
+  \ surface: set, get, get_result, get_unchecked, update_if_exists, get_or_insert, entries, len, remove,\
+  \ clear — and asserts the three behaviours that are easy to get subtly wrong:\n\n  * `update_if_exists`\
+  \ must NOT insert when the key is absent\n  * `get_or_insert` must return the EXISTING value, not the\
+  \ one passed in\n  * `remove` and `clear` must not emit for a no-op\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3040
+accounts:
+- kv-node-1
+- kv-node-2
+steps:
+- name: Install application on kv-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/kv_store.wasm'
+  outputs:
+    app_id: hash
+  account: kv-node-1
+- name: Assert application installed
+  type: assert
+  statements:
+  - is_set({{app_id}})
+- name: Settle before the mesh joins
+  type: wait
+  seconds: 1.0
+- name: Create mesh with node-2
+  type: deploy
+  account: kv-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/kv_store.wasm'
+  app_name: Create mesh with node-2
+  access:
+    kind: accounts
+    accounts:
+    - kv-node-1
+    - kv-node-2
+  outputs:
+    context_id: appId
+    node1_key: memberPublicKey
+- name: Verify mesh keys are populated
+  type: assert
+  statements:
+  - is_set({{context_id}})
+  - is_set({{node1_key}})
+  - is_set({{public_key_kv-node-2}})
+- name: node-1 tries update_if_exists on an absent key
+  type: call
+  app: '{{context_id}}'
+  method: update_if_exists
+  args:
+    key: absent
+    value: nope
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    update_absent: rpc
+- name: Assert update_if_exists reported no update
+  type: json_assert
+  statements:
+  - 'json_equal({{update_absent}}, {"output": false})'
+- name: node-1 confirms nothing was inserted
+  type: call
+  app: '{{context_id}}'
+  method: len
+  args: {}
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    len_after_noop: rpc
+- name: Assert the store is still empty
+  type: json_assert
+  statements:
+  - 'json_equal({{len_after_noop}}, {"output": 0})'
+- name: node-1 sets a key
+  type: call
+  app: '{{context_id}}'
+  method: set
+  args:
+    key: greeting
+    value: hello
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 reads the key
+  type: call
+  app: '{{context_id}}'
+  method: get
+  args:
+    key: greeting
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_get: rpc
+- name: Assert node-2 sees node-1's write
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_get}}, {"output": "hello"})'
+- name: node-2 reads an absent key
+  type: call
+  app: '{{context_id}}'
+  method: get
+  args:
+    key: nothing_here
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_missing: rpc
+- name: Assert an absent key reads as null
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_missing}}, {"output": null})'
+- name: node-2 updates the existing key
+  type: call
+  app: '{{context_id}}'
+  method: update_if_exists
+  args:
+    key: greeting
+    value: hei
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    update_present: rpc
+- name: Assert the update landed
+  type: json_assert
+  statements:
+  - 'json_equal({{update_present}}, {"output": true})'
+- name: node-1 reads the updated key
+  type: call
+  app: '{{context_id}}'
+  method: get_result
+  args:
+    key: greeting
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_updated: rpc
+- name: Assert the in-place update converged
+  type: json_assert
+  statements:
+  - 'json_equal({{n1_updated}}, {"output": "hei"})'
+- name: node-1 calls get_or_insert on the existing key
+  type: call
+  app: '{{context_id}}'
+  method: get_or_insert
+  args:
+    key: greeting
+    value: SHOULD_NOT_WIN
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    goi_existing: rpc
+- name: Assert get_or_insert kept the stored value
+  type: json_assert
+  statements:
+  - 'json_equal({{goi_existing}}, {"output": "hei"})'
+- name: node-1 calls get_or_insert on a fresh key
+  type: call
+  app: '{{context_id}}'
+  method: get_or_insert
+  args:
+    key: fresh
+    value: inserted
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    goi_fresh: rpc
+- name: Assert get_or_insert inserted on a vacant entry
+  type: json_assert
+  statements:
+  - 'json_equal({{goi_fresh}}, {"output": "inserted"})'
+- name: node-2 reads all entries
+  type: call
+  app: '{{context_id}}'
+  method: entries
+  args: {}
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_entries: rpc
+- name: Assert node-2 sees both keys
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_entries}}, {"output": {"fresh": "inserted", "greeting": "hei"}})'
+- name: node-2 reads a present key without checking
+  type: call
+  app: '{{context_id}}'
+  method: get_unchecked
+  args:
+    key: greeting
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_unchecked: rpc
+- name: Assert get_unchecked returns the value for a present key
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_unchecked}}, {"output": "hei"})'
+- name: node-2 reads the length
+  type: call
+  app: '{{context_id}}'
+  method: len
+  args: {}
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_len: rpc
+- name: Assert the length matches the listing
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_len}}, {"output": 2})'
+- name: node-1 removes a key
+  type: call
+  app: '{{context_id}}'
+  method: remove
+  args:
+    key: fresh
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    removed: rpc
+- name: Assert remove returned the value it took out
+  type: json_assert
+  statements:
+  - 'json_equal({{removed}}, {"output": "inserted"})'
+- name: node-1 removes the same key again
+  type: call
+  app: '{{context_id}}'
+  method: remove
+  args:
+    key: fresh
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    removed_again: rpc
+- name: Assert a second remove is a no-op returning null
+  type: json_assert
+  statements:
+  - 'json_equal({{removed_again}}, {"output": null})'
+- name: node-2 reads entries after the removal
+  type: call
+  app: '{{context_id}}'
+  method: entries
+  args: {}
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_after_remove: rpc
+- name: Assert the removal converged
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_after_remove}}, {"output": {"greeting": "hei"}})'
+- name: node-2 clears the store
+  type: call
+  app: '{{context_id}}'
+  method: clear
+  args: {}
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+- name: node-1 reads the length after the clear
+  type: call
+  app: '{{context_id}}'
+  method: len
+  args: {}
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    len_after_clear: rpc
+- name: Assert the clear converged
+  type: json_assert
+  statements:
+  - 'json_equal({{len_after_clear}}, {"output": 0})'

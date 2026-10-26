@@ -1,0 +1,116 @@
+# Ported from integration-setup.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   create_group x1: v1 standalone group
+#   create_group_invitation x1: v1 standalone group
+#   join_group x1: v1 standalone group
+#   wait_for_sync x5: replication is synchronous: a read sees every committed write
+name: Integration Test Setup
+description: 'Sets up a two-node environment for Playwright integration tests. Creates a Channel context,
+  sets up two identities (Alice and Bob), sends seed messages, then leaves nodes running so Playwright
+  can test the frontend against them. Run via:  scripts/setup-nodes.sh  (which calls this workflow and
+  then bootstraps JWT auth for Playwright).
+
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3130
+accounts:
+- calimero-node-1
+- calimero-node-2
+- calimero-node-2-id1
+steps:
+- name: Install Application
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_chat.wasm'
+  outputs:
+    app_id: hash
+  account: calimero-node-1
+- name: Create Integration Channel Context
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_chat.wasm'
+  app_name: Create Integration Channel Context
+  init_args: '{"name": "Integration Test", "context_type": "Channel", "description": "Playwright e2e context",
+    "created_at": 1751952997, "creator_username": ""}'
+  org: '{{namespace_id}}'
+  outputs:
+    context_id: appId
+    member_public_key: memberPublicKey
+- name: Create Identity on Node 2
+  type: whoami
+  account: calimero-node-2-id1
+  outputs:
+    public_key_2: publicKey
+- name: Wait for Identity Setup
+  type: wait
+  seconds: 1.0
+- name: Settle before the join (cold-join KeyDelivery)
+  type: wait
+  seconds: 1.0
+- name: Set Profile - Node 1 (Alice)
+  type: call
+  app: '{{context_id}}'
+  method: set_profile
+  args:
+    username: Alice
+    avatar: null
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Set Profile - Node 2 (Bob)
+  type: call
+  app: '{{context_id}}'
+  method: set_profile
+  args:
+    username: Bob
+    avatar: null
+  account: calimero-node-2
+  as_key: '{{public_key_2}}'
+- name: Seed Message - Alice
+  type: call
+  app: '{{context_id}}'
+  method: send_message
+  args:
+    message: Hello from Alice — integration test seed
+    mentions: []
+    mentions_usernames: []
+    parent_message: null
+    timestamp: 1751953010
+    files: null
+    images: null
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Seed Message - Bob
+  type: call
+  app: '{{context_id}}'
+  method: send_message
+  args:
+    message: Hello from Bob — integration test seed
+    mentions: []
+    mentions_usernames: []
+    parent_message: null
+    timestamp: 1751953011
+    files: null
+    images: null
+  account: calimero-node-2
+  as_key: '{{public_key_2}}'
+- name: Verify Integration Context
+  type: call
+  app: '{{context_id}}'
+  method: get_messages
+  args:
+    parent_message: null
+    limit: 10
+    offset: 0
+    search_term: null
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    seed_messages: rpc
+- name: Assert Seed Messages Present
+  type: assert
+  statements:
+  - contains({{seed_messages}}, 'Alice')
+  - contains({{seed_messages}}, 'Bob')
+  - contains({{seed_messages}}, 'total_count')

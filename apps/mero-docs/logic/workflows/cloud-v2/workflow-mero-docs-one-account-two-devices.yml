@@ -1,0 +1,132 @@
+# Ported from workflow-mero-docs-one-account-two-devices.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   account_pair x1: devices: in release-v2 a person is their account
+#   start_node x2: a user's node going offline has no counterpart in a cluster
+#   stop_node x2: a user's node going offline has no counterpart in a cluster
+#   wait_for_sync x2: replication is synchronous: a read sees every committed write
+name: Mero Docs - two devices of one account each create a doc offline
+description: 'Alice''s laptop (node 1) holds her account root; her phone (node 2) is paired onto the same
+  account. Each creates a doc while the other is stopped, and each device mints its own id. Each doc must
+  keep its own id and title after they meet again.
+
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3300
+accounts:
+- s1-dev-1
+- s1-dev-2
+steps:
+- name: Install the bundle on the laptop
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  outputs:
+    app_id: hash
+  account: s1-dev-1
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: The laptop creates the namespace
+  type: create_org
+  org_name: The laptop creates the namespace
+  outputs:
+    namespace_id: orgId
+  account: s1-dev-1
+- name: The laptop creates a Docs context
+  type: deploy
+  account: s1-dev-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  outputs:
+    docs_ctx: appId
+    laptop_key: memberPublicKey
+- name: What the laptop speaks as
+  type: whoami
+  outputs:
+    alice_account: publicKey
+    alice_device: publicKey
+    alice_root: publicKey
+  account: s1-dev-1
+- name: What the phone speaks as
+  type: whoami
+  outputs:
+    phone_account: publicKey
+    phone_device: publicKey
+  account: s1-dev-2
+- name: The phone is a second device of Alice's account
+  type: json_assert
+  statements:
+  - json_equal({{phone_account}}, {{alice_account}})
+  - json_not_equal({{phone_device}}, {{alice_device}})
+- name: Wait for the pairing to settle
+  type: wait
+  seconds: 1.0
+- name: The phone joins the Docs context
+  type: whoami
+  account: s1-dev-2
+  outputs:
+    phone_key: publicKey
+- name: The laptop creates a doc
+  type: call
+  app: '{{docs_ctx}}'
+  method: create_doc
+  args:
+    title: Laptop
+  account: s1-dev-1
+  as_key: '{{laptop_key}}'
+  outputs:
+    laptop_doc: result
+- name: Wait for the phone to come up
+  type: wait
+  seconds: 1.0
+- name: The phone creates a doc
+  type: call
+  app: '{{docs_ctx}}'
+  method: create_doc
+  args:
+    title: Phone
+  account: s1-dev-2
+  as_key: '{{phone_key}}'
+  outputs:
+    phone_doc: result
+- name: Wait for the devices to find each other
+  type: wait
+  seconds: 1.0
+- name: The laptop lists its docs
+  type: call
+  app: '{{docs_ctx}}'
+  method: list_docs
+  args:
+    include_archived: true
+  account: s1-dev-1
+  as_key: '{{laptop_key}}'
+  outputs:
+    laptop_docs: result
+- name: The phone lists its docs
+  type: call
+  app: '{{docs_ctx}}'
+  method: list_docs
+  args:
+    include_archived: true
+  account: s1-dev-2
+  as_key: '{{phone_key}}'
+  outputs:
+    phone_docs: result
+- name: The two creates minted two ids
+  type: json_assert
+  statements:
+  - json_not_equal({{laptop_doc}}, {{phone_doc}})
+- name: Both devices converged
+  type: json_assert
+  statements:
+  - json_equal({{laptop_docs}}, {{phone_docs}})
+- name: Both docs survived whole on both devices
+  type: assert
+  statements:
+  - regex({{laptop_docs}}, title.{4}Laptop\W\W)
+  - regex({{laptop_docs}}, title.{4}Phone\W\W)
+  - regex({{phone_docs}}, title.{4}Laptop\W\W)
+  - regex({{phone_docs}}, title.{4}Phone\W\W)

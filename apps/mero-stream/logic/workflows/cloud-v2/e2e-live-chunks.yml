@@ -1,0 +1,174 @@
+# Ported from e2e-live-chunks.yml by `merobox cloud port`.
+# v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x4: replication is synchronous: a read sees every committed write
+name: Mero Stream — approach 2, opaque codec chunks across the wire
+description: 'Approach 2: the browser encodes with a REAL codec (hardware H.264 via WebCodecs) and the
+  WASM app stores bytes it never interprets. This scenario proves the replication half of that on two
+  real nodes, without a browser: arbitrary opaque bytes posted on node 1 come back byte-identical on node
+  2, and the keyframe-clamped reaper still leaves a joining peer something decodable.
+
+  Payloads here are deliberately NOT valid H.264. The whole approach-2 claim is that the app does not
+  care what the bytes mean — a scenario built on real access units would hide a regression where we started
+  parsing them.
+
+  What this scenario CANNOT cover: the actual encode/decode. That needs a real browser with a camera (`/live`
+  route, Chrome). This covers everything between.
+
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3540
+accounts:
+- calimero-node-1
+- calimero-node-2
+steps:
+- name: Install application on calimero-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
+  outputs:
+    app_id: hash
+  account: calimero-node-1
+- name: Settle before the mesh joins
+  type: wait
+  seconds: 1.0
+- name: Create the stream mesh
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
+  app_name: Create the stream mesh
+  init_args: '{"name": "live"}'
+  access:
+    kind: accounts
+    accounts:
+    - calimero-node-1
+    - calimero-node-2
+- name: Alice joins
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Alice
+    now: 1751955000
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Bob joins
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Bob
+    now: 1751955001
+  account: calimero-node-2
+  as_key: '{{public_key}}'
+- name: Alice posts an opaque keyframe chunk
+  type: call
+  app: '{{context_id}}'
+  method: post_chunk
+  args:
+    data_b64: AAAAAWf//oA=
+    track: 0
+    is_keyframe: true
+    codec: avc1.42001f
+    width: 640
+    height: 480
+    timestamp_us: 0
+    now: 1751955010000
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    kf_seq: result
+- name: Alice posts a delta chunk
+  type: call
+  app: '{{context_id}}'
+  method: post_chunk
+  args:
+    data_b64: AAAAAUHAgA==
+    track: 0
+    is_keyframe: false
+    codec: avc1.42001f
+    width: 640
+    height: 480
+    timestamp_us: 33333
+    now: 1751955010033
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Bob reads the chunks
+  type: call
+  app: '{{context_id}}'
+  method: get_chunks
+  args:
+    cursors: []
+  account: calimero-node-2
+  as_key: '{{public_key}}'
+  outputs:
+    bob_chunks: rpc
+- name: Assert the opaque bytes crossed EXACTLY, with their decoder config
+  type: assert
+  statements:
+  - contains({{bob_chunks}}, AAAAAWf//oA=)
+  - contains({{bob_chunks}}, AAAAAUHAgA==)
+  - contains({{bob_chunks}}, avc1.42001f)
+  - 'contains({{bob_chunks}}, ''seq'': 1)'
+  - 'contains({{bob_chunks}}, ''seq'': 2)'
+  - 'contains({{bob_chunks}}, ''isKeyframe'': True)'
+  - 'contains({{bob_chunks}}, ''isKeyframe'': False)'
+  - 'contains({{bob_chunks}}, ''timestampUs'': 33333)'
+- name: Bob asks where a joining peer should start
+  type: call
+  app: '{{context_id}}'
+  method: keyframe_cursors
+  args: {}
+  account: calimero-node-2
+  as_key: '{{public_key}}'
+  outputs:
+    bob_kf_cursors: result
+- name: Assert the peer is told to start at the keyframe, not the newest chunk
+  type: assert
+  statements:
+  - is_set({{bob_kf_cursors}})
+  - 'contains({{bob_kf_cursors}}, ''afterSeq'': {{kf_seq}})'
+  - contains({{bob_kf_cursors}}, {{member_public_key}})
+- name: Bob reads the approach-2 stats
+  type: call
+  app: '{{context_id}}'
+  method: get_live_stats
+  args: {}
+  account: calimero-node-2
+  as_key: '{{public_key}}'
+  outputs:
+    bob_live: rpc
+- name: Assert the receiving node accounts for the live bytes it holds
+  type: json_assert
+  statements:
+  - 'json_subset({{bob_live}}, {"output": {"liveChunks": 2, "prunedChunks": 0, "liveBytes": 15}})'
+- name: Assert the per-sender breakdown attributes both chunks to Alice
+  type: assert
+  statements:
+  - contains({{bob_live}}, {{member_public_key}})
+  - 'contains({{bob_live}}, ''nextSeq'': 2)'
+  - 'contains({{bob_live}}, ''lastKeyframe'': 1)'
+  - 'contains({{bob_live}}, ''liveChunks'': 2)'
+- name: Alice asks to prune everything
+  type: call
+  app: '{{context_id}}'
+  method: prune_chunks
+  args:
+    before_seq: 9999
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Bob checks he still has a decodable starting point
+  type: call
+  app: '{{context_id}}'
+  method: keyframe_cursors
+  args: {}
+  account: calimero-node-2
+  as_key: '{{public_key}}'
+  outputs:
+    bob_kf_after_prune: result
+- name: Assert prune(everything) still cannot strand the receiving peer
+  type: assert
+  statements:
+  - is_set({{bob_kf_after_prune}})
+  - 'contains({{bob_kf_after_prune}}, ''afterSeq'': {{kf_seq}})'
