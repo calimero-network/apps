@@ -140,7 +140,7 @@ export default defineConfig({
     // An edit made during an e2e run would hot-swap modules under the test and reset UI state.
     watch: process.env.E2E_NO_WATCH ? null : undefined,
   },
-  base: '/',
+  base: './',
   build: {
     // Match battleships (apps/battleships/app/vite.config.js): outDir
     // is `build`, not the vite default `dist`. Keeps downstream deploy

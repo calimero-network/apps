@@ -32,6 +32,8 @@ icon        = "assets/icon-512x512.png"
 # check-app-metadata.sh now asserts this equals the workspace value.
 min-runtime-version = "0.12.0-rc.1"
 frontend    = "https://mero-docs.vercel.app"
+# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+frontend-dir = "../app/dist"
 guide       = "GUIDE.md"
 
 # Two services, ONE bundle. Declared at PACKAGE level, which cargo-mero supports
