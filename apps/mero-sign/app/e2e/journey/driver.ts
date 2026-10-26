@@ -39,7 +39,7 @@ async function until(
 }
 
 async function gotoWorkspace(page: Page): Promise<void> {
-  await page.goto("/agreements");
+  await page.goto("agreements");
   await expect(heading(page, "Agreements")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("new-agreement-name")).toBeVisible();
 }
@@ -224,7 +224,7 @@ export const driver: AppDriver = {
 
   async invite(actor) {
     const page = actor.page;
-    await page.goto("/workspaces");
+    await page.goto("workspaces");
     await expect(heading(page, "Your workspaces")).toBeVisible({ timeout: 30_000 });
     const card = page.getByTestId("workspace-card").filter({ hasText: workspaceName });
     await expect(card).toBeVisible({ timeout: 30_000 });

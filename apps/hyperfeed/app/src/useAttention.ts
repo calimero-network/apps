@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { FeedPage } from "./generated/HyperfeedClient";
 import { appLook } from "./apps";
 import { newAlerts, tabTitle, waitingKeys, type Alert } from "./attention";
+import { nodeBasename } from "./servedByNode";
 
 const ALERTS_KEY = "hyperfeed:alerts";
 const appName = (key: string) => appLook(key).name;
@@ -100,7 +101,7 @@ function show(a: Alert, go: (to: string) => void, base: string) {
 async function viaWorker(title: string, options: NotificationOptions): Promise<void> {
   try {
     if (!("serviceWorker" in navigator)) return;
-    const reg = (await navigator.serviceWorker.getRegistration("/")) ?? (await navigator.serviceWorker.register("/sw.js", { scope: "/" }));
+    const reg = (await navigator.serviceWorker.getRegistration(nodeBasename())) ?? (await navigator.serviceWorker.register(`${nodeBasename()}sw.js`, { scope: nodeBasename() }));
     await reg.showNotification(title, options);
   } catch {
     // No worker either: the tab's title and the bell still count what waits.

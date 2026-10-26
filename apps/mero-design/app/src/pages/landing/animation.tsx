@@ -16,6 +16,7 @@
  * Unlike the drawn animations this does not follow the page's dark theme — it
  * is a picture of the app, and the app is light.
  */
+import { nodeBasename } from "../../utils/servedByNode";
 export default function DesignAnimation() {
   // Where the reader asked for less motion, the poster stands in for the loop.
   const still =
@@ -23,8 +24,8 @@ export default function DesignAnimation() {
   return (
     <div className="cal-lp-a" style={{ padding: 0 }}>
       <video
-        src="/landing/hero.webm"
-        poster="/landing/hero-poster.jpg"
+        src={`${nodeBasename()}landing/hero.webm`}
+        poster={`${nodeBasename()}landing/hero-poster.jpg`}
         autoPlay={!still}
         muted
         loop

@@ -1,3 +1,5 @@
+import { nodeBasename } from "./servedByNode";
+
 /**
  * How an app key looks on screen.
  *
@@ -63,7 +65,7 @@ const ICONS: Record<string, string> = {
   models: "models",
 };
 
-const iconFor = (key: string): string | undefined => (ICONS[key] ? `/app-icons/${ICONS[key]}.png` : undefined);
+const iconFor = (key: string): string | undefined => (ICONS[key] ? `${nodeBasename()}app-icons/${ICONS[key]}.png` : undefined);
 
 /** The apps the controls list even before anything has happened in them (the demo's keys). */
 export const DEFAULT_APPS = ["chat", "calendar", "sheets", "issues", "docs", "crm", "sign", "pass"];

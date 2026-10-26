@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useTheme } from "../../theme";
 import LoginPopup from "./loginPopup";
 import { BrandLockup } from "../../brand";
+import { nodeBasename } from "../../servedByNode";
 
 export const GITHUB = "https://github.com/calimero-network/apps/tree/main/apps/hyperfeed";
 export const DOWNLOAD = "https://calimero.network/download";
@@ -45,13 +46,13 @@ export function LandingShell({ page, connect, children }: { page: "home" | "docs
               <BrandLockup size={26} />
             </Link>
             <div className="hl-links">
-              <a className="hl-link" href={page === "home" ? "#why" : "/#why"}>
+              <a className="hl-link" href={page === "home" ? "#why" : `${nodeBasename()}#why`}>
                 Why
               </a>
-              <a className="hl-link" href={page === "home" ? "#features" : "/#features"}>
+              <a className="hl-link" href={page === "home" ? "#features" : `${nodeBasename()}#features`}>
                 Features
               </a>
-              <a className="hl-link" href={page === "home" ? "#private" : "/#private"}>
+              <a className="hl-link" href={page === "home" ? "#private" : `${nodeBasename()}#private`}>
                 Privacy
               </a>
               <Link className="hl-link" to="/docs" aria-current={page === "docs" ? "page" : undefined}>

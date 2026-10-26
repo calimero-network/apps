@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import { nodeBasename } from "@calimero-apps/node-served";
+
+/** The router base: `/{version}/` when a node serves the app, else `/`. */
+export const BASE = nodeBasename(new URL(window.location.href), "/");
+
+/** A pathname as the app sees it, without the node's version prefix. */
+export const appPath = (pathname: string) => (pathname.startsWith(BASE) ? `/${pathname.slice(BASE.length)}` : pathname);
 
 export type FormTab = "responses" | "edit" | "preview" | "connect";
 export const FORM_TABS: FormTab[] = ["responses", "edit", "preview", "connect"];

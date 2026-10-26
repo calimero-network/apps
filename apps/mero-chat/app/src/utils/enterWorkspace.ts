@@ -11,6 +11,7 @@ import {
   clearStoredSession,
   setNamespaceReady,
 } from "./session";
+import { nodeBasename } from "./servedByNode";
 
 // Two places put the user into a workspace: the workspace picker
 // (`NamespaceEntryPopup`) and the app-level invitation prompt
@@ -78,7 +79,7 @@ export function enterWorkspace(
   // first render. WorkspaceSwitcher already enters this way for the same
   // reason. The real fix is to make the gate reactive rather than
   // read-once — until then, do what the working path does.
-  window.location.href = "/";
+  window.location.href = nodeBasename();
 }
 
 // ── A joined workspace that still needs a display name ───────────────────────
@@ -100,7 +101,7 @@ export function enterJoinedWorkspaceForName(namespaceId: string): void {
   setGroupId(namespaceId);
   // Otherwise /login bounces a user already inside a workspace back to "/".
   clearNamespaceReady();
-  window.location.href = "/login";
+  window.location.href = nodeBasename() + "login";
 }
 
 /**

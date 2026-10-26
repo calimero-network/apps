@@ -34,6 +34,8 @@ tags        = ["secrets", "passwords", "security"]
 github      = "https://github.com/calimero-network/apps"
 min-runtime-version = "0.12.0-rc.1"
 frontend    = "https://mero-pass.vercel.app"
+# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+frontend-dir = "../app/dist"
 
 [dependencies]
 thiserror               = { workspace = true }

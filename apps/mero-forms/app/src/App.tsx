@@ -16,7 +16,7 @@ import { TeamCard } from "./TeamCard";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
 import { PersonName, TeamNamespace, useSpaceNames } from "./names";
 import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
-import { useRoute, type Route } from "./route";
+import { BASE, appPath, useRoute, type Route } from "./route";
 import { useWorkspace, useRead, type Workspace } from "./useWorkspace";
 
 /** A workspace opened in this page, ahead of the one the provider read from storage. */
@@ -75,9 +75,9 @@ const isLandingPath = (path: string) => LANDING_PATHS.includes(path.replace(/\/+
  * way) swaps the page. The landing page pushes its own paths.
  */
 function usePathname() {
-  const [path, setPath] = useState(() => window.location.pathname);
+  const [path, setPath] = useState(() => appPath(window.location.pathname));
   useEffect(() => {
-    const on = () => setPath(window.location.pathname);
+    const on = () => setPath(appPath(window.location.pathname));
     window.addEventListener("popstate", on);
     return () => window.removeEventListener("popstate", on);
   }, []);
@@ -127,7 +127,7 @@ function Screen({
       <LandingPage
         isAuthenticated={isAuthenticated}
         onOpenApp={() => {
-          window.history.pushState(null, "", "/");
+          window.history.pushState(null, "", BASE);
           window.dispatchEvent(new PopStateEvent("popstate"));
         }}
       />
@@ -176,7 +176,7 @@ function Shell({
     <div className="wrap">
       <header className="topbar">
         <div className="brand">
-          <img src="/favicon.svg" alt="" width={26} height={26} />
+          <img src="./favicon.svg" alt="" width={26} height={26} />
           <span className="brand-name">Forms</span>
           {left}
         </div>

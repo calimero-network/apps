@@ -4,6 +4,8 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 import { BrowserRouter } from "react-router-dom";
+import { isServedByNode } from "@calimero-apps/node-served";
+import { SERVED_BY_NODE, nodeBasename } from "./utils/servedByNode";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
@@ -72,6 +74,8 @@ function clearStaleSessionData() {
 // newer — see `shouldSeedTokens` (utils/authTokens.ts) for why clobbering it
 // gets the whole token family revoked under single-use refresh (core#3083).
 function persistAuthHashOnLoad(): void {
+  // On a node's origin MeroProvider completes the web login itself.
+  if (SERVED_BY_NODE) return;
   const hash = window.location.hash.slice(1);
   if (!hash) return;
   const p = new URLSearchParams(hash);
@@ -167,7 +171,8 @@ if (import.meta.env.DEV) {
 }
 
 // Register service worker for PWA (production only — sw.js is not served in dev)
-if ("serviceWorker" in navigator && !import.meta.env.DEV) {
+// A node-served app shares one origin across versions, so no service worker there.
+if ("serviceWorker" in navigator && !import.meta.env.DEV && !SERVED_BY_NODE) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js")
@@ -227,9 +232,10 @@ function boot() {
           // work to do, and looks like flake. mero-js has no per-call timeout
           // on `getBlob`, so this is the only place to set it.
           timeoutMs={BLOB_READ_TIMEOUT_MS}
+          servedByNode={isServedByNode(new URL(window.location.href))}
         >
           <MeroJsBridge>
-            <BrowserRouter>
+            <BrowserRouter basename={nodeBasename()}>
               <WebSocketProvider>
                 <ToastProvider>
                   <App />

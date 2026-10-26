@@ -5,6 +5,7 @@ import { execFile } from 'child_process';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { promisify } from 'util';
+import { servedAssetsFallback } from '@calimero-apps/node-served/vite';
 
 const run = promisify(execFile);
 const ENV_FILE = resolve(__dirname, '.env.integration');
@@ -140,7 +141,7 @@ export default defineConfig({
     // An edit made during an e2e run would hot-swap modules under the test and reset UI state.
     watch: process.env.E2E_NO_WATCH ? null : undefined,
   },
-  base: '/',
+  base: './',
   build: {
     // Match battleships (apps/battleships/app/vite.config.js): outDir
     // is `build`, not the vite default `dist`. Keeps downstream deploy
@@ -198,7 +199,7 @@ export default defineConfig({
       },
     },
   },
-  plugins: [nodePolyfills(), react(), devRig()],
+  plugins: [servedAssetsFallback(), nodePolyfills(), react(), devRig()],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),

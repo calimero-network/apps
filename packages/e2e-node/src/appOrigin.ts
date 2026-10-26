@@ -26,3 +26,22 @@ export function appLabel(applicationId: string): string {
 export function appOrigin(node: Pick<RigNode, "serverPort" | "applicationId">): string {
   return `http://${appLabel(node.applicationId)}.localhost:${node.serverPort}`;
 }
+
+/** The app's origin plus its newest version's prefix, so a driver's relative `page.goto("agreements")` stays under it. */
+export async function appBase(node: Pick<RigNode, "serverPort" | "applicationId">): Promise<string> {
+  const origin = appOrigin(node);
+  const location = (await fetch(`${origin}/`, { redirect: "manual" })).headers.get("location");
+  if (!location) throw new Error(`${origin}/ did not redirect to a version: is the app installed with a frontend?`);
+  return new URL(location.endsWith("/") ? location : `${location}/`, origin).href;
+}
+
+/** Context options that point a journey's own browser context at the app: its node's frontend when JOURNEY_FROM_NODE=1, else the dev server. */
+export async function appContextOptions(node: Pick<RigNode, "serverPort" | "applicationId">): Promise<{ baseURL?: string }> {
+  return fromNode() ? { baseURL: await appBase(node) } : {};
+}
+
+/** A URL's path as the app's router sees it: without the `/{version}` prefix a node serves the app under. */
+export function routePath(url: string): string {
+  const { pathname } = new URL(url);
+  return fromNode() ? pathname.replace(/^\/[^/]+/, "") || "/" : pathname;
+}

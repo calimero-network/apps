@@ -2,6 +2,8 @@ import "@calimero-apps/glass/glass.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import { isServedByNode } from "@calimero-apps/node-served";
+import { nodeBasename } from "./utils/servedByNode";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
@@ -115,8 +117,9 @@ createRoot(document.getElementById("root")!).render(
       }
       registryUrl="https://apps.calimero.network"
       allowedNodeUrls={trustedNodeUrl ? [trustedNodeUrl] : undefined}
+      servedByNode={isServedByNode(new URL(window.location.href))}
     >
-      <BrowserRouter>
+      <BrowserRouter basename={nodeBasename()}>
         <App />
       </BrowserRouter>
     </MeroProvider>

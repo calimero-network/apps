@@ -4,16 +4,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import ThemeToggle from "../components/navbar/ThemeToggle";
 import { THEME_STORAGE_KEY, applyTheme, readStoredTheme } from "./theme";
-import indexHtml from "../../index.html?raw";
+import themeInit from "../../public/theme-init.js?raw";
 
 const root = document.documentElement;
 
-// What index.html runs in <head>, before the bundle: the no-flash path.
+// What index.html loads in <head>, before the bundle: the no-flash path.
 function runIndexHtmlThemeScript() {
-  const scripts = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-  const themeScript = scripts.find((s) => s.includes(THEME_STORAGE_KEY));
-  expect(themeScript, "index.html sets the theme before first paint").toBeDefined();
-  new Function(themeScript!)();
+  expect(themeInit, "theme-init.js sets the theme before first paint").toContain(THEME_STORAGE_KEY);
+  new Function(themeInit)();
 }
 
 describe("theme switch", () => {

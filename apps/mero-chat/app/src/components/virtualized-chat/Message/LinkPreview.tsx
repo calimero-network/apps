@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from "react";
 import styled from "styled-components";
+import { SERVED_BY_NODE } from "../../../utils/servedByNode";
 
 interface OgData {
   title: string;
@@ -170,6 +171,8 @@ function LinkPreview({ html }: LinkPreviewProps) {
   const [previews, setPreviews] = useState<(OgData | null)[]>([]);
 
   useEffect(() => {
+    // A node's CSP blocks the remote metadata fetch, so a node-served app shows no previews.
+    if (SERVED_BY_NODE) return;
     const urls = extractUrls(html);
     if (urls.length === 0) return;
 
@@ -181,6 +184,8 @@ function LinkPreview({ html }: LinkPreviewProps) {
     );
     return () => { cancelled = true; };
   }, [html]);
+
+  if (SERVED_BY_NODE) return null;
 
   const validPreviews = previews.filter((p): p is OgData => p !== null && !!(p.title || p.image));
   if (validPreviews.length === 0) return null;

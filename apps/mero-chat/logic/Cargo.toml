@@ -59,6 +59,8 @@ frontend    = "https://chat.hyperfeed.me"
 # login callback from here too, so nodes and desktop launchers still opening a
 # bundle that names it keep signing in. Drop it once nothing does.
 frontend-aliases = ["https://mero-chat-pwa.vercel.app"]
+# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+frontend-dir = "../app/dist"
 slug        = "com.calimero.chat"
 category    = "social"
 tags        = ["chat", "messaging", "social"]

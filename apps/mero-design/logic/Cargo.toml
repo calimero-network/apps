@@ -47,6 +47,8 @@ frontend = "https://design.hyperfeed.me"
 # Also trusted for the login callback, never opened: the vercel.app origin Mero
 # Design was served at before, for nodes still opening a bundle that names it.
 frontend-aliases = ["https://mero-design.vercel.app"]
+# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+frontend-dir = "../app/dist"
 guide = "GUIDE.md"
 
 [dependencies]

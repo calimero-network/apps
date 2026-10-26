@@ -25,11 +25,16 @@ import {
   Wifi,
 } from '@calimero-network/mero-icons';
 
+import { nodeBasename } from '@calimero-apps/node-served';
+
 import { CONFIG } from './landing.config';
 import type { IconComponent, OverviewExtras } from './landingTypes';
 import './landing.css';
 
 const THEME_KEY = 'cal-lp-theme';
+// A node serves the app under /{version}/, so root-relative assets and view paths need that prefix.
+const BASE = nodeBasename(new URL(window.location.href), '/');
+const asset = (p: string) => BASE + p.replace(/^\//, '');
 /**
  * Four apps (mero-calendar, mero-meet, mero-sheets, mero-issue-tracker) already
  * ship their own light/dark switch, each reading `<html data-theme>` and its own
@@ -224,9 +229,9 @@ function useStageScale<T extends HTMLElement = HTMLDivElement>() {
 type View = 'overview' | 'docs' | 'preview';
 
 const VIEW_PATH: Record<View, string> = {
-  overview: '/',
-  docs: '/docs',
-  preview: '/preview',
+  overview: asset('/'),
+  docs: asset('/docs'),
+  preview: asset('/preview'),
 };
 
 /**
@@ -505,7 +510,7 @@ export default function LandingPage({
       <header className="cal-lp-header">
         <a
           className="cal-lp-brand"
-          href="/"
+          href={BASE}
           aria-label={CONFIG.name}
           onClick={(e) => {
             if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
@@ -513,7 +518,7 @@ export default function LandingPage({
             go('overview');
           }}
         >
-          <img className="cal-lp-brandicon" src={CONFIG.markSrc} alt="" width={24} height={24} />
+          <img className="cal-lp-brandicon" src={asset(CONFIG.markSrc)} alt="" width={24} height={24} />
           <span className="cal-lp-brandname">{CONFIG.name}</span>
         </a>
         <nav className="cal-lp-nav">
@@ -882,8 +887,8 @@ function Showcase({ showcase }: { showcase: NonNullable<OverviewExtras['showcase
               <video
                 ref={videoRef}
                 className="cal-lp-video"
-                src={showcase.video.src}
-                poster={showcase.video.poster}
+                src={asset(showcase.video.src)}
+                poster={asset(showcase.video.poster)}
                 autoPlay={!still}
                 controls={still}
                 muted

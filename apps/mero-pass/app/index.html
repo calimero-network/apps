@@ -8,23 +8,14 @@
       name="description"
       content="A peer-to-peer secret manager: keep credentials in a vault on your own nodes and share them with namespace members."
     />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="icon" href="/favicon.ico" sizes="any" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="./favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./site.webmanifest" />
     <meta name="theme-color" content="#f6f7fb" />
     <!-- Before first paint, so a dark-mode choice never flashes light.
          Same key and rules as src/lib/theme.ts. -->
-    <script>
-      try {
-        if (localStorage.getItem('mero-pass:theme') === 'dark') {
-          document.documentElement.dataset.theme = 'dark';
-          document
-            .querySelector('meta[name="theme-color"]')
-            .setAttribute('content', '#0b0e18');
-        }
-      } catch (e) {}
-    </script>
+    <script src="./theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

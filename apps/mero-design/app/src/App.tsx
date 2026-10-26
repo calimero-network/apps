@@ -106,6 +106,8 @@ export default function App() {
           <Route path="/teams/:teamId/projects/:projectId" element={<BoardRoute />} />
           <Route path="/boards/:projectId" element={<BoardResolver />} />
         </Route>
+        {/* A path no page owns lands on the front door, as a node serves every unknown client route. */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ToastProvider>
     </ApiBinder>
