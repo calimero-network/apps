@@ -2,8 +2,7 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  // A bundle is served under /{version}/, so it builds relative; hosted at the root, deep links need an absolute base.
-  base: process.env.RELATIVE_BASE ? "./" : "/",
+  base: "./",
   resolve: { dedupe: ["react", "react-dom"] },
   plugins: [react()],
   server: {

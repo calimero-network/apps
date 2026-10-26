@@ -9,8 +9,7 @@ import { defineConfig } from "vitest/config";
 // The node polyfill plugin is gone too — nothing in src/ needs it, and it was
 // pulling a browserify shim set into every bundle.
 export default defineConfig({
-  // A bundle is served under /{version}/, so it builds relative; hosted at the root, deep links need an absolute base.
-  base: process.env.RELATIVE_BASE ? "./" : "/",
+  base: "./",
   resolve: { dedupe: ["react", "react-dom"] },
   plugins: [react()],
   // ── Pin the dev port ────────────────────────────────────────────────────────
