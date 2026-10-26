@@ -45,6 +45,10 @@ final class ChannelModel: ObservableObject {
     @Published private(set) var myRole: ChatRole = .user
     /// The draft saved in the contract when the channel opened (`get_draft`).
     @Published private(set) var savedDraft = ""
+    /// `UserId` -> avatar blob id, from `get_profiles`.
+    @Published private(set) var avatars: [String: String] = [:]
+    /// What is being uploaded now: "Uploading image…" / "Uploading file…" under the composer.
+    @Published private(set) var uploadStatus: String?
 
     let channel: ChannelEntry
     /// The root of the open thread, or `nil` for the channel itself.
@@ -245,23 +249,41 @@ final class ChannelModel: ObservableObject {
     func loadProfiles() async {
         guard let profiles = try? await api.getProfiles(channel.id) else { return }
         var map: [String: String] = [:]
-        for profile in profiles where !profile.username.isEmpty { map[profile.identity] = profile.username }
+        var pictures: [String: String] = [:]
+        for profile in profiles where !profile.username.isEmpty {
+            map[profile.identity] = profile.username
+            if let avatar = profile.avatar, !avatar.isEmpty { pictures[profile.identity] = avatar }
+        }
         names = map
+        avatars = pictures
     }
 
     // MARK: Writes
 
+    /// Send the composer's text and its attachments (at most one image and one
+    /// file, as the web composer allows). Each attachment is uploaded as a blob
+    /// against this channel first; if any upload fails, nothing is sent.
     @discardableResult
-    func send(_ rawText: String) async -> Bool {
+    func send(_ rawText: String, attachments: [PendingAttachment] = []) async -> Bool {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return false }
+        guard !text.isEmpty || !attachments.isEmpty else { return false }
         isSending = true
-        defer { isSending = false }
+        defer {
+            isSending = false
+            uploadStatus = nil
+        }
         do {
+            var files: [ChatAttachment] = []
+            var images: [ChatAttachment] = []
+            for pending in attachments {
+                uploadStatus = pending.isImage ? "Uploading image…" : "Uploading file…"
+                let uploaded = try await upload(pending)
+                if pending.isImage { images.append(uploaded) } else { files.append(uploaded) }
+            }
             let mentioned = Self.mentions(in: text, names: names)
             try await api.sendMessage(
-                channel.id, text: html(text), parentMessage: parentId, mentions: mentioned.ids,
-                mentionsUsernames: mentioned.usernames)
+                channel.id, text: text.isEmpty ? "" : html(text), parentMessage: parentId, mentions: mentioned.ids,
+                mentionsUsernames: mentioned.usernames, files: files, images: images)
             errorText = nil
             if thread == nil { clearDraft() }
             await refreshNewest()
@@ -344,6 +366,54 @@ final class ChannelModel: ObservableObject {
         }
         await loadProfiles()
         return names[me] != nil
+    }
+
+    // MARK: Blobs
+
+    /// Upload one attachment against this channel and describe it as a message carries it.
+    func upload(_ pending: PendingAttachment) async throws -> ChatAttachment {
+        let blobId = try await backend.uploadBlob(contextId: channel.id, data: pending.data)
+        BlobCache.shared.store(pending.data, for: blobId)
+        return ChatAttachment(
+            name: pending.name, mimeType: pending.mimeType, size: UInt64(pending.data.count), blobId: blobId)
+    }
+
+    /// A blob of this channel (an attachment or an avatar), from the cache or the relay.
+    func blob(_ blobId: String) async throws -> Data {
+        if let cached = BlobCache.shared.data(for: blobId) { return cached }
+        let data = try await backend.downloadBlob(blobId: blobId, contextId: channel.id)
+        BlobCache.shared.store(data, for: blobId)
+        return data
+    }
+
+    /// Set this account's picture in the channel: upload it, then `set_profile`
+    /// with the name the channel already has (the contract keeps the first name).
+    @discardableResult
+    func setAvatar(_ image: PendingAttachment) async -> Bool {
+        guard let name = names[me] ?? nonEmpty(displayNameHint) else {
+            errorText = "Set your name in this channel first."
+            return false
+        }
+        uploadStatus = "Uploading image…"
+        defer { uploadStatus = nil }
+        do {
+            let blobId = try await backend.uploadBlob(contextId: channel.id, data: image.data)
+            BlobCache.shared.store(image.data, for: blobId)
+            try await api.setProfile(channel.id, username: name, avatar: blobId)
+            await loadProfiles()
+            return true
+        } catch {
+            errorText = ChatErrorText.describe(error)
+            return false
+        }
+    }
+
+    /// The name to register with an avatar when the channel has none for this account yet.
+    var displayNameHint = ""
+
+    private func nonEmpty(_ s: String) -> String? {
+        let t = s.trimmingCharacters(in: .whitespaces)
+        return t.isEmpty ? nil : t
     }
 
     // MARK: Channel details, roles, search

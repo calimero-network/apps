@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -18,6 +19,11 @@ struct ComposerView: View {
     @State private var picking = false
     @State private var restored = false
     @StateObject private var editor = ComposerEditor()
+    /// At most one image and one file, as the web composer holds them.
+    @State private var pending: [PendingAttachment] = []
+    @State private var photo: PhotosPickerItem?
+    @State private var pickingPhoto = false
+    @State private var pickingFile = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,7 +40,29 @@ struct ComposerView: View {
             }
             card
                 .padding(.horizontal, 8)
-                .padding(.bottom, 8)
+                .padding(.bottom, model.uploadStatus == nil ? 8 : 2)
+            if let status = model.uploadStatus {
+                Text(status)
+                    .font(Theme.font(12).italic())
+                    .foregroundStyle(Theme.muted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .frame(height: 18)
+                    .padding(.bottom, 4)
+            }
+        }
+        .photosPicker(isPresented: $pickingPhoto, selection: $photo, matching: .images)
+        .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.item]) { result in
+            if case .success(let url) = result, let file = AttachmentPicking.file(at: url) {
+                add(file)
+            }
+        }
+        .onChange(of: photo) { item in
+            guard let item else { return }
+            Task {
+                if let image = await AttachmentPicking.image(from: item) { add(image) }
+                photo = nil
+            }
         }
         .onAppear {
             if let editing {
@@ -55,6 +83,7 @@ struct ComposerView: View {
     private var card: some View {
         VStack(spacing: 0) {
             toolbar
+            if !pending.isEmpty { previews }
             ZStack(alignment: .topLeading) {
                 ComposerTextView(text: $text, focused: $focused, editor: editor)
                     .frame(minHeight: 64, maxHeight: 132)
@@ -122,6 +151,29 @@ struct ComposerView: View {
 
     private var actions: some View {
         HStack(spacing: 10) {
+            if editing == nil {
+                Menu {
+                    Button {
+                        pickingPhoto = true
+                    } label: {
+                        Label(pending.contains(where: \.isImage) ? "Replace Image" : "Upload Image", systemImage: "camera")
+                    }
+                    Button {
+                        pickingFile = true
+                    } label: {
+                        Label(
+                            pending.contains(where: { !$0.isImage }) ? "Replace File" : "Upload File",
+                            systemImage: "doc")
+                    }
+                } label: {
+                    Image(systemName: "doc.badge.arrow.up")
+                        .font(.system(size: 17))
+                        .foregroundStyle(pending.isEmpty ? Theme.muted : Theme.accent)
+                        .frame(width: 26, height: 26)
+                }
+                .accessibilityLabel("Attach")
+                .accessibilityIdentifier("attachButton")
+            }
             if restored, editing == nil {
                 Text("Draft")
                     .font(Theme.font(10.6))
@@ -155,7 +207,45 @@ struct ComposerView: View {
         }
     }
 
-    private var isEmpty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var isEmpty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pending.isEmpty }
+
+    /// The picked attachments above the text, each with a × to drop it.
+    private var previews: some View {
+        HStack(spacing: 8) {
+            ForEach(pending) { item in
+                HStack(spacing: 6) {
+                    if item.isImage, let image = UIImage(data: item.data) {
+                        Image(uiImage: image).resizable().scaledToFill()
+                            .frame(width: 32, height: 32)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    } else {
+                        Image(systemName: "doc.fill").font(.system(size: 13)).foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.ink))
+                    }
+                    Text(item.name).font(Theme.font(12, .medium)).foregroundStyle(Theme.ink).lineLimit(1)
+                    Button {
+                        pending.removeAll { $0.id == item.id }
+                    } label: {
+                        Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.muted)
+                    }
+                    .accessibilityLabel("Remove \(item.name)")
+                }
+                .padding(4)
+                .padding(.trailing, 4)
+                .background(RoundedRectangle(cornerRadius: 10).stroke(Theme.line, lineWidth: 1))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+    }
+
+    /// One image and one file: a new pick replaces the one of its kind.
+    private func add(_ item: PendingAttachment) {
+        pending.removeAll { $0.isImage == item.isImage }
+        pending.append(item)
+    }
 
     private func send() {
         let body = text
@@ -166,9 +256,11 @@ struct ComposerView: View {
             }
             return
         }
+        let attachments = pending
         Task {
-            if await model.send(body) {
+            if await model.send(body, attachments: attachments) {
                 text = ""
+                pending = []
                 restored = false
                 picking = false
             }

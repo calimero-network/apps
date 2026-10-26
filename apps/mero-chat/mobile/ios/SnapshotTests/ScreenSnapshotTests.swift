@@ -142,9 +142,12 @@ enum SnapshotData {
             let reactions = m.2.replacingOccurrences(of: "\"ME\"", with: "\"\(me)\"")
             let text = m.1.replacingOccurrences(of: "\"", with: "\\\"")
             let edited = i == 2 ? "\(now - 100)" : "null"
+            let blob = String(repeating: "c", count: 64)
+            let images = i == 3 ? #"[{"name":"rota.jpg","mime_type":"image/jpeg","size":2048,"blob_id":"\#(blob)","uploaded_at":0}]"# : "[]"
+            let files = i == 3 ? #"[{"name":"on-call-rota.pdf","mime_type":"application/pdf","size":48213,"blob_id":"\#(blob)","uploaded_at":0}]"# : "[]"
             return """
                 {"index":\(i),"timestamp":\(now - 3000 + UInt64(i) * 400),"sender":"\(sender)","mentions":[],\
-                "mentions_usernames":[],"files":[],"images":[],"id":"m\(i)","text":"\(text)","edited_on":\(edited),\
+                "mentions_usernames":[],"files":\(files),"images":\(images),"id":"m\(i)","text":"\(text)","edited_on":\(edited),\
                 "reactions":\(reactions),"deleted":null,"thread_count":\(m.3),"thread_last_timestamp":\(m.3 > 0 ? now - 2220 : 0),\
                 "parent_message_id":null}
                 """
@@ -196,6 +199,15 @@ final class SnapshotBackend: ChatBackend, @unchecked Sendable {
         JoinedWorkspace(published: true, relayURL: "")
     }
     func events(contextId: String) -> AsyncThrowingStream<ChatLiveEvent, Error> { AsyncThrowingStream { $0.finish() } }
+    func uploadBlob(contextId: String, data: Data) async throws -> String { "" }
+    func downloadBlob(blobId: String, contextId: String) async throws -> Data {
+        UIGraphicsImageRenderer(size: CGSize(width: 80, height: 80)).image { ctx in
+            UIColor(red: 0.24, green: 0.39, blue: 0.96, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 80, height: 80))
+            UIColor(red: 1, green: 0.79, blue: 0.24, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 20, y: 20, width: 40, height: 40))
+        }.pngData() ?? Data()
+    }
 
     fileprivate static func unread(_ contextId: String) -> (Int, Int) {
         if let c = channels.first(where: { "ctx-\($0.0)" == contextId }) { return (c.2, c.3) }

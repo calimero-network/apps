@@ -62,9 +62,10 @@ struct ChatAPI: Sendable {
     /// `send_message(message, mentions, mentions_usernames, parent_message?, timestamp, files?, images?)`.
     /// `mentions` are `UserId`s, `mentionsUsernames` the names as typed
     /// (`everyone` / `here` for a broadcast), as `MessageInput.tsx` sends them.
+    /// `files` and `images` are left out when empty, as the web app leaves them `undefined`.
     static func sendMessageArgs(
         text: String, timestamp: UInt64, parentMessage: String? = nil, mentions: [String] = [],
-        mentionsUsernames: [String] = []
+        mentionsUsernames: [String] = [], files: [ChatAttachment] = [], images: [ChatAttachment] = []
     ) -> JSONValue {
         var args: [String: JSONValue] = [
             "message": .string(text),
@@ -73,6 +74,8 @@ struct ChatAPI: Sendable {
             "timestamp": .number(Double(timestamp)),
         ]
         if let parentMessage { args["parent_message"] = .string(parentMessage) }
+        if !files.isEmpty { args["files"] = .array(files.map(\.input)) }
+        if !images.isEmpty { args["images"] = .array(images.map(\.input)) }
         return .object(args)
     }
 
@@ -111,9 +114,10 @@ struct ChatAPI: Sendable {
         ["message_id": .string(messageId), "emoji": .string(emoji), "add": .bool(add)]
     }
 
-    /// `set_profile(username, avatar)`: the web app sends `avatar: null` explicitly.
-    static func setProfileArgs(username: String) -> JSONValue {
-        ["username": .string(username), "avatar": .null]
+    /// `set_profile(username, avatar)`: the web app sends `avatar: null` explicitly
+    /// to keep the current picture. The name is written once; later calls change only the avatar.
+    static func setProfileArgs(username: String, avatar: String? = nil) -> JSONValue {
+        ["username": .string(username), "avatar": avatar.map { .string($0) } ?? .null]
     }
 
     /// `mark_as_read(timestamp)`.
@@ -216,11 +220,11 @@ struct ChatAPI: Sendable {
     @discardableResult
     func sendMessage(
         _ contextId: String, text: String, parentMessage: String? = nil, mentions: [String] = [],
-        mentionsUsernames: [String] = []
+        mentionsUsernames: [String] = [], files: [ChatAttachment] = [], images: [ChatAttachment] = []
     ) async throws -> SentMessage {
         let args = Self.sendMessageArgs(
             text: text, timestamp: chatTimestamp(now()), parentMessage: parentMessage, mentions: mentions,
-            mentionsUsernames: mentionsUsernames)
+            mentionsUsernames: mentionsUsernames, files: files, images: images)
         let value = try await contract.execute(contextId: contextId, method: Method.sendMessage, args: args)
         return try ChatJSON.decode(SentMessage.self, value, method: Method.sendMessage)
     }
@@ -266,9 +270,10 @@ struct ChatAPI: Sendable {
             args: Self.updateReactionArgs(messageId: messageId, emoji: emoji, add: add))
     }
 
-    func setProfile(_ contextId: String, username: String) async throws {
+    func setProfile(_ contextId: String, username: String, avatar: String? = nil) async throws {
         _ = try await contract.execute(
-            contextId: contextId, method: Method.setProfile, args: Self.setProfileArgs(username: username))
+            contextId: contextId, method: Method.setProfile,
+            args: Self.setProfileArgs(username: username, avatar: avatar))
     }
 
     func markAsRead(_ contextId: String) async throws {

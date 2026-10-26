@@ -116,7 +116,7 @@ struct ChatScreen: View {
             InviteDialog(workspaces: workspaces, workspace: workspace, onClose: close)
         case .settings:
             SettingsDialog(
-                session: session, workspace: workspace, channelRole: model.myRole,
+                session: session, workspace: workspace, channelRole: model.myRole, channel: model,
                 onChangeWorkspace: onChangeWorkspace, onClose: close)
         case .details:
             ChannelDetailsDialog(model: model, onClose: close)
@@ -280,6 +280,8 @@ struct ConversationView: View {
                             message: message,
                             startsGroup: ChatFormat.startsGroup(message, after: i > 0 ? model.messages[i - 1] : nil),
                             author: model.displayName(of: message.sender),
+                            avatarBlob: model.avatars[message.sender],
+                            load: { [model] in try await model.blob($0) },
                             isMine: model.isMine(message),
                             me: model.me,
                             mentionsMe: mentionsMe(message),
@@ -419,6 +421,8 @@ struct MessageRow: View {
     let message: ChatMessage
     let startsGroup: Bool
     let author: String
+    let avatarBlob: String?
+    let load: BlobLoader
     let isMine: Bool
     let me: String
     let mentionsMe: Bool
@@ -442,13 +446,14 @@ struct MessageRow: View {
             VStack(alignment: .leading, spacing: 0) {
                 if startsGroup {
                     HStack(spacing: 8) {
-                        AvatarView(name: author, size: 32)
+                        ProfileAvatar(name: author, blobId: avatarBlob, load: load, size: 32)
                         Text(author).font(Theme.font(13, .bold)).foregroundStyle(Theme.ink).lineLimit(1)
                         Text(ChatFormat.messageTime(message.timestamp)).font(Theme.font(12)).foregroundStyle(Theme.muted)
                     }
                 }
                 HStack(alignment: .bottom, spacing: 4) {
-                    bubble
+                    // An attachment sent on its own has no text to put in a bubble.
+                    if !RichText.parse(html: message.text).isEmpty { bubble }
                     VStack(alignment: .trailing, spacing: 0) {
                         if message.editedOn != nil {
                             Text("(edited)").font(Theme.font(12)).foregroundStyle(Theme.muted)
@@ -519,25 +524,10 @@ struct MessageRow: View {
     }
 
     @ViewBuilder private var attachments: some View {
-        let all = message.images + message.files
-        if !all.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(all.enumerated()), id: \.offset) { _, file in
-                    HStack(spacing: 8) {
-                        Image(systemName: file.mimeType.hasPrefix("image/") ? "photo.fill" : "doc.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.ink))
-                        Text(file.name).font(Theme.font(13, .medium)).foregroundStyle(Theme.ink).lineLimit(1)
-                    }
-                    .padding(6)
-                    .padding(.trailing, 6)
-                    .background(RoundedRectangle(cornerRadius: 10).stroke(Theme.line, lineWidth: 1))
-                }
-            }
-            .padding(.leading, 40)
-            .padding(.top, 6)
+        if !message.images.isEmpty || !message.files.isEmpty {
+            MessageAttachments(message: message, load: load)
+                .padding(.leading, 40)
+                .padding(.top, 6)
         }
     }
 

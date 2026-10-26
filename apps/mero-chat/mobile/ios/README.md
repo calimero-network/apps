@@ -59,6 +59,16 @@ dark, in Figtree (bundled, SIL OFL, `Resources/Fonts`):
 - **Overlays:** Thread, search, Settings, channel details with members and
   roles, invite, create channel, and the reactions list.
 
+**Attachments and avatars** work as on the web. The composer's attach button
+offers a photo (sent as JPEG, so a browser shows it) or a file from Files. A
+message carries at most one image and one file, uploaded as blobs against the
+channel (`AccountAdmin.uploadBlob` on the relay, calimero-network/swift-sdk#78)
+and sent as `send_message`'s `images` / `files`. Images show as 80×80 tiles
+that open full screen. Files are chips that download and open the share sheet.
+Tap your picture in Settings to set it for the open channel
+(`set_profile(username, avatar)`). Blobs are read through the channel's
+context, so the relay can fetch one a peer holds.
+
 Message bodies are the web editor's HTML, both ways: `ChatRichText.swift`
 reads it into native text and writes the composer's marks back as the same
 HTML, with mentions wrapped the way `markdownParser.ts` wraps them.
@@ -96,15 +106,17 @@ in Xcode (Signing & Capabilities).
 ### The SDK pin
 
 The delegated parity work in swift-sdk is unreleased, so `project.yml` pins the
-package to an exact commit, at or after calimero-network/swift-sdk#77: namespace
-ops signed at schema 27 (core 0.11.0 on), and a join re-signed at 26 when the
-admitting relay is still on core 0.11.0-rc.90 and says so:
+package to an exact commit that carries calimero-network/swift-sdk#77 (a join
+re-signed at schema 26 when the admitting relay is on core 0.11.0-rc.90 and
+says so) and #78 (blob upload and download for an account, through the relay).
+Until both are on swift-sdk's `master`, the pin is the merge of the two on its
+`integration/mero-chat-ios` branch; move it to `master` once they land:
 
 ```yaml
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: bafb1ab3c49afb67476026eb4abe7e1347fdbf92
+    revision: 2076f06a364e7e666a81a7dfc1bc9cf70465c0ae
 ```
 
 To bump it, change `revision` to the new commit, run `xcodegen generate`, and
@@ -200,10 +212,6 @@ can fix that; the relay has to be upgraded. Joining works on either release
 
 ## Not supported yet
 
-- **Attachments and avatars**: the relay-scoped admin surface the app uses
-  (`AccountAdmin`) has no blob upload or download yet, so files and images are
-  shown by name and cannot be opened or sent; profile pictures fall back to
-  initials.
 - **Starting a DM**: DMs are listed and open like channels, but starting one
   needs the member directory and per-member metadata the web app writes; not
   built.

@@ -1,4 +1,5 @@
 import Foundation
+import MeroKit
 
 // MARK: - Contract wire types (com.calimero.chat, logic/src/lib.rs)
 //
@@ -6,8 +7,7 @@ import Foundation
 // the contract's snake_case. Numbers are decoded leniently (an integer or an
 // integral double) because a relay hands results back as generic JSON.
 
-/// One attachment on a message (`AttachmentPublic`). Read only: the app does
-/// not upload or download blobs yet.
+/// One attachment on a message (`AttachmentPublic`).
 struct ChatAttachment: Decodable, Equatable, Sendable {
     let name: String
     let mimeType: String
@@ -18,6 +18,23 @@ struct ChatAttachment: Decodable, Equatable, Sendable {
         case name, size
         case mimeType = "mime_type"
         case blobId = "blob_id"
+    }
+
+    init(name: String, mimeType: String, size: UInt64, blobId: String) {
+        self.name = name
+        self.mimeType = mimeType
+        self.size = size
+        self.blobId = blobId
+    }
+
+    var isImage: Bool { mimeType.hasPrefix("image/") }
+
+    /// `AttachmentInput`, as `send_message` takes it (`blob_id_str`, as `ChatContainer.tsx` sends it).
+    var input: JSONValue {
+        [
+            "name": .string(name), "mime_type": .string(mimeType), "size": .number(Double(size)),
+            "blob_id_str": .string(blobId),
+        ]
     }
 
     init(from decoder: Decoder) throws {
@@ -353,5 +370,39 @@ extension KeyedDecodingContainer {
                 forKey: key, in: self, debugDescription: "\(double) is not an unsigned integer")
         }
         return UInt64(double)
+    }
+}
+
+// MARK: - Attachments
+
+/// A file or image picked in the composer, not uploaded yet.
+struct PendingAttachment: Equatable, Sendable, Identifiable {
+    let id = UUID()
+    let name: String
+    let mimeType: String
+    let data: Data
+
+    var isImage: Bool { mimeType.hasPrefix("image/") }
+
+    static func == (lhs: PendingAttachment, rhs: PendingAttachment) -> Bool { lhs.id == rhs.id }
+}
+
+/// Blob bytes already fetched or uploaded this session, by blob id. A blob id
+/// is a content hash, so an entry never goes stale.
+final class BlobCache: @unchecked Sendable {
+    static let shared = BlobCache()
+
+    private let cache = NSCache<NSString, NSData>()
+
+    init(limitBytes: Int = 64 * 1024 * 1024) {
+        cache.totalCostLimit = limitBytes
+    }
+
+    func data(for blobId: String) -> Data? {
+        cache.object(forKey: blobId as NSString) as Data?
+    }
+
+    func store(_ data: Data, for blobId: String) {
+        cache.setObject(data as NSData, forKey: blobId as NSString, cost: data.count)
     }
 }

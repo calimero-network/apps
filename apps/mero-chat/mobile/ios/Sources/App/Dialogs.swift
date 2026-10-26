@@ -1,5 +1,6 @@
 import MeroKit
 import MeroKitUI
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -210,26 +211,22 @@ struct SettingsDialog: View {
     @ObservedObject var session: SessionModel
     let workspace: Workspace
     let channelRole: ChatRole
+    /// The open channel: a profile picture is set per channel, as on the web.
+    var channel: ChannelModel?
     let onChangeWorkspace: () -> Void
     let onClose: () -> Void
     @AppStorage(ThemeChoice.storageKey) private var theme = ThemeChoice.light.rawValue
     @State private var copied = false
+    @State private var photo: PhotosPickerItem?
+    @State private var savingPhoto = false
+    @State private var photoNote: String?
 
     var body: some View {
         DialogFrame(icon: "gearshape", title: "Settings", onClose: onClose) {
             VStack(alignment: .leading, spacing: 12) {
                 card {
                     HStack(spacing: 12) {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Theme.accent(45), Theme.accent(20)], startPoint: .topLeading,
-                                    endPoint: .bottomTrailing)
-                            )
-                            .frame(width: 40, height: 40)
-                            .overlay(
-                                Text(String(session.displayName.prefix(1)).uppercased())
-                                    .font(Theme.font(16, .bold)).foregroundStyle(Theme.ink))
+                        profilePicture
                         VStack(alignment: .leading, spacing: 2) {
                             Theme.label("Profile", size: 10, opacity: 35)
                             Text(session.displayName.isEmpty ? "No name yet" : session.displayName)
@@ -279,6 +276,12 @@ struct SettingsDialog: View {
                         .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
                     }
                 }
+                if let photoNote {
+                    Text(photoNote).font(Theme.font(12)).foregroundStyle(Theme.muted)
+                }
+                if let error = channel?.errorText {
+                    Banner(kind: .error, text: error) { channel?.errorText = nil }
+                }
                 if let relay = session.client.relayURL {
                     card {
                         VStack(alignment: .leading, spacing: 2) {
@@ -313,6 +316,56 @@ struct SettingsDialog: View {
                 .buttonStyle(.plain)
                 .padding(.top, 8)
             }
+        }
+    }
+
+    /// The 40px circle; tap it to choose a photo for this channel.
+    @ViewBuilder private var profilePicture: some View {
+        let initial = Circle()
+            .fill(
+                LinearGradient(
+                    colors: [Theme.accent(45), Theme.accent(20)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            )
+            .frame(width: 40, height: 40)
+            .overlay(
+                Text(String(session.displayName.prefix(1)).uppercased())
+                    .font(Theme.font(16, .bold)).foregroundStyle(Theme.ink))
+        if let channel {
+            PhotosPicker(selection: $photo, matching: .images) {
+                ZStack(alignment: .bottomTrailing) {
+                    if let blob = channel.avatars[channel.me] {
+                        BlobImage(blobId: blob, load: { try await channel.blob($0) })
+                            .frame(width: 40, height: 40).clipShape(Circle())
+                    } else {
+                        initial
+                    }
+                    Image(systemName: savingPhoto ? "hourglass" : "camera.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 16, height: 16)
+                        .background(Circle().fill(Theme.ink))
+                        .offset(x: 2, y: 2)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Change profile picture")
+            .accessibilityIdentifier("changeAvatar")
+            .onChange(of: photo) { item in
+                guard let item else { return }
+                Task {
+                    savingPhoto = true
+                    if let image = await AttachmentPicking.image(from: item) {
+                        channel.displayNameHint = session.displayName
+                        if await channel.setAvatar(image) {
+                            photoNote = "Your profile picture has been saved in #\(channel.channel.name)."
+                        }
+                    }
+                    savingPhoto = false
+                    photo = nil
+                }
+            }
+        } else {
+            initial
         }
     }
 

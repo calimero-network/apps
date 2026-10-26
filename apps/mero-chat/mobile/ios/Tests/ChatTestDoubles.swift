@@ -80,6 +80,9 @@ final class FakeChatBackend: ChatBackend, @unchecked Sendable {
     private(set) var log: [String] = []
     private(set) var createdContextInitArgs: [JSONValue] = []
     private(set) var joinedNamespaces: [String] = []
+    /// Blobs uploaded, by id, and the context each went to.
+    private(set) var blobs: [String: (contextId: String, data: Data)] = [:]
+    var blobFailure: Error?
     private var nextGroup = 0
 
     init(account: String = ChatFixtures.account, contract: RecordingChatContract = RecordingChatContract()) {
@@ -139,6 +142,20 @@ final class FakeChatBackend: ChatBackend, @unchecked Sendable {
         try check("joinWorkspace \(namespaceId)")
         joinedNamespaces.append(namespaceId)
         return joinResult
+    }
+
+    func uploadBlob(contextId: String, data: Data) async throws -> String {
+        try check("uploadBlob \(contextId) \(data.count)")
+        if let blobFailure { throw blobFailure }
+        let id = String(format: "%064x", blobs.count + 1)
+        blobs[id] = (contextId, data)
+        return id
+    }
+
+    func downloadBlob(blobId: String, contextId: String) async throws -> Data {
+        try check("downloadBlob \(blobId) \(contextId)")
+        guard let stored = blobs[blobId] else { throw ChatError.invalidInput("no blob \(blobId)") }
+        return stored.data
     }
 
     func events(contextId: String) -> AsyncThrowingStream<ChatLiveEvent, Error> {
