@@ -100,13 +100,18 @@ async function openTeam(page: Page): Promise<void> {
   await waitForTeams(page);
   const cards = page.getByTestId("team-card");
   const named = cards.filter({ hasText: teamName });
+  // Click inside the poll: a card seen a moment ago can be gone by the time it is pressed.
   await until(
     page,
-    async () => (await named.count()) > 0 || (await cards.count()) === 1,
+    async () => {
+      const target = (await named.count()) > 0 ? named : (await cards.count()) === 1 ? cards : null;
+      if (!target) return false;
+      await target.first().click({ timeout: 5_000 });
+      return true;
+    },
     () => waitForTeams(page),
     `team ${teamName} is listed`,
   );
-  await ((await named.count()) > 0 ? named : cards).first().click();
   await expect(page.getByTestId("team-heading")).toBeVisible({ timeout: 30_000 });
 }
 

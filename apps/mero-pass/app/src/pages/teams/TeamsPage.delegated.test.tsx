@@ -157,4 +157,26 @@ describe('TeamsPage on a delegated session', () => {
     expect(stub.rawAdmin.createNamespace).not.toHaveBeenCalled();
     expect(stub.rawAdmin.createContext).not.toHaveBeenCalled();
   });
+
+  it('keeps the listed teams on screen while it reads them again', async () => {
+    stub.admin.listNamespacesForApplication.mockResolvedValueOnce([
+      { namespaceId: 'ns-1', name: 'Acme' },
+    ]);
+    const view = renderPage();
+    expect(await screen.findByTestId('team-card')).toBeInTheDocument();
+
+    stub.admin.listNamespacesForApplication.mockReturnValueOnce(
+      new Promise(() => {}),
+    );
+    stub.session.admin = { ...stub.admin };
+    view.rerender(
+      <MemoryRouter initialEntries={['/teams']}>
+        <TeamsPage />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(stub.admin.listNamespacesForApplication).toHaveBeenCalledTimes(2),
+    );
+    expect(screen.getByTestId('team-card')).toBeInTheDocument();
+  });
 });
