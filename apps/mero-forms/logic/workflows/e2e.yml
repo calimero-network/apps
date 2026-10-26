@@ -550,6 +550,38 @@ steps:
       captcha_token: "0.e2e-token"
     executor_public_key: "{{alice_key}}"
     expected_failure: true
+  # The team's own Turnstile secret is sealed to the namespace's TEE, and this
+  # namespace has none: setting it is refused, and nothing is stored.
+  - name: Alice tries to keep the team's Turnstile secret, with no TEE in the namespace
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: set_captcha_secret
+    args:
+      site_key: "0x4AAAAAAAe2esite"
+      secret: "0x4AAAAAAAe2esecret"
+    executor_public_key: "{{alice_key}}"
+    expected_failure: true
+  - name: Alice clears the team's Turnstile keys
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: clear_captcha_secret
+    args: {}
+    executor_public_key: "{{alice_key}}"
+  - name: Alice reads the captcha settings
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: captcha_settings
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      captcha_settings: result.output
+  - name: Assert no secret was kept and the namespace has no TEE to keep one
+    type: json_assert
+    statements:
+      - 'json_subset({{captcha_settings}}, {"site_key": "", "secret_set": false, "tee_available": false, "needs_resealing": false})'
   - name: Alice drops the captcha
     type: call
     node: calimero-node-1
