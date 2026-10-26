@@ -7,6 +7,7 @@ import {
   useContextGroup,
   useMero,
 } from "@calimero-network/mero-react";
+import { nodeBasename } from "@calimero-apps/node-served";
 import { ContextPicker } from "./ContextPicker";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
 import { InviteCard } from "./InviteCard";
@@ -159,7 +160,7 @@ function Shell({
     <div className="wrap">
       <header className="topbar">
         <div className="brand">
-          <img src="/favicon.svg" alt="" width={26} height={26} />
+          <img src={`${nodeBasename(new URL(window.location.href), "/")}favicon.svg`} alt="" width={26} height={26} />
           <span className="brand-name">Standup</span>
           {left}
         </div>
