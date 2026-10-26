@@ -61,7 +61,7 @@ describe("BriefView", () => {
     fireEvent.click(within(offer).getByRole("button", { name: "Always allow" }));
     await within(jordan).findByText(/Reply to Jordan/);
     await expect.poll(async () => (await backend.settings()).action_modes.find((m) => m.app === "chat" && m.action === "send")?.mode).toBe("act");
-    expect(within(jordan).queryByRole("group", { name: "Stop asking for this" })).toBeNull();
+    await expect.poll(() => within(jordan).queryByRole("group", { name: "Stop asking for this" })).toBeNull();
   });
 
   it("shows what your team did where the task is, beside its own steps", async () => {
