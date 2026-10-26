@@ -1144,7 +1144,7 @@ test.describe("multi-user (2-node)", () => {
     await makeClient().call<string>("set_profile", { username: "Alice", avatar: null });
     await makeClient2().call<string>("set_profile", { username: "Bob", avatar: null });
 
-    getEnv();
+    const env = getEnv();
     const profiles = await makeClient().call<Array<{ identity: string; username: string }>>(
       "get_profiles", {},
     );
