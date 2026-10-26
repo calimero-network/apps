@@ -58,9 +58,30 @@
 //! contract cannot tell a link's visitor from that teammate by the caller.
 //! That is why a link has its own methods: `link_form` shows the one form a
 //! link is for, and `submit_via_link` takes a response only when that form is
-//! public and open, under its hourly cap, and with a captcha pass when the
-//! form asks for one. The grant names only those two methods, so a visitor
-//! never reaches `submit_response` or anything that reads responses.
+//! public and open, under its hourly cap, and with a captcha when the form
+//! asks for one. The grant names only those two methods, so a visitor never
+//! reaches `submit_response` or anything that reads responses.
+//!
+//! # Captchas
+//!
+//! A form's `captcha_key` says how a link's response proves its visitor
+//! solved Cloudflare Turnstile:
+//!
+//! * empty: it doesn't;
+//! * an ed25519 public key (hex): with a pass that key signed. A verifier
+//!   outside the node (`app/src/lib/captchaVerifier.ts`) asks Cloudflare and
+//!   signs; the contract checks the signature offline and spends the pass's
+//!   nonce once.
+//! * `turnstile`: with the Turnstile token itself, which `submit_via_link`
+//!   sends to Cloudflare's `siteverify` through the node
+//!   (`env::http_request`). The node fills in `{{secret:TURNSTILE_SECRET_KEY}}`
+//!   from its operator's secrets, so neither the app nor its state ever holds
+//!   it, and Cloudflare spends the token, so it is accepted once. This needs
+//!   the node's operator to allow `challenges.cloudflare.com` and hold the
+//!   secret, and the namespace to approve the prefix the manifest declares;
+//!   on a node without them the response is refused, never stored unchecked.
+//!   Only the outcome replicates: peers store the response the serving node
+//!   accepted and never call Cloudflare themselves.
 //!
 //! # Answers
 //!
@@ -82,6 +103,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
+use calimero_sdk::outbound::{OutboundMethod, OutboundRequest};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_sdk::{app, env, AccountId};
@@ -139,6 +161,15 @@ const HOUR_NS: u64 = 3_600 * 1_000_000_000;
 /// The longest a captcha pass may be valid for, from when it is spent.
 const MAX_PASS_MS: u64 = 10 * 60 * 1_000;
 const PASS_NONCE_HEX: usize = 32;
+/// The `captcha_key` that has the node verify Turnstile tokens itself.
+pub const NODE_VERIFIES_TURNSTILE: &str = "turnstile";
+/// Cloudflare's token check. Under the `outbound` prefix the manifest
+/// declares, which is all the namespace is asked to approve.
+pub const TURNSTILE_SITEVERIFY: &str = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+/// The node's operator binds this secret to this app and Cloudflare's host.
+const TURNSTILE_SECRET: &str = "{{secret:TURNSTILE_SECRET_KEY}}";
+/// Turnstile documents tokens of up to 2048 characters.
+const MAX_TURNSTILE_TOKEN: usize = 2048;
 
 /// The `settings` key the workspace's display name is kept under.
 const WORKSPACE_NAME: &str = "name";
@@ -252,8 +283,10 @@ pub struct Form {
     pub public: LwwRegister<bool>,
     /// Responses each public link may send per hour.
     pub link_cap: LwwRegister<u32>,
-    /// The captcha verifier's ed25519 public key, hex, or empty for no
-    /// captcha. A link's response then needs a pass it signed.
+    /// How a link's response proves a captcha: empty for no captcha, the
+    /// verifier's ed25519 public key (hex) for a pass it signed, or
+    /// `turnstile` for a token the node checks with Cloudflare. See the
+    /// crate docs, "Captchas".
     pub captcha_key: LwwRegister<String>,
     pub created_at: LwwRegister<u64>,
     pub created_by: LwwRegister<String>,
@@ -362,8 +395,11 @@ pub struct LinkFormView {
     pub fields: Vec<Field>,
     /// Open and public: a response would be taken.
     pub accepting: bool,
-    /// Whether a response needs a captcha pass.
+    /// Whether a response needs a captcha.
     pub captcha: bool,
+    /// The captcha is checked by the node: send the Turnstile token as
+    /// `captcha_token`, not a pass.
+    pub captcha_by_node: bool,
 }
 
 /// A public link, with what it has sent.
@@ -968,14 +1004,17 @@ impl MeroForms {
         })
     }
 
-    /// Requires a captcha pass signed by `key` (an ed25519 public key, hex)
-    /// on every response through the form's links, or none when `key` is
-    /// empty. Team only.
+    /// Requires a captcha on every response through the form's links: a pass
+    /// signed by `key` (an ed25519 public key, hex), or with `key` =
+    /// `turnstile` the Turnstile token itself, which this contract checks with
+    /// Cloudflare through the node. Empty requires none. Team only.
     pub fn set_captcha_key(&mut self, form_id: String, key: String) -> app::Result<FormView> {
         self.only_team()?;
         let key = key.trim().to_lowercase();
-        if !key.is_empty() && decode_fixed::<32>(&key).is_none() {
-            return Err(AppError::msg("the captcha key must be 32 bytes of hex"));
+        if !key.is_empty() && key != NODE_VERIFIES_TURNSTILE && decode_fixed::<32>(&key).is_none() {
+            return Err(AppError::msg(
+                "the captcha key must be 32 bytes of hex, or \"turnstile\"",
+            ));
         }
         self.edit_form(&form_id, |form| {
             form.captcha_key.set(key);
@@ -1065,6 +1104,7 @@ impl MeroForms {
             fields: form.fields.get().clone(),
             accepting: *form.open.get() && *form.public.get(),
             captcha: !form.captcha_key.get().is_empty(),
+            captcha_by_node: form.captcha_key.get() == NODE_VERIFIES_TURNSTILE,
         })
     }
 
@@ -1072,13 +1112,17 @@ impl MeroForms {
     /// The other method a link's grant names.
     ///
     /// Refused unless the form is open and public, the link is under its
-    /// hourly cap, and, when the form asks for one, `captcha` is a pass the
-    /// form's verifier signed for this form and link, unexpired and unused.
+    /// hourly cap, and, when the form asks for a captcha, either `captcha` is
+    /// a pass the form's verifier signed for this form and link, unexpired
+    /// and unused, or (a `turnstile` form) Cloudflare accepts
+    /// `captcha_token`. The token is checked last, after everything that
+    /// costs nothing, so a refused response never spends one.
     pub fn submit_via_link(
         &mut self,
         link: String,
         answers: Vec<AnswerInput>,
         captcha: Option<CaptchaPass>,
+        captcha_token: Option<String>,
     ) -> app::Result<String> {
         let link = link.trim().to_lowercase();
         let (form_id, label) = self.link(&link)?;
@@ -1098,7 +1142,11 @@ impl MeroForms {
             ));
         }
         let key = form.captcha_key.get().clone();
-        if !key.is_empty() {
+        if key == NODE_VERIFIES_TURNSTILE {
+            let token = captcha_token.ok_or_else(|| AppError::msg("this form needs a captcha"))?;
+            let request = turnstile_request(&token)?;
+            turnstile_verdict(env::http_request(&request))?;
+        } else if !key.is_empty() {
             let pass = captcha.ok_or_else(|| AppError::msg("this form needs a captcha"))?;
             self.spend_pass(&key, &form_id, &link, pass)?;
         }
@@ -1384,6 +1432,87 @@ fn link_view(
         last_hour,
         last_response_at,
     }
+}
+
+/// Cloudflare's check of a Turnstile token, with the node's secret named and
+/// not held. Refuses a token that cannot be one before anything is sent.
+pub fn turnstile_request(token: &str) -> app::Result<OutboundRequest> {
+    let token = token.trim();
+    if token.is_empty()
+        || token.len() > MAX_TURNSTILE_TOKEN
+        || !token
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+    {
+        return Err(AppError::msg("the captcha token is malformed"));
+    }
+    Ok(OutboundRequest {
+        method: OutboundMethod::Post,
+        url: TURNSTILE_SITEVERIFY.to_owned(),
+        headers: vec![(
+            "Content-Type".to_owned(),
+            "application/x-www-form-urlencoded".to_owned(),
+        )],
+        // The token's characters need no escaping in a form body.
+        body: format!("secret={TURNSTILE_SECRET}&response={token}").into_bytes(),
+    })
+}
+
+/// Whether Cloudflare accepted the token, from what the node returned.
+/// Every way of not knowing is a refusal: a response is never stored on a
+/// check that did not happen.
+pub fn turnstile_verdict(
+    outcome: Result<calimero_sdk::outbound::OutboundResponse, String>,
+) -> app::Result<()> {
+    let response = match outcome {
+        Ok(response) => response,
+        // The namespace's refusals start with a stable word (core#4673).
+        Err(reason) if reason.starts_with("NotApproved:") => {
+            return Err(AppError::msg(
+                "this form checks captchas through its node, and the team's namespace has \
+                 not approved Cloudflare's address for Mero Forms: ask an admin to approve it",
+            ))
+        }
+        Err(reason) if reason.starts_with("AwaitingApproval:") => {
+            return Err(AppError::msg(
+                "this form checks captchas through its node, and an admin has not yet \
+                 approved Cloudflare's address for this version of Mero Forms",
+            ))
+        }
+        Err(reason) => {
+            return Err(AppError::msg(format!(
+                "the captcha could not be checked: {reason}"
+            )))
+        }
+    };
+    if response.status != 200 {
+        return Err(AppError::msg(format!(
+            "the captcha could not be checked: Cloudflare answered {}",
+            response.status
+        )));
+    }
+    #[derive(Deserialize)]
+    #[serde(crate = "calimero_sdk::serde")]
+    struct Siteverify {
+        success: bool,
+        #[serde(default, rename = "error-codes")]
+        error_codes: Vec<String>,
+    }
+    let verdict: Siteverify = calimero_sdk::serde_json::from_slice(&response.body)
+        .map_err(|_| AppError::msg("the captcha could not be checked: an unreadable answer"))?;
+    if verdict.success {
+        return Ok(());
+    }
+    if verdict
+        .error_codes
+        .iter()
+        .any(|c| c == "timeout-or-duplicate")
+    {
+        return Err(AppError::msg(
+            "this captcha has expired or was already used; solve it again",
+        ));
+    }
+    Err(AppError::msg("the captcha was not solved; solve it again"))
 }
 
 /// What a captcha pass signs. The verifier builds the same string.

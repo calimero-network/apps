@@ -31,6 +31,9 @@ tags        = ["forms", "surveys", "leads", "crm", "productivity"]
 github      = "https://github.com/calimero-network/apps"
 # Asserted equal to [workspace.metadata.mero-apps] in CI.
 min-runtime-version = "0.12.0-rc.1"
+# Cloudflare's Turnstile check, for a form whose captcha the node verifies
+# (`captcha_key = "turnstile"`). The namespace approves it at install.
+outbound    = ["https://challenges.cloudflare.com/turnstile/v0/"]
 # The registered login callback origin, compared by EXACT origin, so no
 # trailing slash. ⚠️ Resolves to nothing until the Vercel project exists:
 # Root Directory `apps/mero-forms/app`, project named `mero-forms`.

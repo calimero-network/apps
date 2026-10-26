@@ -523,6 +523,33 @@ steps:
     expected_failure: true
     outputs:
       link_captcha_error: error
+  - name: Alice has the node check Turnstile tokens itself
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: set_captcha_key
+    args:
+      form_id: "{{form_id}}"
+      key: "turnstile"
+    executor_public_key: "{{alice_key}}"
+  # This node's operator never turned outbound requests on, so the token cannot
+  # be checked: the response is refused, not stored unchecked.
+  - name: A response with a Turnstile token, on a node that cannot check it
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: submit_via_link
+    args:
+      link: "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+      answers:
+        - { field_id: "name", values: ["Grace Hopper"] }
+        - { field_id: "email", values: ["grace@example.com"] }
+        - { field_id: "topic", values: ["Desktop"] }
+        - { field_id: "message", values: ["From the newsletter."] }
+      captcha: null
+      captcha_token: "0.e2e-token"
+    executor_public_key: "{{alice_key}}"
+    expected_failure: true
   - name: Alice drops the captcha
     type: call
     node: calimero-node-1
