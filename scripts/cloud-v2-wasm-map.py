@@ -37,6 +37,9 @@ def main() -> None:
     out["res/scaffolding-e2e-multi-0.1.0.mpk"] = {"": multi, "store-a": multi, "store-b": multi}
     out["/app/data/e2e-kv-store-multi-0.1.0.mpk"] = {"": multi, "store-a": multi, "store-b": multi}
     out["res/mero-standup-v1.mpk"] = {"": wasm("mero-standup-v1")}
+    # Workflows that install a raw .wasm instead of a bundle.
+    out["logic/res/mero_sign.wasm"] = {"": wasm("mero-sign")}
+    out["../res/mero_stream.wasm"] = {"": wasm("mero-stream")}
     json.dump(out, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
 

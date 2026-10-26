@@ -4,9 +4,6 @@
 #   invite_open x1: v1 open invitations
 #   join_open x1: v1 open invitations
 #   wait_for_sync x2: replication is synchronous: a read sees every committed write
-# NOTE: no wasm for bundle 'logic/res/mero_sign.wasm' service None: add it to the wasm map
-# NOTE: no wasm for bundle 'logic/res/mero_sign.wasm' service None: add it to the wasm map
-# NOTE: no wasm for bundle 'logic/res/mero_sign.wasm' service None: add it to the wasm map
 name: MeroSign Bootstrap Workflow
 description: Bootstrap workflow for MeroSign e-signature platform
 backend: cloud-v2
@@ -21,7 +18,7 @@ accounts:
 steps:
 - name: Install MeroSign Application on Node 1
   type: upload_bundle
-  wasm: '{{env.APP_WASM}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
   outputs:
     app_id: hash
   account: merosign-node-1
@@ -44,7 +41,7 @@ steps:
 - name: Create Default Context on Node 1
   type: deploy
   account: merosign-node-1
-  wasm: '{{env.APP_WASM}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
   app_name: Create Default Context on Node 1
   init_args: '{"is_private": true, "context_name": "default"}'
   access:
@@ -60,7 +57,7 @@ steps:
 - name: Create Default Context on Node 2
   type: deploy
   account: merosign-node-2
-  wasm: '{{env.APP_WASM}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
   app_name: Create Default Context on Node 2
   init_args: '{"is_private": true, "context_name": "default"}'
   access:
@@ -76,7 +73,7 @@ steps:
 - name: Create Agreement Context from Node 1
   type: deploy
   account: merosign-node-1
-  wasm: '{{env.APP_WASM}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
   app_name: Create Agreement Context from Node 1
   init_args: '{"is_private": false, "context_name": "contract_agreement_001"}'
   access:

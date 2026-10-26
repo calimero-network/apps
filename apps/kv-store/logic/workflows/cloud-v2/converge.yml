@@ -36,15 +36,26 @@ steps:
   type: wait
   seconds: 1.0
 - name: Create mesh with node-2
+  type: create_org
+  account: kvc-node-1
+  org_name: mesh
+  outputs:
+    namespace_id: orgId
+- type: invite
+  account: kvc-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: kvc-node-2
+  token: '{{_mesh_invite}}'
+- name: Create mesh with node-2
   type: deploy
   account: kvc-node-1
+  org: '{{namespace_id}}'
   wasm: '{{env.APPS_WASM_DIR}}/kv_store.wasm'
   app_name: Create mesh with node-2
-  access:
-    kind: accounts
-    accounts:
-    - kvc-node-1
-    - kvc-node-2
   outputs:
     context_id: appId
     node1_key: memberPublicKey

@@ -5,9 +5,6 @@
 #   join_open x1: v1 open invitations
 #   upload_blob x4: release-v2 has no blob API yet
 #   wait_for_sync x5: replication is synchronous: a read sees every committed write
-# NOTE: no wasm for bundle 'logic/res/mero_sign.wasm' service None: add it to the wasm map
-# NOTE: no wasm for bundle 'logic/res/mero_sign.wasm' service None: add it to the wasm map
-# NOTE: no wasm for bundle 'logic/res/mero_sign.wasm' service None: add it to the wasm map
 name: MeroSign E2E Test Workflow
 description: Comprehensive E2E test workflow for MeroSign e-signature platform
 backend: cloud-v2
@@ -22,7 +19,7 @@ accounts:
 steps:
 - name: Install MeroSign on Node 1
   type: upload_bundle
-  wasm: '{{env.APP_WASM}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
   outputs:
     app_id: hash
   account: merosign-e2e-1
@@ -54,7 +51,7 @@ steps:
 - name: Create Private Context on Node 1
   type: deploy
   account: merosign-e2e-1
-  wasm: '{{env.APP_WASM}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
   app_name: Create Private Context on Node 1
   init_args: '{"is_private": true, "context_name": "default"}'
   access:
@@ -70,7 +67,7 @@ steps:
 - name: Create Private Context on Node 2
   type: deploy
   account: merosign-e2e-2
-  wasm: '{{env.APP_WASM}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
   app_name: Create Private Context on Node 2
   init_args: '{"is_private": true, "context_name": "default"}'
   access:
@@ -136,7 +133,7 @@ steps:
 - name: Create Shared Agreement Context
   type: deploy
   account: merosign-e2e-1
-  wasm: '{{env.APP_WASM}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
   app_name: Create Shared Agreement Context
   init_args: '{"is_private": false, "context_name": "contract_agreement_e2e"}'
   access:

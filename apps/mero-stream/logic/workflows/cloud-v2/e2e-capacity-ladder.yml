@@ -4,7 +4,6 @@
 #   assert_log_absent x1: v1 node logs
 #   script x2: scripts drive v1 node RPC URLs
 #   wait_for_sync x2: replication is synchronous: a read sees every committed write
-# NOTE: no wasm for bundle '../res/mero_stream.wasm' service None: add it to the wasm map
 name: Mero Stream — capacity ladder (how many people can actually broadcast?)
 description: 'MEASURES the broadcaster cap instead of asserting it. `lib/capacity.ts` derives two upper
   bounds — gossipsub fan-out for upstream bandwidth, and the serial publish loop for RTT — but neither
@@ -50,7 +49,7 @@ accounts:
 steps:
 - name: Install application on calimero-node-1
   type: upload_bundle
-  wasm: '{{env.APP_WASM}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
   outputs:
     app_id: hash
   account: calimero-node-1
@@ -58,18 +57,45 @@ steps:
   type: wait
   seconds: 1.0
 - name: Create the stream mesh with THREE joining nodes
+  type: create_org
+  account: calimero-node-1
+  org_name: mesh
+  outputs:
+    namespace_id: orgId
+- type: invite
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: calimero-node-2
+  token: '{{_mesh_invite}}'
+- type: invite
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: calimero-node-3
+  token: '{{_mesh_invite}}'
+- type: invite
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: calimero-node-4
+  token: '{{_mesh_invite}}'
+- name: Create the stream mesh with THREE joining nodes
   type: deploy
   account: calimero-node-1
-  wasm: '{{env.APP_WASM}}'
+  org: '{{namespace_id}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
   app_name: Create the stream mesh with THREE joining nodes
   init_args: '{"name": "ladder"}'
-  access:
-    kind: accounts
-    accounts:
-    - calimero-node-1
-    - calimero-node-2
-    - calimero-node-3
-    - calimero-node-4
 - name: Alice joins
   type: call
   app: '{{context_id}}'

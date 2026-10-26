@@ -30,16 +30,27 @@ steps:
   type: wait
   seconds: 1.0
 - name: Create the stream mesh (namespace + context + Node 2 joins)
+  type: create_org
+  account: calimero-node-1
+  org_name: mesh
+  outputs:
+    namespace_id: orgId
+- type: invite
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: calimero-node-2
+  token: '{{_mesh_invite}}'
+- name: Create the stream mesh (namespace + context + Node 2 joins)
   type: deploy
   account: calimero-node-1
+  org: '{{namespace_id}}'
   wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
   app_name: Create the stream mesh (namespace + context + Node 2 joins)
   init_args: '{"name": "probe"}'
-  access:
-    kind: accounts
-    accounts:
-    - calimero-node-1
-    - calimero-node-2
 - name: Alice joins the stream
   type: call
   app: '{{context_id}}'

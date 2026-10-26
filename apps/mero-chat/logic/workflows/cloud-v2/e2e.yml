@@ -1,9 +1,6 @@
 # Ported from e2e.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
-#   create_group x1: v1 standalone group
-#   create_group_invitation x2: v1 standalone group
-#   join_group x2: v1 standalone group
 #   wait_for_sync x11: replication is synchronous: a read sees every committed write
 name: Curb E2E — 3-Node Comprehensive Test
 description: 'End-to-end test with 3 nodes covering all v2 logic API functions: namespace creation, private
@@ -27,6 +24,12 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_chat.wasm'
   outputs:
     app_id: hash
+  account: calimero-node-1
+- name: Create Namespace
+  type: create_org
+  org_name: Create Namespace
+  outputs:
+    namespace_id: orgId
   account: calimero-node-1
 - name: Assert Namespace Created
   type: assert
@@ -60,11 +63,25 @@ steps:
 - name: Wait for Identity Setup
   type: wait
   seconds: 1.0
+- name: Invite Node 2 (Private)
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    invite_bob: token
 - name: Assert Private Invitation Created
   type: assert
   statements:
   - is_set({{invite_bob}})
   - '{{invite_bob}} != '''''
+- name: Create Open Invitation for Node 3
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    invite_carol: token
 - name: Assert Open Invitation Created
   type: assert
   statements:
@@ -73,9 +90,17 @@ steps:
 - name: Settle before the join (cold-join KeyDelivery)
   type: wait
   seconds: 1.0
+- name: Node 2 Joins Namespace (Private Invite)
+  type: redeem_invite
+  token: '{{invite_bob}}'
+  account: calimero-node-2
 - name: Settle before the join (cold-join KeyDelivery)
   type: wait
   seconds: 1.0
+- name: Node 3 Joins Namespace (Open Invite)
+  type: redeem_invite
+  token: '{{invite_carol}}'
+  account: calimero-node-3
 - name: Get Channel Info
   type: call
   app: '{{channel_id}}'

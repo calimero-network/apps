@@ -31,15 +31,26 @@ steps:
   type: wait
   seconds: 1.0
 - name: Create mesh with node-2
+  type: create_org
+  account: e2e-node-1
+  org_name: mesh
+  outputs:
+    namespace_id: orgId
+- type: invite
+  account: e2e-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: e2e-node-2
+  token: '{{_mesh_invite}}'
+- name: Create mesh with node-2
   type: deploy
   account: e2e-node-1
+  org: '{{namespace_id}}'
   wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
   app_name: Create mesh with node-2
-  access:
-    kind: accounts
-    accounts:
-    - e2e-node-1
-    - e2e-node-2
   outputs:
     context_id: appId
     node1_key: memberPublicKey
