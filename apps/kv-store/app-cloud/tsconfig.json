@@ -1,0 +1,5 @@
+{
+  "// note": "Solution file — references only. Type check with `tsc -b`.",
+  "files": [],
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }]
+}

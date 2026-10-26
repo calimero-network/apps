@@ -41,9 +41,22 @@ scripts/cloud-v2-smoke.py
 It also runs one two-person flow (`battleships_two_players`): two accounts
 register distinct player keys in one lobby and start a match.
 
-## Not ported yet
+## Frontends
 
-Frontends still use the v1 client and node discovery. Porting one means replacing
-the node URL + JWT setup with `CalimeroClient` (`signUp`/`signIn` with a passkey),
-`createApp(name, bundle, { initArgs })` instead of context creation, and
+`apps/kv-store/app-cloud` is the first frontend on release-v2, beside the v1 app
+it ports: passkey sign-up and sign-in (`browserPasskey`), a store per user
+(`uploadBundle` + `createApp`), `call`/`view`, and live updates from `events`.
+It depends on mero-js's `release-v2` branch (a scoped pnpm override in the root
+`package.json`; mero-js builds on `prepare`). Its Playwright test starts
+`merod-v2 local`, serves the app on `http://localhost:5173` and drives a real
+passkey ceremony through Chromium's virtual WebAuthn authenticator:
+
+```bash
+cd apps/kv-store/app-cloud
+KV_STORE_WASM=…/kv_store.wasm MEROD_V2_BINARY=…/merod-v2 pnpm test:e2e
+```
+
+The other frontends still use the v1 client and node discovery. Porting one means
+replacing the node URL + JWT setup with `CalimeroClient` (`signUp`/`signIn` with a
+passkey), `createApp(name, bundle, { initArgs })` instead of context creation, and
 `call`/`view`/`events` for execution and subscriptions.
