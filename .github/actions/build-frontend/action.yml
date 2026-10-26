@@ -39,6 +39,8 @@ runs:
       shell: bash
       env:
         APP: ${{ inputs.app }}
+        # The node serves the bundle under /{version}/, so assets must resolve relative to the page.
+        RELATIVE_BASE: "1"
       run: |
         pnpm install --frozen-lockfile
         pnpm -F "$APP" build

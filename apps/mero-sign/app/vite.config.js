@@ -6,7 +6,8 @@ import tailwindcss from '@tailwindcss/vite';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: './',
+  // A bundle is served under /{version}/, so it builds relative; hosted at the root, deep links need an absolute base.
+  base: process.env.RELATIVE_BASE ? './' : '/',
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: {

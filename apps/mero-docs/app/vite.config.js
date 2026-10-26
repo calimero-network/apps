@@ -140,7 +140,8 @@ export default defineConfig({
     // An edit made during an e2e run would hot-swap modules under the test and reset UI state.
     watch: process.env.E2E_NO_WATCH ? null : undefined,
   },
-  base: './',
+  // A bundle is served under /{version}/, so it builds relative; hosted at the root, deep links need an absolute base.
+  base: process.env.RELATIVE_BASE ? './' : '/',
   build: {
     // Match battleships (apps/battleships/app/vite.config.js): outDir
     // is `build`, not the vite default `dist`. Keeps downstream deploy
