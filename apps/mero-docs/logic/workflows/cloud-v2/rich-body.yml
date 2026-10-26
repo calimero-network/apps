@@ -52,7 +52,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    docs_ctx: appId
+    docs_ctx: contextId
     alice_key: memberPublicKey
 - name: Create a namespace invitation for Bob
   type: invite

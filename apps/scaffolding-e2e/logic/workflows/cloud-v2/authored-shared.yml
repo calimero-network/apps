@@ -36,7 +36,7 @@ steps:
   app_name: Create the context on node-1
   org: '{{namespace_id}}'
   outputs:
-    context_id: appId
+    context_id: contextId
     node1_key: memberPublicKey
 - name: Invitation for node-2
   type: invite

@@ -3,7 +3,7 @@
 # Dropped (no release-v2 counterpart):
 #   assert_api_response x2: v1 admin API
 #   join_subgroup_inheritance x2: subgroup inheritance is v1 governance
-#   remove_group_members (team) x3: not supported by the port
+#   remove_group_members (team) x3: checks what the dropped steps did
 #   reparent_group x2: reparenting is v1 governance
 #   set_group_metadata x3: group metadata is v1 governance
 #   set_member_capabilities x3: capabilities are v1 governance
@@ -44,7 +44,7 @@ steps:
   app_name: registry
   org: '{{namespace_id}}'
   outputs:
-    reg_ctx: appId
+    reg_ctx: contextId
     alice_key: memberPublicKey
 - name: Alice creates folder F
   type: create_team
@@ -60,7 +60,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_F: appId
+    c_F: contextId
     a_F: memberPublicKey
 - name: Alice creates a doc in F
   type: call
@@ -86,7 +86,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_G: appId
+    c_G: contextId
     a_G: memberPublicKey
 - name: Alice creates a doc in G
   type: call
@@ -112,7 +112,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_H: appId
+    c_H: contextId
     a_H: memberPublicKey
 - name: Alice creates a doc in H
   type: call

@@ -1,7 +1,9 @@
 # Ported from workflow-mero-docs-open-subgroup.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
+#   assert statement on a dropped step's output x1: checks what the dropped steps did
 #   join_subgroup_inheritance x1: subgroup inheritance is v1 governance
+#   json_assert statement on a dropped step's output x1: checks what the dropped steps did
 #   list_group_members x1: v1 group listing
 #   set_group_metadata x2: group metadata is v1 governance
 #   set_subgroup_visibility x2: subgroup visibility is v1 governance
@@ -50,7 +52,7 @@ steps:
   app_name: registry
   org: '{{namespace_id}}'
   outputs:
-    registry_ctx: appId
+    registry_ctx: contextId
     alice_key: memberPublicKey
 - name: Assert Alice's bootstrap shape
   type: assert
@@ -72,7 +74,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    reports_docs_ctx: appId
+    reports_docs_ctx: contextId
     alice_docs_key: memberPublicKey
 - name: Alice creates the first doc inside Reports
   type: call
@@ -115,10 +117,6 @@ steps:
   type: wait
   seconds: 1.0
   message: Reports' Open visibility + parent-walk auth need to land on Bob's node
-- name: Assert was_inherited is true (Bob is a namespace-only member)
-  type: json_assert
-  statements:
-  - json_equal({{bob_was_inherited}}, true)
 - name: Bob joins the Reports Docs context (key already local)
   type: whoami
   account: calimero-node-2
@@ -131,7 +129,6 @@ steps:
   type: assert
   statements:
   - is_set({{bob_docs_key}})
-  - is_set({{bob_reports_key}})
 - name: Bob reads Alice's doc via inherited access
   type: call
   app: '{{reports_docs_ctx}}'
@@ -171,7 +168,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    private_docs_ctx: appId
+    private_docs_ctx: contextId
     alice_private_key: memberPublicKey
 - name: Alice writes a private doc
   type: call

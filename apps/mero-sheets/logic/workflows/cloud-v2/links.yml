@@ -31,7 +31,7 @@ steps:
   app_name: spreadsheet
   org: '{{namespace_id}}'
   outputs:
-    src: appId
+    src: contextId
 - name: Create the target workbook
   type: deploy
   account: link-node-1
@@ -39,7 +39,7 @@ steps:
   app_name: spreadsheet
   org: '{{namespace_id}}'
   outputs:
-    dst: appId
+    dst: contextId
 - name: init_project on the source
   type: call
   app: '{{src}}'

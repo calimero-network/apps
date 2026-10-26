@@ -35,7 +35,7 @@ steps:
   init_args: '{"name": "Test Project", "description": "Logic test project", "width": 800, "height": 600}'
   org: '{{namespace_id}}'
   outputs:
-    context_id: appId
+    context_id: contextId
     member_public_key: memberPublicKey
 - name: Get Document
   type: call

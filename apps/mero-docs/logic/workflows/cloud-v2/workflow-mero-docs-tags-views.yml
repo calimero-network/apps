@@ -41,7 +41,7 @@ steps:
   app_name: registry
   org: '{{namespace_id}}'
   outputs:
-    reg_ctx: appId
+    reg_ctx: contextId
     alice_key: memberPublicKey
 - name: Alice reads her account id
   type: call

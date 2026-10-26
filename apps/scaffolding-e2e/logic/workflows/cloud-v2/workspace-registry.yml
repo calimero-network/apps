@@ -43,7 +43,7 @@ steps:
   app_name: Create the workspace context
   org: '{{namespace_id}}'
   outputs:
-    ws_ctx: appId
+    ws_ctx: contextId
     ws_key_node1: memberPublicKey
 - name: Create the channel context (the xcall target)
   type: deploy
@@ -52,7 +52,7 @@ steps:
   app_name: Create the channel context (the xcall target)
   org: '{{namespace_id}}'
   outputs:
-    chan_ctx: appId
+    chan_ctx: contextId
     chan_key_node1: memberPublicKey
 - name: Assert both contexts created
   type: assert

@@ -1,6 +1,7 @@
 # Ported from e2e-test.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
+#   assert statement on a dropped step's output x4: checks what the dropped steps did
 #   invite_open x1: v1 open invitations
 #   join_open x1: v1 open invitations
 #   upload_blob x4: release-v2 has no blob API yet
@@ -14,8 +15,6 @@ cluster:
 accounts:
 - merosign-e2e-1
 - merosign-e2e-2
-- merosign-e2e-1-id1
-- merosign-e2e-2-id1
 steps:
 - name: Install MeroSign on Node 1
   type: upload_bundle
@@ -32,12 +31,12 @@ steps:
   seconds: 1.0
 - name: Create Identity on Node 1
   type: whoami
-  account: merosign-e2e-1-id1
+  account: merosign-e2e-1
   outputs:
     node1_identity: publicKey
 - name: Create Identity on Node 2
   type: whoami
-  account: merosign-e2e-2-id1
+  account: merosign-e2e-2
   outputs:
     node2_identity: publicKey
 - name: Wait for Identity Creation
@@ -59,10 +58,8 @@ steps:
     accounts:
     - merosign-e2e-1
     - merosign-e2e-2
-    - merosign-e2e-1-id1
-    - merosign-e2e-2-id1
   outputs:
-    private_ctx_1: appId
+    private_ctx_1: contextId
     private_key_1: memberPublicKey
 - name: Create Private Context on Node 2
   type: deploy
@@ -75,10 +72,8 @@ steps:
     accounts:
     - merosign-e2e-1
     - merosign-e2e-2
-    - merosign-e2e-1-id1
-    - merosign-e2e-2-id1
   outputs:
-    private_ctx_2: appId
+    private_ctx_2: contextId
     private_key_2: memberPublicKey
 - name: Assert private contexts created
   type: assert
@@ -97,10 +92,6 @@ steps:
   as_key: '{{private_key_1}}'
   outputs:
     is_default_result: result
-- name: Assert blob uploaded
-  type: assert
-  statements:
-  - is_set({{sig_blob_id}})
 - name: Create Signature - Node 1
   type: call
   app: '{{private_ctx_1}}'
@@ -141,24 +132,14 @@ steps:
     accounts:
     - merosign-e2e-1
     - merosign-e2e-2
-    - merosign-e2e-1-id1
-    - merosign-e2e-2-id1
   outputs:
-    shared_ctx: appId
+    shared_ctx: contextId
     admin_key: memberPublicKey
 - name: Assert shared context created
   type: assert
   statements:
   - is_set({{shared_ctx}})
   - is_set({{admin_key}})
-- name: Assert invitation created
-  type: assert
-  statements:
-  - is_set({{open_invitation}})
-- name: Assert nodes joined
-  type: assert
-  statements:
-  - is_set({{joined_ctx_2}})
 - name: Register Node 2 as Participant
   type: call
   app: '{{shared_ctx}}'
@@ -205,10 +186,6 @@ steps:
   type: assert
   statements:
   - is_set({{context_details}})
-- name: Assert document blob uploaded
-  type: assert
-  statements:
-  - is_set({{doc_blob_id}})
 - name: Upload Document to Agreement
   type: call
   app: '{{shared_ctx}}'

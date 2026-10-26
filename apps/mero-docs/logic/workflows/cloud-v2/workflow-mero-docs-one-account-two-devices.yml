@@ -41,7 +41,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    docs_ctx: appId
+    docs_ctx: contextId
     laptop_key: memberPublicKey
 - name: What the laptop speaks as
   type: whoami

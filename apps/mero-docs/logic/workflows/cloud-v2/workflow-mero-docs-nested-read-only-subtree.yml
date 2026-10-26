@@ -47,7 +47,7 @@ steps:
   app_name: registry
   org: '{{namespace_id}}'
   outputs:
-    reg_ctx: appId
+    reg_ctx: contextId
     alice_key: memberPublicKey
 - name: Alice creates folder F
   type: create_team
@@ -63,7 +63,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_F: appId
+    c_F: contextId
     a_F: memberPublicKey
 - name: Alice creates a doc in F
   type: call
@@ -89,7 +89,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_G: appId
+    c_G: contextId
     a_G: memberPublicKey
 - name: Alice creates a doc in G
   type: call
@@ -115,7 +115,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_G2: appId
+    c_G2: contextId
     a_G2: memberPublicKey
 - name: Alice creates a doc in G2
   type: call
@@ -141,7 +141,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_H: appId
+    c_H: contextId
     a_H: memberPublicKey
 - name: Alice creates a doc in H
   type: call
@@ -348,7 +348,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_G3: appId
+    c_G3: contextId
     a_G3: memberPublicKey
 - name: Alice creates a doc in G3
   type: call
@@ -374,7 +374,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_K: appId
+    c_K: contextId
     a_K: memberPublicKey
 - name: Alice creates a doc in K
   type: call

@@ -13,8 +13,6 @@ cluster:
 accounts:
 - merosign-node-1
 - merosign-node-2
-- merosign-node-1-id1
-- merosign-node-2-id1
 steps:
 - name: Install MeroSign Application on Node 1
   type: upload_bundle
@@ -27,12 +25,12 @@ steps:
   seconds: 1.0
 - name: Create Identity on Node 1
   type: whoami
-  account: merosign-node-1-id1
+  account: merosign-node-1
   outputs:
     node1_public_key: publicKey
 - name: Create Identity on Node 2
   type: whoami
-  account: merosign-node-2-id1
+  account: merosign-node-2
   outputs:
     node2_public_key: publicKey
 - name: Wait for Identity Creation
@@ -49,10 +47,8 @@ steps:
     accounts:
     - merosign-node-1
     - merosign-node-2
-    - merosign-node-1-id1
-    - merosign-node-2-id1
   outputs:
-    default_context_id: appId
+    default_context_id: contextId
     admin_public_key: memberPublicKey
 - name: Create Default Context on Node 2
   type: deploy
@@ -65,8 +61,6 @@ steps:
     accounts:
     - merosign-node-1
     - merosign-node-2
-    - merosign-node-1-id1
-    - merosign-node-2-id1
 - name: Wait for Default Context Sync
   type: wait
   seconds: 1.0
@@ -81,10 +75,8 @@ steps:
     accounts:
     - merosign-node-1
     - merosign-node-2
-    - merosign-node-1-id1
-    - merosign-node-2-id1
   outputs:
-    agreement_context_id: appId
+    agreement_context_id: contextId
     agreement_admin_key: memberPublicKey
 - name: Add Node 2 as Participant with Sign Permission
   type: call

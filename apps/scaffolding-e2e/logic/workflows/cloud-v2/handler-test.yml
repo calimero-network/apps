@@ -45,7 +45,7 @@ steps:
   app_name: Create context in namespace on node-1
   org: '{{namespace_id}}'
   outputs:
-    context_id: appId
+    context_id: contextId
     ctx_key_node1: memberPublicKey
 - name: Assert context created
   type: assert

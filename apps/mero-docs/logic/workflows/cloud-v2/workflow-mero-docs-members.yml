@@ -1,10 +1,11 @@
 # Ported from workflow-mero-docs-members.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
+#   assert statement on a dropped step's output x7: checks what the dropped steps did
 #   delete_group x1: v1 group deletion
 #   get_member_capabilities x8: capabilities are v1 governance
 #   list_group_members x3: v1 group listing
-#   remove_group_members (team) x1: not supported by the port
+#   remove_group_members (team) x1: checks what the dropped steps did
 #   set_default_capabilities x1: capabilities are v1 governance
 #   set_default_visibility x2: subgroup visibility is v1 governance
 #   set_member_capabilities x4: capabilities are v1 governance
@@ -84,40 +85,12 @@ steps:
   member: '{{bob_account}}'
   role: admin
   account: calimero-node-1
-- name: Assert role change didn't touch the per-member override
-  type: assert
-  statements:
-  - '{{promoted_override_caps}} == {{initial_member_caps}}'
 - name: Alice demotes Bob back to Member
   type: set_role
   org: '{{namespace_id}}'
   member: '{{bob_account}}'
   role: member
   account: calimero-node-1
-- name: Assert role round-trip left the override bitmask unchanged
-  type: assert
-  statements:
-  - '{{demoted_override_caps}} == {{initial_member_caps}}'
-- name: Assert Viewer bitmask == 4
-  type: assert
-  statements:
-  - '{{viewer_caps}} == 4'
-- name: Assert Editor bitmask == 37
-  type: assert
-  statements:
-  - '{{editor_caps}} == 37'
-- name: Assert Manager bitmask == 495
-  type: assert
-  statements:
-  - '{{manager_caps}} == 495'
-- name: Assert non-preset bitmask stored verbatim == 256
-  type: assert
-  statements:
-  - '{{custom_caps}} == 256'
 - name: Wait for cap change to propagate to Bob's node
   type: wait
   seconds: 1.0
-- name: Assert Bob's node agrees with Alice's node (== 256)
-  type: assert
-  statements:
-  - '{{bob_view_caps}} == 256'

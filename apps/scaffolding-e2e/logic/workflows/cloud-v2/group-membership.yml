@@ -1,9 +1,10 @@
 # Ported from group-membership.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
+#   assert statement on a dropped step's output x5: checks what the dropped steps did
 #   get_group_info x1: v1 group info
 #   list_group_members x3: v1 group listing
-#   remove_group_members (team) x1: not supported by the port
+#   remove_group_members (team) x1: checks what the dropped steps did
 #   set_subgroup_visibility x1: subgroup visibility is v1 governance
 #   wait_for_sync x1: replication is synchronous: a read sees every committed write
 name: E2E KV Store - Group Membership
@@ -73,10 +74,6 @@ steps:
   account: e2e-node-3
   outputs:
     account_node3: publicKey
-- name: Assert namespace has members
-  type: assert
-  statements:
-  - is_set({{ns_members}})
 - name: Create subgroup
   type: create_team
   org: '{{namespace_id}}'
@@ -95,10 +92,6 @@ steps:
   members:
   - '{{identity_node2}}'
   account: e2e-node-1
-- name: Assert subgroup has members
-  type: assert
-  statements:
-  - is_set({{subgroup_members}})
 - name: Create context in subgroup
   type: deploy
   account: e2e-node-1
@@ -106,7 +99,7 @@ steps:
   app_name: Create context in subgroup
   org: '{{namespace_id}}'
   outputs:
-    sub_ctx_id: appId
+    sub_ctx_id: contextId
 - name: Assert subgroup context created
   type: assert
   statements:
@@ -152,10 +145,6 @@ steps:
   type: assert
   statements:
   - is_set({{node3_denied_error}})
-- name: Assert subgroup still has admin member
-  type: assert
-  statements:
-  - is_set({{subgroup_members_after}})
 - name: Node-2 writes to subgroup context after removal (should fail)
   type: call
   app: '{{sub_ctx_id}}'
@@ -184,8 +173,3 @@ steps:
   type: json_assert
   statements:
   - 'json_equal({{revoked_key_value}}, {"output": null})'
-- name: Assert group info returned
-  type: assert
-  statements:
-  - is_set({{group_id_echo}})
-  - is_set({{group_member_count}})

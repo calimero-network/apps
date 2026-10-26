@@ -55,7 +55,7 @@ steps:
   app_name: Create mesh with node-2
   init_args: '{"title": "Two nodes", "now": 1700000000000}'
   outputs:
-    context_id: appId
+    context_id: contextId
     node1_key: memberPublicKey
 - name: Verify mesh keys are populated
   type: assert

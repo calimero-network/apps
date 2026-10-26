@@ -37,7 +37,7 @@ steps:
   app_name: Create the context on node-1
   org: '{{ns_id}}'
   outputs:
-    e2e_context_id: appId
+    e2e_context_id: contextId
     node1_key: memberPublicKey
 - name: Invitation for node-2
   type: invite

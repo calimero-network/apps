@@ -1,6 +1,7 @@
 # Ported from e2e.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
+#   assert statement on a dropped step's output x5: checks what the dropped steps did
 #   download_blob x6: release-v2 has no blob API yet
 #   upload_blob x2: release-v2 has no blob API yet
 #   wait_for_sync x34: replication is synchronous: a read sees every committed write
@@ -54,7 +55,7 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
   app_name: Create mesh with node-2
   outputs:
-    context_id: appId
+    context_id: contextId
     node1_key: memberPublicKey
 - name: Set initial value on node-1
   type: call
@@ -1158,16 +1159,6 @@ steps:
   type: assert
   statements:
   - is_set({{node3_files}})
-- name: Assert node-2's bytes are byte-identical to node-1's
-  type: assert
-  statements:
-  - equal({{png_received_size}}, {{png_blob_size}})
-  - equal({{png_received_sha256}}, {{png_source_sha256}})
-- name: Assert the two transfers delivered different, correct bytes
-  type: assert
-  statements:
-  - equal({{txt_received_sha256}}, {{txt_source_sha256}})
-  - not_equal({{txt_received_sha256}}, {{png_received_sha256}})
 - name: Get PNG file details
   type: call
   app: '{{context_id}}'
@@ -1190,10 +1181,6 @@ steps:
   account: e2e-node-1
   outputs:
     retrieved_png_blob: result
-- name: Assert PNG blob ID matches
-  type: assert
-  statements:
-  - equal({{retrieved_png_blob}}, {{png_blob_id}})
 - name: Search for PNG files
   type: call
   app: '{{context_id}}'

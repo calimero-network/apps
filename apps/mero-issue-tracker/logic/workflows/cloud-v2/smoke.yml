@@ -35,7 +35,7 @@ steps:
   app_name: issue-tracker
   org: '{{namespace_id}}'
   outputs:
-    issue_tracker_ctx: appId
+    issue_tracker_ctx: contextId
 - name: Issue namespace invitation
   type: invite
   org: '{{namespace_id}}'

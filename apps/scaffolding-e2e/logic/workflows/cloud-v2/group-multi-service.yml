@@ -47,7 +47,7 @@ steps:
   app_name: store-a
   org: '{{namespace_id}}'
   outputs:
-    ctx_a_id: appId
+    ctx_a_id: contextId
     ctx_a_key_node1: memberPublicKey
 - name: Create context for service store-b on node-1
   type: deploy
@@ -56,7 +56,7 @@ steps:
   app_name: store-b
   org: '{{namespace_id}}'
   outputs:
-    ctx_b_id: appId
+    ctx_b_id: contextId
     ctx_b_key_node1: memberPublicKey
 - name: Assert both contexts created
   type: assert

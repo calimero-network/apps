@@ -56,7 +56,7 @@ steps:
   app_name: Create mesh with node-2
   init_args: '{}'
   outputs:
-    context_id: appId
+    context_id: contextId
     owner_key: memberPublicKey
 - name: Verify mesh keys are populated
   type: assert

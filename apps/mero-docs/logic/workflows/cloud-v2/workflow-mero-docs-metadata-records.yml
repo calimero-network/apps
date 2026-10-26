@@ -1,6 +1,7 @@
 # Ported from workflow-mero-docs-metadata-records.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
+#   assert statement on a dropped step's output x11: checks what the dropped steps did
 #   delete_namespace x1: v1 namespace deletion
 #   get_group_metadata x6: group metadata is v1 governance
 #   get_member_metadata x5: member metadata is v1 governance
@@ -50,10 +51,6 @@ steps:
   outputs:
     namespace_id: orgId
   account: calimero-node-1
-- name: Assert workspace name set
-  type: assert
-  statements:
-  - equal({{ws_name}}, 'Acme Workspace')
 - name: Alice creates folder (Shared)
   type: create_team
   org: '{{namespace_id}}'
@@ -61,10 +58,6 @@ steps:
   outputs:
     folder_id: teamId
   account: calimero-node-1
-- name: Assert folder name set
-  type: assert
-  statements:
-  - equal({{folder_name}}, 'Shared (Q3 plan)')
 - name: Alice creates the per-namespace Registry context
   type: deploy
   account: calimero-node-1
@@ -72,17 +65,13 @@ steps:
   app_name: registry
   org: '{{namespace_id}}'
   outputs:
-    reg_ctx: appId
+    reg_ctx: contextId
     alice_key: memberPublicKey
 - name: Read Alice's account
   type: whoami
   outputs:
     alice_account: publicKey
   account: calimero-node-1
-- name: Assert Alice's name
-  type: assert
-  statements:
-  - equal({{alice_name}}, 'Alice Anderson')
 - name: Alice mints invite
   type: invite
   org: '{{namespace_id}}'
@@ -106,18 +95,6 @@ steps:
   type: wait
   seconds: 1.0
   message: Bob's node needs metadata + Open-folder rows propagated
-- name: Assert workspace name visible to Bob
-  type: assert
-  statements:
-  - equal({{ws_name_bob}}, 'Acme Workspace')
-- name: Assert folder name visible to Bob
-  type: assert
-  statements:
-  - equal({{folder_name_bob}}, 'Shared (Q3 plan)')
-- name: Assert Alice's name visible to Bob
-  type: assert
-  statements:
-  - equal({{alice_name_bob}}, 'Alice Anderson')
 - name: list_managers is empty before any grant
   type: call
   app: '{{reg_ctx}}'
@@ -185,26 +162,12 @@ steps:
 - name: Wait for member-metadata gossip
   type: wait
   seconds: 1.0
-- name: Assert Bob's name visible to Alice
-  type: assert
-  statements:
-  - equal({{bob_name_alice}}, 'Bob Brown')
 - name: Wait for cap propagation
   type: wait
   seconds: 1.0
 - name: Wait for the cross-node rename to gossip
   type: wait
   seconds: 1.0
-- name: Assert Alice's name was overwritten by Bob
-  type: assert
-  statements:
-  - equal({{alice_renamed}}, 'Alice (renamed by admin)')
 - name: Wait for renames to gossip
   type: wait
   seconds: 1.0
-- name: Assert all renames visible to Bob
-  type: assert
-  statements:
-  - equal({{ws_renamed_bob}}, 'Acme - Renamed')
-  - equal({{folder_renamed_bob}}, 'Shared (Q4 plan)')
-  - equal({{alice_renamed_bob}}, 'Alice (back to default)')

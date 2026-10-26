@@ -4,6 +4,7 @@
 #   assert_migration_complete x1: v1 group migration
 #   get_migration_status x1: v1 group migration
 #   join_subgroup_inheritance x1: subgroup inheritance is v1 governance
+#   json_assert statement on a dropped step's output x5: checks what the dropped steps did
 #   set_default_capabilities x1: capabilities are v1 governance
 #   set_subgroup_visibility x1: subgroup visibility is v1 governance
 #   upgrade_group x1: app upgrades are per app instance (http POST apps/{app}/upgrade)
@@ -25,7 +26,6 @@ cluster:
 accounts:
 - calimero-node-1
 - calimero-node-2
-- calimero-node-2-id1
 steps:
 - name: Install v1 on Node 1
   type: upload_bundle
@@ -57,11 +57,11 @@ steps:
   init_args: '{}'
   org: '{{namespace_id}}'
   outputs:
-    team_id: appId
+    team_id: contextId
     alice_key: memberPublicKey
 - name: Generate identity for Node 2
   type: whoami
-  account: calimero-node-2-id1
+  account: calimero-node-2
   outputs:
     bob_identity: publicKey
 - name: Node 1 invites Node 2
@@ -188,14 +188,6 @@ steps:
   as_key: '{{bob_key}}'
   outputs:
     day_node2: rpc
-- name: Assert both members migrated with no residue
-  type: json_assert
-  statements:
-  - equal({{mig_target}}, 2)
-  - equal({{mig_total}}, 2)
-  - equal({{mig_migrated}}, 2)
-  - equal({{mig_failed}}, 0)
-  - equal({{mig_residue}}, 0)
 - name: Bob reads the v1 decision under v2
   type: call
   app: '{{team_id}}'

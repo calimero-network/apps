@@ -16,8 +16,6 @@ accounts:
 - calimero-node-1
 - calimero-node-2
 - calimero-node-3
-- calimero-node-2-id1
-- calimero-node-3-id1
 steps:
 - name: Install Application on Node 1
   type: upload_bundle
@@ -44,7 +42,7 @@ steps:
     1751953000, "creator_username": ""}'
   org: '{{namespace_id}}'
   outputs:
-    channel_id: appId
+    channel_id: contextId
     alice_key: memberPublicKey
 - name: Assert Channel Created
   type: assert
@@ -52,12 +50,12 @@ steps:
   - is_set({{channel_id}})
 - name: Create Identity on Node 2
   type: whoami
-  account: calimero-node-2-id1
+  account: calimero-node-2
   outputs:
     bob_key: publicKey
 - name: Create Identity on Node 3
   type: whoami
-  account: calimero-node-3-id1
+  account: calimero-node-3
   outputs:
     carol_key: publicKey
 - name: Wait for Identity Setup
@@ -437,7 +435,7 @@ steps:
     "creator_username": ""}'
   org: '{{namespace_id}}'
   outputs:
-    dm_id: appId
+    dm_id: contextId
 - name: Assert DM Context Created
   type: assert
   statements:

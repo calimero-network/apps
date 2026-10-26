@@ -55,6 +55,12 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
   app_name: Create the stream mesh
   init_args: '{"name": "tombstones"}'
+  outputs:
+    context_id: contextId
+    member_public_key: memberPublicKey
+- type: set
+  values:
+    public_key: '{{public_key_calimero-node-2}}'
 - name: Alice joins
   type: call
   app: '{{context_id}}'

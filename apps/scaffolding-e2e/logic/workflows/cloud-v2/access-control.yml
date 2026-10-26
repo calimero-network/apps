@@ -52,7 +52,7 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
   app_name: Create mesh with node-2
   outputs:
-    context_id: appId
+    context_id: contextId
     node1_key: memberPublicKey
 - name: Verify mesh keys are populated
   type: assert

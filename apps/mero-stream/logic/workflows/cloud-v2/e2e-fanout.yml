@@ -64,6 +64,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
   app_name: Create the stream mesh with TWO joining nodes
   init_args: '{"name": "fanout"}'
+  outputs:
+    context_id: contextId
+    member_public_key: memberPublicKey
 - name: Alice joins
   type: call
   app: '{{context_id}}'

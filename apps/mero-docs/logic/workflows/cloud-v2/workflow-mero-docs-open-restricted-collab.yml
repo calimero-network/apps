@@ -1,10 +1,12 @@
 # Ported from workflow-mero-docs-open-restricted-collab.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
+#   assert statement on a dropped step's output x2: checks what the dropped steps did
 #   delete_namespace x1: v1 namespace deletion
 #   get_group_info x1: v1 group info
 #   get_group_metadata x1: group metadata is v1 governance
 #   join_subgroup_inheritance x1: subgroup inheritance is v1 governance
+#   json_assert statement on a dropped step's output x1: checks what the dropped steps did
 #   set_default_capabilities x1: capabilities are v1 governance
 #   set_group_metadata x3: group metadata is v1 governance
 #   set_subgroup_visibility x3: subgroup visibility is v1 governance
@@ -59,7 +61,7 @@ steps:
   app_name: registry
   org: '{{namespace_id}}'
   outputs:
-    reg_ctx: appId
+    reg_ctx: contextId
     alice_key: memberPublicKey
 - name: get_owner returns Alice's registry principal
   type: call
@@ -91,7 +93,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    open_docs_ctx: appId
+    open_docs_ctx: contextId
     alice_docs_key: memberPublicKey
 - name: Alice creates the first doc inside Shared
   type: call
@@ -146,10 +148,6 @@ steps:
   type: assert
   statements:
   - is_set({{bob_reg_key}})
-- name: Assert was_inherited is true (Bob is a namespace-only member)
-  type: json_assert
-  statements:
-  - json_equal({{bob_was_inherited}}, true)
 - name: Bob joins the Shared Docs context (key already local)
   type: whoami
   account: calimero-node-2
@@ -162,7 +160,6 @@ steps:
   type: assert
   statements:
   - is_set({{bob_docs_key}})
-  - is_set({{bob_folder_key}})
 - name: Bob reads Alice's doc via inherited access
   type: call
   app: '{{open_docs_ctx}}'
@@ -177,10 +174,6 @@ steps:
   type: assert
   statements:
   - is_set({{bob_read_v0}})
-- name: Assert Bob sees the folder's name Alice set
-  type: assert
-  statements:
-  - equal({{bob_open_name}}, 'Shared')
 - name: Round 1 - Bob edits the shared doc
   type: call
   app: '{{open_docs_ctx}}'
@@ -263,7 +256,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    bob_docs_own_ctx: appId
+    bob_docs_own_ctx: contextId
     bob_own_docs_key: memberPublicKey
 - name: Bob writes the first doc in his folder
   type: call
@@ -334,7 +327,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    priv_docs_ctx: appId
+    priv_docs_ctx: contextId
     alice_priv_key: memberPublicKey
 - name: Alice writes a private doc
   type: call

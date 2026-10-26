@@ -58,7 +58,7 @@ steps:
   app_name: Create context in the namespace
   org: '{{namespace_id}}'
   outputs:
-    context_id: appId
+    context_id: contextId
     member_key: memberPublicKey
 - name: Assert the context and member key are populated
   type: assert

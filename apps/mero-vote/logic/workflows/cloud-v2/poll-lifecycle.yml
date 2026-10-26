@@ -54,7 +54,7 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_vote.wasm'
   app_name: Create mesh with node-2
   outputs:
-    context_id: appId
+    context_id: contextId
 - name: node-1 whoami
   type: call
   app: '{{context_id}}'

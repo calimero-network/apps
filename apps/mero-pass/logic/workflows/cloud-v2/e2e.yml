@@ -1,6 +1,7 @@
 # Ported from e2e.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
+#   assert statement on a dropped step's output x3: checks what the dropped steps did
 #   get_member_capabilities x3: capabilities are v1 governance
 #   set_default_capabilities x1: capabilities are v1 governance
 #   set_group_metadata x1: group metadata is v1 governance
@@ -24,7 +25,6 @@ cluster:
 accounts:
 - calimero-node-1
 - calimero-node-2
-- calimero-node-2-id1
 steps:
 - name: Install application on Node 1
   type: upload_bundle
@@ -49,7 +49,7 @@ steps:
   account: calimero-node-1
 - name: Generate identity for Node 2
   type: whoami
-  account: calimero-node-2-id1
+  account: calimero-node-2
   outputs:
     bob_identity: publicKey
 - name: Wait for identity propagation
@@ -80,7 +80,7 @@ steps:
   init_args: '{"name":"Shared credentials"}'
   org: '{{namespace_id}}'
   outputs:
-    vault_id: appId
+    vault_id: contextId
     alice_key: memberPublicKey
 - name: Settle after sync
   type: wait
@@ -476,10 +476,6 @@ steps:
   - contains({{alice_audit}}, "role_set:editor")
   - contains({{alice_audit}}, "secret_purged")
   - not_contains({{alice_audit}}, "PASSWORD")
-- name: Assert an invited member is a MEMBER, not an admin
-  type: assert
-  statements:
-  - '{{bob_caps_before}} == 4'
 - name: Alice records Bob as an Admin
   type: set_role
   org: '{{namespace_id}}'
@@ -489,10 +485,6 @@ steps:
 - name: Settle while the grant projects on Node 2
   type: wait
   seconds: 1.0
-- name: Assert the promotion reached the other node
-  type: assert
-  statements:
-  - '{{bob_caps_after}} == 431'
 - name: Bob creates a vault's subgroup from his own node
   type: create_team
   org: '{{namespace_id}}'
@@ -508,7 +500,7 @@ steps:
   init_args: '{"name":"Bob''s vault"}'
   org: '{{namespace_id}}'
   outputs:
-    bob_vault_context: appId
+    bob_vault_context: contextId
     bob_vault_key: memberPublicKey
 - name: Bob mints an invitation, which a Member could not
   type: invite
@@ -545,10 +537,6 @@ steps:
 - name: Settle while the demotion projects
   type: wait
   seconds: 1.0
-- name: Assert the demotion took the governance bits away
-  type: assert
-  statements:
-  - '{{bob_caps_demoted}} == 4'
 - name: Bob still reads the vault he was invited to
   type: call
   app: '{{vault_id}}'

@@ -90,7 +90,7 @@ steps:
   app_name: Create context in subgroup (node-1)
   org: '{{namespace_id}}'
   outputs:
-    sub_ctx_id: appId
+    sub_ctx_id: contextId
 - name: Node-1 writes to subgroup context immediately
   type: call
   app: '{{sub_ctx_id}}'

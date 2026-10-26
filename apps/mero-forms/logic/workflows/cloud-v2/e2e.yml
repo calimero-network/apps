@@ -22,7 +22,6 @@ cluster:
 accounts:
 - calimero-node-1
 - calimero-node-2
-- calimero-node-2-id1
 steps:
 - name: Install application on Node 1
   type: upload_bundle
@@ -41,7 +40,7 @@ steps:
   account: calimero-node-1
 - name: Generate identity for Node 2
   type: whoami
-  account: calimero-node-2-id1
+  account: calimero-node-2
   outputs:
     bob_identity: publicKey
 - name: Wait for identity propagation
@@ -72,7 +71,7 @@ steps:
   init_args: '{}'
   org: '{{namespace_id}}'
   outputs:
-    ws_id: appId
+    ws_id: contextId
     alice_key: memberPublicKey
 - name: Settle after sync
   type: wait

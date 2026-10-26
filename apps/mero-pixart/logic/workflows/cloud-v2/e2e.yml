@@ -15,7 +15,6 @@ cluster:
 accounts:
 - calimero-node-1
 - calimero-node-2
-- calimero-node-2-id1
 steps:
 - name: Install Application on Node 1
   type: upload_bundle
@@ -40,11 +39,11 @@ steps:
   init_args: '{"name": "E2E Project", "description": "", "width": 800, "height": 600}'
   org: '{{namespace_id}}'
   outputs:
-    context_id: appId
+    context_id: contextId
     member_public_key: memberPublicKey
 - name: Create Identity on Node 2
   type: whoami
-  account: calimero-node-2-id1
+  account: calimero-node-2
   outputs:
     public_key_2: publicKey
 - name: Invite and Join

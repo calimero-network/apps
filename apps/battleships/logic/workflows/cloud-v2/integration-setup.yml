@@ -41,7 +41,7 @@ steps:
   app_name: lobby
   org: '{{namespace_id}}'
   outputs:
-    lobby_ctx_id: appId
+    lobby_ctx_id: contextId
     p1_key: memberPublicKey
 - name: Assert Lobby Context Created
   type: assert

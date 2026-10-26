@@ -38,7 +38,7 @@ steps:
   app_name: lobby
   org: '{{namespace_id}}'
   outputs:
-    lobby_ctx_id: appId
+    lobby_ctx_id: contextId
     p1_key: memberPublicKey
 - name: Assert Lobby Context Created
   type: assert
@@ -175,7 +175,7 @@ steps:
   init_args: '{"player1":"{{p1_key}}","player2":"{{p2_key}}","player2_account":"{{p2_account}}","lobby_context_id":"{{lobby_ctx_id}}","match_id":"{{match_id}}"}'
   org: '{{namespace_id}}'
   outputs:
-    match_ctx_id: appId
+    match_ctx_id: contextId
     match_p1_key: memberPublicKey
 - name: Assert Match Context Created
   type: assert

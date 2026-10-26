@@ -35,7 +35,7 @@ steps:
   app_name: crm
   org: '{{namespace_id}}'
   outputs:
-    ctx: appId
+    ctx: contextId
 - name: Invite node 2
   type: invite
   org: '{{namespace_id}}'

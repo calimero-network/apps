@@ -3,8 +3,9 @@
 # Dropped (no release-v2 counterpart):
 #   assert_api_response x1: v1 admin API
 #   join_subgroup_inheritance x2: subgroup inheritance is v1 governance
+#   json_assert statement on a dropped step's output x1: checks what the dropped steps did
 #   leave_group x1: v1 group membership
-#   remove_group_members (team) x1: not supported by the port
+#   remove_group_members (team) x1: checks what the dropped steps did
 #   set_group_metadata x2: group metadata is v1 governance
 #   set_subgroup_visibility x2: subgroup visibility is v1 governance
 #   wait_for_sync x14: replication is synchronous: a read sees every committed write
@@ -57,7 +58,7 @@ steps:
   app_name: registry
   org: '{{namespace_id}}'
   outputs:
-    reg_ctx: appId
+    reg_ctx: contextId
     alice_key: memberPublicKey
 - name: Alice creates the Restricted folder
   type: create_team
@@ -73,7 +74,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    docs_ctx: appId
+    docs_ctx: contextId
     alice_docs_key: memberPublicKey
 - name: Alice creates a doc
   type: call
@@ -309,7 +310,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    open_ctx: appId
+    open_ctx: contextId
     alice_open_key: memberPublicKey
 - name: Alice creates a doc in the Open folder
   type: call
@@ -321,10 +322,6 @@ steps:
   as_key: '{{alice_open_key}}'
   outputs:
     open_doc: result
-- name: Bob has no direct row in the Open folder
-  type: json_assert
-  statements:
-  - json_equal({{bob_was_inherited}}, true)
 - name: Bob joins the Open folder's Docs context
   type: whoami
   account: curo-node-2

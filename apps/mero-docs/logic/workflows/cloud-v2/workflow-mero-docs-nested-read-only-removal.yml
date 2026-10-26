@@ -3,7 +3,7 @@
 # Dropped (no release-v2 counterpart):
 #   assert_api_response x5: v1 admin API
 #   join_subgroup_inheritance x5: subgroup inheritance is v1 governance
-#   remove_group_members (team) x6: not supported by the port
+#   remove_group_members (team) x6: checks what the dropped steps did
 #   reparent_group x5: reparenting is v1 governance
 #   set_group_metadata x7: group metadata is v1 governance
 #   set_member_capabilities x3: capabilities are v1 governance
@@ -46,7 +46,7 @@ steps:
   app_name: registry
   org: '{{namespace_id}}'
   outputs:
-    reg_ctx: appId
+    reg_ctx: contextId
     alice_key: memberPublicKey
 - name: Alice creates folder F
   type: create_team
@@ -62,7 +62,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_F: appId
+    c_F: contextId
     a_F: memberPublicKey
 - name: Alice creates a doc in F
   type: call
@@ -88,7 +88,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_G: appId
+    c_G: contextId
     a_G: memberPublicKey
 - name: Alice creates a doc in G
   type: call
@@ -114,7 +114,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_G2: appId
+    c_G2: contextId
     a_G2: memberPublicKey
 - name: Alice creates a doc in G2
   type: call
@@ -140,7 +140,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_HB: appId
+    c_HB: contextId
     a_HB: memberPublicKey
 - name: Alice creates a doc in HB
   type: call
@@ -166,7 +166,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_HB2: appId
+    c_HB2: contextId
     a_HB2: memberPublicKey
 - name: Alice creates a doc in HB2
   type: call
@@ -192,7 +192,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_F2: appId
+    c_F2: contextId
     a_F2: memberPublicKey
 - name: Alice creates a doc in F2
   type: call
@@ -218,7 +218,7 @@ steps:
   app_name: docs
   org: '{{namespace_id}}'
   outputs:
-    c_G4: appId
+    c_G4: contextId
     a_G4: memberPublicKey
 - name: Alice creates a doc in G4
   type: call

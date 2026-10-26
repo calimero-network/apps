@@ -16,7 +16,6 @@ cluster:
 accounts:
 - calimero-node-1
 - calimero-node-2
-- calimero-node-2-id1
 steps:
 - name: Install Application
   type: upload_bundle
@@ -39,11 +38,11 @@ steps:
     "created_at": 1751952997, "creator_username": ""}'
   org: '{{namespace_id}}'
   outputs:
-    context_id: appId
+    context_id: contextId
     member_public_key: memberPublicKey
 - name: Create Identity on Node 2
   type: whoami
-  account: calimero-node-2-id1
+  account: calimero-node-2
   outputs:
     public_key_2: publicKey
 - name: Wait for Identity Setup

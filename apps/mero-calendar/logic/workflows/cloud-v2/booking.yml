@@ -36,7 +36,7 @@ steps:
   init_args: '{}'
   org: '{{namespace_id}}'
   outputs:
-    context_id: appId
+    context_id: contextId
     member_public_key: memberPublicKey
 - name: Set Username (Ada)
   type: call

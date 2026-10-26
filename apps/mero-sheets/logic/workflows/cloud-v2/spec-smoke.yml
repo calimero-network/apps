@@ -34,7 +34,7 @@ steps:
   app_name: spreadsheet
   org: '{{namespace_id}}'
   outputs:
-    ctx: appId
+    ctx: contextId
 - name: Issue namespace invitation from app-node-1
   type: invite
   org: '{{namespace_id}}'

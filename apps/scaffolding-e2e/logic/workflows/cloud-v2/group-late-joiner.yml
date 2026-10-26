@@ -43,7 +43,7 @@ steps:
   app_name: Create context in namespace on node-1
   org: '{{namespace_id}}'
   outputs:
-    ctx_id: appId
+    ctx_id: contextId
 - name: Node-1 writes pre-join key-1
   type: call
   app: '{{ctx_id}}'
