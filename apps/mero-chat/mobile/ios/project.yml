@@ -4,9 +4,8 @@
 #   xcodegen generate          # writes MeroChat.xcodeproj (not committed)
 #   open MeroChat.xcodeproj
 #
-# The SDK is consumed from GitHub, pinned to an exact commit of swift-sdk's
-# default branch (the delegated-account parity work is unreleased). To bump it,
-# change `revision` below and regenerate.
+# The SDK is consumed from GitHub, pinned to a swift-sdk release. To bump it,
+# change `from` below and regenerate.
 name: MeroChat
 
 options:
@@ -18,7 +17,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 2076f06a364e7e666a81a7dfc1bc9cf70465c0ae
+    from: 0.4.0
 
 targets:
   MeroChat:

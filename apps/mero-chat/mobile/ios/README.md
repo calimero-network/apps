@@ -105,23 +105,21 @@ in Xcode (Signing & Capabilities).
 
 ### The SDK pin
 
-The delegated parity work in swift-sdk is unreleased, so `project.yml` pins the
-package to an exact commit: the head of calimero-network/swift-sdk#79, which
-re-signs a join at schema 26 when the admitting relay is on core 0.11.0-rc.90
-and says so, and adds blob upload and download for an account through the
-relay. Move it to `master` once #79 lands:
+`project.yml` pins the package to a swift-sdk release, 0.4.0: the first one
+with calimero-network/swift-sdk#79, which re-signs a join at schema 26 when the
+admitting relay is on core 0.11.0-rc.90 and says so, and adds blob upload and
+download for an account through the relay.
 
 ```yaml
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 2076f06a364e7e666a81a7dfc1bc9cf70465c0ae
+    from: 0.4.0
 ```
 
-To bump it, change `revision` to the new commit, run `xcodegen generate`, and
-let Xcode re-resolve packages (File → Packages → Reset Package Caches if it
-holds on to the old one). Once swift-sdk tags a release with this surface,
-replace `revision:` with `from: <version>`.
+To bump it, change `from` to the new version, run `xcodegen generate`, and let
+Xcode re-resolve packages (File → Packages → Reset Package Caches if it holds on
+to the old one).
 
 ## Live tests (a real relay)
 
