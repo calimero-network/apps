@@ -46,14 +46,20 @@ const rawAdmin = new Proxy(
 const mero = { admin: rawAdmin };
 
 function useFakeRead<T>(read: () => { data: T; error: Error | null }, key: unknown) {
-  const [state, setState] = useState(() => ({ ...read(), loading: true }));
+  const [state, setState] = useState(() => ({ ...read(), loading: true, seq: 0 }));
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    setState((s) => ({ ...s, loading: true }));
-    const timer = setTimeout(() => setState({ ...read(), loading: false }), 0);
+    setState((s) => ({ ...s, loading: true, seq: s.seq + 1 }));
+  }, [tick, key]);
+  // Answer only after a render showed `loading`, as the real hook's round trip guarantees.
+  useEffect(() => {
+    const seq = state.seq;
+    if (seq === 0) return;
+    const answer = () => setState((s) => (s.seq === seq ? { ...s, ...read(), loading: false } : s));
+    const timer = setTimeout(answer, 0);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, key]);
+  }, [state.seq]);
   return { ...state, refetch: async () => setTick((t) => t + 1) };
 }
 
