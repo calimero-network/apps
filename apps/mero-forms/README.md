@@ -29,61 +29,27 @@ What using it looks like:
 
 ## Form keys
 
-A form key is an account with a certified device and no node, bound to one
-form. An admin issues one from the form's **Connect** tab, all in the browser
-(`app/src/FormConnect.tsx`):
-
-1. mint the account and its device certificate in the tab
-   (`app/src/lib/formKey.ts`), so the secret exists nowhere until the admin
-   copies it;
-2. have the admin's node create an invitation to the workspace's namespace;
-3. present the new account's signed join to that node, which makes it a plain
-   member (`bootstrapFromInvitation`);
-4. register it in the contract (`register_form_key`), which binds it to this
-   form, labels it and keeps it off the team.
-
-The app then shows, once:
+A form key is a Calimero Cloud API key that may call exactly `submit_response`
+on the workspace's app, and nothing else: it cannot read responses or change a
+form. An admin issues one from the form's **Connect** tab
+(`app/src/FormConnect.tsx`, `app/src/lib/formKey.ts`), and the app shows, once:
 
 ```
-CALIMERO_CONTEXT_ID=…
+CALIMERO_URL=…
+CALIMERO_APP_ID=…
 CALIMERO_FORM_ID=…
-CALIMERO_FORM_ACCOUNT=…
-CALIMERO_FORM_CREDENTIAL=…
-CALIMERO_FORM_DEVICE_SECRET=…
+CALIMERO_API_KEY=…
 ```
 
-The website's backend signs a warrant for `submit_response` with these and
-sends it to a relay with `RelayClient.execute` from `@calimero-network/mero-js`:
+The website's backend sends each response with `CalimeroClient` from
+`@calimero-network/mero-js` (`useApiKey(CALIMERO_API_KEY)`, then
+`call(CALIMERO_APP_ID, "submit_response", { form_id, answers, source })`).
+Revoking the key on the Connect tab makes the cluster refuse it.
 
-```json
-{
-  "form_id": "<CALIMERO_FORM_ID>",
-  "answers": [
-    { "field_id": "name", "values": ["Ada Lovelace"] },
-    { "field_id": "email", "values": ["ada@example.com"] },
-    { "field_id": "topic", "values": ["Cloud"] }
-  ],
-  "source": "/contact/"
-}
-```
-
-One answer per question, under the question's id (shown on each question in
-**Edit**, and as a full example in **Connect**). A choice is one of its
-options; checkboxes any of them. The key can answer its form and nothing else:
-it cannot read responses, change a form or answer another one. Revoking removes
-its namespace membership (what lets it write) and then its registration.
-
-**The relay.** A website needs a node that relays for the namespace:
-
-- Make the namespace always-on in Calimero Desktop and Calimero Cloud's nodes
-  relay for it.
-- Or use a node of the team's own. An admin grants it `CAN_AUTHOR_ON_BEHALF`
-  from the Connect tab ("Let this node write for form keys"), its operator runs
-  it with `merod … init --delegated-access` (which serves the warrant route
-  without a node credential), and the site's `CALIMERO_RELAY_URL` points at it.
-
-calimero.network's contact page is wired this way: see "Contact form" in the
-[landing README](https://github.com/calimero-network/landing).
+A response a key sends is recorded as the admin who issued it: Calimero Cloud
+has no keys with an identity of their own yet. (v1's form keys were accounts
+of their own, written through a relay with delegated-execution warrants; the
+contract's `register_form_key` registry is unused on Calimero Cloud.)
 
 ## Public links
 

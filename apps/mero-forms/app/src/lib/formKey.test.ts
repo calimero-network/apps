@@ -1,31 +1,22 @@
-import { parseDeviceCredential, verifyDeviceCredential } from "@calimero-apps/cloud";
-import { describe, expect, it } from "vitest";
-import { envBlock, mintFormIdentity } from "./formKey";
+import { describe, expect, it, vi } from "vitest";
+import type { CloudMero } from "@calimero-apps/cloud";
+import { envBlock, issueFormKey, listFormKeys } from "./formKey";
 
 describe("form keys", () => {
-  it("mints an account with one device certificate the network accepts", async () => {
-    const key = await mintFormIdentity();
-    expect(key.account).toMatch(/^[0-9a-f]{64}$/);
-    expect(key.deviceSecret).toMatch(/^[0-9a-f]{64}$/);
-    const checked = await verifyDeviceCredential(key.credential);
-    expect(checked.account).toBe(key.account);
-    expect(parseDeviceCredential(key.credential).deviceEpoch).toBe(1);
+  it("are API keys scoped to one app and to submit_response", async () => {
+    const post = vi.fn(async () => ({ keyId: "k1", key: "secret" }));
+    const key = await issueFormKey({ post } as unknown as CloudMero, "ctx", "form-1", "site");
+    expect(post).toHaveBeenCalledWith("auth/apikeys", { label: "mero-forms:form-1:site", apps: ["ctx"], methods: ["submit_response"] });
+    expect(key).toMatchObject({ keyId: "k1", secret: "secret", formId: "form-1", label: "site" });
   });
 
-  it("mints a new account every time", async () => {
-    const [a, b] = await Promise.all([mintFormIdentity(), mintFormIdentity()]);
-    expect(a.account).not.toBe(b.account);
-    expect(a.deviceSecret).not.toBe(b.deviceSecret);
+  it("keeps a label with colons intact, and ignores keys that are not form keys", async () => {
+    const get = vi.fn(async () => ({ keys: [{ keyId: "a", label: "mero-forms:f:a:b", expiresAt: 0 }, { keyId: "z", label: "cli", expiresAt: 0 }] }));
+    expect(await listFormKeys({ get } as unknown as CloudMero)).toEqual([{ keyId: "a", formId: "f", label: "a:b", expiresAt: 0 }]);
   });
 
-  it("writes the variables the website's backend reads", () => {
-    const env = envBlock({ account: "a1", credential: "c2", deviceSecret: "d3" }, "f4", "e5");
-    expect(env.split("\n")).toEqual([
-      "CALIMERO_CONTEXT_ID=f4",
-      "CALIMERO_FORM_ID=e5",
-      "CALIMERO_FORM_ACCOUNT=a1",
-      "CALIMERO_FORM_CREDENTIAL=c2",
-      "CALIMERO_FORM_DEVICE_SECRET=d3",
-    ]);
+  it("hands the website what it needs and nothing else", () => {
+    const env = envBlock("https://c", "ctx", { keyId: "k", secret: "s", formId: "f", label: "l", expiresAt: 0 });
+    expect(env.split("\n")).toEqual(["CALIMERO_URL=https://c", "CALIMERO_APP_ID=ctx", "CALIMERO_FORM_ID=f", "CALIMERO_API_KEY=s"]);
   });
 });

@@ -1,75 +1,83 @@
-import {
-  generateAccountRoot,
-  mintDeviceId,
-  signDeviceCert,
-  signerFromSecret,
-  verifyDeviceCredential,
-} from "@calimero-apps/cloud";
-import nacl from "tweetnacl";
-
 /**
- * A website form's key: an account of its own, with one certified device.
+ * A website form's key on Calimero Cloud: an API key that may call exactly
+ * `submit_response` on this workspace's app, and nothing else.
  *
- * The website's backend holds `deviceSecret` and signs a warrant for each
- * response; a relay runs `submit_response` as `account` (delegated execution).
- * See the README, "Form keys".
+ * v1 minted an account with a certified device for each website and the site
+ * wrote through a relay with delegated-execution warrants. Calimero Cloud has
+ * neither relays nor warrants; its machine credential is an API key scoped to
+ * apps and methods (`POST /auth/apikeys`). The key acts as the account that
+ * issued it, so a response it sends is attributed to that admin: the cluster
+ * has no keys with an identity of their own yet.
  *
- * Minted entirely in this tab and never sent anywhere but to the admin who
- * copies it. Two secrets a full account would keep are thrown away on
- * purpose, because a form never needs them:
- *
- * - the account ROOT, which certifies new devices. Rotating a form key means
- *   minting a new one, never re-certifying this one, so the root has no use
- *   after the one certificate below and nobody should be able to steal it.
- * - the device's key-delivery (X25519) secret, which group keys are delivered
- *   to. The form never decrypts state: the relay runs the method inside its
- *   TEE. Without this secret the key can sign a response and read nothing, even
- *   if every value on the website's server leaks.
+ * The secret is returned once by the cluster and never stored by this app.
  */
-export interface FormIdentity {
-  /** The account, 64 hex: what joins the namespace and what responses are stamped with. */
-  account: string;
-  /** Its `AccountProof<DeviceCert>`, hex: proves the device belongs to the account. */
-  credential: string;
-  /** The device's ed25519 signing secret, hex. The one real secret. */
-  deviceSecret: string;
+import type { CloudMero } from "@calimero-apps/cloud";
+
+/** Labels this app gives its keys, so its key list shows only form keys. */
+const PREFIX = "mero-forms:";
+
+export interface FormKey {
+  keyId: string;
+  formId: string;
+  label: string;
+  expiresAt: number;
 }
 
-const hex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+export interface IssuedFormKey extends FormKey {
+  /** The API key itself: shown once. */
+  secret: string;
+}
 
-export async function mintFormIdentity(): Promise<FormIdentity> {
-  const root = await generateAccountRoot();
+function labelFor(formId: string, label: string): string {
+  return `${PREFIX}${formId}:${label}`;
+}
 
-  const deviceSecret = hex(crypto.getRandomValues(new Uint8Array(32)));
-  const signPublicKey = (await signerFromSecret(deviceSecret)).publicKey;
-  const kemPublicKey = hex(nacl.box.keyPair().publicKey);
+function parseLabel(label: string): { formId: string; label: string } | null {
+  if (!label.startsWith(PREFIX)) return null;
+  const rest = label.slice(PREFIX.length);
+  const cut = rest.indexOf(":");
+  return cut < 0 ? null : { formId: rest.slice(0, cut), label: rest.slice(cut + 1) };
+}
 
-  const device = await mintDeviceId(root.accountId, crypto.getRandomValues(new Uint8Array(16)));
-  const credential = await signDeviceCert({
-    rootSecret: root.secret,
-    device,
-    signPublicKey,
-    kemPublicKey,
-    deviceEpoch: 1,
+/** Issue a key that may only call `submit_response` on `contextId`'s app. */
+export async function issueFormKey(
+  mero: CloudMero,
+  contextId: string,
+  formId: string,
+  label: string,
+): Promise<IssuedFormKey> {
+  const { keyId, key } = await mero.post<{ keyId: string; key: string }>("auth/apikeys", {
+    label: labelFor(formId, label),
+    apps: [contextId],
+    methods: ["submit_response"],
   });
+  return { keyId, secret: key, formId, label, expiresAt: 0 };
+}
 
-  const checked = await verifyDeviceCredential(credential);
-  if (checked.account !== root.accountId) {
-    throw new Error("the device certificate does not name the account it was minted for");
-  }
-  return { account: root.accountId, credential, deviceSecret };
+/** This account's form keys, all forms. */
+export async function listFormKeys(mero: CloudMero): Promise<FormKey[]> {
+  const { keys } = await mero.get<{ keys: Array<{ keyId: string; label: string; expiresAt: number }> }>("auth/apikeys");
+  return keys.flatMap((k) => {
+    const parsed = parseLabel(k.label);
+    return parsed ? [{ keyId: k.keyId, formId: parsed.formId, label: parsed.label, expiresAt: k.expiresAt }] : [];
+  });
+}
+
+/** Revoke a key: the cluster refuses it from then on. */
+export async function revokeFormKey(mero: CloudMero, keyId: string): Promise<void> {
+  await mero.delete(`auth/apikeys/${encodeURIComponent(keyId)}`);
 }
 
 /**
  * The environment variables the website's backend reads, as one block to
- * paste. Names match `api/contact.ts` in calimero-network/landing.
+ * paste. The backend calls `submit_response` with them through
+ * `CalimeroClient` (`useApiKey`, then `call`).
  */
-export function envBlock(identity: FormIdentity, contextId: string, formId: string): string {
+export function envBlock(clusterUrl: string, contextId: string, issued: IssuedFormKey): string {
   return [
-    `CALIMERO_CONTEXT_ID=${contextId}`,
-    `CALIMERO_FORM_ID=${formId}`,
-    `CALIMERO_FORM_ACCOUNT=${identity.account}`,
-    `CALIMERO_FORM_CREDENTIAL=${identity.credential}`,
-    `CALIMERO_FORM_DEVICE_SECRET=${identity.deviceSecret}`,
+    `CALIMERO_URL=${clusterUrl}`,
+    `CALIMERO_APP_ID=${contextId}`,
+    `CALIMERO_FORM_ID=${issued.formId}`,
+    `CALIMERO_API_KEY=${issued.secret}`,
   ].join("\n");
 }

@@ -4,9 +4,7 @@ import { FormKeys } from "./FormConnect";
 import type { FormView } from "./generated/FormsClient";
 import type { Workspace } from "./useWorkspace";
 
-const NAMESPACE = "ab".repeat(32);
 const CONTEXT = "cd".repeat(32);
-const KEY_ACCOUNT = "ef".repeat(32);
 const FORM: FormView = {
   id: "f0f0f0f0f0f0f0f0",
   title: "Contact",
@@ -22,128 +20,87 @@ const FORM: FormView = {
   captcha_key: "",
 };
 
-const calls: string[] = [];
-const createNamespaceInvitation = vi.fn(async () => {
-  calls.push("invite");
-  return { invitation: { invitation: { group_id: NAMESPACE }, inviter_signature: "sig" } };
-});
-const removeGroupMembers = vi.fn(async () => {
-  calls.push("remove-member");
-});
-const bootstrapFromInvitation = vi.fn(async (_input: unknown) => {
-  calls.push("join");
-  return { ok: true as const };
-});
-let isDelegated = false;
+/** The cluster's API-key routes, as the cloud client calls them. */
+const apiKeys: Array<{ keyId: string; label: string; expiresAt: number }> = [];
+const mero = {
+  baseUrl: "https://cloud.example",
+  post: vi.fn(async (path: string, body: { label: string; apps: string[]; methods: string[] }) => {
+    expect(path).toBe("auth/apikeys");
+    const keyId = `k${apiKeys.length + 1}`;
+    apiKeys.push({ keyId, label: body.label, expiresAt: 0 });
+    return { keyId, key: `secret-${keyId}` };
+  }),
+  get: vi.fn(async () => ({ keys: apiKeys })),
+  delete: vi.fn(async (path: string) => {
+    const i = apiKeys.findIndex((k) => path.endsWith(`/${k.keyId}`));
+    if (i >= 0) apiKeys.splice(i, 1);
+    return {};
+  }),
+};
 
 vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  useMero: () => ({
-    admin: { createNamespaceInvitation, removeGroupMembers, getIntentRelay: vi.fn(async () => ({ executorAccount: "11".repeat(32), executorKey: "22".repeat(32), canAuthorOnBehalf: false })), grantAuthorship: vi.fn() },
-    nodeUrl: "http://localhost:2528",
-    isDelegated,
-  }),
-  bootstrapFromInvitation: (input: unknown) => bootstrapFromInvitation(input),
+  useMero: () => ({ mero, nodeUrl: "https://cloud.example" }),
 }));
 
-/** A workspace whose client records the contract calls the screen makes. */
-function fakeWorkspace(keys: unknown[] = []): Workspace & { registered: unknown[]; forgotten: unknown[] } {
-  const registered: unknown[] = [];
-  const forgotten: unknown[] = [];
-  const client = {
-    listFormKeys: vi.fn(async () => keys),
-    registerFormKey: vi.fn(async (p: unknown) => {
-      calls.push("register");
-      registered.push(p);
-    }),
-    forgetFormKey: vi.fn(async (p: unknown) => {
-      calls.push("forget");
-      forgotten.push(p);
-    }),
-  };
-  return {
-    client: client as unknown as Workspace["client"],
-    version: 0,
-    act: (async (fn: (c: typeof client) => Promise<unknown>) => fn(client)) as unknown as Workspace["act"],
-    registered,
-    forgotten,
-  };
-}
+const workspace = { client: {}, version: 0, act: vi.fn() } as unknown as Workspace;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  calls.length = 0;
-  isDelegated = false;
+  apiKeys.length = 0;
 });
 afterEach(cleanup);
 
+function mount() {
+  return render(<FormKeys form={FORM} workspace={workspace} contextId={CONTEXT} namespaceId={null} />);
+}
+
 describe("FormKeys", () => {
-  it("mints a key, joins it to the namespace through this node, registers it, and shows its env once", async () => {
-    const workspace = fakeWorkspace();
-    render(<FormKeys form={FORM} workspace={workspace} contextId={CONTEXT} namespaceId={NAMESPACE} />);
-
-    fireEvent.change(screen.getByLabelText("form key label"), { target: { value: " Contact page " } });
+  it("issues an API key that may only submit responses to this app, and shows its env once", async () => {
+    mount();
+    fireEvent.change(screen.getByLabelText("form key label"), { target: { value: "contact page" } });
     fireEvent.click(screen.getByRole("button", { name: "Create form key" }));
-
     const issued = await screen.findByTestId("issued-key");
-    expect(calls).toEqual(["invite", "join", "register"]);
-
-    // The join goes to THIS node, as the minted account, with its certificate.
-    const join = bootstrapFromInvitation.mock.calls[0]![0] as {
-      namespaceId: string;
-      nodeUrl?: string;
-      credential: { account: string; credential: string; deviceSecret: string };
-    };
-    expect(join.namespaceId).toBe(NAMESPACE);
-    expect(join.nodeUrl).toBe("http://localhost:2528");
-    expect(join.credential.account).toMatch(/^[0-9a-f]{64}$/);
-
-    expect(workspace.registered).toEqual([{ account: join.credential.account, form_id: FORM.id, label: "Contact page" }]);
-
-    const env = issued.querySelector("pre")!.textContent!;
-    expect(env).toContain(`CALIMERO_CONTEXT_ID=${CONTEXT}`);
-    expect(env).toContain(`CALIMERO_FORM_ID=${FORM.id}`);
-    expect(env).toContain(`CALIMERO_FORM_ACCOUNT=${join.credential.account}`);
-    expect(env).toContain(`CALIMERO_FORM_DEVICE_SECRET=${join.credential.deviceSecret}`);
-    expect(env).toContain(`CALIMERO_FORM_CREDENTIAL=${join.credential.credential}`);
+    expect(mero.post).toHaveBeenCalledWith("auth/apikeys", {
+      label: `mero-forms:${FORM.id}:contact page`,
+      apps: [CONTEXT],
+      methods: ["submit_response"],
+    });
+    expect(issued.textContent).toContain("CALIMERO_URL=https://cloud.example");
+    expect(issued.textContent).toContain(`CALIMERO_APP_ID=${CONTEXT}`);
+    expect(issued.textContent).toContain(`CALIMERO_FORM_ID=${FORM.id}`);
+    expect(issued.textContent).toContain("CALIMERO_API_KEY=secret-k1");
+    await waitFor(() => expect(screen.getAllByText("contact page")).toHaveLength(2)); // the issued card and the list
   });
 
-  it("lets Calimero Cloud pick the admitter for an account session", async () => {
-    isDelegated = true;
-    render(<FormKeys form={FORM} workspace={fakeWorkspace()} contextId={CONTEXT} namespaceId={NAMESPACE} />);
-    fireEvent.change(screen.getByLabelText("form key label"), { target: { value: "x" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create form key" }));
-    await screen.findByTestId("issued-key");
-    expect((bootstrapFromInvitation.mock.calls[0]![0] as { nodeUrl?: string }).nodeUrl).toBeUndefined();
+  it("lists only this form's keys", async () => {
+    apiKeys.push(
+      { keyId: "a", label: `mero-forms:${FORM.id}:mine`, expiresAt: 0 },
+      { keyId: "b", label: "mero-forms:another-form:theirs", expiresAt: 0 },
+      { keyId: "c", label: "a key for something else", expiresAt: 0 },
+    );
+    mount();
+    await screen.findByText("mine");
+    expect(screen.queryByText("theirs")).toBeNull();
+    expect(screen.queryByText("a key for something else")).toBeNull();
   });
 
-  it("registers nothing and shows the reason when the join is refused", async () => {
-    bootstrapFromInvitation.mockResolvedValueOnce({
-      ok: false,
-      step: "join",
-      reason: "the node is not an admitter",
-    } as never);
-    const workspace = fakeWorkspace();
-    render(<FormKeys form={FORM} workspace={workspace} contextId={CONTEXT} namespaceId={NAMESPACE} />);
-    fireEvent.change(screen.getByLabelText("form key label"), { target: { value: "x" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create form key" }));
-    expect(await screen.findByText(/the node is not an admitter/)).toBeTruthy();
-    expect(workspace.registered).toEqual([]);
-    expect(screen.queryByTestId("issued-key")).toBeNull();
-  });
-
-  it("revokes a key by removing its membership, then its registration", async () => {
+  it("revokes a key on the cluster", async () => {
+    apiKeys.push({ keyId: "a", label: `mero-forms:${FORM.id}:mine`, expiresAt: 0 });
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    const workspace = fakeWorkspace([
-      { account: KEY_ACCOUNT, label: "Old site", form_id: FORM.id, created_at: 0, created_by: "", responses: 3, last_response_at: 0 },
-      { account: "aa".repeat(32), label: "Another form's key", form_id: "other", created_at: 0, created_by: "", responses: 0, last_response_at: 0 },
-    ]);
-    render(<FormKeys form={FORM} workspace={workspace} contextId={CONTEXT} namespaceId={NAMESPACE} />);
-    // Only this form's keys are listed.
-    expect(await screen.findAllByRole("button", { name: "Revoke" })).toHaveLength(1);
+    mount();
+    await screen.findByText("mine");
     fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
-    await waitFor(() => expect(calls).toEqual(["remove-member", "forget"]));
-    expect(removeGroupMembers).toHaveBeenCalledWith(NAMESPACE, { members: [KEY_ACCOUNT] });
-    expect(workspace.forgotten).toEqual([{ account: KEY_ACCOUNT }]);
+    await waitFor(() => expect(mero.delete).toHaveBeenCalledWith("auth/apikeys/a"));
+    await waitFor(() => expect(screen.getByText("No form keys yet.")).toBeTruthy());
+  });
+
+  it("shows the cluster's refusal and issues nothing", async () => {
+    mero.post.mockRejectedValueOnce(new Error("quota exceeded: too many API keys"));
+    mount();
+    fireEvent.change(screen.getByLabelText("form key label"), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create form key" }));
+    await screen.findByText(/quota exceeded/);
+    expect(screen.queryByTestId("issued-key")).toBeNull();
   });
 });
