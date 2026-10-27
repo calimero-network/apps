@@ -195,20 +195,62 @@ struct ShareSheet: UIViewControllerRepresentable {
 // MARK: - Picking
 
 enum AttachmentPicking {
-    /// A picked photo as JPEG (HEIC does not display in a browser), named like a camera roll file.
-    static func image(from item: PhotosPickerItem) async -> PendingAttachment? {
-        guard let data = try? await item.loadTransferable(type: Data.self) else { return nil }
-        guard let image = UIImage(data: data), let jpeg = image.jpegData(compressionQuality: 0.85) else { return nil }
+    /// The largest attachment the app uploads. A blob goes up through the relay
+    /// in one request; past this, on mobile data, it looks like a hang.
+    static let maxBytes = 25 * 1024 * 1024
+    /// The longest edge a picked photo keeps: sharp full screen on any phone,
+    /// a fraction of a 48 MP original's upload.
+    static let maxImageEdge: CGFloat = 2048
+
+    /// A picked photo as JPEG (HEIC does not display in a browser), scaled down
+    /// to ``maxImageEdge`` and named like a camera roll file.
+    static func image(from item: PhotosPickerItem) async throws -> PendingAttachment {
+        guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else {
+            throw AttachmentPickError.unreadablePhoto
+        }
+        guard let jpeg = scaled(image).jpegData(compressionQuality: 0.85) else { throw AttachmentPickError.unreadablePhoto }
+        guard jpeg.count <= maxBytes else { throw AttachmentPickError.tooLarge }
         let stamp = Int(Date().timeIntervalSince1970)
         return PendingAttachment(name: "IMG_\(stamp).jpg", mimeType: "image/jpeg", data: jpeg)
     }
 
     /// A file from the Files app, with the MIME type its extension names.
-    static func file(at url: URL) -> PendingAttachment? {
+    static func file(at url: URL) throws -> PendingAttachment {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > maxBytes {
+            throw AttachmentPickError.tooLarge
+        }
+        guard let data = try? Data(contentsOf: url) else { throw AttachmentPickError.unreadableFile(url.lastPathComponent) }
+        guard data.count <= maxBytes else { throw AttachmentPickError.tooLarge }
         let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
         return PendingAttachment(name: url.lastPathComponent, mimeType: mime, data: data)
+    }
+
+    private static func scaled(_ image: UIImage) -> UIImage {
+        let longest = max(image.size.width, image.size.height)
+        guard longest > maxImageEdge else { return image }
+        let factor = maxImageEdge / longest
+        let size = CGSize(width: (image.size.width * factor).rounded(), height: (image.size.height * factor).rounded())
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
+
+/// Why a pick didn't become an attachment, in the channel's error banner.
+enum AttachmentPickError: LocalizedError, Equatable {
+    case unreadablePhoto
+    case unreadableFile(String)
+    case tooLarge
+
+    var errorDescription: String? {
+        switch self {
+        case .unreadablePhoto: return "That photo couldn't be loaded. If it's in iCloud, wait for it to download and try again."
+        case .unreadableFile(let name): return "\(name) couldn't be read."
+        case .tooLarge: return "Attachments can be up to 25 MB."
+        }
     }
 }

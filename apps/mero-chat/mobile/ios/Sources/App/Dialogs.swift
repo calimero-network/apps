@@ -354,11 +354,14 @@ struct SettingsDialog: View {
                 guard let item else { return }
                 Task {
                     savingPhoto = true
-                    if let image = await AttachmentPicking.image(from: item) {
+                    do {
+                        let image = try await AttachmentPicking.image(from: item)
                         channel.displayNameHint = session.displayName
                         if await channel.setAvatar(image) {
                             photoNote = "Your profile picture has been saved in #\(channel.channel.name)."
                         }
+                    } catch {
+                        channel.errorText = error.localizedDescription
                     }
                     savingPhoto = false
                     photo = nil

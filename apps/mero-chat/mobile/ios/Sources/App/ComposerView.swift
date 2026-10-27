@@ -53,14 +53,21 @@ struct ComposerView: View {
         }
         .photosPicker(isPresented: $pickingPhoto, selection: $photo, matching: .images)
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.item]) { result in
-            if case .success(let url) = result, let file = AttachmentPicking.file(at: url) {
-                add(file)
+            guard case .success(let url) = result else { return }
+            do {
+                add(try AttachmentPicking.file(at: url))
+            } catch {
+                model.errorText = error.localizedDescription
             }
         }
         .onChange(of: photo) { item in
             guard let item else { return }
             Task {
-                if let image = await AttachmentPicking.image(from: item) { add(image) }
+                do {
+                    add(try await AttachmentPicking.image(from: item))
+                } catch {
+                    model.errorText = error.localizedDescription
+                }
                 photo = nil
             }
         }
@@ -86,7 +93,6 @@ struct ComposerView: View {
             if !pending.isEmpty { previews }
             ZStack(alignment: .topLeading) {
                 ComposerTextView(text: $text, focused: $focused, editor: editor)
-                    .frame(minHeight: 64, maxHeight: 132)
                     .padding(.horizontal, 8)
                     .padding(.top, 4)
                     .padding(.trailing, 92)
@@ -104,7 +110,7 @@ struct ComposerView: View {
                         .allowsHitTesting(false)
                 }
             }
-            .overlay(alignment: .bottomTrailing) { actions.padding(.trailing, 14).padding(.bottom, 10) }
+            .overlay(alignment: .bottomTrailing) { actions.padding(.trailing, 14).padding(.bottom, 8) }
         }
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -132,7 +138,7 @@ struct ComposerView: View {
             Spacer()
         }
         .padding(.horizontal, 10)
-        .frame(height: 41)
+        .frame(height: 36)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
     }
 
@@ -370,6 +376,16 @@ struct ComposerTextView: UIViewRepresentable {
     func updateUIView(_ view: UITextView, context: Context) {
         if view.text != text { view.text = text }
         editor.textView = view
+    }
+
+    /// One line when empty, growing with the text up to ``maxHeight``, then scrolling.
+    static let minHeight: CGFloat = 40
+    static let maxHeight: CGFloat = 120
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        let width = proposal.width ?? uiView.bounds.width
+        let fitting = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
+        return CGSize(width: width, height: min(max(fitting, Self.minHeight), Self.maxHeight))
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
