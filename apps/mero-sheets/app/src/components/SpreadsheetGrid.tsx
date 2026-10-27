@@ -330,18 +330,17 @@ function SpreadsheetGrid({
     (e: React.MouseEvent<HTMLTableSectionElement>) => {
       const cell = cellFromEvent(e);
       if (!cell) return;
-      if (pointMode) {
-        // Keep the formula input focused so its caret survives the click.
-        e.preventDefault();
-      } else if (e.shiftKey && anchorRef.current) {
-        // Shift-click: extend from where the selection started.
-        e.preventDefault();
-        keyEndRef.current = cell;
-        onSelectRange(anchorRef.current, cell);
-        return;
-      } else {
-        // Move selection immediately on press (single-click select). The formula
-        // bar auto-focuses on selection and owns clipboard/Delete when not editing.
+      // The formula bar owns the keyboard: the browser's own focus change on
+      // press would park focus on the grid, which drops printable keys.
+      e.preventDefault();
+      if (!pointMode) {
+        if (e.shiftKey && anchorRef.current) {
+          // Shift-click: extend from where the selection started.
+          keyEndRef.current = cell;
+          onSelectRange(anchorRef.current, cell);
+          return;
+        }
+        // Move selection immediately on press (single-click select).
         onSelectCell(cell.row, cell.col);
       }
       dragAnchorRef.current = cell;
