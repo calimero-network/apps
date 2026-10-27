@@ -26,7 +26,9 @@ import MeroKit
 /// state in a file so a second launch, as someone else, sees the first one's
 /// rooms. Unit tests call ``reset(stateFile:)`` and use ``session``.
 final class FixtureNode: URLProtocol {
-    static let baseURL = "http://fixture.meroar.test"
+    // https: MeroKit (0.4.0 on) refuses plaintext to a host that isn't
+    // loopback, private or .local. Nothing leaves the process either way.
+    static let baseURL = "https://fixture.meroar.test"
     static let applicationId = String(repeating: "a1", count: 32)
 
     private static let lock = NSLock()
