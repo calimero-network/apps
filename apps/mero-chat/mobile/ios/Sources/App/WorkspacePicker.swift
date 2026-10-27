@@ -282,10 +282,13 @@ struct WorkspacePicker: View {
     private var footer: some View {
         VStack(spacing: 0) {
             Rectangle().fill(Theme.line).frame(height: 1).padding(.vertical, 20)
-            Button("Sign out") { Task { await session.signOut() } }
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.ink(25))
-                .frame(maxWidth: .infinity)
+            Button {
+                Task { await session.signOut() }
+            } label: {
+                Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+            }
+            .buttonStyle(DestructiveButtonStyle(fullWidth: true))
+            .accessibilityIdentifier("pickerSignOutButton")
         }
     }
 

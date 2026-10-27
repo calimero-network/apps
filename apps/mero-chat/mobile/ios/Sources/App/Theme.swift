@@ -172,6 +172,23 @@ struct SecondaryButtonStyle: ButtonStyle {
     }
 }
 
+/// A destructive pill (sign out): the error ink on its tint, with a ring strong
+/// enough to read as a button in both themes.
+struct DestructiveButtonStyle: ButtonStyle {
+    var fullWidth = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Theme.font(14, .semibold))
+            .foregroundStyle(Theme.badInk)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: 40)
+            .background(Capsule().fill(Theme.badBg))
+            .overlay(Capsule().stroke(Theme.badInk.opacity(0.35), lineWidth: 1))
+            .opacity(configuration.isPressed ? 0.8 : 1)
+    }
+}
+
 /// The web app's text field: 40 high, radius 12, a 1px border.
 struct ChatFieldStyle: TextFieldStyle {
     func _body(configuration: TextField<Self._Label>) -> some View {

@@ -305,12 +305,9 @@ struct SettingsDialog: View {
                     Button {
                         Task { await session.signOut() }
                     } label: {
-                        Label("Logout", systemImage: "rectangle.portrait.and.arrow.right")
-                            .font(Theme.font(13, .semibold)).foregroundStyle(Theme.badInk)
-                            .padding(.horizontal, 14).frame(minHeight: 36)
-                            .background(Capsule().fill(Color(hex: 0xFF5050, alpha: 0.06)))
-                            .overlay(Capsule().stroke(Color(hex: 0xFF5050, alpha: 0.25), lineWidth: 1))
+                        Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                     }
+                    .buttonStyle(DestructiveButtonStyle())
                     .accessibilityIdentifier("logoutButton")
                 }
                 .buttonStyle(.plain)
