@@ -19,10 +19,10 @@ workflows/  merobox suites (logic-test.yml = 1 node, identity-and-roles.yml = 2 
 Makefile    every command has a `make` shortcut
 ```
 
-Built for **Calimero core 0.11.0-rc.90**: the contract pins `calimero-sdk`,
-`calimero-storage` and `calimero-storage-macros` to tag `0.11.0-rc.90`
+Built for **Calimero core 0.12.0-rc.3**: the contract pins `calimero-sdk`,
+`calimero-storage` and `calimero-storage-macros` to tag `0.12.0-rc.3`
 (`logic/Cargo.toml`, `min-runtime-version` too), and the merobox suites run
-`ghcr.io/calimero-network/merod:0.11.0-rc.90`.
+`ghcr.io/calimero-network/merod:0.12.0-rc.3`.
 
 ## The iOS app
 
@@ -111,7 +111,7 @@ room from the model, not the USDZ.
 ### Run it against a local node
 
 ```bash
-make node                 # or any merod 0.11.0-rc.90 you run yourself
+make node                 # or any merod 0.12.0-rc.3 you run yourself
 make app-run              # Simulator
 ```
 

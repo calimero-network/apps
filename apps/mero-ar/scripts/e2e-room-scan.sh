@@ -9,7 +9,7 @@
 #      see both items at the positions node A has.
 #
 # Usage: MERO_BIN=/path/to/merod-rc89/bin scripts/e2e-room-scan.sh
-# Needs merod 0.11.0-rc.90, cargo-mero, full Xcode, xcodegen. Uses the
+# Needs merod 0.12.0-rc.3, cargo-mero, full Xcode, xcodegen. Uses the
 # "iPhone 18 Pro Max" simulator (SIM=...), ports 4301/4302 and 4311/4312.
 
 set -euo pipefail
