@@ -1,4 +1,4 @@
-import { DEFAULT_RELEASE_MIRROR, type DcapCollateral, type SignedNodeRelease } from '@calimero-apps/cloud';
+import { DEFAULT_RELEASE_MIRROR, type DcapCollateral, type SignedNodeRelease } from '@calimero-network/mero-js';
 import { verify as dcapVerify } from '@phala/dcap-qvl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 

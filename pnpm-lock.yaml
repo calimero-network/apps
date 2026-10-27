@@ -286,12 +286,12 @@ importers:
 
   apps/delegated-execution/app:
     dependencies:
-      '@calimero-apps/cloud':
-        specifier: workspace:*
-        version: link:../../../packages/cloud
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-network/mero-js':
+        specifier: 26.9.1
+        version: 26.9.1
       '@phala/dcap-qvl':
         specifier: 0.5.3
         version: 0.5.3
@@ -3622,6 +3622,10 @@ packages:
     resolution: {integrity: sha512-pKxSazpsvSFgdFCJAloO5tnWsB/6O4jKundiKerbYWn8G2H2RXAsiGuvlMYDrK5PwByY5O3xB4vOtd2LgmwY3Q==}
     peerDependencies:
       react: ^18.3.1
+
+  '@calimero-network/mero-js@26.9.1':
+    resolution: {integrity: sha512-0RkUqycr5+wGz3PKwCOAqsYDKdx0Eerinp6DlsDXpaJHdI3XmsKZfLlz5r14nlU1kuAbsWp2gMaIBVuOD7LHXA==}
+    engines: {node: '>=18.0.0'}
 
   '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/4ea343d1e2c73241b636cce268f2986c0efda16a':
     resolution: {tarball: https://codeload.github.com/calimero-network/mero-js/tar.gz/4ea343d1e2c73241b636cce268f2986c0efda16a}
@@ -10842,6 +10846,12 @@ snapshots:
   '@calimero-network/mero-icons@0.0.6(react@19.2.8)':
     dependencies:
       react: 19.2.8
+
+  '@calimero-network/mero-js@26.9.1':
+    dependencies:
+      '@phala/dcap-qvl': 0.5.3
+    transitivePeerDependencies:
+      - encoding
 
   '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/4ea343d1e2c73241b636cce268f2986c0efda16a':
     dependencies:
