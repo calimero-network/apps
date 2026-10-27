@@ -29,9 +29,7 @@ test.describe('BlockNote editor (single-node)', () => {
   test('slash menu opens on "/"', async ({ alice }) => {
     await alice.createDoc('Slash');
     await alice.openDoc('Slash');
-    const editor = alice.page.locator('.ProseMirror').first();
-    await editor.click();
-    await editor.pressSequentially('/');
+    await alice.editor.type('/');
     // The slash suggestion menu lists block types - "Heading" is a
     // stable default item.
     await expect(alice.page.getByText(/Heading/i).first()).toBeVisible({
