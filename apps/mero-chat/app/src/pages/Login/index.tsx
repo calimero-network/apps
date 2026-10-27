@@ -80,7 +80,7 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
     navigate("/login");
   };
 
-  // Not connected yet — the landing page. Its "Connect to node" opens the
+  // Not connected yet — the landing page. Its "Sign in" opens the
   // shared login popup, but through `onConnect`, so the stale-storage purge
   // (whitelist preserved) runs before the auth flow starts, as it always has.
   if (!isAuthenticated && !isConfigSet) {

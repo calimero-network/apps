@@ -147,7 +147,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and pick your node." },
+        { title: "Connect a node", body: "Press Sign in and pick your node." },
         { title: "Create a document", body: "Choose a canvas size. You are the owner." },
         { title: "Work in layers", body: "Add raster, text and fill layers, group them in folders, and reorder freely." },
         { title: "Invite editors", body: "Grant the editor role. Everyone else can watch the document change without being able to change it." },

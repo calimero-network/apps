@@ -159,7 +159,7 @@ test.describe('Mero Updates landing page', () => {
 
 
   test('connecting does not navigate to another page', async ({ page }) => {
-    const cta = page.locator('button').filter({ hasText: /^Connect to node$/ }).first();
+    const cta = page.locator('button').filter({ hasText: /^Sign in$/ }).first();
     await expect(cta).toBeVisible();
     // ⚠️ Compared against the URL we are ACTUALLY on, not against the root.
     // mero-stream and mero-meet redirect / to a picker route and render the
@@ -175,7 +175,7 @@ test.describe('Mero Updates landing page', () => {
   });
 
   test('and the landing page stays put underneath it', async ({ page }) => {
-    await page.locator('button').filter({ hasText: /^Connect to node$/ }).first().click();
+    await page.locator('button').filter({ hasText: /^Sign in$/ }).first().click();
     await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'overview');
   });
 

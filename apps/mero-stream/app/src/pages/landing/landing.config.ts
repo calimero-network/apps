@@ -82,7 +82,7 @@ export const CONFIG: LandingConfig = {
       heading: "Getting started",
       steps: [
         { title: "Use a browser", body: "This app is web only. The desktop is not a supported target — it is not blocked there and does not crash; the integration around it is what is unsupported." },
-        { title: "Connect a node", body: "Press Connect to node and choose your node." },
+        { title: "Connect a node", body: "Press Sign in and choose your node." },
         { title: "Create a stream", body: "A namespace you own. You are its admin." },
         { title: "Watch the numbers", body: "Throughput and delivery are reported as you go. That measurement is the actual output of this app." },
       ],

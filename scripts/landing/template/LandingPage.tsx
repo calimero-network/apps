@@ -422,7 +422,7 @@ export default function LandingPage({
    * Someone already signed in does not need to sign in again.
    *
    * Arriving here from inside the app — the footer link on every in-app screen
-   * points at this page — the primary button used to say "Connect to node" and
+   * points at this page — the primary button used to say "Sign in" and
    * start the whole sign-in over. It now offers the way back in.
    *
    * Both conditions matter: `isAuthenticated` without `onOpenApp` is an app
@@ -442,7 +442,7 @@ export default function LandingPage({
     }
     return (
       <button type="button" className={cls} onClick={connect} disabled={!connect}>
-        Connect to node
+        Sign in
       </button>
     );
   }

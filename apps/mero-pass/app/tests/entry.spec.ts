@@ -24,7 +24,7 @@ test.describe('unauthenticated entry', () => {
     // now opens the connection popup over this page. What matters is unchanged
     // — that a real way in is offered from `/`.
     await expect(
-      page.getByRole('button', { name: 'Connect to node' }).first(),
+      page.getByRole('button', { name: 'Sign in' }).first(),
     ).toBeVisible();
   });
 

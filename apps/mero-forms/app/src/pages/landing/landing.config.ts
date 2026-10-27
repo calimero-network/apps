@@ -117,7 +117,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and pick your node in the popup." },
+        { title: "Connect a node", body: "Press Sign in and pick your node in the popup." },
         { title: "Start a workspace", body: "Name it for your team. You are its first admin; invite teammates and add them to the team from Team." },
         { title: "Build a form", body: "Start from Contact us, Request a demo or Feedback, or a blank form, and add the questions you need." },
         { title: "Collect responses", body: "Issue a form key for your website from the form’s Connect tab, or enter a response by hand from Preview." },

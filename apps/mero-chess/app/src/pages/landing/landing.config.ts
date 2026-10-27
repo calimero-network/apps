@@ -108,7 +108,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup." },
+        { title: "Connect a node", body: "Press Sign in. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup." },
         { title: "Open a table", body: "A new table is a context in a namespace you own. Joining someone else’s means opening their invite link." },
         { title: "Take a seat", body: "Claim white or black and give yourself a name. The game begins when both chairs are taken." },
         { title: "Play", body: "Click a piece and then a square. The squares offered are the legal moves the contract handed your client, so the board never shows a move the node would refuse." },

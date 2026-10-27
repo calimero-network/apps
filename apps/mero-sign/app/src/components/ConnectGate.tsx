@@ -16,7 +16,7 @@ import styles from '../pages/app/AgreementsPage.module.css';
 // get. Redirecting them to `/` would lose the destination, and a redirect is
 // also the shape that was reported looping — see `src/routes.ts`.
 //
-// ⚠️ THE SECOND CONNECT SCREEN. #128 made the landing page's "Connect to node"
+// ⚠️ THE SECOND CONNECT SCREEN. #128 made the landing page's "Sign in"
 // open the node picker directly, and missed this one — so the app still had a
 // screen whose whole content was "the button is in the top right of the landing
 // page" above a link that sent you there to look for it. Three navigations to

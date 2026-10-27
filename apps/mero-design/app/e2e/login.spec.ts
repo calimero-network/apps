@@ -122,7 +122,7 @@ test.describe("Web login page", () => {
     await page.route("**/admin-api/contexts", (route) => route.fulfill({ status: 401, body: "{}" }));
     await page.goto("/");
     await expect(
-      page.locator("button").filter({ hasText: /^Connect to node$/ }).first(),
+      page.locator("button").filter({ hasText: /^Sign in$/ }).first(),
     ).toBeVisible();
     await expect(page.getByLabel("Username")).toHaveCount(0);
     await expect(page.getByLabel("Password")).toHaveCount(0);

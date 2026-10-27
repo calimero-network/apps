@@ -159,7 +159,7 @@ test.describe('Mero Sign landing page', () => {
 
 
   test('connecting does not navigate to another page', async ({ page }) => {
-    const cta = page.locator('button').filter({ hasText: /^Connect to node$/ }).first();
+    const cta = page.locator('button').filter({ hasText: /^Sign in$/ }).first();
     await expect(cta).toBeVisible();
     // ⚠️ Compared against the URL we are ACTUALLY on, not against the root.
     // mero-stream and mero-meet redirect / to a picker route and render the

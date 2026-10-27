@@ -76,7 +76,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and pick the node the popup discovers, or enter a URL." },
+        { title: "Connect a node", body: "Press Sign in and pick the node the popup discovers, or enter a URL." },
         { title: "Create a team", body: "A team is a namespace you own, with one calendar inside it." },
         { title: "Set your name", body: "Set a username so your teammates see a name instead of a key." },
         { title: "Create an event", body: "Choose shared or private when you create it. Shared events can be given invitees; private ones cannot, because they never leave your node." },

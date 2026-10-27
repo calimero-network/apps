@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 // ⚠️ This file used to test a `/login` route that no longer exists. Every app
 // had one; every one rendered its name, its description and a connect button
-// in its own styling, so pressing "Connect to node" on the landing page took
+// in its own styling, so pressing "Sign in" on the landing page took
 // you to a second, unrelated-looking page to press a second button.
 //
 // What replaced it is a popup over the page you are already reading, and the
@@ -13,7 +13,7 @@ test.describe("Connecting", () => {
   test("the front door offers a way in, with no separate login page", async ({ page }) => {
     await page.goto("/");
     await expect(
-      page.locator("button").filter({ hasText: /^Connect to node$/ }).first(),
+      page.locator("button").filter({ hasText: /^Sign in$/ }).first(),
     ).toBeVisible({ timeout: 10_000 });
   });
 

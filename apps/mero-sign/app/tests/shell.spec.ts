@@ -40,7 +40,7 @@ test.describe("unauthenticated shell", () => {
     await page.goto("/");
     // A way in, twice over: the header and the hero. Buttons rather than links
     // because this app signs in through mero-react's modal, with no /login route.
-    await expect(page.getByRole("button", { name: "Connect to node" })).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Sign in" })).toHaveCount(2);
 
     expect(errors, "an unhandled error escaped to the page").toEqual([]);
   });

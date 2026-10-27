@@ -32,7 +32,7 @@ test.describe("unauthenticated web entry", () => {
     await expect(
       // A button, not a link: the CTA opens the connection popup in place
       // rather than navigating to a /login page that no longer exists.
-      page.getByRole("button", { name: "Connect to node" }).first(),
+      page.getByRole("button", { name: "Sign in" }).first(),
     ).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });

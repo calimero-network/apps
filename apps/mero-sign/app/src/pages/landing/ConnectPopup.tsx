@@ -3,7 +3,7 @@ import { useCalimero } from '../../lib/useCalimero';
 import type { LoginPopupProps } from './landingTypes';
 
 /**
- * The node-connection step behind the landing page's "Connect to node".
+ * The node-connection step behind the landing page's "Sign in".
  *
  * ⚠️ NOT the generated `loginPopup.tsx`. That one is written into every app that
  * depends on `@calimero-network/mero-react` and uses its `LoginModal` +
@@ -16,13 +16,13 @@ import type { LoginPopupProps } from './landingTypes';
  *
  * It used to be a modal: a heading, a paragraph explaining that Mero Sign runs
  * against a node you control, a `<CalimeroConnectButton />`, and a Cancel. So
- * pressing "Connect to node" on the landing page opened a dialog whose only
+ * pressing "Sign in" on the landing page opened a dialog whose only
  * real content was ANOTHER button you had to press to reach the node picker.
  * Two clicks and a wall of text between the person and the one control that
  * does anything, and the text said nothing the picker does not say better.
  *
  * `useCalimero().login()` is what that button called. Calling it directly on
- * open means the picker appears immediately, which is what "Connect to node"
+ * open means the picker appears immediately, which is what "Sign in"
  * already promised. There is no dialog left to render — the picker IS the
  * dialog — so this component's whole job is to fire `login()` once and hand
  * control back.

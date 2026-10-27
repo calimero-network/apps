@@ -20,7 +20,7 @@ test.describe('Mero Pass landing page', () => {
       'Your team’s passwords.',
     );
     await expect(
-      page.getByRole('button', { name: 'Connect to node' }).first(),
+      page.getByRole('button', { name: 'Sign in' }).first(),
     ).toBeVisible();
     await expect(
       page.getByRole('link', { name: 'Get Calimero Desktop' }).first(),
@@ -83,8 +83,8 @@ test.describe('Mero Pass landing page', () => {
     await expect(first).toHaveAttribute('open', '');
   });
 
-  test('Connect to node opens the node picker', async ({ page }) => {
-    await page.getByRole('button', { name: 'Connect to node' }).first().click();
+  test('Sign in opens the node picker', async ({ page }) => {
+    await page.getByRole('button', { name: 'Sign in' }).first().click();
     // mero-react's LoginModal, rendered over the page rather than on a second
     // page — the dialog is what matters, not its exact copy.
     await expect(page.getByText('Connect to Calimero')).toBeVisible();

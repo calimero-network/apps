@@ -131,7 +131,7 @@ export const driver: AppDriver = {
 
   async login(actor) {
     const page = actor.page;
-    const marketing = page.getByRole("button", { name: "Connect to node", exact: true }).first();
+    const marketing = page.getByRole("button", { name: "Sign in", exact: true }).first();
     const open = page.getByTestId("connect-open-btn");
     await expect(marketing.or(open).first()).toBeVisible({ timeout: 30_000 });
     if (await marketing.isVisible()) await marketing.click();

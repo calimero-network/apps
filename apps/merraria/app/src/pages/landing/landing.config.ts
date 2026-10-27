@@ -76,7 +76,7 @@ export const CONFIG: LandingConfig = {
       heading: "Getting started",
       steps: [
         { title: "Play offline", body: "Start digging immediately with no node and no account. Progress is saved locally." },
-        { title: "Connect a node", body: "Press Connect to node when you want to share a world." },
+        { title: "Connect a node", body: "Press Sign in when you want to share a world." },
         { title: "Create a world", body: "Name it; you get a seed and you own the world." },
         { title: "Invite people", body: "Share the link. Their client generates the same terrain and applies your edits on top." },
       ],

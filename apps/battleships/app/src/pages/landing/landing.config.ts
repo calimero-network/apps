@@ -74,7 +74,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect", body: "Press Connect to node — the Calimero desktop app bundles one, or enter your own node’s URL — or sign in with a Calimero account to play through its relay." },
+        { title: "Connect", body: "Press Sign in — the Calimero desktop app bundles one, or enter your own node’s URL — or sign in with a Calimero account to play through its relay." },
         { title: "Create or join a lobby", body: "A new lobby is a namespace you own. Joining someone else’s means opening their invite link." },
         { title: "Place your fleet", body: "Drag ships onto your grid. The board is saved on this device and only its commitment is sent before play begins." },
         { title: "Take turns", body: "Fire at a square; your opponent’s app answers hit or miss from the board on their device. When one fleet is gone, both boards are revealed and audited, and the lobby records who won." },

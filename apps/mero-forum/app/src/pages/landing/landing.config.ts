@@ -67,7 +67,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and choose your node." },
+        { title: "Connect a node", body: "Press Sign in and choose your node." },
         { title: "Create a forum", body: "A namespace you own. Nothing in it is public." },
         { title: "Post something", body: "Write a post; it replicates to members as their nodes sync." },
         { title: "Invite people", body: "Share the link. Membership is the whole access model." },

@@ -54,6 +54,6 @@ test.describe("app shell", () => {
   test("/login is a redirect, not a second sign-in page", async ({ page }) => {
     await page.goto("/login");
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.locator("button").filter({ hasText: /^Connect to node$/ }).first()).toBeVisible();
+    await expect(page.locator("button").filter({ hasText: /^Sign in$/ }).first()).toBeVisible();
   });
 });

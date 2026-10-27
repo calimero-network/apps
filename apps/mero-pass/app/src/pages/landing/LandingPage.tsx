@@ -298,7 +298,7 @@ export default function LandingPage() {
             className="mp-ld-btn mp-ld-btn--secondary mp-ld-btn--small"
             onClick={connect}
           >
-            <span className="mp-ld-long">Connect to node</span>
+            <span className="mp-ld-long">Sign in</span>
             <span className="mp-ld-short">Connect</span>
           </button>
         </div>
@@ -325,7 +325,7 @@ export default function LandingPage() {
                   className="mp-ld-btn mp-ld-btn--primary"
                   onClick={connect}
                 >
-                  Connect to node
+                  Sign in
                 </button>
                 <Ext
                   href={LINKS.download}
@@ -583,7 +583,7 @@ export default function LandingPage() {
                   className="mp-ld-btn mp-ld-btn--primary"
                   onClick={connect}
                 >
-                  Connect to node
+                  Sign in
                 </button>
                 <Ext
                   href={LINKS.download}

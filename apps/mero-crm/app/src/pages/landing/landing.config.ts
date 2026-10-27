@@ -83,7 +83,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and pick your node in the popup." },
+        { title: "Connect a node", body: "Press Sign in and pick your node in the popup." },
         { title: "Create a workspace and a pipeline", body: "A workspace for the team, then a pipeline with its currency. It starts with five stages you can rename, reorder and re-weight in Settings." },
         { title: "Add your deals", body: "Press N anywhere. Only a title is required; the value accepts shorthand like 12k." },
         { title: "Work the board", body: "Drag deals forward, schedule the next step on each, and let the Activities list tell you what is due today." },

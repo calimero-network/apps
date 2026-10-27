@@ -75,7 +75,7 @@ export const CONFIG: LandingConfig = {
       heading: "Getting started",
       steps: [
         { title: "Play offline first, if you like", body: "The game runs with no node at all, persisting to your browser. Nothing is shared, and nothing needs setting up." },
-        { title: "Connect a node", body: "Press Connect to node to move from a local world to a shared one." },
+        { title: "Connect a node", body: "Press Sign in to move from a local world to a shared one." },
         { title: "Create a world", body: "Pick a name. You get a seed, and the world is yours — you are its owner." },
         { title: "Invite people", body: "Share the link. Their client generates the same terrain from the seed and then applies your overrides." },
       ],

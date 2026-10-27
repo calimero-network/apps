@@ -20,7 +20,7 @@ test.describe("Landing page", () => {
   // already on — and the generated spec beside this file owns that contract.
   test("offers a way to connect", async ({ page }) => {
     await expect(
-      page.locator("button").filter({ hasText: /^Connect to node$/ }).first(),
+      page.locator("button").filter({ hasText: /^Sign in$/ }).first(),
     ).toBeVisible();
   });
 });

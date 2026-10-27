@@ -102,7 +102,7 @@ test.describe("app shell", () => {
     await page.goto("/login");
     await expect(page).toHaveURL(/\/$/);
     await expect(
-      page.locator("button").filter({ hasText: /^Connect to node$/ }).first(),
+      page.locator("button").filter({ hasText: /^Sign in$/ }).first(),
     ).toBeVisible();
   });
 });

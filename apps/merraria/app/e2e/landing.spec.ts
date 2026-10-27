@@ -56,7 +56,7 @@ test.describe("landing page", () => {
     // Leaving it again uncovers the launcher as it was — the landing renders
     // OVER the launcher rather than replacing it, so there is nothing to
     // restore and no second trip through the world animation.
-    await page.locator(".cal-lp-root").getByRole("button", { name: "Connect to node" }).first().click();
+    await page.locator(".cal-lp-root").getByRole("button", { name: "Sign in" }).first().click();
     await expect(page.locator(".cal-lp-root")).toHaveCount(0);
     await expect(page.getByTestId("connect-open-btn")).toBeVisible();
   });
@@ -83,7 +83,7 @@ test.describe("landing page", () => {
     await page.getByTestId("back-to-landing").click();
     await page.getByRole("navigation").getByRole("link", { name: "Docs" }).click();
     await expect(page).toHaveURL(/\/docs$/);
-    await page.locator(".cal-lp-root").getByRole("button", { name: "Connect to node" }).first().click();
+    await page.locator(".cal-lp-root").getByRole("button", { name: "Sign in" }).first().click();
     await expect(page).toHaveURL(/\/$/);
   });
 

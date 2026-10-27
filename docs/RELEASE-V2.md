@@ -84,7 +84,45 @@ cd apps/kv-store/app-cloud
 KV_STORE_WASM=…/kv_store.wasm MEROD_V2_BINARY=…/merod-v2 pnpm test:e2e
 ```
 
-The other frontends still use the v1 client and node discovery. Porting one means
-replacing the node URL + JWT setup with `CalimeroClient` (`signUp`/`signIn` with a
-passkey), `createApp(name, bundle, { initArgs })` instead of context creation, and
-`call`/`view`/`events` for execution and subscriptions.
+Every other frontend runs on `@calimero-apps/cloud` (`packages/cloud`): v1's
+app-facing API by name (`MeroProvider`, `useMero`, the hooks, `admin`, `rpc`,
+`events`) running on release-v2's attested `CalimeroClient`. The mapping:
+
+| v1 | release-v2 |
+| --- | --- |
+| namespace | organization |
+| group / subgroup | the organization / a team (`orgId.teamId`) |
+| context | app instance (context id = hex SHA-256 of the app id) |
+| application id | signed package (`package:<name>[@<version>]`); a bundle hash on a dev cluster |
+| member identity, executor | the account |
+| node login, wallet enrolment | passkey sign-in on the cluster |
+| signed open invitation | invitation token (carried inside v1's shape) |
+| `/sse` | each app's committed event stream |
+
+What the cluster lacks answers `NotOnCloudError` naming the method. The
+provider installs the app's signed package from the registry when the cluster
+lacks it (`packageName`); a development cluster can instead run a raw bundle
+(`VITE_CALIMERO_BUNDLE`, or the page's own `app.wasm`).
+
+Security defaults, all frontends:
+
+- Mock quotes are refused unless a build sets `VITE_CALIMERO_ALLOW_MOCK=true`.
+  Each app's `.env.development` sets it for `pnpm dev` against `merod-v2 local`;
+  `pnpm build` never reads that file.
+- The session token stays in memory; the tab keeps only the refresh token, in
+  `sessionStorage`.
+- Production builds carry a Content-Security-Policy `<meta>`
+  (`@calimero-apps/cloud/vite`): scripts from the page's own origin, requests to
+  the page, the cluster (`VITE_CALIMERO_URL`) and the registry.
+
+Browser smoke for all of them (sign up through each app's own dialog, restore
+the session on reload, the admin API on the cluster, no page errors):
+
+```bash
+MEROD_V2_BINARY=…/merod-v2 node scripts/cloud-frontend-smoke.mjs [app …]
+```
+
+App tests that drive admin flows use `@calimero-apps/cloud/testing`, an
+in-memory cluster. `delegated-execution` is not ported: it demonstrates v1's
+relays and warrants, which Calimero Cloud does not have
+(`apps/delegated-execution/NOT-ON-CLOUD.md`).

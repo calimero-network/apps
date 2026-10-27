@@ -75,7 +75,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and pick your node." },
+        { title: "Connect a node", body: "Press Sign in and pick your node." },
         { title: "Create a workspace", body: "The first person to claim it is the workspace owner." },
         { title: "Make a folder", body: "A new folder can be shared on its own right away." },
         { title: "Write", body: "Documents live inside their folder. Editing is collaborative and merges as you type." },

@@ -25,7 +25,7 @@ test.describe("Landing page (unauthenticated)", () => {
     await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
   });
 
-  test("Connect to node opens the node picker", async ({ page }) => {
+  test("Sign in opens the node picker", async ({ page }) => {
     await page.getByRole("button", { name: /connect to node/i }).first().click();
     // mero-react's LoginModal carries no dialog role, and its body changes
     // with what it finds (a list of local nodes, or straight to a URL field

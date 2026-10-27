@@ -142,7 +142,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and choose your node." },
+        { title: "Connect a node", body: "Press Sign in and choose your node." },
         { title: "Create a project", body: "A namespace you own, with one workbook in it." },
         { title: "Type something", body: "Enter values, or a formula: 94 functions are built in, from SUM and IF to XLOOKUP and TEXT, with autocomplete and inline help." },
         { title: "Invite collaborators", body: "Share the link. Their cursor appears in its own colour as soon as they arrive." },

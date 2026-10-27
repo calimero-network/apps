@@ -76,7 +76,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and pick your node in the popup." },
+        { title: "Connect a node", body: "Press Sign in and pick your node in the popup." },
         { title: "Create a board", body: "A namespace you own, with one board in it." },
         { title: "File an issue", body: "Fill in summary, impact, repro and resolution criteria. The structure is the point — it is what makes the issue usable by someone who is not you." },
         { title: "Triage together", body: "Status, priority, assignee and labels are all editable by any member, and everyone sees the board move as nodes sync." },

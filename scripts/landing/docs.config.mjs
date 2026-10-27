@@ -48,7 +48,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
+          { title: 'Connect a node', body: 'Press Sign in. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
           { title: 'Open a table', body: 'A new table is a context in a namespace you own. Joining someone else\u2019s means opening their invite link.' },
           { title: 'Take a seat', body: 'Claim white or black and give yourself a name. The game begins when both chairs are taken.' },
           { title: 'Play', body: 'Click a piece and then a square. The squares offered are the legal moves the contract handed your client, so the board never shows a move the node would refuse.' },
@@ -111,7 +111,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
+          { title: 'Connect a node', body: 'Press Sign in. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
           { title: 'Start a scene', body: 'Name it and press New scene. That creates a namespace you own and a scene inside it, with you as its admin.' },
           { title: 'Build', body: 'Shift+A adds a primitive. Drag the gizmo to move it; G, R and S switch between move, rotate and scale, Tab models the mesh — 1, 2 and 3 pick vertices, edges or faces; E, I, Ctrl+B and Ctrl+R extrude, inset, bevel and loop-cut — and Ctrl+Z undoes. Mark seams and press U to unwrap, then Bake & texture paints a smart material onto it. Add → Examples loads finished assets built the same way.' },
           { title: 'Invite', body: 'Share mints a link. Whoever opens it can watch at once; tick Can edit beside their name to let them build too.' },
@@ -178,7 +178,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
+          { title: 'Connect a node', body: 'Press Sign in. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
           { title: 'Open an arena', body: 'A new arena is a context in a namespace you own. Joining someone else\u2019s means opening their invite link.' },
           { title: 'Pick a fighter and a corner', body: 'Choose Kinetic, Cryo, Inferno or Jinzo and take an open corner. The fight starts when both corners are taken and both fighters are in the arena.' },
           { title: 'Fight', body: 'A and D move, W jumps, S crouches. J punches, K kicks, L blocks and I throws your special. Crouch with J for an uppercut, crouch with K for a sweep, and K in the air for a flying kick.' },
@@ -240,7 +240,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect', body: 'Press Connect to node — the Calimero desktop app bundles one, or enter your own node’s URL — or sign in with a Calimero account to play through its relay.' },
+          { title: 'Connect', body: 'Press Sign in — the Calimero desktop app bundles one, or enter your own node’s URL — or sign in with a Calimero account to play through its relay.' },
           { title: 'Create or join a lobby', body: 'A new lobby is a namespace you own. Joining someone else’s means opening their invite link.' },
           { title: 'Place your fleet', body: 'Drag ships onto your grid. The board is saved on this device and only its commitment is sent before play begins.' },
           { title: 'Take turns', body: 'Fire at a square; your opponent’s app answers hit or miss from the board on their device. When one fleet is gone, both boards are revealed and audited, and the lobby records who won.' },
@@ -303,7 +303,7 @@ export const DOCS = {
         heading: 'Getting started',
         steps: [
           { title: 'Play offline first, if you like', body: 'The game runs with no node at all, persisting to your browser. Nothing is shared, and nothing needs setting up.' },
-          { title: 'Connect a node', body: 'Press Connect to node to move from a local world to a shared one.' },
+          { title: 'Connect a node', body: 'Press Sign in to move from a local world to a shared one.' },
           { title: 'Create a world', body: 'Pick a name. You get a seed, and the world is yours — you are its owner.' },
           { title: 'Invite people', body: 'Share the link. Their client generates the same terrain from the seed and then applies your overrides.' },
         ],
@@ -364,7 +364,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and pick the node the popup discovers, or enter a URL.' },
+          { title: 'Connect a node', body: 'Press Sign in and pick the node the popup discovers, or enter a URL.' },
           { title: 'Create a team', body: 'A team is a namespace you own, with one calendar inside it.' },
           { title: 'Set your name', body: 'Set a username so your teammates see a name instead of a key.' },
           { title: 'Create an event', body: 'Choose shared or private when you create it. Shared events can be given invitees; private ones cannot, because they never leave your node.' },
@@ -425,7 +425,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and choose your node in the popup, or open the app from the Calimero desktop.' },
+          { title: 'Connect a node', body: 'Press Sign in and choose your node in the popup, or open the app from the Calimero desktop.' },
           { title: 'Create a workspace', body: 'Name it and pick the name people will see you by. You are its admin.' },
           { title: 'Create channels', body: 'Press + next to Channels. Choose Public for anyone in the workspace, or Private for only the people you add.' },
           { title: 'Invite your team', body: 'Share an invite link. Whoever opens it joins the workspace from their own node.' },
@@ -491,7 +491,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and choose your node in the popup.' },
+          { title: 'Connect a node', body: 'Press Sign in and choose your node in the popup.' },
           { title: 'Create a board', body: 'You are its owner. Name it, and set a description if it needs one.' },
           { title: 'Draw something', body: 'Add frames, shapes and text. Each element is a separate record, so collaborators editing different elements never queue behind each other.' },
           { title: 'Invite editors', body: 'Grant the editor role to the people who should be able to change things; everyone else can look.' },
@@ -555,7 +555,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and pick your node.' },
+          { title: 'Connect a node', body: 'Press Sign in and pick your node.' },
           { title: 'Create a workspace', body: 'The first person to claim it is the workspace owner.' },
           { title: 'Make a folder', body: 'A new folder can be shared on its own right away.' },
           { title: 'Write', body: 'Documents live inside their folder. Editing is collaborative and merges as you type.' },
@@ -623,7 +623,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and choose your node.' },
+          { title: 'Connect a node', body: 'Press Sign in and choose your node.' },
           { title: 'Create your company', body: 'Then an audience inside it, such as “All investors”.' },
           { title: 'Set it up', body: 'Name the company, pick a cadence and add categories — one click adds a starter set.' },
           { title: 'Publish and invite', body: 'Write from a template, publish, and share the invitation link with your investors.' },
@@ -682,7 +682,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and choose your node.' },
+          { title: 'Connect a node', body: 'Press Sign in and choose your node.' },
           { title: 'Create a forum', body: 'A namespace you own. Nothing in it is public.' },
           { title: 'Post something', body: 'Write a post; it replicates to members as their nodes sync.' },
           { title: 'Invite people', body: 'Share the link. Membership is the whole access model.' },
@@ -746,7 +746,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and pick your node in the popup.' },
+          { title: 'Connect a node', body: 'Press Sign in and pick your node in the popup.' },
           { title: 'Create a workspace and a pipeline', body: 'A workspace for the team, then a pipeline with its currency. It starts with five stages you can rename, reorder and re-weight in Settings.' },
           { title: 'Add your deals', body: 'Press N anywhere. Only a title is required; the value accepts shorthand like 12k.' },
           { title: 'Work the board', body: 'Drag deals forward, schedule the next step on each, and let the Activities list tell you what is due today.' },
@@ -812,7 +812,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and pick your node in the popup.' },
+          { title: 'Connect a node', body: 'Press Sign in and pick your node in the popup.' },
           { title: 'Start a workspace', body: 'Name it for your team. You are its first admin; invite teammates and add them to the team from Team.' },
           { title: 'Build a form', body: 'Start from Contact us, Request a demo or Feedback, or a blank form, and add the questions you need.' },
           { title: 'Collect responses', body: 'Issue a form key for your website from the form’s Connect tab, or enter a response by hand from Preview.' },
@@ -876,7 +876,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and pick your node in the popup.' },
+          { title: 'Connect a node', body: 'Press Sign in and pick your node in the popup.' },
           { title: 'Create a board', body: 'A namespace you own, with one board in it.' },
           { title: 'File an issue', body: 'Fill in summary, impact, repro and resolution criteria. The structure is the point — it is what makes the issue usable by someone who is not you.' },
           { title: 'Triage together', body: 'Status, priority, assignee and labels are all editable by any member, and everyone sees the board move as nodes sync.' },
@@ -941,7 +941,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and pick your node.' },
+          { title: 'Connect a node', body: 'Press Sign in and pick your node.' },
           { title: 'Create a document', body: 'Choose a canvas size. You are the owner.' },
           { title: 'Work in layers', body: 'Add raster, text and fill layers, group them in folders, and reorder freely.' },
           { title: 'Invite editors', body: 'Grant the editor role. Everyone else can watch the document change without being able to change it.' },
@@ -1005,7 +1005,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and choose your node.' },
+          { title: 'Connect a node', body: 'Press Sign in and choose your node.' },
           { title: 'Create a project', body: 'A namespace you own, with one workbook in it.' },
           { title: 'Type something', body: 'Enter values, or a formula: 94 functions are built in, from SUM and IF to XLOOKUP and TEXT, with autocomplete and inline help.' },
           { title: 'Invite collaborators', body: 'Share the link. Their cursor appears in its own colour as soon as they arrive.' },
@@ -1133,7 +1133,7 @@ export const DOCS = {
         heading: 'Getting started',
         steps: [
           { title: 'Use a browser', body: 'This app is web only. The desktop is not a supported target — it is not blocked there and does not crash; the integration around it is what is unsupported.' },
-          { title: 'Connect a node', body: 'Press Connect to node and choose your node.' },
+          { title: 'Connect a node', body: 'Press Sign in and choose your node.' },
           { title: 'Create a stream', body: 'A namespace you own. You are its admin.' },
           { title: 'Watch the numbers', body: 'Throughput and delivery are reported as you go. That measurement is the actual output of this app.' },
         ],
@@ -1196,7 +1196,7 @@ export const DOCS = {
         heading: 'Getting started',
         steps: [
           { title: 'Play offline', body: 'Start digging immediately with no node and no account. Progress is saved locally.' },
-          { title: 'Connect a node', body: 'Press Connect to node when you want to share a world.' },
+          { title: 'Connect a node', body: 'Press Sign in when you want to share a world.' },
           { title: 'Create a world', body: 'Name it; you get a seed and you own the world.' },
           { title: 'Invite people', body: 'Share the link. Their client generates the same terrain and applies your edits on top.' },
         ],

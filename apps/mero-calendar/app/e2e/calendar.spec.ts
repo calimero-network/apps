@@ -15,7 +15,7 @@ test.describe("Route guards", () => {
     await page.goto("/teams");
     await expect(page).toHaveURL(/\/$/, { timeout: 10_000 });
     await expect(
-      page.locator("button").filter({ hasText: /^Connect to node$/ }).first(),
+      page.locator("button").filter({ hasText: /^Sign in$/ }).first(),
     ).toBeVisible();
   });
 

@@ -148,7 +148,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and choose your node in the popup, or open the app from the Calimero desktop." },
+        { title: "Connect a node", body: "Press Sign in and choose your node in the popup, or open the app from the Calimero desktop." },
         { title: "Create a workspace", body: "Name it and pick the name people will see you by. You are its admin." },
         { title: "Create channels", body: "Press + next to Channels. Choose Public for anyone in the workspace, or Private for only the people you add." },
         { title: "Invite your team", body: "Share an invite link. Whoever opens it joins the workspace from their own node." },

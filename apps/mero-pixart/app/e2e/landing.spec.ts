@@ -23,7 +23,7 @@ test.describe("Landing page", () => {
   // app.
   test("offers a way to connect", async ({ page }) => {
     await expect(
-      page.locator("button").filter({ hasText: /^Connect to node$/ }).first(),
+      page.locator("button").filter({ hasText: /^Sign in$/ }).first(),
     ).toBeVisible();
   });
 });

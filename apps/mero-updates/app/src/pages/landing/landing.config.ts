@@ -70,7 +70,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and choose your node." },
+        { title: "Connect a node", body: "Press Sign in and choose your node." },
         { title: "Create your company", body: "Then an audience inside it, such as “All investors”." },
         { title: "Set it up", body: "Name the company, pick a cadence and add categories — one click adds a starter set." },
         { title: "Publish and invite", body: "Write from a template, publish, and share the invitation link with your investors." },
