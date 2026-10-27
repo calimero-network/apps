@@ -1,0 +1,425 @@
+# Two-node spec smoke test for the board service.
+#
+# Exercises the spec's mutate methods end-to-end on real nodes (what the
+# in-process converge harness can't cover):
+#   - the board service installed + a context created from the bundle
+#   - boards, lists, cards, checklist items and labels replicating across two
+#     peers
+#   - the authored-Comment gate: a non-author edit is rejected on a real signed
+#     delta path (the per-entry authorization the bare converge harness can't
+#     test). Comments are an `Authored<IndexedMap>`, so every node refuses it.
+#
+# Usage (run from the mero-board app root, after a dev bundle has been built):
+#   cd logic && merobox bootstrap run workflows/smoke.yml
+#
+# Pre-flight: `pnpm logic:build` must have produced
+# `logic/dist/com.calimero.mero-board.mpk` (named after the package;
+# the version lives in the manifest).
+
+name: board spec smoke
+description: Verify the board service replicates boards, lists, cards, checklists and comments across two nodes and gates comment edits.
+log_level: info
+# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
+# `KeyDelivery timed out`.
+#
+# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
+# calimero devnet boot-node. Every container then spends its startup dialing
+# unreachable public addresses, and the node log fills with
+#
+#     libp2p_relay: Dropping in-flight connect request because we are at capacity
+#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
+#
+# until the join gives up with
+#
+#     join_group: direct namespace-join request found no reachable mesh peer
+#     join_group: join response contained no group key
+#     KeyDelivery timed out for group ContextGroupId(...)
+#
+# The peers never found each other; it was never a timing race. `e2e_mode`
+# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
+# turns multicast discovery on (which is what populates the kad table on a
+# single Docker bridge) and tightens the sync intervals. merobox's own
+# `apply_e2e_defaults` documents measuring this exact failure with it off.
+e2e_mode: true
+
+nodes:
+  count: 2
+  prefix: app-node
+  # ponytail: pinned off `:edge` to the rc-matching tag so the verify merod
+  # matches the SDK the logic pins. Bump in lockstep with logic/Cargo.toml's
+  # SDK tag, or bootstrap skews.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.87
+  # High base ports to avoid colliding with a host-native merod on the
+  # defaults (2428 P2P / 2528 RPC). Each node gets base + i.
+  base_port: 12428      # P2P / swarm
+  base_rpc_port: 12528  # JSON-RPC / admin API
+nuke_on_start: true
+nuke_on_end: true
+wait_timeout: 90
+
+steps:
+  - type: install_application
+    name: Install board bundle on node 1
+    node: app-node-1
+    dev: true
+    path: dist/com.calimero.mero-board.mpk
+    outputs:
+      app_id: applicationId
+  - type: install_application
+    name: Install board bundle on node 2
+    node: app-node-2
+    dev: true
+    path: dist/com.calimero.mero-board.mpk
+
+  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
+  # container health, which is not the same as ready: on a genuinely cold
+  # host `create_namespace` returns 500 about four seconds into the run.
+  # This was masked while the teardown left the previous scenario's
+  # containers behind, because the nodes were then already warm.
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+  - type: create_namespace
+    name: Create namespace on node 1
+    node: app-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+  - type: create_context
+    name: Create folder context on node 1
+    node: app-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: board
+    outputs:
+      folder_ctx: contextId
+  - type: create_namespace_invitation
+    name: Issue namespace invitation
+    node: app-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      invitation: invitation
+  - type: wait
+    seconds: 12
+  - type: join_namespace
+    name: Node 2 joins namespace
+    node: app-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{invitation}}'
+
+  # --- boards and lists ---
+  - type: call
+    name: create_board
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: create_board
+    args: { name: "Launch", rank: null }
+    outputs:
+      board_id: result.output
+  - type: call
+    name: rename_board
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: rename_board
+    args: { board_id: '{{board_id}}', name: "Q4 launch" }
+  - type: call
+    name: move_board
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: move_board
+    args: { board_id: '{{board_id}}', rank: "r" }
+  - type: call
+    name: create_list Todo
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: create_list
+    args: { board_id: '{{board_id}}', name: "Todo", rank: null }
+    outputs:
+      todo_id: result.output
+  - type: call
+    name: create_list Doing
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: create_list
+    args: { board_id: '{{board_id}}', name: "Doing", rank: null }
+    outputs:
+      doing_id: result.output
+  - type: call
+    name: create_list Spare
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: create_list
+    args: { board_id: '{{board_id}}', name: "Spare", rank: null }
+    outputs:
+      spare_id: result.output
+  - type: call
+    name: rename_list
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: rename_list
+    args: { list_id: '{{spare_id}}', name: "Spare list" }
+  - type: call
+    name: move_list
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: move_list
+    args: { list_id: '{{spare_id}}', rank: "a" }
+  - type: call
+    name: delete_list (empty)
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: delete_list
+    args: { list_id: '{{spare_id}}' }
+  - type: wait_for_sync
+    name: Sync after board setup
+    context_id: '{{folder_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+  - type: call
+    name: list_boards on node-2
+    node: app-node-2
+    context_id: '{{folder_ctx}}'
+    method: list_boards
+    args: { include_archived: false }
+    outputs:
+      board_0: result.output.0
+  - type: json_assert
+    name: the renamed board replicated
+    statements:
+      - 'json_subset({{board_0}}, {"name": "Q4 launch", "rank": "r"})'
+  - type: call
+    name: get_board on node-2
+    node: app-node-2
+    context_id: '{{folder_ctx}}'
+    method: get_board
+    args: { board_id: '{{board_id}}' }
+    outputs:
+      list_0: result.output.lists.0
+      list_1: result.output.lists.1
+  # merobox has no len() helper, so check the two surviving lists by position
+  # (Todo, Doing by rank); the deleted Spare list would have sorted first.
+  - type: json_assert
+    name: two lists remain after the delete
+    statements:
+      - 'json_subset({{list_0}}, {"id": "{{todo_id}}", "name": "Todo"})'
+      - 'json_subset({{list_1}}, {"id": "{{doing_id}}", "name": "Doing"})'
+
+  # --- cards ---
+  - type: call
+    name: create_card
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: create_card
+    args: { board_id: '{{board_id}}', list_id: '{{todo_id}}', title: "Write the post", description: "Draft in doc", assignee: null, due_at: 1767225600000, labels: ["marketing"], rank: null }
+    outputs:
+      card_id: result.output
+  - type: call
+    name: move_card to Doing
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: move_card
+    args: { card_id: '{{card_id}}', list_id: '{{doing_id}}', rank: "n" }
+  - type: call
+    name: set_card_title
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: set_card_title
+    args: { card_id: '{{card_id}}', title: "Write the launch post" }
+  - type: call
+    name: set_card_description
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: set_card_description
+    args: { card_id: '{{card_id}}', description: "Draft is in the shared doc." }
+  - type: call
+    name: set_card_assignee
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: set_card_assignee
+    args: { card_id: '{{card_id}}', assignee: "alice" }
+  - type: call
+    name: set_card_due
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: set_card_due
+    args: { card_id: '{{card_id}}', due_at: 1767312000000 }
+  - type: call
+    name: add_label
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: add_label
+    args: { card_id: '{{card_id}}', label: "launch" }
+  - type: call
+    name: remove_label
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: remove_label
+    args: { card_id: '{{card_id}}', label: "marketing" }
+  - type: call
+    name: add_checklist_item
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: add_checklist_item
+    args: { card_id: '{{card_id}}', text: "Outline", rank: null }
+    outputs:
+      item_id: result.output
+  - type: call
+    name: set_checklist_item_text
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: set_checklist_item_text
+    args: { item_id: '{{item_id}}', text: "Outline the post" }
+  - type: call
+    name: set_checklist_item_done
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: set_checklist_item_done
+    args: { item_id: '{{item_id}}', done: true }
+  - type: call
+    name: move_checklist_item
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: move_checklist_item
+    args: { item_id: '{{item_id}}', rank: "r" }
+  - type: wait_for_sync
+    name: Sync after card edits
+    context_id: '{{folder_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+  - type: call
+    name: get_card on node-2
+    node: app-node-2
+    context_id: '{{folder_ctx}}'
+    method: get_card
+    args: { card_id: '{{card_id}}' }
+    outputs:
+      card_after_edits: result.output.card
+      item_0: result.output.checklist.0
+  - type: json_assert
+    name: the card replicated with every edit
+    statements:
+      - 'json_subset({{card_after_edits}}, {"title": "Write the launch post", "list_id": "{{doing_id}}", "rank": "n", "assignee": "alice", "due_at": 1767312000000, "labels": ["launch"], "checklist_done": 1, "checklist_total": 1})'
+      - 'json_subset({{item_0}}, {"text": "Outline the post", "done": true, "rank": "r"})'
+  - type: call
+    name: list_cards by assignee on node-2
+    node: app-node-2
+    context_id: '{{folder_ctx}}'
+    method: list_cards
+    args: { board_id: null, list_id: null, assignee: "alice", label: null, include_archived: false }
+    outputs:
+      alice_card_0: result.output.0
+  - type: json_assert
+    name: list_cards finds the card by assignee
+    statements:
+      - 'json_subset({{alice_card_0}}, {"id": "{{card_id}}", "assignee": "alice"})'
+
+  # --- comments and the author gate ---
+  - type: call
+    name: add_comment
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: add_comment
+    args: { card_id: '{{card_id}}', body: "Venue confirmed" }
+    outputs:
+      comment_id: result.output
+  - type: wait_for_sync
+    name: Sync after add_comment
+    context_id: '{{folder_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+  - type: call
+    name: Non-author edit_comment from node-2 must be rejected
+    node: app-node-2
+    context_id: '{{folder_ctx}}'
+    method: edit_comment
+    args: { comment_id: '{{comment_id}}', body: "malicious edit" }
+    expected_failure: true
+    outputs:
+      non_author_edit_error: error
+  - type: assert
+    name: the rejection happened
+    statements:
+      - "is_set({{non_author_edit_error}})"
+  - type: call
+    name: edit_comment by the author
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: edit_comment
+    args: { comment_id: '{{comment_id}}', body: "Venue confirmed for the 12th" }
+  - type: call
+    name: delete_comment by the author
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: delete_comment
+    args: { comment_id: '{{comment_id}}' }
+
+  # --- archive, remove, delete ---
+  - type: call
+    name: remove_checklist_item
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: remove_checklist_item
+    args: { item_id: '{{item_id}}' }
+  - type: call
+    name: set_card_archived
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: set_card_archived
+    args: { card_id: '{{card_id}}', archived: true }
+  - type: call
+    name: set_board_archived
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: set_board_archived
+    args: { board_id: '{{board_id}}', archived: true }
+  - type: wait_for_sync
+    name: Sync after archive
+    context_id: '{{folder_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+  - type: call
+    name: get_board on node-2 after archive
+    node: app-node-2
+    context_id: '{{folder_ctx}}'
+    method: get_board
+    args: { board_id: '{{board_id}}' }
+    outputs:
+      archived_card_0: result.output.cards.0
+  - type: json_assert
+    name: the archived card stays on the board, flagged archived
+    statements:
+      - 'json_subset({{archived_card_0}}, {"id": "{{card_id}}", "archived": true})'
+  - type: call
+    name: delete_card by the creator
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: delete_card
+    args: { card_id: '{{card_id}}' }
+  - type: call
+    name: delete_board by the creator
+    node: app-node-1
+    context_id: '{{folder_ctx}}'
+    method: delete_board
+    args: { board_id: '{{board_id}}' }
+  - type: wait_for_sync
+    name: Sync after delete_board
+    context_id: '{{folder_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+  - type: call
+    name: list_boards on node-2 after delete
+    node: app-node-2
+    context_id: '{{folder_ctx}}'
+    method: list_boards
+    args: { include_archived: true }
+    outputs:
+      boards_after_delete: result.output
+  - type: json_assert
+    name: the folder is empty again on node-2
+    statements:
+      - 'json_equal({{boards_after_delete}}, [])'

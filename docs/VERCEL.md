@@ -143,6 +143,7 @@ keep them that way, and republish the bundle if a domain changes.
 | `hyperfeed` | `hyperfeed` | `apps/hyperfeed/app` | `dist` | https://hyperfeed.me (www redirects here) |
 | `kv-store` | `mero-kv-store` | `apps/kv-store/app` | `dist` | https://mero-kv-store.vercel.app |
 | `mero-blocks` | `mero-blocks` | `apps/mero-blocks/app` | `dist` | https://mero-blocks.vercel.app/ |
+| `mero-board` | `mero-board` (to create) | `apps/mero-board/app` | `dist` | https://mero-board.vercel.app |
 | `mero-calendar` | `mero-calendar` | `apps/mero-calendar/app` | `dist` | https://mero-calendar.vercel.app |
 | `mero-chat` | `mero-chat-pwa` | `apps/mero-chat/app` | `dist` | https://chat.hyperfeed.me |
 | `mero-chess` | `mero-chess` | `apps/mero-chess/app` | `dist` | https://mero-chess.vercel.app ⚠️ not created yet |
@@ -228,6 +229,7 @@ exceptions, noted below:
 | `battleships` | `com.calimero.battleships` |
 | `kv-store` | `com.calimero.kv-store` |
 | `mero-blocks` | `com.calimero.mero-blocks` |
+| `mero-board` | `com.calimero.mero-board` |
 | `mero-calendar` | `com.calimero.mero-calendar` |
 | `mero-chat` | `com.calimero.chat` ⚠️ |
 | `mero-chess` | `com.calimero.mero-chess` |

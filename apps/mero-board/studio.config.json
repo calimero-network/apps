@@ -1,0 +1,23 @@
+{
+  "appName": "mero-board",
+  "appVersion": "0.1.0",
+  "package": "com.calimero.mero-board",
+  "frontendUrl": "https://mero-board.vercel.app",
+  "metadata": {
+    "name": "mero-board",
+    "description": "A private, real-time kanban board for a team - folders of boards, lists and cards you drag together",
+    "author": "Calimero",
+    "route": "/board"
+  },
+  "theme": {
+    "primaryColor": "#2563EB",
+    "accentColor": "#F97316",
+    "style": "clean-modern"
+  },
+  "services": [
+    {
+      "name": "board",
+      "crate": "mero-board"
+    }
+  ]
+}

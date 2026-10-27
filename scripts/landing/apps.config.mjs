@@ -666,6 +666,47 @@ export const APPS = {
   },
 
 
+  'mero-board': {
+    displayName: 'Mero Board',
+    e2eDir: 'e2e',
+    // The app ships its own light/dark switch; the landing toggle writes the
+    // same key so the choice carries through sign-in instead of resetting.
+    themeStorageKey: 'app:theme',
+    availability: 'web+desktop',
+    overview: {
+      headline: 'Kanban boards your team holds. No vendor in the middle.',
+      comparison: {
+        heading: 'A kanban board, without the landlord',
+        sub: 'Folders, boards, lists and cards you drag between them. The difference is where the board lives, and who can read it.',
+        themLabel: 'A typical hosted kanban tool',
+        rows: [
+          { label: 'Where the board lives', them: 'In the vendor’s database', us: 'On your node and your teammates’ nodes' },
+          { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only the members of the folder' },
+          { label: 'Adding a teammate', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
+          { label: 'Letting an agent help', them: 'A paid integration, if there is one', us: 'An MCP server that talks to your own node' },
+          { label: 'If the service goes away', them: 'Your boards may go with it', us: 'Your node still has every card' },
+        ],
+      },
+      closing: {
+        title: 'Set up a board',
+        body: 'Connect a node, or install the desktop app that bundles one, then invite your team to a folder.',
+      },
+    },
+    trust: ['Boards you drag together', 'MCP server included', 'Private to your team'],
+    explainer: [
+      'A kanban board for any team. A workspace holds folders, a folder holds boards, a board holds the lists you define, and a list holds cards you drag between them. Each folder is a Calimero context that replicates directly between its members’ nodes, so the board is a thing the team has, not a tenant in somebody else’s database.',
+      'It also ships an MCP server, so an AI agent can file a card, move it along and tick its checklist for you, by talking to your own node. Nothing about the board passes through a service you do not run.',
+    ],
+    features: [
+      { icon: 'Refresh', title: 'Real-time board', body: 'Drag a card and it moves on every member’s node as they sync. Concurrent moves converge to one order.' },
+      { icon: 'Package', title: 'Lists you define', body: 'Todo, doing, done, or whatever your team works in. Add, rename and reorder columns as the work changes.' },
+      { icon: 'FileCheck', title: 'Checklists and due dates', body: 'A card carries a description, an assignee, a due date, labels, a checklist and a comment thread.' },
+      { icon: 'Zap', title: 'MCP server', body: 'Hand the board to an AI agent over Model Context Protocol, so it can file and move cards for you.' },
+      { icon: 'Shield', title: 'Private to your team', body: 'A folder replicates only to the people who joined it, not to a workspace in a product that reserves the right to read it.' },
+    ],
+  },
+
+
   'mero-pixart': {
     displayName: 'Mero PixArt',
     e2eDir: 'e2e',
