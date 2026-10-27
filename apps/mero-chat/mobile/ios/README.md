@@ -41,7 +41,7 @@ The app draws Mero Chat the way the web app draws it below 1024px, from the
 same tokens (`packages/glass/src/glass.css`, `app/src/index.css`), light and
 dark, in Figtree (bundled, SIL OFL, `Resources/Fonts`):
 
-- **Landing:** the header card, the hero and the ink "Continue with Calimero" pill.
+- **Landing:** a nav bar with the mark and "Mero Chat", the hero, a channel preview, the features, and the ink "Continue with Calimero" button pinned at the bottom.
 - **Workspace entry:** the web app's entry card (select, name yourself, create, join from a link).
 - **Sidebar:** a full-screen panel with the logo, the workspace switcher,
   Browse Channels, CHANNELS (`#`, or a lock for a private channel) and DIRECT
