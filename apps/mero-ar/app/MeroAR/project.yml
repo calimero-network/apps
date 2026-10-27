@@ -12,11 +12,11 @@ options:
 # `MeroClient.signInWithCloud`), the relay session every contract call goes
 # through, and the node admin API for node sign-in.
 #
-# Pinned to a release, `from: 0.3.0` (typed login failures,
-# `RpcError.reason`, and an account whose relay is dead or whose listing
-# failed reported as such, never as empty), so a clean build cannot pick up
-# whatever landed on the
-# SDK's `master` that morning.
+# Pinned to a release, `from: 0.4.0` (the security-review fixes: https-only
+# remote hosts, enrolment callbacks need a pending state, bounded invites and
+# responses, Keychain account state cleared on sign-out; plus joins on core
+# rc.90 relays and blobs through the relay), so a clean build cannot pick up
+# whatever landed on the SDK's `master` that morning.
 #
 # Local development against an unmerged SDK checkout: swap the two lines below
 # for `path: ../../../swift-sdk` (or your worktree), regenerate, and do NOT
@@ -24,7 +24,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    from: 0.3.0
+    from: 0.4.0
 
 targets:
   MeroAR:
