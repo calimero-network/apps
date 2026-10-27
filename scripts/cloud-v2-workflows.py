@@ -3,8 +3,8 @@
 
 Each runs on its own 3-node merod-v2 cluster through merobox's cloud-v2 backend.
 Needs MEROD_V2_BINARY and the contracts built
-(cargo build --workspace --target wasm32-unknown-unknown --profile app-release);
-APPS_WASM_DIR defaults to that target directory.
+(scripts/build-cloud-v2-wasm.py: `cargo mero build`, so each carries its ABI);
+APPS_WASM_DIR defaults to target/cloud-v2-wasm.
 
 Usage: scripts/cloud-v2-workflows.py [--json out.json] [workflow.yml ...]
 Exit status is non-zero when a workflow in cloud-v2-workflows-baseline.json fails.
@@ -35,8 +35,10 @@ def main() -> int:
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
     os.environ.setdefault(
-        "APPS_WASM_DIR", str(ROOT / "target/wasm32-unknown-unknown/app-release")
+        "APPS_WASM_DIR", str(ROOT / "target/cloud-v2-wasm")
     )
+    # The soak (fuzzy_test) runs for its own duration nightly; here, briefly.
+    os.environ.setdefault("MEROBOX_FUZZY_SECONDS", "30")
     from merobox.cloud_v2 import run_workflow
 
     files = args.workflows or sorted(ROOT.glob("apps/*/logic/workflows/cloud-v2/*.yml"))

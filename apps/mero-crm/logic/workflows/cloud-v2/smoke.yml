@@ -17,8 +17,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_crm.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: crm-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-crm
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0

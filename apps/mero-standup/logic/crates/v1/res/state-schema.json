@@ -1,0 +1,160 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Decision": {
+      "kind": "record",
+      "doc": "One logged decision. Immutable once written.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A short name for the decision, the line people will scan."
+        },
+        {
+          "name": "decision",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What was decided."
+        },
+        {
+          "name": "rationale",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Why: the context and the alternatives, for whoever asks in six months."
+        },
+        {
+          "name": "supersedes",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "The decision this one replaces, if any. A claim, checked on read."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroStandup": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "updates",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Update"
+            },
+            "crdt_type": "authored_sorted_map"
+          },
+          "doc": "Day (`YYYY-MM-DD`) → update, one entry per account per day."
+        },
+        {
+          "name": "decisions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Decision"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Decision id → decision. Write-once: a record, not a document."
+        },
+        {
+          "name": "profiles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Profile"
+            }
+          },
+          "doc": "The display name each account chose, in that account's own slot."
+        }
+      ]
+    },
+    "Profile": {
+      "kind": "record",
+      "doc": "The display name one account chose for itself.\n\nIn the contract rather than only in the browser because everyone ELSE has\nto see it. A claim, not an identity: names are not unique, and nothing is\nauthorised by one.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Update": {
+      "kind": "record",
+      "doc": "One member's standup for one day.\n\nNo author and no day field: the author is the entry's owner stamp and the\nday is its key. A field could say anything; those two cannot be forged.",
+      "fields": [
+        {
+          "name": "done",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What got done since the last update."
+        },
+        {
+          "name": "next",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What is next."
+        },
+        {
+          "name": "blockers",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What is in the way. Empty means nothing is."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "cleared",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Withdrawn by its author. A flag rather than a removal, so the entry\nstays the author's and posting again for the same day is an update."
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "MeroStandup",
+  "state_version": 1
+}

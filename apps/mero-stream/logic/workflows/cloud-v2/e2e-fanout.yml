@@ -28,8 +28,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-stream
 - name: Settle before the mesh joins
   type: wait
   seconds: 1.0

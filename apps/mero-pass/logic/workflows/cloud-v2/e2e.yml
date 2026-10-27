@@ -3,10 +3,6 @@
 # Dropped (no release-v2 counterpart):
 #   assert statement on a dropped step's output x3: checks what the dropped steps did
 #   get_member_capabilities x3: capabilities are v1 governance
-#   set_default_capabilities x1: capabilities are v1 governance
-#   set_group_metadata x1: group metadata is v1 governance
-#   set_member_capabilities x2: capabilities are v1 governance
-#   set_subgroup_visibility x1: subgroup visibility is v1 governance
 #   sync_group x3: replication is synchronous
 #   wait_for_sync x9: replication is synchronous: a read sees every committed write
 name: MeroPass — a shared vault across two nodes (2-node e2e)
@@ -30,14 +26,20 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_pass.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-pass
 - name: Install application on Node 2
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_pass.wasm'
   outputs:
-    app_id_2: hash
+    app_id_2_bundle: hash
   account: calimero-node-2
+- type: set
+  values:
+    app_id_2: com.calimero.mero-pass
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0
@@ -46,6 +48,11 @@ steps:
   org_name: Create namespace
   outputs:
     namespace_id: orgId
+  account: calimero-node-1
+- name: Set what an invited member may do (the Member set)
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
   account: calimero-node-1
 - name: Generate identity for Node 2
   type: whoami
@@ -482,6 +489,12 @@ steps:
   member: '{{bob_account}}'
   role: admin
   account: calimero-node-1
+- name: Alice grants the capabilities that role MEANS
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 431
+  account: calimero-node-1
+  member: '{{bob_account}}'
 - name: Settle while the grant projects on Node 2
   type: wait
   seconds: 1.0
@@ -489,8 +502,23 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: Bob's vault
+  join: invite
   outputs:
     bob_vault_group: teamId
+  account: calimero-node-2
+- name: Bob names it
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{bob_vault_group}}'
+  metadata:
+    name: Bob's vault
+    data: {}
+  account: calimero-node-2
+- name: Bob opens it to the space
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{bob_vault_group}}'
+  join: everyone
   account: calimero-node-2
 - name: Bob creates the vault's context
   type: deploy
@@ -499,6 +527,9 @@ steps:
   app_name: Bob creates the vault's context
   init_args: '{"name":"Bob''s vault"}'
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{bob_vault_group}}'
   outputs:
     bob_vault_context: contextId
     bob_vault_key: memberPublicKey
@@ -534,6 +565,12 @@ steps:
   member: '{{bob_account}}'
   role: member
   account: calimero-node-1
+- name: Alice withdraws the admin capabilities
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
+  account: calimero-node-1
+  member: '{{bob_account}}'
 - name: Settle while the demotion projects
   type: wait
   seconds: 1.0

@@ -1,15 +1,7 @@
 # Ported from workflow-mero-docs-open-restricted-collab.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
-#   assert statement on a dropped step's output x2: checks what the dropped steps did
 #   delete_namespace x1: v1 namespace deletion
-#   get_group_info x1: v1 group info
-#   get_group_metadata x1: group metadata is v1 governance
-#   join_subgroup_inheritance x1: subgroup inheritance is v1 governance
-#   json_assert statement on a dropped step's output x1: checks what the dropped steps did
-#   set_default_capabilities x1: capabilities are v1 governance
-#   set_group_metadata x3: group metadata is v1 governance
-#   set_subgroup_visibility x3: subgroup visibility is v1 governance
 #   wait_for_sync x11: replication is synchronous: a read sees every committed write
 name: Mero Docs E2E - Open/Restricted folders + permissions (collab scenario)
 description: "End-to-end coverage for open/restricted folders: core's Open subgroup inheritance, per-member\
@@ -43,8 +35,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-drive-docs
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0
@@ -53,6 +48,15 @@ steps:
   org_name: Alice creates the namespace
   outputs:
     namespace_id: orgId
+  account: calimero-node-1
+- name: Alice sets default member capabilities (37 = CREATE_CONTEXT|JOIN_OPEN_SUBGROUPS|CREATE_SUBGROUP)
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 37
+  account: calimero-node-1
+- name: get_group_info on the namespace (smoke - default caps now set)
+  type: team_list
+  org: '{{namespace_id}}'
   account: calimero-node-1
 - name: Alice creates the per-namespace Registry context
   type: deploy
@@ -83,8 +87,24 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: shared
+  join: invite
   outputs:
     open_folder: teamId
+  account: calimero-node-1
+- name: Mark Shared as Open (namespace members inherit access)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{open_folder}}'
+  join: everyone
+  account: calimero-node-1
+- name: Alice names Shared and colours it (subgroup metadata)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{open_folder}}'
+  metadata:
+    name: Shared
+    data:
+      color: '#1f8a4c'
   account: calimero-node-1
 - name: Alice creates the Docs context inside Shared (the folder's one context)
   type: deploy
@@ -92,6 +112,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{open_folder}}'
   outputs:
     open_docs_ctx: contextId
     alice_docs_key: memberPublicKey
@@ -148,6 +171,18 @@ steps:
   type: assert
   statements:
   - is_set({{bob_reg_key}})
+- name: Bob materialises Open-folder membership via inheritance
+  type: team_join
+  org: '{{namespace_id}}'
+  team: '{{open_folder}}'
+  account: calimero-node-2
+  outputs:
+    bob_folder_key: memberPublicKey
+    bob_was_inherited: wasInherited
+- name: Assert was_inherited is true (Bob is a namespace-only member)
+  type: json_assert
+  statements:
+  - json_equal({{bob_was_inherited}}, true)
 - name: Bob joins the Shared Docs context (key already local)
   type: whoami
   account: calimero-node-2
@@ -160,6 +195,7 @@ steps:
   type: assert
   statements:
   - is_set({{bob_docs_key}})
+  - is_set({{bob_folder_key}})
 - name: Bob reads Alice's doc via inherited access
   type: call
   app: '{{open_docs_ctx}}'
@@ -174,6 +210,17 @@ steps:
   type: assert
   statements:
   - is_set({{bob_read_v0}})
+- name: Bob reads the Shared folder's name from its subgroup metadata
+  type: team_get
+  org: '{{namespace_id}}'
+  team: '{{open_folder}}'
+  account: calimero-node-2
+  outputs:
+    bob_open_name: name
+- name: Assert Bob sees the folder's name Alice set
+  type: assert
+  statements:
+  - equal({{bob_open_name}}, 'Shared')
 - name: Round 1 - Bob edits the shared doc
   type: call
   app: '{{open_docs_ctx}}'
@@ -246,8 +293,24 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: bobs
+  join: invite
   outputs:
     bob_folder: teamId
+  account: calimero-node-2
+- name: Bob marks Bobs as Open
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{bob_folder}}'
+  join: everyone
+  account: calimero-node-2
+- name: Bob names Bobs and colours it (subgroup metadata)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{bob_folder}}'
+  metadata:
+    name: Bobs
+    data:
+      color: '#2266dd'
   account: calimero-node-2
 - name: Bob creates a Docs context inside his folder
   type: deploy
@@ -255,6 +318,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{bob_folder}}'
   outputs:
     bob_docs_own_ctx: contextId
     bob_own_docs_key: memberPublicKey
@@ -317,8 +383,24 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: private
+  join: invite
   outputs:
     priv_folder: teamId
+  account: calimero-node-1
+- name: Mark Private as Restricted (no inheritance)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{priv_folder}}'
+  join: invite
+  account: calimero-node-1
+- name: Alice names Private and colours it (subgroup metadata)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{priv_folder}}'
+  metadata:
+    name: Private
+    data:
+      color: '#aa0000'
   account: calimero-node-1
 - name: Alice creates a Docs context inside Private
   type: deploy
@@ -326,6 +408,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{priv_folder}}'
   outputs:
     priv_docs_ctx: contextId
     alice_priv_key: memberPublicKey
@@ -355,6 +440,7 @@ steps:
   team: '{{priv_folder}}'
   members:
   - '{{bob_identity}}'
+  role: member
   account: calimero-node-1
 - name: Wait for Private membership to propagate to Bob
   type: wait

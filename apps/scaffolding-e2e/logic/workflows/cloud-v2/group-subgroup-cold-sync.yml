@@ -36,8 +36,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: e2e-node-1
+- type: set
+  values:
+    app_id: com.calimero.scaffolding-e2e
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0
@@ -69,6 +72,7 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: cold-sync-subgroup
+  join: invite
   outputs:
     subgroup_id: teamId
   account: e2e-node-1
@@ -78,6 +82,7 @@ steps:
   team: '{{subgroup_id}}'
   members:
   - '{{member_identity_node2}}'
+  role: member
   account: e2e-node-1
 - name: Wait for subgroup governance
   type: wait
@@ -89,6 +94,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
   app_name: Create context in subgroup (node-1)
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{subgroup_id}}'
   outputs:
     sub_ctx_id: contextId
 - name: Node-1 writes to subgroup context immediately

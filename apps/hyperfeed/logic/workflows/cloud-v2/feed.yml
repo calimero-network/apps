@@ -24,8 +24,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/hyperfeed.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: feed-node-1
+- type: set
+  values:
+    app_id: com.calimero.hyperfeed
 - name: Assert application installed
   type: assert
   statements:
@@ -2576,7 +2579,7 @@ steps:
     early_fire_error: error
 - name: Let the time come
   type: wait
-  seconds: 1.0
+  seconds: 18.0
 - name: The runtime fires the reply
   type: call
   app: '{{context_id}}'

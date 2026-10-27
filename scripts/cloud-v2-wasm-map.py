@@ -5,7 +5,7 @@
 `create_context { service_name }` into uploads of the right contract. Built
 from every app's `[package.metadata.calimero]` (package id and services), plus
 the hand-built fixtures the workflows install. Paths use `{{env.APPS_WASM_DIR}}`
-(the workspace's `target/wasm32-unknown-unknown/app-release`).
+(`target/cloud-v2-wasm`, from `scripts/build-cloud-v2-wasm.py`).
 """
 
 import json
@@ -30,13 +30,18 @@ def main() -> None:
         meta = pkg.get("metadata", {}).get("calimero", {})
         package = meta.get("package") or f"com.calimero.{cargo.parent.parent.name}"
         services = {s["name"]: wasm(s.get("crate", crate)) for s in meta.get("services", [])}
-        entry = {"": wasm(crate), **services}
+        # `_package` is v1's application identity: the same across versions.
+        entry = {"": wasm(crate), **services, "_package": package}
         out[f"dist/{package}.mpk"] = entry
     # Hand-built fixtures (see each app's build-multi-service-bundle.sh).
     multi = wasm("scaffolding-e2e")
     out["res/scaffolding-e2e-multi-0.1.0.mpk"] = {"": multi, "store-a": multi, "store-b": multi}
     out["/app/data/e2e-kv-store-multi-0.1.0.mpk"] = {"": multi, "store-a": multi, "store-b": multi}
-    out["res/mero-standup-v1.mpk"] = {"": wasm("mero-standup-v1")}
+    out["res/mero-standup-v1.mpk"] = {
+        "": wasm("mero-standup-v1"),
+        # The frozen v1 build of the same package.
+        "_package": "com.calimero.mero-standup",
+    }
     # Workflows that install a raw .wasm instead of a bundle.
     out["logic/res/mero_sign.wasm"] = {"": wasm("mero-sign")}
     out["../res/mero_stream.wasm"] = {"": wasm("mero-stream")}

@@ -1,15 +1,12 @@
 # Ported from workflow-mero-docs-metadata-records.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
-#   assert statement on a dropped step's output x11: checks what the dropped steps did
+#   assert statement on a dropped step's output x8: checks what the dropped steps did
 #   delete_namespace x1: v1 namespace deletion
-#   get_group_metadata x6: group metadata is v1 governance
+#   get_group_metadata (on a namespace) x3: checks what the dropped steps did
 #   get_member_metadata x5: member metadata is v1 governance
-#   set_default_capabilities x1: capabilities are v1 governance
-#   set_group_metadata x4: group metadata is v1 governance
-#   set_member_capabilities x1: capabilities are v1 governance
+#   set_group_metadata (on a namespace) x2: checks what the dropped steps did
 #   set_member_metadata x5: member metadata is v1 governance
-#   set_subgroup_visibility x1: subgroup visibility is v1 governance
 #   wait_for_sync x1: replication is synchronous: a read sees every committed write
 name: Mero Docs E2E - Metadata records (#2338)
 description: "Covers the metadata-records surface introduced by core PR #2338 (and the merobox v0.6.11\
@@ -40,8 +37,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-drive-docs
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0
@@ -51,13 +51,45 @@ steps:
   outputs:
     namespace_id: orgId
   account: calimero-node-1
+- name: Alice sets default member caps (37 = JOIN_OPEN|CREATE_SUBGROUP|CREATE_CONTEXT)
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 37
+  account: calimero-node-1
 - name: Alice creates folder (Shared)
   type: create_team
   org: '{{namespace_id}}'
   team_name: shared
+  join: invite
   outputs:
     folder_id: teamId
   account: calimero-node-1
+- name: Mark folder Open (namespace members inherit access)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{folder_id}}'
+  join: everyone
+  account: calimero-node-1
+- name: Alice names the folder
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{folder_id}}'
+  metadata:
+    name: Shared (Q3 plan)
+    data:
+      color: '#1f8a4c'
+  account: calimero-node-1
+- name: Alice reads folder metadata
+  type: team_get
+  org: '{{namespace_id}}'
+  team: '{{folder_id}}'
+  account: calimero-node-1
+  outputs:
+    folder_name: name
+- name: Assert folder name set
+  type: assert
+  statements:
+  - equal({{folder_name}}, 'Shared (Q3 plan)')
 - name: Alice creates the per-namespace Registry context
   type: deploy
   account: calimero-node-1
@@ -95,6 +127,17 @@ steps:
   type: wait
   seconds: 1.0
   message: Bob's node needs metadata + Open-folder rows propagated
+- name: Bob reads folder name
+  type: team_get
+  org: '{{namespace_id}}'
+  team: '{{folder_id}}'
+  account: calimero-node-2
+  outputs:
+    folder_name_bob: name
+- name: Assert folder name visible to Bob
+  type: assert
+  statements:
+  - equal({{folder_name_bob}}, 'Shared (Q3 plan)')
 - name: list_managers is empty before any grant
   type: call
   app: '{{reg_ctx}}'
@@ -162,12 +205,38 @@ steps:
 - name: Wait for member-metadata gossip
   type: wait
   seconds: 1.0
+- name: Alice grants Bob CAN_MANAGE_METADATA (293 = 37|256)
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 293
+  account: calimero-node-1
+  member: '{{bob_account}}'
 - name: Wait for cap propagation
   type: wait
   seconds: 1.0
 - name: Wait for the cross-node rename to gossip
   type: wait
   seconds: 1.0
+- name: Alice renames the folder
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{folder_id}}'
+  metadata:
+    name: Shared (Q4 plan)
+    data:
+      color: '#1f8a4c'
+  account: calimero-node-1
 - name: Wait for renames to gossip
   type: wait
   seconds: 1.0
+- name: Bob reads folder name (renamed)
+  type: team_get
+  org: '{{namespace_id}}'
+  team: '{{folder_id}}'
+  account: calimero-node-2
+  outputs:
+    folder_renamed_bob: name
+- name: Assert all renames visible to Bob
+  type: assert
+  statements:
+  - equal({{folder_renamed_bob}}, 'Shared (Q4 plan)')

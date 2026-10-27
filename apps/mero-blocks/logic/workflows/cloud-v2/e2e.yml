@@ -1,7 +1,6 @@
 # Ported from e2e.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
-#   set_default_capabilities x1: capabilities are v1 governance
 #   sync_group x1: replication is synchronous
 #   wait_for_sync x4: replication is synchronous: a read sees every committed write
 name: Mero Blocks — shared voxel world (2-node e2e)
@@ -26,8 +25,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_blocks.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-blocks
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0
@@ -36,6 +38,11 @@ steps:
   org_name: Create namespace
   outputs:
     namespace_id: orgId
+  account: calimero-node-1
+- name: Set default member capabilities
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 15
   account: calimero-node-1
 - name: Generate identity for Node 2
   type: whoami

@@ -26,8 +26,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/kv_store.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: kvc-node-1
+- type: set
+  values:
+    app_id: com.calimero.kv-store
 - name: Assert application installed
   type: assert
   statements:

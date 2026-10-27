@@ -645,7 +645,8 @@ steps:
     executor_public_key: "{{private_key_1}}"
     method: delete_signature
     args:
-      signature_id: 0
+      # The id `create_signature` minted (random, 53 bits), never a guess.
+      signature_id: "{{signature_id}}"
     outputs:
       delete_sig_result: result.output
 

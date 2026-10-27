@@ -2,12 +2,6 @@
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
 #   assert_api_response x5: v1 admin API
-#   join_subgroup_inheritance x5: subgroup inheritance is v1 governance
-#   remove_group_members (team) x6: checks what the dropped steps did
-#   reparent_group x5: reparenting is v1 governance
-#   set_group_metadata x7: group metadata is v1 governance
-#   set_member_capabilities x3: capabilities are v1 governance
-#   set_subgroup_visibility x7: subgroup visibility is v1 governance
 #   wait_for_sync x11: replication is synchronous: a read sees every committed write
 name: Mero Docs - folder removal and restore across nested folders
 description: 'Removed from Open G, Bob is also removed from its Open child G2: he cannot rejoin by inheritance,
@@ -28,8 +22,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: curn-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-drive-docs
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0
@@ -52,8 +49,23 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: f
+  join: invite
   outputs:
     g_F: teamId
+  account: curn-node-1
+- name: Mark F Open
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_F}}'
+  join: everyone
+  account: curn-node-1
+- name: Name F in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_F}}'
+  metadata:
+    name: F
+    data: {}
   account: curn-node-1
 - name: Alice creates F's Docs context
   type: deploy
@@ -61,6 +73,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_F}}'
   outputs:
     c_F: contextId
     a_F: memberPublicKey
@@ -78,8 +93,29 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: g
+  join: invite
   outputs:
     g_G: teamId
+  account: curn-node-1
+- name: Nest G under F
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  parent: '{{g_F}}'
+  account: curn-node-1
+- name: Mark G Open
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  join: everyone
+  account: curn-node-1
+- name: Name G in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  metadata:
+    name: G
+    data: {}
   account: curn-node-1
 - name: Alice creates G's Docs context
   type: deploy
@@ -87,6 +123,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_G}}'
   outputs:
     c_G: contextId
     a_G: memberPublicKey
@@ -104,8 +143,29 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: g2
+  join: invite
   outputs:
     g_G2: teamId
+  account: curn-node-1
+- name: Nest G2 under G
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G2}}'
+  parent: '{{g_G}}'
+  account: curn-node-1
+- name: Mark G2 Open
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G2}}'
+  join: everyone
+  account: curn-node-1
+- name: Name G2 in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G2}}'
+  metadata:
+    name: G2
+    data: {}
   account: curn-node-1
 - name: Alice creates G2's Docs context
   type: deploy
@@ -113,6 +173,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_G2}}'
   outputs:
     c_G2: contextId
     a_G2: memberPublicKey
@@ -130,8 +193,29 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: hb
+  join: invite
   outputs:
     g_HB: teamId
+  account: curn-node-1
+- name: Nest HB under F
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_HB}}'
+  parent: '{{g_F}}'
+  account: curn-node-1
+- name: Mark HB Restricted
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_HB}}'
+  join: invite
+  account: curn-node-1
+- name: Name HB in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_HB}}'
+  metadata:
+    name: HB
+    data: {}
   account: curn-node-1
 - name: Alice creates HB's Docs context
   type: deploy
@@ -139,6 +223,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_HB}}'
   outputs:
     c_HB: contextId
     a_HB: memberPublicKey
@@ -156,8 +243,29 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: hb2
+  join: invite
   outputs:
     g_HB2: teamId
+  account: curn-node-1
+- name: Nest HB2 under HB
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_HB2}}'
+  parent: '{{g_HB}}'
+  account: curn-node-1
+- name: Mark HB2 Open
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_HB2}}'
+  join: everyone
+  account: curn-node-1
+- name: Name HB2 in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_HB2}}'
+  metadata:
+    name: HB2
+    data: {}
   account: curn-node-1
 - name: Alice creates HB2's Docs context
   type: deploy
@@ -165,6 +273,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_HB2}}'
   outputs:
     c_HB2: contextId
     a_HB2: memberPublicKey
@@ -182,8 +293,23 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: f2
+  join: invite
   outputs:
     g_F2: teamId
+  account: curn-node-1
+- name: Mark F2 Restricted
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_F2}}'
+  join: invite
+  account: curn-node-1
+- name: Name F2 in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_F2}}'
+  metadata:
+    name: F2
+    data: {}
   account: curn-node-1
 - name: Alice creates F2's Docs context
   type: deploy
@@ -191,6 +317,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_F2}}'
   outputs:
     c_F2: contextId
     a_F2: memberPublicKey
@@ -208,8 +337,29 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: g4
+  join: invite
   outputs:
     g_G4: teamId
+  account: curn-node-1
+- name: Nest G4 under F2
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G4}}'
+  parent: '{{g_F2}}'
+  account: curn-node-1
+- name: Mark G4 Open
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G4}}'
+  join: everyone
+  account: curn-node-1
+- name: Name G4 in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G4}}'
+  metadata:
+    name: G4
+    data: {}
   account: curn-node-1
 - name: Alice creates G4's Docs context
   type: deploy
@@ -217,6 +367,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_G4}}'
   outputs:
     c_G4: contextId
     a_G4: memberPublicKey
@@ -248,21 +401,56 @@ steps:
   account: curn-node-2
   outputs:
     bob_account: publicKey
+- name: Bob joins F by inheritance
+  type: team_join
+  org: '{{namespace_id}}'
+  team: '{{g_F}}'
+  account: curn-node-2
 - name: Bob joins F's Docs context
   type: whoami
   account: curn-node-2
   outputs:
     b_F: publicKey
+- name: Bob joins G by inheritance
+  type: team_join
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  account: curn-node-2
 - name: Bob joins G's Docs context
   type: whoami
   account: curn-node-2
   outputs:
     b_G: publicKey
+- name: Bob joins G2 by inheritance
+  type: team_join
+  org: '{{namespace_id}}'
+  team: '{{g_G2}}'
+  account: curn-node-2
 - name: Bob joins G2's Docs context
   type: whoami
   account: curn-node-2
   outputs:
     b_G2: publicKey
+- name: Alice removes Bob from G
+  type: team_remove
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
+- name: Alice removes Bob from G2, the Open sub-folder of G, as the app does
+  type: team_remove
+  org: '{{namespace_id}}'
+  team: '{{g_G2}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
+- name: Bob tries to rejoin G by inheritance
+  type: team_join
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  account: curn-node-2
+  expected_failure: true
 - name: Bob renames the G doc to 'G after removal'
   type: call
   app: '{{c_G}}'
@@ -317,6 +505,7 @@ steps:
   team: '{{g_G}}'
   members:
   - '{{bob_account}}'
+  role: member
   account: curn-node-1
 - name: Bob renames the G doc to 'G after restore'
   type: call
@@ -341,12 +530,27 @@ steps:
   type: json_assert
   statements:
   - json_equal({{g_restored}}, "G after restore")
+- name: Alice removes Bob from F
+  type: team_remove
+  org: '{{namespace_id}}'
+  team: '{{g_F}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
+- name: Alice removes Bob from G, reached through F, as the app does
+  type: team_remove
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
 - name: Alice restores Bob to F
   type: team_add
   org: '{{namespace_id}}'
   team: '{{g_F}}'
   members:
   - '{{bob_account}}'
+  role: member
   account: curn-node-1
 - name: Alice adds Bob to F2
   type: team_add
@@ -354,40 +558,74 @@ steps:
   team: '{{g_F2}}'
   members:
   - '{{bob_account}}'
+  role: member
   account: curn-node-1
+- name: Alice keeps Bob's join bit in F2
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
+  account: curn-node-1
+  member: '{{bob_account}}'
+  team: '{{g_F2}}'
 - name: Bob joins F2's Docs context
   type: whoami
   account: curn-node-2
   outputs:
     b_F2: publicKey
+- name: Bob joins G4 by inheritance
+  type: team_join
+  org: '{{namespace_id}}'
+  team: '{{g_G4}}'
+  account: curn-node-2
 - name: Bob joins G4's Docs context
   type: whoami
   account: curn-node-2
   outputs:
     b_G4: publicKey
 - name: Alice makes Bob core ReadOnly in F2
-  type: set_role
+  type: team_add
   org: '{{namespace_id}}'
-  member: '{{bob_account}}'
-  role: guest
+  team: '{{g_F2}}'
+  members:
+  - '{{bob_account}}'
+  role: readOnly
   account: curn-node-1
+- name: Alice keeps Bob's join bit in F2
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
+  account: curn-node-1
+  member: '{{bob_account}}'
+  team: '{{g_F2}}'
 - name: Alice adds a direct ReadOnly row for Bob in G4
   type: team_add
   org: '{{namespace_id}}'
   team: '{{g_G4}}'
   members:
   - '{{bob_account}}'
+  role: readOnly
   account: curn-node-1
-- name: Alice makes Bob core Member in F2 again
-  type: set_role
+- name: Alice keeps Bob's join bit in G4
+  type: capabilities
   org: '{{namespace_id}}'
+  capabilities: 4
+  account: curn-node-1
   member: '{{bob_account}}'
+  team: '{{g_G4}}'
+- name: Alice makes Bob core Member in F2 again
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{g_F2}}'
+  members:
+  - '{{bob_account}}'
   role: member
   account: curn-node-1
 - name: Alice makes Bob core Member in G4 again
-  type: set_role
+  type: team_add
   org: '{{namespace_id}}'
-  member: '{{bob_account}}'
+  team: '{{g_G4}}'
+  members:
+  - '{{bob_account}}'
   role: member
   account: curn-node-1
 - name: Bob renames the G4 doc to 'G4 as an Editor'
@@ -413,6 +651,20 @@ steps:
   type: json_assert
   statements:
   - json_equal({{g4_editor}}, "G4 as an Editor")
+- name: Alice removes Bob from F2
+  type: team_remove
+  org: '{{namespace_id}}'
+  team: '{{g_F2}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
+- name: Alice removes Bob from G4, his direct row, as the app does after a removal from F2
+  type: team_remove
+  org: '{{namespace_id}}'
+  team: '{{g_G4}}'
+  members:
+  - '{{bob_account}}'
+  account: curn-node-1
 - name: Let the removal from F2 reach Bob
   type: wait
   seconds: 1.0

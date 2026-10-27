@@ -20,8 +20,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/battleships.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.battleships
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0
@@ -149,6 +152,7 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: match-{{match_id}}
+  join: invite
   outputs:
     match_subgroup_id: teamId
   account: calimero-node-1
@@ -166,6 +170,7 @@ steps:
   team: '{{match_subgroup_id}}'
   members:
   - '{{p2_identity}}'
+  role: member
   account: calimero-node-1
 - name: Create Match Context in Subgroup
   type: deploy
@@ -174,6 +179,9 @@ steps:
   app_name: game
   init_args: '{"player1":"{{p1_key}}","player2":"{{p2_key}}","player2_account":"{{p2_account}}","lobby_context_id":"{{lobby_ctx_id}}","match_id":"{{match_id}}"}'
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{match_subgroup_id}}'
   outputs:
     match_ctx_id: contextId
     match_p1_key: memberPublicKey

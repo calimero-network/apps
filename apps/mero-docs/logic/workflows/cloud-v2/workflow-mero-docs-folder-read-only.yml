@@ -2,12 +2,6 @@
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
 #   assert_api_response x1: v1 admin API
-#   join_subgroup_inheritance x2: subgroup inheritance is v1 governance
-#   json_assert statement on a dropped step's output x1: checks what the dropped steps did
-#   leave_group x1: v1 group membership
-#   remove_group_members (team) x1: checks what the dropped steps did
-#   set_group_metadata x2: group metadata is v1 governance
-#   set_subgroup_visibility x2: subgroup visibility is v1 governance
 #   wait_for_sync x14: replication is synchronous: a read sees every committed write
 name: Mero Docs - a folder's Read only member cannot write its docs
 description: 'The app''s "Read only" folder role writes the core group role ReadOnly for the member in
@@ -40,8 +34,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: curo-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-drive-docs
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0
@@ -64,8 +61,23 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: private
+  join: invite
   outputs:
     folder: teamId
+  account: curo-node-1
+- name: Mark it Restricted
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{folder}}'
+  join: invite
+  account: curo-node-1
+- name: Name the Restricted folder (subgroup metadata)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{folder}}'
+  metadata:
+    name: Private
+    data: {}
   account: curo-node-1
 - name: Alice creates the Restricted folder's Docs context
   type: deploy
@@ -73,6 +85,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{folder}}'
   outputs:
     docs_ctx: contextId
     alice_docs_key: memberPublicKey
@@ -128,7 +143,15 @@ steps:
   team: '{{folder}}'
   members:
   - '{{bob_account}}'
+  role: member
+  account: curo-node-1
+- name: Alice adds Bob and Carol to the Restricted folder
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{folder}}'
+  members:
   - '{{carol_account}}'
+  role: member
   account: curo-node-1
 - name: Bob joins the Docs context
   type: whoami
@@ -141,10 +164,12 @@ steps:
   outputs:
     carol_docs_key: publicKey
 - name: Alice makes Bob core ReadOnly in the folder's group
-  type: set_role
+  type: team_add
   org: '{{namespace_id}}'
-  member: '{{bob_account}}'
-  role: guest
+  team: '{{folder}}'
+  members:
+  - '{{bob_account}}'
+  role: readOnly
   account: curo-node-1
 - name: Read only Bob renames the doc
   type: call
@@ -268,9 +293,11 @@ steps:
   - json_equal({{alice_editor_title}}, "Edited by an Editor")
   - json_equal({{alice_editor_comments}}, 1)
 - name: Alice makes Bob a core Member again
-  type: set_role
+  type: team_add
   org: '{{namespace_id}}'
-  member: '{{bob_account}}'
+  team: '{{folder}}'
+  members:
+  - '{{bob_account}}'
   role: member
   account: curo-node-1
 - name: Restored Bob renames the doc
@@ -300,8 +327,23 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: open
+  join: invite
   outputs:
     open_folder: teamId
+  account: curo-node-1
+- name: Mark it Open
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{open_folder}}'
+  join: everyone
+  account: curo-node-1
+- name: Name the Open folder (subgroup metadata)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{open_folder}}'
+  metadata:
+    name: Open
+    data: {}
   account: curo-node-1
 - name: Alice creates the Open folder's Docs context
   type: deploy
@@ -309,6 +351,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{open_folder}}'
   outputs:
     open_ctx: contextId
     alice_open_key: memberPublicKey
@@ -322,6 +367,17 @@ steps:
   as_key: '{{alice_open_key}}'
   outputs:
     open_doc: result
+- name: Bob joins the Open folder by inheritance
+  type: team_join
+  org: '{{namespace_id}}'
+  team: '{{open_folder}}'
+  account: curo-node-2
+  outputs:
+    bob_was_inherited: wasInherited
+- name: Bob has no direct row in the Open folder
+  type: json_assert
+  statements:
+  - json_equal({{bob_was_inherited}}, true)
 - name: Bob joins the Open folder's Docs context
   type: whoami
   account: curo-node-2
@@ -356,6 +412,7 @@ steps:
   team: '{{open_folder}}'
   members:
   - '{{bob_account}}'
+  role: readOnly
   account: curo-node-1
 - name: Inherited Read only Bob renames the Open doc
   type: call
@@ -413,9 +470,11 @@ steps:
   - json_equal({{bob_open_ro_title}}, "Written while inherited")
   - json_equal({{alice_open_ro_comments}}, 0)
 - name: Alice makes Bob a Member of the Open folder again
-  type: set_role
+  type: team_add
   org: '{{namespace_id}}'
-  member: '{{bob_account}}'
+  team: '{{open_folder}}'
+  members:
+  - '{{bob_account}}'
   role: member
   account: curo-node-1
 - name: Restored Bob renames the Open doc
@@ -442,14 +501,29 @@ steps:
   statements:
   - json_equal({{alice_open_restored_title}}, "Edited after the Open restore")
 - name: Alice makes Bob Read only in the Open folder again
-  type: set_role
+  type: team_add
   org: '{{namespace_id}}'
-  member: '{{bob_account}}'
-  role: guest
+  team: '{{open_folder}}'
+  members:
+  - '{{bob_account}}'
+  role: readOnly
   account: curo-node-1
+- name: Read only Bob leaves the Open folder
+  type: team_remove
+  org: '{{namespace_id}}'
+  team: '{{open_folder}}'
+  members:
+  - curo-node-2
+  account: curo-node-2
 - name: Let the leave reach every node
   type: wait
   seconds: 1.0
+- name: Bob tries to rejoin the Open folder by inheritance
+  type: team_join
+  org: '{{namespace_id}}'
+  team: '{{open_folder}}'
+  account: curo-node-2
+  expected_failure: true
 - name: Bob renames the Open doc after trying to rejoin
   type: call
   app: '{{open_ctx}}'
@@ -481,6 +555,13 @@ steps:
   type: remove_member
   org: '{{namespace_id}}'
   member: '{{bob_account}}'
+  account: curo-node-1
+- name: Alice removes Bob's direct row in the Restricted folder, as the app does
+  type: team_remove
+  org: '{{namespace_id}}'
+  team: '{{folder}}'
+  members:
+  - '{{bob_account}}'
   account: curo-node-1
 - name: Let the removals reach every node
   type: wait

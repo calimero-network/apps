@@ -1,13 +1,9 @@
 # Ported from workflow-mero-docs-namespace-lifecycle.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
-#   assert statement on a dropped step's output x2: checks what the dropped steps did
-#   delete_group x1: v1 group deletion
 #   delete_namespace x2: v1 namespace deletion
-#   get_group_metadata x2: group metadata is v1 governance
 #   list_namespace_groups x3: v1 namespace listing
 #   list_namespaces x3: v1 namespace listing
-#   set_group_metadata x2: group metadata is v1 governance
 name: Mero Docs E2E - Namespace Lifecycle + Multi-Namespace Isolation
 description: "Exercises namespace-level operations the app's NamespaceSwitcher / NamespaceCreateDialog\
   \ / (future) namespace-settings surface hits, but which the main workflow-mero-docs-e2e.yml doesn't\
@@ -31,8 +27,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-drive-docs
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0
@@ -58,6 +57,7 @@ steps:
   type: create_team
   org: '{{ns_a}}'
   team_name: folder-in-A
+  join: invite
   outputs:
     folder_a: teamId
   account: calimero-node-1
@@ -65,6 +65,50 @@ steps:
   type: create_team
   org: '{{ns_b}}'
   team_name: folder-in-B
+  join: invite
   outputs:
     folder_b: teamId
+  account: calimero-node-1
+- name: Rename folder-in-A to 'renamed'
+  type: team_update
+  org: '{{ns_a}}'
+  team: '{{folder_a}}'
+  metadata:
+    name: renamed
+    data: {}
+  account: calimero-node-1
+- name: get_group_metadata - name is now 'renamed'
+  type: team_get
+  org: '{{ns_a}}'
+  team: '{{folder_a}}'
+  account: calimero-node-1
+  outputs:
+    folder_a_name1: name
+- name: Assert folder-in-A renamed to 'renamed'
+  type: assert
+  statements:
+  - equal({{folder_a_name1}}, 'renamed')
+- name: Rename again to test metadata-name overwrite (LWW semantics)
+  type: team_update
+  org: '{{ns_a}}'
+  team: '{{folder_a}}'
+  metadata:
+    name: final-name
+    data: {}
+  account: calimero-node-1
+- name: get_group_metadata - name now 'final-name'
+  type: team_get
+  org: '{{ns_a}}'
+  team: '{{folder_a}}'
+  account: calimero-node-1
+  outputs:
+    folder_a_name2: name
+- name: Assert folder-in-A renamed to 'final-name'
+  type: assert
+  statements:
+  - equal({{folder_a_name2}}, 'final-name')
+- name: Delete folder in namespace A
+  type: team_delete
+  org: '{{ns_a}}'
+  team: '{{folder_a}}'
   account: calimero-node-1

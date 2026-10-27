@@ -23,8 +23,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_kombat.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: kombat-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-kombat
 - name: Assert application installed
   type: assert
   statements:

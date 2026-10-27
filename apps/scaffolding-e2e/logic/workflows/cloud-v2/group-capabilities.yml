@@ -3,9 +3,7 @@
 # Dropped (no release-v2 counterpart):
 #   get_member_capabilities x2: capabilities are v1 governance
 #   json_assert statement on a dropped step's output x2: checks what the dropped steps did
-#   set_default_capabilities x1: capabilities are v1 governance
 #   set_default_visibility x1: subgroup visibility is v1 governance
-#   set_member_capabilities x1: capabilities are v1 governance
 #   wait_for_sync x1: replication is synchronous: a read sees every committed write
 name: E2E KV Store - Group Capabilities
 description: "Tests the capability API (set/get/override):\n  1. Set default capabilities (bitmask 7 =\
@@ -25,8 +23,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: e2e-node-1
+- type: set
+  values:
+    app_id: com.calimero.scaffolding-e2e
 - name: Assert application installed
   type: assert
   statements:
@@ -44,6 +45,11 @@ steps:
   type: assert
   statements:
   - is_set({{namespace_id}})
+- name: Set default capabilities to all (7)
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 7
+  account: e2e-node-1
 - name: Invite node-2 to namespace
   type: invite
   org: '{{namespace_id}}'
@@ -62,6 +68,12 @@ steps:
   account: e2e-node-2
   outputs:
     account_node2: publicKey
+- name: Restrict node-2 capabilities to create-context only
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 1
+  account: e2e-node-1
+  member: '{{account_node2}}'
 - name: Create context in namespace
   type: deploy
   account: e2e-node-1

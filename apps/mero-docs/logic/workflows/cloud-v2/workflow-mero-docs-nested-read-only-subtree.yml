@@ -2,11 +2,6 @@
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
 #   assert_api_response x3: v1 admin API
-#   join_subgroup_inheritance x3: subgroup inheritance is v1 governance
-#   reparent_group x5: reparenting is v1 governance
-#   set_group_metadata x6: group metadata is v1 governance
-#   set_member_capabilities x6: capabilities are v1 governance
-#   set_subgroup_visibility x7: subgroup visibility is v1 governance
 #   wait_for_sync x22: replication is synchronous: a read sees every committed write
 name: Mero Docs - folder Read only across nested folders
 description: 'Folder F (Open) holds an Open sub-folder G with an Open G2 below it, and a Restricted sub-folder
@@ -29,8 +24,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: curn-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-drive-docs
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0
@@ -53,8 +51,23 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: f
+  join: invite
   outputs:
     g_F: teamId
+  account: curn-node-1
+- name: Mark F Open
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_F}}'
+  join: everyone
+  account: curn-node-1
+- name: Name F in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_F}}'
+  metadata:
+    name: F
+    data: {}
   account: curn-node-1
 - name: Alice creates F's Docs context
   type: deploy
@@ -62,6 +75,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_F}}'
   outputs:
     c_F: contextId
     a_F: memberPublicKey
@@ -79,8 +95,29 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: g
+  join: invite
   outputs:
     g_G: teamId
+  account: curn-node-1
+- name: Nest G under F
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  parent: '{{g_F}}'
+  account: curn-node-1
+- name: Mark G Open
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  join: everyone
+  account: curn-node-1
+- name: Name G in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  metadata:
+    name: G
+    data: {}
   account: curn-node-1
 - name: Alice creates G's Docs context
   type: deploy
@@ -88,6 +125,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_G}}'
   outputs:
     c_G: contextId
     a_G: memberPublicKey
@@ -105,8 +145,29 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: g2
+  join: invite
   outputs:
     g_G2: teamId
+  account: curn-node-1
+- name: Nest G2 under G
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G2}}'
+  parent: '{{g_G}}'
+  account: curn-node-1
+- name: Mark G2 Open
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G2}}'
+  join: everyone
+  account: curn-node-1
+- name: Name G2 in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G2}}'
+  metadata:
+    name: G2
+    data: {}
   account: curn-node-1
 - name: Alice creates G2's Docs context
   type: deploy
@@ -114,6 +175,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_G2}}'
   outputs:
     c_G2: contextId
     a_G2: memberPublicKey
@@ -131,8 +195,29 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: h
+  join: invite
   outputs:
     g_H: teamId
+  account: curn-node-1
+- name: Nest H under F
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_H}}'
+  parent: '{{g_F}}'
+  account: curn-node-1
+- name: Mark H Restricted
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_H}}'
+  join: invite
+  account: curn-node-1
+- name: Name H in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_H}}'
+  metadata:
+    name: H
+    data: {}
   account: curn-node-1
 - name: Alice creates H's Docs context
   type: deploy
@@ -140,6 +225,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_H}}'
   outputs:
     c_H: contextId
     a_H: memberPublicKey
@@ -171,16 +259,31 @@ steps:
   account: curn-node-2
   outputs:
     bob_account: publicKey
+- name: Bob joins F by inheritance
+  type: team_join
+  org: '{{namespace_id}}'
+  team: '{{g_F}}'
+  account: curn-node-2
 - name: Bob joins F's Docs context
   type: whoami
   account: curn-node-2
   outputs:
     b_F: publicKey
+- name: Bob joins G by inheritance
+  type: team_join
+  org: '{{namespace_id}}'
+  team: '{{g_G}}'
+  account: curn-node-2
 - name: Bob joins G's Docs context
   type: whoami
   account: curn-node-2
   outputs:
     b_G: publicKey
+- name: Bob joins G2 by inheritance
+  type: team_join
+  org: '{{namespace_id}}'
+  team: '{{g_G2}}'
+  account: curn-node-2
 - name: Bob joins G2's Docs context
   type: whoami
   account: curn-node-2
@@ -192,7 +295,15 @@ steps:
   team: '{{g_H}}'
   members:
   - '{{bob_account}}'
+  role: member
   account: curn-node-1
+- name: Alice keeps Bob's join bit in H
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
+  account: curn-node-1
+  member: '{{bob_account}}'
+  team: '{{g_H}}'
 - name: Bob joins H's Docs context
   type: whoami
   account: curn-node-2
@@ -227,21 +338,45 @@ steps:
   team: '{{g_F}}'
   members:
   - '{{bob_account}}'
+  role: readOnly
   account: curn-node-1
+- name: Alice keeps Bob's join bit in F
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
+  account: curn-node-1
+  member: '{{bob_account}}'
+  team: '{{g_F}}'
 - name: Alice adds a direct ReadOnly row for Bob in G
   type: team_add
   org: '{{namespace_id}}'
   team: '{{g_G}}'
   members:
   - '{{bob_account}}'
+  role: readOnly
   account: curn-node-1
+- name: Alice keeps Bob's join bit in G
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
+  account: curn-node-1
+  member: '{{bob_account}}'
+  team: '{{g_G}}'
 - name: Alice adds a direct ReadOnly row for Bob in G2
   type: team_add
   org: '{{namespace_id}}'
   team: '{{g_G2}}'
   members:
   - '{{bob_account}}'
+  role: readOnly
   account: curn-node-1
+- name: Alice keeps Bob's join bit in G2
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
+  account: curn-node-1
+  member: '{{bob_account}}'
+  team: '{{g_G2}}'
 - name: Bob renames the G doc to 'G while read only'
   type: call
   app: '{{c_G}}'
@@ -331,8 +466,15 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: g3
+  join: invite
   outputs:
     g_G3: teamId
+  account: curn-node-1
+- name: Nest G3 under F
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G3}}'
+  parent: '{{g_F}}'
   account: curn-node-1
 - name: Alice adds a ReadOnly row for Bob in G3 before it opens
   type: team_add
@@ -340,6 +482,28 @@ steps:
   team: '{{g_G3}}'
   members:
   - '{{bob_account}}'
+  role: readOnly
+  account: curn-node-1
+- name: Alice keeps Bob's join bit in G3
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
+  account: curn-node-1
+  member: '{{bob_account}}'
+  team: '{{g_G3}}'
+- name: Mark G3 Open
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G3}}'
+  join: everyone
+  account: curn-node-1
+- name: Name G3 in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_G3}}'
+  metadata:
+    name: G3
+    data: {}
   account: curn-node-1
 - name: Alice creates G3's Docs context
   type: deploy
@@ -347,6 +511,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_G3}}'
   outputs:
     c_G3: contextId
     a_G3: memberPublicKey
@@ -364,8 +531,29 @@ steps:
   type: create_team
   org: '{{namespace_id}}'
   team_name: k
+  join: invite
   outputs:
     g_K: teamId
+  account: curn-node-1
+- name: Nest K under F
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_K}}'
+  parent: '{{g_F}}'
+  account: curn-node-1
+- name: Mark K Restricted
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_K}}'
+  join: invite
+  account: curn-node-1
+- name: Name K in its subgroup metadata
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_K}}'
+  metadata:
+    name: K
+    data: {}
   account: curn-node-1
 - name: Alice creates K's Docs context
   type: deploy
@@ -373,6 +561,9 @@ steps:
   wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
   app_name: docs
   org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{g_K}}'
   outputs:
     c_K: contextId
     a_K: memberPublicKey
@@ -386,13 +577,27 @@ steps:
   as_key: '{{a_K}}'
   outputs:
     d_K: result
+- name: Alice opens K
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{g_K}}'
+  join: everyone
+  account: curn-node-1
 - name: Alice adds a direct ReadOnly row for Bob in K
   type: team_add
   org: '{{namespace_id}}'
   team: '{{g_K}}'
   members:
   - '{{bob_account}}'
+  role: readOnly
   account: curn-node-1
+- name: Alice keeps Bob's join bit in K
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
+  account: curn-node-1
+  member: '{{bob_account}}'
+  team: '{{g_K}}'
 - name: Bob joins G3's Docs context
   type: whoami
   account: curn-node-2
@@ -449,33 +654,43 @@ steps:
   - json_equal({{g3_ro}}, "G3 original")
   - json_equal({{k_ro}}, "K original")
 - name: Alice makes Bob core Member in F again
-  type: set_role
+  type: team_add
   org: '{{namespace_id}}'
-  member: '{{bob_account}}'
+  team: '{{g_F}}'
+  members:
+  - '{{bob_account}}'
   role: member
   account: curn-node-1
 - name: Alice makes Bob core Member in G again
-  type: set_role
+  type: team_add
   org: '{{namespace_id}}'
-  member: '{{bob_account}}'
+  team: '{{g_G}}'
+  members:
+  - '{{bob_account}}'
   role: member
   account: curn-node-1
 - name: Alice makes Bob core Member in G2 again
-  type: set_role
+  type: team_add
   org: '{{namespace_id}}'
-  member: '{{bob_account}}'
+  team: '{{g_G2}}'
+  members:
+  - '{{bob_account}}'
   role: member
   account: curn-node-1
 - name: Alice makes Bob core Member in G3 again
-  type: set_role
+  type: team_add
   org: '{{namespace_id}}'
-  member: '{{bob_account}}'
+  team: '{{g_G3}}'
+  members:
+  - '{{bob_account}}'
   role: member
   account: curn-node-1
 - name: Alice makes Bob core Member in K again
-  type: set_role
+  type: team_add
   org: '{{namespace_id}}'
-  member: '{{bob_account}}'
+  team: '{{g_K}}'
+  members:
+  - '{{bob_account}}'
   role: member
   account: curn-node-1
 - name: Bob renames the G doc to 'G restored'

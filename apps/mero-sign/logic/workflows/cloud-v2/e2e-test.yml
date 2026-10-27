@@ -1,10 +1,6 @@
 # Ported from e2e-test.yml by `merobox cloud port`.
 # v1 nodes are accounts here; see merobox/cloud_v2/port.py for the mapping.
 # Dropped (no release-v2 counterpart):
-#   assert statement on a dropped step's output x4: checks what the dropped steps did
-#   invite_open x1: v1 open invitations
-#   join_open x1: v1 open invitations
-#   upload_blob x4: release-v2 has no blob API yet
 #   wait_for_sync x5: replication is synchronous: a read sees every committed write
 name: MeroSign E2E Test Workflow
 description: Comprehensive E2E test workflow for MeroSign e-signature platform
@@ -20,8 +16,11 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: merosign-e2e-1
+- type: set
+  values:
+    app_id: '{{app_id_bundle}}'
 - name: Assert application installed
   type: assert
   statements:
@@ -92,6 +91,18 @@ steps:
   as_key: '{{private_key_1}}'
   outputs:
     is_default_result: result
+- name: Upload Signature Image Blob
+  type: upload_blob
+  app: '{{private_ctx_1}}'
+  file_path: workflows/test-files/sample-agreement.txt
+  account: merosign-e2e-1
+  outputs:
+    sig_blob_id: blob_id
+    sig_blob_size: size
+- name: Assert blob uploaded
+  type: assert
+  statements:
+  - is_set({{sig_blob_id}})
 - name: Create Signature - Node 1
   type: call
   app: '{{private_ctx_1}}'
@@ -140,6 +151,26 @@ steps:
   statements:
   - is_set({{shared_ctx}})
   - is_set({{admin_key}})
+- name: Create Open Invitation for Agreement
+  type: set
+  values:
+    open_invitation: '{{shared_ctx}}'
+- name: Assert invitation created
+  type: assert
+  statements:
+  - is_set({{open_invitation}})
+- name: Node 2 Joins Agreement via Open Invitation
+  type: whoami
+  account: merosign-e2e-2
+  outputs:
+    joined_key_2: publicKey
+- type: set
+  values:
+    joined_ctx_2: '{{shared_ctx}}'
+- name: Assert nodes joined
+  type: assert
+  statements:
+  - is_set({{joined_ctx_2}})
 - name: Register Node 2 as Participant
   type: call
   app: '{{shared_ctx}}'
@@ -186,6 +217,18 @@ steps:
   type: assert
   statements:
   - is_set({{context_details}})
+- name: Upload Document Blob
+  type: upload_blob
+  app: '{{shared_ctx}}'
+  file_path: workflows/test-files/sample-agreement.txt
+  account: merosign-e2e-1
+  outputs:
+    doc_blob_id: blob_id
+    doc_blob_size: size
+- name: Assert document blob uploaded
+  type: assert
+  statements:
+  - is_set({{doc_blob_id}})
 - name: Upload Document to Agreement
   type: call
   app: '{{shared_ctx}}'
@@ -250,6 +293,14 @@ steps:
   as_key: '{{joined_key_2}}'
   outputs:
     has_consent_2: result
+- name: Upload Signed Document Blob
+  type: upload_blob
+  app: '{{shared_ctx}}'
+  file_path: workflows/test-files/sample-agreement.txt
+  account: merosign-e2e-2
+  outputs:
+    signed_blob_id: blob_id
+    signed_blob_size: size
 - name: Node 2 Signs Document
   type: call
   app: '{{shared_ctx}}'
@@ -338,6 +389,14 @@ steps:
   as_key: '{{admin_key}}'
   outputs:
     consent_result_1: result
+- name: Upload Signed Document Blob - Node 1
+  type: upload_blob
+  app: '{{shared_ctx}}'
+  file_path: workflows/test-files/sample-agreement.txt
+  account: merosign-e2e-1
+  outputs:
+    signed_blob_id_1: blob_id
+    signed_blob_size_1: size
 - name: Node 1 Signs Document
   type: call
   app: '{{shared_ctx}}'
@@ -404,7 +463,7 @@ steps:
   app: '{{private_ctx_1}}'
   method: delete_signature
   args:
-    signature_id: 0
+    signature_id: '{{signature_id}}'
   account: merosign-e2e-1
   as_key: '{{private_key_1}}'
   outputs:

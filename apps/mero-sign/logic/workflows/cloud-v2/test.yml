@@ -14,14 +14,20 @@ steps:
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
   outputs:
-    app_id: hash
+    app_id_bundle: hash
   account: merosign-node-1
+- type: set
+  values:
+    app_id: '{{app_id_bundle}}'
 - name: Install MeroSign Application on node 2
   type: upload_bundle
   wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
   outputs:
-    app_id_2: hash
+    app_id_2_bundle: hash
   account: merosign-node-2
+- type: set
+  values:
+    app_id_2: '{{app_id_2_bundle}}'
 - name: Settle before the first admin call
   type: wait
   seconds: 1.0

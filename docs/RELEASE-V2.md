@@ -46,28 +46,28 @@ register distinct player keys in one lobby and start a match.
 Every app's merobox workflow has a release-v2 port beside it in
 `apps/<app>/logic/workflows/cloud-v2/`, made by merobox's converter
 (`scripts/port-workflows-to-cloud-v2.sh`) and run on merod-v2 by
-`scripts/cloud-v2-workflows.py`. v1 nodes become accounts, namespaces
-organizations, invitations org invites, subgroups teams, contexts deployed
-apps, and `wait_for_sync` disappears (a read sees every committed write). Each
-port's header lists the v1 steps it dropped and why.
+`scripts/cloud-v2-workflows.py`, against contracts built with `cargo mero build`
+(`scripts/build-cloud-v2-wasm.py`: merod-v2 reads handlers, xcall entry points,
+timers and migrations from the embedded ABI). v1 nodes become accounts,
+namespaces organizations, subgroups teams (open or restricted, with read-only
+rows and capabilities), contexts deployed apps, paired devices passkeys, and
+`wait_for_sync` disappears (a read sees every committed write). Each port's
+header lists the v1 steps it dropped and why.
 
-**58 of 80 pass** (`scripts/cloud-v2-workflows-baseline.json`; a regression fails
-the script). Porting them found and fixed six merod-v2 gaps: init arguments,
-caller identity, private storage, shared-storage writer rotation, context ids as
-app ids, and a frozen-leader stall. The 22 that do not pass:
+**79 of 80 pass** (`scripts/cloud-v2-workflows-baseline.json`; a regression fails
+the script; the fuzzy soak runs 30 s here, `MEROBOX_FUZZY_SECONDS` to change).
+Porting them brought merod-v2 to v1's feature set: blobs, full-text search,
+event handlers, cross-app calls, TEE timers and sealed state, v1's subgroup
+rules on teams, devices as passkeys, and upgrades whose migration is planned
+from the ABIs and checked by the app.
 
-| Why | Workflows |
-| --- | --- |
-| **Blobs** — merod-v2 has no blob API yet | mero-models edit-a-scene, mero-sign e2e + e2e-test, scaffolding-e2e e2e |
-| **Full-text search** — no search index host yet | mero-chat e2e, mero-docs docs-lifecycle |
-| **Cross-app calls** (`xcall`) — not run yet | mero-sheets links, scaffolding-e2e workspace-registry |
-| **Timers** — scheduled runs are not fired yet | hyperfeed feed |
-| **v1 governance is the subject** — read-only and restricted subgroups as folders, devices, member capabilities | mero-docs (10 workflows), scaffolding-e2e group-membership |
-| **v1-only tooling** — the fuzzy runner, v1 application-id migration | scaffolding-e2e fuzzy-test, mero-standup migrate-v1-v2 |
-
-The first four are platform work in merod-v2. mero-docs models folders as nested
-v1 subgroups with read-only and restricted visibility; on release-v2 that becomes
-app-level roles over teams (`env::caller_org`), a change to the app, not the port.
+The one that does not pass, `mero-docs/workflow-mero-docs-tags-views`, asserts
+what a merge of two *partitioned* replicas leaves (the name Bob gave a tag while
+he could not see Alice delete it). A cluster has no partitioned replica, so that
+rename is refused instead; the property the test guards — a rename never
+revives a deleted tag — holds. Reads made while a v1 node was stopped are not
+asserted in any port, and writes made then may be refused; what the nodes
+converge to afterwards is.
 
 ## Frontends
 
