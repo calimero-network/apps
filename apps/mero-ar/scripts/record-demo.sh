@@ -11,7 +11,7 @@
 # Usage:
 #   MERO_BIN=/path/to/core-release/bin scripts/record-demo.sh
 #
-# Needs merod 0.11.0-rc.90 (on PATH or in $MERO_BIN), full Xcode, xcodegen and
+# Needs merod 0.12.0-rc.3 (on PATH or in $MERO_BIN), full Xcode, xcodegen and
 # ffmpeg. Uses the "iPhone 18 Pro Max" simulator (override with SIM=...), ports
 # 4301/4302 and 4311/4312, and node homes under $WORK (default /tmp/meroar-rec).
 
