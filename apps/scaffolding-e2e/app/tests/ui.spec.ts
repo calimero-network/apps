@@ -624,21 +624,10 @@ test.describe("Workspace Manager", () => {
     await expect(page.locator(".result-box").first()).toContainText("admin");
   });
 
-  test("ws_init form is visible and calls ws_init on click", async ({ page }) => {
-    // ws_init card is only shown when workspace is NOT initialized.
-    // Since our mock returns workspace info, the init form may be hidden.
-    // Instead, verify the section loaded and the Initialize button OR the init text exists.
-    const hasInitCard = await page.locator("input[placeholder*='Acme']").count() > 0;
-    if (hasInitCard) {
-      await page.locator("input[placeholder*='Acme']").fill("My Workspace");
-      await page.locator("button", { hasText: /Initialize/ }).click();
-      await expect(page.locator(".result-box, [class*='result']").last()).toBeVisible({
-        timeout: 5_000,
-      });
-    } else {
-      // Workspace already initialized from mock — overview card is showing instead
-      await expect(page.locator("text=Test Workspace")).toBeVisible();
-    }
+  test("an initialized workspace shows its overview, not the ws_init form", async ({ page }) => {
+    // The mocked ws_get_info answers with a workspace; the init form only shows until it does.
+    await expect(page.locator("text=Test Workspace")).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator("input[placeholder*='Acme']")).toHaveCount(0);
   });
 
   test("Channels section shows mocked channel list", async ({ page }) => {
