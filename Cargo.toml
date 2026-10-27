@@ -46,8 +46,7 @@ repository = "https://github.com/calimero-network/apps"
 # All SDK crates must share the exact same tag. Version strings cannot express
 # this: core's workspace version at a tag is 0.0.0.
 #
-# Bumping core: edit these three lines, update `min-runtime-version` and
-# `merod-image` below, run `cargo update`, and let CI rebuild every app.
+# Bumping core: edit these three lines, update `min-runtime-version` below, run `cargo update`, and let CI rebuild every app.
 # ⚠️ release-v2 (the cloud-only release candidate) pins core's `release-v2` BRANCH
 # on purpose: the SDK and merod-v2 move together while it is a prototype. Restore
 # a tag when release-v2 is tagged.
@@ -103,9 +102,6 @@ unicode-normalization = { version = "0.1.25", default-features = false }
 # exist from that release on; an older node installs the bundle happily and then
 # dies at context creation with `link error: unknown import`.
 min-runtime-version = "0.12.0-rc.1"
-# The merod image every merobox workflow runs against, matched to the SDK tag so
-# contract and node always agree.
-merod-image = "ghcr.io/calimero-network/merod:0.12.0-rc.1"
 
 # ── profiles MUST live here ──────────────────────────────────────────────────
 #

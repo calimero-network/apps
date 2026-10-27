@@ -1,291 +1,193 @@
+# Ported from the v1 workflow logic-test.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
 name: Logic Unit Test
-description: >
-  End-to-end exercise of the Mero Calendar WASM contract on a single node:
-  member username registration, shared event CRUD with owner gating, and
-  node-local private events kept separate from the shared calendar.
+description: 'End-to-end exercise of the Mero Calendar WASM contract on a single node: member username
+  registration, shared event CRUD with owner gating, and node-local private events kept separate from
+  the shared calendar.
 
-# merobox assertion traps this file is written around — read before editing:
-#   * A `call` output captured as `result` is the whole JSON-RPC envelope
-#     ({id, jsonrpc, result: {output: ...}}). Use `result.output` when the value
-#     is fed back into another step's args; `result` is fine when it is only a
-#     haystack for contains().
-#   * `assert` splits its statement on EVERY comma, so a needle containing a
-#     comma silently becomes two arguments. Every needle below is comma-free.
-#   * A comparison of two unresolved values passes (null == null), and a
-#     `not_contains` against an empty haystack passes too — so a not_contains is
-#     only evidence when a matching positive contains ran against the same call.
-stop_all_nodes: true
-restart: false
-wait_timeout: 120
-
-# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
-# `KeyDelivery timed out`.
-#
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
-# calimero devnet boot-node. Every container then spends its startup dialing
-# unreachable public addresses, and the node log fills with
-#
-#     libp2p_relay: Dropping in-flight connect request because we are at capacity
-#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
-#
-# until the join gives up with
-#
-#     join_group: direct namespace-join request found no reachable mesh peer
-#     join_group: join response contained no group key
-#     KeyDelivery timed out for group ContextGroupId(...)
-#
-# The peers never found each other; it was never a timing race. `e2e_mode`
-# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
-# turns multicast discovery on (which is what populates the kad table on a
-# single Docker bridge) and tightens the sync intervals. merobox's own
-# `apply_e2e_defaults` documents measuring this exact failure with it off.
-e2e_mode: true
-
-nodes:
-  chain_id: testnet-1
-  count: 1
-  # Must move in LOCKSTEP with the merobox pin in .github/workflows/. merobox
-  # talks to the node's admin API directly, so an image older than the merobox
-  # driving it fails on the FIRST step with a payload error that reads like a
-  # contract bug: rc.20 and older require `upgradePolicy` on create_namespace,
-  # and merobox 0.6.54+ stopped sending it (core#3393 dropped the concept in
-  # rc.21). rc.22 pairs with merobox >= 0.6.54; this repo pins 0.6.55.
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.1
-  prefix: calimero-node
-  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620):
-  # `merod init` now writes `discovery.mdns = false`, where every earlier release
-  # left it on. merobox does not pass the flag, so this scenario's peer discovery
-  # changed behaviour at the image bump without a line of it changing.
-  mdns: true
-
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3090
+accounts:
+- calimero-node-1
 steps:
-  # ── Bootstrap ─────────────────────────────────────────────────────────────
-  - name: Install Application
-    type: install_application
-    node: calimero-node-1
-    path: dist/com.calimero.mero-calendar.mpk
-    dev: true
-    outputs:
-      app_id: applicationId
-
-  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
-  # container health, which is not the same as ready: on a genuinely cold
-  # host `create_namespace` returns 500 about four seconds into the run.
-  # This was masked while the teardown left the previous scenario's
-  # containers behind, because the nodes were then already warm.
-  - name: Settle before the first admin call
-    type: wait
-    seconds: 12
-
-  - name: Create Namespace
-    type: create_namespace
-    node: calimero-node-1
-    application_id: "{{app_id}}"
-    outputs:
-      namespace_id: namespaceId
-
-  - name: Create Calendar Context
-    type: create_context
-    node: calimero-node-1
-    application_id: "{{app_id}}"
-    group_id: "{{namespace_id}}"
-    # The contract's init() takes no arguments.
-    params: '{}'
-    outputs:
-      context_id: contextId
-      member_public_key: memberPublicKey
-
-  # ── Members / usernames ─────────────────────────────────────────────────────
-  - name: Set Username (Alice)
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: set_username
-    args:
-      username: "Alice"
-      timestamp: 1000000
-
-  - name: Get Members
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: get_members
-    args: {}
-    outputs:
-      members: result
-      # Alice's account-derived UserId, which is what a peer list is made of.
-      # `Member.id` is `UserId::new(env::account_id())` stringified — NOT
-      # `executor_public_key`, which is a context member (device) key. Alice is
-      # the only member here, so `output.0` is unambiguous.
-      alice_user_id: result.output.0.id
-
-  - name: Assert Alice is a Member
-    type: assert
-    statements:
-      - "contains({{members}}, 'Alice')"
-      # A peer list built from an empty capture is a list of one empty string,
-      # which routes as non-empty while matching no caller.
-      - "is_set({{alice_user_id}})"
-
-  # ── Shared events ───────────────────────────────────────────────────────────
-  - name: Create Shared Event
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: create_event
-    args:
-      event_data:
-        title: "Team Standup"
-        description: "Daily sync"
-        start: "2026-07-01T09:00:00"
-        end: "2026-07-01T09:30:00"
-        event_type: "event"
-        color: "rgb(51, 182, 121)"
-        # A peer is what makes this a SHARED event. `create_event` routes on the
-        # peer list — an empty one means nobody else is involved, so the event is
-        # written to private storage and never enters the DAG. This step is named
-        # for the shared path, so it has to name someone; the peerless path is
-        # covered by private-routing.yml.
-        peers: ["{{alice_user_id}}"]
-      timestamp: 1000001
-    # `result.output` extracts the bare id string from the JSON-RPC envelope
-    # ({id, jsonrpc, result: {output: "<id>"}}); plain `result` would capture the
-    # {output: "<id>"} wrapper and update_event would reject a map as event_id.
-    outputs:
-      event_id: result.output
-
-  - name: Get Shared Events
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: get_events
-    args: {}
-    outputs:
-      events: result
-
-  - name: Assert Shared Event Present
-    type: assert
-    statements:
-      - "contains({{events}}, 'Team Standup')"
-
-  - name: Update Shared Event
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: update_event
-    args:
-      event_id: "{{event_id}}"
-      event_data:
-        title: "Renamed Standup"
-        description: null
-        start: null
-        end: null
-        event_type: null
-        color: null
-        peers: null
-      timestamp: 1000002
-
-  - name: Get Events After Update
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: get_events
-    args: {}
-    outputs:
-      updated_events: result
-
-  - name: Assert Event Renamed
-    type: assert
-    statements:
-      - "contains({{updated_events}}, 'Renamed Standup')"
-
-  # ── Private events (node-local) ─────────────────────────────────────────────
-  - name: Create Private Event
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: create_private_event
-    args:
-      event_data:
-        title: "Dentist"
-        description: "Personal"
-        start: "2026-07-02T14:00:00"
-        end: "2026-07-02T15:00:00"
-        event_type: "event"
-        color: "rgb(213, 0, 0)"
-        peers: []
-      timestamp: 1000003
-
-  - name: Get Private Events
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: get_private_events
-    args: {}
-    outputs:
-      private_events: result
-
-  - name: Assert Private Event Present
-    type: assert
-    statements:
-      - "contains({{private_events}}, 'Dentist')"
-
-  # A `call`, not an assert — it re-reads the shared calendar so the assert that
-  # follows has a haystack that is known to be non-empty (the shared event is
-  # still in it). A not_contains on its own would also pass against an empty or
-  # errored result.
-  - name: Re-read Shared Calendar After Private Event
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: get_events
-    args: {}
-    outputs:
-      shared_after_private: result
-
-  # The contains() is the positive control for the not_contains(): it proves the
-  # haystack is the real shared calendar and not an empty/errored payload, which
-  # a lone not_contains would happily pass against.
-  - name: Assert Private Event Stayed Out of the Shared Calendar
-    type: assert
-    statements:
-      - "contains({{shared_after_private}}, 'Renamed Standup')"
-      - "not_contains({{shared_after_private}}, 'Dentist')"
-
-  # ── Delete ──────────────────────────────────────────────────────────────────
-  - name: Delete Shared Event
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: delete_event
-    args:
-      event_id: "{{event_id}}"
-
-  - name: Get Events After Delete
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: get_events
-    args: {}
-    outputs:
-      final_events: result
-
-  # No positive control is available here — a correct delete leaves the shared
-  # calendar empty, so there is nothing left to assert the presence of. This
-  # assertion would therefore also pass if get_events had returned nothing at
-  # all; the preceding steps are what establish that it does return the list.
-  - name: Assert Event Deleted
-    type: assert
-    statements:
-      - "not_contains({{final_events}}, 'Renamed Standup')"
+- name: Install Application
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_calendar.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-calendar
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create Namespace
+  type: create_org
+  org_name: Create Namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Create Calendar Context
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_calendar.wasm'
+  app_name: Create Calendar Context
+  init_args: '{}'
+  org: '{{namespace_id}}'
+  outputs:
+    context_id: contextId
+    member_public_key: memberPublicKey
+- name: Set Username (Alice)
+  type: call
+  app: '{{context_id}}'
+  method: set_username
+  args:
+    username: Alice
+    timestamp: 1000000
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Get Members
+  type: call
+  app: '{{context_id}}'
+  method: get_members
+  args: {}
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    members: rpc
+    alice_user_id: result.0.id
+- name: Assert Alice is a Member
+  type: assert
+  statements:
+  - contains({{members}}, 'Alice')
+  - is_set({{alice_user_id}})
+- name: Create Shared Event
+  type: call
+  app: '{{context_id}}'
+  method: create_event
+  args:
+    event_data:
+      title: Team Standup
+      description: Daily sync
+      start: '2026-07-01T09:00:00'
+      end: '2026-07-01T09:30:00'
+      event_type: event
+      color: rgb(51, 182, 121)
+      peers:
+      - '{{alice_user_id}}'
+    timestamp: 1000001
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    event_id: result
+- name: Get Shared Events
+  type: call
+  app: '{{context_id}}'
+  method: get_events
+  args: {}
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    events: rpc
+- name: Assert Shared Event Present
+  type: assert
+  statements:
+  - contains({{events}}, 'Team Standup')
+- name: Update Shared Event
+  type: call
+  app: '{{context_id}}'
+  method: update_event
+  args:
+    event_id: '{{event_id}}'
+    event_data:
+      title: Renamed Standup
+      description: null
+      start: null
+      end: null
+      event_type: null
+      color: null
+      peers: null
+    timestamp: 1000002
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Get Events After Update
+  type: call
+  app: '{{context_id}}'
+  method: get_events
+  args: {}
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    updated_events: rpc
+- name: Assert Event Renamed
+  type: assert
+  statements:
+  - contains({{updated_events}}, 'Renamed Standup')
+- name: Create Private Event
+  type: call
+  app: '{{context_id}}'
+  method: create_private_event
+  args:
+    event_data:
+      title: Dentist
+      description: Personal
+      start: '2026-07-02T14:00:00'
+      end: '2026-07-02T15:00:00'
+      event_type: event
+      color: rgb(213, 0, 0)
+      peers: []
+    timestamp: 1000003
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Get Private Events
+  type: call
+  app: '{{context_id}}'
+  method: get_private_events
+  args: {}
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    private_events: rpc
+- name: Assert Private Event Present
+  type: assert
+  statements:
+  - contains({{private_events}}, 'Dentist')
+- name: Re-read Shared Calendar After Private Event
+  type: call
+  app: '{{context_id}}'
+  method: get_events
+  args: {}
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    shared_after_private: rpc
+- name: Assert Private Event Stayed Out of the Shared Calendar
+  type: assert
+  statements:
+  - contains({{shared_after_private}}, 'Renamed Standup')
+  - not_contains({{shared_after_private}}, 'Dentist')
+- name: Delete Shared Event
+  type: call
+  app: '{{context_id}}'
+  method: delete_event
+  args:
+    event_id: '{{event_id}}'
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Get Events After Delete
+  type: call
+  app: '{{context_id}}'
+  method: get_events
+  args: {}
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    final_events: rpc
+- name: Assert Event Deleted
+  type: assert
+  statements:
+  - not_contains({{final_events}}, 'Renamed Standup')

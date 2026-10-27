@@ -1,528 +1,366 @@
+# Ported from the v1 workflow e2e.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
+# Dropped (no release-v2 counterpart):
+#   sync_group x1: replication is synchronous
+#   wait_for_sync x8: replication is synchronous: a read sees every committed write
 name: Mero Forum — posts, comments and votes across two nodes (2-node e2e)
-description: >
-  Proves the properties the rewrite exists for. only-peers kept posts in a bare
-  Vec keyed by position and took the comment author as a caller-supplied string,
-  so none of this could hold:
-
-    1. a post written on one node is readable on the other, by a STABLE id;
-    2. the author gate is real — a non-author's edit is REJECTED on a signed
-       delta path, which no single-node test can exercise;
-    3. votes are one row per account and the tally converges;
-    4. a delete replicates as a tombstone rather than vanishing locally;
-    5. only a moderator (the founder, Alice) removes someone else's post or
-       comment, and a member cannot appoint themselves.
-
-force_pull_image: true
-
-# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
-# `KeyDelivery timed out`.
-#
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
-# calimero devnet boot-node. Every container then spends its startup dialing
-# unreachable public addresses, and the node log fills with
-#
-#     libp2p_relay: Dropping in-flight connect request because we are at capacity
-#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
-#
-# until the join gives up with
-#
-#     join_group: direct namespace-join request found no reachable mesh peer
-#     join_group: join response contained no group key
-#     KeyDelivery timed out for group ContextGroupId(...)
-#
-# The peers never found each other; it was never a timing race. `e2e_mode`
-# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
-# turns multicast discovery on (which is what populates the kad table on a
-# single Docker bridge) and tightens the sync intervals. merobox's own
-# `apply_e2e_defaults` documents measuring this exact failure with it off.
-e2e_mode: true
-
-nodes:
-  chain_id: testnet-1
-  count: 2
-  # Must match the `calimero-*` tag in the root Cargo.toml. check-app-metadata.sh
-  # asserts this against [workspace.metadata.mero-apps].merod-image.
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.1
-  prefix: calimero-node
-  # Stated, not inherited. rc.26 made mDNS opt-in (core#3620) and merobox does
-  # not pass the flag, so without this the nodes never peer and the run dies as a
-  # 500 on join_namespace — which reads like a contract break.
-  mdns: true
-  # Off every other app's pair so a developer can run this beside another.
-  base_port: 2900
-  base_rpc_port: 2800
-
+description: "Proves the properties the rewrite exists for. only-peers kept posts in a bare Vec keyed\
+  \ by position and took the comment author as a caller-supplied string, so none of this could hold:\n\
+  \n  1. a post written on one node is readable on the other, by a STABLE id;\n  2. the author gate is\
+  \ real — a non-author's edit is REJECTED on a signed\n     delta path, which no single-node test can\
+  \ exercise;\n  3. votes are one row per account and the tally converges;\n  4. a delete replicates as\
+  \ a tombstone rather than vanishing locally;\n  5. only a moderator (the founder, Alice) removes someone\
+  \ else's post or\n     comment, and a member cannot appoint themselves.\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3360
+accounts:
+- calimero-node-1
+- calimero-node-2
 steps:
-  # ── Bootstrap ───────────────────────────────────────────────────────────────
-  # A bare wasm: mero-forum declares no `services` table, so create_context
-  # passes no service_name and there is nothing to select from.
-  - name: Install application on Node 1
-    type: install_application
-    node: calimero-node-1
-    path: dist/com.calimero.mero-forum.mpk
-    dev: true
-    outputs:
-      app_id: applicationId
-
-  - name: Install application on Node 2
-    type: install_application
-    node: calimero-node-2
-    path: dist/com.calimero.mero-forum.mpk
-    dev: true
-
-  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
-  # container health, which is not the same as ready: on a genuinely cold
-  # host `create_namespace` returns 500 about four seconds into the run.
-  # This was masked while the teardown left the previous scenario's
-  # containers behind, because the nodes were then already warm.
-  - name: Settle before the first admin call
-    type: wait
-    seconds: 12
-
-  - name: Create namespace
-    type: create_namespace
-    node: calimero-node-1
-    application_id: "{{app_id}}"
-    outputs:
-      namespace_id: namespaceId
-
-  - name: Set default member capabilities
-    type: set_default_capabilities
-    node: calimero-node-1
-    group_id: "{{namespace_id}}"
-    capabilities: 15
-
-  - name: Generate identity for Node 2
-    type: create_identity
-    node: calimero-node-2
-    outputs:
-      bob_identity: publicKey
-
-  - name: Wait for identity propagation
-    type: wait
-    seconds: 3
-
-  - name: Node 1 creates invitation for Node 2
-    type: create_namespace_invitation
-    node: calimero-node-1
-    group_id: "{{namespace_id}}"
-    outputs:
-      invite_bob: invitation
-
-  # core gives the group key a 5s gossip window, which on a loaded runner has to
-  # cover peer discovery too. Without this the join 500s intermittently.
-  - name: Settle before the namespace join (cold-join KeyDelivery)
-    type: wait
-    seconds: 12
-
-  - name: Node 2 joins namespace
-    type: join_namespace
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-    invitation: "{{invite_bob}}"
-
-  - name: Settle after namespace join
-    type: wait
-    seconds: 5
-
-  - name: Node 1 creates the forum
-    type: create_context
-    node: calimero-node-1
-    application_id: "{{app_id}}"
-    group_id: "{{namespace_id}}"
-    params: '{}'
-    outputs:
-      forum_id: contextId
-      alice_key: memberPublicKey
-
-  - name: Force Node 2 to sync namespace state
-    type: sync_group
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-
-  - name: Settle after sync
-    type: wait
-    seconds: 5
-
-  - name: Bob joins the forum
-    type: join_context
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    outputs:
-      bob_key: memberPublicKey
-
-  - name: Wait for forum sync
-    type: wait_for_sync
-    context_id: "{{forum_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  # ── 1. A post replicates, by a stable id ────────────────────────────────────
-  - name: Alice posts
-    type: call
-    node: calimero-node-1
-    context_id: "{{forum_id}}"
-    method: create_post
-    args:
-      title: "Namespaces vs contexts"
-      body: "When should an app create a subgroup?"
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      post_id: result.output
-
-  - name: Sync the post
-    type: wait_for_sync
-    context_id: "{{forum_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob reads the feed
-    type: call
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    method: list_posts
-    args: { sort: "new", cursor: null, limit: 20 }
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_feed: result
-
-  - name: Assert the post replicated
-    type: assert
-    statements:
-      - 'contains({{bob_feed}}, "Namespaces vs contexts")'
-
-  # The id Alice's node generated must be the id Bob's node knows it by. Under
-  # the old positional scheme this is precisely what broke.
-  - name: Bob fetches the post by Alice's id
-    type: call
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    method: get_post
-    args:
-      post_id: "{{post_id}}"
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_post: result
-
-  - name: Assert the id is stable across nodes
-    type: assert
-    statements:
-      - 'contains({{bob_post}}, "Namespaces vs contexts")'
-
-  # ── 2. The author gate holds on a signed delta path ─────────────────────────
-  #
-  # ⚠️ `expected_failure: true` on a `call` can NEVER fail the run, so the error
-  # is captured into an output and asserted present. A bare `expected_failure`
-  # here would assert nothing at all.
-  - name: Bob tries to edit Alice's post
-    type: call
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    method: edit_post
-    args:
-      post_id: "{{post_id}}"
-      title: "Hijacked"
-      body: "Not mine to edit"
-    executor_public_key: "{{bob_key}}"
-    expected_failure: true
-    outputs:
-      edit_error: error
-
-  - name: Assert the non-author edit was rejected
-    type: assert
-    statements:
-      - "is_set({{edit_error}})"
-
-  - name: Alice re-reads her post
-    type: call
-    node: calimero-node-1
-    context_id: "{{forum_id}}"
-    method: get_post
-    args:
-      post_id: "{{post_id}}"
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      alice_post: result
-
-  - name: Assert the title survived the rejected edit
-    type: assert
-    statements:
-      - 'contains({{alice_post}}, "Namespaces vs contexts")'
-      - 'not_contains({{alice_post}}, "Hijacked")'
-
-  # ── 3. Comments carry the signer as author ──────────────────────────────────
-  - name: Bob comments
-    type: call
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    method: create_comment
-    args:
-      post_id: "{{post_id}}"
-      body: "A namespace per team, a subgroup per topic."
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      comment_id: result.output
-
-  - name: Sync the comment
-    type: wait_for_sync
-    context_id: "{{forum_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Alice reads the thread
-    type: call
-    node: calimero-node-1
-    context_id: "{{forum_id}}"
-    method: list_comments
-    args: { post_id: "{{post_id}}", cursor: null, limit: 20 }
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      thread: result
-
-  - name: Assert the comment replicated
-    type: assert
-    statements:
-      - 'contains({{thread}}, "A namespace per team")'
-
-  - name: Alice tries to edit Bob's comment
-    type: call
-    node: calimero-node-1
-    context_id: "{{forum_id}}"
-    method: edit_comment
-    args:
-      comment_id: "{{comment_id}}"
-      body: "Rewritten by someone else"
-    executor_public_key: "{{alice_key}}"
-    expected_failure: true
-    outputs:
-      comment_edit_error: error
-
-  - name: Assert a non-author cannot rewrite a comment
-    type: assert
-    statements:
-      - "is_set({{comment_edit_error}})"
-
-  # ── 4. Votes are per account and the tally converges ────────────────────────
-  - name: Alice upvotes
-    type: call
-    node: calimero-node-1
-    context_id: "{{forum_id}}"
-    method: vote
-    args: { post_id: "{{post_id}}", value: 1 }
-    executor_public_key: "{{alice_key}}"
-
-  - name: Bob upvotes
-    type: call
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    method: vote
-    args: { post_id: "{{post_id}}", value: 1 }
-    executor_public_key: "{{bob_key}}"
-
-  - name: Sync the votes
-    type: wait_for_sync
-    context_id: "{{forum_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Alice reads the score
-    type: call
-    node: calimero-node-1
-    context_id: "{{forum_id}}"
-    method: get_post
-    args:
-      post_id: "{{post_id}}"
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      # `result.output`, not `result`: `result` is the envelope and json_subset
-      # compares structurally, so it would be matching against {"output": {…}}.
-      scored: result.output
-
-  - name: Assert two accounts made two points
-    type: json_assert
-    statements:
-      - 'json_subset({{scored}}, {"score": 2, "comment_count": 1})'
-
-  # Voting again from the same account must not add a second point.
-  - name: Bob upvotes a second time
-    type: call
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    method: vote
-    args: { post_id: "{{post_id}}", value: 1 }
-    executor_public_key: "{{bob_key}}"
-
-  - name: Sync the repeat vote
-    type: wait_for_sync
-    context_id: "{{forum_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Alice re-reads the score
-    type: call
-    node: calimero-node-1
-    context_id: "{{forum_id}}"
-    method: get_post
-    args:
-      post_id: "{{post_id}}"
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      scored_again: result.output
-
-  - name: Assert one account still counts once
-    type: json_assert
-    statements:
-      - 'json_subset({{scored_again}}, {"score": 2})'
-
-  # ── 5. A delete replicates ──────────────────────────────────────────────────
-  - name: Alice deletes her post
-    type: call
-    node: calimero-node-1
-    context_id: "{{forum_id}}"
-    method: delete_post
-    args:
-      post_id: "{{post_id}}"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Sync the delete
-    type: wait_for_sync
-    context_id: "{{forum_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob reads the feed again
-    type: call
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    method: list_posts
-    args: { sort: "new", cursor: null, limit: 20 }
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      feed_after_delete: result
-
-  - name: Assert the delete reached Node 2
-    type: assert
-    statements:
-      - 'not_contains({{feed_after_delete}}, "Namespaces vs contexts")'
-
-  # ── 6. Moderation: the founder removes spam, nobody else can ────────────────
-  #
-  # Alice ran `init`, so she is the first moderator. Moderation is a
-  # `Moderated<IndexedMap>` rule every node checks on apply, not just this one.
-  - name: Bob posts spam
-    type: call
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    method: create_post
-    args:
-      title: "Buy cheap tokens"
-      body: "Limited offer"
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      spam_id: result.output
-
-  - name: Sync the spam
-    type: wait_for_sync
-    context_id: "{{forum_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Alice reads the moderators
-    type: call
-    node: calimero-node-1
-    context_id: "{{forum_id}}"
-    method: moderators
-    args: {}
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      moderator_list: result.output
-
-  - name: Assert the forum has a moderator
-    type: assert
-    statements:
-      - "is_set({{moderator_list}})"
-
-  - name: Bob tries to appoint himself a moderator
-    type: call
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    method: set_moderators
-    args:
-      accounts: ["{{bob_key}}"]
-    executor_public_key: "{{bob_key}}"
-    expected_failure: true
-    outputs:
-      appoint_error: error
-
-  - name: Bob tries to moderate Alice's post
-    type: call
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    method: moderate_post
-    args:
-      post_id: "{{post_id}}"
-    executor_public_key: "{{bob_key}}"
-    expected_failure: true
-    outputs:
-      moderate_error: error
-
-  - name: Assert a non-moderator can neither appoint nor moderate
-    type: assert
-    statements:
-      - "is_set({{appoint_error}})"
-      - "is_set({{moderate_error}})"
-
-  - name: Alice removes Bob's comment as a moderator
-    type: call
-    node: calimero-node-1
-    context_id: "{{forum_id}}"
-    method: moderate_comment
-    args:
-      comment_id: "{{comment_id}}"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Alice removes Bob's spam as a moderator
-    type: call
-    node: calimero-node-1
-    context_id: "{{forum_id}}"
-    method: moderate_post
-    args:
-      post_id: "{{spam_id}}"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Sync the removals
-    type: wait_for_sync
-    context_id: "{{forum_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob reads the feed after moderation
-    type: call
-    node: calimero-node-2
-    context_id: "{{forum_id}}"
-    method: list_posts
-    args: { sort: "new", cursor: null, limit: 20 }
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      feed_after_moderation: result
-
-  - name: Assert the removal reached Node 2
-    type: assert
-    statements:
-      - 'not_contains({{feed_after_moderation}}, "Buy cheap tokens")'
+- name: Install application on Node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_forum.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-forum
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace
+  type: create_org
+  org_name: Create namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Set default member capabilities
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 15
+  account: calimero-node-1
+- name: Generate identity for Node 2
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_identity: publicKey
+- name: Wait for identity propagation
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates invitation for Node 2
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    invite_bob: token
+- name: Settle before the namespace join (cold-join KeyDelivery)
+  type: wait
+  seconds: 1.0
+- name: Node 2 joins namespace
+  type: redeem_invite
+  token: '{{invite_bob}}'
+  account: calimero-node-2
+- name: Settle after namespace join
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates the forum
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_forum.wasm'
+  app_name: Node 1 creates the forum
+  init_args: '{}'
+  org: '{{namespace_id}}'
+  outputs:
+    forum_id: contextId
+    alice_key: memberPublicKey
+- name: Settle after sync
+  type: wait
+  seconds: 1.0
+- name: Bob joins the forum
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_key: publicKey
+- name: Alice posts
+  type: call
+  app: '{{forum_id}}'
+  method: create_post
+  args:
+    title: Namespaces vs contexts
+    body: When should an app create a subgroup?
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    post_id: result
+- name: Bob reads the feed
+  type: call
+  app: '{{forum_id}}'
+  method: list_posts
+  args:
+    sort: new
+    cursor: null
+    limit: 20
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_feed: rpc
+- name: Assert the post replicated
+  type: assert
+  statements:
+  - contains({{bob_feed}}, "Namespaces vs contexts")
+- name: Bob fetches the post by Alice's id
+  type: call
+  app: '{{forum_id}}'
+  method: get_post
+  args:
+    post_id: '{{post_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_post: rpc
+- name: Assert the id is stable across nodes
+  type: assert
+  statements:
+  - contains({{bob_post}}, "Namespaces vs contexts")
+- name: Bob tries to edit Alice's post
+  type: call
+  app: '{{forum_id}}'
+  method: edit_post
+  args:
+    post_id: '{{post_id}}'
+    title: Hijacked
+    body: Not mine to edit
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    edit_error: error
+- name: Assert the non-author edit was rejected
+  type: assert
+  statements:
+  - is_set({{edit_error}})
+- name: Alice re-reads her post
+  type: call
+  app: '{{forum_id}}'
+  method: get_post
+  args:
+    post_id: '{{post_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_post: rpc
+- name: Assert the title survived the rejected edit
+  type: assert
+  statements:
+  - contains({{alice_post}}, "Namespaces vs contexts")
+  - not_contains({{alice_post}}, "Hijacked")
+- name: Bob comments
+  type: call
+  app: '{{forum_id}}'
+  method: create_comment
+  args:
+    post_id: '{{post_id}}'
+    body: A namespace per team, a subgroup per topic.
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    comment_id: result
+- name: Alice reads the thread
+  type: call
+  app: '{{forum_id}}'
+  method: list_comments
+  args:
+    post_id: '{{post_id}}'
+    cursor: null
+    limit: 20
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    thread: rpc
+- name: Assert the comment replicated
+  type: assert
+  statements:
+  - contains({{thread}}, "A namespace per team")
+- name: Alice tries to edit Bob's comment
+  type: call
+  app: '{{forum_id}}'
+  method: edit_comment
+  args:
+    comment_id: '{{comment_id}}'
+    body: Rewritten by someone else
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  expected_failure: true
+  outputs:
+    comment_edit_error: error
+- name: Assert a non-author cannot rewrite a comment
+  type: assert
+  statements:
+  - is_set({{comment_edit_error}})
+- name: Alice upvotes
+  type: call
+  app: '{{forum_id}}'
+  method: vote
+  args:
+    post_id: '{{post_id}}'
+    value: 1
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob upvotes
+  type: call
+  app: '{{forum_id}}'
+  method: vote
+  args:
+    post_id: '{{post_id}}'
+    value: 1
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice reads the score
+  type: call
+  app: '{{forum_id}}'
+  method: get_post
+  args:
+    post_id: '{{post_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    scored: result
+- name: Assert two accounts made two points
+  type: json_assert
+  statements:
+  - 'json_subset({{scored}}, {"score": 2, "comment_count": 1})'
+- name: Bob upvotes a second time
+  type: call
+  app: '{{forum_id}}'
+  method: vote
+  args:
+    post_id: '{{post_id}}'
+    value: 1
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice re-reads the score
+  type: call
+  app: '{{forum_id}}'
+  method: get_post
+  args:
+    post_id: '{{post_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    scored_again: result
+- name: Assert one account still counts once
+  type: json_assert
+  statements:
+  - 'json_subset({{scored_again}}, {"score": 2})'
+- name: Alice deletes her post
+  type: call
+  app: '{{forum_id}}'
+  method: delete_post
+  args:
+    post_id: '{{post_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob reads the feed again
+  type: call
+  app: '{{forum_id}}'
+  method: list_posts
+  args:
+    sort: new
+    cursor: null
+    limit: 20
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    feed_after_delete: rpc
+- name: Assert the delete reached Node 2
+  type: assert
+  statements:
+  - not_contains({{feed_after_delete}}, "Namespaces vs contexts")
+- name: Bob posts spam
+  type: call
+  app: '{{forum_id}}'
+  method: create_post
+  args:
+    title: Buy cheap tokens
+    body: Limited offer
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    spam_id: result
+- name: Alice reads the moderators
+  type: call
+  app: '{{forum_id}}'
+  method: moderators
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    moderator_list: result
+- name: Assert the forum has a moderator
+  type: assert
+  statements:
+  - is_set({{moderator_list}})
+- name: Bob tries to appoint himself a moderator
+  type: call
+  app: '{{forum_id}}'
+  method: set_moderators
+  args:
+    accounts:
+    - '{{bob_key}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    appoint_error: error
+- name: Bob tries to moderate Alice's post
+  type: call
+  app: '{{forum_id}}'
+  method: moderate_post
+  args:
+    post_id: '{{post_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    moderate_error: error
+- name: Assert a non-moderator can neither appoint nor moderate
+  type: assert
+  statements:
+  - is_set({{appoint_error}})
+  - is_set({{moderate_error}})
+- name: Alice removes Bob's comment as a moderator
+  type: call
+  app: '{{forum_id}}'
+  method: moderate_comment
+  args:
+    comment_id: '{{comment_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice removes Bob's spam as a moderator
+  type: call
+  app: '{{forum_id}}'
+  method: moderate_post
+  args:
+    post_id: '{{spam_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob reads the feed after moderation
+  type: call
+  app: '{{forum_id}}'
+  method: list_posts
+  args:
+    sort: new
+    cursor: null
+    limit: 20
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    feed_after_moderation: rpc
+- name: Assert the removal reached Node 2
+  type: assert
+  statements:
+  - not_contains({{feed_after_moderation}}, "Buy cheap tokens")

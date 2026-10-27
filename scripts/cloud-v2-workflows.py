@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the apps' ported workflows (apps/*/logic/workflows/cloud-v2/*.yml).
+"""Run the apps' merobox workflows (apps/*/logic/workflows/*.yml).
 
 Each runs on its own 3-node merod-v2 cluster through merobox's cloud-v2 backend.
 Needs MEROD_V2_BINARY and the contracts built
@@ -9,8 +9,8 @@ APPS_WASM_DIR defaults to target/cloud-v2-wasm.
 Usage: scripts/cloud-v2-workflows.py [--json out.json] [workflow.yml ...]
 Exit status is non-zero when a workflow in cloud-v2-workflows-baseline.json fails.
 
-The ports come from `merobox cloud port` (regenerate with
-scripts/port-workflows-to-cloud-v2.sh); each file's header lists what it dropped.
+They were ported from the v1 workflows once (`merobox cloud port`) and are the
+source now; a file's header lists what v1 steps it dropped.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def main() -> int:
     os.environ.setdefault("MEROBOX_FUZZY_SECONDS", "30")
     from merobox.cloud_v2 import run_workflow
 
-    files = args.workflows or sorted(ROOT.glob("apps/*/logic/workflows/cloud-v2/*.yml"))
+    files = args.workflows or sorted(ROOT.glob("apps/*/logic/workflows/*.yml"))
     results = []
     for f in files:
         rel = str(f.resolve().relative_to(ROOT))
@@ -65,7 +65,7 @@ def main() -> int:
     passed = {r["workflow"] for r in results if r["ok"]}
     baseline = set(json.loads(BASELINE.read_text())) if BASELINE.exists() else set()
     regressed = sorted(baseline & {r["workflow"] for r in results} - passed)
-    print(f"\n{len(passed)}/{len(results)} ported workflows pass")
+    print(f"\n{len(passed)}/{len(results)} workflows pass")
     if regressed:
         print("REGRESSED:", *regressed, sep="\n  ")
         return 1

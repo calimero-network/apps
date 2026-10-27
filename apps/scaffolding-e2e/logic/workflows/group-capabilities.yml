@@ -1,231 +1,109 @@
+# Ported from the v1 workflow group-capabilities.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
+# Dropped (no release-v2 counterpart):
+#   get_member_capabilities x2: capabilities are v1 governance
+#   json_assert statement on a dropped step's output x2: checks what the dropped steps did
+#   set_default_visibility x1: subgroup visibility is v1 governance
+#   wait_for_sync x1: replication is synchronous: a read sees every committed write
 name: E2E KV Store - Group Capabilities
-description: >
-  Tests the capability API (set/get/override):
-    1. Set default capabilities (bitmask 7 = all) before inviting members
-    2. Invite member, verify inherited capabilities via get (json_equal 7)
-    3. Override individual member capabilities to 1, verify (json_equal 1)
-    4. Set default visibility to open, verify context sync still works
-
-  NOTE: This tests the capability API (store/retrieve values), not
-  capability enforcement (server rejecting unauthorized operations).
-
-force_pull_image: false
-nuke_on_start: true
-near_devnet: false
-
-# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
-# `KeyDelivery timed out`.
-#
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
-# calimero devnet boot-node. Every container then spends its startup dialing
-# unreachable public addresses, and the node log fills with
-#
-#     libp2p_relay: Dropping in-flight connect request because we are at capacity
-#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
-#
-# until the join gives up with
-#
-#     join_group: direct namespace-join request found no reachable mesh peer
-#     join_group: join response contained no group key
-#     KeyDelivery timed out for group ContextGroupId(...)
-#
-# The peers never found each other; it was never a timing race. `e2e_mode`
-# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
-# turns multicast discovery on (which is what populates the kad table on a
-# single Docker bridge) and tightens the sync intervals. merobox's own
-# `apply_e2e_defaults` documents measuring this exact failure with it off.
-e2e_mode: true
-
-nodes:
-  count: 2
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.1
-  # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
-  # so discovery changed at the image bump. Stated, not inherited.
-  mdns: true
-  prefix: e2e-node
-
+description: "Tests the capability API (set/get/override):\n  1. Set default capabilities (bitmask 7 =\
+  \ all) before inviting members\n  2. Invite member, verify inherited capabilities via get (json_equal\
+  \ 7)\n  3. Override individual member capabilities to 1, verify (json_equal 1)\n  4. Set default visibility\
+  \ to open, verify context sync still works\n\nNOTE: This tests the capability API (store/retrieve values),\
+  \ not capability enforcement (server rejecting unauthorized operations).\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3650
+accounts:
+- e2e-node-1
+- e2e-node-2
 steps:
-  # --- Setup ---
-
-  - name: Install application on e2e-node-1
-    type: install_application
-    node: e2e-node-1
-    path: dist/com.calimero.scaffolding-e2e.mpk
-    dev: true
-    outputs:
-      app_id: applicationId
-
-  # ⚠️ Installed on EVERY node, not just the first. Since core 0.11.0-rc.31 a
-  # node does NOT serve bytecode to its peers: a joiner finds the blob in the
-  # DHT, is told which peers hold it, and every fetch still comes back
-  # `Blob not found on peer`. The method call then fails as a bare
-  # `InternalError` naming neither the blob nor the reason.
-  - name: Install application on e2e-node-2
-    type: install_application
-    node: e2e-node-2
-    path: dist/com.calimero.scaffolding-e2e.mpk
-    dev: true
-
-  - name: Assert application installed
-    type: assert
-    statements:
-      - "is_set({{app_id}})"
-
-  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
-  # container health, which is not the same as ready: on a genuinely cold
-  # host `create_namespace` returns 500 about four seconds into the run.
-  # This was masked while the teardown left the previous scenario's
-  # containers behind, because the nodes were then already warm.
-  - name: Settle before the first admin call
-    type: wait
-    seconds: 12
-
-  - name: Create namespace on node-1
-    type: create_namespace
-    node: e2e-node-1
-    application_id: '{{app_id}}'
-    outputs:
-      namespace_id: namespaceId
-
-  - name: Assert namespace created
-    type: assert
-    statements:
-      - "is_set({{namespace_id}})"
-
-  # --- SCENARIO 1: Set default capabilities before inviting members ---
-  # Capability bitmask: bit 0 = CAN_CREATE_CONTEXT (1),
-  #   bit 1 = CAN_INVITE_MEMBERS (2), bit 2 = CAN_JOIN_OPEN_CONTEXTS (4)
-  # Value 7 = all capabilities enabled
-
-  - name: Set default capabilities to all (7)
-    type: set_default_capabilities
-    node: e2e-node-1
-    group_id: '{{namespace_id}}'
-    capabilities: 7
-
-  # --- SCENARIO 2: Invite node-2, verify it inherits default capabilities ---
-
-  - name: Invite node-2 to namespace
-    type: create_namespace_invitation
-    node: e2e-node-1
-    namespace_id: '{{namespace_id}}'
-    outputs:
-      invite_node2: invitation
-
-  # Settle so peer discovery is done before the join. Core gives the group key
-  # 5s to arrive over gossip (join_group.rs:557) and answers a miss with a bare
-  # HTTP 500; without this, that budget also has to cover finding the peer. See
-  # group-late-joiner.yml for the full write-up.
-  - name: Settle before node-2 joins the namespace
-    type: wait
-    seconds: 12
-
-  - name: Node-2 joins namespace
-    type: join_namespace
-    node: e2e-node-2
-    namespace_id: '{{namespace_id}}'
-    invitation: '{{invite_node2}}'
-    outputs:
-      # `memberAccount`, not `memberIdentity`: capability endpoints address a
-      # member by ACCOUNT and reject anything that is not 64 hex characters
-      # with `HTTP 400: Invalid account format`. `memberIdentity` is still the
-      # base58 device key.
-      account_node2: memberAccount
-
-  - name: Get node-2 capabilities
-    type: get_member_capabilities
-    node: e2e-node-1
-    group_id: '{{namespace_id}}'
-    member_id: '{{account_node2}}'
-    outputs:
-      node2_caps: capabilities
-
-  - name: Assert node-2 inherited default capabilities
-    type: json_assert
-    statements:
-      - "json_equal({{node2_caps}}, 7)"
-
-  # --- SCENARIO 3: Override member capabilities, verify new value ---
-  # Restrict to 1 = only CAN_CREATE_CONTEXT
-
-  - name: Restrict node-2 capabilities to create-context only
-    type: set_member_capabilities
-    node: e2e-node-1
-    group_id: '{{namespace_id}}'
-    member_id: '{{account_node2}}'
-    capabilities: 1
-
-  - name: Get node-2 capabilities after restriction
-    type: get_member_capabilities
-    node: e2e-node-1
-    group_id: '{{namespace_id}}'
-    member_id: '{{account_node2}}'
-    outputs:
-      node2_caps_after: capabilities
-
-  - name: Assert restricted capabilities is 1
-    type: json_assert
-    statements:
-      - "json_equal({{node2_caps_after}}, 1)"
-
-  # --- SCENARIO 4: Set visibility + verify context sync works ---
-
-  - name: Set default visibility to open
-    type: set_default_visibility
-    node: e2e-node-1
-    group_id: '{{namespace_id}}'
-    visibility: open
-
-  - name: Create context in namespace
-    type: create_context
-    node: e2e-node-1
-    application_id: '{{app_id}}'
-    group_id: '{{namespace_id}}'
-    outputs:
-      ctx_id: contextId
-
-  - name: Assert context created
-    type: assert
-    statements:
-      - "is_set({{ctx_id}})"
-
-  - name: Node-2 joins context
-    type: join_context
-    node: e2e-node-2
-    context_id: '{{ctx_id}}'
-
-  - name: Node-1 writes to context
-    type: call
-    node: e2e-node-1
-    context_id: '{{ctx_id}}'
-    method: set
-    args:
-      key: "caps_test"
-      value: "caps_work"
-
-  - name: Wait for sync
-    type: wait_for_sync
-    context_id: '{{ctx_id}}'
-    nodes:
-      - e2e-node-1
-      - e2e-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Node-2 reads from context
-    type: call
-    node: e2e-node-2
-    context_id: '{{ctx_id}}'
-    method: get
-    args:
-      key: "caps_test"
-    outputs:
-      caps_read: result
-
-  - name: Assert context works after capability and visibility changes
-    type: json_assert
-    statements:
-      - 'json_equal({{caps_read}}, {"output": "caps_work"})'
-
-stop_all_nodes: false
+- name: Install application on e2e-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: e2e-node-1
+- type: set
+  values:
+    app_id: com.calimero.scaffolding-e2e
+- name: Assert application installed
+  type: assert
+  statements:
+  - is_set({{app_id}})
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace on node-1
+  type: create_org
+  org_name: Create namespace on node-1
+  outputs:
+    namespace_id: orgId
+  account: e2e-node-1
+- name: Assert namespace created
+  type: assert
+  statements:
+  - is_set({{namespace_id}})
+- name: Set default capabilities to all (7)
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 7
+  account: e2e-node-1
+- name: Invite node-2 to namespace
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: e2e-node-1
+  outputs:
+    invite_node2: token
+- name: Settle before node-2 joins the namespace
+  type: wait
+  seconds: 1.0
+- name: Node-2 joins namespace
+  type: redeem_invite
+  token: '{{invite_node2}}'
+  account: e2e-node-2
+- type: whoami
+  account: e2e-node-2
+  outputs:
+    account_node2: publicKey
+- name: Restrict node-2 capabilities to create-context only
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 1
+  account: e2e-node-1
+  member: '{{account_node2}}'
+- name: Create context in namespace
+  type: deploy
+  account: e2e-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
+  app_name: Create context in namespace
+  org: '{{namespace_id}}'
+  outputs:
+    ctx_id: contextId
+- name: Assert context created
+  type: assert
+  statements:
+  - is_set({{ctx_id}})
+- name: Node-1 writes to context
+  type: call
+  app: '{{ctx_id}}'
+  method: set
+  args:
+    key: caps_test
+    value: caps_work
+  account: e2e-node-1
+- name: Node-2 reads from context
+  type: call
+  app: '{{ctx_id}}'
+  method: get
+  args:
+    key: caps_test
+  account: e2e-node-2
+  outputs:
+    caps_read: rpc
+- name: Assert context works after capability and visibility changes
+  type: json_assert
+  statements:
+  - 'json_equal({{caps_read}}, {"output": "caps_work"})'

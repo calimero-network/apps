@@ -1,930 +1,637 @@
+# Ported from the v1 workflow e2e.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
+# Dropped (no release-v2 counterpart):
+#   assert statement on a dropped step's output x3: checks what the dropped steps did
+#   get_member_capabilities x3: capabilities are v1 governance
+#   sync_group x3: replication is synchronous
+#   wait_for_sync x9: replication is synchronous: a read sees every committed write
 name: MeroPass — a shared vault across two nodes (2-node e2e)
-description: >
-  Proves the thesis of MeroPass: a Calimero context IS a vault, and a secret
-  written on one member's node is readable, editable and deletable by another
-  member on a different node, with the audit trail replicating alongside it.
+description: 'Proves the thesis of MeroPass: a Calimero context IS a vault, and a secret written on one
+  member''s node is readable, editable and deletable by another member on a different node, with the audit
+  trail replicating alongside it.
 
-  This app had no merobox scenario at all before the monorepo migration, so
-  nothing had ever exercised the contract across a real network — only the
-  frontend against a single node by hand.
+  This app had no merobox scenario at all before the monorepo migration, so nothing had ever exercised
+  the contract across a real network — only the frontend against a single node by hand.
 
-force_pull_image: true
-
-# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
-# `KeyDelivery timed out`.
-#
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
-# calimero devnet boot-node. Every container then spends its startup dialing
-# unreachable public addresses, and the node log fills with
-#
-#     libp2p_relay: Dropping in-flight connect request because we are at capacity
-#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
-#
-# until the join gives up with
-#
-#     join_group: direct namespace-join request found no reachable mesh peer
-#     join_group: join response contained no group key
-#     KeyDelivery timed out for group ContextGroupId(...)
-#
-# The peers never found each other; it was never a timing race. `e2e_mode`
-# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
-# turns multicast discovery on (which is what populates the kad table on a
-# single Docker bridge) and tightens the sync intervals. merobox's own
-# `apply_e2e_defaults` documents measuring this exact failure with it off.
-e2e_mode: true
-
-nodes:
-  chain_id: testnet-1
-  count: 2
-  # Must match the `calimero-*` tag in the root Cargo.toml — contract and node
-  # have to agree. check-app-metadata.sh asserts this against
-  # [workspace.metadata.mero-apps].merod-image.
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.1
-  prefix: calimero-node
-  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
-  # `merod init` now writes `discovery.mdns = false` and merobox does not pass
-  # the flag. Without this the two nodes never peer and the run dies as a 500 on
-  # join_namespace, which reads like a contract break.
-  mdns: true
-  # Off the defaults (2428/2528) and off every other app's pair, so a developer
-  # running this beside another scenario does not collide.
-  base_port: 2880
-  base_rpc_port: 2780
-
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3400
+accounts:
+- calimero-node-1
+- calimero-node-2
 steps:
-  # ── Bootstrap ───────────────────────────────────────────────────────────────
-  # A bare wasm, not a bundle: mero-pass declares no `services` table, so
-  # `create_context` passes no service_name and there is nothing to select from.
-  - name: Install application on Node 1
-    type: install_application
-    node: calimero-node-1
-    path: dist/com.calimero.mero-pass.mpk
-    dev: true
-    outputs:
-      app_id: applicationId
-
-  - name: Install application on Node 2
-    type: install_application
-    node: calimero-node-2
-    path: dist/com.calimero.mero-pass.mpk
-    dev: true
-    # Captured separately rather than reusing node 1's. An application id is
-    # `hash(package, signer)` and a `dev: true` install is signed by the node
-    # doing it, so the two nodes may legitimately hold DIFFERENT ids for the
-    # same bundle. The governance section below needs node 2's own id, because
-    # that is what the frontend resolves there — `lib/appId.ts` asks the node.
-    outputs:
-      app_id_2: applicationId
-
-  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
-  # container health, which is not the same as ready: on a genuinely cold
-  # host `create_namespace` returns 500 about four seconds into the run.
-  # This was masked while the teardown left the previous scenario's
-  # containers behind, because the nodes were then already warm.
-  - name: Settle before the first admin call
-    type: wait
-    seconds: 12
-
-  - name: Create namespace
-    type: create_namespace
-    node: calimero-node-1
-    application_id: "{{app_id}}"
-    outputs:
-      namespace_id: namespaceId
-
-  # ⚠️ 4, not 15. 4 is CAN_JOIN_OPEN_SUBGROUPS alone — the Member set from
-  # `app/src/lib/roles.ts`, which is exactly what an invited person needs to
-  # open the space's vaults and read and write their secrets.
-  #
-  # It was 15: CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS | CAN_JOIN_OPEN_SUBGROUPS
-  # | MANAGE_MEMBERS. In a password manager that made everyone you invited a
-  # de-facto admin who could invite further people and demote you, so the role
-  # system was decorative. The governance section at the end of this scenario
-  # is what pins the difference.
-  #
-  # This also proves the tightening does not lock out the space's CREATOR: node
-  # 1 creates a vault further down with no capability grant of its own, because
-  # a namespace's owner holds full capabilities independently of this default.
-  - name: Set what an invited member may do (the Member set)
-    type: set_default_capabilities
-    node: calimero-node-1
-    group_id: "{{namespace_id}}"
-    capabilities: 4
-
-  - name: Generate identity for Node 2
-    type: create_identity
-    node: calimero-node-2
-    outputs:
-      bob_identity: publicKey
-
-  - name: Wait for identity propagation
-    type: wait
-    seconds: 3
-
-  - name: Node 1 creates invitation for Node 2
-    type: create_namespace_invitation
-    node: calimero-node-1
-    group_id: "{{namespace_id}}"
-    outputs:
-      invite_bob: invitation
-
-  # core gives the group key a 5s gossip window, which on a loaded runner has to
-  # cover peer discovery too. Without this the join 500s intermittently.
-  - name: Settle before the namespace join (cold-join KeyDelivery)
-    type: wait
-    seconds: 12
-
-  - name: Node 2 joins namespace
-    type: join_namespace
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-    invitation: "{{invite_bob}}"
-
-  - name: Settle after namespace join
-    type: wait
-    seconds: 5
-
-  # ── The vault is a context, and it is created WITH A NAME ───────────────────
-  #
-  # ⚠️ `params` is no longer `'{}'`. `init` takes the vault's name, and this is
-  # the call that puts it into replicated state. It is the whole mechanism
-  # behind "the name the creator typed reaches the other node": a name kept in
-  # the frontend's localStorage, or in a node-local context alias, reaches
-  # nobody. Assertions below prove it on Bob's node, not just Alice's.
-  - name: Node 1 creates the vault, named
-    type: create_context
-    node: calimero-node-1
-    application_id: "{{app_id}}"
-    group_id: "{{namespace_id}}"
-    params: '{"name":"Shared credentials"}'
-    outputs:
-      vault_id: contextId
-      alice_key: memberPublicKey
-
-  - name: Force Node 2 to sync namespace state
-    type: sync_group
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-
-  - name: Settle after sync
-    type: wait
-    seconds: 5
-
-  - name: Bob joins the vault
-    type: join_context
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    outputs:
-      bob_key: memberPublicKey
-
-  - name: Wait for vault sync
-    type: wait_for_sync
-    context_id: "{{vault_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  # ── THE NAME CROSSES THE NETWORK ────────────────────────────────────────────
-  #
-  # The assertion this app existed without. Before named vaults every screen
-  # rendered `Vault 3f8a91c2…` from the context id, so the creator and the
-  # invitee saw the same meaningless stub and the name a person typed was worth
-  # nothing. Reading it back on BOB's node is the only proof that matters — on
-  # Alice's node a purely local label would pass just as well.
-  - name: Bob reads the vault's name
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: vault_name
-    args: {}
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_vault_name: result
-
-  - name: Assert the creator's name reached the invited node
-    type: assert
-    statements:
-      - 'contains({{bob_vault_name}}, "Shared credentials")'
-
-  # ── v2: roles, device keys and ciphertext ─────────────────────────────────
-  #
-  # The contract never sees plaintext: the browser seals every name, field and
-  # tag list under the vault key before it is sent. This scenario drives the
-  # contract directly, so it passes stand-in envelopes (`mp1.k1.…`) — what it
-  # proves is the REPLICATED behaviour: who may write, key wraps reaching the
-  # other node, field-level merge across nodes, history, trash.
-  - name: Who is Node 2, as an account
-    type: node_identity
-    node: calimero-node-2
-    outputs:
-      bob_account: accountId
-
-  - name: Bob registers his browser's device key
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: register_device
-    args:
-      fingerprint: "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
-      public_key: "pk-bob"
-      label: "Bob's browser"
-      kind: "browser"
-    executor_public_key: "{{bob_key}}"
-
-  - name: Bob registers a recovery key alongside his browser
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: register_device
-    args:
-      fingerprint: "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
-      public_key: "pk-bob-recovery"
-      label: "Recovery key"
-      kind: "recovery"
-    executor_public_key: "{{bob_key}}"
-
-  - name: A device of an unknown kind is refused
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: register_device
-    args:
-      fingerprint: "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
-      public_key: "pk-bob-phone"
-      label: "Phone"
-      kind: "phone"
-    executor_public_key: "{{bob_key}}"
-    expected_failure: true
-    outputs:
-      bad_kind_refused: error
-
-  - name: Assert the unknown kind was refused
-    type: assert
-    statements:
-      - "is_set({{bad_kind_refused}})"
-
-  - name: Bob, not yet admitted, cannot rename the vault
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: rename_vault
-    args:
-      name: "Hijacked"
-    executor_public_key: "{{bob_key}}"
-    expected_failure: true
-    outputs:
-      bob_rename_refused: error
-
-  - name: Assert a pending member is refused
-    type: assert
-    statements:
-      - "is_set({{bob_rename_refused}})"
-
-  - name: Alice registers her device
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: register_device
-    args:
-      fingerprint: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
-      public_key: "pk-alice"
-      label: "Alice's browser"
-      kind: "browser"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Sync Bob's device to Node 1
-    type: wait_for_sync
-    context_id: "{{vault_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Alice admits Bob as an Editor
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: set_role
-    args:
-      account: "{{bob_account}}"
-      role: "editor"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Alice wraps key k1 to both devices
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: add_key_wraps
-    args:
-      wraps:
-        - { key_id: "k1", recipient: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", wrapper: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", envelope: "wrap-to-alice" }
-        - { key_id: "k1", recipient: "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", wrapper: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", envelope: "wrap-to-bob" }
-    executor_public_key: "{{alice_key}}"
-
-  - name: Alice switches the vault to k1
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: rotate_key
-    args:
-      key_id: "k1"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Sync the admission and the key
-    type: wait_for_sync
-    context_id: "{{vault_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob finds the wrap addressed to his device
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: key_wraps_for
-    args:
-      recipient: "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_wraps: result
-
-  - name: Bob reads his role and the current key
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: vault_info
-    args: {}
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_info: result
-
-  - name: Assert the key and the role reached Node 2
-    type: assert
-    statements:
-      - 'contains({{bob_wraps}}, "wrap-to-bob")'
-      - 'not_contains({{bob_wraps}}, "wrap-to-alice")'
-      - 'contains({{bob_info}}, "editor")'
-      - 'contains({{bob_info}}, "k1")'
-
-  - name: Alice lists the vault's people, devices and wraps
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: list_members
-    args: {}
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      alice_members: result
-
-  - name: Alice lists the registered devices
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: list_devices
-    args: {}
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      alice_devices: result
-
-  - name: Alice lists which devices already hold which key
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: wrapped_pairs
-    args: {}
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      alice_pairs: result
-
-  - name: Assert Bob is an Editor with one device holding k1
-    type: assert
-    statements:
-      - 'contains({{alice_members}}, {{bob_account}})'
-      - 'contains({{alice_members}}, "editor")'
-      - 'contains({{alice_devices}}, "Bob''s browser")'
-      - 'contains({{alice_devices}}, "recovery")'
-      - 'not_contains({{alice_devices}}, "pk-bob-phone")'
-      - 'contains({{alice_pairs}}, "k1:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2")'
-
-  - name: Bob renames the vault
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: rename_vault
-    args:
-      name: "Production keys"
-    executor_public_key: "{{bob_key}}"
-
-  - name: Sync the rename
-    type: wait_for_sync
-    context_id: "{{vault_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Alice reads the vault's name back
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: vault_name
-    args: {}
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      alice_vault_name: result
-
-  - name: Assert the rename converged the other way too
-    type: assert
-    statements:
-      - 'contains({{alice_vault_name}}, "Production keys")'
-      - 'not_contains({{alice_vault_name}}, "Shared credentials")'
-
-  - name: Alice adds a secret under a client-chosen id
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: add_secret
-    args:
-      id: "secret_00000000000000000000000000000001"
-      kind: "login"
-      name: "mp1.k1.iv.NAME-GITHUB"
-      tags: "mp1.k1.iv.TAGS"
-      fields:
-        username: "mp1.k1.iv.USER-ALICE"
-        password: "mp1.k1.iv.PASSWORD-ONE"
-        url: "mp1.k1.iv.URL-ONE"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Sync the new secret
-    type: wait_for_sync
-    context_id: "{{vault_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob lists the vault
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: list_secrets
-    args: {}
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_list: result
-
-  - name: Assert the secret replicated as ciphertext
-    type: assert
-    statements:
-      - 'contains({{bob_list}}, "secret_00000000000000000000000000000001")'
-      - 'contains({{bob_list}}, "PASSWORD-ONE")'
-
-  # Two members edit DIFFERENT fields of the same secret on two nodes before
-  # either sees the other. Both edits must survive: each field is its own
-  # register, so this is not a last-writer-wins on the whole record.
-  - name: Bob rotates the password on Node 2
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: update_secret
-    args:
-      id: "secret_00000000000000000000000000000001"
-      name: null
-      tags: null
-      fields:
-        password: "mp1.k1.iv.PASSWORD-TWO"
-      rekey: false
-    executor_public_key: "{{bob_key}}"
-
-  - name: Alice fixes the URL on Node 1, concurrently
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: update_secret
-    args:
-      id: "secret_00000000000000000000000000000001"
-      name: null
-      tags: null
-      fields:
-        url: "mp1.k1.iv.URL-TWO"
-      rekey: false
-    executor_public_key: "{{alice_key}}"
-
-  - name: Sync both edits
-    type: wait_for_sync
-    context_id: "{{vault_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Alice reads the secret back
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: get_secret
-    args:
-      id: "secret_00000000000000000000000000000001"
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      alice_secret: result
-
-  - name: Bob reads the secret back
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: get_secret
-    args:
-      id: "secret_00000000000000000000000000000001"
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_secret: result
-
-  - name: Assert both concurrent field edits survived on both nodes
-    type: assert
-    statements:
-      - 'contains({{alice_secret}}, "PASSWORD-TWO")'
-      - 'contains({{alice_secret}}, "URL-TWO")'
-      - 'contains({{bob_secret}}, "PASSWORD-TWO")'
-      - 'contains({{bob_secret}}, "URL-TWO")'
-      - 'not_contains({{alice_secret}}, "PASSWORD-ONE")'
-
-  - name: Alice reads the secret's history
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: secret_history
-    args:
-      id: "secret_00000000000000000000000000000001"
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      alice_history: result
-
-  - name: Assert the old password is kept, still sealed
-    type: assert
-    statements:
-      - 'contains({{alice_history}}, "PASSWORD-ONE")'
-      - 'contains({{alice_history}}, "URL-ONE")'
-
-  - name: Alice makes Bob a Viewer
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: set_role
-    args:
-      account: "{{bob_account}}"
-      role: "viewer"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Sync the demotion
-    type: wait_for_sync
-    context_id: "{{vault_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob, now a Viewer, cannot trash the secret
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: trash_secret
-    args:
-      id: "secret_00000000000000000000000000000001"
-    executor_public_key: "{{bob_key}}"
-    expected_failure: true
-    outputs:
-      bob_trash_refused: error
-
-  - name: Assert a viewer is read-only
-    type: assert
-    statements:
-      - "is_set({{bob_trash_refused}})"
-
-  - name: Alice trashes the secret
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: trash_secret
-    args:
-      id: "secret_00000000000000000000000000000001"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Alice restores it — the trash is recoverable
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: restore_secret
-    args:
-      id: "secret_00000000000000000000000000000001"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Alice trashes it again, for good this time
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: trash_secret
-    args:
-      id: "secret_00000000000000000000000000000001"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Alice purges it
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: purge_secret
-    args:
-      id: "secret_00000000000000000000000000000001"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Sync the purge
-    type: wait_for_sync
-    context_id: "{{vault_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob lists the vault again
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: list_secrets
-    args: {}
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_after_delete: result
-
-  - name: Assert the purge converged to node 2
-    type: assert
-    statements:
-      - 'not_contains({{bob_after_delete}}, "secret_00000000000000000000000000000001")'
-
-  - name: Alice reads the audit log
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: get_audit_logs
-    args: {}
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      alice_audit: result
-
-  - name: Assert every change is audited, from both nodes
-    type: assert
-    statements:
-      - 'contains({{alice_audit}}, "secret_added")'
-      - 'contains({{alice_audit}}, "secret_updated")'
-      - 'contains({{alice_audit}}, "vault_renamed")'
-      - 'contains({{alice_audit}}, "role_set:editor")'
-      - 'contains({{alice_audit}}, "secret_purged")'
-      - 'not_contains({{alice_audit}}, "PASSWORD")'
-
-
-  - name: Read Bob's capabilities on his OWN node, before any promotion
-    type: get_member_capabilities
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-    member_id: "{{bob_account}}"
-    outputs:
-      bob_caps_before: capabilities
-
-  - name: Assert an invited member is a MEMBER, not an admin
-    type: assert
-    statements:
-      # Exactly the Member set. Not "at least" — the whole point is that an
-      # invitee does NOT get MANAGE_MEMBERS (8) or CAN_INVITE_MEMBERS (2).
-      - "{{bob_caps_before}} == 4"
-
-  # ── Promote ────────────────────────────────────────────────────────────────
-  - name: Alice records Bob as an Admin
-    type: update_member_role
-    node: calimero-node-1
-    group_id: "{{namespace_id}}"
-    member_id: "{{bob_account}}"
-    role: Admin
-
-  - name: Alice grants the capabilities that role MEANS
-    type: set_member_capabilities
-    node: calimero-node-1
-    group_id: "{{namespace_id}}"
-    member_id: "{{bob_account}}"
-    capabilities: 431
-
-  - name: Pull the grant to Node 2
-    type: sync_group
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-
-  # A grant is published as an op and PROJECTED by the receiving node; it
-  # confers nothing in between. This is that window.
-  - name: Settle while the grant projects on Node 2
-    type: wait
-    seconds: 8
-
-  - name: Read Bob's capabilities on his own node again
-    type: get_member_capabilities
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-    member_id: "{{bob_account}}"
-    outputs:
-      bob_caps_after: capabilities
-
-  - name: Assert the promotion reached the other node
-    type: assert
-    statements:
-      - "{{bob_caps_after}} == 431"
-
-  # ── …and that it is USABLE, which is the part a role label never proves ─────
-  - name: Bob creates a vault's subgroup from his own node
-    type: create_group_in_namespace
-    node: calimero-node-2
-    namespace_id: "{{namespace_id}}"
-    group_name: "Bob's vault"
-    outputs:
-      bob_vault_group: groupId
-
-  # ⚠️ `record_name`, not `name`. `name` is the STEP LABEL on every merobox
-  # step, so spelling it `name` here sets no metadata at all and silently
-  # renames the step instead — two `name:` keys in one mapping, last one wins.
-  - name: Bob names it
-    type: set_group_metadata
-    node: calimero-node-2
-    group_id: "{{bob_vault_group}}"
-    record_name: "Bob's vault"
-
-  - name: Bob opens it to the space
-    type: set_subgroup_visibility
-    node: calimero-node-2
-    group_id: "{{bob_vault_group}}"
-    visibility: open
-
-  - name: Bob creates the vault's context
-    type: create_context
-    node: calimero-node-2
-    application_id: "{{app_id_2}}"
-    group_id: "{{bob_vault_group}}"
-    params: '{"name":"Bob''s vault"}'
-    outputs:
-      bob_vault_context: contextId
-      bob_vault_key: memberPublicKey
-
-  - name: Bob mints an invitation, which a Member could not
-    type: create_namespace_invitation
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-    outputs:
-      bob_invite: invitation
-
-  - name: Assert the promoted member really could use every capability
-    type: assert
-    statements:
-      # Four calls a Member's mask (4) forbids: CAN_CREATE_SUBGROUP (32),
-      # CAN_MANAGE_METADATA (256), CAN_MANAGE_VISIBILITY (128),
-      # CAN_CREATE_CONTEXT (1) — plus CAN_INVITE_MEMBERS (2).
-      - 'is_set({{bob_vault_group}})'
-      - 'is_set({{bob_vault_context}})'
-      - 'is_set({{bob_invite}})'
-
-  - name: And the vault he made carries the name he typed
-    type: call
-    node: calimero-node-2
-    context_id: "{{bob_vault_context}}"
-    method: vault_name
-    args: {}
-    executor_public_key: "{{bob_vault_key}}"
-    outputs:
-      bob_own_vault_name: result
-
-  - name: Assert it did
-    type: assert
-    statements:
-      - 'contains({{bob_own_vault_name}}, "Bob")'
-
-  # ── Demote ─────────────────────────────────────────────────────────────────
-  - name: Alice demotes Bob back to Member
-    type: update_member_role
-    node: calimero-node-1
-    group_id: "{{namespace_id}}"
-    member_id: "{{bob_account}}"
-    role: Member
-
-  - name: Alice withdraws the admin capabilities
-    type: set_member_capabilities
-    node: calimero-node-1
-    group_id: "{{namespace_id}}"
-    member_id: "{{bob_account}}"
-    capabilities: 4
-
-  - name: Pull the demotion to Node 2
-    type: sync_group
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-
-  - name: Settle while the demotion projects
-    type: wait
-    seconds: 8
-
-  - name: Read Bob's capabilities once more
-    type: get_member_capabilities
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-    member_id: "{{bob_account}}"
-    outputs:
-      bob_caps_demoted: capabilities
-
-  - name: Assert the demotion took the governance bits away
-    type: assert
-    statements:
-      - "{{bob_caps_demoted}} == 4"
-
-  # ⚠️ AND THAT IT DID NOT TAKE THE SECRETS AWAY. A demoted member keeps
-  # CAN_JOIN_OPEN_SUBGROUPS, stays in every vault they had entered, and their
-  # node still holds the replica it already synced. Demotion stops somebody
-  # GOVERNING the space; it does not un-sync what they have read, and this
-  # scenario says so out loud rather than leaving the reader to assume
-  # otherwise. The only thing that protects an already-shared secret is
-  # rotating it.
-  - name: Bob still reads the vault he was invited to
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: vault_name
-    args: {}
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_after_demotion: result
-
-  - name: Assert demotion is not revocation
-    type: assert
-    statements:
-      - 'contains({{bob_after_demotion}}, "Production keys")'
-
-  # ── Removal ────────────────────────────────────────────────────────────────
-  # Last, so nothing above depends on Bob still being in the vault. The browser
-  # follows `remove_member` with a key rotation; here the replicated half is
-  # what is checked: roles gone, devices revoked, and newcomers defaulting to
-  # read-only.
-  - name: Alice makes newcomers Viewers by default
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: set_default_role
-    args:
-      role: "viewer"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Alice revokes Bob's browser
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: revoke_device
-    args:
-      fingerprint: "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Alice removes Bob from the vault
-    type: call
-    node: calimero-node-1
-    context_id: "{{vault_id}}"
-    method: remove_member
-    args:
-      account: "{{bob_account}}"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Sync the removal
-    type: wait_for_sync
-    context_id: "{{vault_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob reads the vault info on his own node
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: vault_info
-    args: {}
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_info_removed: result
-
-  - name: Bob lists the members on his own node
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: list_members
-    args: {}
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_members_removed: result
-
-  - name: Assert the removal reached Node 2
-    type: assert
-    statements:
-      - 'contains({{bob_info_removed}}, "pending")'
-      - 'contains({{bob_info_removed}}, "viewer")'
-      - 'not_contains({{bob_members_removed}}, {{bob_account}})'
+- name: Install application on Node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_pass.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-pass
+- name: Install application on Node 2
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_pass.wasm'
+  outputs:
+    app_id_2_bundle: hash
+  account: calimero-node-2
+- type: set
+  values:
+    app_id_2: com.calimero.mero-pass
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace
+  type: create_org
+  org_name: Create namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Set what an invited member may do (the Member set)
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
+  account: calimero-node-1
+- name: Generate identity for Node 2
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_identity: publicKey
+- name: Wait for identity propagation
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates invitation for Node 2
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    invite_bob: token
+- name: Settle before the namespace join (cold-join KeyDelivery)
+  type: wait
+  seconds: 1.0
+- name: Node 2 joins namespace
+  type: redeem_invite
+  token: '{{invite_bob}}'
+  account: calimero-node-2
+- name: Settle after namespace join
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates the vault, named
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_pass.wasm'
+  app_name: Node 1 creates the vault, named
+  init_args: '{"name":"Shared credentials"}'
+  org: '{{namespace_id}}'
+  outputs:
+    vault_id: contextId
+    alice_key: memberPublicKey
+- name: Settle after sync
+  type: wait
+  seconds: 1.0
+- name: Bob joins the vault
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_key: publicKey
+- name: Bob reads the vault's name
+  type: call
+  app: '{{vault_id}}'
+  method: vault_name
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_vault_name: rpc
+- name: Assert the creator's name reached the invited node
+  type: assert
+  statements:
+  - contains({{bob_vault_name}}, "Shared credentials")
+- name: Who is Node 2, as an account
+  type: whoami
+  outputs:
+    bob_account: publicKey
+  account: calimero-node-2
+- name: Bob registers his browser's device key
+  type: call
+  app: '{{vault_id}}'
+  method: register_device
+  args:
+    fingerprint: b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+    public_key: pk-bob
+    label: Bob's browser
+    kind: browser
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob registers a recovery key alongside his browser
+  type: call
+  app: '{{vault_id}}'
+  method: register_device
+  args:
+    fingerprint: c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
+    public_key: pk-bob-recovery
+    label: Recovery key
+    kind: recovery
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: A device of an unknown kind is refused
+  type: call
+  app: '{{vault_id}}'
+  method: register_device
+  args:
+    fingerprint: d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4
+    public_key: pk-bob-phone
+    label: Phone
+    kind: phone
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    bad_kind_refused: error
+- name: Assert the unknown kind was refused
+  type: assert
+  statements:
+  - is_set({{bad_kind_refused}})
+- name: Bob, not yet admitted, cannot rename the vault
+  type: call
+  app: '{{vault_id}}'
+  method: rename_vault
+  args:
+    name: Hijacked
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    bob_rename_refused: error
+- name: Assert a pending member is refused
+  type: assert
+  statements:
+  - is_set({{bob_rename_refused}})
+- name: Alice registers her device
+  type: call
+  app: '{{vault_id}}'
+  method: register_device
+  args:
+    fingerprint: a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1
+    public_key: pk-alice
+    label: Alice's browser
+    kind: browser
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice admits Bob as an Editor
+  type: call
+  app: '{{vault_id}}'
+  method: set_role
+  args:
+    account: '{{bob_account}}'
+    role: editor
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice wraps key k1 to both devices
+  type: call
+  app: '{{vault_id}}'
+  method: add_key_wraps
+  args:
+    wraps:
+    - key_id: k1
+      recipient: a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1
+      wrapper: a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1
+      envelope: wrap-to-alice
+    - key_id: k1
+      recipient: b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+      wrapper: a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1
+      envelope: wrap-to-bob
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice switches the vault to k1
+  type: call
+  app: '{{vault_id}}'
+  method: rotate_key
+  args:
+    key_id: k1
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob finds the wrap addressed to his device
+  type: call
+  app: '{{vault_id}}'
+  method: key_wraps_for
+  args:
+    recipient: b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_wraps: rpc
+- name: Bob reads his role and the current key
+  type: call
+  app: '{{vault_id}}'
+  method: vault_info
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_info: rpc
+- name: Assert the key and the role reached Node 2
+  type: assert
+  statements:
+  - contains({{bob_wraps}}, "wrap-to-bob")
+  - not_contains({{bob_wraps}}, "wrap-to-alice")
+  - contains({{bob_info}}, "editor")
+  - contains({{bob_info}}, "k1")
+- name: Alice lists the vault's people, devices and wraps
+  type: call
+  app: '{{vault_id}}'
+  method: list_members
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_members: rpc
+- name: Alice lists the registered devices
+  type: call
+  app: '{{vault_id}}'
+  method: list_devices
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_devices: rpc
+- name: Alice lists which devices already hold which key
+  type: call
+  app: '{{vault_id}}'
+  method: wrapped_pairs
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_pairs: rpc
+- name: Assert Bob is an Editor with one device holding k1
+  type: assert
+  statements:
+  - contains({{alice_members}}, {{bob_account}})
+  - contains({{alice_members}}, "editor")
+  - contains({{alice_devices}}, "Bob's browser")
+  - contains({{alice_devices}}, "recovery")
+  - not_contains({{alice_devices}}, "pk-bob-phone")
+  - contains({{alice_pairs}}, "k1:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2")
+- name: Bob renames the vault
+  type: call
+  app: '{{vault_id}}'
+  method: rename_vault
+  args:
+    name: Production keys
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice reads the vault's name back
+  type: call
+  app: '{{vault_id}}'
+  method: vault_name
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_vault_name: rpc
+- name: Assert the rename converged the other way too
+  type: assert
+  statements:
+  - contains({{alice_vault_name}}, "Production keys")
+  - not_contains({{alice_vault_name}}, "Shared credentials")
+- name: Alice adds a secret under a client-chosen id
+  type: call
+  app: '{{vault_id}}'
+  method: add_secret
+  args:
+    id: secret_00000000000000000000000000000001
+    kind: login
+    name: mp1.k1.iv.NAME-GITHUB
+    tags: mp1.k1.iv.TAGS
+    fields:
+      username: mp1.k1.iv.USER-ALICE
+      password: mp1.k1.iv.PASSWORD-ONE
+      url: mp1.k1.iv.URL-ONE
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob lists the vault
+  type: call
+  app: '{{vault_id}}'
+  method: list_secrets
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_list: rpc
+- name: Assert the secret replicated as ciphertext
+  type: assert
+  statements:
+  - contains({{bob_list}}, "secret_00000000000000000000000000000001")
+  - contains({{bob_list}}, "PASSWORD-ONE")
+- name: Bob rotates the password on Node 2
+  type: call
+  app: '{{vault_id}}'
+  method: update_secret
+  args:
+    id: secret_00000000000000000000000000000001
+    name: null
+    tags: null
+    fields:
+      password: mp1.k1.iv.PASSWORD-TWO
+    rekey: false
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice fixes the URL on Node 1, concurrently
+  type: call
+  app: '{{vault_id}}'
+  method: update_secret
+  args:
+    id: secret_00000000000000000000000000000001
+    name: null
+    tags: null
+    fields:
+      url: mp1.k1.iv.URL-TWO
+    rekey: false
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice reads the secret back
+  type: call
+  app: '{{vault_id}}'
+  method: get_secret
+  args:
+    id: secret_00000000000000000000000000000001
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_secret: rpc
+- name: Bob reads the secret back
+  type: call
+  app: '{{vault_id}}'
+  method: get_secret
+  args:
+    id: secret_00000000000000000000000000000001
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_secret: rpc
+- name: Assert both concurrent field edits survived on both nodes
+  type: assert
+  statements:
+  - contains({{alice_secret}}, "PASSWORD-TWO")
+  - contains({{alice_secret}}, "URL-TWO")
+  - contains({{bob_secret}}, "PASSWORD-TWO")
+  - contains({{bob_secret}}, "URL-TWO")
+  - not_contains({{alice_secret}}, "PASSWORD-ONE")
+- name: Alice reads the secret's history
+  type: call
+  app: '{{vault_id}}'
+  method: secret_history
+  args:
+    id: secret_00000000000000000000000000000001
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_history: rpc
+- name: Assert the old password is kept, still sealed
+  type: assert
+  statements:
+  - contains({{alice_history}}, "PASSWORD-ONE")
+  - contains({{alice_history}}, "URL-ONE")
+- name: Alice makes Bob a Viewer
+  type: call
+  app: '{{vault_id}}'
+  method: set_role
+  args:
+    account: '{{bob_account}}'
+    role: viewer
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob, now a Viewer, cannot trash the secret
+  type: call
+  app: '{{vault_id}}'
+  method: trash_secret
+  args:
+    id: secret_00000000000000000000000000000001
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    bob_trash_refused: error
+- name: Assert a viewer is read-only
+  type: assert
+  statements:
+  - is_set({{bob_trash_refused}})
+- name: Alice trashes the secret
+  type: call
+  app: '{{vault_id}}'
+  method: trash_secret
+  args:
+    id: secret_00000000000000000000000000000001
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice restores it — the trash is recoverable
+  type: call
+  app: '{{vault_id}}'
+  method: restore_secret
+  args:
+    id: secret_00000000000000000000000000000001
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice trashes it again, for good this time
+  type: call
+  app: '{{vault_id}}'
+  method: trash_secret
+  args:
+    id: secret_00000000000000000000000000000001
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice purges it
+  type: call
+  app: '{{vault_id}}'
+  method: purge_secret
+  args:
+    id: secret_00000000000000000000000000000001
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob lists the vault again
+  type: call
+  app: '{{vault_id}}'
+  method: list_secrets
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_after_delete: rpc
+- name: Assert the purge converged to node 2
+  type: assert
+  statements:
+  - not_contains({{bob_after_delete}}, "secret_00000000000000000000000000000001")
+- name: Alice reads the audit log
+  type: call
+  app: '{{vault_id}}'
+  method: get_audit_logs
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    alice_audit: rpc
+- name: Assert every change is audited, from both nodes
+  type: assert
+  statements:
+  - contains({{alice_audit}}, "secret_added")
+  - contains({{alice_audit}}, "secret_updated")
+  - contains({{alice_audit}}, "vault_renamed")
+  - contains({{alice_audit}}, "role_set:editor")
+  - contains({{alice_audit}}, "secret_purged")
+  - not_contains({{alice_audit}}, "PASSWORD")
+- name: Alice records Bob as an Admin
+  type: set_role
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  role: admin
+  account: calimero-node-1
+- name: Alice grants the capabilities that role MEANS
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 431
+  account: calimero-node-1
+  member: '{{bob_account}}'
+- name: Settle while the grant projects on Node 2
+  type: wait
+  seconds: 1.0
+- name: Bob creates a vault's subgroup from his own node
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: Bob's vault
+  join: invite
+  outputs:
+    bob_vault_group: teamId
+  account: calimero-node-2
+- name: Bob names it
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{bob_vault_group}}'
+  metadata:
+    name: Bob's vault
+    data: {}
+  account: calimero-node-2
+- name: Bob opens it to the space
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{bob_vault_group}}'
+  join: everyone
+  account: calimero-node-2
+- name: Bob creates the vault's context
+  type: deploy
+  account: calimero-node-2
+  wasm: '{{env.APPS_WASM_DIR}}/mero_pass.wasm'
+  app_name: Bob creates the vault's context
+  init_args: '{"name":"Bob''s vault"}'
+  org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{bob_vault_group}}'
+  outputs:
+    bob_vault_context: contextId
+    bob_vault_key: memberPublicKey
+- name: Bob mints an invitation, which a Member could not
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-2
+  outputs:
+    bob_invite: token
+- name: Assert the promoted member really could use every capability
+  type: assert
+  statements:
+  - is_set({{bob_vault_group}})
+  - is_set({{bob_vault_context}})
+  - is_set({{bob_invite}})
+- name: And the vault he made carries the name he typed
+  type: call
+  app: '{{bob_vault_context}}'
+  method: vault_name
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_vault_key}}'
+  outputs:
+    bob_own_vault_name: rpc
+- name: Assert it did
+  type: assert
+  statements:
+  - contains({{bob_own_vault_name}}, "Bob")
+- name: Alice demotes Bob back to Member
+  type: set_role
+  org: '{{namespace_id}}'
+  member: '{{bob_account}}'
+  role: member
+  account: calimero-node-1
+- name: Alice withdraws the admin capabilities
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 4
+  account: calimero-node-1
+  member: '{{bob_account}}'
+- name: Settle while the demotion projects
+  type: wait
+  seconds: 1.0
+- name: Bob still reads the vault he was invited to
+  type: call
+  app: '{{vault_id}}'
+  method: vault_name
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_after_demotion: rpc
+- name: Assert demotion is not revocation
+  type: assert
+  statements:
+  - contains({{bob_after_demotion}}, "Production keys")
+- name: Alice makes newcomers Viewers by default
+  type: call
+  app: '{{vault_id}}'
+  method: set_default_role
+  args:
+    role: viewer
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice revokes Bob's browser
+  type: call
+  app: '{{vault_id}}'
+  method: revoke_device
+  args:
+    fingerprint: b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice removes Bob from the vault
+  type: call
+  app: '{{vault_id}}'
+  method: remove_member
+  args:
+    account: '{{bob_account}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob reads the vault info on his own node
+  type: call
+  app: '{{vault_id}}'
+  method: vault_info
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_info_removed: rpc
+- name: Bob lists the members on his own node
+  type: call
+  app: '{{vault_id}}'
+  method: list_members
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_members_removed: rpc
+- name: Assert the removal reached Node 2
+  type: assert
+  statements:
+  - contains({{bob_info_removed}}, "pending")
+  - contains({{bob_info_removed}}, "viewer")
+  - not_contains({{bob_members_removed}}, {{bob_account}})

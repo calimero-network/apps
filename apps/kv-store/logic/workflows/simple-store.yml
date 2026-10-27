@@ -1,459 +1,289 @@
+# Ported from the v1 workflow simple-store.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x5: replication is synchronous: a read sees every committed write
 name: KV Store E2E
-description: >
-  Two nodes converge on one UnorderedMap<String, LwwRegister<String>>.
-
-  Covers the whole RPC surface: set, get, get_result, get_unchecked,
-  update_if_exists, get_or_insert, entries, len, remove, clear — and asserts the
-  three behaviours that are easy to get subtly wrong:
-
-    * `update_if_exists` must NOT insert when the key is absent
-    * `get_or_insert` must return the EXISTING value, not the one passed in
-    * `remove` and `clear` must not emit for a no-op
-
-force_pull_image: false
-nuke_on_start: true
-near_devnet: false
-
-# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
-# `KeyDelivery timed out`.
-#
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
-# calimero devnet boot-node. Every container then spends its startup dialing
-# unreachable public addresses, and the node log fills with
-#
-#     libp2p_relay: Dropping in-flight connect request because we are at capacity
-#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
-#
-# until the join gives up with
-#
-#     join_group: direct namespace-join request found no reachable mesh peer
-#     join_group: join response contained no group key
-#     KeyDelivery timed out for group ContextGroupId(...)
-#
-# The peers never found each other; it was never a timing race. `e2e_mode`
-# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
-# turns multicast discovery on (which is what populates the kad table on a
-# single Docker bridge) and tightens the sync intervals. merobox's own
-# `apply_e2e_defaults` documents measuring this exact failure with it off.
-e2e_mode: true
-
-nodes:
-  count: 2
-  # Matched to the calimero-sdk tag in the root Cargo.toml. Keep the two in
-  # lockstep: the wasm imports host functions that only exist from that release
-  # on, and an older node installs it happily then dies at context creation
-  # with `link error: unknown import`.
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.1
-  prefix: kv-node
-  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620):
-  # `merod init` now writes `discovery.mdns = false`, where every earlier
-  # release left it on. merobox does not pass the flag — its default cluster
-  # mode "leaves mDNS on", meaning it relies on whatever the node's own default
-  # is — so this scenario's peer discovery silently changed behaviour at the
-  # image bump without a line of it changing.
-  #
-  # It still wires `bootstrap.nodes` with every sibling on one Docker bridge, so
-  # create_mesh likely converges either way. That is exactly why this is pinned:
-  # "probably still works" is not something a two-node convergence test should
-  # rest on, and the failure it would produce — nodes that never find each
-  # other — looks like a product bug, not a config default.
-  mdns: true
-
+description: "Two nodes converge on one UnorderedMap<String, LwwRegister<String>>.\nCovers the whole RPC\
+  \ surface: set, get, get_result, get_unchecked, update_if_exists, get_or_insert, entries, len, remove,\
+  \ clear — and asserts the three behaviours that are easy to get subtly wrong:\n\n  * `update_if_exists`\
+  \ must NOT insert when the key is absent\n  * `get_or_insert` must return the EXISTING value, not the\
+  \ one passed in\n  * `remove` and `clear` must not emit for a no-op\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3040
+accounts:
+- kv-node-1
+- kv-node-2
 steps:
-  - name: Install application on kv-node-1
-    type: install_application
-    node: kv-node-1
-    path: dist/com.calimero.kv-store.mpk
-    dev: true
-    outputs:
-      app_id: applicationId
-
-  # ⚠️ Installed on EVERY node, not just the first. Since core 0.11.0-rc.31 a
-  # node does NOT serve bytecode to its peers: a joiner finds the blob in the
-  # DHT, is told which peers hold it, and every fetch still comes back
-  # `Blob not found on peer`. The method call then fails as a bare
-  # `InternalError` naming neither the blob nor the reason.
-  - name: Install application on kv-node-2
-    type: install_application
-    node: kv-node-2
-    path: dist/com.calimero.kv-store.mpk
-    dev: true
-
-  - name: Assert application installed
-    type: assert
-    statements:
-      - "is_set({{app_id}})"
-
-  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the KeyDelivery window the
-  # same way an explicit `join_namespace` does. Fresh nodes plus a couple of
-  # seconds of install leave mDNS discovery AND the group-key transfer under ~6
-  # seconds between them, and the join then 500s. `create_mesh` has no step
-  # boundary to retry at, so the whole scenario is lost when it does.
-  # 12s, matching apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml,
-  # which documents why 5s is not enough.
-  - name: Settle before the mesh joins
-    type: wait
-    seconds: 12
-
-  - name: Create mesh with node-2
-    type: create_mesh
-    context_node: kv-node-1
-    application_id: "{{app_id}}"
-    nodes:
-      - kv-node-2
-    # No `capability:` and no `path:` here. Recent merobox dropped BOTH from
-    # create_mesh and its validator now rejects them ("unknown field ... - the
-    # step would ignore it" — which is the honest error: it would have been
-    # silently ignored). Older merobox accepted them, so a step copied from a
-    # repo on an older pin fails validation here and nowhere else. The app is
-    # already installed by the previous step, so `path` had nothing left to do.
-    outputs:
-      context_id: contextId
-      node1_key: memberPublicKey
-
-  - name: Verify mesh keys are populated
-    type: assert
-    statements:
-      - "is_set({{context_id}})"
-      - "is_set({{node1_key}})"
-      - "is_set({{public_key_kv-node-2}})"
-
-  # ─── update_if_exists must not insert ─────────────────────────────────────
-
-  # Run BEFORE any write, so the map is genuinely empty. Running it after a set
-  # would pass whether or not the guard works.
-  - name: node-1 tries update_if_exists on an absent key
-    type: call
-    node: kv-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{node1_key}}"
-    method: update_if_exists
-    args:
-      key: "absent"
-      value: "nope"
-    outputs:
-      update_absent: result
-
-  - name: Assert update_if_exists reported no update
-    type: json_assert
-    statements:
-      - 'json_equal({{update_absent}}, {"output": false})'
-
-  - name: node-1 confirms nothing was inserted
-    type: call
-    node: kv-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{node1_key}}"
-    method: len
-    args: {}
-    outputs:
-      len_after_noop: result
-
-  - name: Assert the store is still empty
-    type: json_assert
-    statements:
-      - 'json_equal({{len_after_noop}}, {"output": 0})'
-
-  # ─── set / get, and convergence ───────────────────────────────────────────
-
-  - name: node-1 sets a key
-    type: call
-    node: kv-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{node1_key}}"
-    method: set
-    args:
-      key: "greeting"
-      value: "hello"
-
-  - name: Wait for the write to reach node-2
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes:
-      - kv-node-1
-      - kv-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: node-2 reads the key
-    type: call
-    node: kv-node-2
-    context_id: "{{context_id}}"
-    executor_public_key: "{{public_key_kv-node-2}}"
-    method: get
-    args:
-      key: "greeting"
-    outputs:
-      n2_get: result
-
-  - name: Assert node-2 sees node-1's write
-    type: json_assert
-    statements:
-      - 'json_equal({{n2_get}}, {"output": "hello"})'
-
-  - name: node-2 reads an absent key
-    type: call
-    node: kv-node-2
-    context_id: "{{context_id}}"
-    executor_public_key: "{{public_key_kv-node-2}}"
-    method: get
-    args:
-      key: "nothing_here"
-    outputs:
-      n2_missing: result
-
-  # `get` returns Option<String>. The ABI flattens that to `string`, so the
-  # generated TS client types this as non-null — the wire says otherwise, and
-  # this is the assertion that records the truth.
-  - name: Assert an absent key reads as null
-    type: json_assert
-    statements:
-      - 'json_equal({{n2_missing}}, {"output": null})'
-
-  # ─── update_if_exists now that the key is there ───────────────────────────
-
-  - name: node-2 updates the existing key
-    type: call
-    node: kv-node-2
-    context_id: "{{context_id}}"
-    executor_public_key: "{{public_key_kv-node-2}}"
-    method: update_if_exists
-    args:
-      key: "greeting"
-      value: "hei"
-    outputs:
-      update_present: result
-
-  - name: Assert the update landed
-    type: json_assert
-    statements:
-      - 'json_equal({{update_present}}, {"output": true})'
-
-  - name: Wait for node-2's update to reach node-1
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes:
-      - kv-node-1
-      - kv-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  # The in-place `get_mut` path has to produce a NEW timestamp, or LWW will not
-  # prefer it on the other replica and node-1 keeps its own older value.
-  - name: node-1 reads the updated key
-    type: call
-    node: kv-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{node1_key}}"
-    method: get_result
-    args:
-      key: "greeting"
-    outputs:
-      n1_updated: result
-
-  - name: Assert the in-place update converged
-    type: json_assert
-    statements:
-      - 'json_equal({{n1_updated}}, {"output": "hei"})'
-
-  # ─── get_or_insert returns the EXISTING value ────────────────────────────
-
-  - name: node-1 calls get_or_insert on the existing key
-    type: call
-    node: kv-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{node1_key}}"
-    method: get_or_insert
-    args:
-      key: "greeting"
-      value: "SHOULD_NOT_WIN"
-    outputs:
-      goi_existing: result
-
-  # If this returned the argument, `or_insert` would be overwriting — the whole
-  # point of the entry API is that it does not.
-  - name: Assert get_or_insert kept the stored value
-    type: json_assert
-    statements:
-      - 'json_equal({{goi_existing}}, {"output": "hei"})'
-
-  - name: node-1 calls get_or_insert on a fresh key
-    type: call
-    node: kv-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{node1_key}}"
-    method: get_or_insert
-    args:
-      key: "fresh"
-      value: "inserted"
-    outputs:
-      goi_fresh: result
-
-  - name: Assert get_or_insert inserted on a vacant entry
-    type: json_assert
-    statements:
-      - 'json_equal({{goi_fresh}}, {"output": "inserted"})'
-
-  # ─── entries / len ───────────────────────────────────────────────────────
-
-  - name: Wait for both keys to converge
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes:
-      - kv-node-1
-      - kv-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: node-2 reads all entries
-    type: call
-    node: kv-node-2
-    context_id: "{{context_id}}"
-    executor_public_key: "{{public_key_kv-node-2}}"
-    method: entries
-    args: {}
-    outputs:
-      n2_entries: result
-
-  - name: Assert node-2 sees both keys
-    type: json_assert
-    statements:
-      - 'json_equal({{n2_entries}}, {"output": {"fresh": "inserted", "greeting": "hei"}})'
-
-  # `get_unchecked` is in the contract as the counter-example: it panics on a
-  # missing key, and a panic aborts the whole execution so nothing commits. Only
-  # the present-key path is asserted here — the panic path belongs in a scenario
-  # that expects a failed call, not in the middle of a convergence run.
-  - name: node-2 reads a present key without checking
-    type: call
-    node: kv-node-2
-    context_id: "{{context_id}}"
-    executor_public_key: "{{public_key_kv-node-2}}"
-    method: get_unchecked
-    args:
-      key: "greeting"
-    outputs:
-      n2_unchecked: result
-
-  - name: Assert get_unchecked returns the value for a present key
-    type: json_assert
-    statements:
-      - 'json_equal({{n2_unchecked}}, {"output": "hei"})'
-
-  - name: node-2 reads the length
-    type: call
-    node: kv-node-2
-    context_id: "{{context_id}}"
-    executor_public_key: "{{public_key_kv-node-2}}"
-    method: len
-    args: {}
-    outputs:
-      n2_len: result
-
-  - name: Assert the length matches the listing
-    type: json_assert
-    statements:
-      - 'json_equal({{n2_len}}, {"output": 2})'
-
-  # ─── remove ──────────────────────────────────────────────────────────────
-
-  - name: node-1 removes a key
-    type: call
-    node: kv-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{node1_key}}"
-    method: remove
-    args:
-      key: "fresh"
-    outputs:
-      removed: result
-
-  - name: Assert remove returned the value it took out
-    type: json_assert
-    statements:
-      - 'json_equal({{removed}}, {"output": "inserted"})'
-
-  - name: node-1 removes the same key again
-    type: call
-    node: kv-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{node1_key}}"
-    method: remove
-    args:
-      key: "fresh"
-    outputs:
-      removed_again: result
-
-  - name: Assert a second remove is a no-op returning null
-    type: json_assert
-    statements:
-      - 'json_equal({{removed_again}}, {"output": null})'
-
-  - name: Wait for the removal to reach node-2
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes:
-      - kv-node-1
-      - kv-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: node-2 reads entries after the removal
-    type: call
-    node: kv-node-2
-    context_id: "{{context_id}}"
-    executor_public_key: "{{public_key_kv-node-2}}"
-    method: entries
-    args: {}
-    outputs:
-      n2_after_remove: result
-
-  # A tombstone that loses the merge would resurrect the key here and nowhere
-  # else — a single-node check passes throughout.
-  - name: Assert the removal converged
-    type: json_assert
-    statements:
-      - 'json_equal({{n2_after_remove}}, {"output": {"greeting": "hei"}})'
-
-  # ─── clear ───────────────────────────────────────────────────────────────
-
-  - name: node-2 clears the store
-    type: call
-    node: kv-node-2
-    context_id: "{{context_id}}"
-    executor_public_key: "{{public_key_kv-node-2}}"
-    method: clear
-    args: {}
-
-  - name: Wait for the clear to reach node-1
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes:
-      - kv-node-1
-      - kv-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: node-1 reads the length after the clear
-    type: call
-    node: kv-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{node1_key}}"
-    method: len
-    args: {}
-    outputs:
-      len_after_clear: result
-
-  - name: Assert the clear converged
-    type: json_assert
-    statements:
-      - 'json_equal({{len_after_clear}}, {"output": 0})'
-
-stop_all_nodes: false
-restart: false
-wait_timeout: 180
+- name: Install application on kv-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/kv_store.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: kv-node-1
+- type: set
+  values:
+    app_id: com.calimero.kv-store
+- name: Assert application installed
+  type: assert
+  statements:
+  - is_set({{app_id}})
+- name: Settle before the mesh joins
+  type: wait
+  seconds: 1.0
+- name: Create mesh with node-2
+  type: create_org
+  account: kv-node-1
+  org_name: mesh
+  outputs:
+    namespace_id: orgId
+- type: invite
+  account: kv-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: kv-node-2
+  token: '{{_mesh_invite}}'
+- name: Create mesh with node-2
+  type: deploy
+  account: kv-node-1
+  org: '{{namespace_id}}'
+  wasm: '{{env.APPS_WASM_DIR}}/kv_store.wasm'
+  app_name: Create mesh with node-2
+  outputs:
+    context_id: contextId
+    node1_key: memberPublicKey
+- name: Verify mesh keys are populated
+  type: assert
+  statements:
+  - is_set({{context_id}})
+  - is_set({{node1_key}})
+  - is_set({{public_key_kv-node-2}})
+- name: node-1 tries update_if_exists on an absent key
+  type: call
+  app: '{{context_id}}'
+  method: update_if_exists
+  args:
+    key: absent
+    value: nope
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    update_absent: rpc
+- name: Assert update_if_exists reported no update
+  type: json_assert
+  statements:
+  - 'json_equal({{update_absent}}, {"output": false})'
+- name: node-1 confirms nothing was inserted
+  type: call
+  app: '{{context_id}}'
+  method: len
+  args: {}
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    len_after_noop: rpc
+- name: Assert the store is still empty
+  type: json_assert
+  statements:
+  - 'json_equal({{len_after_noop}}, {"output": 0})'
+- name: node-1 sets a key
+  type: call
+  app: '{{context_id}}'
+  method: set
+  args:
+    key: greeting
+    value: hello
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+- name: node-2 reads the key
+  type: call
+  app: '{{context_id}}'
+  method: get
+  args:
+    key: greeting
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_get: rpc
+- name: Assert node-2 sees node-1's write
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_get}}, {"output": "hello"})'
+- name: node-2 reads an absent key
+  type: call
+  app: '{{context_id}}'
+  method: get
+  args:
+    key: nothing_here
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_missing: rpc
+- name: Assert an absent key reads as null
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_missing}}, {"output": null})'
+- name: node-2 updates the existing key
+  type: call
+  app: '{{context_id}}'
+  method: update_if_exists
+  args:
+    key: greeting
+    value: hei
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    update_present: rpc
+- name: Assert the update landed
+  type: json_assert
+  statements:
+  - 'json_equal({{update_present}}, {"output": true})'
+- name: node-1 reads the updated key
+  type: call
+  app: '{{context_id}}'
+  method: get_result
+  args:
+    key: greeting
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    n1_updated: rpc
+- name: Assert the in-place update converged
+  type: json_assert
+  statements:
+  - 'json_equal({{n1_updated}}, {"output": "hei"})'
+- name: node-1 calls get_or_insert on the existing key
+  type: call
+  app: '{{context_id}}'
+  method: get_or_insert
+  args:
+    key: greeting
+    value: SHOULD_NOT_WIN
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    goi_existing: rpc
+- name: Assert get_or_insert kept the stored value
+  type: json_assert
+  statements:
+  - 'json_equal({{goi_existing}}, {"output": "hei"})'
+- name: node-1 calls get_or_insert on a fresh key
+  type: call
+  app: '{{context_id}}'
+  method: get_or_insert
+  args:
+    key: fresh
+    value: inserted
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    goi_fresh: rpc
+- name: Assert get_or_insert inserted on a vacant entry
+  type: json_assert
+  statements:
+  - 'json_equal({{goi_fresh}}, {"output": "inserted"})'
+- name: node-2 reads all entries
+  type: call
+  app: '{{context_id}}'
+  method: entries
+  args: {}
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_entries: rpc
+- name: Assert node-2 sees both keys
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_entries}}, {"output": {"fresh": "inserted", "greeting": "hei"}})'
+- name: node-2 reads a present key without checking
+  type: call
+  app: '{{context_id}}'
+  method: get_unchecked
+  args:
+    key: greeting
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_unchecked: rpc
+- name: Assert get_unchecked returns the value for a present key
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_unchecked}}, {"output": "hei"})'
+- name: node-2 reads the length
+  type: call
+  app: '{{context_id}}'
+  method: len
+  args: {}
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_len: rpc
+- name: Assert the length matches the listing
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_len}}, {"output": 2})'
+- name: node-1 removes a key
+  type: call
+  app: '{{context_id}}'
+  method: remove
+  args:
+    key: fresh
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    removed: rpc
+- name: Assert remove returned the value it took out
+  type: json_assert
+  statements:
+  - 'json_equal({{removed}}, {"output": "inserted"})'
+- name: node-1 removes the same key again
+  type: call
+  app: '{{context_id}}'
+  method: remove
+  args:
+    key: fresh
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    removed_again: rpc
+- name: Assert a second remove is a no-op returning null
+  type: json_assert
+  statements:
+  - 'json_equal({{removed_again}}, {"output": null})'
+- name: node-2 reads entries after the removal
+  type: call
+  app: '{{context_id}}'
+  method: entries
+  args: {}
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+  outputs:
+    n2_after_remove: rpc
+- name: Assert the removal converged
+  type: json_assert
+  statements:
+  - 'json_equal({{n2_after_remove}}, {"output": {"greeting": "hei"}})'
+- name: node-2 clears the store
+  type: call
+  app: '{{context_id}}'
+  method: clear
+  args: {}
+  account: kv-node-2
+  as_key: '{{public_key_kv-node-2}}'
+- name: node-1 reads the length after the clear
+  type: call
+  app: '{{context_id}}'
+  method: len
+  args: {}
+  account: kv-node-1
+  as_key: '{{node1_key}}'
+  outputs:
+    len_after_clear: rpc
+- name: Assert the clear converged
+  type: json_assert
+  statements:
+  - 'json_equal({{len_after_clear}}, {"output": 0})'

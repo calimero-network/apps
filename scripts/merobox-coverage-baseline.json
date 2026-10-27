@@ -98,6 +98,7 @@
     "set_participant_permission"
   ],
   "mero-stream": [
+    "get_members",
     "is_member_admin",
     "prune_frames",
     "rename_stream"

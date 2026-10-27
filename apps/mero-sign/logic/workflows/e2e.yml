@@ -1,525 +1,314 @@
+# Ported from the v1 workflow e2e.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
+# Dropped (no release-v2 counterpart):
+#   sync_group x1: replication is synchronous
+#   wait_for_sync x6: replication is synchronous: a read sees every committed write
 name: MeroSign — a shared agreement across two nodes (2-node e2e)
-description: >
-  Replaces three legacy scenarios that could not run at all: they used
-  `invite_open`/`join_open`, step types no app in this monorepo uses, and created
-  a context per node with no namespace — two independently-created contexts that
-  never sync. See probes/README.md.
+description: 'Replaces three legacy scenarios that could not run at all: they used `invite_open`/`join_open`,
+  step types no app in this monorepo uses, and created a context per node with no namespace — two independently-created
+  contexts that never sync. See probes/README.md.
 
-  Proves the shared-agreement path: two members join one agreement context, a
-  participant registers itself, a document uploaded on one node is listed on the
-  other, and a delete replicates.
+  Proves the shared-agreement path: two members join one agreement context, a participant registers itself,
+  a document uploaded on one node is listed on the other, and a delete replicates.
 
-force_pull_image: true
-
-# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
-# `KeyDelivery timed out`.
-#
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
-# calimero devnet boot-node. Every container then spends its startup dialing
-# unreachable public addresses, and the node log fills with
-#
-#     libp2p_relay: Dropping in-flight connect request because we are at capacity
-#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
-#
-# until the join gives up with
-#
-#     join_group: direct namespace-join request found no reachable mesh peer
-#     join_group: join response contained no group key
-#     KeyDelivery timed out for group ContextGroupId(...)
-#
-# The peers never found each other; it was never a timing race. `e2e_mode`
-# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
-# turns multicast discovery on (which is what populates the kad table on a
-# single Docker bridge) and tightens the sync intervals. merobox's own
-# `apply_e2e_defaults` documents measuring this exact failure with it off.
-e2e_mode: true
-
-nodes:
-  chain_id: testnet-1
-  count: 2
-  # Was `:edge`, a FLOATING tag — the node changed release under the contract
-  # whenever it moved. Pinned to [workspace.metadata.mero-apps].merod-image,
-  # which check-app-metadata.sh asserts.
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.1
-  prefix: calimero-node
-  # rc.26 made mDNS opt-in (core#3620); without this the nodes never peer and it
-  # surfaces as a 500 on join_namespace rather than as a discovery error.
-  mdns: true
-  base_port: 2920
-  base_rpc_port: 2820
-
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3460
+accounts:
+- calimero-node-1
+- calimero-node-2
 steps:
-  # ── Bootstrap ───────────────────────────────────────────────────────────────
-  - name: Install application on Node 1
-    type: install_application
-    node: calimero-node-1
-    path: dist/com.calimero.mero-sign.mpk
-    dev: true
-    outputs:
-      app_id: applicationId
-
-  - name: Install application on Node 2
-    type: install_application
-    node: calimero-node-2
-    path: dist/com.calimero.mero-sign.mpk
-    dev: true
-
-  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
-  # container health, which is not the same as ready: on a genuinely cold
-  # host `create_namespace` returns 500 about four seconds into the run.
-  # This was masked while the teardown left the previous scenario's
-  # containers behind, because the nodes were then already warm.
-  - name: Settle before the first admin call
-    type: wait
-    seconds: 12
-
-  - name: Create namespace
-    type: create_namespace
-    node: calimero-node-1
-    application_id: "{{app_id}}"
-    outputs:
-      namespace_id: namespaceId
-
-  - name: Set default member capabilities
-    type: set_default_capabilities
-    node: calimero-node-1
-    group_id: "{{namespace_id}}"
-    capabilities: 15
-
-  - name: Generate identity for Node 2
-    type: create_identity
-    node: calimero-node-2
-    outputs:
-      bob_identity: publicKey
-
-  - name: Wait for identity propagation
-    type: wait
-    seconds: 3
-
-  - name: Node 1 creates invitation for Node 2
-    type: create_namespace_invitation
-    node: calimero-node-1
-    group_id: "{{namespace_id}}"
-    outputs:
-      invite_bob: invitation
-
-  - name: Settle before the namespace join (cold-join KeyDelivery)
-    type: wait
-    seconds: 12
-
-  - name: Node 2 joins namespace
-    type: join_namespace
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-    invitation: "{{invite_bob}}"
-
-  - name: Settle after namespace join
-    type: wait
-    seconds: 5
-
-  # ── One shared agreement context ────────────────────────────────────────────
-  # `is_private: false` — the shared side of the app, which is what has
-  # participants and documents. The private side (personal signatures) is
-  # single-node and covered by the parked probes.
-  - name: Node 1 creates the agreement
-    type: create_context
-    node: calimero-node-1
-    application_id: "{{app_id}}"
-    group_id: "{{namespace_id}}"
-    params: '{"is_private": false, "context_name": "Series A Agreement"}'
-    outputs:
-      agreement_id: contextId
-      alice_key: memberPublicKey
-
-  - name: Force Node 2 to sync namespace state
-    type: sync_group
-    node: calimero-node-2
-    group_id: "{{namespace_id}}"
-
-  - name: Settle after sync
-    type: wait
-    seconds: 5
-
-  - name: Bob joins the agreement
-    type: join_context
-    node: calimero-node-2
-    context_id: "{{agreement_id}}"
-    outputs:
-      bob_key: memberPublicKey
-
-  - name: Wait for agreement sync
-    type: wait_for_sync
-    context_id: "{{agreement_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  # ── Participants ────────────────────────────────────────────────────────────
-  # `register_self_as_participant` rather than `add_participant`: it resolves the
-  # caller's own account inside the contract, so the scenario never has to pass
-  # an id. That matters — since rc.27 a device key and an account id are BOTH 64
-  # hex characters, so handing over the wrong one type-checks, sends, and is
-  # rejected as an unauthorized signer with nothing pointing at the cause.
-  - name: Bob registers himself as a participant
-    type: call
-    node: calimero-node-2
-    context_id: "{{agreement_id}}"
-    method: register_self_as_participant
-    args: {}
-    executor_public_key: "{{bob_key}}"
-
-  - name: Sync the participant
-    type: wait_for_sync
-    context_id: "{{agreement_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Alice lists participants
-    type: call
-    node: calimero-node-1
-    context_id: "{{agreement_id}}"
-    method: list_participants
-    args: {}
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      participants: result
-
-  - name: Assert the registration replicated
-    type: assert
-    statements:
-      - "is_set({{participants}})"
-
-  # ── A document uploaded on one node is listed on the other ─────────────────
-  - name: Upload the agreement PDF as a blob
-    type: upload_blob
-    node: calimero-node-1
-    context_id: "{{agreement_id}}"
-    file_path: workflows/test-files/sample-agreement.txt
-    outputs:
-      # `blob_id`, snake_case — merobox's own key. `blobId` captures nothing and
-      # the step fails with an EMPTY error message, which reads like the upload
-      # itself broke rather than the output path being wrong.
-      blob_id: blob_id
-
-  - name: Alice uploads the document
-    type: call
-    node: calimero-node-1
-    context_id: "{{agreement_id}}"
-    method: upload_document
-    args:
-      name: "series-a.pdf"
-      hash: "0000000000000000000000000000000000000000000000000000000000000000"
-      pdf_blob_id_str: "{{blob_id}}"
-      file_size: 1024
-      embeddings: null
-      extracted_text: null
-      chunks: null
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      document_id: result.output
-
-  - name: Sync the document
-    type: wait_for_sync
-    context_id: "{{agreement_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob lists documents
-    type: call
-    node: calimero-node-2
-    context_id: "{{agreement_id}}"
-    method: list_documents
-    args: {}
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_docs: result
-
-  - name: Assert the document replicated
-    type: assert
-    statements:
-      - 'contains({{bob_docs}}, "series-a.pdf")'
-
-  # ── Signatures carry the ACCOUNT, and reach FullySigned ────────────────────
-  #
-  # This leg is the end-to-end half of the signature-forgery fix, and it asserts
-  # something that COULD NOT HAVE PASSED before it.
-  #
-  # `sign_document` used to take `signer_id_str` from the caller and write it
-  # straight into the signature. The frontend passed the context member (DEVICE)
-  # key, while `participants` holds ACCOUNTS — both 32 bytes since core rc.27, so
-  # the comparison in `mark_participant_signed` ("has every participant signed?")
-  # type-checked, ran, and matched nothing. No document could reach
-  # `FullySigned`. The signer is now `env::account_id()`, which puts both sides
-  # of that comparison in one identity space.
-  #
-  # Note what is NOT here: an attempt to sign as somebody else. It is no longer
-  # expressible — the method takes no signer — and that is the strongest form the
-  # assertion can take. The negative cases live in the contract's unit tests,
-  # where both identities can be named exactly.
-  - name: Bob asks the contract who he is
-    type: call
-    node: calimero-node-2
-    context_id: "{{agreement_id}}"
-    method: whoami
-    args: {}
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_account: result
-
-  - name: Assert the contract answered with an identity
-    type: assert
-    statements:
-      # ⚠️ NOT the same value as `bob_key`. That is the context member key this
-      # step executes as; `whoami` is the account behind it.
-      - "is_set({{bob_account}})"
-
-  - name: Bob consents to sign
-    type: call
-    node: calimero-node-2
-    context_id: "{{agreement_id}}"
-    method: set_consent
-    args:
-      document_id: "{{document_id}}"
-    executor_public_key: "{{bob_key}}"
-
-  # ⚠️ Bob uploads the countersigned PDF to HIS OWN node first, and signs with
-  # THAT blob id — which is what the app does (`documentService.signDocument`
-  # uploads through `blobClient` before calling the contract) and is not
-  # optional. `sign_document` calls `env::blob_announce_to_context`, and
-  # announcing a blob the node does not hold fails the whole call with
-  #
-  #     JSON-RPC Error: FunctionCallError - blob operations not supported
-  #     (NodeClient not available)
-  #
-  # which reads like a node misconfiguration rather than "that blob is not
-  # yours". Passing Node 1's `{{blob_id}}` here is what the first draft of this
-  # step did, and it is the reason this leg is worth having at all: nothing had
-  # ever called `sign_document` from a second node before.
-  - name: Bob uploads his countersigned copy as a blob
-    type: upload_blob
-    node: calimero-node-2
-    context_id: "{{agreement_id}}"
-    file_path: workflows/test-files/sample-agreement.txt
-    outputs:
-      bob_blob_id: blob_id
-
-  # `base_hash` is the version the signer started from, and the document is
-  # still at the hash `upload_document` gave it. Signing REPLACES the whole PDF,
-  # so the contract refuses a copy built from a stale one rather than letting it
-  # overwrite somebody else's mark — the negative leg below proves that.
-  - name: Bob signs
-    type: call
-    node: calimero-node-2
-    context_id: "{{agreement_id}}"
-    method: sign_document
-    args:
-      document_id: "{{document_id}}"
-      base_hash: "0000000000000000000000000000000000000000000000000000000000000000"
-      pdf_blob_id_str: "{{bob_blob_id}}"
-      file_size: 1024
-      new_hash: "1111111111111111111111111111111111111111111111111111111111111111"
-    executor_public_key: "{{bob_key}}"
-
-  - name: Bob recomputes the document status
-    type: call
-    node: calimero-node-2
-    context_id: "{{agreement_id}}"
-    method: mark_participant_signed
-    args:
-      document_id: "{{document_id}}"
-    executor_public_key: "{{bob_key}}"
-
-  - name: Sync Bob's signature to Node 1
-    type: wait_for_sync
-    context_id: "{{agreement_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Alice reads the signatures
-    type: call
-    node: calimero-node-1
-    context_id: "{{agreement_id}}"
-    method: get_document_signatures
-    args:
-      document_id: "{{document_id}}"
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      signatures: result
-
-  - name: Assert Bob's signature replicated
-    type: assert
-    statements:
-      - "is_set({{signatures}})"
-
-  - name: Alice consents and signs too
-    type: call
-    node: calimero-node-1
-    context_id: "{{agreement_id}}"
-    method: set_consent
-    args:
-      document_id: "{{document_id}}"
-    executor_public_key: "{{alice_key}}"
-
-  # ── The stale-copy guard, end to end ───────────────────────────────────────
-  #
-  # Alice still has the version she uploaded open. Bob has signed since, so the
-  # document has moved to `1111…`. Saving the copy Alice is holding would
-  # overwrite `pdf_blob_id` with a PDF that never contained Bob's signature —
-  # his `DocumentSignature` row would survive while his mark vanished from the
-  # artefact, and his blob would be orphaned. Before the guard this call
-  # returned success.
-  #
-  # ⚠️ `expected_failure` ALONE passes on ANY failure — a typo in the method name
-  # would satisfy it just as well as the guard firing. The obvious pin,
-  # `expected_error`, CANNOT be used here: core returns an app's `AppError` as a
-  # `FunctionCallError` whose payload arrives in `error.data` as a JSON array of
-  # BYTE VALUES, and merobox matches that verbatim. The substring never matches
-  # the text no matter how the message is worded — it is looking at
-  # `[34, 84, 104, 105, 115, …]`.
-  #
-  # So this asserts the PROPERTY instead of the wording, which is the stronger
-  # test anyway: after the refusal the document must still be at the hash Bob
-  # left it at, and must NOT carry the one Alice tried to write. That is exactly
-  # "his signature was not erased", and it cannot be satisfied by an unrelated
-  # failure.
-  - name: Alice tries to sign the version she still has open
-    type: call
-    node: calimero-node-1
-    context_id: "{{agreement_id}}"
-    method: sign_document
-    args:
-      document_id: "{{document_id}}"
-      base_hash: "0000000000000000000000000000000000000000000000000000000000000000"
-      pdf_blob_id_str: "{{blob_id}}"
-      file_size: 1024
-      new_hash: "dead00000000000000000000000000000000000000000000000000000000dead"
-    executor_public_key: "{{alice_key}}"
-    expected_failure: true
-
-  - name: Read the document back after the refusal
-    type: call
-    node: calimero-node-1
-    context_id: "{{agreement_id}}"
-    method: list_documents
-    args: {}
-    executor_public_key: "{{alice_key}}"
-    outputs:
-      docs_after_stale: result
-
-  - name: Bob's version survived and Alice's stale copy never landed
-    type: assert
-    statements:
-      - 'contains({{docs_after_stale}}, "1111111111111111111111111111111111111111111111111111111111111111")'
-      - 'not_contains({{docs_after_stale}}, "dead00000000000000000000000000000000000000000000000000000000dead")'
-
-  # Alice reopens, which puts her at the version Bob left behind.
-  - name: Alice signs
-    type: call
-    node: calimero-node-1
-    context_id: "{{agreement_id}}"
-    method: sign_document
-    args:
-      document_id: "{{document_id}}"
-      base_hash: "1111111111111111111111111111111111111111111111111111111111111111"
-      pdf_blob_id_str: "{{blob_id}}"
-      file_size: 1024
-      new_hash: "2222222222222222222222222222222222222222222222222222222222222222"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Alice recomputes the document status
-    type: call
-    node: calimero-node-1
-    context_id: "{{agreement_id}}"
-    method: mark_participant_signed
-    args:
-      document_id: "{{document_id}}"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Sync the completed signature set
-    type: wait_for_sync
-    context_id: "{{agreement_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob lists documents once everyone has signed
-    type: call
-    node: calimero-node-2
-    context_id: "{{agreement_id}}"
-    method: list_documents
-    args: {}
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_docs_signed: result
-
-  # The load-bearing assertion. Reaching FullySigned requires every recorded
-  # signer to match a participant, i.e. requires signatures and the roster to be
-  # the same KIND of id. With the old device-key signer this was unreachable.
-  - name: Assert the document is fully signed on both nodes
-    type: assert
-    statements:
-      - 'contains({{bob_docs_signed}}, "FullySigned")'
-
-  # Signatures are write-once and completion is terminal: a completed document
-  # takes no more signatures, not even a second one from a signer.
-  - name: Bob cannot sign the completed document again
-    type: call
-    node: calimero-node-2
-    context_id: "{{agreement_id}}"
-    method: sign_document
-    args:
-      document_id: "{{document_id}}"
-      base_hash: "2222222222222222222222222222222222222222222222222222222222222222"
-      pdf_blob_id_str: "{{bob_blob_id}}"
-      file_size: 1024
-      new_hash: "3333333333333333333333333333333333333333333333333333333333333333"
-    executor_public_key: "{{bob_key}}"
-    expected_failure: true
-    outputs:
-      err_sign_completed: error
-
-  - name: Assert the extra signature was refused
-    type: assert
-    statements:
-      - "is_set({{err_sign_completed}})"
-
-  # ── A delete replicates ─────────────────────────────────────────────────────
-  - name: Alice deletes the document
-    type: call
-    node: calimero-node-1
-    context_id: "{{agreement_id}}"
-    method: delete_document
-    args:
-      document_id: "{{document_id}}"
-    executor_public_key: "{{alice_key}}"
-
-  - name: Sync the delete
-    type: wait_for_sync
-    context_id: "{{agreement_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob lists documents again
-    type: call
-    node: calimero-node-2
-    context_id: "{{agreement_id}}"
-    method: list_documents
-    args: {}
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_docs_after: result
-
-  - name: Assert the delete reached Node 2
-    type: assert
-    statements:
-      - 'not_contains({{bob_docs_after}}, "series-a.pdf")'
+- name: Install application on Node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-sign
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace
+  type: create_org
+  org_name: Create namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Set default member capabilities
+  type: capabilities
+  org: '{{namespace_id}}'
+  capabilities: 15
+  account: calimero-node-1
+- name: Generate identity for Node 2
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_identity: publicKey
+- name: Wait for identity propagation
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates invitation for Node 2
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    invite_bob: token
+- name: Settle before the namespace join (cold-join KeyDelivery)
+  type: wait
+  seconds: 1.0
+- name: Node 2 joins namespace
+  type: redeem_invite
+  token: '{{invite_bob}}'
+  account: calimero-node-2
+- name: Settle after namespace join
+  type: wait
+  seconds: 1.0
+- name: Node 1 creates the agreement
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
+  app_name: Node 1 creates the agreement
+  init_args: '{"is_private": false, "context_name": "Series A Agreement"}'
+  org: '{{namespace_id}}'
+  outputs:
+    agreement_id: contextId
+    alice_key: memberPublicKey
+- name: Settle after sync
+  type: wait
+  seconds: 1.0
+- name: Bob joins the agreement
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_key: publicKey
+- name: Bob registers himself as a participant
+  type: call
+  app: '{{agreement_id}}'
+  method: register_self_as_participant
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice lists participants
+  type: call
+  app: '{{agreement_id}}'
+  method: list_participants
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    participants: rpc
+- name: Assert the registration replicated
+  type: assert
+  statements:
+  - is_set({{participants}})
+- name: Upload the agreement PDF as a blob
+  type: upload_blob
+  app: '{{agreement_id}}'
+  file_path: workflows/test-files/sample-agreement.txt
+  account: calimero-node-1
+  outputs:
+    blob_id: blob_id
+- name: Alice uploads the document
+  type: call
+  app: '{{agreement_id}}'
+  method: upload_document
+  args:
+    name: series-a.pdf
+    hash: '0000000000000000000000000000000000000000000000000000000000000000'
+    pdf_blob_id_str: '{{blob_id}}'
+    file_size: 1024
+    embeddings: null
+    extracted_text: null
+    chunks: null
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    document_id: result
+- name: Bob lists documents
+  type: call
+  app: '{{agreement_id}}'
+  method: list_documents
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_docs: rpc
+- name: Assert the document replicated
+  type: assert
+  statements:
+  - contains({{bob_docs}}, "series-a.pdf")
+- name: Bob asks the contract who he is
+  type: call
+  app: '{{agreement_id}}'
+  method: whoami
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_account: rpc
+- name: Assert the contract answered with an identity
+  type: assert
+  statements:
+  - is_set({{bob_account}})
+- name: Bob consents to sign
+  type: call
+  app: '{{agreement_id}}'
+  method: set_consent
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob uploads his countersigned copy as a blob
+  type: upload_blob
+  app: '{{agreement_id}}'
+  file_path: workflows/test-files/sample-agreement.txt
+  account: calimero-node-2
+  outputs:
+    bob_blob_id: blob_id
+- name: Bob signs
+  type: call
+  app: '{{agreement_id}}'
+  method: sign_document
+  args:
+    document_id: '{{document_id}}'
+    base_hash: '0000000000000000000000000000000000000000000000000000000000000000'
+    pdf_blob_id_str: '{{bob_blob_id}}'
+    file_size: 1024
+    new_hash: '1111111111111111111111111111111111111111111111111111111111111111'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Bob recomputes the document status
+  type: call
+  app: '{{agreement_id}}'
+  method: mark_participant_signed
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+- name: Alice reads the signatures
+  type: call
+  app: '{{agreement_id}}'
+  method: get_document_signatures
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    signatures: rpc
+- name: Assert Bob's signature replicated
+  type: assert
+  statements:
+  - is_set({{signatures}})
+- name: Alice consents and signs too
+  type: call
+  app: '{{agreement_id}}'
+  method: set_consent
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice tries to sign the version she still has open
+  type: call
+  app: '{{agreement_id}}'
+  method: sign_document
+  args:
+    document_id: '{{document_id}}'
+    base_hash: '0000000000000000000000000000000000000000000000000000000000000000'
+    pdf_blob_id_str: '{{blob_id}}'
+    file_size: 1024
+    new_hash: dead00000000000000000000000000000000000000000000000000000000dead
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  expected_failure: true
+- name: Read the document back after the refusal
+  type: call
+  app: '{{agreement_id}}'
+  method: list_documents
+  args: {}
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+  outputs:
+    docs_after_stale: rpc
+- name: Bob's version survived and Alice's stale copy never landed
+  type: assert
+  statements:
+  - contains({{docs_after_stale}}, "1111111111111111111111111111111111111111111111111111111111111111")
+  - not_contains({{docs_after_stale}}, "dead00000000000000000000000000000000000000000000000000000000dead")
+- name: Alice signs
+  type: call
+  app: '{{agreement_id}}'
+  method: sign_document
+  args:
+    document_id: '{{document_id}}'
+    base_hash: '1111111111111111111111111111111111111111111111111111111111111111'
+    pdf_blob_id_str: '{{blob_id}}'
+    file_size: 1024
+    new_hash: '2222222222222222222222222222222222222222222222222222222222222222'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Alice recomputes the document status
+  type: call
+  app: '{{agreement_id}}'
+  method: mark_participant_signed
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob lists documents once everyone has signed
+  type: call
+  app: '{{agreement_id}}'
+  method: list_documents
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_docs_signed: rpc
+- name: Assert the document is fully signed on both nodes
+  type: assert
+  statements:
+  - contains({{bob_docs_signed}}, "FullySigned")
+- name: Bob cannot sign the completed document again
+  type: call
+  app: '{{agreement_id}}'
+  method: sign_document
+  args:
+    document_id: '{{document_id}}'
+    base_hash: '2222222222222222222222222222222222222222222222222222222222222222'
+    pdf_blob_id_str: '{{bob_blob_id}}'
+    file_size: 1024
+    new_hash: '3333333333333333333333333333333333333333333333333333333333333333'
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  expected_failure: true
+  outputs:
+    err_sign_completed: error
+- name: Assert the extra signature was refused
+  type: assert
+  statements:
+  - is_set({{err_sign_completed}})
+- name: Alice deletes the document
+  type: call
+  app: '{{agreement_id}}'
+  method: delete_document
+  args:
+    document_id: '{{document_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_key}}'
+- name: Bob lists documents again
+  type: call
+  app: '{{agreement_id}}'
+  method: list_documents
+  args: {}
+  account: calimero-node-2
+  as_key: '{{bob_key}}'
+  outputs:
+    bob_docs_after: rpc
+- name: Assert the delete reached Node 2
+  type: assert
+  statements:
+  - not_contains({{bob_docs_after}}, "series-a.pdf")

@@ -1,16 +1,13 @@
-import { existsSync } from "node:fs";
-import { stopNodesAndRemove } from "@calimero-apps/e2e-node";
-import { DATA_DIR, readState } from "./global-setup";
+import { readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export default async function globalTeardown() {
-  if (!existsSync(DATA_DIR)) return;
-  let pids: number[] = [];
+  const file = join(tmpdir(), "kv-cloud-e2e.pid");
   try {
-    pids = readState().pids;
+    process.kill(Number(readFileSync(file, "utf8")), "SIGKILL");
   } catch {
-    /* no state file - nothing this run spawned */
+    // already gone
   }
-  // Only what this run started. A reused node (empty pids) is left alone, so
-  // local iteration does not pay the node startup cost on every invocation.
-  if (pids.length) await stopNodesAndRemove(pids, DATA_DIR);
+  rmSync(file, { force: true });
 }

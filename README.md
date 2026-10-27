@@ -129,7 +129,7 @@ apps/my-app/
 │   ├── Cargo.toml        #   [package.metadata.calimero] — the registry manifest
 │   ├── tests/            #   TestHost + convergence. No node needed.
 │   ├── res/              #   abi.json + state-schema.json, emitted by cargo mero
-│   └── workflows/        #   merobox scenarios: real multi-node integration
+│   └── workflows/        #   merobox workflows, run on a merod-v2 cluster
 └── app/                  # Frontend. Vite + React + TypeScript.
     ├── src/              #   talks to the local node via mero-js / mero-react
     │   └── generated/    #   typed client, generated from ../logic/res/abi.json
@@ -179,7 +179,6 @@ docs/
 Cargo.toml                  ONE SDK pin, the release profiles, and
                             [workspace.metadata.mero-apps] for fleet-wide values
 pnpm-workspace.yaml         ONE version per JS dependency, via catalog:
-requirements-e2e.txt        merobox AND calimero-client-py, pinned together
 tsconfig.base.json
 ```
 
@@ -249,29 +248,20 @@ per-app table and a list of which invariants CI actually holds.
 
 ### The CI signal
 
-`ci.yml` has seven jobs. `changes` runs first and decides which of the rest run,
+`ci.yml` has five jobs. `changes` runs first and decides which of the rest run,
 and over which apps:
 
 | Job | Runs when | Does |
 | --- | --- | --- |
 | `changes` | always | path-filters the diff into per-app matrices |
-| `metadata` | always | the manifest / icon / SSO / frontend / lockfile gates, plus their own unit tests |
+| `metadata` | always | the manifest / icon / SSO / frontend / lockfile / workflow-coverage gates, plus their own unit tests |
 | `rust` | contract or workspace | `cargo test --workspace` |
 | `wasm` | frontend **or** contract or workspace | `cargo mero build` per app; the ABI is regenerated and diffed |
 | `frontend` | frontend or contract or workspace | typecheck, codegen diff, unit tests, build, `check-vercel-output.sh` |
-| `browser` | frontend or contract or workspace | Playwright per app against a real node |
-| `e2e` | contract or workspace | merobox multi-node scenarios per app |
 
-`wasm` is deliberately the broadest of those — it is a *producer*, and it runs on
-frontend-only changes precisely so that `browser` and `e2e`, which need it, are
-not skipped out from under themselves:
-
-⚠️ **A job whose `needs:` was skipped is skipped too — `if:` cannot rescue it.**
-`browser` and `e2e` both `needs: wasm`, so a producer gate narrower than its
-consumer's silently disables the consumer. That is how the browser suite went
-from running on frontend-only PRs to running on none of them, green by absence.
-`scripts/tests/producer-gate-test.py` asserts no producer is narrower than a
-consumer.
+The merobox workflows run on merod-v2 with `scripts/cloud-v2-workflows.py`
+(`docs/RELEASE-V2.md`); v1's node-backed `browser`, `journey` and `e2e` jobs went
+with v1.
 
 ⚠️ **`Cargo.lock` and `pnpm-lock.yaml` are flat filters** — a one-app change
 touching either fans CI out to every one of them. `scripts/lockfile-fanout.py` answers
@@ -282,7 +272,7 @@ the narrower question of which apps a given lockfile diff can actually affect.
 The fleet currently sits on **`0.11.0-rc.28`**. All SDK crates must carry the
 *exact* same tag — a version string cannot express it, because core's workspace
 version at a tag is `0.0.0`. In the root `Cargo.toml` edit these three, then
-`min-runtime-version` and `merod-image` in `[workspace.metadata.mero-apps]`:
+`min-runtime-version` in `[workspace.metadata.mero-apps]`:
 
 ```toml
 calimero-sdk            = { git = "…/core.git", tag = "0.11.0-rc.28" }

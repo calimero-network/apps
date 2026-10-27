@@ -1,9 +1,0 @@
-{
-  "extends": "../../../tsconfig.base.json",
-  "compilerOptions": {
-    "outDir": "./dist-types/node",
-    "tsBuildInfoFile": "./dist-types/node.tsbuildinfo",
-    "types": ["node"]
-  },
-  "include": ["vite.config.ts", "playwright.config.ts", "e2e"]
-}

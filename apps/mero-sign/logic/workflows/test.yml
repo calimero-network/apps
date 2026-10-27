@@ -1,0 +1,64 @@
+# Ported from the v1 workflow test.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
+name: MeroSign App Test
+description: MeroSign Application Test Workflow
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3490
+accounts:
+- merosign-node-1
+- merosign-node-2
+steps:
+- name: Install MeroSign Application
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: merosign-node-1
+- type: set
+  values:
+    app_id: '{{app_id_bundle}}'
+- name: Install MeroSign Application on node 2
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
+  outputs:
+    app_id_2_bundle: hash
+  account: merosign-node-2
+- type: set
+  values:
+    app_id_2: '{{app_id_2_bundle}}'
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create Default Private Context on node 1
+  type: deploy
+  account: merosign-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
+  app_name: Create Default Private Context on node 1
+  init_args: '{"is_private": true, "context_name": "default"}'
+  access:
+    kind: accounts
+    accounts:
+    - merosign-node-1
+    - merosign-node-2
+  outputs:
+    context_id_1: contextId
+    member_public_key_1: memberPublicKey
+- name: Create Default Private Context on node 2
+  type: deploy
+  account: merosign-node-2
+  wasm: '{{env.APPS_WASM_DIR}}/mero_sign.wasm'
+  app_name: Create Default Private Context on node 2
+  init_args: '{"is_private": true, "context_name": "default"}'
+  access:
+    kind: accounts
+    accounts:
+    - merosign-node-1
+    - merosign-node-2
+  outputs:
+    context_id_2: contextId
+    member_public_key_2: memberPublicKey
+- name: Wait For Context Sync
+  type: wait
+  seconds: 1.0

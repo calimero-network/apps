@@ -1,283 +1,176 @@
+# Ported from the v1 workflow group-nesting.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x2: replication is synchronous: a read sees every committed write
 name: E2E KV Store - Group Nesting
-description: >
-  Tests subgroup tree-shape operations using the strict-tree
-  reparent_group primitive. The old nest_group / unnest_group steps were
-  removed because orphan state was reachable through them; reparent_group
-  is the single atomic edge swap that replaces both.
-
-    1. Create child group via create_group_in_namespace, verify in listing
-    2. Create a sibling group, then reparent the child under it ("unnest"
-       from namespace), verify the child is no longer a namespace child
-    3. Reparent the child back under the namespace ("re-nest"), verify it
-       reappears in the namespace's subgroup list
-    4. Verify namespace root context is unaffected through all transitions
-
-force_pull_image: false
-nuke_on_start: true
-near_devnet: false
-
-# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
-# `KeyDelivery timed out`.
-#
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
-# calimero devnet boot-node. Every container then spends its startup dialing
-# unreachable public addresses, and the node log fills with
-#
-#     libp2p_relay: Dropping in-flight connect request because we are at capacity
-#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
-#
-# until the join gives up with
-#
-#     join_group: direct namespace-join request found no reachable mesh peer
-#     join_group: join response contained no group key
-#     KeyDelivery timed out for group ContextGroupId(...)
-#
-# The peers never found each other; it was never a timing race. `e2e_mode`
-# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
-# turns multicast discovery on (which is what populates the kad table on a
-# single Docker bridge) and tightens the sync intervals. merobox's own
-# `apply_e2e_defaults` documents measuring this exact failure with it off.
-e2e_mode: true
-
-nodes:
-  count: 2
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.1
-  # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
-  # so discovery changed at the image bump. Stated, not inherited.
-  mdns: true
-  prefix: e2e-node
-
+description: "Tests subgroup tree-shape operations using the strict-tree reparent_group primitive. The\
+  \ old nest_group / unnest_group steps were removed because orphan state was reachable through them;\
+  \ reparent_group is the single atomic edge swap that replaces both.\n\n  1. Create child group via create_group_in_namespace,\
+  \ verify in listing\n  2. Create a sibling group, then reparent the child under it (\"unnest\"\n   \
+  \  from namespace), verify the child is no longer a namespace child\n  3. Reparent the child back under\
+  \ the namespace (\"re-nest\"), verify it\n     reappears in the namespace's subgroup list\n  4. Verify\
+  \ namespace root context is unaffected through all transitions\n"
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3700
+accounts:
+- e2e-node-1
+- e2e-node-2
 steps:
-  # --- Setup ---
-
-  - name: Install application on e2e-node-1
-    type: install_application
-    node: e2e-node-1
-    path: dist/com.calimero.scaffolding-e2e.mpk
-    dev: true
-    outputs:
-      app_id: applicationId
-
-  # ⚠️ Installed on EVERY node, not just the first. Since core 0.11.0-rc.31 a
-  # node does NOT serve bytecode to its peers: a joiner finds the blob in the
-  # DHT, is told which peers hold it, and every fetch still comes back
-  # `Blob not found on peer`. The method call then fails as a bare
-  # `InternalError` naming neither the blob nor the reason.
-  - name: Install application on e2e-node-2
-    type: install_application
-    node: e2e-node-2
-    path: dist/com.calimero.scaffolding-e2e.mpk
-    dev: true
-
-  - name: Assert application installed
-    type: assert
-    statements:
-      - "is_set({{app_id}})"
-
-  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
-  # container health, which is not the same as ready: on a genuinely cold
-  # host `create_namespace` returns 500 about four seconds into the run.
-  # This was masked while the teardown left the previous scenario's
-  # containers behind, because the nodes were then already warm.
-  - name: Settle before the first admin call
-    type: wait
-    seconds: 12
-
-  - name: Create namespace (parent group)
-    type: create_namespace
-    node: e2e-node-1
-    application_id: '{{app_id}}'
-    outputs:
-      parent_id: namespaceId
-
-  - name: Assert namespace created
-    type: assert
-    statements:
-      - "is_set({{parent_id}})"
-
-  - name: Invite node-2
-    type: create_namespace_invitation
-    node: e2e-node-1
-    namespace_id: '{{parent_id}}'
-    outputs:
-      invite: invitation
-
-  # Settle so peer discovery is done before the join. Core gives the group key
-  # 5s to arrive over gossip (join_group.rs:557) and answers a miss with a bare
-  # HTTP 500; without this, that budget also has to cover finding the peer. See
-  # group-late-joiner.yml for the full write-up.
-  - name: Settle before node-2 joins the namespace
-    type: wait
-    seconds: 12
-
-  - name: Node-2 joins namespace
-    type: join_namespace
-    node: e2e-node-2
-    namespace_id: '{{parent_id}}'
-    invitation: '{{invite}}'
-
-  # Create a root context to verify it survives nest/unnest
-  - name: Create root context
-    type: create_context
-    node: e2e-node-1
-    application_id: '{{app_id}}'
-    group_id: '{{parent_id}}'
-    outputs:
-      root_ctx_id: contextId
-
-  - name: Node-2 joins root context
-    type: join_context
-    node: e2e-node-2
-    context_id: '{{root_ctx_id}}'
-
-  - name: Write baseline to root context
-    type: call
-    node: e2e-node-1
-    context_id: '{{root_ctx_id}}'
-    method: set
-    args:
-      key: "baseline"
-      value: "before_nesting"
-
-  - name: Wait for baseline sync
-    type: wait_for_sync
-    context_id: '{{root_ctx_id}}'
-    nodes:
-      - e2e-node-1
-      - e2e-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Node-2 reads baseline
-    type: call
-    node: e2e-node-2
-    context_id: '{{root_ctx_id}}'
-    method: get
-    args:
-      key: "baseline"
-    outputs:
-      baseline_read: result
-
-  - name: Assert baseline synced
-    type: json_assert
-    statements:
-      - 'json_equal({{baseline_read}}, {"output": "before_nesting"})'
-
-  # --- SCENARIO 1: Create child group, verify in listing ---
-
-  - name: Create child group via namespace
-    type: create_group_in_namespace
-    node: e2e-node-1
-    namespace_id: '{{parent_id}}'
-    group_name: nestable-child
-    outputs:
-      child_id: groupId
-
-  - name: Assert child group created
-    type: assert
-    statements:
-      - "is_set({{child_id}})"
-
-  - name: List subgroups after creation
-    type: list_subgroups
-    node: e2e-node-1
-    group_id: '{{parent_id}}'
-    outputs:
-      subs_after_create: subgroups
-
-  - name: Assert child is listed as subgroup
-    type: assert
-    statements:
-      - "is_set({{subs_after_create}})"
-
-  # --- SCENARIO 2: Unnest by reparenting child under a sibling group ---
-
-  - name: Create sibling group under namespace
-    type: create_group_in_namespace
-    node: e2e-node-1
-    namespace_id: '{{parent_id}}'
-    group_name: sibling
-    outputs:
-      sibling_id: groupId
-
-  - name: Assert sibling created
-    type: assert
-    statements:
-      - "is_set({{sibling_id}})"
-
-  - name: Reparent child under sibling (unnest from namespace)
-    type: reparent_group
-    node: e2e-node-1
-    child_group_id: '{{child_id}}'
-    new_parent_id: '{{sibling_id}}'
-
-  - name: List subgroups of sibling after reparent
-    type: list_subgroups
-    node: e2e-node-1
-    group_id: '{{sibling_id}}'
-    outputs:
-      subs_under_sibling: subgroups
-
-  - name: Assert child is now under sibling
-    type: assert
-    statements:
-      - "is_set({{subs_under_sibling}})"
-
-  # --- SCENARIO 3: Re-nest by reparenting child back under namespace ---
-
-  - name: Reparent child back under namespace
-    type: reparent_group
-    node: e2e-node-1
-    child_group_id: '{{child_id}}'
-    new_parent_id: '{{parent_id}}'
-
-  - name: List subgroups after re-nest
-    type: list_subgroups
-    node: e2e-node-1
-    group_id: '{{parent_id}}'
-    outputs:
-      subs_after_renest: subgroups
-
-  - name: Assert child reappears as namespace subgroup
-    type: assert
-    statements:
-      - "is_set({{subs_after_renest}})"
-
-  # --- SCENARIO 4: Root context unaffected by nest/unnest ---
-
-  - name: Write after nest/unnest cycle
-    type: call
-    node: e2e-node-1
-    context_id: '{{root_ctx_id}}'
-    method: set
-    args:
-      key: "after_nesting"
-      value: "still_works"
-
-  - name: Wait for sync after nesting ops
-    type: wait_for_sync
-    context_id: '{{root_ctx_id}}'
-    nodes:
-      - e2e-node-1
-      - e2e-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Node-2 reads after nesting cycle
-    type: call
-    node: e2e-node-2
-    context_id: '{{root_ctx_id}}'
-    method: get
-    args:
-      key: "after_nesting"
-    outputs:
-      after_nest_read: result
-
-  - name: Assert root context works after nest/unnest
-    type: json_assert
-    statements:
-      - 'json_equal({{after_nest_read}}, {"output": "still_works"})'
-
-stop_all_nodes: false
+- name: Install application on e2e-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: e2e-node-1
+- type: set
+  values:
+    app_id: com.calimero.scaffolding-e2e
+- name: Assert application installed
+  type: assert
+  statements:
+  - is_set({{app_id}})
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Create namespace (parent group)
+  type: create_org
+  org_name: Create namespace (parent group)
+  outputs:
+    parent_id: orgId
+  account: e2e-node-1
+- name: Assert namespace created
+  type: assert
+  statements:
+  - is_set({{parent_id}})
+- name: Invite node-2
+  type: invite
+  org: '{{parent_id}}'
+  role: member
+  account: e2e-node-1
+  outputs:
+    invite: token
+- name: Settle before node-2 joins the namespace
+  type: wait
+  seconds: 1.0
+- name: Node-2 joins namespace
+  type: redeem_invite
+  token: '{{invite}}'
+  account: e2e-node-2
+- name: Create root context
+  type: deploy
+  account: e2e-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/scaffolding_e2e.wasm'
+  app_name: Create root context
+  org: '{{parent_id}}'
+  outputs:
+    root_ctx_id: contextId
+- name: Write baseline to root context
+  type: call
+  app: '{{root_ctx_id}}'
+  method: set
+  args:
+    key: baseline
+    value: before_nesting
+  account: e2e-node-1
+- name: Node-2 reads baseline
+  type: call
+  app: '{{root_ctx_id}}'
+  method: get
+  args:
+    key: baseline
+  account: e2e-node-2
+  outputs:
+    baseline_read: rpc
+- name: Assert baseline synced
+  type: json_assert
+  statements:
+  - 'json_equal({{baseline_read}}, {"output": "before_nesting"})'
+- name: Create child group via namespace
+  type: create_team
+  org: '{{parent_id}}'
+  team_name: nestable-child
+  join: invite
+  outputs:
+    child_id: teamId
+  account: e2e-node-1
+- name: Assert child group created
+  type: assert
+  statements:
+  - is_set({{child_id}})
+- name: List subgroups after creation
+  type: team_list
+  org: '{{parent_id}}'
+  account: e2e-node-1
+  outputs:
+    subs_after_create: subgroups
+- name: Assert child is listed as subgroup
+  type: assert
+  statements:
+  - is_set({{subs_after_create}})
+- name: Create sibling group under namespace
+  type: create_team
+  org: '{{parent_id}}'
+  team_name: sibling
+  join: invite
+  outputs:
+    sibling_id: teamId
+  account: e2e-node-1
+- name: Assert sibling created
+  type: assert
+  statements:
+  - is_set({{sibling_id}})
+- name: Reparent child under sibling (unnest from namespace)
+  type: team_update
+  org: '{{parent_id}}'
+  team: '{{child_id}}'
+  parent: '{{sibling_id}}'
+  account: e2e-node-1
+- name: List subgroups of sibling after reparent
+  type: team_list
+  org: '{{parent_id}}'
+  team: '{{sibling_id}}'
+  account: e2e-node-1
+  outputs:
+    subs_under_sibling: subgroups
+- name: Assert child is now under sibling
+  type: assert
+  statements:
+  - is_set({{subs_under_sibling}})
+- name: Reparent child back under namespace
+  type: team_update
+  org: '{{parent_id}}'
+  team: '{{child_id}}'
+  account: e2e-node-1
+- name: List subgroups after re-nest
+  type: team_list
+  org: '{{parent_id}}'
+  account: e2e-node-1
+  outputs:
+    subs_after_renest: subgroups
+- name: Assert child reappears as namespace subgroup
+  type: assert
+  statements:
+  - is_set({{subs_after_renest}})
+- name: Write after nest/unnest cycle
+  type: call
+  app: '{{root_ctx_id}}'
+  method: set
+  args:
+    key: after_nesting
+    value: still_works
+  account: e2e-node-1
+- name: Node-2 reads after nesting cycle
+  type: call
+  app: '{{root_ctx_id}}'
+  method: get
+  args:
+    key: after_nesting
+  account: e2e-node-2
+  outputs:
+    after_nest_read: rpc
+- name: Assert root context works after nest/unnest
+  type: json_assert
+  statements:
+  - 'json_equal({{after_nest_read}}, {"output": "still_works"})'

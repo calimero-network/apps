@@ -1,1015 +1,758 @@
+# Ported from the v1 workflow workflow-mero-docs-e2e.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x5: replication is synchronous: a read sees every committed write
 name: Mero Docs E2E - Namespace + Folders + Docs Multi-Service
-description: >
-  Full end-to-end coverage for the mero-docs multi-service bundle.
-  Two nodes: node-1 (Alice) creates a namespace, a Registry context, and
-  a nested folder tree with its own Docs context; node-2 (Bob) joins the
-  namespace and the same contexts. Folders are core subgroups: their
-  name and colour are subgroup metadata (`data.color`), the tree is the
-  group tree (`reparent_group` / `list_subgroups`), a folder's docs
-  context is the one context in its subgroup, and deleting a folder is
-  one `delete_group` that cascades. The registry holds no folder data.
-  The workflow exercises the docs service's public methods, including
-  the error paths (missing ids, empty tag, etc.), and asserts cross-node
-  replication at key sync points.
+description: 'Full end-to-end coverage for the mero-docs multi-service bundle. Two nodes: node-1 (Alice)
+  creates a namespace, a Registry context, and a nested folder tree with its own Docs context; node-2
+  (Bob) joins the namespace and the same contexts. Folders are core subgroups: their name and colour are
+  subgroup metadata (`data.color`), the tree is the group tree (`reparent_group` / `list_subgroups`),
+  a folder''s docs context is the one context in its subgroup, and deleting a folder is one `delete_group`
+  that cascades. The registry holds no folder data. The workflow exercises the docs service''s public
+  methods, including the error paths (missing ids, empty tag, etc.), and asserts cross-node replication
+  at key sync points.
 
-  Merobox workflows execute sequentially - concurrent-write CRDT merges
-  (two nodes writing the same key simultaneously then converging) are
-  covered by the Rust unit tests, not here. Everything here is single-
-  writer-at-a-time with `wait_for_sync` to hand the write off to the
-  other node's reader.
+  Merobox workflows execute sequentially - concurrent-write CRDT merges (two nodes writing the same key
+  simultaneously then converging) are covered by the Rust unit tests, not here. Everything here is single-
+  writer-at-a-time with `wait_for_sync` to hand the write off to the other node''s reader.
 
-force_pull_image: true
-
-# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
-# `KeyDelivery timed out`.
-#
-# Without it, `merod init`'s default `bootstrap.nodes` survives - the PUBLIC
-# calimero devnet boot-node. Every container then spends its startup dialing
-# unreachable public addresses, and the node log fills with
-#
-#     libp2p_relay: Dropping in-flight connect request because we are at capacity
-#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
-#
-# until the join gives up with
-#
-#     join_group: direct namespace-join request found no reachable mesh peer
-#     join_group: join response contained no group key
-#     KeyDelivery timed out for group ContextGroupId(...)
-#
-# The peers never found each other; it was never a timing race. `e2e_mode`
-# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
-# turns multicast discovery on (which is what populates the kad table on a
-# single Docker bridge) and tightens the sync intervals. merobox's own
-# `apply_e2e_defaults` documents measuring this exact failure with it off.
-e2e_mode: true
-
-nodes:
-  count: 2
-  # Stated, not inherited. core rc.26 made mDNS opt-in (core#3620): `merod init`
-  # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
-  # discovery changed at the image bump with nothing here changing.
-  mdns: true
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.1
-  prefix: calimero-node
-
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3220
+accounts:
+- calimero-node-1
+- calimero-node-2
 steps:
-  # =================================================================
-  # Phase A: Bootstrap - install, namespace, registry context join
-  # =================================================================
-
-  - name: Install Mero Docs bundle on Node 1
-    type: install_application
-    node: calimero-node-1
-    path: dist/com.calimero.mero-drive-docs.mpk
-    dev: true
-    outputs:
-      app_id: applicationId
-
-  - name: Install Mero Docs bundle on Node 2
-    type: install_application
-    node: calimero-node-2
-    path: dist/com.calimero.mero-drive-docs.mpk
-    dev: true
-
-  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
-  # container health, which is not the same as ready: on a genuinely cold
-  # host `create_namespace` returns 500 about four seconds into the run.
-  # This was masked while the teardown left the previous scenario's
-  # containers behind, because the nodes were then already warm.
-  - name: Settle before the first admin call
-    type: wait
-    seconds: 12
-
-  - name: Alice creates namespace
-    type: create_namespace
-    node: calimero-node-1
-    application_id: '{{app_id}}'
-    outputs:
-      namespace_id: namespaceId
-
-  - name: Alice creates the per-namespace Registry context
-    type: create_context
-    node: calimero-node-1
-    application_id: '{{app_id}}'
-    group_id: '{{namespace_id}}'
-    service_name: registry
-    outputs:
-      registry_ctx: contextId
-      alice_key: memberPublicKey
-
-  - name: Assert Registry bootstrap shape
-    type: assert
-    statements:
-      - 'is_set({{namespace_id}})'
-      - 'is_set({{registry_ctx}})'
-      - 'is_set({{alice_key}})'
-
-  - name: Create namespace invitation for Bob
-    type: create_namespace_invitation
-    node: calimero-node-1
-    namespace_id: '{{namespace_id}}'
-    outputs:
-      ns_invite: invitation
-
-  - name: Wait for namespace gossip to reach Node 2
-    type: wait
-    seconds: 10
-    message: Namespace governance DAG needs to propagate before Bob can join
-
-  - name: Bob joins the namespace
-    type: join_namespace
-    node: calimero-node-2
-    namespace_id: '{{namespace_id}}'
-    invitation: '{{ns_invite}}'
-    outputs:
-      bob_identity: memberIdentity
-
-  - name: Bob joins the Registry context
-    type: join_context
-    node: calimero-node-2
-    context_id: '{{registry_ctx}}'
-    outputs:
-      registry_ctx_bob: contextId
-      bob_key: memberPublicKey
-
-  - name: Assert Bob is on the Registry context
-    type: assert
-    statements:
-      - 'is_set({{bob_identity}})'
-      - 'is_set({{bob_key}})'
-
-  - name: Sync Registry context across nodes
-    type: wait_for_sync
-    nodes: [calimero-node-1, calimero-node-2]
-    context_id: '{{registry_ctx}}'
-    timeout: 30
-
-  # =================================================================
-  # Phase B: Folders are core subgroups. Name and colour live in the
-  #          subgroup's metadata (`record_name` + `data.color`), exactly
-  #          as the app writes them; nothing about a folder is stored in
-  #          the registry, which every member replicates.
-  # =================================================================
-
-  # Top-level folder: the frontend creates a namespace subgroup for it so
-  # that folder membership = group membership. We mirror that flow here
-  # and then name and colour it in the subgroup's metadata.
-  - name: Create top-level folder group (Engineering)
-    type: create_group_in_namespace
-    node: calimero-node-1
-    namespace_id: '{{namespace_id}}'
-    group_name: eng
-    outputs:
-      eng_group: groupId
-
-  - name: Assert eng_group allocated
-    type: assert
-    statements:
-      - 'is_set({{eng_group}})'
-
-  # Simulate the frontend's app-level cascade. In the real app,
-  # `useFolderOperations.create()` handles inherit-mode cascade: after the
-  # subgroup is created, it iterates parent members and calls
-  # `addGroupMember(newGroup, identity, caps & DEFAULT_CHILD_CAP_MASK)`
-  # for each. Neither the registry nor docs WASM does this - by design,
-  # both services know nothing about membership policy (see design
-  # spec → Cascade Rules).
-  #
-  # A merobox workflow has no React client to run the cascade, so we
-  # reproduce its effect with `add_group_members`. The cascade *boundary*
-  # (restricted folders correctly wall off members) is covered by
-  # the frontend Vitest suite + the restricted-visibility e2e workflow.
-  - name: Simulate app-cascade - add Bob to Engineering subgroup
-    type: add_group_members
-    node: calimero-node-1
-    group_id: '{{eng_group}}'
-    members:
-      - identity: '{{bob_identity}}'
-        role: Member
-
-  # Subgroup governance (Bob added to eng_group) needs to:
-  #   1. propagate from Alice to Bob via namespace gossip
-  #   2. be accepted into Bob's local group store
-  #   3. be re-gossiped so Alice's runtime knows Bob is confirmed
-  # Before (2) and (3) complete, any docs-context sync request Bob sends
-  # to Alice can be dropped at the membership-check gate. 10s gives the
-  # three-phase handshake enough headroom across slow docker networking.
-  - name: Wait for Engineering subgroup membership to propagate
-    type: wait
-    seconds: 10
-    message: Engineering subgroup governance needs to reach Bob before he joins the docs context
-
-  - name: Name Engineering and colour it red (subgroup metadata)
-    type: set_group_metadata
-    node: calimero-node-1
-    group_id: '{{eng_group}}'
-    record_name: Engineering
+- name: Install Mero Docs bundle on Node 1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-drive-docs
+- name: Settle before the first admin call
+  type: wait
+  seconds: 1.0
+- name: Alice creates namespace
+  type: create_org
+  org_name: Alice creates namespace
+  outputs:
+    namespace_id: orgId
+  account: calimero-node-1
+- name: Alice creates the per-namespace Registry context
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs_registry.wasm'
+  app_name: registry
+  org: '{{namespace_id}}'
+  outputs:
+    registry_ctx: contextId
+    alice_key: memberPublicKey
+- name: Assert Registry bootstrap shape
+  type: assert
+  statements:
+  - is_set({{namespace_id}})
+  - is_set({{registry_ctx}})
+  - is_set({{alice_key}})
+- name: Create namespace invitation for Bob
+  type: invite
+  org: '{{namespace_id}}'
+  role: member
+  account: calimero-node-1
+  outputs:
+    ns_invite: token
+- name: Wait for namespace gossip to reach Node 2
+  type: wait
+  seconds: 1.0
+  message: Namespace governance DAG needs to propagate before Bob can join
+- name: Bob joins the namespace
+  type: redeem_invite
+  token: '{{ns_invite}}'
+  account: calimero-node-2
+- type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_identity: publicKey
+- name: Bob joins the Registry context
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_key: publicKey
+- type: set
+  values:
+    registry_ctx_bob: '{{registry_ctx}}'
+- name: Assert Bob is on the Registry context
+  type: assert
+  statements:
+  - is_set({{bob_identity}})
+  - is_set({{bob_key}})
+- name: Create top-level folder group (Engineering)
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: eng
+  join: invite
+  outputs:
+    eng_group: teamId
+  account: calimero-node-1
+- name: Assert eng_group allocated
+  type: assert
+  statements:
+  - is_set({{eng_group}})
+- name: Simulate app-cascade - add Bob to Engineering subgroup
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{eng_group}}'
+  members:
+  - '{{bob_identity}}'
+  role: member
+  account: calimero-node-1
+- name: Wait for Engineering subgroup membership to propagate
+  type: wait
+  seconds: 1.0
+  message: Engineering subgroup governance needs to reach Bob before he joins the docs context
+- name: Name Engineering and colour it red (subgroup metadata)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{eng_group}}'
+  metadata:
+    name: Engineering
     data:
       color: '#ff0000'
-
-  # A recolour rewrites the whole record, name included, as the app does.
-  - name: Recolour Engineering green (subgroup metadata)
-    type: set_group_metadata
-    node: calimero-node-1
-    group_id: '{{eng_group}}'
-    record_name: Engineering
+  account: calimero-node-1
+- name: Recolour Engineering green (subgroup metadata)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{eng_group}}'
+  metadata:
+    name: Engineering
     data:
       color: '#00ff00'
-
-  - name: get_group_metadata returns Engineering's name
-    type: get_group_metadata
-    node: calimero-node-1
-    group_id: '{{eng_group}}'
-    outputs:
-      eng_name: name
-
-  - name: Assert Engineering is named
-    type: assert
-    statements:
-      - "equal({{eng_name}}, 'Engineering')"
-
-  # =================================================================
-  # Phase C: The folder's docs context is the one context created in
-  #          its subgroup. There is no separate binding to write.
-  # =================================================================
-
-  - name: Create Docs context inside the Engineering group
-    type: create_context
-    node: calimero-node-1
-    application_id: '{{app_id}}'
-    group_id: '{{eng_group}}'
-    service_name: docs
-    outputs:
-      eng_docs_ctx: contextId
-      alice_docs_key: memberPublicKey
-
-  # =================================================================
-  # Phase D: Nested folders. The tree is core's group tree: a child
-  #          folder is a subgroup re-parented under its parent folder.
-  # =================================================================
-
-  - name: Create nested folder group (Engineering/Backend)
-    type: create_group_in_namespace
-    node: calimero-node-1
-    namespace_id: '{{namespace_id}}'
-    group_name: eng-backend
-    outputs:
-      backend_group: groupId
-
-  - name: reparent_group - Backend under Engineering
-    type: reparent_group
-    node: calimero-node-1
-    child_group_id: '{{backend_group}}'
-    new_parent_id: '{{eng_group}}'
-
-  - name: Name Backend (subgroup metadata)
-    type: set_group_metadata
-    node: calimero-node-1
-    group_id: '{{backend_group}}'
-    record_name: Backend
-
-  - name: Create sibling nested folder (Engineering/Frontend)
-    type: create_group_in_namespace
-    node: calimero-node-1
-    namespace_id: '{{namespace_id}}'
-    group_name: eng-frontend
-    outputs:
-      frontend_group: groupId
-
-  - name: reparent_group - Frontend under Engineering
-    type: reparent_group
-    node: calimero-node-1
-    child_group_id: '{{frontend_group}}'
-    new_parent_id: '{{eng_group}}'
-
-  - name: Name Frontend and colour it blue (subgroup metadata)
-    type: set_group_metadata
-    node: calimero-node-1
-    group_id: '{{frontend_group}}'
-    record_name: Frontend
+  account: calimero-node-1
+- name: get_group_metadata returns Engineering's name
+  type: team_get
+  org: '{{namespace_id}}'
+  team: '{{eng_group}}'
+  account: calimero-node-1
+  outputs:
+    eng_name: name
+- name: Assert Engineering is named
+  type: assert
+  statements:
+  - equal({{eng_name}}, 'Engineering')
+- name: Create Docs context inside the Engineering group
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{eng_group}}'
+  outputs:
+    eng_docs_ctx: contextId
+    alice_docs_key: memberPublicKey
+- name: Create nested folder group (Engineering/Backend)
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: eng-backend
+  join: invite
+  outputs:
+    backend_group: teamId
+  account: calimero-node-1
+- name: reparent_group - Backend under Engineering
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{backend_group}}'
+  parent: '{{eng_group}}'
+  account: calimero-node-1
+- name: Name Backend (subgroup metadata)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{backend_group}}'
+  metadata:
+    name: Backend
+    data: {}
+  account: calimero-node-1
+- name: Create sibling nested folder (Engineering/Frontend)
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: eng-frontend
+  join: invite
+  outputs:
+    frontend_group: teamId
+  account: calimero-node-1
+- name: reparent_group - Frontend under Engineering
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{frontend_group}}'
+  parent: '{{eng_group}}'
+  account: calimero-node-1
+- name: Name Frontend and colour it blue (subgroup metadata)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{frontend_group}}'
+  metadata:
+    name: Frontend
     data:
       color: '#0000ff'
-
-  - name: list_subgroups on eng_group - Backend and Frontend are its children
-    type: list_subgroups
-    node: calimero-node-1
-    group_id: '{{eng_group}}'
-    outputs:
-      eng_children: subgroups
-
-  - name: Assert Engineering has children
-    type: assert
-    statements:
-      - 'is_set({{eng_children}})'
-
-  - name: Create second top-level folder group (Design)
-    type: create_group_in_namespace
-    node: calimero-node-1
-    namespace_id: '{{namespace_id}}'
-    group_name: design
-    outputs:
-      design_group: groupId
-
-  - name: Name Design and colour it magenta (subgroup metadata)
-    type: set_group_metadata
-    node: calimero-node-1
-    group_id: '{{design_group}}'
-    record_name: Design
+  account: calimero-node-1
+- name: list_subgroups on eng_group - Backend and Frontend are its children
+  type: team_list
+  org: '{{namespace_id}}'
+  team: '{{eng_group}}'
+  account: calimero-node-1
+  outputs:
+    eng_children: subgroups
+- name: Assert Engineering has children
+  type: assert
+  statements:
+  - is_set({{eng_children}})
+- name: Create second top-level folder group (Design)
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: design
+  join: invite
+  outputs:
+    design_group: teamId
+  account: calimero-node-1
+- name: Name Design and colour it magenta (subgroup metadata)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{design_group}}'
+  metadata:
+    name: Design
     data:
       color: '#ff00ff'
-
-  # =================================================================
-  # Phase D3: Re-parenting a subtree via reparent_group
-  #
-  # This builds a nested subgroup (admin-API parent = eng_group, not
-  # namespace root), uses `list_subgroups` to assert the admin-API
-  # view, and re-parents it back to top-level. Mirrors the "Create
-  # Nested Subfolder" and "Delete Folder (and Subtree)" flows in the
-  # design spec's Data Flow section.
-  #
-  # The earlier `unnest_group` + `nest_group` pair was dropped upstream
-  # (core#2200 - strict group-tree invariant + cascade delete) in
-  # favour of a single atomic `reparent_group` edge-swap. Removing the
-  # transient-orphan state also removed the delete-on-orphaned-group
-  # usability gap that required re-nesting before delete_group.
-  # =================================================================
-
-  - name: Create subteam group (initially a direct child of namespace root)
-    type: create_group_in_namespace
-    node: calimero-node-1
-    namespace_id: '{{namespace_id}}'
-    group_name: eng-subteam
-    outputs:
-      subteam_group: groupId
-
-  # `create_group_in_namespace` places the new group as a direct child
-  # of the namespace root. Re-parent it under eng_group in one atomic
-  # step (pre-#2200 this was two steps - unnest + nest - with a
-  # transient orphan state in between).
-  - name: reparent_group - move subteam from namespace root under eng_group
-    type: reparent_group
-    node: calimero-node-1
-    child_group_id: '{{subteam_group}}'
-    new_parent_id: '{{eng_group}}'
-
-  - name: list_subgroups on eng_group - admin-API now shows subteam as child
-    type: list_subgroups
-    node: calimero-node-1
-    group_id: '{{eng_group}}'
-    outputs:
-      eng_children_after_nest: subgroups
-
-  - name: Assert admin-API sees subteam under eng_group
-    type: assert
-    statements:
-      - 'is_set({{eng_children_after_nest}})'
-
-  # Simulate the frontend's cascade: for an Inherit subfolder, the
-  # parent's members get added to the child with DEFAULT_CHILD_CAP_MASK.
-  # Bob is already in eng_group, so cascade would add him to subteam
-  # with READ | WRITE | CREATE_GROUP (= 7).
-  - name: Simulate inherit cascade - add Bob to the new nested subteam
-    type: add_group_members
-    node: calimero-node-1
-    group_id: '{{subteam_group}}'
-    members:
-      - identity: '{{bob_identity}}'
-        role: Member
-
-  - name: Wait for the nested subgroup to propagate to Bob
-    type: wait
-    seconds: 10
-    message: Group-tree governance needs to reach Bob's node
-
-  # The tree a member sees is what core shows them: Bob walks
-  # list_subgroups from a folder he belongs to.
-  - name: Bob lists Engineering's subgroups and sees the nested structure
-    type: list_subgroups
-    node: calimero-node-2
-    group_id: '{{eng_group}}'
-    outputs:
-      eng_children_bob: subgroups
-
-  - name: Assert Bob sees the nested structure
-    type: assert
-    statements:
-      - 'is_set({{eng_children_bob}})'
-
-  # Reverse flow: reparent subteam from eng_group back to the
-  # namespace root.
-  #
-  # Pre-#2200 this was two steps (unnest from eng_group → re-nest
-  # under namespace) with the re-nest required to restore
-  # namespace-identity resolution before delete_group. With strict
-  # group-tree invariant, the group always has a parent - the edge
-  # swap is atomic and delete_group can resolve the namespace chain
-  # unconditionally.
-  - name: reparent_group - move subteam from eng_group back to namespace root
-    type: reparent_group
-    node: calimero-node-1
-    child_group_id: '{{subteam_group}}'
-    new_parent_id: '{{namespace_id}}'
-
-  # Backend and Frontend are still under eng_group, so the list is not
-  # empty; the call succeeding is what this step proves.
-  - name: list_subgroups on eng_group after moving subteam out
-    type: list_subgroups
-    node: calimero-node-1
-    group_id: '{{eng_group}}'
-
-  - name: delete_group subteam (admin-API cleanup - full lifecycle)
-    type: delete_group
-    node: calimero-node-1
-    group_id: '{{subteam_group}}'
-
-  # =================================================================
-  # Phase E: Cross-node replication of folder metadata
-  # =================================================================
-
-  - name: Wait for folder metadata to propagate to Bob
-    type: wait
-    seconds: 10
-    message: Subgroup metadata needs to reach Bob's node
-
-  - name: Bob reads Engineering's name from core
-    type: get_group_metadata
-    node: calimero-node-2
-    group_id: '{{eng_group}}'
-    outputs:
-      eng_name_bob: name
-
-  - name: Assert Engineering's name replicated to Bob
-    type: assert
-    statements:
-      - "equal({{eng_name_bob}}, 'Engineering')"
-
-  # =================================================================
-  # Phase F: Docs service - CRUD on the Engineering docs context
-  # =================================================================
-
-  - name: Wait for docs context gossip to reach Bob
-    type: wait
-    seconds: 8
-    message: Docs context membership needs to propagate
-
-  - name: Bob joins Engineering docs context
-    type: join_context
-    node: calimero-node-2
-    context_id: '{{eng_docs_ctx}}'
-    outputs:
-      eng_docs_ctx_bob: contextId
-      bob_docs_key: memberPublicKey
-
-  - name: Sync docs context across nodes
-    type: wait_for_sync
-    nodes: [calimero-node-1, calimero-node-2]
-    context_id: '{{eng_docs_ctx}}'
-    timeout: 30
-
-  # Empty list_docs - no `is_set` because `is_set([])` fails.
-  - name: list_docs on empty docs context returns []
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: list_docs
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      include_archived: false
-
-  - name: create_doc - "Roadmap"
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: create_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      title: Roadmap
-    outputs:
-      roadmap_id: result.output
-
-  - name: Assert doc id allocated
-    type: assert
-    statements:
-      - 'is_set({{roadmap_id}})'
-
-  - name: create_doc - an empty title is allowed
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: create_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      title: Scratchpad
-    outputs:
-      scratch_id: result.output
-
-  - name: get_doc returns the created doc
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: get_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{roadmap_id}}'
-    outputs:
-      roadmap_dto: result.output
-
-  - name: Assert roadmap DTO populated
-    type: assert
-    statements:
-      - 'is_set({{roadmap_dto}})'
-
-  - name: Reject get_doc on unknown id
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: get_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: doc-does-not-exist
-    expected_failure: true
-
-  - name: edit_doc title only
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: edit_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{roadmap_id}}'
-      title: Roadmap (v2)
-
-  - name: edit_doc renames again
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: edit_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{roadmap_id}}'
-      title: Q1 and Q2 plan
-
-  - name: edit_doc renames to the final title
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: edit_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{roadmap_id}}'
-      title: Roadmap (final)
-
-  - name: edit_doc can clear the title to an empty string
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: edit_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{scratch_id}}'
-      title: ''
-
-  - name: Reject edit_doc on unknown id
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: edit_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: doc-does-not-exist
-      title: x
-    expected_failure: true
-
-  - name: add_tag - "planning"
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: add_tag
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{roadmap_id}}'
-      tag: planning
-
-  - name: add_tag - duplicate is idempotent (no-op on a set)
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: add_tag
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{roadmap_id}}'
-      tag: planning
-
-  - name: add_tag - second tag "urgent"
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: add_tag
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{roadmap_id}}'
-      tag: urgent
-
-  - name: Reject add_tag with empty string
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: add_tag
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{roadmap_id}}'
-      tag: ''
-    expected_failure: true
-
-  - name: Reject add_tag on unknown doc
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: add_tag
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: doc-does-not-exist
-      tag: planning
-    expected_failure: true
-
-  - name: remove_tag - drop "urgent"
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: remove_tag
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{roadmap_id}}'
-      tag: urgent
-
-  - name: Reject remove_tag on unknown doc
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: remove_tag
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: doc-does-not-exist
-      tag: whatever
-    expected_failure: true
-
-  - name: archive_doc hides Scratchpad from default list
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: archive_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{scratch_id}}'
-
-  - name: list_docs default excludes archived
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: list_docs
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      include_archived: false
-    outputs:
-      docs_default: result.output
-
-  - name: Assert default list returned
-    type: assert
-    statements:
-      - 'is_set({{docs_default}})'
-
-  - name: list_docs include_archived=true shows archived
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: list_docs
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      include_archived: true
-    outputs:
-      docs_all: result.output
-
-  - name: Assert include-archived list returned
-    type: assert
-    statements:
-      - 'is_set({{docs_all}})'
-
-  - name: unarchive_doc restores Scratchpad
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: unarchive_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{scratch_id}}'
-
-  - name: Reject archive_doc on unknown doc
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: archive_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: doc-does-not-exist
-    expected_failure: true
-
-  - name: Reject unarchive_doc on unknown doc
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: unarchive_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: doc-does-not-exist
-    expected_failure: true
-
-  # =================================================================
-  # Phase G: Docs - cross-node convergence + Bob writes
-  # =================================================================
-
-  - name: Sync docs ctx before Bob reads Alice's state
-    type: wait_for_sync
-    nodes: [calimero-node-1, calimero-node-2]
-    context_id: '{{eng_docs_ctx}}'
-    timeout: 30
-
-  - name: Bob reads list_docs (Alice's creates + edits + tags)
-    type: call
-    node: calimero-node-2
-    context_id: '{{eng_docs_ctx}}'
-    method: list_docs
-    executor_public_key: '{{bob_docs_key}}'
-    args:
-      include_archived: false
-    outputs:
-      docs_bob: result.output
-
-  - name: Assert Bob sees Alice's docs
-    type: assert
-    statements:
-      - 'is_set({{docs_bob}})'
-
-  - name: Bob reads Roadmap by id (cross-node get_doc)
-    type: call
-    node: calimero-node-2
-    context_id: '{{eng_docs_ctx}}'
-    method: get_doc
-    executor_public_key: '{{bob_docs_key}}'
-    args:
-      id: '{{roadmap_id}}'
-    outputs:
-      roadmap_dto_bob: result.output
-
-  - name: Assert Bob sees Roadmap with merged state
-    type: assert
-    statements:
-      - 'is_set({{roadmap_dto_bob}})'
-
-  # Bob co-edits Alice's docs, but deleting one is its creator's (or the
-  # folder founder's) call.
-  - name: Bob cannot delete Alice's Roadmap
-    type: call
-    node: calimero-node-2
-    context_id: '{{eng_docs_ctx}}'
-    method: delete_doc
-    executor_public_key: '{{bob_docs_key}}'
-    args:
-      id: '{{roadmap_id}}'
-    expected_failure: true
-
-  - name: Bob creates his own doc
-    type: call
-    node: calimero-node-2
-    context_id: '{{eng_docs_ctx}}'
-    method: create_doc
-    executor_public_key: '{{bob_docs_key}}'
-    args:
-      title: Bob's Notes
-    outputs:
-      bob_doc_id: result.output
-
-  - name: Sync docs ctx before Alice reads Bob's doc
-    type: wait_for_sync
-    nodes: [calimero-node-1, calimero-node-2]
-    context_id: '{{eng_docs_ctx}}'
-    timeout: 30
-
-  - name: Alice reads Bob's doc (CRDT convergence)
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: get_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{bob_doc_id}}'
-    outputs:
-      bob_doc_from_alice: result.output
-
-  - name: Assert Bob's doc visible to Alice
-    type: assert
-    statements:
-      - 'is_set({{bob_doc_from_alice}})'
-
-  - name: delete_doc - remove Scratchpad
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: delete_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{scratch_id}}'
-
-  - name: Reject delete_doc on already-deleted id (not found)
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: delete_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{scratch_id}}'
-    expected_failure: true
-
-  - name: Sync after delete
-    type: wait_for_sync
-    nodes: [calimero-node-1, calimero-node-2]
-    context_id: '{{eng_docs_ctx}}'
-    timeout: 30
-
-  - name: Bob's list_docs reflects the delete
-    type: call
-    node: calimero-node-2
-    context_id: '{{eng_docs_ctx}}'
-    method: list_docs
-    executor_public_key: '{{bob_docs_key}}'
-    args:
-      include_archived: true
-    outputs:
-      docs_bob_after_delete: result.output
-
-  - name: Assert post-delete list returned
-    type: assert
-    statements:
-      - 'is_set({{docs_bob_after_delete}})'
-
-  # =================================================================
-  # Phase G2: Cross-node folder move propagation
-  #
-  # A move is core's reparent_group. Alice moves Backend mid-session,
-  # and Bob (reading on a separate node) must see the new parent.
-  # =================================================================
-
-  # Backend is Restricted (created with no visibility), and core lists a
-  # Restricted folder only to its members - the privacy the app relies on.
-  # Bob is made a member, so the move is one he is meant to see.
-  - name: Add Bob to Backend, so he may see where it goes
-    type: add_group_members
-    node: calimero-node-1
-    group_id: '{{backend_group}}'
-    members:
-      - identity: '{{bob_identity}}'
-        role: Member
-
-  - name: Alice moves Backend under Design (cross-session)
-    type: reparent_group
-    node: calimero-node-1
-    child_group_id: '{{backend_group}}'
-    new_parent_id: '{{design_group}}'
-
-  - name: Wait for the move to propagate to Bob
-    type: wait
-    seconds: 10
-    message: Group-tree governance needs to reach Bob's node
-
-  - name: Bob lists Design's subgroups and sees Backend
-    type: list_subgroups
-    node: calimero-node-2
-    group_id: '{{design_group}}'
-    outputs:
-      design_children_bob: subgroups
-
-  - name: Assert Bob sees move result
-    type: assert
-    statements:
-      - 'is_set({{design_children_bob}})'
-
-  # Restore Backend under Engineering so Phase H's cascade deletes
-  # the tree in the same shape the earlier assertions rely on.
-  - name: Restore Backend under Engineering
-    type: reparent_group
-    node: calimero-node-1
-    child_group_id: '{{backend_group}}'
-    new_parent_id: '{{eng_group}}'
-
-  # =================================================================
-  # Phase G4: Restricted-visibility wall
-  #
-  # Per the design spec's Cascade Rules: "When a folder's visibility is
-  # Restricted, cascade does not descend through it. Members must be
-  # added explicitly."
-  #
-  # Real-world scenario: Alice creates a private folder inside the
-  # shared workspace. Bob is not a member of its subgroup, so he cannot
-  # join its docs context. Its name and colour are subgroup metadata,
-  # which core shows only to those allowed to see the subgroup - unlike
-  # the registry, which every member replicates.
-  # =================================================================
-
-  - name: Create restricted subgroup (no Bob cascade)
-    type: create_group_in_namespace
-    node: calimero-node-1
-    namespace_id: '{{namespace_id}}'
-    group_name: private-alice
-    outputs:
-      private_group: groupId
-
-  - name: Mark private-alice Restricted (explicit wall)
-    type: set_subgroup_visibility
-    node: calimero-node-1
-    group_id: '{{private_group}}'
-    visibility: Restricted
-
-  - name: Name private-alice and colour it black (subgroup metadata)
-    type: set_group_metadata
-    node: calimero-node-1
-    group_id: '{{private_group}}'
-    record_name: Private
+  account: calimero-node-1
+- name: Create subteam group (initially a direct child of namespace root)
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: eng-subteam
+  join: invite
+  outputs:
+    subteam_group: teamId
+  account: calimero-node-1
+- name: reparent_group - move subteam from namespace root under eng_group
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{subteam_group}}'
+  parent: '{{eng_group}}'
+  account: calimero-node-1
+- name: list_subgroups on eng_group - admin-API now shows subteam as child
+  type: team_list
+  org: '{{namespace_id}}'
+  team: '{{eng_group}}'
+  account: calimero-node-1
+  outputs:
+    eng_children_after_nest: subgroups
+- name: Assert admin-API sees subteam under eng_group
+  type: assert
+  statements:
+  - is_set({{eng_children_after_nest}})
+- name: Simulate inherit cascade - add Bob to the new nested subteam
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{subteam_group}}'
+  members:
+  - '{{bob_identity}}'
+  role: member
+  account: calimero-node-1
+- name: Wait for the nested subgroup to propagate to Bob
+  type: wait
+  seconds: 1.0
+  message: Group-tree governance needs to reach Bob's node
+- name: Bob lists Engineering's subgroups and sees the nested structure
+  type: team_list
+  org: '{{namespace_id}}'
+  team: '{{eng_group}}'
+  account: calimero-node-2
+  outputs:
+    eng_children_bob: subgroups
+- name: Assert Bob sees the nested structure
+  type: assert
+  statements:
+  - is_set({{eng_children_bob}})
+- name: reparent_group - move subteam from eng_group back to namespace root
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{subteam_group}}'
+  account: calimero-node-1
+- name: list_subgroups on eng_group after moving subteam out
+  type: team_list
+  org: '{{namespace_id}}'
+  team: '{{eng_group}}'
+  account: calimero-node-1
+- name: delete_group subteam (admin-API cleanup - full lifecycle)
+  type: team_delete
+  org: '{{namespace_id}}'
+  team: '{{subteam_group}}'
+  account: calimero-node-1
+- name: Wait for folder metadata to propagate to Bob
+  type: wait
+  seconds: 1.0
+  message: Subgroup metadata needs to reach Bob's node
+- name: Bob reads Engineering's name from core
+  type: team_get
+  org: '{{namespace_id}}'
+  team: '{{eng_group}}'
+  account: calimero-node-2
+  outputs:
+    eng_name_bob: name
+- name: Assert Engineering's name replicated to Bob
+  type: assert
+  statements:
+  - equal({{eng_name_bob}}, 'Engineering')
+- name: Wait for docs context gossip to reach Bob
+  type: wait
+  seconds: 1.0
+  message: Docs context membership needs to propagate
+- name: Bob joins Engineering docs context
+  type: whoami
+  account: calimero-node-2
+  outputs:
+    bob_docs_key: publicKey
+- type: set
+  values:
+    eng_docs_ctx_bob: '{{eng_docs_ctx}}'
+- name: list_docs on empty docs context returns []
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: list_docs
+  args:
+    include_archived: false
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: create_doc - "Roadmap"
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: create_doc
+  args:
+    title: Roadmap
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    roadmap_id: result
+- name: Assert doc id allocated
+  type: assert
+  statements:
+  - is_set({{roadmap_id}})
+- name: create_doc - an empty title is allowed
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: create_doc
+  args:
+    title: Scratchpad
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    scratch_id: result
+- name: get_doc returns the created doc
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{roadmap_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    roadmap_dto: result
+- name: Assert roadmap DTO populated
+  type: assert
+  statements:
+  - is_set({{roadmap_dto}})
+- name: Reject get_doc on unknown id
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: get_doc
+  args:
+    id: doc-does-not-exist
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  expected_failure: true
+- name: edit_doc title only
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{roadmap_id}}'
+    title: Roadmap (v2)
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: edit_doc renames again
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{roadmap_id}}'
+    title: Q1 and Q2 plan
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: edit_doc renames to the final title
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{roadmap_id}}'
+    title: Roadmap (final)
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: edit_doc can clear the title to an empty string
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: edit_doc
+  args:
+    id: '{{scratch_id}}'
+    title: ''
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: Reject edit_doc on unknown id
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: edit_doc
+  args:
+    id: doc-does-not-exist
+    title: x
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  expected_failure: true
+- name: add_tag - "planning"
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: add_tag
+  args:
+    id: '{{roadmap_id}}'
+    tag: planning
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: add_tag - duplicate is idempotent (no-op on a set)
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: add_tag
+  args:
+    id: '{{roadmap_id}}'
+    tag: planning
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: add_tag - second tag "urgent"
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: add_tag
+  args:
+    id: '{{roadmap_id}}'
+    tag: urgent
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: Reject add_tag with empty string
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: add_tag
+  args:
+    id: '{{roadmap_id}}'
+    tag: ''
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  expected_failure: true
+- name: Reject add_tag on unknown doc
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: add_tag
+  args:
+    id: doc-does-not-exist
+    tag: planning
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  expected_failure: true
+- name: remove_tag - drop "urgent"
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: remove_tag
+  args:
+    id: '{{roadmap_id}}'
+    tag: urgent
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: Reject remove_tag on unknown doc
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: remove_tag
+  args:
+    id: doc-does-not-exist
+    tag: whatever
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  expected_failure: true
+- name: archive_doc hides Scratchpad from default list
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: archive_doc
+  args:
+    id: '{{scratch_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: list_docs default excludes archived
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: list_docs
+  args:
+    include_archived: false
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    docs_default: result
+- name: Assert default list returned
+  type: assert
+  statements:
+  - is_set({{docs_default}})
+- name: list_docs include_archived=true shows archived
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: list_docs
+  args:
+    include_archived: true
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    docs_all: result
+- name: Assert include-archived list returned
+  type: assert
+  statements:
+  - is_set({{docs_all}})
+- name: unarchive_doc restores Scratchpad
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: unarchive_doc
+  args:
+    id: '{{scratch_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: Reject archive_doc on unknown doc
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: archive_doc
+  args:
+    id: doc-does-not-exist
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  expected_failure: true
+- name: Reject unarchive_doc on unknown doc
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: unarchive_doc
+  args:
+    id: doc-does-not-exist
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  expected_failure: true
+- name: Bob reads list_docs (Alice's creates + edits + tags)
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: list_docs
+  args:
+    include_archived: false
+  account: calimero-node-2
+  as_key: '{{bob_docs_key}}'
+  outputs:
+    docs_bob: result
+- name: Assert Bob sees Alice's docs
+  type: assert
+  statements:
+  - is_set({{docs_bob}})
+- name: Bob reads Roadmap by id (cross-node get_doc)
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{roadmap_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_docs_key}}'
+  outputs:
+    roadmap_dto_bob: result
+- name: Assert Bob sees Roadmap with merged state
+  type: assert
+  statements:
+  - is_set({{roadmap_dto_bob}})
+- name: Bob cannot delete Alice's Roadmap
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: delete_doc
+  args:
+    id: '{{roadmap_id}}'
+  account: calimero-node-2
+  as_key: '{{bob_docs_key}}'
+  expected_failure: true
+- name: Bob creates his own doc
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: create_doc
+  args:
+    title: Bob's Notes
+  account: calimero-node-2
+  as_key: '{{bob_docs_key}}'
+  outputs:
+    bob_doc_id: result
+- name: Alice reads Bob's doc (CRDT convergence)
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: get_doc
+  args:
+    id: '{{bob_doc_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  outputs:
+    bob_doc_from_alice: result
+- name: Assert Bob's doc visible to Alice
+  type: assert
+  statements:
+  - is_set({{bob_doc_from_alice}})
+- name: delete_doc - remove Scratchpad
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: delete_doc
+  args:
+    id: '{{scratch_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+- name: Reject delete_doc on already-deleted id (not found)
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: delete_doc
+  args:
+    id: '{{scratch_id}}'
+  account: calimero-node-1
+  as_key: '{{alice_docs_key}}'
+  expected_failure: true
+- name: Bob's list_docs reflects the delete
+  type: call
+  app: '{{eng_docs_ctx}}'
+  method: list_docs
+  args:
+    include_archived: true
+  account: calimero-node-2
+  as_key: '{{bob_docs_key}}'
+  outputs:
+    docs_bob_after_delete: result
+- name: Assert post-delete list returned
+  type: assert
+  statements:
+  - is_set({{docs_bob_after_delete}})
+- name: Add Bob to Backend, so he may see where it goes
+  type: team_add
+  org: '{{namespace_id}}'
+  team: '{{backend_group}}'
+  members:
+  - '{{bob_identity}}'
+  role: member
+  account: calimero-node-1
+- name: Alice moves Backend under Design (cross-session)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{backend_group}}'
+  parent: '{{design_group}}'
+  account: calimero-node-1
+- name: Wait for the move to propagate to Bob
+  type: wait
+  seconds: 1.0
+  message: Group-tree governance needs to reach Bob's node
+- name: Bob lists Design's subgroups and sees Backend
+  type: team_list
+  org: '{{namespace_id}}'
+  team: '{{design_group}}'
+  account: calimero-node-2
+  outputs:
+    design_children_bob: subgroups
+- name: Assert Bob sees move result
+  type: assert
+  statements:
+  - is_set({{design_children_bob}})
+- name: Restore Backend under Engineering
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{backend_group}}'
+  parent: '{{eng_group}}'
+  account: calimero-node-1
+- name: Create restricted subgroup (no Bob cascade)
+  type: create_team
+  org: '{{namespace_id}}'
+  team_name: private-alice
+  join: invite
+  outputs:
+    private_group: teamId
+  account: calimero-node-1
+- name: Mark private-alice Restricted (explicit wall)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{private_group}}'
+  join: invite
+  account: calimero-node-1
+- name: Name private-alice and colour it black (subgroup metadata)
+  type: team_update
+  org: '{{namespace_id}}'
+  team: '{{private_group}}'
+  metadata:
+    name: Private
     data:
       color: '#000000'
-
-  # NOT calling add_group_members - this is the whole point of the
-  # restricted-wall test. Bob is deliberately NOT in `private_group`.
-
-  - name: Create docs context inside restricted subgroup
-    type: create_context
-    node: calimero-node-1
-    application_id: '{{app_id}}'
-    group_id: '{{private_group}}'
-    service_name: docs
-    outputs:
-      private_docs_ctx: contextId
-      alice_private_key: memberPublicKey
-
-  - name: Alice writes a doc into the private folder
-    type: call
-    node: calimero-node-1
-    context_id: '{{private_docs_ctx}}'
-    method: create_doc
-    executor_public_key: '{{alice_private_key}}'
-    args:
-      title: Private note
-
-  - name: Wait for the restricted folder governance to reach Bob
-    type: wait
-    seconds: 10
-    message: Group governance needs to reach Bob's node before his join attempt
-
-  # The wall. Bob is not a member of private_group; the admin-API
-  # membership gate at `core/crates/context/src/handlers/join_context.rs`
-  # should reject this join attempt with "identity is not a member of
-  # the group".
-  - name: Bob attempts to join the restricted docs context (must be rejected)
-    type: join_context
-    node: calimero-node-2
-    context_id: '{{private_docs_ctx}}'
-    expected_failure: true
-
-  # =================================================================
-  # Phase H: Folder delete - one core delete_group per folder, which
-  #          cascades to its subfolders and their docs contexts.
-  # =================================================================
-
-  - name: delete_group private-alice (cleanup)
-    type: delete_group
-    node: calimero-node-1
-    group_id: '{{private_group}}'
-
-  - name: delete_group Engineering (cascades to Backend and Frontend)
-    type: delete_group
-    node: calimero-node-1
-    group_id: '{{eng_group}}'
-
-  - name: list_subgroups on the namespace - Design remains
-    type: list_subgroups
-    node: calimero-node-1
-    group_id: '{{namespace_id}}'
-    outputs:
-      root_children_after_delete: subgroups
-
-  - name: Assert the namespace still lists Design
-    type: assert
-    statements:
-      - 'is_set({{root_children_after_delete}})'
-
-  - name: delete_group Design (top-level with no docs context)
-    type: delete_group
-    node: calimero-node-1
-    group_id: '{{design_group}}'
-
-  # Final state - no folders left, the list is `[]`, and `is_set([])`
-  # fails, so the call succeeding is the assertion.
-  - name: Final list_subgroups on the namespace
-    type: list_subgroups
-    node: calimero-node-1
-    group_id: '{{namespace_id}}'
-
-stop_all_nodes: false
+  account: calimero-node-1
+- name: Create docs context inside restricted subgroup
+  type: deploy
+  account: calimero-node-1
+  wasm: '{{env.APPS_WASM_DIR}}/mero_docs.wasm'
+  app_name: docs
+  org: '{{namespace_id}}'
+  access:
+    kind: team
+    team: '{{private_group}}'
+  outputs:
+    private_docs_ctx: contextId
+    alice_private_key: memberPublicKey
+- name: Alice writes a doc into the private folder
+  type: call
+  app: '{{private_docs_ctx}}'
+  method: create_doc
+  args:
+    title: Private note
+  account: calimero-node-1
+  as_key: '{{alice_private_key}}'
+- name: Wait for the restricted folder governance to reach Bob
+  type: wait
+  seconds: 1.0
+  message: Group governance needs to reach Bob's node before his join attempt
+- name: Bob attempts to join the restricted docs context (must be rejected)
+  type: http
+  method: get
+  path: apps/{{private_docs_ctx}}
+  account: calimero-node-2
+  expected_failure: true
+- name: delete_group private-alice (cleanup)
+  type: team_delete
+  org: '{{namespace_id}}'
+  team: '{{private_group}}'
+  account: calimero-node-1
+- name: delete_group Engineering (cascades to Backend and Frontend)
+  type: team_delete
+  org: '{{namespace_id}}'
+  team: '{{eng_group}}'
+  account: calimero-node-1
+- name: list_subgroups on the namespace - Design remains
+  type: team_list
+  org: '{{namespace_id}}'
+  account: calimero-node-1
+  outputs:
+    root_children_after_delete: subgroups
+- name: Assert the namespace still lists Design
+  type: assert
+  statements:
+  - is_set({{root_children_after_delete}})
+- name: delete_group Design (top-level with no docs context)
+  type: team_delete
+  org: '{{namespace_id}}'
+  team: '{{design_group}}'
+  account: calimero-node-1
+- name: Final list_subgroups on the namespace
+  type: team_list
+  org: '{{namespace_id}}'
+  account: calimero-node-1

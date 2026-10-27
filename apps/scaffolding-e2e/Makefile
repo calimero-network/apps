@@ -1,16 +1,10 @@
-.PHONY: ci ci-all ci-rust ci-wasm ci-server ci-frontend ci-merobox clean-merobox help
+.PHONY: ci ci-rust ci-wasm ci-server ci-frontend help
 
 # Run all fast CI checks (mirrors GitHub Actions, no Docker).
 # Usage: make ci
 ci: ci-rust ci-wasm ci-server ci-frontend
 	@echo ""
 	@echo "All fast CI checks passed."
-
-# Run everything including merobox E2E workflows (slow, requires Docker).
-# Usage: make ci-all
-ci-all: ci ci-merobox
-	@echo ""
-	@echo "All CI checks (including merobox E2E) passed."
 
 # ── Rust (logic/) — mirrors rust-lint.yml ─────────────────────────────────────
 
@@ -61,41 +55,10 @@ ci-frontend: ci-wasm
 # ── Merobox E2E (logic/workflows/) — mirrors e2e-merobox.yml ─────────────────
 # Runs every workflow YAML against a 3-node Docker mesh. Requires Docker.
 
-ci-merobox: ci-wasm
-	@echo "==> [merobox] docker pull merod:0.12.0-rc.1"
-	docker pull ghcr.io/calimero-network/merod:0.12.0-rc.1
-	@echo "==> [merobox] running all workflows"
-	@cd logic && set -e; \
-	failed=""; \
-	for wf in workflows/*.yml; do \
-		echo ""; \
-		echo "── $$wf ──"; \
-		if ! merobox bootstrap run "$$wf" --e2e-mode; then \
-			failed="$$failed $$wf"; \
-		fi; \
-		merobox stop --all >/dev/null 2>&1 || true; \
-		merobox nuke --force >/dev/null 2>&1 || true; \
-		sudo rm -rf data || true; \
-	done; \
-	if [ -n "$$failed" ]; then \
-		echo ""; \
-		echo "FAILED workflows:$$failed"; \
-		exit 1; \
-	fi
-
-clean-merobox:
-	@echo "==> [merobox] cleanup"
-	-merobox stop --all
-	-merobox nuke --force
-	-sudo rm -rf logic/data
-
 help:
 	@echo "Targets:"
 	@echo "  make ci            — fast CI checks: rust + wasm + server + frontend (no Docker)"
-	@echo "  make ci-all        — everything including merobox E2E (slow, requires Docker)"
 	@echo "  make ci-rust       — cargo fmt + clippy (logic/)"
 	@echo "  make ci-wasm       — build logic/res/scaffolding_e2e.wasm"
 	@echo "  make ci-server     — prettier + eslint + tests (sync-test-server/)"
 	@echo "  make ci-frontend   — tsc + Playwright mocked tests (depends on ci-wasm)"
-	@echo "  make ci-merobox    — run every logic/workflows/*.yml against merod:edge"
-	@echo "  make clean-merobox — stop containers, nuke state, remove logic/data"

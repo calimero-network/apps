@@ -1,4 +1,4 @@
-.PHONY: setup build dev unit e2e test typecheck logic-build logic-test clean workflows bundle publish
+.PHONY: setup build dev unit e2e test typecheck logic-build logic-test clean bundle publish
 
 setup: ## install frontend deps
 	cd app && pnpm install
@@ -28,9 +28,6 @@ test: unit logic-test
 
 clean:
 	rm -rf logic/res logic/target app/dist app/node_modules/.vite app/test-results
-
-workflows: logic-build ## 2-node merobox e2e (needs docker)
-	cd workflows && merobox bootstrap run e2e.yml; merobox stop --all || true
 
 bundle: ## dev-signed .mpk for local installs -> logic/dist/com.calimero.mero-blocks-<ver>.mpk
 	cd logic && cargo mero bundle --dev

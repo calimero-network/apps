@@ -43,10 +43,9 @@ register distinct player keys in one lobby and start a match.
 
 ## Workflows
 
-Every app's merobox workflow has a release-v2 port beside it in
-`apps/<app>/logic/workflows/cloud-v2/`, made by merobox's converter
-(`scripts/port-workflows-to-cloud-v2.sh`) and run on merod-v2 by
-`scripts/cloud-v2-workflows.py`, against contracts built with `cargo mero build`
+Every app's merobox workflows live in `apps/<app>/logic/workflows/`. They were
+ported once from the v1 workflows by merobox's converter, which is gone with v1;
+they are the source now. `scripts/cloud-v2-workflows.py` runs them on merod-v2, against contracts built with `cargo mero build`
 (`scripts/build-cloud-v2-wasm.py`: merod-v2 reads handlers, xcall entry points,
 timers and migrations from the embedded ABI). v1 nodes become accounts,
 namespaces organizations, subgroups teams (open or restricted, with read-only
@@ -71,8 +70,7 @@ converge to afterwards is.
 
 ## Frontends
 
-`apps/kv-store/app-cloud` is the first frontend on release-v2, beside the v1 app
-it ports: passkey sign-up and sign-in (`browserPasskey`), a store per user
+`apps/kv-store/app` is the first frontend on release-v2 (it replaced the v1 app): passkey sign-up and sign-in (`browserPasskey`), a store per user
 (`uploadBundle` + `createApp`), `call`/`view`, and live updates from `events`.
 It depends on mero-js's `release-v2` branch (a scoped pnpm override in the root
 `package.json`; mero-js builds on `prepare`). Its Playwright test starts
@@ -80,7 +78,7 @@ It depends on mero-js's `release-v2` branch (a scoped pnpm override in the root
 passkey ceremony through Chromium's virtual WebAuthn authenticator:
 
 ```bash
-cd apps/kv-store/app-cloud
+cd apps/kv-store/app
 KV_STORE_WASM=…/kv_store.wasm MEROD_V2_BINARY=…/merod-v2 pnpm test:e2e
 ```
 

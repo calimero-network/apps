@@ -1,243 +1,180 @@
+# Ported from the v1 workflow e2e-fanout.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x3: replication is synchronous: a read sees every committed write
 name: Mero Stream — gossip fan-out to two peers (3 nodes)
-description: >
-  §4 asks where fan-out saturates "across K peers", and §6 ranks gossip
-  fan-out among the likely failure modes. Both `e2e.yml` and `e2e-tombstones.yml`
-  run K=1, where a single mesh link carries everything and a fan-out problem
-  cannot show up at all. This runs K=2.
+description: '§4 asks where fan-out saturates "across K peers", and §6 ranks gossip fan-out among the
+  likely failure modes. Both `e2e.yml` and `e2e-tombstones.yml` run K=1, where a single mesh link carries
+  everything and a fan-out problem cannot show up at all. This runs K=2.
 
-  What it establishes: one node encodes a frame in WASM, and BOTH peers
-  independently decode it to the same checksum. That is a stronger claim than two
-  runs of the K=1 scenario — it exercises the sender publishing to a mesh with
-  more than one subscriber, which is where co-located dev nodes have historically
+  What it establishes: one node encodes a frame in WASM, and BOTH peers independently decode it to the
+  same checksum. That is a stronger claim than two runs of the K=1 scenario — it exercises the sender
+  publishing to a mesh with more than one subscriber, which is where co-located dev nodes have historically
   had trouble forming a usable gossipsub mesh.
 
-  Kept to a single frame on purpose: this scenario is about reach, not load. The
-  load curve is `scripts/load-curve.py`.
+  Kept to a single frame on purpose: this scenario is about reach, not load. The load curve is `scripts/load-curve.py`.
 
-force_pull_image: true
-
-# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
-# `KeyDelivery timed out`.
-#
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
-# calimero devnet boot-node. Every container then spends its startup dialing
-# unreachable public addresses, and the node log fills with
-#
-#     libp2p_relay: Dropping in-flight connect request because we are at capacity
-#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
-#
-# until the join gives up with
-#
-#     join_group: direct namespace-join request found no reachable mesh peer
-#     join_group: join response contained no group key
-#     KeyDelivery timed out for group ContextGroupId(...)
-#
-# The peers never found each other; it was never a timing race. `e2e_mode`
-# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
-# turns multicast discovery on (which is what populates the kad table on a
-# single Docker bridge) and tightens the sync intervals. merobox's own
-# `apply_e2e_defaults` documents measuring this exact failure with it off.
-e2e_mode: true
-
-nodes:
-  chain_id: testnet-1
-  count: 3
-  # Keep in step with logic/Cargo.toml's calimero-* tag.
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.1
-  prefix: calimero-node
-  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
-  # `merod init` now writes `discovery.mdns = false`; merobox does not pass the
-  # flag, so peer discovery changed at the image bump with nothing here changing.
-  mdns: true
-  # Distinct from e2e.yml (2760/2660) and e2e-tombstones.yml (2780/2680).
-  base_port: 2800
-  base_rpc_port: 2700
-
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3530
+accounts:
+- calimero-node-1
+- calimero-node-2
+- calimero-node-3
 steps:
-  - name: Install application on calimero-node-1
-    type: install_application
-    node: calimero-node-1
-    path: dist/com.calimero.mero-stream.mpk
-    dev: true
-    outputs:
-      app_id: applicationId
-
-  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the KeyDelivery window the
-  # same way an explicit `join_namespace` does. Fresh nodes plus a couple of
-  # seconds of install leave mDNS discovery AND the group-key transfer under ~6
-  # seconds between them, and the join then 500s. `create_mesh` has no step
-  # boundary to retry at, so the whole scenario is lost when it does.
-  # 12s, matching apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml,
-  # which documents why 5s is not enough.
-
-  # ⚠️ Installed on EVERY node, not just the first. Since core 0.11.0-rc.31 a
-  # node does NOT serve bytecode to its peers: a joiner finds the blob in the
-  # DHT, is told which peers hold it, and every fetch still comes back
-  # `Blob not found on peer`. The method call then fails as a bare
-  # `InternalError` naming neither the blob nor the reason.
-  - name: Install application on calimero-node-2
-    type: install_application
-    node: calimero-node-2
-    path: dist/com.calimero.mero-stream.mpk
-    dev: true
-
-  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the KeyDelivery window the
-  # same way an explicit `join_namespace` does. Fresh nodes plus a couple of
-  # seconds of install leave mDNS discovery AND the group-key transfer under ~6
-  # seconds between them, and the join then 500s. `create_mesh` has no step
-  # boundary to retry at, so the whole scenario is lost when it does.
-  # 12s, matching apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml,
-  # which documents why 5s is not enough.
-
-  - name: Install application on calimero-node-3
-    type: install_application
-    node: calimero-node-3
-    path: dist/com.calimero.mero-stream.mpk
-    dev: true
-
-  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the KeyDelivery window the
-  # same way an explicit `join_namespace` does. Fresh nodes plus a couple of
-  # seconds of install leave mDNS discovery AND the group-key transfer under ~6
-  # seconds between them, and the join then 500s. `create_mesh` has no step
-  # boundary to retry at, so the whole scenario is lost when it does.
-  # 12s, matching apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml,
-  # which documents why 5s is not enough.
-
-  - name: Settle before the mesh joins
-    type: wait
-    seconds: 20
-
-  - name: Create the stream mesh with TWO joining nodes
-    type: create_mesh
-    context_node: calimero-node-1
-    application_id: "{{app_id}}"
-    nodes:
-      - calimero-node-2
-      - calimero-node-3
-    params: '{"name": "fanout"}'
-    # With more than one joining node there is no single {{public_key}} default —
-    # each joiner is published under {{public_key_<node-name>}} instead. Dashes in
-    # the name are fine: placeholder lookup is a plain dict get, not an identifier.
-
-  - name: Wait for the context on all three nodes
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes: [calimero-node-1, calimero-node-2, calimero-node-3]
-    timeout: 90
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Alice joins
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    method: join
-    args: { username: "Alice", now: 1751955000 }
-    executor_public_key: "{{member_public_key}}"
-
-  - name: Bob joins
-    type: call
-    node: calimero-node-2
-    context_id: "{{context_id}}"
-    method: join
-    args: { username: "Bob", now: 1751955001 }
-    executor_public_key: "{{public_key_calimero-node-2}}"
-
-  - name: Carol joins
-    type: call
-    node: calimero-node-3
-    context_id: "{{context_id}}"
-    method: join
-    args: { username: "Carol", now: 1751955002 }
-    executor_public_key: "{{public_key_calimero-node-3}}"
-
-  - name: Sync membership across all three
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes: [calimero-node-1, calimero-node-2, calimero-node-3]
-    timeout: 90
-    check_interval: 2
-    trigger_sync: true
-
-  # Establish the mesh is genuinely three-way BEFORE measuring fan-out, so a
-  # failure downstream is unambiguously about the fragment and not about a peer
-  # that never joined.
-  - name: Carol reads the roster
-    type: call
-    node: calimero-node-3
-    context_id: "{{context_id}}"
-    method: get_stats
-    args: {}
-    executor_public_key: "{{public_key_calimero-node-3}}"
-    outputs:
-      carol_stats: result
-
-  - name: The furthest node sees all three members
-    type: json_assert
-    statements:
-      - 'json_subset({{carol_stats}}, {"output": {"memberCount": 3, "name": "fanout"}})'
-
-  - name: Alice encodes a frame IN WASM
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    method: encode_frame
-    args:
-      raw: [0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255]
-      width: 4
-      height: 4
-      track: 0
-      now: 1751955010000
-    executor_public_key: "{{member_public_key}}"
-    outputs:
-      frame_seq: result.output
-
-  - name: Fan the fragment out to both peers
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes: [calimero-node-1, calimero-node-2, calimero-node-3]
-    timeout: 90
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Alice checksums her own decode
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    method: frame_checksum
-    args: { seq: "{{frame_seq}}" }
-    executor_public_key: "{{member_public_key}}"
-    outputs:
-      alice_checksum: result.output
-
-  - name: Bob checksums his decode
-    type: call
-    node: calimero-node-2
-    context_id: "{{context_id}}"
-    method: frame_checksum
-    args: { seq: "{{frame_seq}}" }
-    executor_public_key: "{{public_key_calimero-node-2}}"
-    outputs:
-      bob_checksum: result.output
-
-  - name: Carol checksums her decode
-    type: call
-    node: calimero-node-3
-    context_id: "{{context_id}}"
-    method: frame_checksum
-    args: { seq: "{{frame_seq}}" }
-    executor_public_key: "{{public_key_calimero-node-3}}"
-    outputs:
-      carol_checksum: result.output
-
-  - name: Assert the fragment reached BOTH peers and decoded identically
-    type: assert
-    statements:
-      # is_set on all three: absent decodes come back null, and the operator
-      # comparisons below stringify, so nulls would compare equal and this whole
-      # scenario would pass green on a total fan-out failure.
-      - "is_set({{alice_checksum}})"
-      - "is_set({{bob_checksum}})"
-      - "is_set({{carol_checksum}})"
-      - "{{alice_checksum}} == {{bob_checksum}}"
-      - "{{alice_checksum}} == {{carol_checksum}}"
+- name: Install application on calimero-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-stream
+- name: Settle before the mesh joins
+  type: wait
+  seconds: 1.0
+- name: Create the stream mesh with TWO joining nodes
+  type: create_org
+  account: calimero-node-1
+  org_name: mesh
+  outputs:
+    namespace_id: orgId
+- type: invite
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: calimero-node-2
+  token: '{{_mesh_invite}}'
+- type: invite
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: calimero-node-3
+  token: '{{_mesh_invite}}'
+- name: Create the stream mesh with TWO joining nodes
+  type: deploy
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
+  app_name: Create the stream mesh with TWO joining nodes
+  init_args: '{"name": "fanout"}'
+  outputs:
+    context_id: contextId
+    member_public_key: memberPublicKey
+- name: Alice joins
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Alice
+    now: 1751955000
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Bob joins
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Bob
+    now: 1751955001
+  account: calimero-node-2
+  as_key: '{{public_key_calimero-node-2}}'
+- name: Carol joins
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Carol
+    now: 1751955002
+  account: calimero-node-3
+  as_key: '{{public_key_calimero-node-3}}'
+- name: Carol reads the roster
+  type: call
+  app: '{{context_id}}'
+  method: get_stats
+  args: {}
+  account: calimero-node-3
+  as_key: '{{public_key_calimero-node-3}}'
+  outputs:
+    carol_stats: rpc
+- name: The furthest node sees all three members
+  type: json_assert
+  statements:
+  - 'json_subset({{carol_stats}}, {"output": {"memberCount": 3, "name": "fanout"}})'
+- name: Alice encodes a frame IN WASM
+  type: call
+  app: '{{context_id}}'
+  method: encode_frame
+  args:
+    raw:
+    - 0
+    - 17
+    - 34
+    - 51
+    - 68
+    - 85
+    - 102
+    - 119
+    - 136
+    - 153
+    - 170
+    - 187
+    - 204
+    - 221
+    - 238
+    - 255
+    width: 4
+    height: 4
+    track: 0
+    now: 1751955010000
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    frame_seq: result
+- name: Alice checksums her own decode
+  type: call
+  app: '{{context_id}}'
+  method: frame_checksum
+  args:
+    seq: '{{frame_seq}}'
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    alice_checksum: result
+- name: Bob checksums his decode
+  type: call
+  app: '{{context_id}}'
+  method: frame_checksum
+  args:
+    seq: '{{frame_seq}}'
+  account: calimero-node-2
+  as_key: '{{public_key_calimero-node-2}}'
+  outputs:
+    bob_checksum: result
+- name: Carol checksums her decode
+  type: call
+  app: '{{context_id}}'
+  method: frame_checksum
+  args:
+    seq: '{{frame_seq}}'
+  account: calimero-node-3
+  as_key: '{{public_key_calimero-node-3}}'
+  outputs:
+    carol_checksum: result
+- name: Assert the fragment reached BOTH peers and decoded identically
+  type: assert
+  statements:
+  - is_set({{alice_checksum}})
+  - is_set({{bob_checksum}})
+  - is_set({{carol_checksum}})
+  - '{{alice_checksum}} == {{bob_checksum}}'
+  - '{{alice_checksum}} == {{carol_checksum}}'

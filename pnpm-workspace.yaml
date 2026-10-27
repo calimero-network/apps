@@ -10,8 +10,6 @@
 
 packages:
   - "apps/*/app"
-  # release-v2 (Calimero Cloud) frontends, beside the v1 app they port.
-  - "apps/*/app-cloud"
   # The first shared frontend package landed with the post-join sync gate
   # (@calimero-apps/join-sync), so this is live now rather than housekeeping.
   - "packages/*"

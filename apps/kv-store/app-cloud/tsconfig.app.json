@@ -1,9 +1,0 @@
-{
-  "extends": "../../../tsconfig.base.json",
-  "compilerOptions": {
-    "outDir": "./dist-types/app",
-    "tsBuildInfoFile": "./dist-types/app.tsbuildinfo",
-    "types": ["vite/client"]
-  },
-  "include": ["src"]
-}

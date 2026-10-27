@@ -126,32 +126,6 @@ while read -r manifest name; do
   fi
 done < <(jq -r '.packages[] | [.manifest_path, .name] | @tsv' <<<"$meta")
 
-# ── every merobox scenario must run the merod image the workspace declares ──
-#
-# This is what makes `merod-image` live config rather than a comment. The drift
-# it catches is the one that started the fleet-wide rc.25 sweep: contracts pinned
-# to one release while every scenario still started a node from the previous one.
-# Green the whole time, until a contract touches a host function the older node
-# does not have.
-want_image=$(jq -r '.metadata["mero-apps"]["merod-image"] // empty' <<<"$meta")
-if [[ -z "$want_image" ]]; then
-  echo "::error::[workspace.metadata.mero-apps].merod-image is not set in the root Cargo.toml"
-  exit 1
-fi
-echo "workspace merod image: $want_image"
-
-shopt -s nullglob
-# soak/ too: soak.yml runs those nightly, so a stale pin there would go
-# unnoticed until it fails a nightly nobody is watching.
-for f in apps/*/logic/workflows/*.yml apps/*/logic/workflows/soak/*.yml; do
-  while read -r img; do
-    if [[ "$img" != "$want_image" ]]; then
-      echo "::error file=$f::runs $img, workspace declares $want_image"
-      fail=1
-    fi
-  done < <(grep -oE 'ghcr\.io/calimero-network/merod:[A-Za-z0-9._-]+' "$f" | sort -u)
-done
-
 if [[ $fail -ne 0 ]]; then
   echo
   echo "app metadata check FAILED"

@@ -1,247 +1,167 @@
+# Ported from the v1 workflow e2e.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
+# Dropped (no release-v2 counterpart):
+#   wait_for_sync x3: replication is synchronous: a read sees every committed write
 name: Mero Stream — fragment round-trip over Calimero (2-node e2e)
-description: >
-  Phase P2. Proves approach 3: a node encodes a raw luma frame INSIDE the WASM
-  contract, the compressed fragment gossips to a second node, and the second node
-  reconstructs the frame in WASM. The raw pixels are a mutation argument on node 1
-  only — just the compressed fragment crosses the wire.
+description: 'Phase P2. Proves approach 3: a node encodes a raw luma frame INSIDE the WASM contract, the
+  compressed fragment gossips to a second node, and the second node reconstructs the frame in WASM. The
+  raw pixels are a mutation argument on node 1 only — just the compressed fragment crosses the wire.
 
-  Bit-identity (C1) is asserted by having BOTH nodes independently decode the
-  frame and hash the decoded pixels in WASM (`frame_checksum`), then comparing the
-  two scalars. See the assertion block for why this is done with a checksum rather
-  than by comparing pixel arrays directly.
+  Bit-identity (C1) is asserted by having BOTH nodes independently decode the frame and hash the decoded
+  pixels in WASM (`frame_checksum`), then comparing the two scalars. See the assertion block for why this
+  is done with a checksum rather than by comparing pixel arrays directly.
 
-force_pull_image: true
-
-# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
-# `KeyDelivery timed out`.
-#
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
-# calimero devnet boot-node. Every container then spends its startup dialing
-# unreachable public addresses, and the node log fills with
-#
-#     libp2p_relay: Dropping in-flight connect request because we are at capacity
-#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
-#
-# until the join gives up with
-#
-#     join_group: direct namespace-join request found no reachable mesh peer
-#     join_group: join response contained no group key
-#     KeyDelivery timed out for group ContextGroupId(...)
-#
-# The peers never found each other; it was never a timing race. `e2e_mode`
-# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
-# turns multicast discovery on (which is what populates the kad table on a
-# single Docker bridge) and tightens the sync intervals. merobox's own
-# `apply_e2e_defaults` documents measuring this exact failure with it off.
-e2e_mode: true
-
-nodes:
-  chain_id: testnet-1
-  count: 2
-  # Must match the `calimero-*` tag in logic/Cargo.toml — contract and node have
-  # to agree. Bump both together.
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.1
-  prefix: calimero-node
-  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
-  # `merod init` now writes `discovery.mdns = false`; merobox does not pass the
-  # flag, so peer discovery changed at the image bump with nothing here changing.
-  mdns: true
-  # Off the default 2428/2528 and off mero-meet's 2740 to avoid collisions.
-  base_port: 2760
-  base_rpc_port: 2660
-
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3560
+accounts:
+- calimero-node-1
+- calimero-node-2
 steps:
-  # ── Bootstrap ──────────────────────────────────────────────────────────────
-  # `create_mesh` replaces the seven-step namespace/invite/join dance this
-  # workflow used to carry (create_namespace → set_default_capabilities →
-  # create_identity → create_namespace_invitation → join_namespace → sync_group →
-  # join_context). It runs that same governance flow internally, pre-installs the
-  # app on the joining node, and is what core's own workflows use.
-  - name: Install application on calimero-node-1
-    type: install_application
-    node: calimero-node-1
-    path: dist/com.calimero.mero-stream.mpk
-    dev: true
-    outputs:
-      app_id: applicationId
-
-  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the KeyDelivery window the
-  # same way an explicit `join_namespace` does. Fresh nodes plus a couple of
-  # seconds of install leave mDNS discovery AND the group-key transfer under ~6
-  # seconds between them, and the join then 500s. `create_mesh` has no step
-  # boundary to retry at, so the whole scenario is lost when it does.
-  # 12s, matching apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml,
-  # which documents why 5s is not enough.
-
-  # ⚠️ Installed on EVERY node, not just the first. Since core 0.11.0-rc.31 a
-  # node does NOT serve bytecode to its peers: a joiner finds the blob in the
-  # DHT, is told which peers hold it, and every fetch still comes back
-  # `Blob not found on peer`. The method call then fails as a bare
-  # `InternalError` naming neither the blob nor the reason.
-  - name: Install application on calimero-node-2
-    type: install_application
-    node: calimero-node-2
-    path: dist/com.calimero.mero-stream.mpk
-    dev: true
-
-  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the KeyDelivery window the
-  # same way an explicit `join_namespace` does. Fresh nodes plus a couple of
-  # seconds of install leave mDNS discovery AND the group-key transfer under ~6
-  # seconds between them, and the join then 500s. `create_mesh` has no step
-  # boundary to retry at, so the whole scenario is lost when it does.
-  # 12s, matching apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml,
-  # which documents why 5s is not enough.
-
-  - name: Settle before the mesh joins
-    type: wait
-    seconds: 12
-
-  - name: Create the stream mesh (namespace + context + Node 2 joins)
-    type: create_mesh
-    context_node: calimero-node-1
-    application_id: "{{app_id}}"
-    nodes:
-      - calimero-node-2
-    params: '{"name": "probe"}'
-    # No `outputs:` block on purpose — that is what makes create_mesh publish its
-    # default names: {{context_id}}, {{member_public_key}} (Node 1's context
-    # identity) and {{public_key}} (the single joining node's).
-
-  - name: Wait for the context to exist on both nodes
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  # ── Membership (gates encode_frame) ────────────────────────────────────────
-  - name: Alice joins the stream
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    method: join
-    args: { username: "Alice", now: 1751955000 }
-    executor_public_key: "{{member_public_key}}"
-
-  - name: Bob joins the stream
-    type: call
-    node: calimero-node-2
-    context_id: "{{context_id}}"
-    method: join
-    args: { username: "Bob", now: 1751955001 }
-    executor_public_key: "{{public_key}}"
-
-  - name: Sync membership
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  # ── The probe: encode on node 1, decode on node 2 ─────────────────────────
-  # A 4x4 (16-byte) luma frame whose values are all of the form (q<<4)|q, so
-  # quantize→reconstruct is the identity and the decode must reproduce EXACTLY
-  # this array (C1). Tiny so it stays inline-readable here.
-  #
-  # `now` is unix MILLISECONDS for encode_frame (and only encode_frame) — the
-  # §4 latency metric is unmeasurable at second resolution. See
-  # Fragment::created_at in logic/src/lib.rs.
-  - name: Alice encodes a 4x4 frame IN WASM
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    method: encode_frame
-    args:
-      raw: [0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255]
-      width: 4
-      height: 4
-      track: 0
-      now: 1751955010000
-    executor_public_key: "{{member_public_key}}"
-    outputs:
-      frame_seq: result.output
-
-  - name: Sync the fragment to node 2
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes: [calimero-node-1, calimero-node-2]
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  # Each node decodes the fragment in its own WASM runtime and hashes the result.
-  - name: Alice checksums her decode
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    method: frame_checksum
-    args: { seq: "{{frame_seq}}" }
-    executor_public_key: "{{member_public_key}}"
-    outputs:
-      alice_checksum: result.output
-
-  - name: Bob checksums HIS decode (the far side of the wire)
-    type: call
-    node: calimero-node-2
-    context_id: "{{context_id}}"
-    method: frame_checksum
-    args: { seq: "{{frame_seq}}" }
-    executor_public_key: "{{public_key}}"
-    outputs:
-      bob_checksum: result.output
-
-  - name: Assert Bob decoded EXACTLY what Alice encoded (C1 across the wire)
-    type: assert
-    statements:
-      # The is_set checks are load-bearing, not ceremony. frame_checksum returns
-      # null for a frame that is absent (never arrived / pruned / chunks still
-      # missing), and the operator comparison below stringifies its operands — so
-      # two nulls would compare EQUAL and the scenario would pass green having
-      # proved nothing at all. Assert both sides are real before comparing them.
-      - "is_set({{alice_checksum}})"
-      - "is_set({{bob_checksum}})"
-      # Any single-bucket pixel difference changes this scalar (unit-tested in
-      # logic/src/lib.rs::checksum_separates_frames_that_differ_by_one_pixel), so
-      # equality here IS the bit-identity claim.
-      - "{{alice_checksum}} == {{bob_checksum}}"
-
-  - name: Bob reconstructs the frame IN WASM
-    type: call
-    node: calimero-node-2
-    context_id: "{{context_id}}"
-    method: get_frame
-    args: { after_seq: 0 }
-    executor_public_key: "{{public_key}}"
-    outputs:
-      bob_frames: result
-
-  - name: Assert Bob's decode carries the right geometry and a real payload
-    type: assert
-    statements:
-      - "is_set({{bob_frames}})"
-      # Geometry survives the round-trip. (Content is proven by the checksum
-      # above — a `contains` on a pixel value would match any digit sequence
-      # anywhere in the response, including a width or a byte count.)
-      - 'contains({{bob_frames}}, "width")'
-      - 'contains({{bob_frames}}, "createdAt")'
-
-  - name: Bob reads the stream stats (§4 instrumentation surface)
-    type: call
-    node: calimero-node-2
-    context_id: "{{context_id}}"
-    method: get_stats
-    args: {}
-    executor_public_key: "{{public_key}}"
-    outputs:
-      bob_stats: result
-
-  - name: Assert the fragment is live and counted on the receiving node
-    type: assert
-    statements:
-      - 'contains({{bob_stats}}, "liveFragments")'
-      # One frame sent, so the monotone counter must have advanced exactly once —
-      # this is the assertion that would catch the fragment never arriving.
-      - 'contains({{bob_stats}}, "nextSeq")'
-      - "{{frame_seq}} == 1"
+- name: Install application on calimero-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: calimero-node-1
+- type: set
+  values:
+    app_id: com.calimero.mero-stream
+- name: Settle before the mesh joins
+  type: wait
+  seconds: 1.0
+- name: Create the stream mesh (namespace + context + Node 2 joins)
+  type: create_org
+  account: calimero-node-1
+  org_name: mesh
+  outputs:
+    namespace_id: orgId
+- type: invite
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: calimero-node-2
+  token: '{{_mesh_invite}}'
+- name: Create the stream mesh (namespace + context + Node 2 joins)
+  type: deploy
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
+  app_name: Create the stream mesh (namespace + context + Node 2 joins)
+  init_args: '{"name": "probe"}'
+  outputs:
+    context_id: contextId
+    member_public_key: memberPublicKey
+- type: set
+  values:
+    public_key: '{{public_key_calimero-node-2}}'
+- name: Alice joins the stream
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Alice
+    now: 1751955000
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+- name: Bob joins the stream
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Bob
+    now: 1751955001
+  account: calimero-node-2
+  as_key: '{{public_key}}'
+- name: Alice encodes a 4x4 frame IN WASM
+  type: call
+  app: '{{context_id}}'
+  method: encode_frame
+  args:
+    raw:
+    - 0
+    - 17
+    - 34
+    - 51
+    - 68
+    - 85
+    - 102
+    - 119
+    - 136
+    - 153
+    - 170
+    - 187
+    - 204
+    - 221
+    - 238
+    - 255
+    width: 4
+    height: 4
+    track: 0
+    now: 1751955010000
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    frame_seq: result
+- name: Alice checksums her decode
+  type: call
+  app: '{{context_id}}'
+  method: frame_checksum
+  args:
+    seq: '{{frame_seq}}'
+  account: calimero-node-1
+  as_key: '{{member_public_key}}'
+  outputs:
+    alice_checksum: result
+- name: Bob checksums HIS decode (the far side of the wire)
+  type: call
+  app: '{{context_id}}'
+  method: frame_checksum
+  args:
+    seq: '{{frame_seq}}'
+  account: calimero-node-2
+  as_key: '{{public_key}}'
+  outputs:
+    bob_checksum: result
+- name: Assert Bob decoded EXACTLY what Alice encoded (C1 across the wire)
+  type: assert
+  statements:
+  - is_set({{alice_checksum}})
+  - is_set({{bob_checksum}})
+  - '{{alice_checksum}} == {{bob_checksum}}'
+- name: Bob reconstructs the frame IN WASM
+  type: call
+  app: '{{context_id}}'
+  method: get_frame
+  args:
+    after_seq: 0
+  account: calimero-node-2
+  as_key: '{{public_key}}'
+  outputs:
+    bob_frames: rpc
+- name: Assert Bob's decode carries the right geometry and a real payload
+  type: assert
+  statements:
+  - is_set({{bob_frames}})
+  - contains({{bob_frames}}, "width")
+  - contains({{bob_frames}}, "createdAt")
+- name: Bob reads the stream stats (§4 instrumentation surface)
+  type: call
+  app: '{{context_id}}'
+  method: get_stats
+  args: {}
+  account: calimero-node-2
+  as_key: '{{public_key}}'
+  outputs:
+    bob_stats: rpc
+- name: Assert the fragment is live and counted on the receiving node
+  type: assert
+  statements:
+  - contains({{bob_stats}}, "liveFragments")
+  - contains({{bob_stats}}, "nextSeq")
+  - '{{frame_seq}} == 1'

@@ -1,0 +1,149 @@
+# Ported from the v1 workflow e2e-capacity-ladder.yml (`merobox cloud port`).
+# v1 nodes are accounts here.
+# Dropped (no release-v2 counterpart):
+#   assert_log_absent x1: v1 node logs
+#   script x2: scripts drive v1 node RPC URLs
+#   wait_for_sync x2: replication is synchronous: a read sees every committed write
+name: Mero Stream — capacity ladder (how many people can actually broadcast?)
+description: 'MEASURES the broadcaster cap instead of asserting it. `lib/capacity.ts` derives two upper
+  bounds — gossipsub fan-out for upstream bandwidth, and the serial publish loop for RTT — but neither
+  says what a real node sustains, and `MAX_BROADCASTERS` should not be a number somebody liked the look
+  of.
+
+  Four nodes, one context. The script ramps 1 → 2 → 3 → 4 concurrent authors, each publishing a realistic
+  640x480 / 25 fps / 1.5 Mbps stream on ephemeral presence (49 single-fragment deltas and one four-fragment
+  keyframe per 2 s, fragments serialised per author exactly as `publishEphemeralFrame` serialises them).
+  Node 4 subscribes over SSE and counts what actually arrives.
+
+  Per rung it reports achieved fps, achieved publish rate against the ~26.5/s the schedule demands, publish
+  RTT p50/p95, the implied send-loop duty cycle, delivered frames per author as a ratio of frames sent,
+  and reassembly failures. The highest rung still holding >=90% delivery at >=90% of the target frame
+  rate is the cap, and the script prints that number.
+
+  ASSERTIONS ARE DELIBERATELY WEAK. A measurement that fails the build when the answer is "3 works, 4
+  does not" has destroyed the information it existed to collect. What is asserted is that the RIG worked:
+  each presence author carried exactly one node''s msgSeq range (per-author isolation — the exact class
+  of bug the 2026-08-07 shared-counter retro was about), the single-author rung was healthy, and `contextStateHash`
+  is byte-identical across the entire ladder so nothing reached the DAG.
+
+  Author attribution is DERIVED, not supplied: node i publishes msgSeq in [i*1_000_000, (i+1)*1_000_000),
+  so the observer infers the sender from the framing header and then CHECKS the author→node mapping is
+  1:1. Stronger than trusting a preloaded key, and it avoids depending on which output name merobox exposes
+  for a member identity.
+
+  NOTE the observer changes role on the last rung: nodes 1..S publish and node 4 observes, so for S=1..3
+  it is a pure spectator and at S=4 it is also the fourth publisher — which is what the real app does,
+  where every participant is also a receiver. Node 1''s send-side series is the one comparable across
+  all four rungs.
+
+  '
+backend: cloud-v2
+cluster:
+  nodes: 3
+  base_port: 3570
+accounts:
+- calimero-node-1
+- calimero-node-2
+- calimero-node-3
+- calimero-node-4
+steps:
+- name: Install application on calimero-node-1
+  type: upload_bundle
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
+  outputs:
+    app_id_bundle: hash
+  account: calimero-node-1
+- type: set
+  values:
+    app_id: '{{app_id_bundle}}'
+- name: Settle before the mesh joins
+  type: wait
+  seconds: 1.0
+- name: Create the stream mesh with THREE joining nodes
+  type: create_org
+  account: calimero-node-1
+  org_name: mesh
+  outputs:
+    namespace_id: orgId
+- type: invite
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: calimero-node-2
+  token: '{{_mesh_invite}}'
+- type: invite
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: calimero-node-3
+  token: '{{_mesh_invite}}'
+- type: invite
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  role: member
+  outputs:
+    _mesh_invite: token
+- type: redeem_invite
+  account: calimero-node-4
+  token: '{{_mesh_invite}}'
+- name: Create the stream mesh with THREE joining nodes
+  type: deploy
+  account: calimero-node-1
+  org: '{{namespace_id}}'
+  wasm: '{{env.APPS_WASM_DIR}}/mero_stream.wasm'
+  app_name: Create the stream mesh with THREE joining nodes
+  init_args: '{"name": "ladder"}'
+  outputs:
+    context_id: contextId
+    member_public_key: memberPublicKey
+- name: Alice joins
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Alice
+    now: 1751955000
+  account: calimero-node-1
+- name: Bob joins
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Bob
+    now: 1751955001
+  account: calimero-node-2
+- name: Carol joins
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Carol
+    now: 1751955002
+  account: calimero-node-3
+- name: Dave joins
+  type: call
+  app: '{{context_id}}'
+  method: join
+  args:
+    username: Dave
+    now: 1751955003
+  account: calimero-node-4
+- name: The furthest node reads the roster
+  type: call
+  app: '{{context_id}}'
+  method: get_stats
+  args: {}
+  account: calimero-node-4
+  as_key: '{{public_key_calimero-node-4}}'
+  outputs:
+    dave_stats: rpc
+- name: Assert all four members are visible from the furthest node
+  type: json_assert
+  statements:
+  - 'json_subset({{dave_stats}}, {"output": {"memberCount": 4, "name": "ladder"}})'
