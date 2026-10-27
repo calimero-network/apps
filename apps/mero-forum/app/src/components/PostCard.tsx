@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 import type { PostView } from "../generated/ForumClient";
 import { fullDate, timeAgo } from "../lib/forum";
@@ -142,7 +143,7 @@ export function ShareButton({ postId }: { postId: string }) {
       title={copied ? "Link copied" : "Copy link to post"}
       aria-label={copied ? "Link copied" : "Copy link to post"}
       onClick={() => {
-        const url = `${window.location.origin}/p/${postId}`;
+        const url = `${window.location.origin}${nodeBasename(new URL(window.location.href), "/")}p/${postId}`;
         void navigator.clipboard
           ?.writeText(url)
           .then(() => {

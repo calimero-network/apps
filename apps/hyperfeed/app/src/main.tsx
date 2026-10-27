@@ -9,6 +9,7 @@ import "@calimero-apps/glass/fonts.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./index.css";
+import { isServedByNode } from "@calimero-apps/node-served";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root is missing from index.html");
@@ -30,7 +31,7 @@ createRoot(root).render(
       the app picks the context (FeedPicker). `packageName` + `registryUrl` let
       the auth frontend resolve this app's allowed callback origin.
     */}
-    <MeroProvider mode={AppMode.MultiContext} packageName={PACKAGE_NAME} registryUrl={REGISTRY_URL}>
+    <MeroProvider mode={AppMode.MultiContext} packageName={PACKAGE_NAME} registryUrl={REGISTRY_URL} servedByNode={isServedByNode(new URL(window.location.href))}>
       <App />
     </MeroProvider>
   </Wrapper>,

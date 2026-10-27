@@ -12,6 +12,7 @@
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-platform-react": "catalog:",
     "@calimero-network/mero-ui": "catalog:",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "bs58": "catalog:",
     "fflate": "catalog:",
     "react": "catalog:",

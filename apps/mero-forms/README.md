@@ -82,9 +82,39 @@ response only through a link the contract knows, and the visitor never reaches
   refuses responses; turning it back on brings them all back.
 - **An hourly cap per link** (30 by default), counted from the link's own
   responses. Over it, the link is refused until the hour rolls over.
-- **A captcha**, optional. The contract makes no network calls, so it cannot
-  ask Cloudflare itself. The `/f` page shows a Cloudflare Turnstile widget,
-  and the app's own Vercel function (`app/api/captcha.ts`,
+- **A captcha**, optional, checked one of three ways. The `/f` page shows a
+  Cloudflare Turnstile widget either way.
+- **Checked by the node** (`set_captcha_key(form, "turnstile")`). The page
+  sends the widget's token as `submit_via_link`'s `captcha_token`, and the
+  contract asks Cloudflare's `siteverify` itself through the node
+  (`env::http_request`). The request names `{{secret:TURNSTILE_SECRET_KEY}}`,
+  which the node fills in from its operator's secrets, so the secret is in no
+  state and no response. Cloudflare accepts a token once. The token is checked
+  last, after the form, link and cap checks, so a refused response spends
+  none. It needs three things on the node that serves the link:
+  - its operator turned outbound requests on for `challenges.cloudflare.com`
+    and bound `TURNSTILE_SECRET_KEY` to `com.calimero.mero-forms`;
+  - the namespace approved `https://challenges.cloudflare.com/turnstile/v0/`,
+    the one prefix the manifest declares (offered when Mero Forms is installed
+    or upgraded; until then the response is refused, never stored unchecked);
+  - core 0.12.0-rc.1 or later.
+- **Checked with the team's own keys** (Team → Captcha, admins). The admin
+  enters the Turnstile site key and secret. The contract seals the secret to
+  the namespace's TEE (`env::seal_outbound_secret`) before storing it, so no
+  teammate's node and no page can read it, and only a TEE of the namespace can
+  fill it in, and only for `challenges.cloudflare.com`. Turning on "Require a
+  captcha" then sets `turnstile`, the public page shows the team's site key,
+  and the check names `{{sealed:…}}` in place of the operator's secret. The
+  node serving the link hands that one request to a TEE of the namespace,
+  which sends it and returns Cloudflare's answer, so the response is still
+  checked and stored in the same call. Without a TEE in the namespace the
+  secret is refused ("add a TEE node to the namespace"), and the card says so
+  first. When the namespace's TEEs change, the card asks for the keys again.
+  Needs the core release that adds sealed outbound secrets, the TEE nodes'
+  operators to allow `challenges.cloudflare.com`, and the namespace approval
+  above.
+- **Checked by a verifier** (`set_captcha_key(form, <ed25519 key>)`), for
+  nodes without the above. The app's own Vercel function (`app/api/captcha.ts`,
   `app/src/lib/captchaVerifier.ts`) checks the solved widget with Cloudflare.
   It then signs a pass, `mero-forms/captcha/v1|<form>|<link>|<nonce>|<expiry>`,
   with an ed25519 key. The contract checks that signature with the host's
@@ -201,9 +231,9 @@ Events carry ids only, never answers.
 | `list_team()` / `add_team_member(who)` / `remove_team_member(who)` | team / admin | The team |
 | `workspace_name()` / `set_workspace_name(name)` | anyone / team | The workspace's name |
 | `register_form_key(account, form_id, label)` / `forget_form_key(account)` / `list_form_keys()` | admin | The form key register, with each key's response count |
-| `set_form_public(form_id, public)` / `set_link_cap(form_id, per_hour)` / `set_captcha_key(form_id, key)` | team | Whether links take responses, how many per hour, and the captcha verifier's key (empty for none) |
+| `set_form_public(form_id, public)` / `set_link_cap(form_id, per_hour)` / `set_captcha_key(form_id, key)` | team | Whether links take responses, how many per hour, and the captcha: a verifier's key, `turnstile` for the node to check, or empty for none |
 | `create_link(form_id, link, grant_id, label)` / `delete_link(link)` / `list_links(form_id)` | team | The public link register, with each link's response counts |
-| `link_form(link)` / `submit_via_link(link, answers, captcha)` | a link's grant | The two calls a public link may make: the questions, and a response |
+| `link_form(link)` / `submit_via_link(link, answers, captcha, captcha_token)` | a link's grant | The two calls a public link may make: the questions, and a response with a verifier's pass or a Turnstile token |
 | `am_i_team()` / `am_i_admin()` / `my_account()` | anyone | Identity |
 
 ## Run it

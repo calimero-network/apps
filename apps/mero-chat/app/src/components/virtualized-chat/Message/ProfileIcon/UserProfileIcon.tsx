@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
+import { DEFAULT_AVATAR } from "../../../../utils/servedByNode";
 
 const ProfileIconContainer = styled.div<{ $height: string; $width: string }>`
   position: relative;
@@ -41,7 +42,7 @@ const UserProfileIcon: React.FC<UserProfileIconProps> = ({
   active = false,
   getIconFromCache,
 }) => {
-  const [imageUrl, setImageUrl] = useState("https://i.imgur.com/e8buxpa.png");
+  const [imageUrl, setImageUrl] = useState(DEFAULT_AVATAR);
 
   useEffect(() => {
     const setImage = async () => {

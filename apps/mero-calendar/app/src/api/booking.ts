@@ -8,6 +8,7 @@ import {
   sha256Hex,
   type OwnerNode,
 } from "./accessGrants";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 /**
  * Booking links, Calendly style: a link someone with no account opens to book
@@ -164,7 +165,7 @@ export async function createBookingLink(
     });
     return {
       link: created,
-      url: bookingUrl(window.location.origin, {
+      url: bookingUrl(window.location.origin + nodeBasename(new URL(window.location.href), "/"), {
         nodeUrl: node.nodeUrl,
         contextId,
         token: grant.token,

@@ -3,14 +3,15 @@ import { defineConfig } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
-import { calimeroCsp } from "@calimero-apps/cloud/vite";
+import { servedAssetsFallback } from '@calimero-apps/node-served/vite';
+import { calimeroCsp } from '@calimero-apps/cloud/vite';
 
 export default defineConfig({
-  base: '/',
+  base: './',
   build: {
     outDir: 'dist',
   },
-  plugins: [calimeroCsp(), nodePolyfills(), react()],
+  plugins: [calimeroCsp(), servedAssetsFallback(), nodePolyfills(), react()],
   test: {
     // Playwright specs in e2e/ run under `playwright test`, not vitest,
     // and would crash here. Keep vitest scoped to src.

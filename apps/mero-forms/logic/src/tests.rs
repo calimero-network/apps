@@ -644,7 +644,29 @@ fn via_link(
     captcha: Option<CaptchaPass>,
 ) -> app::Result<String> {
     let answers = contact_answers(name);
-    app.call(move |s| s.submit_via_link(LINK.to_owned(), answers, captcha))
+    app.call(move |s| s.submit_via_link(LINK.to_owned(), answers, captcha, None))
+}
+
+fn via_link_token(
+    app: &mut TestHost<MeroForms>,
+    name: &str,
+    token: Option<&str>,
+) -> app::Result<String> {
+    let answers = contact_answers(name);
+    let token = token.map(str::to_owned);
+    app.call(move |s| s.submit_via_link(LINK.to_owned(), answers, None, token))
+}
+
+fn responses(app: &mut TestHost<MeroForms>, form_id: &str) -> usize {
+    let f = form_id.to_owned();
+    app.view(move |s| s.list_responses(f)).unwrap().len()
+}
+
+fn siteverify(status: u16, body: &str) -> Result<calimero_sdk::outbound::OutboundResponse, String> {
+    Ok(calimero_sdk::outbound::OutboundResponse {
+        status,
+        body: body.as_bytes().to_vec(),
+    })
 }
 
 fn now_ms() -> u64 {
@@ -849,4 +871,171 @@ fn deleting_a_form_takes_its_links_with_it() {
     let form_id = public_form(&mut app);
     app.call(move |s| s.delete_form(form_id)).unwrap();
     assert!(app.view(|s| s.link_form(LINK.to_owned())).is_err());
+}
+
+#[test]
+fn a_turnstile_form_has_the_node_check_the_token() {
+    let mut app = workspace();
+    let form_id = public_form(&mut app);
+    let f = form_id.clone();
+    let view = app
+        .call(move |s| s.set_captcha_key(f, " Turnstile ".to_owned()))
+        .unwrap();
+    assert_eq!(view.captcha_key, NODE_VERIFIES_TURNSTILE);
+    let link = app.view(|s| s.link_form(LINK.to_owned())).unwrap();
+    assert!(link.captcha && link.captcha_by_node);
+
+    // No token, or a signed pass instead of one: refused before any request.
+    assert!(via_link_token(&mut app, "Ada", None)
+        .msg()
+        .contains("needs a captcha"));
+    let nonce = "0123456789abcdef0123456789abcdef";
+    assert!(via_link(
+        &mut app,
+        "Ada",
+        Some(pass(&form_id, nonce, now_ms() + 60_000))
+    )
+    .msg()
+    .contains("needs a captcha"));
+    assert!(via_link_token(&mut app, "Ada", Some("a token?"))
+        .msg()
+        .contains("malformed"));
+
+    // With no node to ask, nothing is stored unchecked.
+    assert!(via_link_token(&mut app, "Ada", Some("0.AbC-d_e"))
+        .msg()
+        .contains("could not be checked"));
+    assert_eq!(responses(&mut app, &form_id), 0);
+
+    // A key form still checks passes, and empty still turns captchas off.
+    let f = form_id.clone();
+    app.call(move |s| s.set_captcha_key(f, String::new()))
+        .unwrap();
+    via_link_token(&mut app, "Ada", None).unwrap();
+    assert_eq!(responses(&mut app, &form_id), 1);
+}
+
+#[test]
+fn the_siteverify_request_names_the_secret_and_never_holds_it() {
+    let request = turnstile_request(" 0.AbC-d_e ", TURNSTILE_SECRET).unwrap();
+    assert_eq!(request.method, OutboundMethod::Post);
+    assert_eq!(request.url, TURNSTILE_SITEVERIFY);
+    assert_eq!(
+        String::from_utf8(request.body).unwrap(),
+        "secret={{secret:TURNSTILE_SECRET_KEY}}&response=0.AbC-d_e"
+    );
+    assert!(request
+        .headers
+        .iter()
+        .any(|(k, v)| k == "Content-Type" && v == "application/x-www-form-urlencoded"));
+
+    // Nothing that could escape the form body, and nothing too long.
+    for bad in ["", "a&secret=x", "a b", "a=b", &"a".repeat(2049)] {
+        assert!(
+            turnstile_request(bad, TURNSTILE_SECRET).is_err(),
+            "{bad:?} was taken"
+        );
+    }
+    assert!(turnstile_request(&"a".repeat(2048), TURNSTILE_SECRET).is_ok());
+}
+
+#[test]
+fn a_team_without_a_tee_is_told_to_add_one_before_setting_a_captcha_secret() {
+    let mut app = workspace();
+    let err = app
+        .call(|s| s.set_captcha_secret("0x4AAAsite".to_owned(), "0x4AAAsecret".to_owned()))
+        .msg();
+    assert!(err.contains("no TEE node"), "{err}");
+    let settings = app.view(|s| s.captcha_settings()).unwrap();
+    assert!(!settings.secret_set && !settings.tee_available);
+}
+
+#[test]
+fn the_captcha_secret_is_stored_sealed_and_only_its_placeholder_is_sent() {
+    let mut app = workspace();
+    let form_id = public_form(&mut app);
+    let f = form_id.clone();
+    app.call(move |s| s.set_captcha_key(f, NODE_VERIFIES_TURNSTILE.to_owned()))
+        .unwrap();
+    app.set_tee_sealing_key(Some([7; 32]));
+
+    for (site, secret) in [
+        ("", "s"),
+        ("bad key", "s"),
+        ("site", ""),
+        ("site", &"s".repeat(501)),
+    ] {
+        let (site, secret) = (site.to_owned(), secret.to_owned());
+        assert!(app
+            .call(move |s| s.set_captcha_secret(site, secret))
+            .is_err());
+    }
+    let settings = app
+        .call(|s| s.set_captcha_secret(" 0x4AAAsite ".to_owned(), "0x4AAAsecret".to_owned()))
+        .unwrap();
+    assert_eq!(
+        settings,
+        CaptchaSettings {
+            site_key: "0x4AAAsite".to_owned(),
+            secret_set: true,
+            tee_available: true,
+            needs_resealing: false,
+        }
+    );
+    let link = app.view(|s| s.link_form(LINK.to_owned())).unwrap();
+    assert_eq!(link.captcha_site_key, "0x4AAAsite");
+
+    let secret = app.view(|s| s.turnstile_secret()).unwrap();
+    assert!(
+        secret.starts_with("{{sealed:") && secret.ends_with("}}"),
+        "a placeholder the TEE fills in: {secret}"
+    );
+    let body = String::from_utf8(turnstile_request("0.tok", &secret).unwrap().body).unwrap();
+    assert_eq!(body, format!("secret={secret}&response=0.tok"));
+
+    // The namespace's TEEs changed: the secret still opens on the TEEs that
+    // hold the old key, and the admin is told to set it again.
+    app.set_tee_sealing_key(Some([8; 32]));
+    assert!(app.view(|s| s.captcha_settings()).unwrap().needs_resealing);
+
+    let cleared = app.call(|s| s.clear_captcha_secret()).unwrap();
+    assert!(!cleared.secret_set && cleared.site_key.is_empty());
+    assert_eq!(
+        app.view(|s| s.turnstile_secret()).unwrap(),
+        TURNSTILE_SECRET
+    );
+}
+
+#[test]
+fn cloudflare_decides_and_every_doubt_refuses() {
+    turnstile_verdict(siteverify(200, r#"{"success":true,"error-codes":[]}"#)).unwrap();
+
+    let refused = |outcome| format!("{:?}", turnstile_verdict(outcome).unwrap_err());
+    assert!(refused(siteverify(
+        200,
+        r#"{"success":false,"error-codes":["invalid-input-response"]}"#
+    ))
+    .contains("not solved"));
+    assert!(refused(siteverify(
+        200,
+        r#"{"success":false,"error-codes":["timeout-or-duplicate"]}"#
+    ))
+    .contains("already used"));
+    assert!(refused(siteverify(500, r#"{"success":true}"#)).contains("answered 500"));
+    assert!(refused(siteverify(200, "<html>")).contains("unreadable"));
+    assert!(refused(siteverify(200, "{}")).contains("unreadable"));
+    assert!(refused(Err("NotApproved: the namespace has not approved https://challenges.cloudflare.com/turnstile/v0/ for this app".to_owned()))
+        .contains("ask an admin"));
+    assert!(refused(Err("AwaitingApproval: https://challenges.cloudflare.com/turnstile/v0/ is a URL prefix this app declares".to_owned()))
+        .contains("this version"));
+    assert!(refused(Err(
+        "challenges.cloudflare.com is not a host this node's operator allows".to_owned()
+    ))
+    .contains("not a host"));
+    assert!(refused(Err(
+        "SealedUnavailable: this node is not a TEE of the namespace, and no TEE of the \
+         namespace answered in time"
+            .to_owned()
+    ))
+    .contains("TEE node"));
 }

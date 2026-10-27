@@ -1,3 +1,5 @@
+import { isServedByNode } from "@calimero-apps/node-served";
+
 /**
  * What a chat card shows about a GitHub pull request or Actions run, read
  * from GitHub's public REST API without a token: the browser never holds one.
@@ -135,6 +137,8 @@ let limitedUntil = 0;
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 async function get<T>(path: string, fetcher: Fetch, now: number): Promise<T> {
+  // A node-served app may not connect to GitHub, so its messages keep the plain link.
+  if (isServedByNode(new URL(window.location.href))) throw new Unavailable("failed");
   if (now < limitedUntil) throw new Unavailable("limited", limitedUntil);
   let res: Response;
   try {

@@ -24,8 +24,8 @@ self.addEventListener("push", (event) => {
       body: typeof data.body === "string" ? data.body : "",
       // A second push for the same chain replaces the first.
       tag: chain || "hyperfeed",
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
+      icon: "icon-192.png",
+      badge: "icon-192.png",
       data: { url: urlOf(chain, data.opens) },
     }),
   );

@@ -7,9 +7,13 @@ import { AppMode, MeroProvider } from "@calimero-apps/cloud";
 import { primeInvitationCapture } from "@calimero-apps/cloud";
 
 import App from "./App";
+import { isServedByNode, nodeBasename } from "@calimero-apps/node-served";
 import { APP_SLUG } from "./lib/inviteLink";
 import { captureSessionFromHash } from "./lib/session";
 import "./index.css";
+
+const url = new URL(window.location.href);
+const servedByNode = isServedByNode(url);
 
 captureSessionFromHash();
 
@@ -48,8 +52,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       }
       registryUrl="https://apps.calimero.network"
       allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
+      servedByNode={servedByNode}
     >
-      <BrowserRouter>
+      <BrowserRouter basename={nodeBasename(url, "/")}>
         <App />
       </BrowserRouter>
     </MeroProvider>

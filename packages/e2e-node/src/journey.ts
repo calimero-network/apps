@@ -6,3 +6,4 @@ export type { RigNode, RigState } from "./rig";
 export { acceptInvitePrompt, installDesktopBridge, openInviteLink, parseInviteLink } from "./invite";
 export type { InviteRoute } from "./invite";
 export { answeredNamePrompt } from "./names";
+export { appContextOptions, routePath } from "./appOrigin";

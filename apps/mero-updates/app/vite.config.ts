@@ -1,10 +1,13 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 import pkg from "./package.json" with { type: "json" };
+import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 import { calimeroCsp } from "@calimero-apps/cloud/vite";
 
 export default defineConfig({
-  plugins: [calimeroCsp(), react()],
+  // Relative, so the same build runs at / and under the node's /{version}/.
+  base: "./",
+  plugins: [calimeroCsp(), react(), servedAssetsFallback()],
   // App version (from package.json), shown in the header — so a bug report from
   // a tester says WHICH build they were on.
   define: {

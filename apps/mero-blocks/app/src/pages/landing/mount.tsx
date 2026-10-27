@@ -15,6 +15,8 @@
 import { peekInvitation } from '@calimero-apps/cloud';
 import { createRoot } from 'react-dom/client';
 
+import { nodeBasename } from '@calimero-apps/node-served';
+
 import LandingPage from './LandingPage';
 
 const SEEN = 'cal-lp-seen';
@@ -32,9 +34,10 @@ const SEEN = 'cal-lp-seen';
  * either would break a flow that has nothing to do with which page was read.
  */
 function resetPath(): void {
-  if (window.location.pathname === '/') return;
+  const home = nodeBasename(new URL(window.location.href), '/');
+  if (window.location.pathname === home) return;
   try {
-    window.history.replaceState(null, '', `/${window.location.search}${window.location.hash}`);
+    window.history.replaceState(null, '', `${home}${window.location.search}${window.location.hash}`);
   } catch {
     /* a sandboxed iframe cannot replaceState; the page still works */
   }

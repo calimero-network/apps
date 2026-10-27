@@ -15,6 +15,7 @@ import WebOnlyNotice from "./components/WebOnlyNotice";
 import { captureSessionFromHash } from "./lib/session";
 import { APP_SLUG } from "./lib/inviteLink";
 import "./index.css";
+import { nodeBasename, isServedByNode } from "@calimero-apps/node-served";
 
 // ── Tauri desktop SSO ─────────────────────────────────────────────────────────
 //
@@ -85,9 +86,10 @@ if (IS_TAURI) {
           "com.calimero.mero-stream"
         }
         registryUrl="https://apps.calimero.network"
+        servedByNode={isServedByNode(new URL(window.location.href))}
         allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
       >
-        <BrowserRouter>
+        <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
           <ToastProvider>
             <App />
           </ToastProvider>

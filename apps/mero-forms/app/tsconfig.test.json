@@ -27,6 +27,7 @@
     "src/FormsHome.tsx",
     "src/Responses.tsx",
     "src/TeamCard.tsx",
+    "src/CaptchaCard.tsx",
     "src/InviteCard.tsx",
     "src/names.tsx",
     "src/ui.tsx",

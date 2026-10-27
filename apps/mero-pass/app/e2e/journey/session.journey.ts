@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { defaultLogin, readClipboard, rig, type Actor } from "@calimero-apps/e2e-node/journey";
+import { appContextOptions, defaultLogin, readClipboard, rig, type Actor } from "@calimero-apps/e2e-node/journey";
 import { passLockScreen } from "./lockScreen";
 
 // One person, one real node: the theme switch inside the app, the password
@@ -15,7 +15,7 @@ test("mero-pass: theme, generator, copy, then Log out leaves nothing behind", as
   test.setTimeout(5 * 60_000);
   const node = rig().nodes[0];
   if (!node) throw new Error("the rig has no node");
-  const context = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] });
+  const context = await browser.newContext({ ...(await appContextOptions(node)), permissions: ["clipboard-read", "clipboard-write"] });
   const page = await context.newPage();
   const actor: Actor = { name: "alice", page, node, run: `s${Date.now().toString(36)}` };
 

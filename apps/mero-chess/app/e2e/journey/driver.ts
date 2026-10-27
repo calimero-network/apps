@@ -183,7 +183,7 @@ export const driver: AppDriver = {
   app: "mero-chess",
 
   async open(actor) {
-    await actor.page.goto("/play");
+    await actor.page.goto("play");
   },
 
   async createNamespace(actor) {

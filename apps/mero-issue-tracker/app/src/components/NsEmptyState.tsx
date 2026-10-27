@@ -7,6 +7,7 @@ import { SelectMenu } from "./Dropdown";
 import { IconPlus } from "./icons";
 import ThemeToggle from "./ThemeToggle";
 import { useSignOut } from "../auth/signOut";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 interface Props {
   namespaces: Namespace[];
@@ -48,7 +49,7 @@ export default function NsEmptyState({
       <Panel>
         <img
           className="mark"
-          src="/favicon.svg"
+          src={`${nodeBasename(new URL(window.location.href), "/")}favicon.svg`}
           alt=""
           width={56}
           height={56}

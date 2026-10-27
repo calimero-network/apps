@@ -12,6 +12,7 @@ import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
 import { APP_SLUG } from "./utils/invitation";
 import "./index.css";
+import { nodeBasename, isServedByNode } from "@calimero-apps/node-served";
 
 // ── Inbound invitation links ──────────────────────────────────────────────────
 //
@@ -84,7 +85,7 @@ function readTauriHashContext(): void {
   // is the only copy of the auth callback. It strips the hash itself once it has
   // consumed it, which is what leaves the address bar clean.
   const target = contextId ? `/teams/t/projects/${contextId}` : "/teams";
-  window.history.replaceState({}, "", `${target}${hash}`);
+  window.history.replaceState({}, "", `${nodeBasename(new URL(window.location.href), "/").slice(0, -1)}${target}${hash}`);
 }
 
 if (IS_TAURI) readTauriHashContext();
@@ -110,9 +111,10 @@ createRoot(document.getElementById("root")!).render(
         import.meta.env.VITE_APPLICATION_PACKAGE?.trim() || "com.calimero.mero-pixart"
       }
       registryUrl="https://apps.calimero.network"
+      servedByNode={isServedByNode(new URL(window.location.href))}
       allowedNodeUrls={trustedNodeUrl ? [trustedNodeUrl] : undefined}
     >
-      <BrowserRouter>
+      <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
         <App />
       </BrowserRouter>
     </MeroProvider>

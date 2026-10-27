@@ -11,6 +11,7 @@ import { getNodeUrl, setNodeUrl } from "./lib/mero";
 import "./index.css";
 import App from "./App.tsx";
 import { APP_SLUG } from "./lib/invite";
+import { isServedByNode, nodeBasename } from "@calimero-apps/node-served";
 
 // An invitation reaches this app only as an opened link: the links page (or a
 // cold desktop start) appends `?invitation=…` to this URL, and a running
@@ -22,12 +23,15 @@ primeInvitationCapture("scaffolding-e2e", { slug: APP_SLUG });
 (function bootstrapHashParams() {
   // ?node=<url> lets two browser tabs point to two different merod nodes without
   // changing .env. The param is preserved across reloads (we don't strip it).
+  const served = isServedByNode(new URL(window.location.href));
   const searchNode = new URLSearchParams(window.location.search).get("node");
-  if (searchNode) setNodeUrl(searchNode.trim());
+  if (searchNode && !served) setNodeUrl(searchNode.trim());
+  // A page the node serves talks to its own origin only; the hash names the bare host, which its CSP refuses.
+  if (served) setNodeUrl(window.location.origin);
 
   // Seed node URL from .env if nothing is stored yet.
   const envUrl = import.meta.env.VITE_NODE_URL?.trim();
-  if (envUrl && !getNodeUrl()) {
+  if (envUrl && !getNodeUrl() && !served) {
     setNodeUrl(envUrl);
   }
   // v1's SSO hash (node_url, access_token, …) is gone: on Calimero Cloud a
@@ -59,11 +63,12 @@ if (appId) setApplicationId(appId);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
       <MeroProvider
         mode={AppMode.MultiContext}
         packageName={packageName || DEFAULT_PACKAGE}
         registryUrl="https://apps.calimero.network"
+      servedByNode={isServedByNode(new URL(window.location.href))}
       >
         <App />
       </MeroProvider>

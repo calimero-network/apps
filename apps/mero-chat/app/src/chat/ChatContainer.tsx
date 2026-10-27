@@ -22,6 +22,7 @@ import type { ChannelInfo, UserId } from "../api/clientApi";
 import { extractAndAddMentions } from "../utils/mentions";
 import ChatSearchOverlay from "./ChatSearchOverlay";
 import type { SearchResult } from "../hooks/messageSearch";
+import { DEFAULT_AVATAR } from "../utils/servedByNode";
 import { isSelfSender } from "../utils/selfIdentity";
 import { getSelfAccountHex, sameAccount } from "../utils/accountIdentity";
 
@@ -283,8 +284,7 @@ function ChatContainer({
 
   const getIconFromCache = useCallback(
     (_accountId: string): Promise<string | null> => {
-      const fallbackImage = "https://i.imgur.com/e8buxpa.png";
-      return Promise.resolve(fallbackImage);
+      return Promise.resolve(DEFAULT_AVATAR);
     },
     []
   );

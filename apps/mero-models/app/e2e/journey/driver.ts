@@ -144,7 +144,7 @@ export const driver: AppDriver = {
 
   // The studio route, not the landing page: it is where Connect sends you back to.
   async open(actor) {
-    await actor.page.goto("/studio");
+    await actor.page.goto("studio");
   },
 
   async createNamespace(actor, name) {

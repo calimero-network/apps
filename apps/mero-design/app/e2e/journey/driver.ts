@@ -1,6 +1,6 @@
 import { deflateSync } from "node:zlib";
 import { expect, type Locator, type Page } from "@playwright/test";
-import { answeredNamePrompt, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
+import { answeredNamePrompt, routePath, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
 
 const SYNC = 90_000;
 
@@ -98,7 +98,7 @@ async function createBoardHere(page: Page, name: string): Promise<string> {
   await page.getByTestId("new-project-input").fill(name);
   await page.getByTestId("create-project-btn").click();
   await page.waitForURL(new RegExp(`${teamPath()}/[^/]+$`), { timeout: 60_000 });
-  return new URL(page.url()).pathname.split("/").pop() ?? "";
+  return routePath(page.url()).split("/").pop() ?? "";
 }
 
 /** A board's settings, from its ⋯ in the rail: the shell's settings panel. */
@@ -112,7 +112,7 @@ async function boardSettings(page: Page, ctx: string): Promise<Locator> {
 
 async function gotoTeam(actor: Actor): Promise<void> {
   const page = actor.page;
-  if (new URL(page.url()).pathname !== teamPath()) await page.goto(teamPath());
+  if (routePath(page.url()) !== teamPath()) await page.goto(teamPath().slice(1));
   await expect(teamHome(page)).toBeVisible({ timeout: 30_000 });
 }
 
@@ -122,7 +122,7 @@ async function nameIfAsked(actor: Actor, waitMs: number): Promise<void> {
   const deadline = Date.now() + waitMs;
   do {
     if (await input.isVisible().catch(() => false)) {
-      answeredNamePrompt(actor, new URL(page.url()).pathname);
+      answeredNamePrompt(actor, routePath(page.url()));
       await input.fill(`${actor.name}-${actor.run}`);
       await page.getByTestId("username-submit").click();
       await expect(input).toBeHidden({ timeout: 30_000 });
@@ -134,15 +134,15 @@ async function nameIfAsked(actor: Actor, waitMs: number): Promise<void> {
 
 async function waitBoard(actor: Actor): Promise<void> {
   await expect(actor.page.getByTestId("fabric-canvas")).toBeVisible({ timeout: SYNC });
-  const key = `${actor.name}:${new URL(actor.page.url()).pathname}`;
+  const key = `${actor.name}:${routePath(actor.page.url())}`;
   await nameIfAsked(actor, named.has(key) ? 0 : 15_000);
   named.add(key);
 }
 
 async function ensureBoard(actor: Actor): Promise<void> {
   const path = boardPath(mainBoard);
-  if (new URL(actor.page.url()).pathname !== path) {
-    await actor.page.goto(path);
+  if (routePath(actor.page.url()) !== path) {
+    await actor.page.goto(path.slice(1));
     await waitBoard(actor);
   }
   await nameIfAsked(actor, 0);
@@ -482,9 +482,9 @@ export const driver: AppDriver = {
       await page.getByTestId("new-team-input").press("Enter");
     }
     // Creating opens the new team.
-    await page.waitForURL((u) => u.href !== before && /\/teams\/[^/]+\/projects$/.test(u.pathname), { timeout: 30_000 });
+    await page.waitForURL((u) => u.href !== before && /\/teams\/[^/]+\/projects$/.test(routePath(u.href)), { timeout: 30_000 });
     await expect(switcher).toContainText(name, { timeout: 30_000 });
-    teamId = new URL(page.url()).pathname.split("/")[2] ?? "";
+    teamId = routePath(page.url()).split("/")[2] ?? "";
     await expect(teamHome(page)).toBeVisible({ timeout: 30_000 });
   },
 

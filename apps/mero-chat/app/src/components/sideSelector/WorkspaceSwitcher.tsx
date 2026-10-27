@@ -11,6 +11,7 @@ import type { GroupSummary } from "../../api/groupApi";
 import { getGroupId, setGroupId, getStoredGroupAlias } from "../../constants/config";
 import { clearStoredSession, setNamespaceReady } from "../../utils/session";
 import CreateWorkspacePopup from "../popups/CreateWorkspacePopup";
+import { nodeBasename } from "../../utils/servedByNode";
 
 interface WorkspaceSwitcherProps {
   isCollapsed: boolean;
@@ -247,7 +248,7 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
     // The remembered workspace is scoped to its id; move it along, or the
     // reload below lands on the picker instead of the workspace picked here.
     setNamespaceReady(groupId);
-    window.location.href = "/";
+    window.location.href = nodeBasename();
   }, [currentGroupId]);
 
   // The popup has already made the new workspace current (`setGroupId`). The
@@ -256,7 +257,7 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
     setCreating(false);
     clearStoredSession();
     setNamespaceReady(groupId);
-    window.location.href = "/";
+    window.location.href = nodeBasename();
   }, []);
 
   useEffect(() => {

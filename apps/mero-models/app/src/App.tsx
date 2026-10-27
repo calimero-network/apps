@@ -16,6 +16,9 @@ import {
 import { ScenePicker } from "./ScenePicker";
 import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
 import LandingPage from "./pages/landing/LandingPage";
+import { nodeBasename } from "@calimero-apps/node-served";
+
+const base = () => nodeBasename(new URL(window.location.href), "/");
 
 /**
  * The modeller is three.js and most of this bundle; the landing page a stranger
@@ -89,7 +92,7 @@ function StudioPage({ opened }: { opened: OpenedScene | null }) {
         <TopBar onHome={() => navigate("/", { state: { fromApp: true } })} />
         <section className="connect">
           <div className="connect-card">
-            <img className="connect-mark" src="/favicon.svg" alt="" />
+            <img className="connect-mark" src={`${base()}favicon.svg`} alt="" />
             <h1>Connect a node</h1>
             <p className="lede">
               Mero Models runs on your own Calimero node. The login finds one on
@@ -153,7 +156,7 @@ function InvitationPrompt({
 }) {
   const navigate = useNavigate();
   const join = useJoinFromInvitation({
-    landingPath: "/studio",
+    landingPath: `${base()}studio`,
     onOpen: (contextId, namespaceId) => {
       onOpen(contextId, namespaceId);
       navigate("/studio");
@@ -182,7 +185,7 @@ function TopBar({ onHome }: { onHome: () => void }) {
     <header className="topbar">
       <div className="topbar-inner">
         <button type="button" className="brand" onClick={onHome}>
-          <img src="/favicon.svg" alt="" width={26} height={26} />
+          <img src={`${base()}favicon.svg`} alt="" width={26} height={26} />
           <span>Mero Models</span>
         </button>
         {isAuthenticated && (
@@ -209,7 +212,7 @@ export function App() {
     [],
   );
   return (
-    <BrowserRouter basename="/">
+    <BrowserRouter basename={base()}>
       <InvitationPrompt onOpen={open} />
       <Routes>
         {LANDING_PATHS.map((path) => (

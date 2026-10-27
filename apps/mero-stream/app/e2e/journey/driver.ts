@@ -45,7 +45,7 @@ async function openPeople(page: Page): Promise<void> {
 }
 
 async function ensureCall(actor: Actor): Promise<void> {
-  if (new URL(actor.page.url()).pathname === "/live") return;
+  if (new URL(actor.page.url()).pathname.endsWith("/live")) return;
   const room = rooms[actor.name];
   if (!room) throw new Error(`${actor.name} has not entered a room yet`);
   await enterRoom(actor, room);
@@ -67,7 +67,7 @@ async function enterRoom(actor: Actor, name: string): Promise<void> {
     )
     .toBe(true);
   await enter.click();
-  await page.waitForURL((u) => u.pathname === "/live", { timeout: SYNC });
+  await page.waitForURL((u) => u.pathname.endsWith("/live"), { timeout: SYNC });
   await waitCall(page);
   rooms[actor.name] = name;
 }
@@ -165,7 +165,7 @@ export const driver: AppDriver = {
     await gotoRooms(actor);
     await page.getByTestId("room-name-input").fill(name);
     await page.getByTestId("create-room").click();
-    await page.waitForURL((u) => u.pathname === "/live", { timeout: SYNC });
+    await page.waitForURL((u) => u.pathname.endsWith("/live"), { timeout: SYNC });
     await waitCall(page);
     rooms[actor.name] = name;
   },

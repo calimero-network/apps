@@ -1,6 +1,6 @@
 import path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
-import { appOrigin, fromNode } from "./appOrigin";
+import { appContextOptions, appOrigin, fromNode } from "./appOrigin";
 import { loginWithModal } from "./auth";
 import { adminApi, freshRig, readRigState, restartNode, type RigNode, type RigState } from "./rig";
 import {
@@ -91,7 +91,7 @@ export async function openActor(
   const record = process.env["JOURNEY_VIDEO"] === "1";
   const origin = fromNode() ? appOrigin(node) : undefined;
   const context = await browser.newContext({
-    ...(origin ? { baseURL: origin } : {}),
+    ...(await appContextOptions(node)),
     permissions: ["clipboard-read", "clipboard-write", ...permissions],
     // Opt-in: a context made by hand is outside Playwright's `use.video`, so a
     // journey records only when asked, one file per actor.

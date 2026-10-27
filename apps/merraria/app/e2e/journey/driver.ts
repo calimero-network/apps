@@ -135,10 +135,13 @@ export const driver: AppDriver = {
     const open = page.getByTestId("connect-open-btn");
     await expect(marketing.or(open).first()).toBeVisible({ timeout: 30_000 });
     if (await marketing.isVisible()) await marketing.click();
-    await open.click();
-    const modal = page.getByTestId("connect-modal");
-    await modal.getByTestId("node-url-input").fill(actor.node.url);
-    await modal.getByTestId("web-login-btn").click();
+    await open.click({ noWaitAfter: true });
+    // A page its node serves has no node to choose: the click goes straight to the node's login.
+    if (process.env["JOURNEY_FROM_NODE"] !== "1") {
+      const modal = page.getByTestId("connect-modal");
+      await modal.getByTestId("node-url-input").fill(actor.node.url);
+      await modal.getByTestId("web-login-btn").click();
+    }
     await completeNodeLogin(page, actor.node.url);
     await waitForPicker(page);
     await setPlayerName(actor);

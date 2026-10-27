@@ -10,7 +10,7 @@
 // the lifecycle file; it creates one workspace of its own and leaves the
 // lifecycle's before/after namespace counts alone, which are relative.
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { defaultLogin, rig, type Actor } from "@calimero-apps/e2e-node/journey";
+import { appContextOptions, defaultLogin, rig, type Actor } from "@calimero-apps/e2e-node/journey";
 
 test.describe.configure({ mode: "serial" });
 
@@ -19,7 +19,7 @@ const THEME_KEY = "mero-sign:theme";
 async function signIn(browser: Browser, viewport?: { width: number; height: number }) {
   const node = rig().nodes[0];
   if (!node) throw new Error("the rig has no node");
-  const context = await browser.newContext({ viewport });
+  const context = await browser.newContext({ ...(await appContextOptions(node)), viewport });
   const page = await context.newPage();
   const actor: Actor = { name: "alice", page, node, run: `a${Date.now().toString(36)}` };
   await page.goto("/");
@@ -44,7 +44,7 @@ async function expectSignedOut(page: Page) {
   // Still signed out after a reload, and an app route asks to connect.
   await page.reload();
   await expect(page.locator(".cal-lp-root")).toBeVisible({ timeout: 15_000 });
-  await page.goto("/workspaces");
+  await page.goto("workspaces");
   await expect(page.getByTestId("connect-cta")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("logout")).toHaveCount(0);
 }

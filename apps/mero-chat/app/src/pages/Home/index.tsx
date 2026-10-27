@@ -72,6 +72,7 @@ import {
   resolveMessageLink,
 } from "../../utils/permalink";
 import type { MessageLink } from "../../utils/permalink";
+import { nodeBasename } from "../../utils/servedByNode";
 
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const { mero: app, isOnline } = useCalimero();
@@ -104,7 +105,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     });
 
     clearNamespaceReady();
-    window.location.replace("/login");
+    window.location.replace(nodeBasename() + "login");
   }, [currentGroupId]);
 
   // Poll for admin-initiated removal: if the server has cascaded us out of
@@ -198,7 +199,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
   useEffect(() => {
     if (!isConfigSet) {
-      window.location.href = "/login";
+      window.location.href = nodeBasename() + "login";
     }
   }, [isConfigSet]);
 

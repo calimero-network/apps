@@ -83,6 +83,40 @@
         }
       ]
     },
+    "CaptchaSettings": {
+      "kind": "record",
+      "doc": "The team's own Turnstile setup, as the settings page shows it. Never the\nsecret: it is sealed, and no member's node can read it.",
+      "fields": [
+        {
+          "name": "site_key",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The public site key the widget shows, or empty."
+        },
+        {
+          "name": "secret_set",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "A secret is stored, sealed to the namespace's TEE."
+        },
+        {
+          "name": "tee_available",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "The namespace has a TEE that can keep a secret now. Without one,\n`set_captcha_secret` is refused."
+        },
+        {
+          "name": "needs_resealing",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "The secret was sealed to a TEE key the namespace no longer seals to\n(its TEEs changed): set it again so new TEEs can open it."
+        }
+      ]
+    },
     "CrmLink": {
       "kind": "record",
       "doc": "Where a form's responses go in Mero CRM, and which field fills what.\nEmpty strings mean \"not set\".",
@@ -320,7 +354,7 @@
               "kind": "string"
             }
           },
-          "doc": "The captcha verifier's ed25519 public key, hex, or empty for no\ncaptcha. A link's response then needs a pass it signed."
+          "doc": "How a link's response proves a captcha: empty for no captcha, the\nverifier's ed25519 public key (hex) for a pass it signed, or\n`turnstile` for a token the node checks with Cloudflare. See the\ncrate docs, \"Captchas\"."
         },
         {
           "name": "created_at",
@@ -706,7 +740,21 @@
           "type": {
             "kind": "bool"
           },
-          "doc": "Whether a response needs a captcha pass."
+          "doc": "Whether a response needs a captcha."
+        },
+        {
+          "name": "captcha_by_node",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "The captcha is checked by the node: send the Turnstile token as\n`captcha_token`, not a pass."
+        },
+        {
+          "name": "captcha_site_key",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The team's Turnstile site key, for the widget, when it set its own;\nempty otherwise."
         }
       ]
     },
@@ -1173,6 +1221,24 @@
       "intent": "read_only"
     },
     {
+      "name": "captcha_settings",
+      "doc": "The team's Turnstile setup. Team only.",
+      "params": [],
+      "returns": {
+        "$ref": "CaptchaSettings"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "clear_captcha_secret",
+      "doc": "Removes the team's Turnstile keys; `turnstile` forms fall back to the\nnode operator's secret, if it has one. Admin only.",
+      "params": [],
+      "returns": {
+        "$ref": "CaptchaSettings"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "create_form",
       "doc": "Creates a form with no fields, open, and returns its id. Team only.",
       "params": [
@@ -1523,7 +1589,7 @@
     },
     {
       "name": "set_captcha_key",
-      "doc": "Requires a captcha pass signed by `key` (an ed25519 public key, hex)\non every response through the form's links, or none when `key` is\nempty. Team only.",
+      "doc": "Requires a captcha on every response through the form's links: a pass\nsigned by `key` (an ed25519 public key, hex), or with `key` =\n`turnstile` the Turnstile token itself, which this contract checks with\nCloudflare through the node. Empty requires none. Team only.",
       "params": [
         {
           "name": "form_id",
@@ -1540,6 +1606,28 @@
       ],
       "returns": {
         "$ref": "FormView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_captcha_secret",
+      "doc": "Stores the team's own Cloudflare Turnstile keys, so a `turnstile` form\nneeds nothing from any node's operator. Admin only.\n\nThe secret is sealed to the namespace's TEE before it is stored: what\nreplicates is an envelope only a TEE of the namespace can open, and only\nto send to Cloudflare. A teammate's node that serves a link hands the\ncheck to a TEE, which fills the secret in. Refused when the namespace\nhas no TEE, since then nothing could ever open it.",
+      "params": [
+        {
+          "name": "site_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "secret",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "CaptchaSettings"
       },
       "intent": "mutating"
     },
@@ -1680,7 +1768,7 @@
     },
     {
       "name": "submit_via_link",
-      "doc": "Stores a response that came through a public link and returns its id.\nThe other method a link's grant names.\n\nRefused unless the form is open and public, the link is under its\nhourly cap, and, when the form asks for one, `captcha` is a pass the\nform's verifier signed for this form and link, unexpired and unused.",
+      "doc": "Stores a response that came through a public link and returns its id.\nThe other method a link's grant names.\n\nRefused unless the form is open and public, the link is under its\nhourly cap, and, when the form asks for a captcha, either `captcha` is\na pass the form's verifier signed for this form and link, unexpired\nand unused, or (a `turnstile` form) Cloudflare accepts\n`captcha_token`. The token is checked last, after everything that\ncosts nothing, so a refused response never spends one.",
       "params": [
         {
           "name": "link",
@@ -1701,6 +1789,13 @@
           "name": "captcha",
           "type": {
             "$ref": "CaptchaPass"
+          },
+          "nullable": true
+        },
+        {
+          "name": "captcha_token",
+          "type": {
+            "kind": "string"
           },
           "nullable": true
         }

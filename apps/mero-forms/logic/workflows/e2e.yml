@@ -30,7 +30,7 @@ nodes:
   count: 2
   # Must match the `calimero-*` tag in the root Cargo.toml. check-app-metadata.sh
   # asserts this against [workspace.metadata.mero-apps].merod-image.
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.1
+  image: ghcr.io/calimero-network/merod:0.12.0-rc.3
   prefix: calimero-node
   # rc.26 made mDNS opt-in and merobox does not pass the flag.
   mdns: true
@@ -523,6 +523,65 @@ steps:
     expected_failure: true
     outputs:
       link_captcha_error: error
+  - name: Alice has the node check Turnstile tokens itself
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: set_captcha_key
+    args:
+      form_id: "{{form_id}}"
+      key: "turnstile"
+    executor_public_key: "{{alice_key}}"
+  # This node's operator never turned outbound requests on, so the token cannot
+  # be checked: the response is refused, not stored unchecked.
+  - name: A response with a Turnstile token, on a node that cannot check it
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: submit_via_link
+    args:
+      link: "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+      answers:
+        - { field_id: "name", values: ["Grace Hopper"] }
+        - { field_id: "email", values: ["grace@example.com"] }
+        - { field_id: "topic", values: ["Desktop"] }
+        - { field_id: "message", values: ["From the newsletter."] }
+      captcha: null
+      captcha_token: "0.e2e-token"
+    executor_public_key: "{{alice_key}}"
+    expected_failure: true
+  # The team's own Turnstile secret is sealed to the namespace's TEE, and this
+  # namespace has none: setting it is refused, and nothing is stored.
+  - name: Alice tries to keep the team's Turnstile secret, with no TEE in the namespace
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: set_captcha_secret
+    args:
+      site_key: "0x4AAAAAAAe2esite"
+      secret: "0x4AAAAAAAe2esecret"
+    executor_public_key: "{{alice_key}}"
+    expected_failure: true
+  - name: Alice clears the team's Turnstile keys
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: clear_captcha_secret
+    args: {}
+    executor_public_key: "{{alice_key}}"
+  - name: Alice reads the captcha settings
+    type: call
+    node: calimero-node-1
+    context_id: "{{ws_id}}"
+    method: captcha_settings
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      captcha_settings: result.output
+  - name: Assert no secret was kept and the namespace has no TEE to keep one
+    type: json_assert
+    statements:
+      - 'json_subset({{captcha_settings}}, {"site_key": "", "secret_set": false, "tee_available": false, "needs_resealing": false})'
   - name: Alice drops the captcha
     type: call
     node: calimero-node-1

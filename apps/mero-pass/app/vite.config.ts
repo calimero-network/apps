@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
 // vitest's defineConfig, not vite's — only it accepts the `test` key.
 import { defineConfig } from "vitest/config";
+import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 import { calimeroCsp } from "@calimero-apps/cloud/vite";
 
 // `dist`, not `build`: the fleet's Vercel projects and this repo's .gitignore
@@ -10,8 +11,9 @@ import { calimeroCsp } from "@calimero-apps/cloud/vite";
 // The node polyfill plugin is gone too — nothing in src/ needs it, and it was
 // pulling a browserify shim set into every bundle.
 export default defineConfig({
-  base: "/",
-  plugins: [calimeroCsp({ connect: ["https://api.pwnedpasswords.com"] }), react()],
+  base: "./",
+  resolve: { dedupe: ["react", "react-dom"] },
+  plugins: [calimeroCsp({ connect: ["https://api.pwnedpasswords.com"] }), servedAssetsFallback(), react()],
   // ── Pin the dev port ────────────────────────────────────────────────────────
   //
   // Two apps served from one origin share a `localStorage`, and mero-react

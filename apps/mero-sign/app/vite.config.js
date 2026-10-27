@@ -3,12 +3,14 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import tailwindcss from '@tailwindcss/vite';
+import { servedAssetsFallback } from '@calimero-apps/node-served/vite';
 import { calimeroCsp } from '@calimero-apps/cloud/vite';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: '/',
+  base: './',
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@': resolve(__dirname, './src'),
     },
@@ -35,5 +37,5 @@ export default defineConfig({
     // link on this app returned HTTP 404 with a GitHub Pages redirect shim.
     // Vite's default single-entry behaviour is what the other fifteen apps use.
   },
-  plugins: [calimeroCsp(), nodePolyfills(), react(), tailwindcss()],
+  plugins: [calimeroCsp(), servedAssetsFallback(), nodePolyfills(), react(), tailwindcss()],
 });

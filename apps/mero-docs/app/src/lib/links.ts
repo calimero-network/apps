@@ -1,4 +1,5 @@
 import { parseAppPath } from './routes';
+import { stripNodeBase } from './servedByNode';
 import type { DocHrefTarget } from './workspaceIndex/types';
 
 export type { DocHrefTarget } from './workspaceIndex/types';
@@ -46,7 +47,7 @@ export function parseMemberHref(
   origin: string,
 ): MemberHrefTarget | null {
   const url = appUrl(href, origin);
-  const parts = url?.pathname.split('/') ?? [];
+  const parts = (url ? stripNodeBase(url.pathname) : '').split('/');
   const [lead, app, rawWs, kind, member, ...rest] = parts;
   if (lead !== '' || app !== 'app' || kind !== MEMBER_SEGMENT || rest.length)
     return null;

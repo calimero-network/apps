@@ -1,3 +1,5 @@
+import { nodeUrl, stripNodeBase } from '@/lib/servedByNode';
+
 // URL shapes for the workspace screens. Ids are opaque, so each one is a single
 // percent-encoded path segment; a malformed tail degrades to its valid prefix.
 
@@ -24,7 +26,7 @@ function decode(segment: string | undefined): string | undefined {
 
 /** The screen a path names; null when it is not under `/app/<ws>`. */
 export function parseAppPath(pathname: string, hash: string): AppRoute | null {
-  const [app, rawWs, kind, rawFolder, docKind, rawDoc] = pathname
+  const [app, rawWs, kind, rawFolder, docKind, rawDoc] = stripNodeBase(pathname)
     .split('/')
     .filter(Boolean);
   const ws = app === 'app' ? decode(rawWs) : undefined;
@@ -51,11 +53,11 @@ export function appPath(route: AppRoute): string {
 }
 
 export function docUrl(ws: string, folder: string, doc: string, block?: string): string {
-  return `${window.location.origin}${appPath({ ws, folder, doc, block })}`;
+  return nodeUrl(appPath({ ws, folder, doc, block }));
 }
 
 export function homeUrl(ws: string, search: string): string {
-  return `${window.location.origin}${appPath({ ws })}${search ? `?${search}` : ''}`;
+  return nodeUrl(`${appPath({ ws })}${search ? `?${search}` : ''}`);
 }
 
 /**

@@ -1,8 +1,11 @@
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig } from "vitest/config";
+import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 import { calimeroCsp } from "@calimero-apps/cloud/vite";
 
 export default defineConfig({
+  base: "./",
+  resolve: { dedupe: ["react", "react-dom"] },
   test: {
     environment: "jsdom",
     globals: true,
@@ -17,5 +20,5 @@ export default defineConfig({
       },
     },
   },
-  plugins: [calimeroCsp(), react()],
+  plugins: [calimeroCsp(), servedAssetsFallback(), react()],
 });

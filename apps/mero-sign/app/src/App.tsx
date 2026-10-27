@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Routes, Route, BrowserRouter } from 'react-router-dom';
+import { nodeBasename } from './lib/servedByNode';
 import { ThemeProvider } from './contexts/ThemeContext';
 import AgreementsPage from './pages/app/AgreementsPage';
 import WorkspacesPage from './pages/app/WorkspacesPage';
@@ -65,7 +66,7 @@ function Screenful({
       // see below). `/landing` keeps showing the landing page either way,
       // which is what makes it a front door you can link to rather than a
       // fallback you fall into.
-      return authed && window.location.pathname === '/' ? (
+      return authed && window.location.pathname.replace(/\/$/, '') === nodeBasename().replace(/\/$/, '') ? (
         // Signed in at `/`, the app's home is the workspace picker: an
         // agreement cannot exist outside a workspace since rc.41 bound every
         // context to a group, so the agreements list is not a place to start.
@@ -125,7 +126,7 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter basename="/">
+      <BrowserRouter basename={nodeBasename()}>
         <AppContent />
       </BrowserRouter>
     </ThemeProvider>

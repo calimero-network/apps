@@ -4,6 +4,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { AppMode, MeroProvider } from '@calimero-apps/cloud';
+import { isServedByNode } from '@calimero-apps/node-served';
+import { nodeBasename } from './lib/servedByNode';
 import './index.css';
 import App from './App';
 import { bootstrapDesktopSession, hashNodeUrl } from './auth/desktopBootstrap';
@@ -77,8 +79,9 @@ root.render(
       }
       registryUrl="https://apps.calimero.network"
       allowedNodeUrls={nodeUrlAnchor ? [nodeUrlAnchor] : undefined}
+      servedByNode={isServedByNode(new URL(window.location.href))}
     >
-      <BrowserRouter>
+      <BrowserRouter basename={nodeBasename()}>
         <App />
       </BrowserRouter>
     </MeroProvider>

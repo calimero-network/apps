@@ -13,6 +13,12 @@ export interface CaptchaConfig {
   publicKey: string;
 }
 
+/**
+ * The `captcha_key` that has the contract check the Turnstile token itself,
+ * with the team's own secret (sealed to the namespace's TEE).
+ */
+export const NODE_VERIFIES_TURNSTILE = "turnstile";
+
 /** Where the verifier is: this deployment's own `/api/captcha`. */
 const VERIFIER = "/api/captcha";
 

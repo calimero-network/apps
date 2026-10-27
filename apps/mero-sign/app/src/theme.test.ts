@@ -85,14 +85,14 @@ describe('theme', () => {
     expect(heard).toBe(3);
   });
 
-  it('index.html applies the same key and colours before the app loads', () => {
+  it('index.html loads a script that applies the same key and colours before the app', () => {
     const page = readFileSync(resolve(__dirname, '../index.html'), 'utf8');
-    expect(page).toContain(`localStorage.getItem('${THEME_STORAGE_KEY}')`);
+    const init = readFileSync(resolve(__dirname, '../public/theme-init.js'), 'utf8');
+    expect(init).toContain(`localStorage.getItem('${THEME_STORAGE_KEY}')`);
     expect(page).toContain(`content="${THEME_COLOR.light}"`);
-    expect(page).toContain(`'${THEME_COLOR.dark}'`);
+    expect(init).toContain(`'${THEME_COLOR.dark}'`);
     // Before the module script, or it is not "before the first paint".
-    expect(page.indexOf(THEME_STORAGE_KEY)).toBeLessThan(
-      page.indexOf('src="./src/main.tsx"'),
-    );
+    expect(page.indexOf('./theme-init.js')).toBeGreaterThan(-1);
+    expect(page.indexOf('./theme-init.js')).toBeLessThan(page.indexOf('src="./src/main.tsx"'));
   });
 });

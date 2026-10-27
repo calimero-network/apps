@@ -34,6 +34,8 @@ import { DriveWorkspaceProvider } from '@/hooks/useDriveWorkspace';
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { PACKAGE_NAME } from '@/constants/config';
 import { readReturnTo } from '@/lib/routes';
+import { isServedByNode } from '@calimero-apps/node-served';
+import { nodeBasename } from '@/lib/servedByNode';
 
 import DevPanel from '@/components/dev/DevPanel';
 import { InvitationPrompt } from '@/components/workspace/InvitationPrompt';
@@ -218,10 +220,12 @@ export default function App() {
         packageName={packageName}
         registryUrl={registryUrl}
         allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
+        servedByNode={isServedByNode(new URL(window.location.href))}
       >
         <AppToaster />
         <TooltipProvider>
           <BrowserRouter
+            basename={nodeBasename()}
             future={{
               v7_startTransition: true,
               v7_relativeSplatPath: true,

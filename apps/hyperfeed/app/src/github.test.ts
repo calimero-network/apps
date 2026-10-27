@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { clearGithubCache, findRefs, fromSeen, FRESH_MS, mergeOffer, pickPr, prKey, readPr, readRun, Unavailable, type PullRequest, type SeenPr } from "./github";
 import {
   fakeGitHub,
@@ -93,6 +93,14 @@ describe("reading a PR", () => {
 
   it("says a private or missing repo is unavailable", async () => {
     await expect(readPr(pr435, fakeGitHub([]))).rejects.toMatchObject({ reason: "missing" });
+  });
+
+  it("does not ask GitHub from an app a node serves", async () => {
+    vi.stubGlobal("location", new URL(`http://${"a".repeat(52)}.localhost:2428/0.0.1/`));
+    const fetcher = fakeGitHub(prRoutes(openPr(), greenRuns()));
+    await expect(readPr(pr435, fetcher)).rejects.toMatchObject({ reason: "failed" });
+    expect(fetcher).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it("stops asking GitHub until a rate limit resets", async () => {

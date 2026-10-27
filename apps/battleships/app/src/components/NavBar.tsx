@@ -1,4 +1,5 @@
 import React from 'react';
+import { nodeBasename } from '@calimero-apps/node-served';
 import {
   Navbar as MeroNavbar,
   NavbarMenu,
@@ -48,7 +49,7 @@ export default function NavBar({
           one fixed point in the bar moved you off the app when clicked. The
           mark is identity; the footer carries the way to the landing page. */}
       <div className="nav-brand">
-        <img src="/favicon.svg" alt="" width={26} height={26} className="nav-brand-mark" />
+        <img src={`${nodeBasename(new URL(window.location.href), '/')}favicon.svg`} alt="" width={26} height={26} className="nav-brand-mark" />
         <span className="nav-brand-text">Battleships</span>
       </div>
       {/* The context id and the node key used to sit here as truncated hex with

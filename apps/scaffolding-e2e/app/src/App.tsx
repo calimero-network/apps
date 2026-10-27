@@ -11,6 +11,7 @@ import {
   setContextIdentity,
   setNodeUrl,
 } from "./lib/mero";
+import { isServedByNode } from "@calimero-apps/node-served";
 import { listContexts, getContextIdentities, setUnauthorizedHandler, type ContextRecord } from "./api/adminApi";
 import { Concepts } from "./sections/Concepts";
 import { KvOperations } from "./sections/KvOperations";
@@ -354,11 +355,19 @@ export function ConnectScreen() {
   // URL is one transposed digit from an "unreachable node" that is really a typo,
   // and it cannot find the second node of a two-node dev stack at all.
   const { connectToNode, isOnline } = useMero();
-  const [url, setUrl] = useState(getNodeUrl() ?? import.meta.env.VITE_NODE_URL ?? "");
+  const servedByNode = isServedByNode(new URL(window.location.href));
+  const [url, setUrl] = useState(
+    servedByNode ? window.location.origin : (getNodeUrl() ?? import.meta.env.VITE_NODE_URL ?? ""),
+  );
   /** `null` while probing; `[]` means nothing local answered. */
   const [found, setFound] = useState<string[] | null>(null);
 
   useEffect(() => {
+    // A page the node serves has one node, its own origin; nothing to probe.
+    if (servedByNode) {
+      setFound([window.location.origin]);
+      return;
+    }
     // Aborted on unmount so a slow probe cannot setState into a dead component.
     const ac = new AbortController();
     discoverLocalNodes({ signal: ac.signal })

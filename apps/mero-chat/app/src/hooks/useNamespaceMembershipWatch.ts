@@ -4,6 +4,7 @@ import { clearWorkspaceSelection, getGroupId } from "../constants/config";
 import { clearNamespaceReady } from "../utils/session";
 import { useToast } from "../contexts/ToastContext";
 import { log } from "../utils/logger";
+import { nodeBasename } from "../utils/servedByNode";
 
 const POLL_INTERVAL_MS = 30_000;
 /** Polls in a row that must say "removed" before the user is bounced. */
@@ -90,7 +91,7 @@ export function useNamespaceMembershipWatch(): void {
       );
       clearWorkspaceSelection();
       clearNamespaceReady();
-      window.location.replace("/login");
+      window.location.replace(nodeBasename() + "login");
     };
 
     const check = async () => {

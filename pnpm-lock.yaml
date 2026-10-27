@@ -140,6 +140,9 @@ importers:
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@fontsource-variable/jetbrains-mono':
+        specifier: ^5.3.0
+        version: 5.3.0
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -290,8 +293,8 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/node-served
       '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
+        specifier: 26.11.0
+        version: 26.11.0
       '@phala/dcap-qvl':
         specifier: 0.5.3
         version: 0.5.3
@@ -471,7 +474,7 @@ importers:
     dependencies:
       '@calimero-network/mero-js':
         specifier: github:calimero-network/mero-js#release-v2
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/9773774ccee2700a940cc69d5125e3191c2dd9b5
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/4ea343d1e2c73241b636cce268f2986c0efda16a
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -3623,17 +3626,12 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
-  '@calimero-network/mero-js@26.9.1':
-    resolution: {integrity: sha512-0RkUqycr5+wGz3PKwCOAqsYDKdx0Eerinp6DlsDXpaJHdI3XmsKZfLlz5r14nlU1kuAbsWp2gMaIBVuOD7LHXA==}
+  '@calimero-network/mero-js@26.11.0':
+    resolution: {integrity: sha512-LMc1xxszexp78gpdmzfb8lyDvIWQlL9eQhN/I6rDq/GXDgNcpBT4YU96YMVqZQecbRLZRHv5lSK+xEoaryUyQg==}
     engines: {node: '>=18.0.0'}
 
   '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/4ea343d1e2c73241b636cce268f2986c0efda16a':
     resolution: {tarball: https://codeload.github.com/calimero-network/mero-js/tar.gz/4ea343d1e2c73241b636cce268f2986c0efda16a}
-    version: 26.10.0
-    engines: {node: '>=18.0.0'}
-
-  '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/9773774ccee2700a940cc69d5125e3191c2dd9b5':
-    resolution: {tarball: https://codeload.github.com/calimero-network/mero-js/tar.gz/9773774ccee2700a940cc69d5125e3191c2dd9b5}
     version: 26.10.0
     engines: {node: '>=18.0.0'}
 
@@ -10847,19 +10845,13 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  '@calimero-network/mero-js@26.9.1':
+  '@calimero-network/mero-js@26.11.0':
     dependencies:
       '@phala/dcap-qvl': 0.5.3
     transitivePeerDependencies:
       - encoding
 
   '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/4ea343d1e2c73241b636cce268f2986c0efda16a':
-    dependencies:
-      '@phala/dcap-qvl': 0.5.3
-    transitivePeerDependencies:
-      - encoding
-
-  '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/9773774ccee2700a940cc69d5125e3191c2dd9b5':
     dependencies:
       '@phala/dcap-qvl': 0.5.3
     transitivePeerDependencies:

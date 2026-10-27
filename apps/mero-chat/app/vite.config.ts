@@ -1,10 +1,13 @@
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig } from "vitest/config";
 import { VitePWA } from "vite-plugin-pwa";
+import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 import { calimeroCsp } from "@calimero-apps/cloud/vite";
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "./",
+  resolve: { dedupe: ["react", "react-dom"] },
   test: {
     environment: "jsdom",
     globals: true,
@@ -19,10 +22,13 @@ export default defineConfig({
       },
     },
   },
-  plugins: [calimeroCsp(), 
+  plugins: [
+    calimeroCsp(),
+    servedAssetsFallback(),
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      injectRegister: false,
       includeAssets: ["curb-pwa.svg", "logo.svg", "section-name.svg"],
       manifest: {
         name: "Calimero Chat",
@@ -33,8 +39,8 @@ export default defineConfig({
         background_color: "#f6f7fb",
         display: "standalone",
         orientation: "portrait-primary",
-        scope: "/",
-        start_url: "/",
+        scope: "./",
+        start_url: "./",
         icons: [
           {
             src: "icons/icon-72x72.png",

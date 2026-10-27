@@ -14,6 +14,9 @@ import LandingPage from './pages/landing/LandingPage';
 import AppPage from './pages/app/AppPage';
 import InvitationPrompt from './components/InvitationPrompt';
 import { APP_PACKAGE, APP_ROUTE } from './config';
+import { isServedByNode, nodeBasename } from '@calimero-apps/node-served';
+
+const pageUrl = () => new URL(window.location.href);
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
@@ -89,9 +92,10 @@ export default function App() {
       mode={AppMode.MultiContext}
       packageName={packageName}
       registryUrl={registryUrl}
+      servedByNode={isServedByNode(pageUrl())}
     >
       <ToastProvider>
-        <BrowserRouter basename="/">
+        <BrowserRouter basename={nodeBasename(pageUrl(), '/')}>
           <AppInvitations />
           <Routes>
             {/* Landing is the front door; authenticated users (incl. desktop

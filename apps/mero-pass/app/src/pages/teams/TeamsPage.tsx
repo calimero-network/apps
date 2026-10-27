@@ -320,7 +320,7 @@ export default function TeamsPage() {
             Mero Pass is not installed on this node. Install it from the app
             registry, then reload.
           </p>
-        ) : loading ? (
+        ) : loading && teams.length === 0 ? (
           <p className={styles.empty}>Loading…</p>
         ) : sharedTeams.length === 0 ? (
           // ⚠️ Only when the load SUCCEEDED and came back empty. A failed list

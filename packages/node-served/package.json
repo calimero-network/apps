@@ -5,7 +5,11 @@
   "description": "Telling an app it is served from a node's app origin, and where its routes and assets live under it.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./vite": {
+      "types": "./src/vite.d.ts",
+      "default": "./src/vite.js"
+    }
   },
   "types": "./src/index.ts",
   "scripts": {

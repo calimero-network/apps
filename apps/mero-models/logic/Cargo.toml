@@ -33,11 +33,13 @@ category = "art-design"
 tags = ["3d", "modelling", "design", "collaboration", "crdt"]
 github = "https://github.com/calimero-network/apps"
 # Asserted equal to [workspace.metadata.mero-apps] in CI.
-min-runtime-version = "0.12.0-rc.1"
+min-runtime-version = "0.12.0-rc.3"
 # Also this app's registered login redirect origin, compared by EXACT origin —
 # no trailing slash. Resolves to nothing until the Vercel project
 # `mero-models` (Root Directory `apps/mero-models/app`) exists.
 frontend = "https://mero-models.vercel.app"
+# The built frontend `cargo mero bundle` packs, so the node serves it from the app\'s own origin.
+frontend-dir = "../app/dist"
 
 # ⚠️ The dependency tables stay AFTER the calimero table: the landing generator
 # finds that table by matching up to the next `[` header.

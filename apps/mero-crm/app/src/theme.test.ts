@@ -90,17 +90,15 @@ describe('theme', () => {
   });
 
   // The no-flash path: index.html runs this before the bundle loads.
-  it("index.html's inline script puts a saved dark theme on <html> before the app runs", () => {
-    const indexHtml = readFileSync(path.resolve(__dirname, '..', 'index.html'), 'utf-8');
-    const scripts = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-    const themeScript = scripts.find((s) => s.includes(THEME_STORAGE_KEY));
-    expect(themeScript, 'index.html sets the theme before first paint').toBeDefined();
+  it("index.html's theme-init script puts a saved dark theme on <html> before the app runs", () => {
+    const themeScript = readFileSync(path.resolve(__dirname, '..', 'public', 'theme-init.js'), 'utf-8');
+    expect(themeScript).toContain(THEME_STORAGE_KEY);
 
-    new Function(themeScript!)();
+    new Function(themeScript)();
     expect(html.getAttribute('data-theme')).toBeNull();
 
     localStorage.setItem(THEME_STORAGE_KEY, 'dark');
-    new Function(themeScript!)();
+    new Function(themeScript)();
     expect(html.getAttribute('data-theme')).toBe('dark');
     expect(meta.getAttribute('content')).toBe(THEME_COLOR.dark);
   });

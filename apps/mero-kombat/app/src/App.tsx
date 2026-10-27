@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactNode } from "react";
 import {
   BrowserRouter,
+  Link,
   Navigate,
   Route,
   Routes,
@@ -18,6 +19,9 @@ import { ArenaPage } from "./ArenaPage";
 import { PracticePage } from "./PracticePage";
 import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
 import LandingPage from "./pages/landing/LandingPage";
+import { nodeBasename } from "@calimero-apps/node-served";
+
+const basename = () => nodeBasename(new URL(window.location.href), "/");
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -99,7 +103,7 @@ function PlayPage({ joinedContextId }: { joinedContextId: string | null }) {
     return (
       <section className="connect">
         <div className="connect-card">
-          <img className="connect-mark" src="/favicon.svg" alt="" />
+          <img className="connect-mark" src={`${basename()}favicon.svg`} alt="" />
           <h1>Connect a node</h1>
           <p className="lede">
             Mero Kombat fights through your own Calimero node — every punch you
@@ -108,9 +112,9 @@ function PlayPage({ joinedContextId }: { joinedContextId: string | null }) {
           </p>
           <div className="row center">
             <ConnectButton />
-            <a className="button-link ghost" href="/practice">
+            <Link className="button-link ghost" to="/practice">
               Practice vs CPU
-            </a>
+            </Link>
           </div>
           <ul className="connect-points">
             <li>No game server</li>
@@ -202,7 +206,7 @@ function AppShell({
             // back. See the guard for why this is router state and not a query.
             onClick={() => navigate("/", { state: { fromApp: true } })}
           >
-            <img src="/favicon.svg" alt="" width={28} height={28} />
+            <img src={`${basename()}favicon.svg`} alt="" width={28} height={28} />
             <span>Mero Kombat</span>
           </button>
           {isAuthenticated && (
@@ -226,7 +230,7 @@ function AppShell({
 export function App() {
   const [joinedContextId, setJoinedContextId] = useState<string | null>(null);
   return (
-    <BrowserRouter basename="/">
+    <BrowserRouter basename={basename()}>
       <InvitationPrompt onOpen={setJoinedContextId} />
       <Routes>
         {/* The landing page is three pages: `/`, `/docs` and `/preview`. They

@@ -3,10 +3,13 @@
 // fails `tsc -b` with "Object literal may only specify known properties".
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 import { calimeroCsp } from "@calimero-apps/cloud/vite";
 
 export default defineConfig({
-  plugins: [calimeroCsp(), react()],
+  // Relative, so the same build runs at / and under the node's /{version}/.
+  base: "./",
+  plugins: [calimeroCsp(), servedAssetsFallback(), react()],
   server: {
     // A port of this app's OWN, and a hard failure if it is taken: two apps on
     // one origin share a localStorage, so opening this app on another app's

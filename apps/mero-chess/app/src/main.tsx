@@ -8,6 +8,7 @@ import {
 } from "@calimero-apps/cloud";
 import { App } from "./App";
 import { adoptDesktopSession } from "./utils/desktopSso";
+import { isServedByNode } from "@calimero-apps/node-served";
 import { APP_SLUG } from "./utils/invitation";
 import { PACKAGE_NAME, REGISTRY_URL } from "./config";
 import "./index.css";
@@ -80,6 +81,7 @@ createRoot(root).render(
       mode={AppMode.MultiContext}
       packageName={PACKAGE_NAME}
       registryUrl={REGISTRY_URL}
+      servedByNode={isServedByNode(new URL(window.location.href))}
     >
       <App />
     </MeroProvider>
