@@ -56,7 +56,10 @@ test.describe('Document CRUD (single-node)', () => {
         ),
       ).observe(bar, { subtree: true, childList: true, characterData: true });
     });
-    await alice.page.locator('.ProseMirror').first().click();
+    await alice.page
+      .locator('.ProseMirror[contenteditable="true"]')
+      .first()
+      .click();
     await alice.page.keyboard.type('typing at a normal pace', { delay: 60 });
     await expect(status).toHaveText('Saved', { timeout: 15_000 });
     const seen = await alice.page.evaluate(

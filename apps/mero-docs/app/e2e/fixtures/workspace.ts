@@ -663,7 +663,10 @@ export class EditorDriver {
   }
 
   async type(content: string): Promise<void> {
-    const editor = this.page.locator('.ProseMirror').first();
+    // The editor mounts read-only while the document loads, and keys sent to it are dropped.
+    const editor = this.page
+      .locator('.ProseMirror[contenteditable="true"]')
+      .first();
     await editor.click();
     // pressSequentially sends real keystrokes through ProseMirror's input
     // pipeline so BlockNote's onChange (and therefore autosave) fires -
