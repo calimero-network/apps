@@ -18,9 +18,6 @@ import {
 import { getTransport, type ContextInfo } from "./transport";
 
 export type { ContextInfo } from "./transport";
-// The node path's parsers and the app-id rule, kept importable from here (the
-// tests beside this file pin them).
-export { packageOf, parseApplications, parseContexts, pickApplicationId } from "./nodeTransport";
 
 // ---- world names ------------------------------------------------------
 // The node doesn't reliably echo a context's name back on every version, so
@@ -64,14 +61,10 @@ export function worldNameOf(contextId: string, nodeName?: string): string {
 }
 
 /**
- * Resolve the application id, never from configuration.
- *
- * Node: the node is asked even when the session already carries an id — a
- * remembered id survives switching nodes and reinstalling the app, and an id
- * this node doesn't know is worse than no id at all (see `pickApplicationId`).
- * Account: derived from the registry (package + publisher), the same on every
- * relay. Either way a session value that fails the check is cleared rather
- * than left to come back on the next call.
+ * Resolve the application id through the cluster: the signed package (installed
+ * from the registry when the cluster lacks it), or a development cluster's
+ * bundle. A session value that differs is replaced rather than left to come
+ * back on the next call.
  */
 export async function resolveApplicationId(): Promise<string | null> {
   const sessionAppId = getSession().applicationId ?? "";

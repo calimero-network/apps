@@ -1,50 +1,29 @@
 // The ONE place the game decides how it talks to the network.
 //
-// A session is either a node login (bearer tokens against `{node}/admin-api`
-// and `/jsonrpc`) or an account (a wallet-certified device key writing through
-// a relay as `/intents` warrants and reading through the relay's query route).
-// Everything above this module — the world picker, invites, the game client —
-// asks for `getTransport()` and gets the same two surfaces either way:
+// The player is signed in to a Calimero Cloud cluster with a passkey. Everything
+// above this module — the world picker, invites, the game client — asks for
+// `getTransport()` and gets:
 //
-//   admin  — mero-js `AdminApiClient`. On a node it IS the node's admin client;
-//            on an account it is `createAccountAdmin`, the same method names
-//            with writes turned into warrants and node-only calls refused by
-//            name (`NotForAccountError`).
-//   rpc    — mero-js `ExecuteTransport`: `execute({contextId, method, argsJson})`.
+//   admin  — v1's `AdminApiClient` method names over the cluster's
+//            organizations (worlds' namespaces), teams and app instances
+//            (`@calimero-apps/cloud`).
+//   rpc    — `ExecuteTransport`: `execute({contextId, method, argsJson})`.
 //
-// No raw `fetch` to a node route exists anywhere in `src/` — mero-js owns the
-// wire (bearer vs device-cert auth, token refresh, warrant nonces, the relay's
-// attested node key). This module only chooses which client to build.
+// Every request is sealed to an attested node by the cloud client; no raw
+// `fetch` to a node route exists anywhere in `src/`.
 
 import {
-  CloudClient,
+  CloudMero,
+  createCloudAdmin,
+  currentApplicationId,
+  ensurePackage,
   NotForAccountError,
-  buildDelegatedClient,
-  createAccountAdmin,
-  createMeroClient,
-  foundDelegatedNamespace,
-  joinAsAccount,
-  resolveApplicationIdFromRegistry,
-  resolveRelayNodeKey,
-  saveDelegatedSession,
-  signerFromSecret,
   type AdminApiClient,
-  type DelegatedAccountSession,
   type ExecuteTransport,
-  type MeroClient,
   type SseClient,
-  type TokenData,
-  type TokenStore,
 } from "@calimero-apps/cloud";
 import { PACKAGE_NAME, REGISTRY_URL } from "./auth";
-import {
-  clearSession,
-  getAccountSession,
-  getSession,
-  sessionKind,
-  updateSession,
-  type SessionKind,
-} from "./session";
+import { getSession, sessionKind, updateSession, type SessionKind } from "./session";
 
 export interface Transport {
   readonly kind: SessionKind;
@@ -71,73 +50,6 @@ export interface Transport {
    */
   resolveApplicationId(): Promise<string | null>;
   close(): void;
-}
-
-// ---- node ---------------------------------------------------------------
-
-const TOKENS_KEY = "mero-tokens";
-
-/**
- * The `node_origin` mero-js binds a token bundle to: the node's origin plus
- * its path prefix (see `TokenData.node_origin`).
- */
-function nodeOriginOf(nodeUrl: string): string {
-  try {
-    const { origin, pathname } = new URL(nodeUrl);
-    return origin === "null" ? nodeUrl : origin + pathname.replace(/\/+$/, "");
-  } catch {
-    return nodeUrl;
-  }
-}
-
-/**
- * mero-js's token store over the `mero-tokens` bundle session.ts writes.
- * mero-js's own `LocalStorageTokenStore` refuses a bundle without a refresh
- * token; a desktop SSO hand-over can carry an access token alone, and that is
- * still a login. `expires_at` may be a string ("" or a stamp) in our format.
- *
- * mero-js (>= 25.0.7) reads a bundle as signed out unless its `node_origin`
- * names `nodeUrl`. One that mero-js persisted keeps the node it names. One
- * session.ts wrote carries none, and is this node's: session.ts writes the
- * bundle together with the session's node, which is the node this store is
- * built for.
- */
-export function merrariaTokenStore(nodeUrl: string): TokenStore {
-  return {
-    getTokens(): TokenData | null {
-      try {
-        const raw = localStorage.getItem(TOKENS_KEY);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw) as Partial<TokenData> & { expires_at?: string | number };
-        if (!parsed?.access_token) return null;
-        let exp = Number(parsed.expires_at);
-        if (!Number.isFinite(exp) || exp <= 0) exp = Date.now() + 3600_000;
-        else if (exp < 1e12) exp *= 1000;
-        return {
-          access_token: parsed.access_token,
-          refresh_token: parsed.refresh_token ?? "",
-          expires_at: exp,
-          node_origin: parsed.node_origin ?? nodeOriginOf(nodeUrl),
-        };
-      } catch {
-        return null;
-      }
-    },
-    setTokens(data: TokenData): void {
-      try {
-        localStorage.setItem(TOKENS_KEY, JSON.stringify(data));
-      } catch {
-        /* storage unavailable — the in-memory bundle still serves this tab */
-      }
-    },
-    clear(): void {
-      try {
-        localStorage.removeItem(TOKENS_KEY);
-      } catch {
-        /* nothing to clear */
-      }
-    },
-  };
 }
 
 /** unwrap {apps: []} | {applications: []} | [] */
@@ -195,127 +107,23 @@ export function pickApplicationId(apps: Record<string, unknown>[], sessionAppId:
   return chosen ? appIdOf(chosen) : "";
 }
 
-/** the identity a node owns for a context ("" when not a member) */
-async function ownedIdentity(admin: AdminApiClient, contextId: string): Promise<string> {
-  const data = (await admin.getContextIdentitiesOwned(contextId)) as unknown;
-  const obj = (data ?? {}) as Record<string, unknown>;
-  const arr = Array.isArray(data) ? data : ((obj.identities ?? obj.items ?? []) as unknown[]);
-  return Array.isArray(arr) && arr.length > 0 ? String(arr[0]) : "";
-}
-
-function nodeTransport(nodeUrl: string): Transport {
-  const client: MeroClient = createMeroClient({
-    transport: "node",
-    baseUrl: nodeUrl,
-    tokenStore: merrariaTokenStore(nodeUrl),
-    // A revoked token family (single-use refresh token replayed, or an
-    // explicit revocation) is terminal: nothing we hold is live.
-    onAuthRevoked: () => {
-      console.warn("[transport] auth revoked — clearing session, re-login required");
-      clearSession();
-    },
-  });
+function cloudTransport(clusterUrl: string): Transport {
+  const mero = new CloudMero(clusterUrl);
   return {
     kind: "node",
-    admin: client.admin,
-    rpc: client.rpc,
-    events: () => client.events,
-    async myId(contextId) {
-      // The hash's identity, else what the NODE reports owning. Deliberately
-      // no cached fallback: a cache that answers when the node cannot is a lie
-      // about membership, and `null` is what boot() acts on.
-      const s = getSession();
-      if (s.executorPublicKey) return s.executorPublicKey;
-      const owned = await ownedIdentity(client.admin, contextId).catch(() => "");
-      return owned || null;
-    },
+    admin: createCloudAdmin(mero) as unknown as AdminApiClient,
+    rpc: mero.rpc as unknown as ExecuteTransport,
+    events: () => mero.events as unknown as SseClient,
+    // The contract's caller is the player's account on Calimero Cloud.
+    myId: async () => mero.accountId().catch(() => null),
     async resolveApplicationId() {
-      const sessionAppId = getSession().applicationId ?? "";
-      const apps = parseApplications(await client.admin.listApplications());
-      const id = pickApplicationId(apps, sessionAppId);
-      // A session value that fails the check is cleared rather than left to
-      // come back on the next call.
-      if (id !== sessionAppId) updateSession({ applicationId: id || null });
-      return id || null;
+      // A development cluster runs the bundle this build names; anything else
+      // installs the signed package from the registry (verified by every node).
+      const id = currentApplicationId() ?? (await ensurePackage(mero, PACKAGE_NAME, undefined, REGISTRY_URL));
+      if (id !== getSession().applicationId) updateSession({ applicationId: id });
+      return id;
     },
-    close: () => client.close(),
-  };
-}
-
-// ---- account ----------------------------------------------------------
-
-/** What an account with no relay answers to a contract call. */
-export const NO_RELAY_MESSAGE =
-  "this account has no relay yet — create a world or join one with an invite first";
-
-function noRelayRpc(): ExecuteTransport {
-  const refuse = async () => {
-    throw new Error(NO_RELAY_MESSAGE);
-  };
-  return {
-    kind: "relay",
-    canSubscribe: false,
-    execute: refuse,
-    executeWithMetadata: refuse,
-    migrateMyEntries: refuse,
-    countMyPending: refuse,
-  };
-}
-
-async function accountTransport(s: DelegatedAccountSession): Promise<Transport> {
-  // Attest the relay BEFORE trusting a session on it: its node key (learned
-  // from the relay's TEE quote, pinned afterwards) is what lets the client
-  // mint a session for admin reads and the event stream. Without it the
-  // client still writes (warrants need no session) but reads and events are
-  // dormant; `resolveRelayNodeKey` is a no-op once the key is pinned.
-  let client: MeroClient | null = null;
-  if (s.relayUrl) {
-    await resolveRelayNodeKey(s.relayUrl);
-    client = buildDelegatedClient(s, null);
-  }
-  const routingCredential = { credential: s.credential, deviceSecret: s.deviceSecret };
-  const admin = createAccountAdmin(
-    {
-      session: s,
-      read: client?.admin ?? null,
-      app: { packageName: PACKAGE_NAME, registryUrl: REGISTRY_URL },
-    },
-    {
-      // Redeeming an invitation is how an account gets (another) relay: the
-      // join resolves the admitting relay, is carried by it, and the session
-      // moves onto it. The transport is rebuilt on the next `getTransport()`.
-      join: (namespaceId, invitation) =>
-        joinAsAccount(s, namespaceId, invitation, {
-          onJoined: (next) => {
-            saveDelegatedSession(next);
-            resetTransport();
-          },
-        }),
-      found: (session, req) => foundDelegatedNamespace(session, req),
-      // The cloud's routing for a namespace, so an invitation is minted only
-      // when somebody could claim it (and says where, for an unlinked founder).
-      routing: (namespaceId) =>
-        new CloudClient({ routingCredential }).getNamespaceRouting(namespaceId),
-    },
-  );
-  return {
-    kind: "account",
-    admin,
-    rpc: client?.rpc ?? noRelayRpc(),
-    events: () => client?.events ?? null,
-    async myId() {
-      // The device cert's signing key (hex, as the contract renders a
-      // `PublicKey`) — see the interface doc. Derived from the session itself.
-      return (await signerFromSecret(s.deviceSecret, "deviceSecret")).publicKey;
-    },
-    async resolveApplicationId() {
-      const cached = getSession().applicationId;
-      if (cached) return cached;
-      const { applicationId } = await resolveApplicationIdFromRegistry(REGISTRY_URL, PACKAGE_NAME);
-      updateSession({ applicationId });
-      return applicationId;
-    },
-    close: () => client?.close(),
+    close: () => mero.close(),
   };
 }
 
@@ -325,13 +133,7 @@ let current: { key: string; transport: Promise<Transport> } | null = null;
 
 /** The cache key: anything that changes which client to build. */
 function sessionKey(): string | null {
-  const kind = sessionKind();
-  if (kind === "node") return `node|${getSession().nodeUrl}`;
-  if (kind === "account") {
-    const a = getAccountSession()!;
-    return `account|${a.account}|${a.relayUrl ?? ""}`;
-  }
-  return null;
+  return sessionKind() === "node" ? `node|${getSession().nodeUrl}` : null;
 }
 
 /**
@@ -341,14 +143,10 @@ function sessionKey(): string | null {
  */
 export function getTransport(): Promise<Transport> {
   const key = sessionKey();
-  if (!key) return Promise.reject(new Error("not logged in — connect a node or sign in with your account"));
+  if (!key) return Promise.reject(new Error("not signed in — sign in with your passkey"));
   if (current?.key === key) return current.transport;
   current?.transport.then((t) => t.close()).catch(() => {});
-  const kind = sessionKind();
-  const transport =
-    kind === "account"
-      ? accountTransport(getAccountSession()!)
-      : Promise.resolve(nodeTransport(getSession().nodeUrl!));
+  const transport = Promise.resolve(cloudTransport(getSession().nodeUrl!));
   current = { key, transport };
   // a build that failed must not be served again
   transport.catch(() => {

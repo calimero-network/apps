@@ -1,33 +1,16 @@
-// Session bootstrap for BOTH auth paths:
-//  - Desktop SSO: tauri-app opens the game with a full hash
-//      #node_url=…&access_token=…&refresh_token=…&app-id=…&context_id=…
-//      &executor_public_key=…&expires_at=…&dev_mode=1
-//    → capture everything and auto-enter the world (zero clicks).
-//  - Web login: we redirected to {node}/auth/login and came back with
-//      #access_token=…&refresh_token=…&application_id=…&context_id=…
-//      &context_identity=…[&node_url=…]
-//    (mero-js parseAuthCallback format; node_url may be absent — we stashed
-//    it before redirecting, see auth.ts takePendingNodeUrl).
-// The app id captured here is only a PREFERENCE: admin.ts re-checks it against
-// the apps the node reports before anything is built on it (there is no env
-// var in that order, and must not be — see resolveApplicationId).
+// The game session: which cluster, which world, and the player's place in it.
+// The player signs in with a passkey (auth.ts); `@calimero-apps/cloud` keeps
+// the session itself (in memory, its refresh token in this tab), and this
+// record remembers only the game-level coordinates. The app id stored here is
+// a PREFERENCE: admin.ts resolves it through the cluster.
 
-import {
-  clearDelegatedCredential,
-  clearDelegatedSession,
-  readDelegatedSession,
-} from "@calimero-apps/cloud";
-import { takePendingNodeUrl } from "./auth";
-import { TOKENS_KEY, jwtExpiryMs, readStoredTokens, shouldSeedTokens } from "./authTokens";
+import { CloudMero, readSession, writeSession } from "@calimero-apps/cloud";
 
 const STORE_KEY = "mb-session";
 
 /**
- * How this player is connected. `node`: logged into their own merod (the
- * paths above). `account`: enrolled a device with their Calimero account and
- * plays through a relay — the credential itself lives where mero-js keeps it
- * (`readDelegatedSession`, per tab), this record only remembers which kind we
- * are and which world we were in. See net/transport.ts for the switch.
+ * How this player is connected. Always `node` on Calimero Cloud: signed in to
+ * the cluster. (`account` was v1's relay-enrolled device and is never set.)
  */
 export type SessionKind = "node" | "account";
 
@@ -78,69 +61,14 @@ function restore(): void {
   }
 }
 
-/** Parse the SSO / auth-callback hash. Always restores stored state first. */
+/**
+ * Restore the stored game session. Calimero Cloud has no login hash (v1's
+ * node web login and desktop SSO): the player signs in with a passkey in the
+ * page (auth.ts) and the cloud client keeps the session.
+ */
 export function captureSessionFromHash(): CaptureResult {
   restore();
-  const hash = window.location.hash;
-  if (!hash || hash.length < 2) return "none";
-  const p = new URLSearchParams(hash.slice(1));
-  const accessToken = p.get("access_token");
-  if (!accessToken) return "none";
-
-  // node url: hash > the one stashed before the web-login redirect > stored.
-  // Capture the node we were last pointed at BEFORE overwriting it — a different
-  // node means the stored token bundle belongs to a foreign token family.
-  const previousNodeUrl = session.nodeUrl;
-  const nodeUrl = p.get("node_url") ?? takePendingNodeUrl() ?? session.nodeUrl;
-  if (!nodeUrl) return "none";
-  // A node login replaces whatever account session this tab held: one kind
-  // of session at a time, and the hash is the newer intent.
-  if (session.kind === "account") {
-    clearDelegatedSession();
-    clearDelegatedCredential();
-    session = { ...session, contextId: null, executorPublicKey: null, namespaceId: null, groupId: null, worldName: null };
-  }
-  session.kind = "node";
-  session.nodeUrl = nodeUrl;
-
-  session.contextId = p.get("context_id") || session.contextId;
-  // tolerate both spellings (tauri sends app-id, auth callback application_id)
-  const appId = (p.get("application_id") ?? p.get("app-id") ?? "").trim();
-  if (appId) session.applicationId = appId;
-  // desktop names it executor_public_key, the auth callback context_identity
-  session.executorPublicKey =
-    p.get("executor_public_key") ?? p.get("context_identity") ?? session.executorPublicKey;
-  session.devMode = p.get("dev_mode") === "1";
-  persist();
-
-  // Seed mero-js's token store from the hash — but NEVER blindly clobber it.
-  // Refresh tokens are single-use (calimero-network/core#3083): the desktop
-  // re-opens us with the bundle it minted at ITS login, which may be OLDER than
-  // one already rotated in this browser. Overwriting a live bundle with a stale
-  // one gets the whole token family revoked (401 `token_reuse`). The stored
-  // bundle wins unless there's nothing stored, the node changed, or the hash
-  // carries a genuinely newer token — see shouldSeedTokens (authTokens.ts).
-  const refreshToken = p.get("refresh_token") ?? "";
-  const expiresAtParam = p.get("expires_at");
-  const hashExpiresAtMs =
-    jwtExpiryMs(accessToken) ??
-    (expiresAtParam ? parseInt(expiresAtParam, 10) : Date.now() + 3600_000);
-  const nodeChanged = !!previousNodeUrl && previousNodeUrl !== nodeUrl;
-
-  if (shouldSeedTokens({ hashExpiresAtMs, stored: readStoredTokens(), nodeChanged })) {
-    localStorage.setItem(
-      TOKENS_KEY,
-      JSON.stringify({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        expires_at: hashExpiresAtMs,
-      }),
-    );
-  }
-
-  // we own the page (no MeroProvider) — strip either way so a later reload can't
-  // re-process the original (possibly stale) hash tokens
-  window.history.replaceState({}, "", window.location.pathname + window.location.search);
+  if (!isAuthenticated()) return "none";
   return session.contextId ? "full" : "partial";
 }
 
@@ -154,71 +82,32 @@ export function updateSession(patch: Partial<Session>): void {
   persist();
 }
 
+/** The session token, or null when signed out (never in localStorage). */
 export function getAccessToken(): string | null {
-  try {
-    const raw = localStorage.getItem(TOKENS_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw).access_token ?? null;
-  } catch {
-    return null;
-  }
+  return readSession()?.sessionToken || null;
 }
 
-/** `account` when this tab plays as a Calimero account, else `node`. */
 export function sessionKind(): SessionKind {
-  return session.kind ?? "node";
+  return "node";
 }
 
-/**
- * Bumped every time an account session is adopted, so a transport built for
- * the previous account (same `kind`) is not reused for the next one.
- */
+/** Bumped on every sign-out, so a transport built for the previous player is not reused. */
 let epoch = 0;
 export function sessionEpoch(): number {
   return epoch;
 }
 
-/**
- * Switch this tab onto an account session. The credential is already saved
- * where mero-js keeps it (`saveDelegatedSession`); this records the kind,
- * drops the node login and the previous world, and keeps the player name.
- */
-export function adoptAccountSession(): void {
-  epoch += 1;
-  session = {
-    kind: "account",
-    nodeUrl: null,
-    contextId: null,
-    applicationId: null,
-    executorPublicKey: null,
-    devMode: false,
-  };
-  try {
-    localStorage.removeItem(TOKENS_KEY);
-  } catch {
-    /* nothing to clear */
-  }
-  persist();
-}
-
-/** logged in (may still need to pick a world) */
+/** Signed in to the cluster (the world may still need picking). */
 export function isAuthenticated(): boolean {
-  if (sessionKind() === "account") return readDelegatedSession() !== null;
-  return Boolean(session.nodeUrl && getAccessToken());
+  return Boolean(session.nodeUrl && readSession());
 }
 
-/** ready to play online right now */
+/** Ready to play online right now. */
 export function hasConnection(): boolean {
-  if (sessionKind() === "account") {
-    // an account with no relay yet is signed in but has nowhere to play from —
-    // redeeming an invite is what gives it one
-    return Boolean(session.contextId && readDelegatedSession()?.relayUrl);
-  }
-  return Boolean(session.nodeUrl && session.contextId && getAccessToken());
+  return isAuthenticated() && Boolean(session.contextId);
 }
 
 export function clearSession(): void {
-  const wasAccount = session.kind === "account";
   epoch += 1;
   session = {
     nodeUrl: null,
@@ -229,17 +118,10 @@ export function clearSession(): void {
   };
   try {
     localStorage.removeItem(STORE_KEY);
-    localStorage.removeItem(TOKENS_KEY);
   } catch {
     /* nothing to clear */
   }
-  if (wasAccount) {
-    // Signing out of an account forgets its device certificate too: leaving
-    // it in storage would let the next visitor bootstrap as this account from
-    // any invitation they hold (the mero-react logout rule).
-    clearDelegatedSession();
-    clearDelegatedCredential();
-  }
+  writeSession(null);
 }
 
 /**
@@ -278,4 +160,18 @@ export function resetSession(): void {
     executorPublicKey: null,
     devMode: false,
   };
+}
+
+/**
+ * Make sure the session is live: a tab restored from its refresh token trades
+ * it for a session here, before anything goes online. A failure signs out.
+ */
+export async function ensureFreshSession(): Promise<void> {
+  if (!session.nodeUrl || !readSession()) return;
+  const mero = new CloudMero(session.nodeUrl);
+  try {
+    if (!(await mero.validate())) writeSession(null);
+  } finally {
+    mero.close();
+  }
 }

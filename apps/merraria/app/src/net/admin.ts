@@ -12,7 +12,7 @@ import {
   type RedeemOutcome,
 } from "@calimero-apps/cloud";
 import { HTTPError, type SignedGroupOpenInvitation as MeroSignedInvitation } from "@calimero-apps/cloud";
-import { getSession, sessionKind, updateSession } from "./session";
+import { getSession, updateSession } from "./session";
 import { getTransport } from "./transport";
 import {
   decodeInvite,
@@ -64,7 +64,7 @@ function describeAdminFailure(label: string, err: unknown): Error {
   if (s === 0) {
     // the node was never reached: it is down, the URL is wrong, or the
     // browser blocked the request — say so instead of leaking a TypeError
-    const where = sessionKind() === "account" ? "your relay" : `your node at ${getSession().nodeUrl}`;
+    const where = `the cluster at ${getSession().nodeUrl}`;
     return new AdminError(`can't reach ${where} — check that it's running and the URL is right`, 0);
   }
   if (s === 401 || s === 403) {

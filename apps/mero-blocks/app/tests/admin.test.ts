@@ -1,293 +1,105 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  createWorld,
-  joinWorld,
-  listWorlds,
-  packageOf,
-  parseApplications,
-  parseContexts,
-  pickApplicationId,
-  resolveApplicationId,
-} from "../src/net/admin";
+import { createWorld, joinWorld, listWorlds, resolveApplicationId } from "../src/net/admin";
+import { writeSession } from "@calimero-apps/cloud";
+import { installFakeCluster, type FakeCluster } from "@calimero-apps/cloud/testing";
 import { getSession, resetSession, updateSession } from "../src/net/session";
+import { resetTransport } from "../src/net/transport";
 
-const manifestBytes = (pkg: string) =>
-  Array.from(new TextEncoder().encode(JSON.stringify({ package: pkg })));
+let cluster: FakeCluster;
 
 beforeEach(() => {
   localStorage.clear();
   resetSession();
-  updateSession({ nodeUrl: "http://node:2428" });
-  localStorage.setItem("mero-tokens", JSON.stringify({ access_token: "t" }));
+  resetTransport();
+  cluster = installFakeCluster();
+  cluster.signIn("alice");
+  writeSession({ accountId: "alice", sessionToken: "t", refreshToken: "r", expiresAt: 9e9 });
+  updateSession({ kind: "node", nodeUrl: "https://cloud.example" });
 });
-afterEach(() => vi.restoreAllMocks());
-
-const okJson = (body: unknown) => ({ ok: true, json: async () => body }) as Response;
-
-describe("shape-tolerant parsers", () => {
-  it("parseApplications handles arrays and every wrapper key", () => {
-    const app = { id: "a1" };
-    expect(parseApplications([app])).toEqual([app]);
-    expect(parseApplications({ apps: [app] })).toEqual([app]);
-    expect(parseApplications({ applications: [app] })).toEqual([app]);
-    expect(parseApplications({ items: [app] })).toEqual([app]);
-    expect(parseApplications({ nope: 1 })).toEqual([]);
-    expect(parseApplications(null)).toEqual([]);
-  });
-
-  it("parseContexts normalizes id field spellings", () => {
-    expect(
-      parseContexts({
-        contexts: [
-          { contextId: "c1", applicationId: "a1" },
-          { id: "c2", application_id: "a2" },
-          { junk: true },
-        ],
-      }),
-    ).toEqual([
-      { contextId: "c1", applicationId: "a1" },
-      { contextId: "c2", applicationId: "a2" },
-    ]);
-    expect(parseContexts([{ id: "c3" }])).toEqual([{ contextId: "c3", applicationId: "" }]);
-    expect(parseContexts(undefined)).toEqual([]);
-  });
-
-  it("packageOf finds the package wherever the node version put it", () => {
-    expect(packageOf({ package: "com.x" })).toBe("com.x");
-    expect(packageOf({ packageName: "com.y" })).toBe("com.y");
-    expect(packageOf({ manifest: { package: "com.z" } })).toBe("com.z");
-    expect(packageOf({ metadata: manifestBytes("com.m") })).toBe("com.m");
-    expect(packageOf({ metadata: [1, 2, 3] })).toBe(""); // not manifest json
-    expect(packageOf({})).toBe("");
-  });
+afterEach(() => {
+  cluster.uninstall();
+  writeSession(null);
+  vi.restoreAllMocks();
 });
 
-describe("pickApplicationId (precedence, and every candidate validated)", () => {
-  const blocks = { id: "blocks", package: "com.calimero.mero-blocks" };
-  const meet = { id: "meet", package: "com.calimero.mero-meet" };
-
-  it("prefers the session id when the node has it installed", () => {
-    expect(pickApplicationId([meet, blocks], "meet")).toBe("meet");
-  });
-
-  it("ignores a session id this node does not have installed", () => {
-    // The stale-id case: a remembered id from another node or another build.
-    expect(pickApplicationId([meet, blocks], "from-another-node")).toBe("blocks");
-  });
-
-  it("falls back to our package, then to a lone app, then to nothing", () => {
-    expect(pickApplicationId([meet, blocks], "")).toBe("blocks");
-    expect(pickApplicationId([meet], "")).toBe("meet");
-    expect(pickApplicationId([meet, { id: "x", package: "com.other" }], "")).toBe("");
-    expect(pickApplicationId([], "session")).toBe("");
-  });
-});
+/** The requests the app made, as `METHOD path` (reading who is signed in aside). */
+const routes = () => cluster.calls.filter(([, p]) => p !== "auth/me").map(([m, p]) => `${m} ${p}`);
 
 describe("resolveApplicationId", () => {
-  it("checks the session app id against the node instead of trusting it", async () => {
-    updateSession({ applicationId: "app-hash" });
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      okJson({ data: { apps: [{ id: "app-hash", package: "com.calimero.mero-blocks" }] } }),
+  it("installs the signed package through the cluster at the registry's newest version", async () => {
+    const registry = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      Response.json([{ appVersion: "1.2.0" }, { appVersion: "1.10.0" }, { appVersion: "2.0.0", yanked: true }]),
     );
-    expect(await resolveApplicationId()).toBe("app-hash");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toContain("/admin-api/applications");
+    const id = await resolveApplicationId();
+    expect(id).toBe("package:com.calimero.mero-blocks");
+    expect(registry.mock.calls.map((c) => String(c[0]))).toContain("https://apps.calimero.network/api/v2/bundles?package=com.calimero.mero-blocks");
+    expect(cluster.calls).toContainEqual(["POST", "packages/install", { package: "com.calimero.mero-blocks", version: "1.10.0" }]);
+    expect(getSession().applicationId).toBe(id);
   });
 
-  it("drops a stale session app id the node does not know", async () => {
-    updateSession({ applicationId: "stale" });
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      okJson({ data: { apps: [{ id: "real", package: "com.calimero.mero-blocks" }] } }),
-    );
-    expect(await resolveApplicationId()).toBe("real");
-    // cleared, so the next call cannot resurrect it
-    expect(getSession().applicationId).toBe("real");
-  });
-
-  it("matches the installed app by package name", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      okJson({
-        data: {
-          apps: [
-            { id: "other", package: "com.calimero.mero-meet" },
-            { id: "mine", package: "com.calimero.mero-blocks" },
-          ],
-        },
-      }),
-    );
-    expect(await resolveApplicationId()).toBe("mine");
-  });
-
-  it("falls back to a lone installed app", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      okJson({ data: { apps: [{ id: "only", package: "com.something.else" }] } }),
-    );
-    expect(await resolveApplicationId()).toBe("only");
-  });
-
-  it("returns null on a multi-app node with no package match", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      okJson({ data: { apps: [{ id: "a", package: "x" }, { id: "b", package: "y" }] } }),
-    );
-    expect(await resolveApplicationId()).toBeNull();
+  it("installs nothing when the cluster already holds the package", async () => {
+    cluster.packages.set("com.calimero.mero-blocks", ["1.0.0"]);
+    expect(await resolveApplicationId()).toBe("package:com.calimero.mero-blocks");
+    expect(routes()).toEqual(["GET packages/com.calimero.mero-blocks"]);
   });
 });
 
 describe("listWorlds", () => {
-  it("filters by application id but keeps contexts that omit it", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      okJson({
-        data: {
-          contexts: [
-            { id: "c1", applicationId: "mine" },
-            { id: "c2", applicationId: "other" },
-            { id: "c3" }, // old node: no applicationId field
-          ],
-        },
-      }),
-    );
-    const worlds = await listWorlds("mine");
-    expect(worlds.map((w) => w.contextId)).toEqual(["c1", "c3"]);
+  it("lists this account's worlds of this application, and not others", async () => {
+    const mine = await createWorld("package:com.calimero.mero-blocks", "mine", 1);
+    await createWorld("package:com.other", "other", 1);
+    const worlds = await listWorlds("package:com.calimero.mero-blocks");
+    expect(worlds.map((w) => w.contextId)).toEqual([mine.contextId]);
   });
 });
 
-/** route the fetch mock by URL suffix; records every request for assertions */
-function mockRoutes(routes: [string, unknown][]) {
-  const calls: { url: string; method: string; body: unknown }[] = [];
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const url = String(input);
-    calls.push({
-      url,
-      method: init?.method ?? "GET",
-      body: init?.body ? JSON.parse(init.body as string) : undefined,
+describe("createWorld (own organization → open team → app instance)", () => {
+  it("creates an organization, an OPEN team, then the app in that team", async () => {
+    const res = await createWorld("package:com.calimero.mero-blocks", "myworld", 777);
+    const org = res.namespaceId;
+    const team = res.groupId.slice(org.length + 1);
+    expect(res.groupId).toBe(`${org}.${team}`); // a team of the world's own organization
+    expect(routes()).toEqual(["POST orgs", `POST orgs/${org}/teams`, "POST apps"]);
+    expect(res.contextId).toMatch(/^[0-9a-f]{64}$/);
+    const body = (path: string) => cluster.calls.find(([m, p]) => m === "POST" && p === path)![2];
+    expect(body("orgs")).toEqual({ name: "myworld" }); // one organization per world, named after it
+    expect(body(`orgs/${org}/teams`)).toMatchObject({ name: "myworld", join: "everyone" }); // invitees reach it through the org
+    const app = body("apps");
+    expect(app).toMatchObject({
+      package: "com.calimero.mero-blocks",
+      org,
+      access: { kind: "team", team },
     });
-    for (const [suffix, data] of routes) {
-      if (url.endsWith(suffix)) return okJson({ data });
-    }
-    return { ok: false, status: 404, json: async () => ({}) } as Response;
-  });
-  return calls;
-}
-
-describe("createWorld (own namespace → open subgroup → context)", () => {
-  it("creates a namespace, an OPEN subgroup, then the context with groupId", async () => {
-    const calls = mockRoutes([
-      ["/admin-api/namespaces", { namespaceId: "ns-1" }],
-      ["/admin-api/namespaces/ns-1/groups", { groupId: "grp-1" }],
-      ["/admin-api/contexts", { contextId: "ctx-new", memberPublicKey: "pk-new" }],
-    ]);
-    const res = await createWorld("app-1", "myworld", 777);
-    expect(res).toEqual({
-      contextId: "ctx-new",
-      memberPublicKey: "pk-new",
-      namespaceId: "ns-1",
-      groupId: "grp-1",
-    });
-
-    expect(calls.map((c) => `${c.method} ${c.url.replace("http://node:2428", "")}`)).toEqual([
-      "POST /admin-api/namespaces",
-      "POST /admin-api/namespaces/ns-1/groups",
-      "POST /admin-api/contexts",
-    ]);
-    const nsBody = calls[0].body as Record<string, unknown>;
-    expect(nsBody.applicationId).toBe("app-1");
-    expect(nsBody.name).toBe("myworld"); // one namespace per world, named after it
-    // The KEY SET, not just the keys we want. `CreateNamespaceApiRequest` is
-    // `deny_unknown_fields`, so anything extra is a 400 for the whole create —
-    // there is no such thing as a field an older node reads and this one
-    // ignores. This line used to assert `alias` was PRESENT ("curb compat"),
-    // which is how the fleet shipped a namespace-create that could not succeed
-    // against any node since core#2338:
-    //   unknown field `alias`, expected one of `applicationId`, `name`,
-    //   `appKey`, `bytecodeId`
-    // `upgradePolicy` (deleted in rc.21) is excluded by the same assertion.
-    expect(Object.keys(nsBody).sort()).toEqual(["applicationId", "name"]);
-    const groupBody = calls[1].body as Record<string, unknown>;
-    expect(groupBody.groupName).toBe("myworld"); // the node's field is groupName, not name
-    expect(groupBody.visibility).toBe("open"); // invitees self-join via inheritance
-    const ctxBody = calls[2].body as Record<string, unknown>;
-    expect(ctxBody.applicationId).toBe("app-1"); // camelCase envelope
-    expect(ctxBody.groupId).toBe("grp-1"); // rc.13+ rejects contexts without one
-    const params = JSON.parse(
-      new TextDecoder().decode(new Uint8Array(ctxBody.initializationParams as number[])),
-    );
-    expect(params.name).toBe("myworld");
-    expect(params.seed).toBe(777);
-    expect(typeof params.now).toBe("number"); // init anchors the shared day clock
+    const init = (app as { initArgs: { name: string; seed: number; now: number } }).initArgs;
+    expect(init.name).toBe("myworld");
+    expect(init.seed).toBe(777);
+    expect(typeof init.now).toBe("number"); // init anchors the shared day clock
   });
 
-  it("gives every world its own namespace — no reuse across worlds", async () => {
-    const calls = mockRoutes([
-      ["/admin-api/namespaces", { namespaceId: "ns-x" }],
-      ["/admin-api/namespaces/ns-x/groups", { groupId: "grp-x" }],
-      ["/admin-api/contexts", { contextId: "ctx-x", memberPublicKey: "pk-x" }],
-    ]);
-    await createWorld("app-1", "first", 1);
-    await createWorld("app-1", "second", 2);
-    const nsCreates = calls.filter(
-      (c) => c.method === "POST" && c.url.endsWith("/admin-api/namespaces"),
-    );
-    expect(nsCreates).toHaveLength(2);
-    expect(nsCreates.map((c) => (c.body as Record<string, unknown>).name)).toEqual([
+  it("gives every world its own organization — no reuse across worlds", async () => {
+    await createWorld("package:com.calimero.mero-blocks", "first", 1);
+    await createWorld("package:com.calimero.mero-blocks", "second", 2);
+    expect(cluster.calls.filter(([m, p]) => m === "POST" && p === "orgs").map(([, , b]) => (b as { name: string }).name)).toEqual([
       "first",
       "second",
     ]);
   });
-
-  it("tolerates snake_case response fields", async () => {
-    mockRoutes([
-      ["/admin-api/namespaces", { namespace_id: "ns-s" }],
-      ["/admin-api/namespaces/ns-s/groups", { group_id: "grp-s" }],
-      ["/admin-api/contexts", { id: "ctx-s", member_public_key: "pk-s" }],
-    ]);
-    expect(await createWorld("a", "w", 1)).toEqual({
-      contextId: "ctx-s",
-      memberPublicKey: "pk-s",
-      namespaceId: "ns-s",
-      groupId: "grp-s",
-    });
-  });
 });
 
 describe("admin error parsing", () => {
-  it("surfaces the node's error body instead of a bare HTTP status", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: false,
-      status: 403,
-      json: async () => ({ error: "identity not eligible for inheritance-based join" }),
-    } as Response);
-    await expect(joinWorld("ctx-x")).rejects.toThrow(
-      "identity not eligible for inheritance-based join",
-    );
+  it("surfaces the cluster's own words instead of a bare HTTP status", async () => {
+    cluster.failNext("apps/", 403, "you may not join this world");
+    await expect(joinWorld("ctx-x")).rejects.toThrow("you may not join this world");
   });
 
-  it("falls back to method + path + status when the body is not JSON", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: false,
-      status: 502,
-      json: async () => {
-        throw new Error("not json");
-      },
-    } as unknown as Response);
-    await expect(joinWorld("ctx-x")).rejects.toThrow(/POST .*\/join: HTTP 502/);
+  it("names a world the cluster does not know", async () => {
+    await expect(joinWorld("ctx-unknown")).rejects.toThrow("no such app");
   });
 });
 
 describe("joinWorld", () => {
-  it("joins the context and returns the identity the node owns for it", async () => {
-    const calls = mockRoutes([
-      ["/admin-api/contexts/ctx-1/join", {}],
-      ["/admin-api/contexts/ctx-1/identities-owned", ["pk-me"]],
-    ]);
-    expect(await joinWorld("ctx-1")).toBe("pk-me");
-    expect(calls.map((c) => c.method)).toEqual(["POST", "GET"]);
-  });
-
-  it("fails loudly when no identity exists after the join", async () => {
-    mockRoutes([
-      ["/admin-api/contexts/ctx-1/join", {}],
-      ["/admin-api/contexts/ctx-1/identities-owned", []],
-    ]);
-    await expect(joinWorld("ctx-1")).rejects.toThrow(/no identity/);
+  it("joins a world of an organization it belongs to, as its account", async () => {
+    const w = await createWorld("package:com.calimero.mero-blocks", "w", 1);
+    expect(await joinWorld(w.contextId)).toBe("alice");
   });
 });

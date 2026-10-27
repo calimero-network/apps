@@ -19,7 +19,6 @@ import {
   hasConnection,
   sessionKind,
 } from "./net/session";
-import { completeEnrolment } from "./net/account";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
@@ -87,13 +86,8 @@ interface RemoteAvatar {
 
 async function boot(): Promise<void> {
   const captured = captureSessionFromHash();
-  // Back from the wallet? The fragment then carries a device certificate
-  // rather than node tokens: verify it, save it, learn the account's relay,
-  // and the session is an ACCOUNT one from here on. Read once, before
-  // anything renders, so the tab lands signed in instead of on the prompt.
-  const enrolment = await completeEnrolment();
-  // desktop SSO can hand over an expired token — refresh before going online
-  // (a node matter; an account has no token to refresh)
+  // A reload restores only the refresh token: trade it for a session before
+  // going online.
   await ensureFreshToken();
 
   const app = document.getElementById("app")!;
@@ -131,7 +125,7 @@ async function boot(): Promise<void> {
     // its own logo/title/pitch and opens on the world picker — join a world or
     // create one — rather than making the visitor read a second landing page.
     const sawLanding = await showLandingOnce();
-    choice = await new Landing(app).show(defaults, { chromeless: sawLanding, enrolment });
+    choice = await new Landing(app).show(defaults, { chromeless: sawLanding });
   }
   localStorage.setItem("mt-name", choice.name);
 

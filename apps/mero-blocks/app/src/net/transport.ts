@@ -1,26 +1,14 @@
 // The ONE place the app decides how it talks to Calimero.
 //
-// Two kinds of session play the same game:
-//   - `node`    — the player logged into their own merod (web login or the
-//                 desktop's SSO hash). Admin calls are the node's REST routes
-//                 with a bearer token, contract calls go to `/jsonrpc`, events
-//                 are the node's `/sse`. Unchanged from before accounts existed.
-//   - `account` — the player enrolled a device with their Calimero account at
-//                 the wallet and plays through a relay. Admin calls are the
-//                 mero-js account admin (governance + creation warrants signed
-//                 by the device, reads through the relay), contract calls are
-//                 warrants on `/intents` (reads via the relay query route),
-//                 events are the relay's SSE on the account session.
-//
-// Everything above this module (`admin.ts`, `client.ts`, the UI) asks for
-// `getTransport()` and never looks at `session.kind` again; nothing above it
-// builds a node URL or a bearer header. The two implementations live in
-// `nodeTransport.ts` and `accountTransport.ts`.
+// The player is signed in to a Calimero Cloud cluster with a passkey; admin
+// calls, contract calls and events all go through the cloud client
+// (`cloudTransport.ts`). Everything above this module (`admin.ts`,
+// `client.ts`, the UI) asks for `getTransport()`; nothing above it builds a
+// URL or a header.
 
 import { sessionEpoch, sessionKind, type SessionKind } from "./session";
 import type { SignedInvitation } from "./inviteCodec";
-import { createNodeTransport } from "./nodeTransport";
-import { createAccountTransport } from "./accountTransport";
+import { createCloudTransport } from "./cloudTransport";
 
 export interface ContextInfo {
   contextId: string;
@@ -129,7 +117,7 @@ export function getTransport(): Transport {
     current = {
       kind,
       epoch,
-      transport: kind === "account" ? createAccountTransport() : createNodeTransport(),
+      transport: createCloudTransport(),
     };
   }
   return current.transport;

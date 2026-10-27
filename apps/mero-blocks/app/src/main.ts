@@ -17,13 +17,12 @@ import { arrowLook, pointerLockAvailable } from "./input/look";
 import { WheelSteps } from "./input/wheel";
 import { APP_SLUG, inviteLink } from "./net/inviteLink";
 import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/cloud";
-import { completeAccountEnrolment, isReturningFromWallet } from "./net/account";
 import { acceptWorldInvite, createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { GameClient, type WorldMeta } from "./net/client";
 import {
-  adoptAccountSession,
   captureSessionFromHash,
   clearWorld,
+  ensureFreshSession,
   getSession,
   hasConnection,
   sessionKind,
@@ -98,23 +97,10 @@ interface RemoteAvatar {
 async function boot(): Promise<void> {
   const captured = captureSessionFromHash();
 
-  // Back from the wallet (the Cloud tab's enrolment redirect): finish the
-  // enrolment, find the account's relay, and switch this tab onto the account
-  // session. Its hash (`credential`/`account`/`device`, or `error`) is not a
-  // node-login hash, so `captured` above is "none" on this path. A refusal is
-  // not fatal — it is said on the dialog's Cloud tab, which reopens for it.
-  let cloud: CloudReturn | undefined;
-  if (isReturningFromWallet()) {
-    try {
-      const outcome = await completeAccountEnrolment();
-      if (outcome) {
-        adoptAccountSession();
-        cloud = { note: outcome.note, open: false };
-      }
-    } catch (err) {
-      cloud = { note: err instanceof Error ? err.message : String(err), open: true };
-    }
-  }
+  // A reload restores only the refresh token: trade it for a session before
+  // going online (a failure leaves the player signed out, on the landing page).
+  await ensureFreshSession();
+  const cloud: CloudReturn | undefined = undefined;
 
   const app = document.getElementById("app")!;
   const canvas = document.createElement("canvas");

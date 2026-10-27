@@ -18,10 +18,9 @@ const { clients, FakeSseClient } = vi.hoisted(() => {
   return { clients, FakeSseClient };
 });
 
-vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  SseClient: FakeSseClient,
-  AuthRevokedError: class AuthRevokedError extends Error {},
+vi.mock("../src/net/transport", () => ({
+  // The world's event stream, as the cloud transport hands it out.
+  getTransport: () => ({ openEvents: () => new FakeSseClient() }),
 }));
 vi.mock("../src/net/session", () => ({
   getSession: () => ({ nodeUrl: "http://localhost:2428", contextId: "ctx" }),

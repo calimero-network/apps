@@ -1,17 +1,6 @@
-// Contract calls, over whichever mero-js transport the session rides.
-//
-// Node: mero-js's `RpcClient` POSTs `{node}/jsonrpc` with the camelCase
-// `execute` envelope (`contextId`, `method`, `argsJson` as a raw object) and
-// the bearer the token store holds. Account: the delegated client's `rpc`
-// reads through the relay's query route and writes as `/intents` warrants.
-// Both satisfy `ExecuteTransport`, so this module never sees the difference —
-// and never opens a socket of its own: there is no `fetch` here on purpose.
-//
-// `params` is EXACTLY `contextId`/`method`/`argsJson`. Core's
-// `ExecutionRequest` carries `deny_unknown_fields`, so a fourth key is a 400
-// for the whole call (`executorPublicKey` was that key once; the node derives
-// the executor from the credential). mero-js builds the envelope and the test
-// beside this file pins what we hand it.
+// Contract calls, over the cloud transport the session rides (`execute` on
+// the player's cluster, sealed to an attested node). This module never opens
+// a socket of its own: there is no `fetch` here on purpose.
 
 import { RpcError, type ExecuteTransport } from "@calimero-apps/cloud";
 

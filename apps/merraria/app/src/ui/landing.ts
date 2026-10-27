@@ -1,22 +1,11 @@
 // Landing page + launcher. Three auth states:
-//  1. anonymous          → "Connect" opens the connect popup with two tabs:
-//                          Node — the well-known local endpoints render
-//                          immediately and are pinged live (mero-js
-//                          probeNodeHealth), plus a manual URL field; and
-//                          Cloud — enrol this browser's device key with your
-//                          account at the wallet and play through its relay.
-//                          No node and no account, no game — there is no
-//                          offline mode.
-//  2. authenticated      → pick an existing world or create one (admin API,
-//                          the same surface on a node and on an account)
+//  1. anonymous          → "Sign in to play" opens the passkey dialog: sign in
+//                          on the cluster, or create an account with a passkey.
+//                          No account, no game — there is no offline mode.
+//  2. authenticated      → pick an existing world or create one (admin API)
 //  3. ready (has context)→ one-click "Enter shared world"
 // Desktop SSO (full hash) never sees this page — main.ts auto-enters.
 
-import {
-  DEFAULT_LOCAL_NODE_PORTS,
-  localNodeUrl,
-  probeNodeHealth,
-} from "@calimero-apps/cloud";
 import {
   acceptWorldInvite,
   createWorld,
@@ -29,18 +18,15 @@ import {
   worldNameOf,
 } from "../net/admin";
 import { inviteLink } from "../net/inviteLink";
-import { beginWebLogin } from "../net/auth";
-import { goToWallet, isReturningFromWallet, shortAccount, type EnrolmentResult } from "../net/account";
+import { beginWebLogin, createAccount, defaultCluster } from "../net/auth";
 import { deleteWorld } from "../state/persistence";
 import { setInviteJoiner } from "./invitePrompt";
 import { WorldAnim } from "./worldAnim";
 import {
   clearSession,
-  getAccountSession,
   getSession,
   hasConnection,
   isAuthenticated,
-  sessionKind,
   updateSession,
 } from "../net/session";
 import { showLandingAgain } from "../pages/landing/mount";
@@ -52,8 +38,6 @@ export interface LaunchChoice {
 export interface LandingOptions {
   /** skip this screen's own logo/title/pitch (the unified landing just showed them) */
   chromeless?: boolean;
-  /** what happened to an enrolment this page load came back from, if any */
-  enrolment?: EnrolmentResult;
 }
 
 const css = `
@@ -260,8 +244,6 @@ const SOCIALS: { label: string; href: string; icon: string }[] = [
 export class Landing {
   private root: HTMLElement;
   private anim: WorldAnim | null = null;
-  /** the enrolment this page load came back from — shown once, on the Cloud tab */
-  private enrolment: EnrolmentResult | null = null;
 
   constructor(parent: HTMLElement) {
     const style = document.createElement("style");
@@ -284,7 +266,6 @@ export class Landing {
   ): Promise<LaunchChoice> {
     return new Promise((resolve) => {
       if (opts.chromeless) this.root.classList.add("is-chromeless");
-      this.enrolment = opts.enrolment ?? null;
       this.render(defaults, (choice) => {
         setInviteJoiner(null); // the game takes invitations from here on
         this.anim?.stop();
@@ -388,26 +369,15 @@ export class Landing {
   private renderWorldPicker(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     const connected = hasConnection();
-    // An account is "me" at the governance level: say which one is signed
-    // in, and that leaving is signing out, not disconnecting a node.
-    const account = sessionKind() === "account" ? getAccountSession() : null;
     el.innerHTML = `
       <h3>Choose a world</h3>
-      ${
-        account
-          ? `<div class="mtl-account" data-testid="account-badge">Signed in as
-               <code>${escapeHtml(shortAccount(account.account))}</code>${
-                 account.relayUrl ? "" : " — no relay yet: open an invite link a friend sent you"
-               }</div>`
-          : ""
-      }
       ${this.commonInputs(defaults)}
       <div class="mtl-worlds" data-testid="world-list"></div>
       <div class="mtl-error" data-testid="join-error"></div>
       <button class="mtl-btn green" data-testid="create-world-open-btn">Create world</button>
       ${connected ? `<button class="mtl-btn ghost" data-testid="invite-btn">Invite friends</button>` : ""}
       <button class="mtl-link" data-testid="disconnect-btn">${
-        account ? "Sign out" : "Disconnect from node"
+        "Sign out"
       }</button>
     `;
     const listEl = el.querySelector<HTMLElement>("[data-testid=world-list]")!;
@@ -495,9 +465,7 @@ export class Landing {
         loading.remove();
         const others = worlds.filter((w) => w.contextId !== current);
         if (!current && others.length === 0) {
-          listEl.innerHTML = account
-            ? `<div class="mtl-note">No worlds for this account yet — create one, or open an invite link a friend sent you.</div>`
-            : `<div class="mtl-note">No worlds on this node yet — create the first one!</div>`;
+          listEl.innerHTML = `<div class="mtl-note">No worlds for this account yet — create one, or open an invite link a friend sent you.</div>`;
           return;
         }
         others.forEach((w, i) => listEl.appendChild(this.worldCard(w, false, i, done, errEl)));
@@ -679,145 +647,88 @@ export class Landing {
     el.innerHTML = `
       <h3>Play now</h3>
       ${this.commonInputs(defaults)}
-      <button class="mtl-btn green" data-testid="connect-open-btn">Connect a node</button>
-      <div class="mtl-note">Merraria runs on your Calimero node — connect one to play.
-        You'll authenticate on your node and come straight back; opening from the
-        Calimero desktop skips this page entirely. No node yet?
-        <a href="https://docs.calimero.network/getting-started/" target="_blank"
-        rel="noopener noreferrer" style="color:#8fa3ba">Run one</a>, or sign in with
-        your Calimero account (the Cloud tab) and play through its relay.</div>
+      <button class="mtl-btn green" data-testid="connect-open-btn">Sign in to play</button>
+      <div class="mtl-note">Merraria runs on Calimero Cloud: sign in with your passkey,
+        or create an account with one. Worlds you create or join live on the cluster.</div>
     `;
     // the anonymous card can never start the game (_done unused): the only
-    // exits are beginWebLogin's / the wallet's redirects, which re-enter as
-    // picker/ready
+    // exit is a sign-in, which reloads into the picker
     el.querySelector("[data-testid=connect-open-btn]")!.addEventListener("click", () =>
       this.openConnectModal(),
     );
-    // Back from the wallet: open the popup on the Cloud tab so the person
-    // sees what the enrolment has to say instead of a closed dialog.
-    const enrolment = this.enrolment;
-    if (enrolment && enrolment.status !== "none") {
-      this.enrolment = null;
-      this.openConnectModal({ tab: "cloud", note: enrolment.note });
-    }
   }
 
   /**
-   * The connect popup, two tabs (the wording of the shared landing dialog):
-   *   Node  — the well-known local endpoints are pinged on open and only the
-   *           LIVE ones are listed (a dead port is noise, not a choice), so
-   *           there is nothing to refresh. Rescan re-probes; the manual URL
-   *           field is always there as the fallback.
-   *   Cloud — enrol this browser's device key with your account at the
-   *           wallet. Opens here when the page comes back from the wallet.
+   * The sign-in popup, two tabs: sign in with a passkey on the cluster, or
+   * create an account with a new one. Both run the passkey ceremony in this
+   * page and reload into the world picker.
    */
-  private openConnectModal(opts: { tab?: "node" | "cloud"; note?: string | null } = {}): void {
+  private openConnectModal(opts: { tab?: "signin" | "create" } = {}): void {
     const shade = document.createElement("div");
     shade.className = "mtl-modal-shade";
     shade.dataset.testid = "connect-modal";
+    const cluster = escapeHtml(defaultCluster());
     shade.innerHTML = `
       <div class="mtl-modal">
         <div class="mtl-modal-head">
-          <h3>Connect</h3>
+          <h3>Sign in</h3>
           <button class="mtl-modal-close" data-testid="connect-close" aria-label="Close">✕</button>
         </div>
         <div class="mtl-tabs" role="tablist">
-          <button class="mtl-tab" role="tab" data-tab="node" data-testid="tab-node">Node</button>
-          <button class="mtl-tab" role="tab" data-tab="cloud" data-testid="tab-cloud">Cloud</button>
+          <button class="mtl-tab" role="tab" data-tab="signin" data-testid="tab-signin">Sign in</button>
+          <button class="mtl-tab" role="tab" data-tab="create" data-testid="tab-create">Create account</button>
         </div>
-        <div class="mtl-tabpanel" data-panel="node" role="tabpanel">
-          <div class="mtl-nodes" data-testid="discovered-nodes"></div>
-          <div class="mtl-note" data-testid="scan-note"></div>
-          <button class="mtl-btn ghost" data-testid="rescan-btn">Rescan</button>
-          <div class="mtl-divider">or your node url</div>
-          <input id="mtl-node" data-testid="node-url-input" placeholder="http://localhost:2428" />
-          <button class="mtl-btn primary" data-testid="web-login-btn">Connect</button>
-          <div class="mtl-error" data-testid="login-error"></div>
+        <div class="mtl-divider">cluster</div>
+        <input id="mtl-node" data-testid="node-url-input" value="${cluster}" />
+        <div class="mtl-tabpanel" data-panel="signin" role="tabpanel">
+          <button class="mtl-btn primary" data-testid="web-login-btn">Sign in with your passkey</button>
         </div>
-        <div class="mtl-tabpanel" data-panel="cloud" role="tabpanel" hidden>
-          <div class="mtl-note">Sign in with your Calimero account. The wallet certifies
-            this browser as one of your devices and you come straight back; worlds you
-            create or join are served by your account's relay — no node of your own.</div>
-          <button class="mtl-btn primary" data-testid="enrol-btn">Enrol with your account</button>
-          <div class="mtl-note" data-testid="cloud-note"></div>
+        <div class="mtl-tabpanel" data-panel="create" role="tabpanel" hidden>
+          <input id="mtl-account-name" data-testid="account-name-input" placeholder="Your name" />
+          <button class="mtl-btn primary" data-testid="create-account-btn">Create account with a passkey</button>
         </div>
+        <div class="mtl-error" data-testid="login-error"></div>
       </div>
     `;
     this.root.appendChild(shade);
 
-    let abort = new AbortController();
-    const close = () => {
-      abort.abort();
-      shade.remove();
-    };
+    const close = () => shade.remove();
     shade.addEventListener("click", (e) => {
       if (e.target === shade) close();
     });
     shade.querySelector("[data-testid=connect-close]")!.addEventListener("click", close);
 
-    const select = (tab: "node" | "cloud") => {
+    const select = (tab: "signin" | "create") => {
       for (const t of shade.querySelectorAll<HTMLButtonElement>(".mtl-tab"))
         t.setAttribute("aria-selected", String(t.dataset.tab === tab));
       for (const p of shade.querySelectorAll<HTMLElement>(".mtl-tabpanel"))
         p.hidden = p.dataset.panel !== tab;
     };
     for (const t of shade.querySelectorAll<HTMLButtonElement>(".mtl-tab"))
-      t.addEventListener("click", () => select(t.dataset.tab as "node" | "cloud"));
-    select(opts.tab ?? (isReturningFromWallet() ? "cloud" : "node"));
+      t.addEventListener("click", () => select(t.dataset.tab as "signin" | "create"));
+    select(opts.tab ?? "signin");
 
-    const cloudNote = shade.querySelector<HTMLElement>("[data-testid=cloud-note]")!;
-    if (opts.note) cloudNote.textContent = opts.note;
-    shade.querySelector("[data-testid=enrol-btn]")!.addEventListener("click", () => {
-      // A device key this browser cannot make (no X25519, blocked storage) is
-      // reported where the person is looking, not lost as a rejection.
-      goToWallet().catch((e) => {
-        cloudNote.textContent = errText(e);
-      });
-    });
-
-    const nodesEl = shade.querySelector<HTMLElement>("[data-testid=discovered-nodes]")!;
-    const noteEl = shade.querySelector<HTMLElement>("[data-testid=scan-note]")!;
-
-    const scan = () => {
-      abort.abort();
-      abort = new AbortController();
-      const signal = abort.signal;
-      noteEl.textContent = "";
-      nodesEl.innerHTML = `<div class="mtl-scan" data-testid="scan-progress">Scanning for local nodes…</div>`;
-      let found = 0;
-      const probes = DEFAULT_LOCAL_NODE_PORTS.map((port, i) => {
-        const url = localNodeUrl(port);
-        return probeNodeHealth(url, { signal }).then((alive) => {
-          if (signal.aborted || !alive) return false;
-          if (found++ === 0) nodesEl.innerHTML = ""; // first hit clears the scanning note
-          const row = document.createElement("div");
-          row.className = "mtl-node-row";
-          row.innerHTML = `<span class="mtl-dot"></span><code>${escapeHtml(url)}</code>
-            <button data-testid="discovered-node-${i}">Connect</button>`;
-          row.querySelector("button")!.addEventListener("click", () => beginWebLogin(url));
-          nodesEl.appendChild(row);
-          return true;
-        });
-      });
-      void Promise.all(probes).then((alive) => {
-        if (signal.aborted) return;
-        if (!alive.some(Boolean)) {
-          nodesEl.innerHTML = "";
-          noteEl.textContent = "No local nodes found — rescan, or enter your node's URL below.";
-        }
+    const errEl = shade.querySelector<HTMLElement>("[data-testid=login-error]")!;
+    const clusterUrl = (): string | null => {
+      const url = shade.querySelector<HTMLInputElement>("#mtl-node")?.value.trim() ?? "";
+      if (/^https?:\/\/.+/.test(url)) return url;
+      errEl.textContent = "Enter the cluster's URL (e.g. https://cloud.example).";
+      return null;
+    };
+    // The passkey prompt is the browser's; what it says when it is dismissed
+    // or finds no passkey is shown here, where the person is looking.
+    const run = (action: (url: string) => Promise<void>) => {
+      const url = clusterUrl();
+      if (!url) return;
+      errEl.textContent = "";
+      action(url).catch((e) => {
+        errEl.textContent = errText(e);
       });
     };
-    shade.querySelector("[data-testid=rescan-btn]")!.addEventListener("click", scan);
-    scan();
-
-    shade.querySelector("[data-testid=web-login-btn]")!.addEventListener("click", () => {
-      const url = shade.querySelector<HTMLInputElement>("#mtl-node")?.value.trim() ?? "";
-      const errEl = shade.querySelector<HTMLElement>("[data-testid=login-error]")!;
-      if (!/^https?:\/\/.+/.test(url)) {
-        errEl.textContent = "Enter your node's URL (e.g. http://localhost:2428).";
-        return;
-      }
-      beginWebLogin(url); // navigates away; the callback hash brings us back
+    shade.querySelector("[data-testid=web-login-btn]")!.addEventListener("click", () => run((url) => beginWebLogin(url)));
+    shade.querySelector("[data-testid=create-account-btn]")!.addEventListener("click", () => {
+      const name = shade.querySelector<HTMLInputElement>("#mtl-account-name")?.value ?? "";
+      run((url) => createAccount(url, name));
     });
   }
 }

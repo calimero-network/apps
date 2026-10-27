@@ -7,12 +7,11 @@ import {
 } from "../src/net/inviteCodec";
 import { shouldRetain } from "@calimero-apps/cloud";
 import { acceptWorldInvite, createWorldInvite, WorldInviteError } from "../src/net/admin";
-import { getSession, resetSession, updateSession } from "../src/net/session";
+import { createWorld, joinWorld } from "../src/net/admin";
+import { writeSession } from "@calimero-apps/cloud";
+import { installFakeCluster, type FakeCluster } from "@calimero-apps/cloud/testing";
+import { clearWorld, getSession, resetSession, updateSession } from "../src/net/session";
 import { resetTransport } from "../src/net/transport";
-
-// Real `Response`s: the wire is mero-js's now, which reads bodies as text.
-const okJson = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 const SIGNED = {
   invitation: {
@@ -31,14 +30,39 @@ const PAYLOAD: WorldInvitePayload = {
   groupId: "grp-77",
 };
 
+let cluster: FakeCluster;
+const APP = "package:com.calimero.merraria";
+
+/** Sign `account` in on the fake cluster, as this tab. */
+function as(account: string) {
+  cluster.signIn(account);
+  writeSession({ accountId: account, sessionToken: `t-${account}`, refreshToken: "r", expiresAt: 9e9 });
+  resetTransport();
+}
+
+/** Alice creates a world, enters it and mints an invite; the tab is then Bob's, outside any world. */
+async function aliceInvitesBob(): Promise<{ code: string; world: Awaited<ReturnType<typeof createWorld>> }> {
+  as("alice");
+  const world = await createWorld(APP, "overworld", 1);
+  updateSession({ contextId: world.contextId, namespaceId: world.namespaceId, groupId: world.groupId, worldName: "overworld" });
+  const code = await createWorldInvite();
+  as("bob");
+  clearWorld();
+  return { code, world };
+}
+
 beforeEach(() => {
   localStorage.clear();
   resetSession();
   resetTransport();
-  updateSession({ kind: "node", nodeUrl: "http://node:2428", applicationId: "app-1" });
-  localStorage.setItem("mero-tokens", JSON.stringify({ access_token: "t" }));
+  cluster = installFakeCluster();
+  updateSession({ kind: "node", nodeUrl: "https://cloud.example", applicationId: APP });
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  cluster.uninstall();
+  writeSession(null);
+  vi.restoreAllMocks();
+});
 
 describe("invite codec", () => {
   it("roundtrips deflate+base58", () => {
@@ -72,244 +96,83 @@ describe("invite codec", () => {
   });
 });
 
-/** fail with a node-style {"error": …} body (HTTP 403 unless given), like the real admin API */
-function mockRoutes(routes: [string, unknown][], failing: [string, string, number?][] = []) {
-  const calls: { url: string; method: string; body: unknown }[] = [];
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const url = String(input);
-    calls.push({
-      url,
-      method: init?.method ?? "GET",
-      body: init?.body ? JSON.parse(init.body as string) : undefined,
+describe("an invitation from one player to another", () => {
+  it("Bob joins Alice's world from her link: organization, team, app — and the session says so", async () => {
+    const { code, world } = await aliceInvitesBob();
+    expect(await acceptWorldInvite(code)).toBe(world.contextId);
+    expect(getSession()).toMatchObject({
+      contextId: world.contextId,
+      namespaceId: world.namespaceId,
+      groupId: world.groupId,
+      worldName: "overworld", // the alias travels with the invite
+      executorPublicKey: "bob", // the contract's caller is Bob's account
     });
-    for (const [suffix, error, status = 403] of failing) {
-      if (url.endsWith(suffix)) return okJson({ error }, status);
-    }
-    for (const [suffix, data] of routes) {
-      if (url.endsWith(suffix)) return okJson({ data });
-    }
-    return okJson({}, 404);
-  });
-  return calls;
-}
-
-describe("acceptWorldInvite", () => {
-  it("joins namespace → subgroup (inheritance) → context, verifies the identity, stores the session", async () => {
-    const calls = mockRoutes([
-      ["/admin-api/namespaces/abcd01/join", { groupId: "abcd01", memberIdentity: "me" }],
-      ["/admin-api/namespaces", [{ namespaceId: "abcd01" }]],
-      ["/admin-api/groups/grp-77/join-via-inheritance", {}],
-      ["/admin-api/contexts/ctx-77/join", {}],
-      ["/admin-api/contexts/ctx-77/identities-owned", ["pk-me"]],
-    ]);
-    const contextId = await acceptWorldInvite(encodeInvite(PAYLOAD));
-    expect(contextId).toBe("ctx-77");
-    expect(calls.map((c) => c.url.replace("http://node:2428", ""))).toEqual([
-      "/admin-api/namespaces/abcd01/join",
-      "/admin-api/namespaces",
-      "/admin-api/groups/grp-77/join-via-inheritance",
-      "/admin-api/contexts/ctx-77/join",
-      "/admin-api/contexts/ctx-77/identities-owned",
-    ]);
-    expect((calls[0].body as Record<string, unknown>).invitation).toEqual(SIGNED);
-    expect(getSession().contextId).toBe("ctx-77");
-    expect(getSession().namespaceId).toBe("abcd01");
-    expect(getSession().groupId).toBe("grp-77");
-    expect(getSession().worldName).toBe("overworld"); // alias travels with the invite
-    expect(getSession().executorPublicKey).toBe("pk-me"); // rpc executor for the world
+    expect(cluster.orgs.get(world.namespaceId)!.members.get("bob")).toBe("member");
   });
 
-  it("treats a failed namespace join as already-a-member when the node lists the namespace", async () => {
-    // the desktop proxy aborts at 30s while the join lands anyway
-    const calls = mockRoutes(
-      [
-        ["/admin-api/namespaces", [{ namespaceId: "other" }, { namespaceId: "abcd01" }]],
-        ["/admin-api/groups/grp-77/join-via-inheritance", {}],
-        ["/admin-api/contexts/ctx-77/join", {}],
-        ["/admin-api/contexts/ctx-77/identities-owned", ["pk-me"]],
-      ],
-      [["/admin-api/namespaces/abcd01/join", "gateway timeout", 504]],
-    );
-    expect(await acceptWorldInvite(encodeInvite(PAYLOAD))).toBe("ctx-77");
-    // sent exactly once — membership, not a retry, settles it
-    expect(calls.filter((c) => c.url.endsWith("/namespaces/abcd01/join"))).toHaveLength(1);
-    expect(getSession().namespaceId).toBe("abcd01");
+  it("is already a member when the join failed but the organization lists Bob", async () => {
+    const { code, world } = await aliceInvitesBob();
+    cluster.orgs.get(world.namespaceId)!.members.set("bob", "member");
+    cluster.failNext("invites/", 503, "busy");
+    expect(await acceptWorldInvite(code)).toBe(world.contextId);
   });
 
-  it("gives up on an invitation the node refused for good (409), with friendly copy", async () => {
-    const calls = mockRoutes(
-      [["/admin-api/namespaces", []]],
-      [["/admin-api/namespaces/abcd01/join", "invitation for group abcd01 expired at 999", 409]],
-    );
-    const err = await acceptWorldInvite(encodeInvite(PAYLOAD)).catch((e: unknown) => e);
+  it("gives up on an invitation the cluster refused for good (410), with friendly copy", async () => {
+    const { code } = await aliceInvitesBob();
+    cluster.failNext("invites/", 410, "invitation expired");
+    const err = await acceptWorldInvite(code).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(WorldInviteError);
     const { outcome, message } = err as WorldInviteError;
     expect(outcome.reason).toBe("expired");
     expect(shouldRetain(outcome)).toBe(false); // the prompt acks the captured link
     expect(message).toBe("This invitation has expired. Ask for a new link.");
-    expect(calls.some((c) => c.url.includes("join-via-inheritance"))).toBe(false);
     expect(getSession().contextId).toBeNull();
   });
 
   it("keeps an invitation that failed for the moment (503) for the next load", async () => {
-    mockRoutes(
-      [["/admin-api/namespaces", []]],
-      [["/admin-api/namespaces/abcd01/join", "no peers available to admit you", 503]],
-    );
-    const err = await acceptWorldInvite(encodeInvite(PAYLOAD)).catch((e: unknown) => e);
+    const { code } = await aliceInvitesBob();
+    cluster.failNext("invites/", 503, "the cluster is busy");
+    const err = (await acceptWorldInvite(code).catch((e: unknown) => e)) as WorldInviteError;
     expect(err).toBeInstanceOf(WorldInviteError);
-    const { outcome, message } = err as WorldInviteError;
-    expect(outcome.reason).toBe("no-one-online");
-    expect(shouldRetain(outcome)).toBe(true); // the prompt leaves the link captured
-    expect(message).toMatch(/No one in this world is online/);
+    expect(shouldRetain(err.outcome)).toBe(true); // the prompt leaves the link captured
     expect(getSession().contextId).toBeNull();
   });
 
-  it("retries the subgroup join once after syncing the namespace", async () => {
-    let inheritanceCalls = 0;
-    const calls: string[] = [];
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      const url = String(input).replace("http://node:2428", "");
-      calls.push(`${init?.method ?? "GET"} ${url}`);
-      if (url.endsWith("/join-via-inheritance")) {
-        inheritanceCalls++;
-        if (inheritanceCalls === 1) return okJson({ error: "group not found" }, 404);
-        return okJson({ data: {} });
-      }
-      if (url.endsWith("/identities-owned")) return okJson({ data: ["pk-me"] });
-      return okJson({ data: {} });
-    });
-    expect(await acceptWorldInvite(encodeInvite(PAYLOAD))).toBe("ctx-77");
-    expect(inheritanceCalls).toBe(2);
-    expect(calls).toContain("POST /admin-api/groups/abcd01/sync");
-  });
-
-  it("surfaces a friendly message when the world's subgroup is not open", async () => {
-    mockRoutes(
-      [
-        ["/admin-api/namespaces/abcd01/join", {}],
-        ["/admin-api/groups/abcd01/sync", {}],
-      ],
-      [
-        [
-          "/admin-api/groups/grp-77/join-via-inheritance",
-          "identity not eligible for inheritance-based join",
-        ],
-      ],
-    );
-    await expect(acceptWorldInvite(encodeInvite(PAYLOAD))).rejects.toThrow(
-      /not open to invited players/,
-    );
-    expect(getSession().contextId).toBeNull(); // never half-enters the world
-  });
-
-  it("fails when the context join leaves us without an identity", async () => {
-    mockRoutes([
-      ["/admin-api/namespaces/abcd01/join", {}],
-      ["/admin-api/groups/grp-77/join-via-inheritance", {}],
-      ["/admin-api/contexts/ctx-77/join", {}],
-      ["/admin-api/contexts/ctx-77/identities-owned", []],
-    ]);
-    await expect(acceptWorldInvite(encodeInvite(PAYLOAD))).rejects.toThrow(/no identity/);
-    expect(getSession().contextId).toBeNull();
-  });
-
-  it("discovers the context for curb-style payloads without one", async () => {
-    const bare: WorldInvitePayload = { invitation: SIGNED, groupId: "grp-9" };
-    mockRoutes([
-      ["/admin-api/namespaces/abcd01/join", {}],
-      ["/admin-api/groups/grp-9/join-via-inheritance", {}],
-      ["/admin-api/groups/grp-9/contexts", { contexts: [{ contextId: "ctx-found" }] }],
-      ["/admin-api/contexts/ctx-found/join", {}],
-      ["/admin-api/contexts/ctx-found/identities-owned", ["pk-me"]],
-    ]);
-    expect(await acceptWorldInvite(encodeInvite(bare))).toBe("ctx-found");
-  });
-
-  it("rejects invalid codes without touching the network", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
+  it("rejects invalid codes without touching the cluster", async () => {
     await expect(acceptWorldInvite("definitely not a code")).rejects.toThrow(/valid invite/);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(cluster.calls).toEqual([]);
   });
-});
 
-describe("createWorldInvite", () => {
-  it("mints a namespace invitation and pins the world's ids into the payload", async () => {
-    updateSession({ contextId: "ctx-77", namespaceId: "ns-1", groupId: "grp-77" });
-    const calls = mockRoutes([
-      ["/admin-api/groups/grp-77", { subgroupVisibility: "open" }],
-      ["/admin-api/namespaces/ns-1/invite", { invitation: SIGNED, groupName: "overworld" }],
-    ]);
-    const code = await createWorldInvite();
-    const payload = decodeInvite(code)!;
-    expect(payload.invitation).toEqual(SIGNED);
-    expect(payload.contextId).toBe("ctx-77");
-    expect(payload.groupId).toBe("grp-77");
+  it("mints an organization invitation and pins the world's ids into the payload", async () => {
+    as("alice");
+    const world = await createWorld(APP, "overworld", 1);
+    updateSession({ contextId: world.contextId, namespaceId: world.namespaceId, groupId: world.groupId, worldName: "overworld" });
+    const payload = decodeInvite(await createWorldInvite())!;
+    expect(payload.contextId).toBe(world.contextId);
+    expect(payload.groupId).toBe(world.groupId);
     expect(payload.groupAlias).toBe("overworld");
-    // already open — no visibility flip needed
-    expect(calls.some((c) => c.method === "PUT")).toBe(false);
+    expect(namespaceIdOfInvite(payload)).toBe(world.namespaceId);
   });
 
-  it("flips a legacy restricted world open before minting", async () => {
-    updateSession({ contextId: "ctx-77", namespaceId: "ns-1", groupId: "grp-77" });
-    const calls = mockRoutes([
-      ["/admin-api/groups/grp-77", { subgroupVisibility: "restricted" }],
-      ["/admin-api/groups/grp-77/settings/subgroup-visibility", {}],
-      ["/admin-api/namespaces/ns-1/invite", { invitation: SIGNED }],
-    ]);
+  it("opens a world whose team is invite-only before minting, so invitees reach it", async () => {
+    as("alice");
+    const world = await createWorld(APP, "w", 1);
+    const team = world.groupId.slice(world.namespaceId.length + 1);
+    cluster.orgs.get(world.namespaceId)!.teams.get(team)!.join = "invite";
+    updateSession({ contextId: world.contextId, namespaceId: world.namespaceId, groupId: world.groupId });
     await createWorldInvite();
-    const flip = calls.find((c) => c.method === "PUT");
-    expect(flip?.url).toContain("/groups/grp-77/settings/subgroup-visibility");
-    expect(flip?.body).toEqual({ subgroupVisibility: "open" });
+    expect(cluster.orgs.get(world.namespaceId)!.teams.get(team)!.join).toBe("everyone");
   });
 
-  it("resolves namespace + group when the session lacks them (joined via picker)", async () => {
-    updateSession({ contextId: "ctx-77" });
-    mockRoutes([
-      ["/admin-api/contexts/ctx-77/group", "grp-77"],
-      ["/admin-api/namespaces/for-application/app-1", [{ namespaceId: "ns-1" }]],
-      ["/admin-api/namespaces/ns-1/groups", [{ groupId: "grp-77", name: "overworld" }]],
-      ["/admin-api/groups/grp-77", { subgroupVisibility: "open" }],
-      ["/admin-api/namespaces/ns-1/invite", { invitation: SIGNED }],
-    ]);
-    const payload = decodeInvite(await createWorldInvite())!;
-    expect(payload.contextId).toBe("ctx-77");
-    expect(payload.groupId).toBe("grp-77");
-    expect(getSession().namespaceId).toBe("ns-1"); // cached for the next invite
-  });
-
-  it("does not trust a namespace cached from a DIFFERENT world", async () => {
-    // switched from another world: contextId updated, coordinates cleared by
-    // the picker — the invite must resolve ctx-77's own namespace
-    updateSession({ contextId: "ctx-77", namespaceId: null, groupId: null });
-    const calls = mockRoutes([
-      ["/admin-api/contexts/ctx-77/group", "grp-77"],
-      ["/admin-api/namespaces/for-application/app-1", [{ namespaceId: "ns-77" }]],
-      ["/admin-api/namespaces/ns-77/groups", [{ groupId: "grp-77" }]],
-      ["/admin-api/groups/grp-77", { subgroupVisibility: "open" }],
-      ["/admin-api/namespaces/ns-77/invite", { invitation: SIGNED }],
-    ]);
-    await createWorldInvite();
-    expect(calls.some((c) => c.url.endsWith("/admin-api/namespaces/ns-77/invite"))).toBe(true);
-    expect(getSession().namespaceId).toBe("ns-77");
-  });
-
-  it("falls back to the session's world name when the node omits groupName", async () => {
-    updateSession({
-      contextId: "ctx-77",
-      namespaceId: "ns-1",
-      groupId: "grp-77",
-      worldName: "myworld",
-    });
-    mockRoutes([
-      ["/admin-api/groups/grp-77", { subgroupVisibility: "open" }],
-      ["/admin-api/namespaces/ns-1/invite", { invitation: SIGNED }], // no groupName echoed
-    ]);
-    const payload = decodeInvite(await createWorldInvite())!;
-    expect(payload.groupAlias).toBe("myworld");
-  });
-
-  it("refuses when not connected to a world", async () => {
+  it("refuses when not in a world", async () => {
+    as("alice");
     await expect(createWorldInvite()).rejects.toThrow(/not in a shared world/);
+  });
+
+  it("a member who left cannot join the world without a new invite", async () => {
+    as("alice");
+    const world = await createWorld(APP, "w", 1);
+    as("bob");
+    await expect(joinWorld(world.contextId)).rejects.toThrow();
   });
 });

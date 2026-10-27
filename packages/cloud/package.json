@@ -12,6 +12,10 @@
     "./vite": {
       "types": "./vite.d.mts",
       "default": "./vite.mjs"
+    },
+    "./testing": {
+      "types": "./types/cloud/testing.d.ts",
+      "default": "./src/testing.ts"
     }
   },
   "types": "./types/index.d.ts",
