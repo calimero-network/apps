@@ -48,13 +48,11 @@ repository = "https://github.com/calimero-network/apps"
 #
 # Bumping core: edit these three lines, update `min-runtime-version` and
 # `merod-image` below, run `cargo update`, and let CI rebuild every app.
-# release-v2 (the cloud-only release candidate) pinned core's `release-v2` BRANCH.
-# That branch adds only new crates (cloud-node, cloud-client, identity, log,
-# sealed); its sdk, storage and wasm-abi crates are 0.12.0-rc.3's minus core#4700
-# (sealed outbound secrets), so the apps build against the tag.
-# ⚠️ merod-v2 (the release-v2 node) has no core#4700 host functions yet: mero-forms,
-# the only app that calls them (`seal_outbound_secret`, `tee_sealing_key`), will
-# not link on it until core's release-v2 carries #4700.
+# release-v2 (the cloud-only release candidate, core#4712) builds against this
+# tag too: core's release-v2-parity merged 0.12.0-rc.3, so its sdk, storage and
+# wasm-abi crates are the tag's (core#4700's sealed outbound secrets included,
+# and merod links them) plus `env::caller_org`, which no app here calls yet.
+# An app that calls it needs the branch until core#4712 is released.
 [workspace.dependencies]
 calimero-sdk            = { git = "https://github.com/calimero-network/core.git", tag = "0.12.0-rc.3" }
 calimero-storage        = { git = "https://github.com/calimero-network/core.git", tag = "0.12.0-rc.3" }
