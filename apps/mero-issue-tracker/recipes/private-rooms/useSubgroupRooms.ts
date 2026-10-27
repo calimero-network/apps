@@ -7,7 +7,7 @@
  *   'restricted' → private (only members the creator adds)
  */
 import { useCallback, useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 export type RoomVisibility = 'open' | 'restricted';
 

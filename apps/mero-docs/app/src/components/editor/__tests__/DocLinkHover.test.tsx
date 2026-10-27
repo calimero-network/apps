@@ -45,7 +45,7 @@ vi.mock('@blocknote/react', async (importOriginal) => ({
 vi.mock('@/hooks/useFolderReach', () => ({
   useFolderReach: () => canOpen,
 }));
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   // A one-off member read goes stale when someone joins; the card must not use it.
   useGroupMembers: () => ({ members: [] }),

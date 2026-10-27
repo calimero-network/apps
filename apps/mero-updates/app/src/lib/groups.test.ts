@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeInvite } from "./inviteCodec";
 import { clearHostingState, hostingProblem } from "./hosting";
-import { CAPABILITIES, type AdminApiClient } from "@calimero-network/mero-js";
+import { CAPABILITIES, type AdminApiClient } from "@calimero-apps/cloud";
 import {
   MEMBER_CAPABILITIES,
   acceptInvite,

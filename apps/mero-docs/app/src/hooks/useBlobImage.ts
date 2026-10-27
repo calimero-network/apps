@@ -3,8 +3,8 @@
 // in: a member writing to the contract directly can name any blob.
 
 import { useCallback, useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
-import { classifyError } from '@calimero-network/mero-js';
+import { useMero } from '@calimero-apps/cloud';
+import { classifyError } from '@calimero-apps/cloud';
 import { parseBlobRef, sniffImageType } from '@/lib/images';
 
 export type BlobImage =

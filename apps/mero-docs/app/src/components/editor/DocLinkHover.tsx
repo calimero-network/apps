@@ -3,7 +3,7 @@
 // follows a doc link; a mention opens its card on click.
 
 import * as React from 'react';
-import { useGroupCapabilities } from '@calimero-network/mero-react';
+import { useGroupCapabilities } from '@calimero-apps/cloud';
 import {
   LinkToolbar,
   useBlockNoteEditor,

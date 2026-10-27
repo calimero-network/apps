@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import type { SseEventData } from '@calimero-network/mero-react';
+import type { SseEventData } from '@calimero-apps/cloud';
 import { useContextEvents } from '../useContextEvents';
 
 // Capture the handler mero-react's useSubscription would register, so
@@ -13,7 +13,8 @@ const events = {
   on: (_: 'connect', h: () => void) => { connectHandlers.add(h); },
   off: (_: 'connect', h: () => void) => { connectHandlers.delete(h); },
 };
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: (ids: string[], handler: (e: SseEventData) => void) => {
     lastHandler = handler;
     lastIds = ids;

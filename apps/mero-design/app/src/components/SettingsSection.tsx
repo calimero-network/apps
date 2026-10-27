@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMero, useRemoveGroupMembers } from "@calimero-network/mero-react";
+import { useMero, useRemoveGroupMembers } from "@calimero-apps/cloud";
 import { useMemberNames, useMyName } from "@calimero-apps/names";
 import { ShieldCheck } from "@calimero-network/mero-icons";
 import { getNodeIdentity, listGroupMembers, rpcCall, updateMemberRole, type GroupMemberInfo } from "../api/rpc";

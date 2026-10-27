@@ -14,7 +14,7 @@ vi.mock("../../repositories/names/useNames", () => ({
   nameRepository: { resolve: (id: string) => resolve(id) },
 }));
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getContextId: () => "ctx-1",
   getContextIdentity: () => "device-key",

@@ -17,7 +17,7 @@ import {
   saveDelegatedSession,
   type CloudAccountRelay,
   type DelegatedAccountSession,
-} from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
 
 /** The hosted wallet's enrolment page (the one `useAccountEnrolment` uses). */
 export const WALLET_URL = "https://wallet.cloud.calimero.network/account-enroll";

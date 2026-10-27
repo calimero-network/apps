@@ -14,7 +14,7 @@
 //     — the message itself as a byte array. Decoding it is the difference between
 //     showing "that key is frozen" and showing a wall of numbers.
 
-import { RpcError } from "@calimero-network/mero-js";
+import { RpcError } from "@calimero-apps/cloud";
 import { getContextId, getMeroClient } from "../lib/mero";
 
 /**

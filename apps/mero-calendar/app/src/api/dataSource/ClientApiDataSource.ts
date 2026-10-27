@@ -1,4 +1,4 @@
-import { getContextId } from "@calimero-network/mero-react";
+import { getContextId } from "@calimero-apps/cloud";
 import { callContract } from "../contract";
 import { accountId } from "../identity";
 import {

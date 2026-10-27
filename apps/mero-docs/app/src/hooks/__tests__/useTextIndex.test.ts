@@ -23,7 +23,8 @@ let subscribed: { ids: string[]; handler: (e: Event) => void } | null = null;
 // A new session per test: the text cache is per mero client.
 let mero = {};
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ mero }),
   useSubscription: (ids: string[], handler: (e: Event) => void) => {
     subscribed = { ids, handler };

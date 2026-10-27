@@ -7,7 +7,7 @@ import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import type { ResponseData } from "../../api/types";
-import { getContextIdentity } from "@calimero-network/mero-react";
+import { getContextIdentity } from "@calimero-apps/cloud";
 import { isDelegatedSession } from "../../api/meroJsClient";
 import { useGroupAdmin } from "../../hooks/useGroupAdmin";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";

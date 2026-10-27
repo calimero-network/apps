@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useCreateBlockNote } from '@blocknote/react';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@calimero-apps/cloud';
 import { toast } from 'sonner';
 import { schema, type DriveEditor } from '@/components/editor/blocknote/schema';
 import { MAX_IMAGE_BYTES } from '@/lib/images';
@@ -10,7 +10,8 @@ import { IMAGE_SIZE_REFUSED, IMAGE_TYPE_REFUSED, useAddImages } from '../useAddI
 
 const uploadBlob = vi.fn();
 const mero = { admin: { uploadBlob } };
-vi.mock('@calimero-network/mero-react', () => ({ useMero: () => ({ mero, admin: mero.admin }) }));
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()), useMero: () => ({ mero, admin: mero.admin }) }));
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
 }));

@@ -4,13 +4,12 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@calimero-apps/cloud": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/names": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
-    "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
-    "@calimero-network/mero-react": "catalog:",
     "@calimero-network/mero-ui": "catalog:",
     "@radix-ui/react-slot": "^1.2.3",
     "@tailwindcss/vite": "^4.1.11",
@@ -86,7 +85,7 @@
     "test:e2e": "playwright test",
     "shots": "node e2e/shots.mjs",
     "test:live": "vitest run --config e2e/live/vitest.config.ts",
-    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name MeroSignClient --import-path @calimero-network/mero-js",
+    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name MeroSignClient --import-path @calimero-apps/cloud",
     "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "browserslist": {

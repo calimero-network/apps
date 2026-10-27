@@ -1,4 +1,4 @@
-import { parseDeviceCredential, verifyDeviceCredential } from "@calimero-network/mero-js";
+import { parseDeviceCredential, verifyDeviceCredential } from "@calimero-apps/cloud";
 import { describe, expect, it } from "vitest";
 import { envBlock, mintFormIdentity } from "./formKey";
 

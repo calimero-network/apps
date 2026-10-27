@@ -15,7 +15,7 @@ import {
   clearNamespaceJustJoined,
   isNamespaceJustJoined,
   markNamespaceJustJoined,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 const NS = "a1".repeat(32);
 const CAL = "c0".repeat(32);
@@ -49,8 +49,8 @@ vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useNavigate: () => stub.navigate,
 }));
-vi.mock("@calimero-network/mero-react", async (orig) => ({
-  ...(await orig<typeof import("@calimero-network/mero-react")>()),
+vi.mock("@calimero-apps/cloud", async (orig) => ({
+  ...(await orig<typeof import("@calimero-apps/cloud")>()),
   useMero: () => ({
     admin: stub.admin,
     isDelegated: false,

@@ -19,7 +19,8 @@ vi.mock("../api/teamContexts", () => ({ listTeamContexts: vi.fn().mockResolvedVa
 const admin: { listGroupMembers: ReturnType<typeof vi.fn>; setMemberMetadata?: ReturnType<typeof vi.fn> } = {
   listGroupMembers: vi.fn().mockResolvedValue({ members: [{ identity: ana, role: "Member", name: "Ana" }] }),
 };
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ applicationId: "app-1", admin }),
   useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn() }),
 }));

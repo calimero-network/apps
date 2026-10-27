@@ -11,7 +11,7 @@
  * (get_status_counts), and every mutation refetches so the UI never lags.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMero, useSubscription } from '@calimero-network/mero-react';
+import { useMero, useSubscription } from '@calimero-apps/cloud';
 import { useStreamReconnect } from './useStreamReconnect';
 import {
   IssueTrackerClient,

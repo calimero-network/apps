@@ -7,7 +7,7 @@
  * peers can tell a live tab from a closed one whose node keeps replaying it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useEphemeral, useMero } from '@calimero-network/mero-react';
+import { useEphemeral, useMero } from '@calimero-apps/cloud';
 
 import type { Rect } from '../spreadsheet/refs';
 import {

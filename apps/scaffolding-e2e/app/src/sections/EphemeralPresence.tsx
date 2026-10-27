@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import type { EphemeralEntry } from "@calimero-network/mero-js";
+import { useMero } from "@calimero-apps/cloud";
+import type { EphemeralEntry } from "@calimero-apps/cloud";
 import { ResultBox } from "../components/ResultBox";
 import { getContextId } from "../lib/mero";
 

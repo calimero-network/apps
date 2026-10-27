@@ -24,7 +24,7 @@
 // get done, in the words the user needs to act on it.
 
 import { useCallback, useState } from 'react';
-import { useMero, useUpdateMemberRole } from '@calimero-network/mero-react';
+import { useMero, useUpdateMemberRole } from '@calimero-apps/cloud';
 import { useDriveWorkspace } from './useDriveWorkspace';
 import {
   registryManagerIntent,

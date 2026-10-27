@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { FeedView } from "./FeedView";
 import { SettingsView, settingsSection } from "./SettingsView";
 import { ChatView } from "./ChatView";

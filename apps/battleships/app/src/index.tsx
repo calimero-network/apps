@@ -4,7 +4,7 @@ import ReactDOM from 'react-dom/client';
 import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
-import { primeInvitationCapture } from '@calimero-network/mero-react';
+import { primeInvitationCapture } from '@calimero-apps/cloud';
 import { APP_SLUG } from './utils/invitation';
 
 // An invitation reaches this app only as an opened link: the links page (or a

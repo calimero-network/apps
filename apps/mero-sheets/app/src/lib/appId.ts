@@ -1,4 +1,4 @@
-import type { MeroJs } from '@calimero-network/mero-js';
+import type { MeroJs } from '@calimero-apps/cloud';
 import { APP_PACKAGE } from '../config';
 
 /**

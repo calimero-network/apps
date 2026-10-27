@@ -39,7 +39,7 @@ import {
   useMero,
   useNamespacesForApplication,
   useGroupContexts,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { APP_DISPLAY_NAME, PRIMARY_SERVICE } from '../config';
 import { useApplicationId } from './useApplicationId';
 import {

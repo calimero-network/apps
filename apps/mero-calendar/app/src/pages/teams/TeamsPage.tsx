@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { listNamespaces, selfIsGroupAdmin } from "../../api/admin";
 import { loadAccountId } from "../../api/identity";
 import { useEnsureAppId } from "../../hooks/useEnsureAppId";

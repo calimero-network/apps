@@ -23,9 +23,8 @@
     "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
+    "@calimero-apps/cloud": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
-    "@calimero-network/mero-js": "catalog:",
-    "@calimero-network/mero-react": "catalog:",
     "bootstrap": "^5.3.7",
     "react": "catalog:",
     "react-dom": "catalog:",

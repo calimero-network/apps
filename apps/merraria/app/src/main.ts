@@ -9,7 +9,7 @@ import { AIR, HOTBAR, STARTING_INVENTORY } from "./engine/tiles";
 import { TileStore } from "./engine/world";
 import { acceptWorldInvite, createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { APP_SLUG, inviteLink } from "./net/inviteLink";
-import { primeInvitationCapture as primeInviteCapture } from "@calimero-network/mero-react";
+import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/cloud";
 import { GameClient, type WorldMeta } from "./net/client";
 import {
   captureSessionFromHash,

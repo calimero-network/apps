@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSubscription } from "@calimero-network/mero-react";
+import { useSubscription } from "@calimero-apps/cloud";
 import { useMeroStream } from "./useMeroStream";
 import { captureFrameLuma, paintLuma } from "../lib/luma";
 import { acquireCamera } from "../lib/media";

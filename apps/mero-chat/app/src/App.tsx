@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { useEffect, useState, lazy, Suspense } from "react";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import { isNamespaceReady } from "./utils/session";

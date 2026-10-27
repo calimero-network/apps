@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@calimero-apps/cloud';
 import { applyAcross, inheritReadOnly, type FolderRoleWriter } from '../applyFolderRole';
 import { FOLDER_ROLE_GRANTS } from '../roles';
 

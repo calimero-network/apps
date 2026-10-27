@@ -20,7 +20,7 @@ import {
   useSubscription,
   type SseEventData,
   type SubscriptionEventData,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { isContextEvent, normalizeContextIds } from './useContextEvents';
 
 export type SyncPhase =

@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useJoinSync, useMero } from "@calimero-network/mero-react";
+import { useJoinSync, useMero } from "@calimero-apps/cloud";
 import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import { useMeroStream } from "../hooks/useMeroStream";
 import { useLiveStream } from "../hooks/useLiveStream";

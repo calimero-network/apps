@@ -1,4 +1,4 @@
-import { clearContextId } from "@calimero-network/mero-react";
+import { clearContextId } from "@calimero-apps/cloud";
 
 /**
  * Log out: forget which context this browser had open, then let mero-react

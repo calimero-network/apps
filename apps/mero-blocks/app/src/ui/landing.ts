@@ -14,7 +14,7 @@ import {
   DEFAULT_LOCAL_NODE_PORTS,
   localNodeUrl,
   probeNodeHealth,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import {
   acceptWorldInvite,
   createWorld,

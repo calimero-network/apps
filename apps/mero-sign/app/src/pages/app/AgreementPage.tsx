@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { JOIN_SYNC_POLL_MS, useJoinSync, useMero } from '@calimero-network/mero-react';
+import { JOIN_SYNC_POLL_MS, useJoinSync, useMero } from '@calimero-apps/cloud';
 import { publishMemberName, useMemberNames } from '@calimero-apps/names';
 import {
   CheckCircle2,

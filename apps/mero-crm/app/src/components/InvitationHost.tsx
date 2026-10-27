@@ -5,7 +5,7 @@ import {
   InvitationGate,
   useInviteRedemption,
   useMero,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { APP_ROUTE } from "../config";
 import { announceJoined } from "../hooks/joinedWorkspace";
 import { inviteRedeemer, parseInviteToken } from "../utils/redeemInvite";

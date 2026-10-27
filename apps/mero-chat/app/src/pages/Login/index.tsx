@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { clearStoredSession, clearNamespaceReady } from "../../utils/session";
 import { INVITATION_STORAGE_KEY } from "../../utils/invitation";
 import { useNavigate } from "react-router-dom";

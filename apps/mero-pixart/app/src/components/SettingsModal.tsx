@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { ShieldCheck } from "@calimero-network/mero-icons";
 import { useMemberNames } from "@calimero-apps/names";
 import { MembersPanel } from "@calimero-apps/members";

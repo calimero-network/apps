@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import type { ResponseData } from "../api/types";
-import { getContextIdentity } from "@calimero-network/mero-react";
+import { getContextIdentity } from "@calimero-apps/cloud";
 import type { Channels } from "../api/clientApi";
 import type { ChannelMeta } from "../types/Common";
 import { log } from "../utils/logger";

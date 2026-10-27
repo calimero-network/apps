@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useContexts, useMero, useSubscription } from "@calimero-network/mero-react";
-import type { SubscriptionEventData } from "@calimero-network/mero-react";
+import { useContexts, useMero, useSubscription } from "@calimero-apps/cloud";
+import type { SubscriptionEventData } from "@calimero-apps/cloud";
 import { HyperfeedClient, type LensView } from "./generated/HyperfeedClient";
 import { nodeBackend, type FeedBackend } from "./backend";
 import type { BlobStore } from "./attachments";

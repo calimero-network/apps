@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 import { clearPersistedWorkspace } from '../hooks/workspacePersistence';
 
 /**

@@ -17,7 +17,7 @@ vi.mock("../api/rpc", () => ({
   leaveNamespace: vi.fn(),
   listNamespaces: (...a: unknown[]) => listNamespaces(...a),
 }));
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ ...session }),
 }));

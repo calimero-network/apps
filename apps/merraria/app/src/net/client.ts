@@ -8,7 +8,7 @@ import {
   type GroupMigrationEventData,
   type SseClient,
   type SseEventData,
-} from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
 import { clearSession, getSession } from "./session";
 import { getTransport, type Transport } from "./transport";
 import { bindExec, type Exec } from "./rpc";

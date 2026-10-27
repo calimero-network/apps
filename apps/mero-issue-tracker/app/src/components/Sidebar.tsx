@@ -8,12 +8,12 @@ import TeeBadge from './TeeBadge';
 import { SelectMenu } from './Dropdown';
 import type { RepoEntry } from '../hooks/useWorkspace';
 import type { TeeMode } from '../utils/tee';
-import type { Namespace } from '@calimero-network/mero-react';
+import type { Namespace } from '@calimero-apps/cloud';
 import {
   IconAllIssues, IconMyIssues, IconBoard, IconMembers, IconLogout, IconPlus, IconRepo,
 } from './icons';
 import { useSignOut } from '../auth/signOut';
-import { JoinSyncBanner } from '@calimero-network/mero-react';
+import { JoinSyncBanner } from '@calimero-apps/cloud';
 
 export interface SidebarProps {
   totalIssues: number;

@@ -44,7 +44,7 @@ import {
   JoinSyncBanner,
   isNamespaceJustJoined,
   useJoinSync,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 
 // ── The agreements in one workspace ─────────────────────────────────────────
 //

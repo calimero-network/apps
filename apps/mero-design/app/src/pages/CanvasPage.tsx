@@ -6,7 +6,7 @@ import { useSse } from "../hooks/useSse";
 import { getElementsByIds } from "../api/elementBatch";
 import { collectBoardChanges } from "../utils/boardEvents";
 import { useGroupActions } from "../hooks/useGroupActions";
-import { JoinSyncBanner, useMero } from "@calimero-network/mero-react";
+import { JoinSyncBanner, useMero } from "@calimero-apps/cloud";
 import { useMemberNames, useMyName } from "@calimero-apps/names";
 import { decideBoardName } from "../utils/boardName";
 import { countRender } from "../utils/renderCount";

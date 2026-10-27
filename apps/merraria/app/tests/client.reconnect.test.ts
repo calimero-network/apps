@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { SseClient } from "@calimero-network/mero-js";
+import type { SseClient } from "@calimero-apps/cloud";
 import { GameClient } from "../src/net/client";
 import { resetSession, updateSession } from "../src/net/session";
 import type { Transport } from "../src/net/transport";

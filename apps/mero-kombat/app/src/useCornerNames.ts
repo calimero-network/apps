@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useContextGroup, useMero } from "@calimero-network/mero-react";
+import { useContextGroup, useMero } from "@calimero-apps/cloud";
 import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import type { ArenaView, FighterView } from "./generated/MeroKombatClient";
 

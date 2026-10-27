@@ -49,7 +49,8 @@ const h = vi.hoisted(() => {
   return { admin, session, ns };
 });
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => h.session,
   useNamespacesForApplication: (appId: string | null) => {
     h.ns.calledWith.push(appId);

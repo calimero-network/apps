@@ -7,9 +7,9 @@ import { useMemo, type ReactNode } from "react";
 import { fakeMero } from "./fakeMero";
 import { CONTEXTS, P } from "./world";
 
-import { CalimeroLogo } from "../../node_modules/@calimero-network/mero-react/dist/index.js";
+import { CalimeroLogo } from "@calimero-apps/cloud";
 
-export * from "../../node_modules/@calimero-network/mero-react/dist/index.js";
+export * from "@calimero-apps/cloud";
 
 export const AppMode = { MultiContext: "MultiContext", SingleContext: "SingleContext" } as const;
 

@@ -8,7 +8,7 @@ import TeeBadge from "./TeeBadge";
 import { SelectMenu } from "./Dropdown";
 import type { PipelineEntry } from "../hooks/useWorkspace";
 import type { TeeMode } from "../utils/tee";
-import type { Namespace } from "@calimero-network/mero-react";
+import type { Namespace } from "@calimero-apps/cloud";
 import {
   IconBoard,
   IconMembers,
@@ -21,7 +21,7 @@ import {
   IconPlus,
 } from "./icons";
 import { useSignOut } from "../auth/signOut";
-import { JoinSyncBanner } from "@calimero-network/mero-react";
+import { JoinSyncBanner } from "@calimero-apps/cloud";
 
 /** The product name as people say it (studio.config's `metadata.name` is the
  *  package slug, `mero-crm`); matches index.html's <title>. */

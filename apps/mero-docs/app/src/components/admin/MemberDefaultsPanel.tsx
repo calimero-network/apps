@@ -24,7 +24,7 @@ import {
   useDefaultCapabilities,
   useMero,
   useSetDefaultCapabilities,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import {

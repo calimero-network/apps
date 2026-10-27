@@ -7,7 +7,7 @@
  * `add` / `list` / `get` / `update` / owner-gated `delete`.
  */
 
-import type { ExecuteTransport } from '@calimero-network/mero-react';
+import type { ExecuteTransport } from '@calimero-apps/cloud';
 
 // Generated types
 

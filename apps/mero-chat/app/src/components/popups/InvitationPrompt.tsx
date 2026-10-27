@@ -3,7 +3,7 @@ import {
   InvitationDialog,
   InvitationGate,
   useInviteRedemption,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { getMeroJs } from "../../api/meroJsClient";
 import {

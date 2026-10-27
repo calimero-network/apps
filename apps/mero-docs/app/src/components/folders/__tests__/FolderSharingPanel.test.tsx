@@ -40,7 +40,8 @@ vi.mock('@/hooks/useMemberDisplayName', () => ({
     loaded: metadata.answered.has(id),
   }),
 }));
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     mero: {},
     // The session-aware admin (`useMero().admin`) is what the code writes through.

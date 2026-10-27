@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 /** How long after a (re)connect to wait before re-reading state. */
 const RESYNC_DELAY_MS = 500;

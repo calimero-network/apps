@@ -1,4 +1,4 @@
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { useNavigate } from "react-router-dom";
 
 import { LogOutIcon } from "../icons/Icons";

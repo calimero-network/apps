@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useSubscription } from '@calimero-network/mero-react';
+import { useSubscription } from '@calimero-apps/cloud';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useMemberDisplayName } from '../useMemberDisplayName';
 
@@ -8,7 +8,8 @@ import { useMemberDisplayName } from '../useMemberDisplayName';
 // and (when needed) assert it was called with `(nsId, identity)`.
 const memberMetadataMock = vi.fn();
 const setMemberMetadataFn = vi.fn();
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: vi.fn(),
   useMero: () => ({ mero: null }),
   useMemberMetadata: (...args: unknown[]) => memberMetadataMock(...args),

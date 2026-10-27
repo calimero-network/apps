@@ -2,7 +2,7 @@
 
 import type {
   ExecuteTransport,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 
 // Generated types
 

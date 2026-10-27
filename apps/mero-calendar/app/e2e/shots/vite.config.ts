@@ -24,7 +24,7 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /.*\/hooks\/useMembers$/, replacement: here("./useMembers.mock.ts") },
-      { find: "@calimero-network/mero-react", replacement: here("./meroReact.mock.ts") },
+      { find: "@calimero-apps/cloud", replacement: here("./meroReact.mock.ts") },
     ],
   },
   build: { outDir: here("../../../data/shots-build"), emptyOutDir: true },

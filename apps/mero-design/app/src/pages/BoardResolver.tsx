@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { listTeamContexts } from "../api/teamContexts";
 import { useShell } from "../components/shell/shellContext";
 import { pickTeam, readLastVisit } from "../utils/lastVisit";

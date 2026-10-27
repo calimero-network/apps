@@ -19,7 +19,8 @@ let ages = new Map<string, number>();
 const ageOf = (author: string) => ages.get(author);
 // Stable like the provider's client, so a re-render never looks like a new context.
 const MERO = { mero: { ephemeral: { set } } };
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useEphemeral: () => ({ peers, setPresence, ageOf }),
   useMero: () => MERO,
 }));

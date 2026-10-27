@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { useMemberNames } from "@calimero-apps/names";
 import { getSession } from "../api/session";
 import { useTypedSelector } from "./useTypedSelector";

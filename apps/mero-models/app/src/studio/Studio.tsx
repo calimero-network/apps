@@ -5,7 +5,7 @@ import {
   useContextGroup,
   useJoinSync,
   useMero,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import * as cmd from "../editor/commands";
 import { rememberName, storedName, useJoin, usePresence, useSceneSync, useSpaceNames } from "../editor/hooks";
 import { IMPORT_ACCEPT, download, exportScene, importFile, type ExportFormat } from "../editor/io";

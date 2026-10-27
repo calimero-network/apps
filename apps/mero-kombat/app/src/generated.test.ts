@@ -46,10 +46,10 @@ describe("the generated client covers the contract", () => {
     // abi-codegen DEFAULTS the import to `@calimero-network/mero-react`, which
     // does not export `MeroJs` — mero-react's surface is hooks, the provider and
     // the storage helpers. A client generated with the default fails `tsc -b` on
-    // its first line. `--import-path @calimero-network/mero-js` in the codegen
+    // its first line. `--import-path @calimero-apps/cloud` in the codegen
     // script is what corrects it; this asserts the flag is still being passed.
     const src = readFileSync(resolve(HERE, "generated", "MeroKombatClient.ts"), "utf8");
-    expect(src).toContain("from '@calimero-network/mero-js'");
+    expect(src).toContain("from '@calimero-apps/cloud'");
     expect(src).not.toContain("from '@calimero-network/mero-react'");
   });
 });

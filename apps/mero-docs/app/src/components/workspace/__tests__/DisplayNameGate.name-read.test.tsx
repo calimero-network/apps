@@ -7,7 +7,7 @@ import {
   fireEvent,
   waitFor,
 } from '@testing-library/react';
-import { MeroContext } from '@calimero-network/mero-react';
+import { MeroContext } from '@calimero-apps/cloud';
 import { DisplayNameGate } from '../DisplayNameGate';
 
 // Real useMemberDisplayName + mero-react useMemberMetadata, so the gate sees

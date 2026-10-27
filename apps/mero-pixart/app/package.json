@@ -18,14 +18,13 @@
     "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
+    "@calimero-apps/cloud": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/members": "workspace:*",
     "@calimero-apps/names": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
-    "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
-    "@calimero-network/mero-react": "catalog:",
     "@calimero-network/mero-ui": "catalog:",
     "bs58": "catalog:",
     "clsx": "^2.1.1",

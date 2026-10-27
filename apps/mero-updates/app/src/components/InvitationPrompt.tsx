@@ -7,7 +7,7 @@ import {
   useMero,
   type ParsedInvitation,
   type RedeemOutcome,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { invitedNamespaceOf, redeemInvite } from "../lib/groups";
 import { decodeInvite, type AudienceInvitePayload } from "../lib/inviteCodec";
 import { setActiveAudience, setAudienceName } from "../lib/session";

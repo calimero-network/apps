@@ -5,7 +5,7 @@ import {
   useCreateContext,
   useCreateNamespace,
   useNamespacesForApplication,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 /**
  * Choose which context this session talks to, or make one.

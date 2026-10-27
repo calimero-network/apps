@@ -1,5 +1,5 @@
-import { HTTPError } from '@calimero-network/mero-js';
-import { shouldRetain, type RedeemOutcome } from '@calimero-network/mero-react';
+import { HTTPError } from '@calimero-apps/cloud';
+import { shouldRetain, type RedeemOutcome } from '@calimero-apps/cloud';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ParsedInvite } from '@/hooks/useNamespaceInvitation';
 import {

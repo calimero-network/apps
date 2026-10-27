@@ -18,9 +18,6 @@ catalogs:
     '@calimero-network/mero-platform-react':
       specifier: ^0.1.0
       version: 0.1.0
-    '@calimero-network/mero-react':
-      specifier: ^10.3.0
-      version: 10.3.0
     '@calimero-network/mero-ui':
       specifier: ^1.5.2
       version: 1.5.2
@@ -108,8 +105,6 @@ catalogs:
 
 overrides:
   base-x@2.0.6: 3.0.11
-  '@calimero-network/mero-js': 26.9.1
-  kv-store-cloud>@calimero-network/mero-js: github:calimero-network/mero-js#release-v2
 
 importers:
 
@@ -121,6 +116,9 @@ importers:
 
   apps/battleships/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -133,18 +131,12 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
       '@calimero-network/mero-platform-react':
         specifier: 'catalog:'
         version: 0.1.0(react@19.2.8)
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -257,15 +249,12 @@ importers:
 
   apps/conformance/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -297,12 +286,12 @@ importers:
 
   apps/delegated-execution/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@phala/dcap-qvl':
         specifier: 0.5.3
         version: 0.5.3
@@ -340,6 +329,9 @@ importers:
 
   apps/hyperfeed/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -352,15 +344,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@fontsource/ibm-plex-mono':
         specifier: ^5
         version: 5.3.0
@@ -416,21 +402,18 @@ importers:
 
   apps/kv-store/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
       '@calimero-network/mero-platform-react':
         specifier: 'catalog:'
         version: 0.1.0(react@19.2.8)
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -496,6 +479,9 @@ importers:
         specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
     devDependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@playwright/test':
         specifier: ^1.62.1
         version: 1.62.1
@@ -511,15 +497,24 @@ importers:
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 4.7.0(vite@6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
+      jsdom:
+        specifier: 'catalog:'
+        version: 25.0.1
       typescript:
         specifier: 'catalog:'
         version: 5.8.3
       vite:
         specifier: 'catalog:'
         version: 6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
 
   apps/mero-blocks/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -529,15 +524,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -587,6 +576,9 @@ importers:
 
   apps/mero-calendar/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -602,15 +594,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -693,6 +679,9 @@ importers:
       '@braintree/sanitize-url':
         specifier: ^7.1.2
         version: 7.1.2
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -705,18 +694,12 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
       '@calimero-network/mero-platform-react':
         specifier: 'catalog:'
         version: 0.1.0(react@19.2.8)
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -871,6 +854,9 @@ importers:
 
   apps/mero-chess/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -883,18 +869,12 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
       '@calimero-network/mero-platform-react':
         specifier: 'catalog:'
         version: 0.1.0(react@19.2.8)
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -956,6 +936,9 @@ importers:
 
   apps/mero-crm/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -971,15 +954,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1053,6 +1030,9 @@ importers:
 
   apps/mero-design/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -1065,15 +1045,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1171,6 +1145,9 @@ importers:
       '@blocknote/react':
         specifier: ^0.51.4
         version: 0.51.4(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -1180,12 +1157,6 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: ^0.3.6
         version: 0.3.7(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1355,6 +1326,9 @@ importers:
 
   apps/mero-forms/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -1367,18 +1341,12 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
       '@calimero-network/mero-platform-react':
         specifier: 'catalog:'
         version: 0.1.0(react@19.2.8)
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -1434,6 +1402,9 @@ importers:
 
   apps/mero-forum/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -1446,15 +1417,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -1534,6 +1499,9 @@ importers:
 
   apps/mero-issue-tracker/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -1549,15 +1517,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1631,6 +1593,9 @@ importers:
 
   apps/mero-kombat/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -1643,18 +1608,12 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
       '@calimero-network/mero-platform-react':
         specifier: 'catalog:'
         version: 0.1.0(react@19.2.8)
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -1716,6 +1675,9 @@ importers:
 
   apps/mero-models/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -1728,18 +1690,12 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
       '@calimero-network/mero-platform-react':
         specifier: 'catalog:'
         version: 0.1.0(react@19.2.8)
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -1810,6 +1766,9 @@ importers:
 
   apps/mero-pass/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -1822,18 +1781,12 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-pass':
         specifier: workspace:*
         version: link:../../../packages/mero-pass
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -1913,6 +1866,9 @@ importers:
 
   apps/mero-pixart/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -1928,15 +1884,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2022,6 +1972,9 @@ importers:
 
   apps/mero-sheets/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -2034,15 +1987,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2134,6 +2081,9 @@ importers:
 
   apps/mero-sign/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -2146,15 +2096,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2327,6 +2271,9 @@ importers:
 
   apps/mero-standup/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -2336,18 +2283,12 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
       '@calimero-network/mero-platform-react':
         specifier: 'catalog:'
         version: 0.1.0(react@19.2.8)
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -2403,6 +2344,9 @@ importers:
 
   apps/mero-stream/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -2415,15 +2359,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2509,6 +2447,9 @@ importers:
 
   apps/mero-updates/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -2521,15 +2462,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -2609,6 +2544,9 @@ importers:
 
   apps/mero-vote/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -2618,18 +2556,12 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
       '@calimero-network/mero-platform-react':
         specifier: 'catalog:'
         version: 0.1.0(react@19.2.8)
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@noble/curves':
         specifier: ^2.4.0
         version: 2.4.0
@@ -2691,6 +2623,9 @@ importers:
 
   apps/merraria/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
@@ -2700,15 +2635,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -2752,15 +2681,12 @@ importers:
 
   apps/scaffolding-e2e/app:
     dependencies:
+      '@calimero-apps/cloud':
+        specifier: workspace:*
+        version: link:../../../packages/cloud
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
-      '@calimero-network/mero-js':
-        specifier: 26.9.1
-        version: 26.9.1
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bootstrap:
         specifier: ^5.3.7
         version: 5.3.8(@popperjs/core@2.11.8)
@@ -2804,6 +2730,43 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 6.4.5(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@6.4.5(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
+
+  packages/cloud:
+    dependencies:
+      '@calimero-network/mero-js':
+        specifier: github:calimero-network/mero-js#release-v2
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/4ea343d1e2c73241b636cce268f2986c0efda16a
+    devDependencies:
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
+      jsdom:
+        specifier: 'catalog:'
+        version: 25.0.1
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.5(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
+      vite-plugin-node-polyfills:
+        specifier: ^0.24.0
+        version: 0.24.0(rollup@4.64.12)(vite@6.4.5(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@6.4.5(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
@@ -3660,8 +3623,9 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
-  '@calimero-network/mero-js@26.9.1':
-    resolution: {integrity: sha512-0RkUqycr5+wGz3PKwCOAqsYDKdx0Eerinp6DlsDXpaJHdI3XmsKZfLlz5r14nlU1kuAbsWp2gMaIBVuOD7LHXA==}
+  '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/4ea343d1e2c73241b636cce268f2986c0efda16a':
+    resolution: {tarball: https://codeload.github.com/calimero-network/mero-js/tar.gz/4ea343d1e2c73241b636cce268f2986c0efda16a}
+    version: 26.10.0
     engines: {node: '>=18.0.0'}
 
   '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/9773774ccee2700a940cc69d5125e3191c2dd9b5':
@@ -3676,12 +3640,6 @@ packages:
 
   '@calimero-network/mero-platform@0.1.0':
     resolution: {integrity: sha512-ocEdeeou3GYdRlXxThuXtf4Klfi18g8Dpvl3urBGUgwHbhchMN/6KrGKr3jUj5XlcRnIPlvUmNEN1PoJ8oYp6w==}
-
-  '@calimero-network/mero-react@10.3.0':
-    resolution: {integrity: sha512-5kJhMti14hgy7x0px7n8IzFHXhDlLmeVEPe8H11PvsrmjlAfYxAU2gPpxetTXj5kzmJTm48Pgt9MhI+mV+yPKw==}
-    peerDependencies:
-      react: ^18.0.0 || ^19.0.0
-      react-dom: ^18.0.0 || ^19.0.0
 
   '@calimero-network/mero-ui@0.3.7':
     resolution: {integrity: sha512-2H6TVm1BQwv/9kAnMapLZmYlfYZUwCZo6V25NSpSgFMYVlXBQz3pRdBzJGPtNjzg/5coeJFthUVdmOxaJcX15A==}
@@ -10885,7 +10843,7 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  '@calimero-network/mero-js@26.9.1':
+  '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/4ea343d1e2c73241b636cce268f2986c0efda16a':
     dependencies:
       '@phala/dcap-qvl': 0.5.3
     transitivePeerDependencies:
@@ -10903,14 +10861,6 @@ snapshots:
       react: 19.2.8
 
   '@calimero-network/mero-platform@0.1.0': {}
-
-  '@calimero-network/mero-react@10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@calimero-network/mero-js': 26.9.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-    transitivePeerDependencies:
-      - encoding
 
   '@calimero-network/mero-ui@0.3.7(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
@@ -17585,6 +17535,14 @@ snapshots:
       '@rollup/plugin-inject': 5.0.5(rollup@4.64.12)
       node-stdlib-browser: 1.3.1
       vite: 6.4.5(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
+    transitivePeerDependencies:
+      - rollup
+
+  vite-plugin-node-polyfills@0.24.0(rollup@4.64.12)(vite@6.4.5(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)):
+    dependencies:
+      '@rollup/plugin-inject': 5.0.5(rollup@4.64.12)
+      node-stdlib-browser: 1.3.1
+      vite: 6.4.5(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
     transitivePeerDependencies:
       - rollup
 

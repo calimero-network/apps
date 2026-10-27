@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AdminApiClient } from "@calimero-network/mero-js";
+import type { AdminApiClient } from "@calimero-apps/cloud";
 import { pickApplicationId, resolveApplicationId } from "./appId";
 
 const OTHER_APP = { id: "SomeOtherAppId111111111111111111111111111111", package: "com.calimero.curb" };

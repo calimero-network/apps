@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { EmptyTeamsArt } from "../components/Artwork";
 import { useShell } from "../components/shell/shellContext";
 import { useToast } from "../contexts/ToastContext";

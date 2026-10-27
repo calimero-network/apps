@@ -21,7 +21,7 @@
  * account itself — where the raw `GET {relay}/admin-api/identity` this replaced
  * returned the RELAY's identity, so an account owned nothing it had written.
  */
-import type { AdminApiClient } from "@calimero-network/mero-js";
+import type { AdminApiClient } from "@calimero-apps/cloud";
 
 let cached = "";
 

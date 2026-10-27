@@ -1,5 +1,5 @@
 import { getMeroJs } from "../meroJsClient";
-import type { CreateContextRequest } from "@calimero-network/mero-react";
+import type { CreateContextRequest } from "@calimero-apps/cloud";
 import type { ApiResponse } from "../types";
 import { getApplicationId } from "../../constants/config";
 import type {

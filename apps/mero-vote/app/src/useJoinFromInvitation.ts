@@ -8,8 +8,8 @@ import {
   type InviteRedemption,
   type ParsedInvitation,
   type RedeemOutcome,
-} from "@calimero-network/mero-react";
-import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
+import type { SignedGroupOpenInvitation } from "@calimero-apps/cloud";
 import {
   decodeInvitationPayload,
   parseInvitationPayload,

@@ -21,7 +21,7 @@ import {
   dragCarriesFiles,
 } from "./attachmentKind";
 import { uploadChatAttachment } from "./uploadAttachment";
-import { getContextId } from "@calimero-network/mero-react";
+import { getContextId } from "@calimero-apps/cloud";
 import type { ResponseData } from "../api/types";
 import { deleteBlob } from "../api/blobs";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";

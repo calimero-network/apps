@@ -42,7 +42,7 @@ export default defineConfig({
         replacement: here('./hooks.mock.ts'),
       },
       {
-        find: '@calimero-network/mero-react',
+        find: '@calimero-apps/cloud',
         replacement: here('./meroReact.mock.ts'),
       },
     ],

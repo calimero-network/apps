@@ -15,7 +15,7 @@
 // The new vocabulary is used throughout, so this file reads like the equivalent
 // module in mero-pixart or mero-design rather than like a translation layer.
 
-import { MeroJs } from "@calimero-network/mero-js";
+import { CloudMero, readSession } from "@calimero-apps/cloud";
 import {
   clearAllStorage,
   DEFAULT_LOCAL_NODE_PORTS,
@@ -23,14 +23,13 @@ import {
   getContextId,
   getContextIdentity,
   getNodeUrl,
-  LocalStorageTokenStore,
   localNodeUrl,
   nodeEndpoint,
   probeNodeHealth,
   setContextId,
   setContextIdentity,
   setNodeUrl,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 export {
   clearAllStorage,
@@ -63,33 +62,27 @@ export {
   probeNodeHealth,
 };
 
-/** The same store `MeroProvider` uses, so tokens written here are the ones the
- *  provider reads (and vice versa). */
-const tokens = new LocalStorageTokenStore();
-
-/** Bearer token for admin-api / JSON-RPC calls, or "" when signed out. */
+/**
+ * The session token for cluster calls, or "" when signed out: the one the
+ * provider signed in with (passkeys on Calimero Cloud; there is no v1 token
+ * bundle in storage to read).
+ */
 export function getAccessToken(): string {
-  return tokens.getTokens()?.access_token ?? "";
+  return readSession()?.sessionToken ?? "";
 }
 
 // ── The node client ──────────────────────────────────────────────────────────
 //
-// `api/rpc.ts`, `api/adminApi.ts` and `utils/blobUtils.ts` used to build their
-// own `fetch` calls to `{nodeUrl}/jsonrpc` and `{nodeUrl}/admin-api/…`, each
-// re-reading the token and re-deriving the URL join and the 401 handling. They
-// now share one mero-js `MeroJs` instance: the SDK's `rpc` for contract calls,
-// its `admin` for contexts, namespaces, groups and blobs. Same routes on the
-// wire — the Playwright suite's `page.route()` mocks still see `/jsonrpc` and
-// `/admin-api/blobs` — but one implementation of URL joining, bearer auth and
-// token refresh, and no raw node HTTP left in the app.
+// `api/rpc.ts`, `api/adminApi.ts` and `utils/blobUtils.ts` share one client
+// for the selected cluster: its `rpc` for contract calls, its `admin` for
+// organizations, teams, app instances and blobs. On Calimero Cloud every request
+// is sealed to an attested node, so there is no raw node HTTP to build here.
 //
 // Why a module-level instance and not `useMero()`: these modules are plain
 // functions (`kvStore.ts` alone exports dozens), called from sections, the
 // Setup Wizard and the Test Runner, not hooks. The instance is keyed by node
-// URL AND access token because `MeroJs` snapshots the token store at
-// construction — a client built before login would keep sending no token.
-// A refresh performed by the SDK writes the rotated pair back into the same
-// `LocalStorageTokenStore`, so the next call simply picks up a new instance.
+// URL AND session token, so a client built before login is replaced by a
+// signed-in one on the next call.
 
 /**
  * Per-request budget for every node call.
@@ -104,22 +97,22 @@ export function getAccessToken(): string {
  */
 export const NODE_REQUEST_TIMEOUT_MS = 35_000;
 
-let cached: { key: string; client: MeroJs } | null = null;
+let cached: { key: string; client: CloudMero } | null = null;
 
 /**
- * The mero-js client for the selected node, or null when no node is selected.
+ * The client for the selected cluster, or null when none is selected.
  *
- * Shares `MeroProvider`'s token store, so it is signed in exactly when the
+ * Shares `MeroProvider`'s session, so it is signed in exactly when the
  * provider is.
  */
-export function getMeroClient(): MeroJs | null {
+export function getMeroClient(): CloudMero | null {
   const nodeUrl = getNodeUrl();
   if (!nodeUrl) return null;
   const key = `${nodeUrl}\u0000${getAccessToken()}`;
   if (!cached || cached.key !== key) {
     cached = {
       key,
-      client: new MeroJs({ baseUrl: nodeUrl, tokenStore: tokens, timeoutMs: NODE_REQUEST_TIMEOUT_MS }),
+      client: new CloudMero(nodeUrl),
     };
   }
   return cached.client;
@@ -130,112 +123,7 @@ export function resetMeroClient(): void {
   cached = null;
 }
 
-/**
- * Persist a token pair — used by the SSO hash bootstrap before React mounts.
- *
- * Written through a `MeroJs` for the selected node, so the bundle carries the
- * `node_origin` mero-js (>= 25.0.7) binds it to: `MeroJs` and `MeroProvider`
- * read a bundle without one, or one for another node, as signed out. With no
- * node selected there is nothing to bind it to, and it is stored as given.
- */
-export function setTokens(accessToken: string, refreshToken: string, expiresIn?: number): void {
-  const data = {
-    access_token: accessToken,
-    refresh_token: refreshToken,
-    expires_at: Date.now() + (expiresIn && expiresIn > 0 ? expiresIn * 1000 : 3600_000),
-  };
-  const nodeUrl = getNodeUrl();
-  if (!nodeUrl) {
-    tokens.setTokens(data);
-    return;
-  }
-  const client = new MeroJs({ baseUrl: nodeUrl, tokenStore: tokens });
-  client.setTokenData(data);
-  client.close();
-}
-
 /** Forget the current context selection (not the tokens). */
 export function clearContextId(): void {
   setContextId("");
-}
-
-// ── JWT ──────────────────────────────────────────────────────────────────────
-
-export interface JwtPayload {
-  sub?: string;
-  context_id?: string;
-  context_identity?: string;
-  executor_public_key?: string;
-  /** `{ permissions: [{ context: { id, key } }] }` — the shape the node issues
-   *  for a context-scoped client key. */
-  permissions?: Array<{ context?: { id?: string; key?: string } } | string>;
-  [key: string]: unknown;
-}
-
-/**
- * Decode a JWT payload without verifying it.
- *
- * Reading the claims is fine — the node verifies the signature on every call, and
- * a forged token buys nothing here. Base64url has to be handled explicitly
- * (`atob` rejects `-`/`_` and requires padding), which is why this is not a
- * one-liner.
- */
-export function decodeJwt(token: string | null | undefined): JwtPayload | null {
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-  try {
-    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
-    const json = decodeURIComponent(
-      atob(padded)
-        .split("")
-        .map((c) => `%${c.charCodeAt(0).toString(16).padStart(2, "0")}`)
-        .join(""),
-    );
-    const parsed: unknown = JSON.parse(json);
-    return parsed && typeof parsed === "object" ? (parsed as JwtPayload) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** The current access token's payload, or null. */
-export function getJwtPayload(): JwtPayload | null {
-  return decodeJwt(getAccessToken() || null);
-}
-
-/**
- * Seed the context selection from a freshly issued token.
- *
- * `AppMode.MultiContext` means the auth callback returns only tokens, the
- * application id and the node url — context selection is the app's job (the Setup
- * Wizard and Workspace Manager do it). But when the token IS context-scoped, its
- * claims already say which one, and using them saves the user a step.
- *
- * Returns true when a context id was found and stored.
- */
-export function applyContextFromJwt(token: string): boolean {
-  const payload = decodeJwt(token);
-  if (!payload) return false;
-
-  // Preferred: a context-scoped client key lists its context in `permissions`.
-  for (const entry of payload.permissions ?? []) {
-    if (typeof entry === "string") continue;
-    const id = entry.context?.id;
-    if (id) {
-      setContextId(id);
-      if (entry.context?.key) setContextIdentity(entry.context.key);
-      return true;
-    }
-  }
-
-  // Fallback: flat claims, which older nodes issue.
-  if (payload.context_id) {
-    setContextId(payload.context_id);
-    const identity = payload.context_identity ?? payload.executor_public_key;
-    if (identity) setContextIdentity(identity);
-    return true;
-  }
-  return false;
 }

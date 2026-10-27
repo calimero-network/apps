@@ -19,7 +19,8 @@ vi.mock("../api/rpc", () => ({
   updateMemberRole: vi.fn(),
 }));
 vi.mock("../api/teamContexts", () => ({ listTeamContexts: vi.fn().mockResolvedValue([]) }));
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ applicationId: "app-1", admin: null }),
   useRemoveGroupMembers: () => ({ removeGroupMembers }),
 }));

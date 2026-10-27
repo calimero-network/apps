@@ -10,8 +10,8 @@ import { deviceSigningKeyOf, myIdFor } from "./identity";
 
 const DEVICE_SIGN_PK = "AB".repeat(32);
 
-vi.mock("@calimero-network/mero-js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@calimero-network/mero-js")>()),
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@calimero-apps/cloud")>()),
   parseDeviceCredential: (credential: string) => {
     if (credential !== "good-credential") throw new Error("bad borsh");
     return {

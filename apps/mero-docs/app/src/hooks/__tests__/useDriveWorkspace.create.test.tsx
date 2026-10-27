@@ -50,7 +50,8 @@ const stub = vi.hoisted(() => {
   };
 });
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => stub.mero,
   useGroupContexts: () => ({ contexts: stub.none, loading: false, refetch: stub.refetch }),
   useGroupInfo: () => ({ groupInfo: null, loading: false }),

@@ -20,7 +20,7 @@ import {
   useDeleteGroup,
   useSetSubgroupVisibility,
   useMero,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { DOCS_SERVICE_ID } from '../constants/config';
 import { FOLDER_COLOR_KEY } from '../lib/coreFolders';
 import { inheritReadOnly, readOnlyRowsBeforeOpen } from '../lib/applyFolderRole';

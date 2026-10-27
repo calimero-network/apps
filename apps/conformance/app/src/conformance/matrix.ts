@@ -35,7 +35,7 @@
  *   Upgrades    p:upgrade (after the rig installs 0.0.1 on the node) upgrades the
  *               namespace and reads its status; s:upgraded reads through it
  */
-import type { AdminApiClient } from '@calimero-network/mero-react';
+import type { AdminApiClient } from '@calimero-apps/cloud';
 import { ADMIN_ONLY, adminOnly, assert, Blocked, check, eventually, need, NODE_ONLY, NOT_DIRECT_MEMBER, OK, short, type RowContext } from './check';
 import { EventLog, PresenceLog, type Streams } from './listen';
 import type { Mode } from './types';

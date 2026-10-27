@@ -10,7 +10,8 @@ import { schema } from '@/components/editor/blocknote/schema';
 
 let deliver: ((event: unknown) => void) | null = null;
 const events = { on: () => {}, off: () => {} };
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     deliver = handler;
   },

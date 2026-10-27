@@ -3,8 +3,8 @@
 // file is a toast and leaves the document alone.
 
 import { useCallback } from 'react';
-import { useMero } from '@calimero-network/mero-react';
-import { classifyError } from '@calimero-network/mero-js';
+import { useMero } from '@calimero-apps/cloud';
+import { classifyError } from '@calimero-apps/cloud';
 import { toast } from 'sonner';
 import type { DriveEditor } from '@/components/editor/blocknote/schema';
 import { MAX_IMAGE_BYTES, blobRef, checkImageFile, parseBlobRef } from '@/lib/images';

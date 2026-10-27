@@ -37,7 +37,8 @@ const ws: {
 };
 const mero = {};
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ mero }),
   useJoinContext: () => ({ joinContext }),
 }));

@@ -12,7 +12,7 @@
 // and `rpc` for whichever the user signed in with, and the callers never ask.
 
 // Everything comes from mero-react, including the mero-js surface it
-// re-exports (`export * from "@calimero-network/mero-js"`).
+// re-exports (`export * from "@calimero-apps/cloud"`).
 //
 // Importing mero-js directly would mean declaring it as a second dependency
 // beside mero-react, which owns its own copy. Two copies is a correctness
@@ -25,7 +25,7 @@ import {
   type Context,
   type ExecuteParams,
   getNodeUrl,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import type { ResponseData } from "./types";
 
 // The ONE client, owned by MeroProvider and handed to us by <MeroJsBridge>

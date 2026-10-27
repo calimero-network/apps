@@ -6,7 +6,7 @@ import {
   useCreateNamespace,
   useMero,
   useNamespacesForApplication,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { FormsClient } from "./generated/FormsClient";
 
 /**

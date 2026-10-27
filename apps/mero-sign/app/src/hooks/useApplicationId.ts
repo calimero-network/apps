@@ -12,7 +12,7 @@
 // constant after the first connected render.
 
 import { useCallback, useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 import { APP_PACKAGE, resolveApplicationId } from '../lib/appId';
 import { apiClient } from '../lib/node';

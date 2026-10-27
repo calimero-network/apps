@@ -1,8 +1,8 @@
 import { StrictMode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import type { SseEventData } from '@calimero-network/mero-react';
-import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
+import type { SseEventData } from '@calimero-apps/cloud';
+import { AuthRevokedError, HTTPError } from '@calimero-apps/cloud';
 import { useMemberCaps } from '../useMemberCaps';
 
 const httpError = (status: number, body: string) =>
@@ -30,7 +30,8 @@ const MERO_STUB = {
   },
 };
 let sseHandler: ((e: SseEventData) => void) | null = null;
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: (_ids: unknown, handler: (e: SseEventData) => void) => {
     sseHandler = handler;
   },

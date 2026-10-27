@@ -14,7 +14,7 @@ import {
   peekInvitation,
   primeInvitationCapture,
   resetInvitationCaptureForTests,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
 import {
   APP_SLUG,
@@ -40,7 +40,7 @@ const rawAdmin = {
 let isDelegated = false;
 const setContextId = vi.fn();
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     isAuthenticated: true,

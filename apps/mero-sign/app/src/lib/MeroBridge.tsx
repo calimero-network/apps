@@ -8,7 +8,7 @@
  * can: it sees the context, and it re-registers if the connection changes.
  */
 import { useEffect } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 import { setSessionApplicationId } from './appId';
 import { setMeroInstance, signClientOf } from './node';

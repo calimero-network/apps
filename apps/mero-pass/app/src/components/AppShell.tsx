@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 import { Lock, LockUnlock } from '@calimero-network/mero-icons';
 
 import { useSignOut } from '../auth/signOut';

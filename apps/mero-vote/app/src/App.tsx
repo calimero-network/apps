@@ -5,7 +5,7 @@ import {
   InvitationGate,
   clearContextId,
   useMero,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { ContextPicker } from "./ContextPicker";
 import { InviteCard } from "./InviteCard";
 import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";

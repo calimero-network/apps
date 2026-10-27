@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import {
   isNamespaceJustJoined,
   markNamespaceJustJoined,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 // A stream this session just joined. Right after the join the node may not
 // hold its rooms yet, so the subgroup list comes back empty. That is not the
@@ -35,7 +35,7 @@ const h = vi.hoisted(() => {
   return { node, admin, session };
 });
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => h.session,
 }));

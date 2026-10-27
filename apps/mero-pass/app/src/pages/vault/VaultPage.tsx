@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 import { useMemberNames } from '@calimero-apps/names';
 
 import AppShell, { InRail } from '../../components/AppShell';

@@ -77,7 +77,7 @@ vi.mock('@/hooks/useDocs', () => ({
 vi.mock('@/hooks/useMemberDisplayName', () => ({
   useMemberDisplayName: () => ({ name: null }),
 }));
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useMero: () => ({ mero: null, nodeUrl: 'http://node', logout: vi.fn() }),
 }));
@@ -394,7 +394,7 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
 describe('WorkspaceLayout: ending the invitation dialog’s wait', () => {
   it('clears a joined workspace’s flag only once its own sync gate lifts', async () => {
     const { isNamespaceJustJoined, markNamespaceJustJoined } = await import(
-      '@calimero-network/mero-react'
+      '@calimero-apps/cloud'
     );
     markNamespaceJustJoined('ns');
     workspace.isJustJoined = true;
@@ -418,7 +418,7 @@ describe('WorkspaceLayout: ending the invitation dialog’s wait', () => {
       clearNamespaceJustJoined,
       isNamespaceJustJoined,
       markNamespaceJustJoined,
-    } = await import('@calimero-network/mero-react');
+    } = await import('@calimero-apps/cloud');
     markNamespaceJustJoined('f1');
     markNamespaceJustJoined('f-elsewhere');
     renderAt('/app/ns');

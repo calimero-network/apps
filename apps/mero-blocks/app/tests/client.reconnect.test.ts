@@ -18,7 +18,8 @@ const { clients, FakeSseClient } = vi.hoisted(() => {
   return { clients, FakeSseClient };
 });
 
-vi.mock("@calimero-network/mero-js", () => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   SseClient: FakeSseClient,
   AuthRevokedError: class AuthRevokedError extends Error {},
 }));

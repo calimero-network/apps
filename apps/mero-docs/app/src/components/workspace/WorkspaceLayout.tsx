@@ -27,7 +27,7 @@ import {
   isNamespaceJustJoined as isInviteSyncing,
   useJoinSync,
   useMero,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import { NamespaceSwitcher } from './NamespaceSwitcher';

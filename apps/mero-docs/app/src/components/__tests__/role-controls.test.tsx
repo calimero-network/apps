@@ -25,7 +25,8 @@ const folderPerms = { canManagePermissions: false };
 vi.mock('@/components/ui/confirm-dialog', () => ({
   useConfirm: () => confirm,
 }));
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useGroupCapabilities: () => ({
     capabilities: caps.value,
     loading: false,

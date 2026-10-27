@@ -6,7 +6,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout';
 import { ACTIVE_NS_KEY } from '@/hooks/useDriveWorkspace';
 import { parseRemembered } from '@/lib/namespaceSelection';

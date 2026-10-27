@@ -24,7 +24,7 @@
  * and `mero.rpc`, and nothing else. The migration is then a provider swap plus
  * this file, rather than 13 call sites through the signing code.
  */
-import type { AdminApiClient } from '@calimero-network/mero-js';
+import type { AdminApiClient } from '@calimero-apps/cloud';
 import type { SignClient } from './node';
 
 import {

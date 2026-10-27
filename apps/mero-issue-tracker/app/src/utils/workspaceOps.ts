@@ -11,7 +11,7 @@
  * 403 there. The account admin signs the same intent as a governance op the
  * relay applies on the account's behalf (apps#348, apps#352).
  */
-import type { AdminApiClient } from '@calimero-network/mero-js';
+import type { AdminApiClient } from '@calimero-apps/cloud';
 import { MEMBER_CAPABILITIES } from './roles';
 
 /** The admin calls founding a workspace makes, narrowed. */

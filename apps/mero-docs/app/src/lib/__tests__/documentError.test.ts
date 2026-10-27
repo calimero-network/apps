@@ -1,4 +1,4 @@
-import { HTTPError, RpcError } from '@calimero-network/mero-js';
+import { HTTPError, RpcError } from '@calimero-apps/cloud';
 import { describe, expect, it } from 'vitest';
 import { contractErrorFixture } from './contractErrorFixture';
 import {

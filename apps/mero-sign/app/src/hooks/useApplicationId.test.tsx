@@ -13,7 +13,8 @@ const session = vi.hoisted(() => ({
   isDelegated: true,
   applicationId: null as string | null,
 }));
-vi.mock('@calimero-network/mero-react', () => ({ useMero: () => session }));
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()), useMero: () => session }));
 const app = {};
 vi.mock('../lib/useCalimero', () => ({ useCalimero: () => ({ app }) }));
 vi.mock('../lib/node', () => ({ apiClient: { node: vi.fn() } }));

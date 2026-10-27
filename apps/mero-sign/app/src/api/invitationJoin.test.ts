@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SignClient } from '../lib/node';
-import { shouldRetain } from '@calimero-network/mero-react';
+import { shouldRetain } from '@calimero-apps/cloud';
 
 import { setMeroInstance } from '../lib/node';
 import { encodeInvite } from '../lib/inviteCodec';
@@ -48,7 +48,7 @@ vi.mock('./defaultContextService', () => ({
   },
 }));
 vi.mock('../lib/activeWorkspace', () => ({ setActiveWorkspace: vi.fn() }));
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   markNamespaceJustJoined: vi.fn(),
 }));

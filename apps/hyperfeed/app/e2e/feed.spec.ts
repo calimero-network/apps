@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openAuthCallback } from "@calimero-apps/e2e-node/journey";
-import { MeroJs } from "@calimero-network/mero-js";
+import { MeroJs } from "@calimero-apps/cloud";
 
 import { readState } from "./global-setup";
 

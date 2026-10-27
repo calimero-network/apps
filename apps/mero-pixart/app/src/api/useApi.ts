@@ -4,8 +4,8 @@ import {
   type AdminApiClient,
   type Namespace,
   type NodeIdentity,
-} from "@calimero-network/mero-js";
-import { setApplicationId, useMero } from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
+import { setApplicationId, useMero } from "@calimero-apps/cloud";
 import { decodeContractError, decodeOutput } from "./output";
 import { resolveApplicationId } from "./appId";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";

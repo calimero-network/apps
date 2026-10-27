@@ -6,8 +6,8 @@ import {
   MeroProvider,
   primeInvitationCapture,
   setApplicationId,
-} from "@calimero-network/mero-react";
-import { applyContextFromJwt, getNodeUrl, setNodeUrl, setTokens } from "./lib/mero";
+} from "@calimero-apps/cloud";
+import { getNodeUrl, setNodeUrl } from "./lib/mero";
 import "./index.css";
 import App from "./App.tsx";
 import { APP_SLUG } from "./lib/invite";
@@ -18,51 +18,20 @@ import { APP_SLUG } from "./lib/invite";
 // addressed to another app is dropped, not offered.
 primeInvitationCapture("scaffolding-e2e", { slug: APP_SLUG });
 
-// Pre-process Tauri SSO hash params BEFORE React mounts.
+// Pick the cluster BEFORE React mounts.
 (function bootstrapHashParams() {
   // ?node=<url> lets two browser tabs point to two different merod nodes without
   // changing .env. The param is preserved across reloads (we don't strip it).
   const searchNode = new URLSearchParams(window.location.search).get("node");
   if (searchNode) setNodeUrl(searchNode.trim());
 
-  // Seed node URL from .env if nothing is stored yet. Before the hash, because
-  // `setTokens` binds the bundle to the selected node; a hash `node_url` still
-  // wins, as it overwrites this below.
+  // Seed node URL from .env if nothing is stored yet.
   const envUrl = import.meta.env.VITE_NODE_URL?.trim();
   if (envUrl && !getNodeUrl()) {
     setNodeUrl(envUrl);
   }
-
-  const hash = window.location.hash.slice(1);
-  if (hash) {
-    const p = new URLSearchParams(hash);
-    const nodeUrl = p.get("node_url");
-    const accessToken = p.get("access_token");
-    const refreshToken = p.get("refresh_token");
-    const applicationId = p.get("application_id");
-    // Hash node_url takes priority over ?node= query param.
-    if (nodeUrl) setNodeUrl(nodeUrl.trim());
-    if (applicationId) setApplicationId(applicationId.trim());
-    if (accessToken) {
-      setTokens(accessToken, refreshToken ?? "", Number(p.get("expires_in")) || undefined);
-      // In MultiContext mode the callback carries no context — but a
-      // context-scoped token names one in its claims, and using it saves a step.
-      applyContextFromJwt(accessToken);
-    }
-    if (accessToken || refreshToken) {
-      p.delete("access_token");
-      p.delete("refresh_token");
-      p.delete("expires_in");
-      const remaining = p.toString();
-      window.history.replaceState(
-        null,
-        "",
-        remaining
-          ? `#${remaining}`
-          : window.location.pathname + window.location.search,
-      );
-    }
-  }
+  // v1's SSO hash (node_url, access_token, …) is gone: on Calimero Cloud a
+  // person signs in with a passkey in the page.
 })();
 
 // Must match [package.metadata.calimero] package in logic/Cargo.toml — the

@@ -19,7 +19,7 @@ const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 // from: the dialog is production UI and is what the "invitation" shot is of.
 // Resolved by path because the bare name is aliased to the mock below.
 const realMeroReact = createRequire(import.meta.url)
-  .resolve("@calimero-network/mero-react")
+  .resolve("@calimero-apps/cloud")
   .replace(/\.cjs$/, ".js");
 
 export default defineConfig({

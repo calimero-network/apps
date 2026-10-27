@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import type { SseEventData } from '@calimero-network/mero-react';
+import type { SseEventData } from '@calimero-apps/cloud';
 import {
   parseSyncStatusEvent,
   useSyncStatus,
@@ -11,7 +11,8 @@ import {
 // can drive synthetic SSE events through it.
 let lastHandler: ((e: SseEventData) => void) | null = null;
 let lastIds: string[] = [];
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: (ids: string[], handler: (e: SseEventData) => void) => {
     lastHandler = handler;
     lastIds = ids;

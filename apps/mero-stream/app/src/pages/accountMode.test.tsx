@@ -25,7 +25,7 @@ import RoomsPage from "./RoomsPage";
 import InvitationPrompt from "../components/InvitationPrompt";
 
 const { resetInvitationCaptureForTests } =
-  await import("@calimero-network/mero-react");
+  await import("@calimero-apps/cloud");
 
 // ── The transport switch, as a test ──────────────────────────────────────────
 //
@@ -101,7 +101,7 @@ vi.mock("react-router-dom", async (importOriginal) => {
   return { ...mod, useNavigate: () => navigate };
 });
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     isAuthenticated: true,
@@ -117,10 +117,6 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
     credential: "good-credential",
     deviceSecret: "11".repeat(32),
   }),
-}));
-
-vi.mock("@calimero-network/mero-js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@calimero-network/mero-js")>()),
   parseDeviceCredential: () => ({
     account: ACCOUNT,
     device: "dd".repeat(32),

@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useSubscription } from "@calimero-network/mero-react";
+import { useSubscription } from "@calimero-apps/cloud";
 
 import SessionMenu from "./SessionMenu";
 import ThemeToggle from "./ThemeToggle";

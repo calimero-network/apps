@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { RelayClient, createMemoryNonceSource } from "@calimero-network/mero-js";
+import { RelayClient, createMemoryNonceSource } from "@calimero-apps/cloud";
 import nacl from "tweetnacl";
 import { btn, login, state, waitForTeam } from "./helpers";
 

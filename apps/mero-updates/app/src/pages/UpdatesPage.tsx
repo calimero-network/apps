@@ -4,7 +4,7 @@ import {
   JOIN_SYNC_POLL_MS,
   isNamespaceJustJoined,
   useJoinSync,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 import { useAudience } from "../components/AudienceShell";
 import { Avatar, CategoryChip, Empty } from "../components/bits";

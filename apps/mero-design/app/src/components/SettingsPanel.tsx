@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import SettingsSection from "./SettingsSection";
 import { useIsGroupAdmin } from "../hooks/useIsGroupAdmin";
 import { IconClose } from "./HomeIcons";

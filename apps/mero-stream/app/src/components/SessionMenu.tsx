@@ -1,4 +1,4 @@
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { clearActiveRoom } from "../lib/session";
 import { LogOutIcon, ServerIcon } from "./icons";
 import styles from "./SessionMenu.module.css";

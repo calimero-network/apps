@@ -9,7 +9,7 @@
  *        { account, credential, deviceSecret })
  */
 import { readFileSync } from 'node:fs';
-import { CloudClient } from '@calimero-network/mero-js';
+import { CloudClient } from '@calimero-apps/cloud';
 
 const cloudBaseUrl = process.argv[2];
 const acct = JSON.parse(readFileSync(0, 'utf8'));

@@ -343,7 +343,7 @@ packages:
 
 catalog:
   # ── Calimero ──
-  "@calimero-network/mero-js": ^13.2.5
+  "@calimero-apps/cloud": ^13.2.5
   react: ^19.0.0
   vite: ^6.4.3
 

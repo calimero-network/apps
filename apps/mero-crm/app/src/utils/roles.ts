@@ -47,7 +47,7 @@
  * here type-checks and then authorises nobody.
  */
 
-import { CAPABILITIES, hasCap, withCap, withoutCap } from '@calimero-network/mero-js';
+import { CAPABILITIES, hasCap, withCap, withoutCap } from '@calimero-apps/cloud';
 
 /** Core's `MemberCapabilities` bits, straight from the SDK. */
 export const CAP = CAPABILITIES;

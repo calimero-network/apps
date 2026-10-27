@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { useEphemeral } from "@calimero-network/mero-react";
+import { useEphemeral } from "@calimero-apps/cloud";
 
 interface UsePresenceResult {
   isOnline: (identity: string) => boolean;

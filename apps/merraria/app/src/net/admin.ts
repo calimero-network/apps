@@ -10,8 +10,8 @@ import {
   describeInviteFailure,
   redeemInvitation,
   type RedeemOutcome,
-} from "@calimero-network/mero-react";
-import { HTTPError, type SignedGroupOpenInvitation as MeroSignedInvitation } from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
+import { HTTPError, type SignedGroupOpenInvitation as MeroSignedInvitation } from "@calimero-apps/cloud";
 import { getSession, sessionKind, updateSession } from "./session";
 import { getTransport } from "./transport";
 import {

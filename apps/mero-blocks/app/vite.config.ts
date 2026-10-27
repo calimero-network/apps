@@ -1,7 +1,9 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vite";
+import { calimeroCsp } from "@calimero-apps/cloud/vite";
 
 export default defineConfig({
+  plugins: [calimeroCsp()],
   server: {
     port: Number(process.env.PW_PORT ?? process.env.PORT ?? 5183),
   },
@@ -11,7 +13,7 @@ export default defineConfig({
     // which can be mero-react's older one, missing the account layer this app
     // imports (`does not provide an export named …` at boot). Resolved from
     // this package, so the app's own dependency is the one that runs.
-    dedupe: ["@calimero-network/mero-js"],
+    dedupe: ["@calimero-apps/cloud"],
   },
   test: {
     environment: "jsdom",

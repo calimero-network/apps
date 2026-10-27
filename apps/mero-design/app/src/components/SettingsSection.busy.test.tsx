@@ -38,7 +38,8 @@ const admin = {
   listGroupMembers: vi.fn(() => new Promise(() => {})),
   setMemberMetadata: vi.fn().mockResolvedValue(undefined),
 };
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ applicationId: "app-1", admin }),
   useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn() }),
 }));

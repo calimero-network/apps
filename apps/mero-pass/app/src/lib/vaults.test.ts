@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CAPABILITIES } from '@calimero-network/mero-js';
+import { CAPABILITIES } from '@calimero-apps/cloud';
 
 import { decodeInvite } from './inviteCodec';
 import {

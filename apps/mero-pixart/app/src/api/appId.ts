@@ -1,4 +1,4 @@
-import type { AdminApiClient } from "@calimero-network/mero-js";
+import type { AdminApiClient } from "@calimero-apps/cloud";
 
 /**
  * Resolving MeroPixArt's own application id on a NODE login.

@@ -1,4 +1,4 @@
-import type { AdminApiClient } from "@calimero-network/mero-js";
+import type { AdminApiClient } from "@calimero-apps/cloud";
 
 // ── Every document in a team ────────────────────────────────────────────────────
 //

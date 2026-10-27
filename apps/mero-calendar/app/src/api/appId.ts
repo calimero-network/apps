@@ -1,5 +1,5 @@
-import type { AdminApiClient } from "@calimero-network/mero-js";
-import { getApplicationId } from "@calimero-network/mero-react";
+import type { AdminApiClient } from "@calimero-apps/cloud";
+import { getApplicationId } from "@calimero-apps/cloud";
 
 /**
  * Resolving Mero Calendar's own application id.

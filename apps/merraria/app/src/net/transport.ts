@@ -35,7 +35,7 @@ import {
   type SseClient,
   type TokenData,
   type TokenStore,
-} from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
 import { PACKAGE_NAME, REGISTRY_URL } from "./auth";
 import {
   clearSession,

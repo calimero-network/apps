@@ -21,7 +21,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { LoginModal, useMero } from '@calimero-network/mero-react';
+import { LoginModal, useMero } from '@calimero-apps/cloud';
 
 const OpenLogin = createContext<() => void>(() => {});
 

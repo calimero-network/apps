@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { calimeroCsp } from '@calimero-apps/cloud/vite';
 
 /**
  * `MERO_JS_PATH=<a mero-js checkout, built>` runs the matrix against that
@@ -11,11 +12,11 @@ import react from '@vitejs/plugin-react';
 const meroJs = process.env['MERO_JS_PATH'];
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [calimeroCsp(), react()],
   // With MERO_JS_PATH set, mero-react's own import of mero-js must land on the
   // same copy: two copies are two signers, possibly at two schemas.
   resolve: {
-    dedupe: ['react', 'react-dom', '@calimero-network/mero-js'],
+    dedupe: ['react', 'react-dom', '@calimero-apps/cloud'],
     alias: meroJs
       ? [{ find: /^@calimero-network\/mero-js$/, replacement: resolve(meroJs, 'dist/index.browser.mjs') }]
       : [],

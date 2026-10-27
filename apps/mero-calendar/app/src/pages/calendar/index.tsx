@@ -5,7 +5,7 @@ import {
   setContextIdentity,
   getContextIdentity,
   useMero,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { useMyName } from "@calimero-apps/names";
 
 import { accountId, loadAccountId } from "../../api/identity";

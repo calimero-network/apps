@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 import { useSignOut } from '../../auth/signOut';
 import AppShell from '../../components/AppShell';

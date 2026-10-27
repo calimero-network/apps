@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   useContextGroup,
   useCreateNamespaceInvitation,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import {
   generateInvitationUrl,
   serializeInvitationPayload,

@@ -1,4 +1,4 @@
-import { getContextId } from "@calimero-network/mero-react";
+import { getContextId } from "@calimero-apps/cloud";
 import { uploadBlobDirect } from "../api/dataSource/groupApiDataSource";
 import type { ChatFile, FileObject } from "../types/Common";
 

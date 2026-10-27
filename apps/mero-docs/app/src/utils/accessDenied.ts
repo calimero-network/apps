@@ -1,4 +1,4 @@
-import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
+import { AuthRevokedError, HTTPError } from '@calimero-apps/cloud';
 
 // Membership refusals, told apart from real faults by HTTP status so the UI can
 // show a restricted state instead of a red error.

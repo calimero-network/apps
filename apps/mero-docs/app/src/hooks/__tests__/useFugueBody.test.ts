@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCreateBlockNote } from '@blocknote/react';
-import { HTTPError, RpcError } from '@calimero-network/mero-js';
+import { HTTPError, RpcError } from '@calimero-apps/cloud';
 import type { DocsClient } from '@/generated/docs/DocsClient';
 import { useFugueBody, type BodyEditor } from '../useFugueBody';
 import { schema } from '@/components/editor/blocknote/schema';
@@ -17,7 +17,8 @@ const events = {
   off: (_: 'connect', h: () => void) => connectHandlers.delete(h),
 };
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     deliver = handler;
   },

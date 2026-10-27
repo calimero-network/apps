@@ -19,7 +19,7 @@
  * it. `login()` here opens the LoginModal every other app in this repo uses.
  */
 import { useMemo } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 import { useActiveWorkspace } from './activeWorkspace';
 import { useOpenLogin } from './loginGate';

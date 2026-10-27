@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HTTPError, RpcError } from '@calimero-network/mero-js';
+import { HTTPError, RpcError } from '@calimero-apps/cloud';
 import {
   contractErrorMessage,
   friendlyContractMessage,

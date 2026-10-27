@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeInvite } from "./inviteCodec";
-import { CAPABILITIES } from "@calimero-network/mero-js";
+import { CAPABILITIES } from "@calimero-apps/cloud";
 import {
   MEMBER_CAPABILITIES,
   acceptInvite,
@@ -18,7 +18,7 @@ import {
   unwrapInvitation,
   type AdminLike,
 } from "./groups";
-import { shouldRetain } from "@calimero-network/mero-react";
+import { shouldRetain } from "@calimero-apps/cloud";
 
 const noop = () => {};
 

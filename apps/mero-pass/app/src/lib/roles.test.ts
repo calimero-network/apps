@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CAPABILITIES, hasCap } from '@calimero-network/mero-js';
+import { CAPABILITIES, hasCap } from '@calimero-apps/cloud';
 
 import {
   ADMIN_CAPABILITIES,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useApplicationContexts, useMero } from "@calimero-network/mero-react";
+import { useApplicationContexts, useMero } from "@calimero-apps/cloud";
 import { openFeed, useNewFeed } from "./newFeed";
 import { HyperfeedClient } from "./generated/HyperfeedClient";
 import { refusalMessage } from "./refused";

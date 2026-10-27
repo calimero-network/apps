@@ -1,4 +1,4 @@
-import { LocalStorageTokenStore, MeroJs } from '@calimero-network/mero-js';
+import { LocalStorageTokenStore, MeroJs } from '@calimero-apps/cloud';
 
 // Dev-only: `?node=<n>` points this window at rig node n, so two windows on two
 // origins (localhost and 127.0.0.1) can drive two nodes at once.

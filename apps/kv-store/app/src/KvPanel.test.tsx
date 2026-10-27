@@ -12,13 +12,13 @@ const entries = vi.fn();
 vi.mock("./useKvStore", () => ({ useKvStore: () => ({ entries }) }));
 
 const NAMESPACE = "ns-1";
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useContextGroup: () => ({ groupId: NAMESPACE, loading: false, error: null }),
 }));
 
 const { isNamespaceJustJoined, markNamespaceJustJoined } = await import(
-  "@calimero-network/mero-react"
+  "@calimero-apps/cloud"
 );
 const { KvPanel } = await import("./KvPanel");
 

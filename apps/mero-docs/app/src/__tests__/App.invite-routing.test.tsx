@@ -24,7 +24,7 @@ import {
   peekInvitation,
   primeInvitationCapture,
   resetInvitationCaptureForTests,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 // vitest hoists `vi.mock` above every import, so App can be imported here and
 // still see the mocks below.
 import App from '../App';
@@ -37,7 +37,7 @@ const meroState = {
   admin: { joinNamespace, listNamespaces: async () => [] },
 };
 
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   AppMode: { MultiContext: 'MultiContext' },
   MeroProvider: ({ children }: { children: React.ReactNode }) => (

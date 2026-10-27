@@ -19,13 +19,13 @@ const h = vi.hoisted(() => ({
   admin: {} as Record<string, (...a: unknown[]) => Promise<unknown>>,
 }));
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ admin: h.admin }),
 }));
 
 const { peekInvitation, resetInvitationCaptureForTests } =
-  await import("@calimero-network/mero-react");
+  await import("@calimero-apps/cloud");
 
 beforeEach(() => {
   resetInvitationCaptureForTests();

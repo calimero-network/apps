@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { RpcError, type ExecuteParams, type ExecuteTransport } from "@calimero-network/mero-js";
+import { RpcError, type ExecuteParams, type ExecuteTransport } from "@calimero-apps/cloud";
 import { bindExec, decodeOutput, describeExecError, extractRpcError } from "../src/net/rpc";
 
 describe("decodeOutput", () => {

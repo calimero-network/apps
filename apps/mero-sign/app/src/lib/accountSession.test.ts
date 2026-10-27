@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type {
   AdminApiClient,
   ExecuteTransport,
-} from '@calimero-network/mero-js';
+} from '@calimero-apps/cloud';
 import type { SignClient } from './node';
 
 import {

@@ -4,7 +4,7 @@ import {
   peekInvitation,
   primeInvitationCapture,
   resetInvitationCaptureForTests,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { WorldInviteError } from "../src/net/admin";
 import { encodeInvite } from "../src/net/inviteCodec";
 import { APP_SLUG } from "../src/net/inviteLink";

@@ -54,7 +54,7 @@
 import type {
   AdminApiClient,
   CreateNamespaceResponseData,
-} from '@calimero-network/mero-js';
+} from '@calimero-apps/cloud';
 import {
   ADMIN_CAPABILITIES,
   MEMBER_CAPABILITIES,
@@ -76,7 +76,7 @@ import {
   markNamespaceJustJoined,
   redeemInvitation,
   type RedeemOutcome,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 
 import { MeroPassClient } from '../generated/MeroPassClient';
 import {

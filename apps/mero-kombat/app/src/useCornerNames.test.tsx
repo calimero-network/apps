@@ -13,7 +13,8 @@ const admin = {
   getMemberMetadata: vi.fn(),
   setMemberMetadata: vi.fn(),
 };
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ admin }),
   useContextGroup: () => ({ groupId: "ns1", loading: false, error: null }),
 }));

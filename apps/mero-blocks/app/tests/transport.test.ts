@@ -78,8 +78,8 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@calimero-network/mero-js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@calimero-network/mero-js")>();
+vi.mock("@calimero-apps/cloud", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@calimero-apps/cloud")>();
   return {
     ...actual,
     readDelegatedSession: () => mocks.session,

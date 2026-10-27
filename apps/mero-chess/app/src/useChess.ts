@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMero, useSubscription } from "@calimero-network/mero-react";
-import type { SubscriptionEventData } from "@calimero-network/mero-react";
+import { useMero, useSubscription } from "@calimero-apps/cloud";
+import type { SubscriptionEventData } from "@calimero-apps/cloud";
 import {
   MeroChessClient,
   type GameSummary,

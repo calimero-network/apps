@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { useApplicationId } from "../hooks/useApplicationId";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveAudience, setAudienceName } from "../lib/session";
@@ -41,7 +41,7 @@ import {
   JoinSyncBanner,
   isNamespaceJustJoined,
   useJoinSync,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 /**
  * Audiences inside one space (namespace). An audience is a SUBGROUP plus the context bound

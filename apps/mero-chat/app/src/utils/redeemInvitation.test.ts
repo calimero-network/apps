@@ -3,7 +3,7 @@ import {
   describeInviteFailure,
   redeemInvitation,
   shouldRetain,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import type { SignedGroupOpenInvitation } from "../api/groupApi";
 import {
   encodeInvitationPayload,

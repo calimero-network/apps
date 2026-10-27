@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { useApplicationId } from "../hooks/useApplicationId";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveForum, setForumName } from "../lib/session";
@@ -55,7 +55,7 @@ import {
   JoinSyncBanner,
   isNamespaceJustJoined,
   useJoinSync,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 /**
  * Forums inside one space (namespace). A forum is a SUBGROUP plus the context bound

@@ -18,8 +18,8 @@
 import type {
   InviteRedeemer,
   ParsedInvitation,
-} from "@calimero-network/mero-react";
-import type { AdminApiClient } from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
+import type { AdminApiClient } from "@calimero-apps/cloud";
 import { decodeInvitation } from "./invitation";
 import {
   groupIdOfInvite,

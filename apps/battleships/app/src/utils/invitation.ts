@@ -1,6 +1,6 @@
 import bs58 from 'bs58';
 import { deflateSync, inflateSync } from 'fflate';
-import { buildInviteLink } from '@calimero-network/mero-react';
+import { buildInviteLink } from '@calimero-apps/cloud';
 import { embeddedInviterKey } from './knownPlayers';
 import { embeddedLobbyName } from './lobbyName';
 

@@ -36,7 +36,7 @@ const VERBATIM = ['LandingPage.tsx', 'landing.css', 'landingTypes.ts'];
 /**
  * Verbatim too, but only into apps that can compile it.
  *
- * ⚠️ `mero-sign` has no `@calimero-network/mero-react` dependency at all — it
+ * ⚠️ `mero-sign` has no `@calimero-apps/cloud` dependency at all — it
  * signs in through its own sidebar and takes the landing page's `onConnect`
  * prop. Writing this file there would be an unresolvable import and a broken
  * build, so the config simply carries no `loginPopup` for that app and the
@@ -65,7 +65,7 @@ function hasMeroReact(app) {
   const pkg = join(ROOT, 'apps', app, 'app', 'package.json');
   if (!existsSync(pkg)) return false;
   const { dependencies = {} } = JSON.parse(readFileSync(pkg, 'utf8'));
-  return Boolean(dependencies['@calimero-network/mero-react']);
+  return Boolean(dependencies['@calimero-apps/cloud']);
 }
 
 const CHECK = process.argv.includes('--check');

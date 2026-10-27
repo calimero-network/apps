@@ -19,7 +19,7 @@ const h = vi.hoisted(() => ({
   applicationId: null as string | null,
 }));
 
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     mero: { admin: { listApplications: h.rawListApplications } },

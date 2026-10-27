@@ -1,4 +1,4 @@
-import { classifyError } from "@calimero-network/mero-js";
+import { classifyError } from "@calimero-apps/cloud";
 
 /**
  * Pull a human-readable message out of an unknown thrown error.

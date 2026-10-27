@@ -6,8 +6,8 @@ import {
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
-} from '@calimero-network/mero-react';
-import type { SignedGroupOpenInvitation } from '@calimero-network/mero-js';
+} from '@calimero-apps/cloud';
+import type { SignedGroupOpenInvitation } from '@calimero-apps/cloud';
 import { listNamespaces } from '../../../api/admin';
 import { useEnsureAppId } from '../../../hooks/useEnsureAppId';
 import { decodeInvitationObject } from '../../../utils/invitation';

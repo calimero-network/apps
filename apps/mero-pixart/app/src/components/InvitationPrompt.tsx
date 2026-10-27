@@ -1,13 +1,13 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
+import type { SignedGroupOpenInvitation } from "@calimero-apps/cloud";
 import {
   InvitationDialog,
   InvitationGate,
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { useApi } from "../api/useApi";
 import { decodeInvitationObject } from "../utils/invitation";
 import { setStoredTeamName } from "../utils/teamName";

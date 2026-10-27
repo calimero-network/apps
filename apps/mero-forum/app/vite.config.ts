@@ -1,9 +1,10 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 import pkg from "./package.json" with { type: "json" };
+import { calimeroCsp } from "@calimero-apps/cloud/vite";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [calimeroCsp(), react()],
   // App version (from package.json), shown in the header — so a bug report from
   // a tester says WHICH build they were on.
   define: {

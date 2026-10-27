@@ -4,7 +4,7 @@
 // can gate rendering on the client being ready.
 
 import { useMemo } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 import { DocsClient } from '../generated/docs/DocsClient';
 
 export function useDocsClient(

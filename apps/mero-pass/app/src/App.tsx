@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 import InvitationPrompt from './components/InvitationPrompt';
 import { useAutoLock, useAutoLockMinutes } from './hooks/useDeviceLock';

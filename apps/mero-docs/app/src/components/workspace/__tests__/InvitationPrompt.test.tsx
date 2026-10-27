@@ -22,7 +22,7 @@ const h = vi.hoisted(() => ({
   memberOf: [] as string[],
 }));
 
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     mero: { admin: {} },
@@ -52,7 +52,7 @@ vi.mock('@/hooks/namespaceNames', () => ({
 }));
 
 const { peekInvitation, resetInvitationCaptureForTests } = await import(
-  '@calimero-network/mero-react'
+  '@calimero-apps/cloud'
 );
 
 // {"inviter_signature":"sig","invitation":{"group_id":"ns1"}}, base64url.

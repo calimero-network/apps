@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
+import { AuthRevokedError, HTTPError } from '@calimero-apps/cloud';
 import {
   isGroupAccessDenied,
   isGroupNotOnNode,

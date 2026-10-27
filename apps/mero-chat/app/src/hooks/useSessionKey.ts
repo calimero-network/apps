@@ -1,4 +1,4 @@
-import { getNodeUrl, useMero } from "@calimero-network/mero-react";
+import { getNodeUrl, useMero } from "@calimero-apps/cloud";
 
 /**
  * What there is to list from, as a key that changes whenever the session does,

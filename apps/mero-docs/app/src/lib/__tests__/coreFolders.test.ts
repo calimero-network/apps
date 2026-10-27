@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@calimero-apps/cloud';
 import { folderDocsContext, loadCoreFolders, type FolderReader } from '../coreFolders';
 
 const ROOT = 'root';

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 // vi.mock is hoisted above imports, so this import still resolves to
-// the mocked '@calimero-network/mero-react' below.
-import { HTTPError } from '@calimero-network/mero-js';
+// the mocked '@calimero-apps/cloud' below.
+import { HTTPError } from '@calimero-apps/cloud';
 import { useFolderOperations } from '../useFolderOperations';
 import { CAPABILITIES } from '@/constants/config';
 
@@ -20,7 +20,8 @@ const setMemberCapabilities = vi.fn();
 const reparentGroup = vi.fn();
 const getGroupInfo = vi.fn();
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useCreateGroupInNamespace: () => ({ createGroupInNamespace }),
   useCreateContext: () => ({ createContext }),
   useDeleteContext: () => ({ deleteContext }),

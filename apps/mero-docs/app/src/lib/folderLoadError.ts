@@ -1,4 +1,4 @@
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@calimero-apps/cloud';
 
 // The raw load error is implementation detail, so callers log it and show this plain copy instead.
 

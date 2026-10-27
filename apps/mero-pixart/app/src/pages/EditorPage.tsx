@@ -10,7 +10,7 @@ import { useSse } from "../hooks/useSse";
 import { useToast } from "../contexts/ToastContext";
 import { useShallow } from "zustand/react/shallow";
 import { useMemberNames, useMyName } from "@calimero-apps/names";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { decideProjectName } from "../utils/projectName";
 import { rememberProject } from "../utils/lastVisit";
 import { useEditorStore } from "../store/editorStore";

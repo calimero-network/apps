@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig } from "vitest/config";
 import { VitePWA } from "vite-plugin-pwa";
+import { calimeroCsp } from "@calimero-apps/cloud/vite";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -18,7 +19,7 @@ export default defineConfig({
       },
     },
   },
-  plugins: [
+  plugins: [calimeroCsp(), 
     react(),
     VitePWA({
       registerType: "autoUpdate",

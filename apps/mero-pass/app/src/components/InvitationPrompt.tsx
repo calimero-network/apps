@@ -7,7 +7,7 @@ import {
   useMero,
   type ParsedInvitation,
   type RedeemOutcome,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import {
   decodeInvite,
   groupIdOfInvite,

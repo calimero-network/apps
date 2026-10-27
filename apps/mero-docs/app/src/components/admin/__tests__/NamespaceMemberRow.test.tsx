@@ -35,7 +35,8 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
 }));
 const updateMemberRoleMock = vi.fn().mockResolvedValue(undefined);
 const setMemberCapabilitiesMock = vi.fn().mockResolvedValue(undefined);
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: vi.fn(),
   useMero: () => ({
     mero: {},

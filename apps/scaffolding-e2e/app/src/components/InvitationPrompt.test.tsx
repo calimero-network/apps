@@ -29,7 +29,7 @@ vi.mock("../lib/mero", () => ({
 }));
 
 const { peekInvitation, primeInvitationCapture, resetInvitationCaptureForTests } =
-  await import("@calimero-network/mero-react");
+  await import("@calimero-apps/cloud");
 const { APP_SLUG, inviteLink } = await import("../lib/invite");
 const { InvitationPrompt } = await import("./InvitationPrompt");
 

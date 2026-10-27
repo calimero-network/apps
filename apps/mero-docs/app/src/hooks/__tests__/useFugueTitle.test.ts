@@ -17,7 +17,8 @@ const events = {
   off: (_: 'connect', h: () => void) => connectHandlers.delete(h),
 };
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     deliver = handler;
   },

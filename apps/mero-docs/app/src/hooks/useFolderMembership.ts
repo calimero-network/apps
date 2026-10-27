@@ -10,7 +10,7 @@ import {
   useAddGroupMembers,
   useRemoveGroupMembers,
   type GroupMember,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { splitTeeMembers } from '@/lib/roles';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';

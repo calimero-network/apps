@@ -11,7 +11,7 @@ import {
   peekInvitation,
   primeInvitationCapture,
   resetInvitationCaptureForTests,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import {
   encodeInvitationPayload,
   serializeGroupInvitationPayload,

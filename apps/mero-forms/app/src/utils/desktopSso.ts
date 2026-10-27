@@ -1,5 +1,5 @@
 import { getBridge } from "@calimero-network/mero-platform";
-import { getNodeUrl, isDesktopWindow, setNodeUrl } from "@calimero-network/mero-react";
+import { getNodeUrl, isDesktopWindow, setNodeUrl } from "@calimero-apps/cloud";
 
 /**
  * Let a desktop hand-off log straight in, without re-authenticating.

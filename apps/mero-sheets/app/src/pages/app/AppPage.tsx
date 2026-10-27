@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useGroupMembers, useMero } from '@calimero-network/mero-react';
+import { useGroupMembers, useMero } from '@calimero-apps/cloud';
 import { useMemberNames, useMyName } from '@calimero-apps/names';
 import { C } from '../../theme';
 import ThemeToggle from '../../components/ThemeToggle';
@@ -34,7 +34,7 @@ import { useSpreadsheet } from '../../hooks/useSpreadsheet';
 import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
 import { isFormula, insertReference, type AutoRef } from '../../spreadsheet/formulaEdit';
-import { JoinSyncBanner } from '@calimero-network/mero-react';
+import { JoinSyncBanner } from '@calimero-apps/cloud';
 import { columnLabel, normalizeRect, rangeRef, sheetPrefix, rectCells, type CellCoord, type Rect } from '../../spreadsheet/refs';
 import { planFill } from '../../spreadsheet/fill';
 import { toTSV, fromTSV } from '../../spreadsheet/clipboard';

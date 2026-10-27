@@ -1,5 +1,5 @@
 import { ChangeEvent, FC, useEffect, useMemo, useRef, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { accountId } from "../../../../api/identity";
 import { useClickOutside, useForm, useMembers } from "../../../../hooks/index";
 import {

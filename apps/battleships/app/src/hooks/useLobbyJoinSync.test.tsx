@@ -7,7 +7,7 @@ import {
   isNamespaceJustJoined,
   JOIN_SYNC_POLL_MS,
   markNamespaceJustJoined,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { useLobbyJoinSync, type LobbyReadFor } from './useLobbyJoinSync';
 
 // ── A lobby this session just joined ────────────────────────────────────────

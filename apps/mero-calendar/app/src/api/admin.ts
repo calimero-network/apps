@@ -1,4 +1,4 @@
-import type { AdminApiClient } from "@calimero-network/mero-js";
+import type { AdminApiClient } from "@calimero-apps/cloud";
 import { isAdminRole } from "@calimero-apps/members";
 import { sameAccount } from "@calimero-apps/names";
 import {

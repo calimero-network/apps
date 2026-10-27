@@ -13,7 +13,7 @@
  * wiring (client memo, subscription refresh, optimistic refetch) stays.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useMero, useSubscription } from '@calimero-network/mero-react';
+import { useMero, useSubscription } from '@calimero-apps/cloud';
 import { useStreamReconnect } from './useStreamReconnect';
 import { ServiceClient, Item } from '../api/service/ServiceClient';
 

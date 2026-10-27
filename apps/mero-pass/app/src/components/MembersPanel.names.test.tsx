@@ -23,7 +23,8 @@ const admin = {
   getMemberMetadata: vi.fn().mockResolvedValue(null),
   setMemberMetadata: vi.fn().mockResolvedValue(undefined),
 };
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ admin }),
 }));
 

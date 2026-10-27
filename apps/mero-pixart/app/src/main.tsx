@@ -7,7 +7,7 @@ import {
   AppMode as MeroAppMode,
   primeInvitationCapture,
   setApplicationId,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
 import { APP_SLUG } from "./utils/invitation";

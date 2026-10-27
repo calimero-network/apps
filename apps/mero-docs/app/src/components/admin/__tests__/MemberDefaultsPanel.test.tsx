@@ -30,7 +30,8 @@ vi.mock('@/hooks/useFolderMembership', () => ({
     refetch: vi.fn().mockResolvedValue(undefined),
   }),
 }));
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useDefaultCapabilities: () => ({
     defaultCapabilities: 37,
     loading: false,

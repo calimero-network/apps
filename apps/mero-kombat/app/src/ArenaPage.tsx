@@ -3,7 +3,7 @@ import {
   clearContextId,
   useContextGroup,
   useJoinSync,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { ArrowLeft, Refresh, Target } from "@calimero-network/mero-icons";
 import { useNavigate } from "react-router-dom";
 import { ArenaCanvas } from "./ArenaCanvas";

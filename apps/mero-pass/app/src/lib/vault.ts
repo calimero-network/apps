@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 import { MeroPassClient } from '../generated/MeroPassClient';
 import type { VaultMero } from './vaults';

@@ -1,34 +1,30 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { RpcError, HTTPError } from "@calimero-apps/cloud";
 import { decodeContractError, parseRpcOutput, rpcCall, rpcRaw, RpcCallError } from "./rpc";
 import { setContextId, setNodeUrl } from "../lib/mero";
 
-/**
- * Reply to the next fetch with a JSON-RPC body.
- *
- * A real `Response`, because the call now goes through mero-js's HTTP client,
- * which reads `headers`, `statusText` and `text()` — not a `{ ok, json }`
- * stand-in. `ok` is derived from `status`, as it is on the wire.
- */
-function reply(body: unknown, _ok = true, status = 200) {
-  return vi.fn().mockImplementation(() =>
-    Promise.resolve(
-      new Response(JSON.stringify(body), {
-        status,
-        headers: { "content-type": "application/json" },
-      }),
-    ),
-  );
-}
+// The cluster's transport, stood in at the client: on Calimero Cloud every call
+// is sealed to an attested node, so there is no `/jsonrpc` body on the wire to
+// assert. `execute` answers what the app returned, or throws v1's `RpcError`
+// for the app's own refusal, as the cloud client does.
+const execute = vi.hoisted(() => vi.fn());
+vi.mock("../lib/mero", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/mero")>();
+  return {
+    ...actual,
+    getMeroClient: () => (actual.getNodeUrl() ? { rpc: { execute } } : null),
+  };
+});
 
 /** A UTF-8 byte array, the shape older nodes return `output` (and errors) as. */
 const bytes = (value: unknown) => [...new TextEncoder().encode(JSON.stringify(value))];
 
 beforeEach(() => {
   localStorage.clear();
+  execute.mockReset();
   setNodeUrl("http://localhost:2528");
   setContextId("ctx-1");
 });
-afterEach(() => vi.unstubAllGlobals());
 
 describe("parseRpcOutput", () => {
   it("passes an already-parsed object through — newer nodes send this", () => {
@@ -103,110 +99,76 @@ describe("decodeContractError", () => {
 });
 
 describe("rpcRaw", () => {
-  it("posts an execute call to the node with the bearer token", async () => {
-    localStorage.setItem("mero-tokens", JSON.stringify({
-      access_token: "tok", refresh_token: "r", expires_at: Date.now() + 60_000,
-      // mero-js binds a stored bundle to the node that issued it.
-      node_origin: "http://localhost:2528",
-    }));
-    const fetchMock = reply({ result: { output: bytes({ ok: true }), logs: [] } });
-    vi.stubGlobal("fetch", fetchMock);
-
+  it("calls the method in the selected context and keeps the envelope, output parsed", async () => {
+    execute.mockResolvedValue(bytes({ ok: true }));
     const envelope = await rpcRaw("entries", { key: "k" });
-
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://localhost:2528/jsonrpc");
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
-    expect(JSON.parse(init.body as string)).toMatchObject({
-      method: "execute",
-      params: { contextId: "ctx-1", method: "entries", argsJson: { key: "k" } },
-    });
-    // …and the envelope is preserved, with `output` parsed
+    expect(execute).toHaveBeenCalledWith({ contextId: "ctx-1", method: "entries", argsJson: { key: "k" } });
     expect(envelope.result?.output).toEqual({ ok: true });
   });
 
-  it("does not send an executorPublicKey — the node reads the caller from the token", async () => {
-    const fetchMock = reply({ result: { output: null } });
-    vi.stubGlobal("fetch", fetchMock);
+  it("does not send an executorPublicKey — the cluster reads the caller from the session", async () => {
+    execute.mockResolvedValue(null);
     await rpcRaw("len");
-    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
-    expect(body.params).not.toHaveProperty("executorPublicKey");
+    expect(execute.mock.calls[0]![0]).not.toHaveProperty("executorPublicKey");
   });
 
   it("returns a contract error as `error` instead of throwing — the UI shows it", async () => {
-    vi.stubGlobal("fetch", reply({ error: { message: "key is frozen" } }));
+    execute.mockRejectedValue(new RpcError(-32000, "key is frozen", "key is frozen", "ExecutionError"));
     const envelope = await rpcRaw("set", { key: "k", value: "v" });
-    // mero-js normalises the node's `error` into an `RpcError`; the envelope
-    // carries it back as an `error` object with the node's message intact.
     expect(envelope.error).toMatchObject({ message: "key is frozen" });
     expect(envelope.result).toBeUndefined();
   });
 
-  it("trims a trailing slash off the node url rather than posting //jsonrpc", async () => {
-    setNodeUrl("http://localhost:2528/");
-    const fetchMock = reply({ result: { output: null } });
-    vi.stubGlobal("fetch", fetchMock);
-    await rpcRaw("len");
-    expect(fetchMock.mock.calls[0][0]).toBe("http://localhost:2528/jsonrpc");
-  });
-
-  it("explains a missing node instead of posting to /jsonrpc", async () => {
+  it("explains a missing node instead of calling nowhere", async () => {
     localStorage.clear();
     await expect(rpcRaw("len")).rejects.toThrow(/connect to a node/i);
   });
 
   it("explains a missing context instead of sending an empty one", async () => {
-    setNodeUrl("http://localhost:2528");
     setContextId("");
     await expect(rpcRaw("len")).rejects.toThrow(/Setup Wizard/);
   });
 
   it("accepts an explicit context id, for a call against another context", async () => {
-    const fetchMock = reply({ result: { output: null } });
-    vi.stubGlobal("fetch", fetchMock);
+    execute.mockResolvedValue(null);
     await rpcRaw("len", {}, "ctx-other");
-    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
-    expect(body.params.contextId).toBe("ctx-other");
+    expect(execute.mock.calls[0]![0]).toMatchObject({ contextId: "ctx-other" });
   });
 
-  it("throws on a transport failure", async () => {
-    vi.stubGlobal("fetch", reply({}, false, 503));
+  it("throws on a transport failure, naming the status", async () => {
+    execute.mockRejectedValue(new HTTPError(503, "Service Unavailable", "", new Headers(), ""));
     await expect(rpcRaw("len")).rejects.toThrow(/503/);
   });
 });
 
 describe("rpcCall", () => {
   it("returns the value for code that wants one", async () => {
-    vi.stubGlobal("fetch", reply({ result: { output: bytes({ device_id: "d", account_id: "a" }) } }));
+    execute.mockResolvedValue(bytes({ device_id: "d", account_id: "a" }));
     await expect(rpcCall("whoami")).resolves.toEqual({ device_id: "d", account_id: "a" });
   });
 
   it("throws the contract's own message, decoded", async () => {
     const encoded = bytes("that key is frozen").join(", ");
-    vi.stubGlobal("fetch", reply({
-      error: { data: `the method call returned an error: [${encoded}]` },
-    }));
+    const data = `the method call returned an error: [${encoded}]`;
+    execute.mockRejectedValue(new RpcError(-32000, data, data));
     await expect(rpcCall("set")).rejects.toThrow("that key is frozen");
   });
 
   it("names the method on the error, so a failure is traceable", async () => {
-    vi.stubGlobal("fetch", reply({ error: { message: "nope" } }));
-    await expect(rpcCall("remove")).rejects.toMatchObject({
-      name: "RpcCallError", method: "remove",
-    });
+    execute.mockRejectedValue(new RpcError(-32000, "nope"));
+    await expect(rpcCall("remove")).rejects.toMatchObject({ name: "RpcCallError", method: "remove" });
     expect(new RpcCallError("x", "m").method).toBe("m");
   });
 
-  it("returns null when the node answers with no output", async () => {
-    vi.stubGlobal("fetch", reply({ result: { output: null, logs: [] } }));
+  it("returns null when the app answers with no output", async () => {
+    execute.mockResolvedValue(null);
     await expect(rpcCall("clear")).resolves.toBeNull();
   });
 
-  it("keeps the node's `data` on a contract error, where the bail message lives", async () => {
+  it("keeps the app's `data` on a contract error, where the bail message lives", async () => {
     const encoded = bytes("nope").join(", ");
-    vi.stubGlobal("fetch", reply({
-      error: { type: "FunctionCallError", data: `the method call returned an error: [${encoded}]` },
-    }));
+    const data = `the method call returned an error: [${encoded}]`;
+    execute.mockRejectedValue(new RpcError(-32000, data, data, "FunctionCallError"));
     const envelope = await rpcRaw("set");
     expect(envelope.error).toMatchObject({
       type: "FunctionCallError",

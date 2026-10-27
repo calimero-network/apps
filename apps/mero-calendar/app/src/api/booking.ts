@@ -1,4 +1,4 @@
-import type { ExecuteTransport } from "@calimero-network/mero-js";
+import type { ExecuteTransport } from "@calimero-apps/cloud";
 import { callContract } from "./contract";
 import {
   BOOKING_GUEST_METHODS,

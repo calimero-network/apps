@@ -25,7 +25,7 @@
  * Env first (an explicit pin still wins), session second, and NEVER a positional
  * fallback.
  */
-import { getApplicationId } from "@calimero-network/mero-react";
+import { getApplicationId } from "@calimero-apps/cloud";
 
 import { listApplications } from "./adminApi";
 import type { ContextRecord, NamespaceRecord } from "./adminApi";

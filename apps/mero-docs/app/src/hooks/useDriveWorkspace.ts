@@ -56,7 +56,7 @@ import {
   useNodeIdentity,
   type GroupMember,
   type Namespace,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { RegistryClient } from '../generated/registry/RegistryClient';
 import { useContextEvents } from './useContextEvents';
 import { useSyncStatus, type SyncSnapshot } from './useSyncStatus';

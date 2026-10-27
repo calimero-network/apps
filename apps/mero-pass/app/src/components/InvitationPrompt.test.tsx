@@ -27,13 +27,13 @@ const rawAdmin = {
   listNamespaces: vi.fn(),
 };
 const SESSION = { mero: { admin: rawAdmin }, admin, isDelegated: true };
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => SESSION,
 }));
 
 const { peekInvitation, resetInvitationCaptureForTests } = await import(
-  '@calimero-network/mero-react'
+  '@calimero-apps/cloud'
 );
 const { encodeInvite } = await import('../lib/inviteCodec');
 const NS = '010203';

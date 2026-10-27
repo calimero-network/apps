@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { useExecute } from "@calimero-network/mero-react";
+import { useExecute } from "@calimero-apps/cloud";
 import {
   getContextId,
   getExecutorPublicKey,

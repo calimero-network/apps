@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   isNamespaceJustJoined,
   markNamespaceJustJoined,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 
 // ── A team this session just joined ─────────────────────────────────────────
 //
@@ -55,7 +55,7 @@ const stub = vi.hoisted(() => {
   return { node, admin, session };
 });
 
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => stub.session,
 }));

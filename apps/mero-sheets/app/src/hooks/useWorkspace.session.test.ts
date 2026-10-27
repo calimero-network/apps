@@ -57,8 +57,8 @@ function useFakeRead<T>(read: () => { data: T; error: Error | null }, key: unkno
   return { ...state, refetch: async () => setTick((t) => t + 1) };
 }
 
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@calimero-network/mero-react')>()),
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@calimero-apps/cloud')>()),
   useMero: () => ({
     mero,
     admin,

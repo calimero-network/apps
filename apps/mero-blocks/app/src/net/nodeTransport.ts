@@ -3,7 +3,7 @@
 // always had — the routes, bodies and error translation moved here from
 // admin.ts byte for byte so the node path stays exactly what it was.
 
-import { SseClient } from "@calimero-network/mero-js";
+import { SseClient } from "@calimero-apps/cloud";
 import { PACKAGE_NAME } from "./auth";
 import type { SignedInvitation } from "./inviteCodec";
 import { rpcExecute } from "./rpc";

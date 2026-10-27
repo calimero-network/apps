@@ -6,12 +6,12 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useSubscription } from "@calimero-network/mero-react";
+import { useSubscription } from "@calimero-apps/cloud";
 import type {
   GroupMembershipEventData,
   GroupMigrationEventData,
   SubscriptionEventData,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import type {
   WebSocketEvent,
   StateMutationData,

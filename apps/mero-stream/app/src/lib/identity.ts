@@ -1,4 +1,4 @@
-import { parseDeviceCredential } from "@calimero-network/mero-js";
+import { parseDeviceCredential } from "@calimero-apps/cloud";
 
 // ── Who the contract thinks you are ──────────────────────────────────────────
 //

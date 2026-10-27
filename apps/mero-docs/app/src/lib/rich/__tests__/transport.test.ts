@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { HTTPError, RpcError } from '@calimero-network/mero-react';
+import { HTTPError, RpcError } from '@calimero-apps/cloud';
 import { isTransportFailure } from '../transport';
 
 describe('isTransportFailure', () => {

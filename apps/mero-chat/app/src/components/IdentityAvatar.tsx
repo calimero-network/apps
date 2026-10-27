@@ -1,5 +1,5 @@
 import React, { memo } from "react";
-import { getContextId } from "@calimero-network/mero-react";
+import { getContextId } from "@calimero-apps/cloud";
 import { useAvatarUrl } from "../hooks/useAvatarUrl";
 import { Avatar } from "./virtualized-chat/Message/Avatar";
 

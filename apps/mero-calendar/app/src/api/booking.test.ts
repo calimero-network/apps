@@ -3,7 +3,7 @@
  * (the core access grant and the contract record) staying in step.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExecuteTransport } from "@calimero-network/mero-js";
+import type { ExecuteTransport } from "@calimero-apps/cloud";
 
 import { BOOKING_GUEST_METHODS, sha256Hex } from "./accessGrants";
 import {

@@ -13,7 +13,7 @@
 // the executor from the credential). mero-js builds the envelope and the test
 // beside this file pins what we hand it.
 
-import { RpcError, type ExecuteTransport } from "@calimero-network/mero-js";
+import { RpcError, type ExecuteTransport } from "@calimero-apps/cloud";
 
 export type Exec = <T = unknown>(method: string, args: Record<string, unknown>) => Promise<T>;
 

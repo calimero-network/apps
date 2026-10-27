@@ -3,7 +3,7 @@ import {
   JOIN_SYNC_POLL_MS,
   useContextGroup,
   useJoinSync,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { useKvStore } from "./useKvStore";
 
 type Result = { ok: unknown } | { err: string } | null;

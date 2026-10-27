@@ -6,7 +6,7 @@ import {
   clearContextId,
   useContextGroup,
   useMero,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { ContextPicker } from "./ContextPicker";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
 import { InviteCard } from "./InviteCard";

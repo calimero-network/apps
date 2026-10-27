@@ -5,7 +5,7 @@ import MemberDetails from "./MemberDetails";
 import TabSwitch from "./TabSwitch";
 import type { ChannelMeta } from "../../types/Common";
 import type { UserId } from "../../api/clientApi";
-import { getContextIdentity } from "@calimero-network/mero-react";
+import { getContextIdentity } from "@calimero-apps/cloud";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { isRestrictedChannelType } from "../../utils/channelVisibility";
 import { useToast } from "../../contexts/ToastContext";

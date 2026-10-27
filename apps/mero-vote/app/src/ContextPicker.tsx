@@ -5,7 +5,7 @@ import {
   useCreateContext,
   useCreateNamespace,
   useNamespacesForApplication,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { BoxIcon, CheckIcon, ChevronRightIcon, LayersIcon, PlusIcon, RefreshIcon } from "./icons";
 import { Callout, IconTile, IdField } from "./ui";
 

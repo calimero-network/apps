@@ -1,4 +1,4 @@
-import { HTTPError } from "@calimero-network/mero-js";
+import { HTTPError } from "@calimero-apps/cloud";
 import { getContextId, getMeroClient, NODE_REQUEST_TIMEOUT_MS } from "../lib/mero";
 import { notifyUnauthorized } from "../api/adminApi";
 

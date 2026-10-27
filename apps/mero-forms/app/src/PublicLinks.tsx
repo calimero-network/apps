@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import type { FormView, LinkView } from "./generated/FormsClient";
 import {
   LINK_METHODS,

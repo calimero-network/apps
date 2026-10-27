@@ -6,7 +6,7 @@ import {
   isNamespaceJustJoined,
   useJoinSync,
   useMero,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { useApi } from "../api/useApi";
 import { listGroupContextRows, listSubgroupRows } from "../api/teamContexts";
 import { isSelfAdmin, selfIsGroupAdmin } from "../api/selfRole";

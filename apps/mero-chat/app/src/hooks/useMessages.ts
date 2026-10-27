@@ -44,7 +44,7 @@ import {
  */
 const PERMALINK_RADIUS = 25;
 import { bindChannel, messageSync } from "../repositories/messages";
-import { getContextId } from "@calimero-network/mero-react";
+import { getContextId } from "@calimero-apps/cloud";
 
 /**
  * Custom hook for managing messages in a chat

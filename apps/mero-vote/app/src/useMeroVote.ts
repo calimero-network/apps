@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useMero, useSubscription } from "@calimero-network/mero-react";
+import { useMero, useSubscription } from "@calimero-apps/cloud";
 import { MeroVoteClient } from "./generated/MeroVoteClient";
 
 /** The generated client, bound to this session and context. */

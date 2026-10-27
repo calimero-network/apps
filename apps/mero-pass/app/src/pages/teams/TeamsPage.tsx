@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useMero, useNodeIdentity } from '@calimero-network/mero-react';
+import { useMero, useNodeIdentity } from '@calimero-apps/cloud';
 import { Lock } from '@calimero-network/mero-icons';
 
 import AppShell from '../../components/AppShell';

@@ -24,7 +24,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { UserPlus, Link2, Globe, Lock, Trash2 } from 'lucide-react';
-import { useGroupCapabilities, useMero } from '@calimero-network/mero-react';
+import { useGroupCapabilities, useMero } from '@calimero-apps/cloud';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useContextEvents } from '@/hooks/useContextEvents';

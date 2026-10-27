@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import type { AdminApiClient, ExecuteTransport, SseClient } from "@calimero-network/mero-js";
+import { useMero } from "@calimero-apps/cloud";
+import type { AdminApiClient, ExecuteTransport, SseClient } from "@calimero-apps/cloud";
 
 // ── The session's clients, reachable from plain functions ───────────────────
 //

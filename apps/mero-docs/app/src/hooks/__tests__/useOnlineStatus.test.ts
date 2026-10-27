@@ -6,7 +6,8 @@ import { useOnlineStatus } from '../useOnlineStatus';
 // (vitest hoists vi.mock above the imports, so mero-react is mocked before
 // useOnlineStatus imports it.)
 let online = true;
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ isOnline: online }),
 }));
 

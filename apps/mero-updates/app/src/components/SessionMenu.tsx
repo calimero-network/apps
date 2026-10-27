@@ -1,4 +1,4 @@
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 
 import { useSignOut } from "../auth/signOut";
 import type { MeView } from "../generated/UpdatesClient";

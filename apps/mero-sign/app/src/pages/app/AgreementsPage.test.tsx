@@ -48,7 +48,7 @@ vi.mock('../../api/agreementService', () => ({
 }));
 
 const { isNamespaceJustJoined, markNamespaceJustJoined } = await import(
-  '@calimero-network/mero-react'
+  '@calimero-apps/cloud'
 );
 const { default: AgreementsPage } = await import('./AgreementsPage');
 

@@ -22,7 +22,7 @@
 // the desktop launcher both resolve by, and the one thing that does not change
 // between releases, machines or sessions.
 
-import type { AdminApiClient } from '@calimero-network/mero-js';
+import type { AdminApiClient } from '@calimero-apps/cloud';
 import { PACKAGE_NAME } from '@/constants/config';
 
 /** One row of the node's installed-application list, narrowed to what we match on. */

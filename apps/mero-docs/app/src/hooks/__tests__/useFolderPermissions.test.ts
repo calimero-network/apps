@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@calimero-apps/cloud';
 import { useFolderPermissions } from '../useFolderPermissions';
 import { CAPABILITIES } from '../../constants/config';
 import { MANAGER_FOLDER_CAPS } from '../../lib/roles';
@@ -29,7 +29,8 @@ const MERO_STUB = {
     getMemberCapabilities: getMemberCapsMock,
   },
 };
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: vi.fn(),
   useMero: () => MERO_STUB,
 }));

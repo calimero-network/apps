@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useContextGroup, useEphemeral, useMero, useSubscription } from "@calimero-network/mero-react";
+import { useContextGroup, useEphemeral, useMero, useSubscription } from "@calimero-apps/cloud";
 import { publishMemberName, useMemberNames } from "@calimero-apps/names";
-import type { SubscriptionEventData } from "@calimero-network/mero-react";
+import type { SubscriptionEventData } from "@calimero-apps/cloud";
 import { MeroModelsClient } from "../generated/MeroModelsClient";
 import { memberColor } from "./model";
 import { GUEST, useEditor } from "./store";

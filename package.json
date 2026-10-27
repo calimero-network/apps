@@ -20,9 +20,7 @@
   },
   "pnpm": {
     "overrides": {
-      "base-x@2.0.6": "3.0.11",
-      "@calimero-network/mero-js": "catalog:",
-      "kv-store-cloud>@calimero-network/mero-js": "github:calimero-network/mero-js#release-v2"
+      "base-x@2.0.6": "3.0.11"
     }
   }
 }

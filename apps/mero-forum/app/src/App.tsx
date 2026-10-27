@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 
 import FeedPage from "./pages/FeedPage";
 import PostPage from "./pages/PostPage";

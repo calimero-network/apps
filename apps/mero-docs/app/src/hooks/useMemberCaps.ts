@@ -32,7 +32,7 @@
 //     `denied` is set when every attempt was refused as a non-member.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 import { isForbidden, isMemberGone } from '@/utils/accessDenied';

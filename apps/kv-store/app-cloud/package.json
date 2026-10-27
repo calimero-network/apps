@@ -9,7 +9,8 @@
     "prebuild": "node scripts/copy-wasm.mjs",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "test:e2e": "node scripts/copy-wasm.mjs && playwright test"
+    "test:e2e": "node scripts/copy-wasm.mjs && playwright test",
+    "test": "vitest run"
   },
   "dependencies": {
     "@calimero-network/mero-js": "github:calimero-network/mero-js#release-v2",
@@ -17,12 +18,15 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@calimero-apps/cloud": "workspace:*",
     "@playwright/test": "^1.62.1",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

@@ -48,13 +48,9 @@ const appClient = relayClient(APP_RELAY);
 const session = { account: ACCOUNT, credential: "cred", deviceSecret: "secret", relayUrl: APP_RELAY };
 const buildDelegatedClient = vi.fn((s: { relayUrl: string }) => relayClient(s.relayUrl));
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ mero: appClient, admin: null, isDelegated: true }),
-}));
-
-vi.mock("@calimero-network/mero-js", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
   readDelegatedSession: () => session,
   buildDelegatedClient: (s: { relayUrl: string }) => buildDelegatedClient(s),
   listDelegatedContexts: vi.fn(async () => [

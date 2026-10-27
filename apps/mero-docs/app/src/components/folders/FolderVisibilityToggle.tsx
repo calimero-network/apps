@@ -13,7 +13,7 @@ import React, { useState } from 'react';
 import {
   useMero,
   useSetSubgroupVisibility,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Eye, EyeOff } from 'lucide-react';

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ExecuteTransport } from "@calimero-network/mero-js";
+import type { ExecuteTransport } from "@calimero-apps/cloud";
 
 import type { OwnerNode } from "../../../../api/accessGrants";
 import {

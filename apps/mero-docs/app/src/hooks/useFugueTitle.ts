@@ -8,7 +8,7 @@ import { flushSync } from 'react-dom';
 import {
   useSubscription,
   type SubscriptionEventData,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { diffText, diffTextByIds, insertTextAt, type Change, type IdRun } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
 import { scalarToUtf16, utf16ToScalar } from '@/lib/rich/offsets';

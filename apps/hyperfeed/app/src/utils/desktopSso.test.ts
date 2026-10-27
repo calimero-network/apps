@@ -6,7 +6,8 @@ const getNodeUrl = vi.fn();
 const setNodeUrl = vi.fn();
 
 vi.mock("@calimero-network/mero-platform", () => ({ getBridge: () => getBridge() }));
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getNodeUrl: () => getNodeUrl(),
   isDesktopWindow: () => isDesktopWindow(),
   setNodeUrl: (u: string) => setNodeUrl(u),

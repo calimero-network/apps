@@ -1,4 +1,4 @@
-import { isNamespaceJustJoined } from "@calimero-network/mero-react";
+import { isNamespaceJustJoined } from "@calimero-apps/cloud";
 
 /** How long to keep reading a project of a team this node has only just joined. */
 export const PROJECT_SYNC_MS = 90_000;

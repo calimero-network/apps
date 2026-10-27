@@ -15,13 +15,13 @@
 // retries and fallbacks in them, they are the part most likely to need a fix,
 // and a hook is the worst place to unit-test one.
 
-import type { MeroJs } from '@calimero-network/mero-js';
+import type { MeroJs } from '@calimero-apps/cloud';
 import {
   NotForAccountError,
   describeInviteFailure,
   redeemInvitation,
   type RedeemOutcome,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import {
   encodeInvite,
   namespaceIdOfInvite,

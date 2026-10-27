@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig } from "vitest/config";
+import { calimeroCsp } from "@calimero-apps/cloud/vite";
 
 export default defineConfig({
   server: {
@@ -20,5 +21,5 @@ export default defineConfig({
       },
     },
   },
-  plugins: [react()],
+  plugins: [calimeroCsp(), react()],
 });

@@ -11,7 +11,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { ShieldCheck, UserPlus } from 'lucide-react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { namespaceLabel } from '@/lib/namespaceLabel';

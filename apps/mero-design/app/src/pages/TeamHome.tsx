@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import ProjectThumbnail from "../components/ProjectThumbnail";
 import { EmptyBoardsArt } from "../components/Artwork";
 import { IconPlus, IconUserPlus } from "../components/HomeIcons";

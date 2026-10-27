@@ -21,7 +21,7 @@
  * `logic/Cargo.toml` (`[package.metadata.calimero].package`) and mirrored into
  * `studio.config.json`, which is where `APP_PACKAGE` comes from.
  */
-import type { AdminApiClient } from '@calimero-network/mero-js';
+import type { AdminApiClient } from '@calimero-apps/cloud';
 import { APP_PACKAGE } from '../config';
 
 export interface InstalledApp {

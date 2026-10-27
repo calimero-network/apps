@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useEphemeral } from "@calimero-network/mero-react";
+import { useEphemeral } from "@calimero-apps/cloud";
 
 import { getMessengerDisplayName } from "../utils/messengerName";
 

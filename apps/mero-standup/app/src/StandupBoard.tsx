@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useJoinSync } from "@calimero-network/mero-react";
+import { useJoinSync } from "@calimero-apps/cloud";
 import type { UpdateView } from "./generated/StandupClient";
 import { carryForward, type Draft } from "./lib/carry";
 import {

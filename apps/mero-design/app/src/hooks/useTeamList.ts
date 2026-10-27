@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { createNamespace, deleteNamespace, leaveNamespace, listNamespaces } from "../api/rpc";
 import { useApplicationId } from "./useApplicationId";
 import { setStoredTeamName } from "../utils/teamName";

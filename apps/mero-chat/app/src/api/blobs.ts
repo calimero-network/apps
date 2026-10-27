@@ -64,7 +64,7 @@
 import {
   getNodeUrl,
   type GetBlobInfoResponseData,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import bs58 from "bs58";
 import { getMeroJs } from "./meroJsClient";
 

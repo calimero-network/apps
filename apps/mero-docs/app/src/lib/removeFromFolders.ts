@@ -1,4 +1,4 @@
-import type { AdminApiClient } from '@calimero-network/mero-js';
+import type { AdminApiClient } from '@calimero-apps/cloud';
 import { depthOf, type FolderLite } from '@/utils/ancestry';
 
 type MemberAdmin = Pick<AdminApiClient, 'listGroupMembers' | 'removeGroupMembers'>;

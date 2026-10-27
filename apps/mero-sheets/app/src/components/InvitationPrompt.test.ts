@@ -14,8 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // nothing cleared it again, and the dialog sat on "Syncing…" (Browser E2E).
 
 const mero = { admin: {} };
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@calimero-network/mero-react')>()),
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@calimero-apps/cloud')>()),
   useMero: () => ({ mero, admin: mero.admin }),
 }));
 
@@ -30,7 +30,7 @@ const {
   isNamespaceJustJoined,
   markNamespaceJustJoined,
   resetInvitationCaptureForTests,
-} = await import('@calimero-network/mero-react');
+} = await import('@calimero-apps/cloud');
 const { encodeInvite } = await import('../lib/inviteCodec');
 const { default: InvitationPrompt } = await import('./InvitationPrompt');
 

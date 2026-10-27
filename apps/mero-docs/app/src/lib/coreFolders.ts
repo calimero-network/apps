@@ -9,7 +9,7 @@
 // Restricted folder is sealed under the subgroup's own key, and core lists a
 // Restricted subgroup only to its members and to the admins above it.
 
-import type { AdminApiClient } from '@calimero-network/mero-js';
+import type { AdminApiClient } from '@calimero-apps/cloud';
 import { isTransportFailure } from './rich/transport';
 
 /** Where a folder's colour lives in its subgroup metadata's `data` map. */

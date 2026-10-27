@@ -51,7 +51,8 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
   }),
 }));
 // A one-off member read goes stale when someone joins; the picker must not use it.
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useGroupMembers: () => ({ members: [], loading: false, error: null }),
 }));
 vi.mock('@/hooks/useFolderReach', () => ({

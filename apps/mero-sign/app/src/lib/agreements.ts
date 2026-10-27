@@ -61,8 +61,8 @@
 // An invitation grants namespace membership. No document, no signature, no key
 // material. See `lib/inviteCodec`.
 
-import type { AdminApiClient } from '@calimero-network/mero-js';
-import { CAPABILITIES } from '@calimero-network/mero-js';
+import type { AdminApiClient } from '@calimero-apps/cloud';
+import { CAPABILITIES } from '@calimero-apps/cloud';
 
 export type AdminLike = AdminApiClient;
 export type StatusFn = (message: string) => void;

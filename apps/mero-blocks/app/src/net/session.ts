@@ -16,7 +16,7 @@ import {
   clearDelegatedCredential,
   clearDelegatedSession,
   readDelegatedSession,
-} from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
 import { takePendingNodeUrl } from "./auth";
 import { TOKENS_KEY, jwtExpiryMs, readStoredTokens, shouldSeedTokens } from "./authTokens";
 

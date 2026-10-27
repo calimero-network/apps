@@ -36,9 +36,9 @@ import {
   type CloudAccountRelay,
   type CreatedContext,
   type CreationDescription,
-  type DelegatedSession,
+  type DelegatedLoginSession as DelegatedSession,
   type IntentResult,
-} from '@calimero-network/mero-js';
+} from '@calimero-apps/cloud';
 
 import { sealedRelayFetch } from './sealing.js';
 import {
@@ -237,7 +237,7 @@ export async function describeRelay(nodeUrl: string, contextId: string, { seal }
  * creation landed — mero-js's own types since 22.4.0 (#214), re-exported so the
  * UI keeps importing them from here.
  */
-export type { CreationDescription, CreatedContext } from '@calimero-network/mero-js';
+export type { CreationDescription, CreatedContext } from '@calimero-apps/cloud';
 
 /** What to create, as `RelayClient.createContext` takes it. */
 export interface CreateContextRequest {

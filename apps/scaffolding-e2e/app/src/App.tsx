@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { contextsForThisApp, currentApplicationId } from "./api/appScope";
 import {
   clearContextId,

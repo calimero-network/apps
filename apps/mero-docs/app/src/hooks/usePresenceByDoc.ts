@@ -2,7 +2,7 @@
 // editor publishes, so Home can say "Bob is here" without opening anything.
 
 import { createContext, useContext, useMemo } from 'react';
-import { useEphemeral } from '@calimero-network/mero-react';
+import { useEphemeral } from '@calimero-apps/cloud';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { presenceColour, type DocPresence } from '@/lib/rich/presence';
 import { rowKey } from '@/lib/workspaceIndex/types';

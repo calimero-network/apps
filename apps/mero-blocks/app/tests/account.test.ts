@@ -3,7 +3,7 @@
 // what "signed in" / "can play" mean for an account.
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { completeDeviceEnrolment } from "@calimero-network/mero-js";
+import { completeDeviceEnrolment } from "@calimero-apps/cloud";
 import {
   beginAccountEnrolment,
   chooseRelay,

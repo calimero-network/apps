@@ -50,7 +50,7 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getNodeUrl: () => "test-app-endpoint",
   useMero: () => ({ admin: {}, isDelegated: false, applicationId: null }),

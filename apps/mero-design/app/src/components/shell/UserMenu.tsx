@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { useMyName } from "@calimero-apps/names";
 import { initialsOf } from "../../utils/artwork";
 import { truncateMiddle } from "../../utils/format";

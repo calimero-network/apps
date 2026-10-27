@@ -35,7 +35,7 @@ import {
   primeInvitationCapture as ensureInvitationCapture,
   setApplicationId,
   setNodeUrl,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { APP_PACKAGE as APP_SLUG } from "../config";
 
 /** True when running inside the Calimero desktop (Tauri) shell. */

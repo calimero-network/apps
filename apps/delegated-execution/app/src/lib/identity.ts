@@ -52,7 +52,7 @@ import {
   signDeviceCert,
   type AccountRoot,
   type RecoverableAccountRoot,
-} from '@calimero-network/mero-js';
+} from '@calimero-apps/cloud';
 
 /** What this tab holds once it has an identity. */
 export interface DeviceIdentity {

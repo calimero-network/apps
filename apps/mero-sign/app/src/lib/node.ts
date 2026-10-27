@@ -26,7 +26,7 @@
 import type {
   AdminApiClient,
   ExecuteTransport,
-} from '@calimero-network/mero-js';
+} from '@calimero-apps/cloud';
 
 /**
  * What this app needs from a session: the admin API to write against and the

@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { MeroJs } from '@calimero-network/mero-js';
+import { MeroJs } from '@calimero-apps/cloud';
 import {
   createTeam,
   createVault,

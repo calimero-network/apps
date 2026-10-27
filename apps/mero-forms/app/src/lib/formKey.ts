@@ -4,7 +4,7 @@ import {
   signDeviceCert,
   signerFromSecret,
   verifyDeviceCredential,
-} from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
 import nacl from "tweetnacl";
 
 /**

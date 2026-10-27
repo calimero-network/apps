@@ -1,6 +1,6 @@
 import React from "react";
 import styled from "styled-components";
-import type { Namespace } from "@calimero-network/mero-react";
+import type { Namespace } from "@calimero-apps/cloud";
 import { tokens as t } from "../theme";
 import { APP_DISPLAY_NAME } from "../config";
 import { SelectMenu } from "./Dropdown";

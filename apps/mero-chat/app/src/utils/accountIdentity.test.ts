@@ -17,7 +17,7 @@ const { mockGetNodeIdentity } = vi.hoisted(() => ({
   mockGetNodeIdentity: vi.fn(),
 }));
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getContextIdentity: () => "",
 }));

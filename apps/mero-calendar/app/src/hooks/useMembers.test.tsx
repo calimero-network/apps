@@ -15,7 +15,8 @@ const admin = {
     members: [{ identity: ANA, role: "Member", name: "Ana" }],
   })),
 };
-vi.mock("@calimero-network/mero-react", () => ({ useMero: () => ({ admin }) }));
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()), useMero: () => ({ admin }) }));
 // The contract knows Ben by username and Ana not at all.
 vi.mock("./useTypedSelector", () => ({
   useTypedSelector: () => [{ id: BEN, username: "ben", avatar: null, joinedAt: 0 }],

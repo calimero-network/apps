@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, type ReactNode } from "react";
-import { useContextGroup, useMero } from "@calimero-network/mero-react";
+import { useContextGroup, useMero } from "@calimero-apps/cloud";
 import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import { displayName } from "./lib/people";
 

@@ -16,7 +16,7 @@
 
 import React, { useCallback, useRef, useState } from 'react';
 import { Pencil, Check, X, Trash2 } from 'lucide-react';
-import { useGroupCapabilities } from '@calimero-network/mero-react';
+import { useGroupCapabilities } from '@calimero-apps/cloud';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MemberLabel } from '@/components/common/MemberLabel';

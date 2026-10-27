@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMero, useNodeIdentity } from "@calimero-network/mero-react";
+import { useMero, useNodeIdentity } from "@calimero-apps/cloud";
 
 import { getContextId } from "./session";
 import { ForumClient } from "../generated/ForumClient";

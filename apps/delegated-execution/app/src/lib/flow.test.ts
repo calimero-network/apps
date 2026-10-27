@@ -13,8 +13,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AdminApiClient,
   signGroupInvitation,
-  type DelegatedSession,
-} from '@calimero-network/mero-js';
+  type DelegatedLoginSession as DelegatedSession,
+} from '@calimero-apps/cloud';
 
 import {
   admitterBaseUrl,
@@ -39,8 +39,8 @@ const relay = vi.hoisted(() => ({
   configs: [] as Array<Record<string, unknown>>,
 }));
 
-vi.mock('@calimero-network/mero-js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@calimero-network/mero-js')>();
+vi.mock('@calimero-apps/cloud', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@calimero-apps/cloud')>();
   class SwitchableRelayClient extends actual.RelayClient {
     constructor(config: ConstructorParameters<typeof actual.RelayClient>[0]) {
       super(config);

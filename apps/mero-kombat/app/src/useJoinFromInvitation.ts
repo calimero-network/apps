@@ -7,11 +7,11 @@ import {
   type InviteRedemption,
   type ParsedInvitation,
   type RedeemOutcome,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import type {
   InviteRedeemer,
   SignedGroupOpenInvitation,
-} from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
 import {
   decodeInvitationPayload,
   parseInvitationPayload,

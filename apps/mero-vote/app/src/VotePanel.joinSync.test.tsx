@@ -7,12 +7,12 @@
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isNamespaceJustJoined, markNamespaceJustJoined, JOIN_SYNC_POLL_MS } from "@calimero-network/mero-react";
+import { isNamespaceJustJoined, markNamespaceJustJoined, JOIN_SYNC_POLL_MS } from "@calimero-apps/cloud";
 
 const ME = "a".repeat(64);
 
-vi.mock("@calimero-network/mero-react", async (orig) => ({
-  ...(await orig<typeof import("@calimero-network/mero-react")>()),
+vi.mock("@calimero-apps/cloud", async (orig) => ({
+  ...(await orig<typeof import("@calimero-apps/cloud")>()),
   useMero: () => ({ admin: null, mero: null }),
   useContextGroup: () => ({ groupId: "ns1", loading: false, error: null }),
   useSubscription: () => undefined,

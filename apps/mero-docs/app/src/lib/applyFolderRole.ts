@@ -2,7 +2,7 @@
 // subtree: Read only on a folder covers every sub-folder the member reaches,
 // and core reads only the direct row of each folder's group.
 
-import { HTTPError, type AdminApiClient } from '@calimero-network/mero-js';
+import { HTTPError, type AdminApiClient } from '@calimero-apps/cloud';
 import {
   FOLDER_ROLE_GRANTS,
   isTeeRole,

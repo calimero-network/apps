@@ -45,7 +45,7 @@
 // on the other node's screen, and it needs no app-level replication.
 
 import { useCallback } from 'react';
-import { buildInviteLink } from '@calimero-network/mero-react';
+import { buildInviteLink } from '@calimero-apps/cloud';
 import { PACKAGE_NAME } from '@/constants/config';
 import {
   useMero,
@@ -54,7 +54,7 @@ import {
   type CreateRecursiveInvitationResponseData,
   type CreateGroupInvitationResponseData,
   type CreateRecursiveGroupInvitationResponseData,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 
 export type InviteKind = 'namespace' | 'group';
 

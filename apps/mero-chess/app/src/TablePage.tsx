@@ -3,7 +3,7 @@ import {
   clearContextId,
   useContextGroup,
   useJoinSync,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { ChessBoard } from "./ChessBoard";
 import type { GameSummary, TableView } from "./generated/MeroChessClient";
 import { InviteCard } from "./InviteCard";

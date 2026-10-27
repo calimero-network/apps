@@ -43,7 +43,7 @@ import {
   useJoinSubgroupInheritance,
   useJoinContext,
   useMero,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { Button } from '@/components/ui/button';
 import { folderDocsContext } from '@/lib/coreFolders';
 

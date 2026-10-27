@@ -5,7 +5,8 @@ const setContextId = vi.fn();
 const createNamespace = vi.fn(async (_r: { applicationId: string; name?: string }) => ({ namespaceId: "ns-new" }));
 const createContext = vi.fn(async (_r: { groupId: string; name?: string }) => ({ contextId: "feed-dddd-4444" }));
 const refetch = vi.fn(async () => undefined);
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   setContextId: (id: string) => setContextId(id),
   useApplicationContexts: () => ({
     contexts: [

@@ -10,7 +10,8 @@ const HEX = "5926f2d2a4940fa2a62edd2cd7d833897c2c1596c697ea674dd0f49b89d11334";
 const admin = {
   listGroupMembers: vi.fn().mockResolvedValue({ members: [{ identity: HEX, role: "Member", name: "Ana" }] }),
 };
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ admin, mero: null }),
   useContextGroup: () => ({ groupId: "ns1", loading: false, error: null }),
   useCreateNamespaceInvitation: () => ({ createNamespaceInvitation: vi.fn() }),

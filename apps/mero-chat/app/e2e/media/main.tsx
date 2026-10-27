@@ -5,7 +5,7 @@ import "@calimero-apps/glass/glass.css";
 import "./seed";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { MeroProvider, AppMode } from "@calimero-network/mero-react";
+import { MeroProvider, AppMode } from "@calimero-apps/cloud";
 import { ToastProvider } from "@calimero-network/mero-ui";
 
 import "../../src/index.css";

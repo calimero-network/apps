@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { readDelegatedCredential, useMero } from "@calimero-network/mero-react";
+import { readDelegatedCredential, useMero } from "@calimero-apps/cloud";
 import { myIdFor } from "../lib/identity";
 
 /**

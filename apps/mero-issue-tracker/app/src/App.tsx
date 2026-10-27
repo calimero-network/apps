@@ -1,6 +1,6 @@
 import React, { type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { AppMode, MeroProvider, useMero } from "@calimero-network/mero-react";
+import { AppMode, MeroProvider, useMero } from "@calimero-apps/cloud";
 import { ToastProvider } from "@calimero-network/mero-ui";
 
 import LandingPage from "./pages/landing/LandingPage";

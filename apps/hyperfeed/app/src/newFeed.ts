@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { setContextId, useCreateContext, useCreateNamespace, useMero } from "@calimero-network/mero-react";
+import { setContextId, useCreateContext, useCreateNamespace, useMero } from "@calimero-apps/cloud";
 import { nameProblem, readFeedNames, suggestName, type FeedName, type NamesAdmin } from "./feeds";
 
 /** rc.25 renamed `groupId` → `namespaceId`; read both. */

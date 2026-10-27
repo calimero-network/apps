@@ -18,7 +18,7 @@ import {
   setContextId,
   setContextIdentity as setExecutorPublicKey,
   useMero as useCalimero,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import type { CreateContextResult } from "../../components/popups/StartDMPopup";
 import type { DMContextInfo } from "../../hooks/useDMs";
 import { useAppNotifications } from "../../hooks/useAppNotifications";

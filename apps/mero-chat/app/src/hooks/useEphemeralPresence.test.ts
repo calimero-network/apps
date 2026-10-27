@@ -14,7 +14,7 @@ const publishes: Array<{ ctx: string | null; slice: Record<string, unknown> }> =
 
 let peersFixture = new Map<string, Record<string, unknown>>();
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useEphemeral: (contextId: string | null) => ({
     peers: peersFixture,

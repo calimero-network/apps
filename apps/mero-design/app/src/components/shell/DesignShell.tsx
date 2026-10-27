@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
-import { JoinSyncBanner, useJoinSync, useMero } from "@calimero-network/mero-react";
+import { JoinSyncBanner, useJoinSync, useMero } from "@calimero-apps/cloud";
 import { getNodeIdentity } from "../../api/rpc";
 import { useTeamList } from "../../hooks/useTeamList";
 import { useBoardList } from "../../hooks/useBoardList";

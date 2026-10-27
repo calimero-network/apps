@@ -3,7 +3,8 @@ import { act, renderHook } from '@testing-library/react';
 import { peersByDoc, useFolderPresence } from '../usePresenceByDoc';
 
 const useEphemeral = vi.fn();
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useEphemeral: (...args: unknown[]) => useEphemeral(...args),
 }));
 

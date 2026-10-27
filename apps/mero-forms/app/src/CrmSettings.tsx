@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import type { CrmLink, Field, FormView } from "./generated/FormsClient";
 import { NO_LINK, isLinked } from "./lib/crm";
 import { parsePipelineId } from "./lib/pipelines";

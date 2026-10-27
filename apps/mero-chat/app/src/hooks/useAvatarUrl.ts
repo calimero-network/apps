@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getContextId, getContextIdentity } from "@calimero-network/mero-react";
+import { getContextId, getContextIdentity } from "@calimero-apps/cloud";
 import { getMeroJs, downloadBlob } from "../api/meroJsClient";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 

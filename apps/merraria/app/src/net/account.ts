@@ -22,7 +22,7 @@ import {
   saveDelegatedSession,
   type CloudAccountRelay,
   type DeviceEnrolmentCallback,
-} from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
 import { adoptAccountSession } from "./session";
 import { resetTransport } from "./transport";
 

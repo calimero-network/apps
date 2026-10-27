@@ -8,7 +8,7 @@
 // below only as the fallback for a node whose application list carries no
 // package at all - a raw-`.wasm` dev install - where matching cannot answer.
 
-import { CAPABILITIES } from '@calimero-network/mero-js';
+import { CAPABILITIES } from '@calimero-apps/cloud';
 
 /** Env-configured app id. Last-resort fallback ONLY for a node that reports no
  *  package on any installed application; see the file header. */
@@ -41,8 +41,8 @@ export {
   hasCap,
   withCap,
   withoutCap,
-} from '@calimero-network/mero-js';
-export type { CapabilityName, CapabilityBit } from '@calimero-network/mero-js';
+} from '@calimero-apps/cloud';
+export type { CapabilityName, CapabilityBit } from '@calimero-apps/cloud';
 
 /** Default capability bitmask granted to members who join a workspace
  *  (namespace) by invite - the "Editor" preset: join open folders +

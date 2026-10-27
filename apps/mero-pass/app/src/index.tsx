@@ -3,11 +3,11 @@ import '@calimero-apps/glass/glass.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { AppMode, MeroProvider } from '@calimero-network/mero-react';
+import { AppMode, MeroProvider } from '@calimero-apps/cloud';
 import './index.css';
 import App from './App';
 import { bootstrapDesktopSession, hashNodeUrl } from './auth/desktopBootstrap';
-import { primeInvitationCapture } from '@calimero-network/mero-react';
+import { primeInvitationCapture } from '@calimero-apps/cloud';
 import { APP_SLUG } from './lib/inviteLink';
 
 // ── Desktop SSO ───────────────────────────────────────────────────────────────

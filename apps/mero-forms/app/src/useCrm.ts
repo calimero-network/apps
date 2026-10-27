@@ -6,8 +6,8 @@ import {
   relayForContext,
   resolveApplicationIdFromRegistry,
   type ExecuteTransport,
-} from "@calimero-network/mero-js";
-import { useMero } from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
+import { useMero } from "@calimero-apps/cloud";
 import type { FormView, ResponseView } from "./generated/FormsClient";
 import { CrmClient } from "./generated/crm/CrmClient";
 import { crmPayload, existingContact } from "./lib/crm";

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
 } from '@calimero-network/mero-ui';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 import { publishMemberName, useMemberNames } from '@calimero-apps/names';
 import { createLobbyClient, createGameClient, LobbyClient, GameClient } from '../../features/kv/api';
 import type { ContextRole } from '../../features/kv/api';

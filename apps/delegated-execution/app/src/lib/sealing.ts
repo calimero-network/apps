@@ -41,7 +41,7 @@ import {
   type QuoteVerifier,
   type SignedNodeRelease,
   type VerifyTransportQuote,
-} from '@calimero-network/mero-js';
+} from '@calimero-apps/cloud';
 
 /** The one image profile trusted: no shell, so nobody reads the TD. */
 export const TRUSTED_PROFILE = 'locked-read-only';

@@ -16,7 +16,7 @@ import { WorldStore, WORLD_CX, WORLD_CY, WORLD_CZ, chunkKey } from "./engine/wor
 import { arrowLook, pointerLockAvailable } from "./input/look";
 import { WheelSteps } from "./input/wheel";
 import { APP_SLUG, inviteLink } from "./net/inviteLink";
-import { primeInvitationCapture as primeInviteCapture } from "@calimero-network/mero-react";
+import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/cloud";
 import { completeAccountEnrolment, isReturningFromWallet } from "./net/account";
 import { acceptWorldInvite, createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { GameClient, type WorldMeta } from "./net/client";

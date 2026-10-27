@@ -1,4 +1,4 @@
-import type { MeroJs } from "@calimero-network/mero-js";
+import type { MeroJs } from "@calimero-apps/cloud";
 
 /**
  * Resolving Mero Forum's OWN application id.

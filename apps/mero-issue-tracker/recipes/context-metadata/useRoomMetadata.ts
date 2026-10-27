@@ -3,7 +3,7 @@
  * into app/src/hooks. No contract change needed. Not built into the base.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 export interface RoomMeta {
   name: string;

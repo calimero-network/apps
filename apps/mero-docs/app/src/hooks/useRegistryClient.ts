@@ -8,7 +8,7 @@
 // folded into the main hook in a future pass.
 
 import { useMemo } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 import { RegistryClient } from '../generated/registry/RegistryClient';
 
 export function useRegistryClient(

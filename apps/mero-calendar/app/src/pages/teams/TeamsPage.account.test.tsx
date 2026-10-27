@@ -47,7 +47,7 @@ const stub = vi.hoisted(() => {
   return { admin, rawAdmin, showToast, session };
 });
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     admin: stub.admin,

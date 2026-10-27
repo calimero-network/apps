@@ -6,7 +6,7 @@ import {
   useInviteRedemption,
   useMero,
   type ParsedInvitation,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { joinNamespace, listNamespaces } from "../api/rpc";
 import { useApplicationId } from "../hooks/useApplicationId";
 import { decodeInvitationObject } from "../utils/invitation";

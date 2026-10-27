@@ -16,7 +16,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name UpdatesClient --import-path @calimero-network/mero-js",
+    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name UpdatesClient --import-path @calimero-apps/cloud",
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
@@ -28,13 +28,12 @@
     "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
+    "@calimero-apps/cloud": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/names": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
-    "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
-    "@calimero-network/mero-react": "catalog:",
     "bs58": "catalog:",
     "fflate": "catalog:",
     "react": "catalog:",

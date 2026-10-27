@@ -5,7 +5,7 @@ import {
   clearNamespaceJustJoined,
   isNamespaceJustJoined,
   markNamespaceJustJoined,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 // An audience invitation lands on the updates feed, so the feed is what ends
 // the join-sync gate. Right after the join the node may not hold the audience's
@@ -28,7 +28,7 @@ const h = vi.hoisted(() => {
   return { node, listPosts, mero, admin };
 });
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ mero: h.mero, admin: h.admin }),
 }));

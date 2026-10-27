@@ -1,6 +1,6 @@
 import { LobbyClient } from '../../../generated/lobby/LobbyClient';
 import { GameClient } from '../../../generated/game/GameClient';
-import type { ExecuteTransport } from '@calimero-network/mero-js';
+import type { ExecuteTransport } from '@calimero-apps/cloud';
 
 /** What the generated clients execute through: `useMero().mero` on either session. */
 type Transport = ExecuteTransport | { readonly rpc: ExecuteTransport };

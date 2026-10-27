@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import type { SseEventData } from '@calimero-network/mero-react';
+import type { SseEventData } from '@calimero-apps/cloud';
 import { useDocEvents } from '../useDocEvents';
 
 // The handler mero-react's useSubscription would register: it receives the
 // events of every context the window subscribes to, not just this one's.
 let handler: ((e: SseEventData) => void) | null = null;
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: (_ids: string[], h: (e: SseEventData) => void) => {
     handler = h;
   },

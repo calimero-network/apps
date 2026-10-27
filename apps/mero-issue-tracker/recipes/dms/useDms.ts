@@ -6,7 +6,7 @@
  * members, marked via group metadata so it renders as a DM, not a room.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 export interface Dm {
   subgroupId: string;

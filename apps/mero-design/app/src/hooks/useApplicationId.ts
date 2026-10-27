@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import { setApplicationId, useMero } from "@calimero-network/mero-react";
+import { setApplicationId, useMero } from "@calimero-apps/cloud";
 import { resolveApplicationId } from "../api/appId";
 
 /**

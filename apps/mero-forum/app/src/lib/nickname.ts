@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 
 import type { ForumClient } from "../generated/ForumClient";

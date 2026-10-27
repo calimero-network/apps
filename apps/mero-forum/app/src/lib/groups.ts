@@ -24,7 +24,7 @@
 // retry and fallback in them, they are the part most likely to need a fix, and a
 // component is the worst place to unit-test one.
 
-import { CAPABILITIES, type MeroJs } from "@calimero-network/mero-js";
+import { CAPABILITIES, type MeroJs } from "@calimero-apps/cloud";
 import {
   encodeInvite,
   groupIdOfInvite,
@@ -37,7 +37,7 @@ import {
   markNamespaceJustJoined,
   redeemInvitation,
   type RedeemOutcome,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 /** The session admin, as `useMero().admin` provides it (node or account). */
 export type AdminLike = MeroJs["admin"];

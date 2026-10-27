@@ -13,8 +13,8 @@
  * work in the promoter's browser".
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
-import type { AdminApiClient, GroupMember } from '@calimero-network/mero-js';
+import { useMero } from '@calimero-apps/cloud';
+import type { AdminApiClient, GroupMember } from '@calimero-apps/cloud';
 import {
   ROLE_ADMIN,
   ROLE_MEMBER,

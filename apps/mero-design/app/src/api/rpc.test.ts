@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
-import { RpcError } from "@calimero-network/mero-js";
+import { RpcError } from "@calimero-apps/cloud";
 import { bindApi, getApi, type ApiBinding } from "./client";
 import {
   createContext,

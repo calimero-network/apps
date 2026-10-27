@@ -3,7 +3,7 @@
 // direct row there (left by Read only) survives outright. From an Open
 // folder, core records the removal as a ban that only an admin add lifts.
 
-import type { AdminApiClient } from '@calimero-network/mero-js';
+import type { AdminApiClient } from '@calimero-apps/cloud';
 import { CAPABILITIES, hasCap } from '@/constants/config';
 import {
   applyAcross,

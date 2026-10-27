@@ -36,17 +36,13 @@ const bootstrapFromInvitation = vi.fn(async (_input: unknown) => {
 });
 let isDelegated = false;
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     admin: { createNamespaceInvitation, removeGroupMembers, getIntentRelay: vi.fn(async () => ({ executorAccount: "11".repeat(32), executorKey: "22".repeat(32), canAuthorOnBehalf: false })), grantAuthorship: vi.fn() },
     nodeUrl: "http://localhost:2528",
     isDelegated,
   }),
-}));
-
-vi.mock("@calimero-network/mero-js", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
   bootstrapFromInvitation: (input: unknown) => bootstrapFromInvitation(input),
 }));
 

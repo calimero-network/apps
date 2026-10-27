@@ -1,4 +1,4 @@
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@calimero-apps/cloud';
 import { describe, expect, it } from 'vitest';
 import { folderLoadErrorMessage } from '../folderLoadError';
 

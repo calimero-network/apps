@@ -18,8 +18,8 @@ const admin = {
   getMemberMetadata: vi.fn().mockResolvedValue(null),
   setMemberMetadata: vi.fn().mockResolvedValue(undefined),
 };
-vi.mock("@calimero-network/mero-react", async (orig) => ({
-  ...(await orig<typeof import("@calimero-network/mero-react")>()),
+vi.mock("@calimero-apps/cloud", async (orig) => ({
+  ...(await orig<typeof import("@calimero-apps/cloud")>()),
   useMero: () => ({ admin, mero: null }),
   useContextGroup: () => ({ groupId: "ns1", loading: false, error: null }),
   useSubscription: () => undefined,

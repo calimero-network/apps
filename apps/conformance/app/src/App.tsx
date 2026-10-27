@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppMode, ConnectButton, MeroProvider, useMero, type AdminApiClient } from '@calimero-network/mero-react';
+import { AppMode, ConnectButton, MeroProvider, useMero, type AdminApiClient } from '@calimero-apps/cloud';
 import { PHASES, type Session } from './conformance/matrix';
 import { sleep } from './conformance/check';
 import type { Streams } from './conformance/listen';

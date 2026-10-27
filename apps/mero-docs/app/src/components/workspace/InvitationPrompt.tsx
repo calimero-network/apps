@@ -28,7 +28,7 @@ import {
   useMero,
   type ParsedInvitation,
   type RedeemOutcome,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { useApplicationId } from '@/hooks/useApplicationId';
 import { useAppNamespaces } from '@/hooks/useAppNamespaces';
 import {

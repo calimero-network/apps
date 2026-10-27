@@ -29,8 +29,8 @@ const fakes = vi.hoisted(() => {
   };
 });
 
-vi.mock("@calimero-network/mero-js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("@calimero-network/mero-js")>();
+vi.mock("@calimero-apps/cloud", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@calimero-apps/cloud")>();
   return {
     ...real,
     buildDelegatedClient: fakes.buildDelegatedClient,
@@ -40,7 +40,7 @@ vi.mock("@calimero-network/mero-js", async (importOriginal) => {
   };
 });
 
-import { saveDelegatedSession } from "@calimero-network/mero-js";
+import { saveDelegatedSession } from "@calimero-apps/cloud";
 import {
   adoptAccountSession,
   getSession,

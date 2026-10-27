@@ -1,4 +1,4 @@
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { placeholderName, useGroupName } from "@calimero-apps/names";
 
 // Human names for teams (namespaces) and calendars (contexts) aren't always

@@ -11,7 +11,7 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 import AppShell from '../../components/AppShell';
 import InviteModal from '../../components/InviteModal';
@@ -41,7 +41,7 @@ import {
   JoinSyncBanner,
   isNamespaceJustJoined,
   useJoinSync,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { describeError } from '../../lib/errors';
 
 type Tab = 'vaults' | 'people';

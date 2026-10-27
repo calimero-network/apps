@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { bindSession } from "./api/session";
 import { loadAccountId } from "./api/identity";
 import LandingPage from "./pages/landing/LandingPage";

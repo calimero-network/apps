@@ -21,7 +21,7 @@
  *    formulas through the engine, which holds every sheet's layout.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMero, useSubscription } from '@calimero-network/mero-react';
+import { useMero, useSubscription } from '@calimero-apps/cloud';
 import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {

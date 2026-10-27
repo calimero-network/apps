@@ -72,7 +72,7 @@ export interface PreviewStep {
 
 /**
  * The login popup, wired in by the generator for every app that depends on
- * `@calimero-network/mero-react` — which is thirteen of the fourteen.
+ * `@calimero-apps/cloud` — which is thirteen of the fourteen.
  *
  * ⚠️ A component, not a direct import, for two reasons. `mero-sign` has no
  * mero-react dependency at all (it signs in through its own sidebar and passes
@@ -205,7 +205,7 @@ export interface LandingConfig {
   previewSteps: PreviewStep[];
   /**
    * Opens the node-connection + sign-in popup. Absent only where the app has no
-   * mero-react dependency; see `LoginPopupProps`.
+   * `@calimero-apps/cloud` dependency; see `LoginPopupProps`.
    */
   loginPopup?: ComponentType<LoginPopupProps>;
 }

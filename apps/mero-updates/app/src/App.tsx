@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 
 import LandingPage from "./pages/landing/LandingPage";
 import CompaniesPage from "./pages/CompaniesPage";

@@ -1,0 +1,2 @@
+export { OWNER_OP_KIND, transferOwnershipOp, groupDeleteOp, adminChangedOp, teeAuthoringPolicyOp, teeAdmissionPolicyOp, teeReleaseAdmissionPolicyOp, ownerOpDigest, ownerOpSigningPayload, signOwnerOpProof, rootGuardedOpBytes, } from './owner-op.js';
+export type { OwnerOp, OwnerOpKind, OwnerOpPlane, OwnerOpProofInput, TeeAdmissionPolicyOpInput, TeeReleaseAdmissionPolicyOpInput, } from './owner-op.js';

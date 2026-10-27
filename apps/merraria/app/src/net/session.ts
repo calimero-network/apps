@@ -23,7 +23,7 @@ import {
   createBrowserHttpClient,
   readDelegatedSession,
   type DelegatedAccountSession,
-} from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
 import { takePendingNodeUrl } from "./auth";
 
 const STORE_KEY = "mt-session";

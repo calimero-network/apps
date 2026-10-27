@@ -4,7 +4,7 @@ import {
   getContextId,
   setContextId,
   setContextIdentity as setExecutorPublicKey,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import type { ResponseData } from "../../api/types";
 import {
   nodeApi as apiClientNode,

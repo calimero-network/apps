@@ -21,7 +21,8 @@ let error: Error | null = null;
 // Stable like mero-react's useCallback, so a render alone never re-reads ages.
 const ageOf = (author: string) => ages.get(author);
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useEphemeral: () => ({ peers, ageOf, error }),
   useMero: () => ({ mero: { ephemeral: { set } } }),
 }));

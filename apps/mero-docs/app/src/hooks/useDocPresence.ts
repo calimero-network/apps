@@ -3,7 +3,7 @@
 // node keeps only the latest value an author wrote.
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useEphemeral, useMero } from '@calimero-network/mero-react';
+import { useEphemeral, useMero } from '@calimero-apps/cloud';
 import { PRESENCE_BEAT_MS, PRESENCE_STALE_MS } from '@/lib/presenceTiming';
 import { cancelLeave, leaveContext } from '@/lib/presenceLeave';
 import {

@@ -3,7 +3,7 @@
 // admin and capability rules; this only reads it.
 
 import { useCallback } from 'react';
-import type { GroupMember } from '@calimero-network/mero-react';
+import type { GroupMember } from '@calimero-apps/cloud';
 import { useDriveWorkspace } from './useDriveWorkspace';
 import {
   useFolderMembership,

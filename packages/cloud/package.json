@@ -1,0 +1,45 @@
+{
+  "name": "@calimero-apps/cloud",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The app-facing API every app speaks (v1's mero-react and mero-js names: namespaces, groups, contexts, the admin API, JSON-RPC, events), running on release-v2's attested cloud client: organizations, teams, app instances and passkeys.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./vite": {
+      "types": "./vite.d.mts",
+      "default": "./vite.mjs"
+    }
+  },
+  "types": "./types/index.d.ts",
+  "sideEffects": [
+    "./src/react.js"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18",
+    "vite": ">=5"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "github:calimero-network/mero-js#release-v2"
+  },
+  "devDependencies": {
+    "@testing-library/react": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-node-polyfills": "^0.24.0",
+    "vitest": "catalog:"
+  }
+}

@@ -25,8 +25,8 @@ const stub = vi.hoisted(() => {
   };
 });
 
-vi.mock("@calimero-network/mero-react", async (orig) => ({
-  ...(await orig<typeof import("@calimero-network/mero-react")>()),
+vi.mock("@calimero-apps/cloud", async (orig) => ({
+  ...(await orig<typeof import("@calimero-apps/cloud")>()),
   useMero: () => stub.mero,
   setApplicationId: vi.fn(),
 }));

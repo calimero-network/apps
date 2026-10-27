@@ -25,7 +25,7 @@
 //   disabled
 
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useGroupMembers } from '@calimero-network/mero-react';
+import { useGroupMembers } from '@calimero-apps/cloud';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { splitTeeMembers } from '@/lib/roles';
 import {

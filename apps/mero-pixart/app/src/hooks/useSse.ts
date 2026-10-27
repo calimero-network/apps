@@ -4,8 +4,8 @@ import type {
   GroupMigrationEventData,
   SseClient,
   SseEventData,
-} from "@calimero-network/mero-js";
-import { useMero } from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
+import { useMero } from "@calimero-apps/cloud";
 
 /** How long after a (re)connect to wait before re-reading state. */
 const RESYNC_DELAY_MS = 500;

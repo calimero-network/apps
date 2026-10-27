@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { KvStoreClient } from "./generated/KvStoreClient";
 
 /**

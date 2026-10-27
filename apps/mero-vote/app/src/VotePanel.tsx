@@ -4,7 +4,7 @@ import {
   useContextGroup,
   useJoinSync,
   useMero,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 import type { Member, PollSummary } from "./generated/MeroVoteClient";
 import { CreatePoll } from "./CreatePoll";

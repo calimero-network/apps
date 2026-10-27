@@ -1,4 +1,4 @@
-import { classifyError, RpcError } from '@calimero-network/mero-js';
+import { classifyError, RpcError } from '@calimero-apps/cloud';
 import { parseContractError } from './contractError';
 
 // What to tell a person when a document fails to open or to save. The raw

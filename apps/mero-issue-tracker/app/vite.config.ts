@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { calimeroCsp } from '@calimero-apps/cloud/vite';
 
 export default defineConfig({
-  plugins: [react(), nodePolyfills()],
+  plugins: [calimeroCsp(), react(), nodePolyfills()],
   server: {
     // PINNED, and `strictPort` so a clash fails loudly instead of silently
     // sliding to the next free port.

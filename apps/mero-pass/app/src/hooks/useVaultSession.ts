@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMero, useSubscription } from '@calimero-network/mero-react';
+import { useMero, useSubscription } from '@calimero-apps/cloud';
 
 import { deviceKeeper, deviceLabel } from '../lib/deviceKey';
 import { rememberedRecoveryKey } from '../lib/recoveryKey';

@@ -41,7 +41,7 @@ const stub = vi.hoisted(() => {
   };
 });
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => stub.mero,
   setApplicationId: vi.fn(),
@@ -50,7 +50,7 @@ vi.mock("react-router-dom", () => ({ useNavigate: () => stub.navigate }));
 
 const { encodeInvitationObject } = await import("../utils/invitation");
 const { isNamespaceJustJoined, peekInvitation, resetInvitationCaptureForTests } =
-  await import("@calimero-network/mero-react");
+  await import("@calimero-apps/cloud");
 const InvitationPrompt = (await import("./InvitationPrompt")).default;
 
 const INVITATION = {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 import { resolveApplicationId } from '../utils/appId';
 
 /**

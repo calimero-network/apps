@@ -14,7 +14,7 @@ import { useLocation } from 'react-router-dom';
 import {
   useSubscription,
   type SubscriptionEventData,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { toast } from 'sonner';
 import { EditorShell } from '@/components/editor/EditorShell';
 import { useConfirm } from '@/components/ui/confirm-dialog';

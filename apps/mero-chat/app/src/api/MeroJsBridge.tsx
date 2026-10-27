@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { NoRelayError, useMero } from "@calimero-network/mero-react";
+import { NoRelayError, useMero } from "@calimero-apps/cloud";
 import { type ChatClient, setMeroJs } from "./meroJsClient";
 import { setResolvedApplicationId } from "../constants/config";
 

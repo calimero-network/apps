@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildInviteLink, invitationFromRaw } from '@calimero-network/mero-react';
+import { buildInviteLink, invitationFromRaw } from '@calimero-apps/cloud';
 import {
   APP_SLUG,
   INVITATION_PARAM,

@@ -9,7 +9,8 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 const connectToNode = vi.fn();
 const discoverLocalNodes = vi.fn();
 
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ connectToNode, isOnline: true }),
 }));
 

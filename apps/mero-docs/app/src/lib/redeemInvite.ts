@@ -14,7 +14,7 @@ import {
   isFinalInvitationError,
   redeemInvitation,
   type RedeemOutcome,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import type { ParsedInvite } from '@/hooks/useNamespaceInvitation';
 
 /** The node calls a redeem makes: the join hooks, plus the namespace list. */

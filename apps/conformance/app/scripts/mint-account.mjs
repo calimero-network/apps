@@ -16,7 +16,7 @@ import { pathToFileURL } from 'node:url';
 const { generateAccountRoot, mintDeviceId, signDeviceCert } = await import(
   process.env.MERO_JS_PATH
     ? pathToFileURL(resolve(process.env.MERO_JS_PATH, 'dist/index.mjs')).href
-    : '@calimero-network/mero-js'
+    : '@calimero-apps/cloud'
 );
 
 const hex = (b) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, '0')).join('');

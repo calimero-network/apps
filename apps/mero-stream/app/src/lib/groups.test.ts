@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeInvite } from "./inviteCodec";
-import { CAPABILITIES, type AdminApiClient } from "@calimero-network/mero-js";
+import { CAPABILITIES, type AdminApiClient } from "@calimero-apps/cloud";
 import {
   MEMBER_CAPABILITIES,
   acceptInvite,
@@ -19,7 +19,7 @@ import {
   clearHostingState,
   hostingProblem,
 } from "./hosting";
-import { shouldRetain } from "@calimero-network/mero-react";
+import { shouldRetain } from "@calimero-apps/cloud";
 
 /** The one type every flow takes: the session-aware admin, `useMero().admin`. */
 type AdminLike = AdminApiClient;

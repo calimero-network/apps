@@ -12,7 +12,7 @@ import {
   redeemInvitation,
   shouldRetain,
   type RedeemOutcome,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { encodeInvitation } from "./invitation";
 import {
   inviteRedeemer,

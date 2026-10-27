@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { useMemberNames } from "@calimero-apps/names";
 import { useApplicationId } from "../hooks/useApplicationId";
 import { useToast } from "../contexts/ToastContext";
@@ -43,7 +43,7 @@ import {
   JoinSyncBanner,
   isNamespaceJustJoined,
   useJoinSync,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 /**
  * Rooms inside one stream (namespace). A room is a SUBGROUP plus the context bound

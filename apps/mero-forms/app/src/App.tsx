@@ -5,7 +5,7 @@ import {
   clearContextId,
   useContextGroup,
   useMero,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { ContextPicker } from "./ContextPicker";
 import LandingPage from "./pages/landing/LandingPage";
 import { FormView as FormPage } from "./FormView";

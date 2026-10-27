@@ -2,7 +2,7 @@
 // and search never depend on which folders are expanded in the tree.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useJoinContext, useMero } from '@calimero-network/mero-react';
+import { useJoinContext, useMero } from '@calimero-apps/cloud';
 import { DocsClient, type DocDto } from '@/generated/docs/DocsClient';
 import {
   nsToMs,

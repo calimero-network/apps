@@ -5,7 +5,7 @@ import {
   AppMode,
   MeroProvider,
   primeInvitationCapture,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { App } from "./App";
 import { adoptDesktopSession } from "./utils/desktopSso";
 import { APP_SLUG } from "./utils/invitation";

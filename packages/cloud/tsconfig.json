@@ -1,0 +1,27 @@
+{
+  "// note": [
+    "Checks the release-v2 backend (src/backend.ts) and the tests. react.js is",
+    "v1's mero-react carried over as JavaScript (allowJs, unchecked); the types",
+    "apps compile against are the vendored ones in types/."
+  ],
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "allowImportingTsExtensions": true,
+    "types": ["vitest/globals", "vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

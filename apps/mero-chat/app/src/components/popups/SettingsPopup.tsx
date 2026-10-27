@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { styled, keyframes } from "styled-components";
 import { useNavigate } from "react-router-dom";
 import BaseModal from "../common/popups/BaseModal";
-import { useMero, getContextIdentity as getExecutorPublicKey, getContextId } from "@calimero-network/mero-react";
+import { useMero, getContextIdentity as getExecutorPublicKey, getContextId } from "@calimero-apps/cloud";
 import {
   clearStoredSession,
   clearNamespaceReady,

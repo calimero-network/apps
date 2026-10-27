@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll } from 'vitest';
-import { MeroJs } from '@calimero-network/mero-js';
+import { MeroJs } from '@calimero-apps/cloud';
 import bs58 from 'bs58';
 
 import {

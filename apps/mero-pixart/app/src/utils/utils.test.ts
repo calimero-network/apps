@@ -4,7 +4,7 @@
 // invitation encoder) has already been broken once by a non-ASCII team name.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { HTTPError } from "@calimero-network/mero-js";
+import { HTTPError } from "@calimero-apps/cloud";
 import { clampText, escapeCss, escapeHtml, MAX_COMMENT_LEN } from "./sanitize";
 import { truncateMiddle } from "./format";
 import { getStoredTeamName, setStoredTeamName, teamLabel } from "./teamName";

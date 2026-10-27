@@ -12,7 +12,7 @@ import {
   InvitationDialog,
   InvitationGate,
   useMero,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { ScenePicker } from "./ScenePicker";
 import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
 import LandingPage from "./pages/landing/LandingPage";

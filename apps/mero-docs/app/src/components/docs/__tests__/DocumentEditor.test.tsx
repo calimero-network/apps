@@ -39,7 +39,8 @@ const toastSuccess = vi.hoisted(() => vi.fn());
 vi.mock('sonner', () => ({
   toast: { error: toastError, success: toastSuccess },
 }));
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     handlers.add(handler);
     deliver = (event) => handlers.forEach((h) => h(event));

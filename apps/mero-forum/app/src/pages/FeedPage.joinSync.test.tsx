@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import {
   isNamespaceJustJoined,
   markNamespaceJustJoined,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 // A forum invitation lands on the feed, so the feed is what ends the join-sync
 // gate. Right after the join the node may not hold the forum's state yet: the

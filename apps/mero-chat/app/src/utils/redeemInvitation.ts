@@ -1,4 +1,4 @@
-import type { InviteRedeemer, ParsedInvitation } from "@calimero-network/mero-react";
+import type { InviteRedeemer, ParsedInvitation } from "@calimero-apps/cloud";
 import type { GroupApi } from "../api/groupApi";
 import {
   decodeInvitationPayload,

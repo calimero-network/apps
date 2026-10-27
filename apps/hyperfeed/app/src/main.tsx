@@ -1,6 +1,6 @@
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { AppMode, MeroProvider } from "@calimero-network/mero-react";
+import { AppMode, MeroProvider } from "@calimero-apps/cloud";
 import { App } from "./App";
 import { adoptDesktopSession } from "./utils/desktopSso";
 import { PACKAGE_NAME, REGISTRY_URL } from "./config";

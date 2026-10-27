@@ -67,7 +67,7 @@ const stub = vi.hoisted(() => {
   return { admin, rawAdmin, session, identity };
 });
 
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => stub.session,
   useNodeIdentity: () => stub.identity,

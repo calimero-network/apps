@@ -1,4 +1,4 @@
-import { RpcError, type SignedGroupOpenInvitation } from "@calimero-network/mero-js";
+import { RpcError, type SignedGroupOpenInvitation } from "@calimero-apps/cloud";
 import { getApi } from "./client";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
 import { fromWire, metaOf, packLabel, toWire } from "../utils/elementMeta";

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useMero, useNodeIdentity } from '@calimero-network/mero-react';
+import { useMero, useNodeIdentity } from '@calimero-apps/cloud';
 
 import { myCapabilities, repairCreatorAdmin } from '../lib/vaults';
 

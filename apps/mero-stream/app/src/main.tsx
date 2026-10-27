@@ -5,9 +5,9 @@ import { BrowserRouter } from "react-router-dom";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import "@calimero-network/mero-ui/styles.css";
-import { primeInvitationCapture } from "@calimero-network/mero-react";
+import { primeInvitationCapture } from "@calimero-apps/cloud";
 import App from "./App";
 import { ToastProvider } from "./contexts/ToastContext";
 import { APP_ENABLED, IS_TAURI } from "./lib/tauri";

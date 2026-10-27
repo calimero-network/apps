@@ -1,4 +1,4 @@
-import { HTTPError, type AdminApiClient } from "@calimero-network/mero-js";
+import { HTTPError, type AdminApiClient } from "@calimero-apps/cloud";
 import { getAccessToken, getMeroClient } from "../lib/mero";
 import { requireHexId } from "./ids";
 
@@ -64,7 +64,9 @@ function admin(): AdminApiClient {
   // Token presence, not validity: an expired-but-refreshable token is the SDK's
   // to refresh on the 401, not ours to refuse up front.
   if (!getAccessToken()) throw new Error("Not authenticated — no access token");
-  return client.admin;
+  // The cloud admin answers v1's admin API by name (organizations for
+  // namespaces, teams for groups, app instances for contexts); the type is v1's.
+  return client.admin as unknown as AdminApiClient;
 }
 
 /**

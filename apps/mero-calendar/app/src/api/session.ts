@@ -1,4 +1,4 @@
-import type { ExecuteTransport } from "@calimero-network/mero-js";
+import type { ExecuteTransport } from "@calimero-apps/cloud";
 
 /**
  * The session the data layer writes through, as `useMero()` describes it.

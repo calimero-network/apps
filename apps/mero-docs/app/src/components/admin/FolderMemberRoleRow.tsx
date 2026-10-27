@@ -9,7 +9,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { useGroupCapabilities, useMero } from '@calimero-network/mero-react';
+import { useGroupCapabilities, useMero } from '@calimero-apps/cloud';
 import { Button } from '@/components/ui/button';
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { bootstrapFromInvitation } from "@calimero-network/mero-js";
-import { useMero } from "@calimero-network/mero-react";
+import { bootstrapFromInvitation } from "@calimero-apps/cloud";
+import { useMero } from "@calimero-apps/cloud";
 import type { FormKeyView, FormView } from "./generated/FormsClient";
 import { CrmSettings } from "./CrmSettings";
 import { PublicLinks } from "./PublicLinks";

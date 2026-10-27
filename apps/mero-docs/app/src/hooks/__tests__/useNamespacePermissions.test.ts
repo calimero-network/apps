@@ -19,7 +19,8 @@ const MERO_STUB = {
     getMemberCapabilities: getMemberCapsMock,
   },
 };
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: vi.fn(),
   useMero: () => MERO_STUB,
 }));

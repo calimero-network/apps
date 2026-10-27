@@ -2,7 +2,7 @@
 // context: the one context every namespace member shares.
 
 import { useEffect, useMemo } from 'react';
-import { useEphemeral, useMero } from '@calimero-network/mero-react';
+import { useEphemeral, useMero } from '@calimero-apps/cloud';
 import {
   PRESENCE_BEAT_MS as BEAT_MS,
   PRESENCE_STALE_MS as STALE_MS,

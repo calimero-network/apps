@@ -28,7 +28,7 @@
  * (`primeInvitationCapture`, index.tsx) found the URL already empty. Every
  * opened link was silently dropped. The shared capture owns the query now.
  */
-import { setNodeUrl, setApplicationId } from '@calimero-network/mero-react';
+import { setNodeUrl, setApplicationId } from '@calimero-apps/cloud';
 
 /** True when running inside the Calimero desktop (Tauri) shell. */
 export const IS_DESKTOP =

@@ -10,7 +10,7 @@
 
 import React, { useState } from 'react';
 import { LogOut, Trash2 } from 'lucide-react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';

@@ -1,7 +1,7 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@calimero-apps/cloud';
 import { FolderMemberRoleRow } from '../FolderMemberRoleRow';
 import { CAPABILITIES } from '@/constants/config';
 
@@ -27,7 +27,8 @@ const byFolder = async (g: string) => ({
 });
 const listGroupMembers = vi.fn(byFolder);
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     mero: {},
     // The session-aware admin (`useMero().admin`) is what the code writes through.

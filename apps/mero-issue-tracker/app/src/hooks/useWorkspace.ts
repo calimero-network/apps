@@ -31,9 +31,9 @@ import {
   useNodeIdentity,
   useSetMemberMetadata,
   type Namespace,
-} from "@calimero-network/mero-react";
-import type { GroupMember } from "@calimero-network/mero-js";
-import { useSubscription } from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
+import type { GroupMember } from "@calimero-apps/cloud";
+import { useSubscription } from "@calimero-apps/cloud";
 import { useStreamReconnect } from "./useStreamReconnect";
 import { PRIMARY_SERVICE } from "../config";
 import { buildInvitePayload } from "../utils/invitePayload";
@@ -61,7 +61,7 @@ import {
   JOIN_SYNC_POLL_MS,
   markNamespaceJustJoined,
   useJoinSync,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 /**
  * How long to keep asking to join the active repo, and how often. Right after

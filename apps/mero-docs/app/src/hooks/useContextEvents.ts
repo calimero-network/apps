@@ -22,7 +22,7 @@ import {
   useSubscription,
   type SseEventData,
   type SubscriptionEventData,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { parseSyncStatusEvent } from './useSyncStatus';
 import { useStreamReconnect } from './useStreamReconnect';
 

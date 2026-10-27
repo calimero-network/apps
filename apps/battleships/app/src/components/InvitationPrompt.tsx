@@ -7,7 +7,7 @@ import {
   useMero,
   type InviteRedeemer,
   type ParsedInvitation,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { readLobbyInvitation, type LobbyInvitation } from '../utils/invitation';
 import { lobbyRedeemer } from '../utils/redeemLobby';
 import { setStoredLobbyName } from '../utils/lobbyName';

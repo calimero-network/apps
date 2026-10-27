@@ -5,7 +5,7 @@ import {
   clearNamespaceJustJoined,
   isNamespaceJustJoined,
   markNamespaceJustJoined,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 
 // A company invitation lands on its audience list. Right after the join the
 // node may not hold the company's audiences yet and the list reads empty. That
@@ -21,7 +21,7 @@ const h = vi.hoisted(() => {
   return { node, listAudiences, admin };
 });
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ admin: h.admin, isDelegated: false }),
   useNodeIdentity: () => ({ identity: null }),

@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
-import { MeroContext } from '@calimero-network/mero-react';
+import { MeroContext } from '@calimero-apps/cloud';
 import { DisplayNameGate } from '../DisplayNameGate';
 
 // Runs the real useMemberDisplayName + mero-react useMemberMetadata, so the

@@ -24,7 +24,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const setNodeUrl = vi.fn();
 const setApplicationId = vi.fn();
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   setNodeUrl: (u: string) => setNodeUrl(u),
   setApplicationId: (id: string) => setApplicationId(id),
@@ -83,7 +83,7 @@ Object.assign(globalThis, {
 const { bootstrapSsoAndInvitation } = await import("./ssoBootstrap");
 const { APP_PACKAGE } = await import("../config");
 const { peekInvitation, resetInvitationCaptureForTests } = await import(
-  "@calimero-network/mero-react"
+  "@calimero-apps/cloud"
 );
 
 const NODE = "http://localhost:2528";

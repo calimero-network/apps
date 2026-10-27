@@ -10,8 +10,8 @@ import type { EditorView } from 'prosemirror-view';
 import {
   useSubscription,
   type SubscriptionEventData,
-} from '@calimero-network/mero-react';
-import { classifyError } from '@calimero-network/mero-js';
+} from '@calimero-apps/cloud';
+import { classifyError } from '@calimero-apps/cloud';
 import type { Change as WireChange, DocsClient } from '@/generated/docs/DocsClient';
 import {
   diffBlocks,

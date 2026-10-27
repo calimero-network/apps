@@ -19,7 +19,7 @@ const h = vi.hoisted(() => ({
   admin: {} as Record<string, (...a: unknown[]) => Promise<unknown>>,
 }));
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   // The prompt redeems through the SESSION-AWARE admin (`useMero().admin`),
   // never the raw client's. The raw one is absent here on purpose: reaching
@@ -28,7 +28,7 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
 }));
 
 const { peekInvitation, resetInvitationCaptureForTests } =
-  await import("@calimero-network/mero-react");
+  await import("@calimero-apps/cloud");
 
 const TOKEN = encodeInvite({
   invitation: {

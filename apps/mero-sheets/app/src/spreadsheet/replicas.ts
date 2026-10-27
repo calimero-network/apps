@@ -12,7 +12,7 @@ import type {
   AdminApiClient,
   GetTeeAdmissionPolicyResponseData,
   SignedReleaseTeeAdmissionPolicyRequest,
-} from '@calimero-network/mero-js';
+} from '@calimero-apps/cloud';
 
 /**
  * The role an admitted TEE takes. A `relay` (core's `RelayTee`) also runs

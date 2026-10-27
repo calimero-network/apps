@@ -1,7 +1,7 @@
 import bs58 from "bs58";
 import { deflateSync, inflateSync } from "fflate";
-import { buildInviteLink } from "@calimero-network/mero-react";
-import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
+import { buildInviteLink } from "@calimero-apps/cloud";
+import type { SignedGroupOpenInvitation } from "@calimero-apps/cloud";
 
 /**
  * Shareable invitations and deep links for mero-models.

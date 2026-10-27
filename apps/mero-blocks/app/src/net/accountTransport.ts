@@ -30,7 +30,7 @@ import {
   type DelegatedAccountSession,
   type MeroClient,
   type SignedGroupOpenInvitation,
-} from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
 import { PACKAGE_NAME, REGISTRY_URL } from "./auth";
 import type { SignedInvitation } from "./inviteCodec";
 import { getSession } from "./session";

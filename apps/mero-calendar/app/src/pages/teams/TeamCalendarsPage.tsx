@@ -6,7 +6,7 @@ import {
   isNamespaceJustJoined,
   useJoinSync,
   useMero,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import {
   listContextsForApplication,
   listGroupContexts,

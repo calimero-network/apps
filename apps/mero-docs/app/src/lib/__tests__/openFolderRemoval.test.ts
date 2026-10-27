@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { HTTPError, type AdminApiClient } from '@calimero-network/mero-js';
+import { HTTPError, type AdminApiClient } from '@calimero-apps/cloud';
 import { clearOpenSubtree, removedFrom, restoreTo } from '../openFolderRemoval';
 import type { FolderRoleWriter } from '../applyFolderRole';
 import { CAPABILITIES } from '@/constants/config';

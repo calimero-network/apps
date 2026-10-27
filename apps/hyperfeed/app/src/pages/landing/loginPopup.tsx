@@ -36,7 +36,7 @@
  * click behaves as a fresh open.
  */
 import { useState } from 'react';
-import { LoginModal, useAccountEnrolment, useMero } from '@calimero-network/mero-react';
+import { LoginModal, useAccountEnrolment, useMero } from '@calimero-apps/cloud';
 
 export interface LoginPopupProps {
   isOpen: boolean;

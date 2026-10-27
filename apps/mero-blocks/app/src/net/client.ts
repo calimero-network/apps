@@ -6,7 +6,7 @@ import {
   type GroupMembershipEventData,
   type GroupMigrationEventData,
   type SseEventData,
-} from "@calimero-network/mero-js";
+} from "@calimero-apps/cloud";
 import { clearSession, getSession } from "./session";
 import { getTransport, type EventStream } from "./transport";
 import { decodeSseEvents, GameEvent } from "./events";

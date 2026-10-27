@@ -1,7 +1,7 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@calimero-apps/cloud';
 import { FolderVisibilityToggle } from '../FolderVisibilityToggle';
 
 const BOB = 'b'.repeat(64);
@@ -18,7 +18,8 @@ const workspace: { folders: { id: string; parent_id: string | null; visibility?:
   folders: BASE,
 };
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
   useMero: () => ({
     mero: {},

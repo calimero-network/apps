@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pipeToLog } from "@calimero-apps/e2e-node";
-import { MeroJs } from "@calimero-network/mero-js";
+import { MeroJs } from "@calimero-apps/cloud";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(__dirname, "..");

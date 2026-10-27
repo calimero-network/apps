@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { getContextId, clearActiveRoom } from "./lib/session";
 import InvitationPrompt from "./components/InvitationPrompt";
 import LandingPage from "./pages/landing/LandingPage";

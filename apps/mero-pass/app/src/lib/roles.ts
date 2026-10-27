@@ -41,7 +41,7 @@
 // anyone's role, including demoting you — so there was no role system to speak
 // of, only the appearance of one. The default is MEMBER_CAPABILITIES now.
 
-import { CAPABILITIES, hasCap } from '@calimero-network/mero-js';
+import { CAPABILITIES, hasCap } from '@calimero-apps/cloud';
 
 /** The two roles this app offers on a team. */
 export type TeamRole = 'admin' | 'member';

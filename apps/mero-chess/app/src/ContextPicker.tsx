@@ -5,7 +5,7 @@ import {
   useCreateContext,
   useCreateNamespace,
   useNamespacesForApplication,
-} from "@calimero-network/mero-react";
+} from "@calimero-apps/cloud";
 import { Piece } from "./pieces";
 
 /**

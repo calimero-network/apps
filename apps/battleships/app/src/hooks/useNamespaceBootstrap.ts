@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-apps/cloud';
 
 /**
  * Capability bits for the battleships namespace.

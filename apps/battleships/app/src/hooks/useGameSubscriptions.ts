@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSubscription } from '@calimero-network/mero-react';
-import type { SubscriptionEventData } from '@calimero-network/mero-react';
+import { useSubscription } from '@calimero-apps/cloud';
+import type { SubscriptionEventData } from '@calimero-apps/cloud';
 import { useStreamReconnect } from './useStreamReconnect';
 import type { AllGameEvents } from '../types/events';
 import { isLobbyEvent } from '../types/events';

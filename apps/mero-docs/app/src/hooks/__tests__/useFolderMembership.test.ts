@@ -4,7 +4,8 @@ import { useFolderMembership } from '../useFolderMembership';
 
 const listGroupMembers = vi.fn();
 const MERO_STUB = { mero: {}, admin: { listGroupMembers } };
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => MERO_STUB,
   useAddGroupMembers: () => ({ addGroupMembers: vi.fn() }),
   useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn() }),

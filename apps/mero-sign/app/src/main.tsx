@@ -9,11 +9,11 @@ import App from './App';
 // default local node: http://node1.127.0.0.1.nip.io") with no prop that removes
 // it, and that screen is what `useCalimero().login()` opened. Mero Sign was the
 // last app in this repo still on it. See `lib/useCalimero`.
-import { AppMode, MeroProvider } from '@calimero-network/mero-react';
+import { AppMode, MeroProvider } from '@calimero-apps/cloud';
 import { LoginGate } from './lib/loginGate';
 import { MeroBridge } from './lib/MeroBridge';
 import { PACKAGE_NAME, REGISTRY_URL } from './constants/config';
-import { primeInvitationCapture } from '@calimero-network/mero-react';
+import { primeInvitationCapture } from '@calimero-apps/cloud';
 import { APP_SLUG } from './lib/inviteLink';
 import { bootstrapDesktopSession, hashNodeUrl } from './auth/desktopBootstrap';
 

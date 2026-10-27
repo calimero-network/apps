@@ -1,4 +1,4 @@
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { clearActiveForum } from "../lib/session";
 import { AccountChip } from "./chrome";
 

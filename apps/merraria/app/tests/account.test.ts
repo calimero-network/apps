@@ -8,8 +8,8 @@ const fakes = vi.hoisted(() => ({
   completeDeviceEnrolment: vi.fn(),
 }));
 
-vi.mock("@calimero-network/mero-js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("@calimero-network/mero-js")>();
+vi.mock("@calimero-apps/cloud", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@calimero-apps/cloud")>();
   return {
     ...real,
     readEnrolmentCallback: fakes.readEnrolmentCallback,
@@ -17,7 +17,7 @@ vi.mock("@calimero-network/mero-js", async (importOriginal) => {
   };
 });
 
-import { readDelegatedSession, type CloudAccountRelay, type CloudClient } from "@calimero-network/mero-js";
+import { readDelegatedSession, type CloudAccountRelay, type CloudClient } from "@calimero-apps/cloud";
 import { chooseRelay, completeEnrolment, goToWallet, HOSTED_WALLET, isReturningFromWallet } from "../src/net/account";
 import { getSession, resetSession, sessionKind, updateSession } from "../src/net/session";
 
@@ -114,7 +114,7 @@ describe("completeEnrolment", () => {
   });
 
   it("refuses a callback this tab never started (no state remembered)", async () => {
-    const real = await vi.importActual<typeof import("@calimero-network/mero-js")>("@calimero-network/mero-js");
+    const real = await vi.importActual<typeof import("@calimero-apps/cloud")>("@calimero-apps/cloud");
     fakes.completeDeviceEnrolment.mockImplementation(real.completeDeviceEnrolment);
     fakes.readEnrolmentCallback.mockReturnValue({ credential: "c", account: ACCOUNT, device: "d", state: "x" });
     const res = await completeEnrolment({ cloud: cloud([]) });

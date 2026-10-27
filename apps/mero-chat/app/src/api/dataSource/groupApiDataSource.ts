@@ -1,4 +1,4 @@
-import { HTTPError } from "@calimero-network/mero-react";
+import { HTTPError } from "@calimero-apps/cloud";
 import { getMeroJs } from "../meroJsClient";
 import { uploadBlob, type BlobUploadResult } from "../blobs";
 export type { BlobUploadResult };
@@ -6,7 +6,7 @@ import {
   getSelfAccountHex,
   loadSelfAccountIdentity,
 } from "../../utils/accountIdentity";
-import type { MetadataRecord } from "@calimero-network/mero-react";
+import type { MetadataRecord } from "@calimero-apps/cloud";
 import type { ApiResponse } from "../types";
 import { getApplicationId } from "../../constants/config";
 import { groupNameError } from "../../utils/groupName";

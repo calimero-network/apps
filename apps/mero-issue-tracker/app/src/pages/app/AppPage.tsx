@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { Outlet, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { useToast } from "@calimero-network/mero-ui";
 import { tokens as t } from "../../theme";
 import { useWorkspace } from "../../hooks/useWorkspace";

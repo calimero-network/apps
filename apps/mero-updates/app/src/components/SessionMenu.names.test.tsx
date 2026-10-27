@@ -12,7 +12,8 @@ const HEX = "5926f2d2a4940fa2a62edd2cd7d833897c2c1596c697ea674dd0f49b89d11334";
 const admin = {
   listGroupMembers: vi.fn().mockResolvedValue({ members: [{ identity: HEX, role: "Member", name: "Sandi" }] }),
 };
-vi.mock("@calimero-network/mero-react", () => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ admin, nodeUrl: null, logout: vi.fn() }),
   useNodeIdentity: () => ({ identity: null }),
 }));

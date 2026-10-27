@@ -26,7 +26,7 @@ import AudiencesPage from "./AudiencesPage";
 import InvitationPrompt from "../components/InvitationPrompt";
 
 const { resetInvitationCaptureForTests } =
-  await import("@calimero-network/mero-react");
+  await import("@calimero-apps/cloud");
 
 // ── The three calls that 403 on prod for an account ───────────────────────────
 //
@@ -96,7 +96,7 @@ vi.mock("react-router-dom", async (importOriginal) => {
   return { ...mod, useNavigate: () => navigate };
 });
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("@calimero-apps/cloud", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({
     isAuthenticated: true,

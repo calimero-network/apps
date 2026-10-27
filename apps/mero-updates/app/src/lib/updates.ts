@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useMero, useNodeIdentity } from "@calimero-network/mero-react";
+import { useMero, useNodeIdentity } from "@calimero-apps/cloud";
 import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 
 import { getActiveNamespaceId, getContextId } from "./session";

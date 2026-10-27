@@ -52,7 +52,7 @@ import {
   markNamespaceJustJoined,
   redeemInvitation,
   type RedeemOutcome,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 
 /**
  * The `app` handle `useCalimero()` returns.

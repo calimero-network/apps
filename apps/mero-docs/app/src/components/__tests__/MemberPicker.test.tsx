@@ -20,7 +20,8 @@ const members = [
   },
 ];
 const useGroupMembersMock = vi.fn();
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useSubscription: vi.fn(),
   useGroupMembers: (...a: unknown[]) => useGroupMembersMock(...a),
 }));

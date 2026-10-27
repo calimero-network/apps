@@ -18,7 +18,8 @@ const h = vi.hoisted(() => ({
   refetch: vi.fn(async () => undefined),
 }));
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => ({ admin: h.admin, isDelegated: h.isDelegated }),
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({

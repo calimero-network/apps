@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { CAPABILITIES } from '@calimero-network/mero-js';
+import { CAPABILITIES } from '@calimero-apps/cloud';
 
 import {
   ADMIN_CAPABILITIES,

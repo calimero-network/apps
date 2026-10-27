@@ -14,7 +14,7 @@ export default defineConfig({
     alias: [
       { find: /^\.\.\/lib\/forum$/, replacement: resolve(__dirname, "forum.mock.ts") },
       { find: /^\.\/lib\/forum$/, replacement: resolve(__dirname, "forum.mock.ts") },
-      { find: "@calimero-network/mero-react", replacement: resolve(__dirname, "meroReact.mock.ts") },
+      { find: "@calimero-apps/cloud", replacement: resolve(__dirname, "meroReact.mock.ts") },
     ],
   },
 });

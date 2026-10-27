@@ -15,7 +15,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { LoginModal, useMero } from '@calimero-network/mero-react';
+import { LoginModal, useMero } from '@calimero-apps/cloud';
 import {
   ArrowRight,
   ArrowUpRight,

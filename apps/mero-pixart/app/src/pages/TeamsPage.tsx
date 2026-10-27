@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-apps/cloud";
 import { useApi } from "../api/useApi";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { describeInviteFailure, redeemInvitation, shouldRetain } from '@calimero-network/mero-react';
+import { describeInviteFailure, redeemInvitation, shouldRetain } from '@calimero-apps/cloud';
 import { lobbyRedeemer, type LobbyAdmin } from './redeemLobby';
 
 /** What the invitation dialog shows for a failure, in this app's noun. */

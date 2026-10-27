@@ -32,6 +32,6 @@ describe("the generated client covers the contract", () => {
 
   it("imports its transport from mero-js, not mero-react", () => {
     const src = readFileSync(resolve(HERE, "generated", "HyperfeedClient.ts"), "utf8");
-    expect(src).toContain("@calimero-network/mero-js");
+    expect(src).toContain("@calimero-apps/cloud");
   });
 });

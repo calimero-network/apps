@@ -1,4 +1,4 @@
-import { isNamespaceJustJoined } from '@calimero-network/mero-react';
+import { isNamespaceJustJoined } from '@calimero-apps/cloud';
 
 /** How long to keep joining a calendar of a team this node has only just joined. */
 export const CALENDAR_JOIN_SYNC_MS = 90_000;

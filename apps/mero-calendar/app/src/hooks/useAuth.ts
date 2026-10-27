@@ -1,4 +1,4 @@
-import { clearAllStorage } from "@calimero-network/mero-react";
+import { clearAllStorage } from "@calimero-apps/cloud";
 
 // rc.8 auth helper. mero-react owns the real auth state (see useMero() in
 // App.tsx route guards); this thin hook just exposes a logout for components

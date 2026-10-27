@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CAPABILITIES, NotForAccountError } from '@calimero-network/mero-js';
+import { CAPABILITIES, NotForAccountError } from '@calimero-apps/cloud';
 import {
   DEFAULT_CAPABILITIES,
   ensureNamespace,
@@ -15,7 +15,7 @@ import {
   type AdminLike,
 } from './workspaces';
 import { decodeInvite, type SignedInvitation } from './inviteCodec';
-import { shouldRetain } from '@calimero-network/mero-react';
+import { shouldRetain } from '@calimero-apps/cloud';
 
 const GROUP_BYTES = Array.from({ length: 32 }, (_, i) => i + 1);
 const GROUP_HEX = GROUP_BYTES.map((b) => b.toString(16).padStart(2, '0')).join('');

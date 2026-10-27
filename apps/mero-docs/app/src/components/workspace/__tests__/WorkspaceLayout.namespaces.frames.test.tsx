@@ -4,7 +4,7 @@ import React, { useLayoutEffect, useSyncExternalStore } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import type { MeroContextValue } from '@calimero-network/mero-react';
+import type { MeroContextValue } from '@calimero-apps/cloud';
 import { DriveWorkspaceProvider, useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { WorkspaceLayout } from '../WorkspaceLayout';
 import { ConfirmProvider } from '@/components/ui/confirm-dialog';
@@ -44,8 +44,8 @@ const h = vi.hoisted(() => {
 vi.mock('@/hooks/useMemberDisplayName', () => ({
   useMemberDisplayName: () => ({ name: null }),
 }));
-vi.mock('@calimero-network/mero-react', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@calimero-network/mero-react')>();
+vi.mock('@calimero-apps/cloud', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@calimero-apps/cloud')>();
   return {
     ...actual,
     useGroupContexts: () => ({ contexts: h.none, loading: false, refetch: h.refetch }),
@@ -125,7 +125,7 @@ const meroValue = {
 
 async function reloadWorkspace() {
   // Imported lazily so the partial mock above has resolved first.
-  const { MeroContext } = await import('@calimero-network/mero-react');
+  const { MeroContext } = await import('@calimero-apps/cloud');
   render(
     <MeroContext.Provider value={meroValue}>
       <MemoryRouter initialEntries={['/app/ns1']}>

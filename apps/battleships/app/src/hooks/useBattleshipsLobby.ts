@@ -6,8 +6,8 @@ import {
   useCreateNamespaceInvitation,
   useMero,
   useNodeIdentity,
-} from '@calimero-network/mero-react';
-import type { GroupMember } from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
+import type { GroupMember } from '@calimero-apps/cloud';
 import { useNamespaceBootstrap } from './useNamespaceBootstrap';
 import { lobbyLabel } from '../utils/lobbyName';
 import { getKnownPlayers } from '../utils/knownPlayers';

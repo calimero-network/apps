@@ -13,7 +13,7 @@ import { createElement, type ReactNode } from 'react';
 import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   // The roster, identity and event stream are not what is under test.
   useGroupMembers: () => ({ members: [], loading: false, error: null, refetch: async () => {} }),
@@ -28,7 +28,7 @@ vi.mock('./useApplicationId', () => ({
 vi.mock('./useMemberRoles', () => ({ useMemberRoles: () => ({}) }));
 vi.mock('./useStreamReconnect', () => ({ useStreamReconnect: () => {} }));
 
-const { MeroContext } = await import('@calimero-network/mero-react');
+const { MeroContext } = await import('@calimero-apps/cloud');
 const { useWorkspace } = await import('./useWorkspace');
 
 const admin = {

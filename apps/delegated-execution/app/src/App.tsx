@@ -76,7 +76,7 @@ import {
 } from './lib/flow.js';
 import { errorText, hostOf, parseJson, pretty, short } from './lib/format.js';
 import { MIN_RELEASE_VERSION, TRUSTED_PROFILE, sealingErrorText } from './lib/sealing.js';
-import { CloudClient, type CloudAccountRelay } from '@calimero-network/mero-js';
+import { CloudClient, type CloudAccountRelay } from '@calimero-apps/cloud';
 import {
   DEFAULT_CLOUD_URL,
   DEFAULT_PORTAL_URL,
@@ -94,7 +94,7 @@ import {
   type AccountClaim,
   type Settings,
 } from './lib/storage.js';
-import type { DelegatedSession } from '@calimero-network/mero-js';
+import type { DelegatedLoginSession as DelegatedSession } from '@calimero-apps/cloud';
 
 /** A pending/failed/succeeded result, so every panel reports the same three states. */
 interface Outcome {

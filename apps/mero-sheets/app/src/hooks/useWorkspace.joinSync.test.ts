@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { useEffect, useState } from 'react';
-import { isNamespaceJustJoined, markNamespaceJustJoined } from '@calimero-network/mero-react';
+import { isNamespaceJustJoined, markNamespaceJustJoined } from '@calimero-apps/cloud';
 import { useWorkspace } from './useWorkspace';
 
 const NS = 'ns-joined';
@@ -33,8 +33,8 @@ function useFakeRead<T>(read: () => T, key: unknown = null) {
 // Stable across renders, like the real provider's client.
 const mero = { admin: {} };
 
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@calimero-network/mero-react')>()),
+vi.mock('@calimero-apps/cloud', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@calimero-apps/cloud')>()),
   useMero: () => ({ mero, admin: mero.admin, contextId: null, contextIdentity: null }),
   useNamespacesForApplication: () => {
     const { data, loading, refetch } = useFakeRead(() => nodeNamespaces);

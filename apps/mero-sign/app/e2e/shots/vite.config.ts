@@ -42,7 +42,7 @@ export default defineConfig({
       },
       // `MeroProvider`/`LoginModal` reach a node the moment they mount.
       {
-        find: '@calimero-network/mero-react',
+        find: '@calimero-apps/cloud',
         replacement: here('./meroReact.mock.ts'),
       },
       {

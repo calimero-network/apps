@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { JOIN_SYNC_POLL_MS, useJoinSync } from '@calimero-network/mero-react';
+import { JOIN_SYNC_POLL_MS, useJoinSync } from '@calimero-apps/cloud';
 
 /** The lobby whose match list has come back from the node, empty or not. */
 export interface LobbyReadFor {

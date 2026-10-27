@@ -7,7 +7,7 @@ import {
   useMero,
   useSubscription,
   type SubscriptionEventData,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import type { DocsClient } from '@/generated/docs/DocsClient';
 import type { BackendBlock } from '@/lib/rich/blocknote';
 import { parseRichEvents } from '@/lib/rich/events';

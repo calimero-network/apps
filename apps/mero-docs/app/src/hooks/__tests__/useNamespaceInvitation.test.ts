@@ -6,7 +6,7 @@ import {
   parseInviteUrl,
   type ParsedInvite,
 } from '../useNamespaceInvitation';
-import type { SignedGroupOpenInvitation } from '@calimero-network/mero-react';
+import type { SignedGroupOpenInvitation } from '@calimero-apps/cloud';
 
 // Pin the package so the canonical deep-link shape is asserted
 // deterministically (vitest may or may not load .env.local).

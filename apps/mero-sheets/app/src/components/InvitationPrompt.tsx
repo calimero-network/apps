@@ -6,7 +6,7 @@ import {
   useMero,
   type ParsedInvitation,
   type RedeemOutcome,
-} from '@calimero-network/mero-react';
+} from '@calimero-apps/cloud';
 import { APP_DISPLAY_NAME } from '../config';
 import {
   decodeInvite,

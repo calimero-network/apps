@@ -26,7 +26,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
-import { AppMode, MeroProvider, useMero } from '@calimero-network/mero-react';
+import { AppMode, MeroProvider, useMero } from '@calimero-apps/cloud';
 import { Toaster } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmProvider } from '@/components/ui/confirm-dialog';

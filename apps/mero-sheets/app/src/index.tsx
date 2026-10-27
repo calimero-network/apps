@@ -7,7 +7,7 @@ import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
 import { THEME } from './config';
-import { primeInvitationCapture } from '@calimero-network/mero-react';
+import { primeInvitationCapture } from '@calimero-apps/cloud';
 import { bootstrapSso } from './auth/ssoBootstrap';
 import { APP_SLUG } from './lib/inviteLink';
 import { applyTheme, getStoredTheme } from './theme';
