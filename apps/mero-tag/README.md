@@ -18,10 +18,10 @@ workflows/  merobox scenarios. The merod image pinned here MUST equal the
             calimero-sdk tag in logic/Cargo.toml; CI fails the pair otherwise.
 ```
 
-Pinned to core **0.11.0-rc.90**:
+Pinned to core **0.12.0-rc.3**:
 
-- the contract builds against `calimero-sdk` / `calimero-storage` tag `0.11.0-rc.90`
-- the merobox workflows run `ghcr.io/calimero-network/merod:0.11.0-rc.90`
+- the contract builds against `calimero-sdk` / `calimero-storage` tag `0.12.0-rc.3`
+- the merobox workflows run `ghcr.io/calimero-network/merod:0.12.0-rc.3`
 - the app uses [`calimero-network/swift-sdk`](https://github.com/calimero-network/swift-sdk) `0.2.0` (`from: 0.2.0`)
 
 ## How the app talks to Calimero
