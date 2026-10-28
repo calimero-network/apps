@@ -26,6 +26,7 @@ struct MoreView: View {
             }
             Section("Pipeline") {
                 NavigationLink(value: Route.insights) { MoreRow(title: "Insights", icon: "chart.bar") }
+                    .accessibilityIdentifier("more.insights")
                 NavigationLink(value: Route.stages) { MoreRow(title: "Stages", icon: "rectangle.split.3x1") }
                 NavigationLink(value: Route.automations) { MoreRow(title: "Automations", icon: "bolt") }
                 NavigationLink(value: Route.settings) { MoreRow(title: "Pipeline settings", icon: "gearshape") }

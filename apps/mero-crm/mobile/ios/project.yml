@@ -68,8 +68,26 @@ targets:
       - package: MeroKit
         product: MeroKitUI
 
+  # The demo tour (Debug, `-MeroDemo YES`): every main screen with named
+  # screenshots. Run by apps-capture/ios-capture.sh.
+  MeroCRMUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies: [{ target: MeroCRM }]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.crm.uitests
+        TEST_TARGET_NAME: MeroCRM
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+
 schemes:
   MeroCRM:
     build:
       targets:
         MeroCRM: all
+    test:
+      config: Debug
+      targets: [MeroCRMUITests]

@@ -26,8 +26,8 @@ struct BoardView: View {
                     summary
                     stageTabs
                     TabView(selection: $page) {
-                        ForEach(model.stages) { stage in
-                            StageColumn(stage: stage, onAdd: { newDealStage = stage.id }, onAct: { acting = $0 })
+                        ForEach(Array(model.stages.enumerated()), id: \.element.id) { index, stage in
+                            StageColumn(stage: stage, index: index, onAdd: { newDealStage = stage.id }, onAct: { acting = $0 })
                                 .tag(stage.id)
                         }
                     }
@@ -93,10 +93,11 @@ struct BoardView: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(model.stages) { stage in
+                    ForEach(Array(model.stages.enumerated()), id: \.element.id) { index, stage in
                         Chip(title: stage.name, count: model.openDeals(in: stage.id).count, selected: stage.id == currentStage) {
                             withAnimation { page = stage.id }
                         }
+                        .accessibilityIdentifier("board.stage.\(index)")
                         .id(stage.id)
                     }
                 }
@@ -131,6 +132,7 @@ struct StatPill: View {
 /// One stage: its header and its open deals.
 private struct StageColumn: View {
     let stage: StageView
+    let index: Int
     let onAdd: () -> Void
     let onAct: (DealView) -> Void
     @EnvironmentObject private var model: PipelineModel
@@ -166,8 +168,8 @@ private struct StageColumn: View {
                     }
                     .frame(height: 4)
                 }
-                ForEach(cards) { deal in
-                    DealCard(deal: deal, onAct: { onAct(deal) })
+                ForEach(Array(cards.enumerated()), id: \.element.id) { n, deal in
+                    DealCard(deal: deal, id: "board.card.\(index).\(n)", onAct: { onAct(deal) })
                 }
                 if cards.isEmpty {
                     Button(action: onAdd) {
@@ -195,6 +197,7 @@ private struct StageColumn: View {
 /// A deal on the board: value, who, the next step and whether it is late, health.
 struct DealCard: View {
     let deal: DealView
+    var id = "board.card"
     let onAct: () -> Void
     @EnvironmentObject private var model: PipelineModel
 
@@ -235,12 +238,14 @@ struct DealCard: View {
                     .strokeBorder(health.rotting ? Palette.danger.opacity(0.4) : Palette.hairline, lineWidth: health.rotting ? 1 : 0.5))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
         .overlay(alignment: .topTrailing) {
             Button(action: onAct) {
                 Image(systemName: "ellipsis").font(.subheadline.weight(.semibold)).foregroundStyle(Palette.ink2)
                     .frame(width: 40, height: 36)
             }
             .accessibilityLabel("Move or close \(deal.title)")
+            .accessibilityIdentifier("\(id).menu")
         }
         .contextMenu {
             Button(action: onAct) { Label("Move to stage…", systemImage: "arrow.right.circle") }

@@ -21,7 +21,7 @@ struct DealActionsSheet: View {
                     } else {
                         SectionLabel(title: "Move to stage")
                         VStack(spacing: 0) {
-                            ForEach(model.stages) { stage in
+                            ForEach(Array(model.stages.enumerated()), id: \.element.id) { index, stage in
                                 Button {
                                     run { await model.move(deal, to: stage.id) }
                                 } label: {
@@ -37,6 +37,7 @@ struct DealActionsSheet: View {
                                     .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityIdentifier("actions.stage.\(index)")
                                 .disabled(busy || deal.status != "open")
                                 if stage.id != model.stages.last?.id { Divider().padding(.leading, 44) }
                             }

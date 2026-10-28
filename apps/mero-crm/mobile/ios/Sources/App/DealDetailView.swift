@@ -246,6 +246,7 @@ struct DealDetailView: View {
             deal, stages: model.stages, rottingDays: model.rottingDays, now: model.now(), model.calendar)
         return Card {
             CardTitle(title: "Deal assistant", icon: "sparkles")
+                .accessibilityIdentifier("deal.assistant")
             if deal.status == "open" {
                 HStack(alignment: .top, spacing: 14) {
                     ZStack {
@@ -267,7 +268,7 @@ struct DealDetailView: View {
                 }
                 if !actions.isEmpty {
                     SectionLabel(title: "Suggested next steps")
-                    ForEach(actions) { action in
+                    ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
                         HStack(alignment: .top, spacing: 10) {
                             if let a = action.activity {
                                 Image(systemName: Icons.kind(a.kind.rawValue)).font(.footnote).foregroundStyle(Palette.ink2)
@@ -289,6 +290,7 @@ struct DealDetailView: View {
                                 }
                             }
                             .buttonStyle(SmallPrimaryStyle(filled: action.activity != nil))
+                            .accessibilityIdentifier("deal.step.\(index)")
                         }
                         .padding(.vertical, 4)
                     }
@@ -319,6 +321,7 @@ struct DealDetailView: View {
         return Card {
             HStack {
                 CardTitle(title: "Activities", trailing: "\(open) open")
+                    .accessibilityIdentifier("deal.activities")
                 Button { scheduling = true } label: { Label("Schedule", systemImage: "plus") }
                     .buttonStyle(SmallPrimaryStyle())
             }
@@ -335,6 +338,7 @@ struct DealDetailView: View {
     private func notesCard(_ detail: DealDetail) -> some View {
         Card {
             CardTitle(title: "Notes")
+                .accessibilityIdentifier("deal.notes")
             TextField("What did you learn? Budget, decision makers, objections…", text: $note, axis: .vertical)
                 .lineLimit(2...8)
                 .focused($noteFocused)

@@ -23,6 +23,7 @@ struct PeopleView: View {
                             Chip(title: m.title, count: m == .people ? model.contacts.count : model.companies().count, selected: mode == m) {
                                 mode = m
                             }
+                            .accessibilityIdentifier("people.mode.\(m.rawValue)")
                         }
                         Spacer()
                     }
@@ -60,8 +61,9 @@ struct PeopleView: View {
                 .listRowSeparator(.hidden)
         } else {
             Section {
-                ForEach(rows) { c in
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, c in
                     NavigationLink(value: Route.contact(c.id)) { ContactRow(contact: c) }
+                        .accessibilityIdentifier("people.row.\(index)")
                         .listRowBackground(Palette.surface)
                 }
             }
@@ -78,7 +80,7 @@ struct PeopleView: View {
                 .listRowSeparator(.hidden)
         } else {
             Section {
-                ForEach(rows) { company in
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, company in
                     NavigationLink(value: Route.company(company.id)) {
                         HStack(spacing: 12) {
                             RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Palette.limeSoft)
@@ -99,6 +101,7 @@ struct PeopleView: View {
                         }
                         .padding(.vertical, 2)
                     }
+                    .accessibilityIdentifier("companies.row.\(index)")
                     .listRowBackground(Palette.surface)
                 }
             }

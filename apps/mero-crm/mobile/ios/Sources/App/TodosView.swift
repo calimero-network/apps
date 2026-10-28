@@ -60,8 +60,10 @@ struct TodosView: View {
                                     Text(bucket.emptyText ?? "").font(.footnote).foregroundStyle(Palette.ink3)
                                         .listRowBackground(Palette.surface)
                                 }
-                                ForEach(items) { a in
+                                ForEach(Array(items.enumerated()), id: \.element.id) { index, a in
                                     ActivityRowView(activity: a, showDeal: true)
+                                        .accessibilityElement(children: .contain)
+                                        .accessibilityIdentifier("todos.\(bucket.rawValue).\(index)")
                                         .listRowBackground(Palette.surface)
                                         .swipeActions(edge: .leading) {
                                             Button {
@@ -142,6 +144,7 @@ struct ActivityRowView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(a.done ? "Mark “\(a.subject)” not done" : "Mark “\(a.subject)” done")
+            .accessibilityIdentifier("activity.done")
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Image(systemName: Icons.kind(a.kind)).font(.footnote).foregroundStyle(Palette.ink2)

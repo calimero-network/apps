@@ -39,6 +39,7 @@ struct DealsView: View {
                         HStack(spacing: 8) {
                             ForEach(DealStatusFilter.allCases) { f in
                                 Chip(title: f.title, count: count(f), selected: status == f) { status = f }
+                                    .accessibilityIdentifier("deals.filter.\(f.rawValue)")
                             }
                         }
                         .padding(.vertical, 2)
@@ -63,8 +64,9 @@ struct DealsView: View {
                         .listRowSeparator(.hidden)
                 } else {
                     Section {
-                        ForEach(rows) { deal in
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, deal in
                             NavigationLink(value: Route.deal(deal.id)) { DealRow(deal: deal) }
+                                .accessibilityIdentifier("deals.row.\(index)")
                                 .listRowBackground(Palette.surface)
                                 .swipeActions(edge: .trailing) {
                                     if deal.status == "open" {

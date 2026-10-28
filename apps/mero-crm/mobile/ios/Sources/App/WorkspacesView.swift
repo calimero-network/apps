@@ -39,8 +39,8 @@ struct WorkspacesView: View {
                                     : "Your account has no relay yet. Join a workspace with an invitation link first.")
                         }
                     } else {
-                        ForEach(model.workspaces) { workspace in
-                            WorkspaceCard(workspace: workspace, onOpen: onOpen) { addingTo = workspace }
+                        ForEach(Array(model.workspaces.enumerated()), id: \.element.id) { index, workspace in
+                            WorkspaceCard(workspace: workspace, index: index, onOpen: onOpen) { addingTo = workspace }
                         }
                     }
                     VStack(spacing: 10) {
@@ -70,7 +70,7 @@ struct WorkspacesView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        if let account = session.account {
+                        if let account = DemoMode.backend?.account ?? session.account {
                             Text("Signed in as \(Account.short(account))")
                         }
                         Button(role: .destructive, action: onSignOut) {
@@ -105,6 +105,7 @@ struct WorkspacesView: View {
 
 private struct WorkspaceCard: View {
     let workspace: Workspace
+    let index: Int
     let onOpen: (PipelineRef) -> Void
     let onAdd: () -> Void
 
@@ -128,7 +129,7 @@ private struct WorkspaceCard: View {
                     .font(.footnote).foregroundStyle(Palette.ink2)
                     .padding(14)
             }
-            ForEach(workspace.pipelines) { pipeline in
+            ForEach(Array(workspace.pipelines.enumerated()), id: \.element.id) { n, pipeline in
                 Button {
                     Haptics.tap()
                     onOpen(pipeline)
@@ -144,6 +145,7 @@ private struct WorkspaceCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("workspaces.pipeline.\(index).\(n)")
                 Divider().overlay(Palette.hairline).padding(.leading, 50)
             }
             Button(action: onAdd) {
