@@ -15,7 +15,7 @@ complexity:
   # AdminApi is a 1:1 port of the node's admin surface (~140 endpoints in one client since core
   # rc.83 added owner ops and the delegated-execution routes), mirroring
   # the Swift SDK's AdminApi. Keep it as a single cohesive client rather than splitting it to
-  # satisfy the linter — so both the function-count and the class-size gates are relaxed for it.
+  # satisfy the linter, so both the function-count and the class-size gates are relaxed for it.
   TooManyFunctions:
     thresholdInClasses: 170
     thresholdInFiles: 170

@@ -155,10 +155,10 @@ struct DocumentScreen: View {
         [
             ("Document", model.docId),
             ("Folder", model.folderId),
-            ("Docs context", model.contextId ?? "—"),
+            ("Docs context", model.contextId ?? "–"),
             ("Workspace", model.workspaceId),
             ("Words", "\(model.wordCount)"),
-            ("Created by", model.doc?.createdBy.nonEmptyOrDash ?? "—"),
+            ("Created by", model.doc?.createdBy.nonEmptyOrDash ?? "–"),
         ]
     }
 

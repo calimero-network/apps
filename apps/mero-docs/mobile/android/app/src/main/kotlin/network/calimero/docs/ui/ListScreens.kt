@@ -204,7 +204,7 @@ private fun AccountSheet(
                 }
             }
             DetailsDisclosure(
-                listOf("Account" to (session.account ?: "—"), "Application" to (session.applicationId ?: "—")),
+                listOf("Account" to (session.account ?: "–"), "Application" to (session.applicationId ?: "–")),
                 Modifier.fillMaxWidth().card(),
             )
             SecondaryButton(onClick = { confirm = true }) {
@@ -420,7 +420,7 @@ fun FolderScreen(
                 folder?.let {
                     item {
                         DetailsDisclosure(
-                            listOf("Folder" to it.id, "Docs context" to (it.contextId ?: "—"), "Workspace" to model.workspace.id),
+                            listOf("Folder" to it.id, "Docs context" to (it.contextId ?: "–"), "Workspace" to model.workspace.id),
                             Modifier.padding(vertical = 12.dp).fillMaxWidth().card(),
                         )
                     }

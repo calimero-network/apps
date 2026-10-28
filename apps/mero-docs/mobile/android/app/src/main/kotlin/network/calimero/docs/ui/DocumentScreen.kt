@@ -238,10 +238,10 @@ fun DocumentScreen(
                                     listOf(
                                         "Document" to model.docId,
                                         "Folder" to model.folderId,
-                                        "Docs context" to (contextId ?: "—"),
+                                        "Docs context" to (contextId ?: "–"),
                                         "Workspace" to model.workspaceId,
                                         "Words" to "${model.wordCount}",
-                                        "Created by" to (doc?.createdBy?.ifEmpty { null } ?: "—"),
+                                        "Created by" to (doc?.createdBy?.ifEmpty { null } ?: "–"),
                                     ),
                                     Modifier.padding(top = 32.dp).fillMaxWidth().card(),
                                 )

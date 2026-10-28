@@ -108,8 +108,8 @@ struct AccountSheet: View {
                 }
                 .card()
                 DetailsDisclosure(rows: [
-                    ("Account", session.account ?? "—"),
-                    ("Application", session.applicationId ?? "—"),
+                    ("Account", session.account ?? "–"),
+                    ("Application", session.applicationId ?? "–"),
                 ])
                 .card()
                 Spacer()
@@ -280,7 +280,7 @@ struct FolderScreen: View {
                 if let folder {
                     DetailsDisclosure(rows: [
                         ("Folder", folder.id),
-                        ("Docs context", folder.contextId ?? "—"),
+                        ("Docs context", folder.contextId ?? "–"),
                         ("Workspace", model.workspace.id),
                     ])
                     .cardRow()
