@@ -70,7 +70,7 @@ very little use; people want to **look**, **comment** and **share** from a phone
 
 These block several apps at once, so they come before the app work:
 
-1. **Blobs over the relay.** swift-sdk has blob upload and download through the relay (#57); kotlin-sdk needs the same. Mero Chat's attachments and avatars are blocked on it, as are all of Tier 3.
+1. **Blobs over the relay.** Both SDKs have blob upload and download through the relay (swift-sdk #79, kotlin-sdk #57); Mero Chat's attachments and avatars and all of Tier 3 can build on it.
 2. **Push.** APNs/FCM delivery for relay events (chat mentions, hyperfeed approvals, standup reminders, your turn in chess and battleships). Today the apps use SSE while open and 5-second polling otherwise.
 3. **Multi-service bundles and multi-context identity** (battleships, mero-docs, mero-sign).
 4. **A WebView host kit:** one native shell (sign-in, relay session, deep links) that hosts a web app's view-only or game mode and bridges contract calls to the SDK. Tier 3 and Tier 4 mostly reuse it, so it is built once.
@@ -115,7 +115,7 @@ with a bridge so the web app's generated client calls through the native session
 1. SDK `ContextContract` + `MeroAppSession` and native codegen (in parallel); chat migrates onto both.
 2. The `new-mobile-app` template and shared components.
 3. Finish Mero Chat (threads, attachments, DMs, push, glass design) on the template; see below.
-4. SDK: blobs over the relay on both platforms, push, WebView host kit.
+4. SDK: push and the WebView host kit.
 5. Tier 1: mero-forum (pilot), mero-standup, mero-chess, mero-calendar (then the rest of Tier 1).
 6. mero-pass with AutoFill (the strongest reason to install a phone app).
 7. Tier 4 games on the host kit (mero-blocks first), then Tier 3 viewers.
