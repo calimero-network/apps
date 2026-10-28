@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Merraria">
+
+        <!--
+          A landscape game: the whole app is landscape (either way up). Configuration changes are
+          handled in place so turning the phone over or a keyboard appearing never reloads the game.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              Calimero Cloud sign-in: the wallet redirects to the enrolment callback
+              (BuildConfig.ENROL_CALLBACK_URL, default merraria://enrol) with the device
+              certificate in the fragment. Scheme and host come from the `meroEnrolCallback`
+              Gradle property, so this filter always matches what the app asks the wallet for.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${enrolScheme}" android:host="${enrolHost}" />
+            </intent-filter>
+
+            <!--
+              World invitations, in the form the web app shares them:
+              https://links.calimero.network/com.calimero.merraria/join?invitation=…
+              Not autoVerify: links.calimero.network does not publish this app's
+              assetlinks.json, so Android offers the app in the chooser instead.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="links.calimero.network"
+                    android:pathPrefix="/com.calimero.merraria/join" />
+            </intent-filter>
+
+            <!-- The desktop launcher's form: calimero://com.calimero.merraria/join?invitation=… -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="calimero"
+                    android:host="com.calimero.merraria" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

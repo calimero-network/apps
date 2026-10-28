@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher foreground: the app mark centred in the adaptive icon's safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.9"
+        android:scaleY="0.9"
+        android:translateX="25.2"
+        android:translateY="25.2">
+        <path android:fillColor="#8A5A33" android:pathData="M8,2h48a6,6 0 0,1 6,6v48a6,6 0 0,1 -6,6h-48a6,6 0 0,1 -6,-6v-48a6,6 0 0,1 6,-6z" />
+        <path android:fillColor="#6C4426" android:pathData="M56,4h2a4,4 0 0,1 4,4v48a4,4 0 0,1 -4,4h-2zM4,56h58v2a4,4 0 0,1 -4,4H8a4,4 0 0,1 -4,-4z" />
+        <path android:fillColor="#6C4426" android:pathData="M12,34h4v4h-4zM24,46h4v4h-4zM38,38h4v4h-4zM48,28h4v4h-4z" />
+        <path android:fillColor="#4F9C3A" android:pathData="M2,8a6,6 0 0,1 6,-6h48a6,6 0 0,1 6,6v10H2z" />
+        <path android:fillColor="#6FC454" android:pathData="M4.5,2h55a2.5,2.5 0 0,1 0,5h-55a2.5,2.5 0 0,1 0,-5z" />
+        <path android:fillColor="#4F9C3A" android:pathData="M8,18h5v6h-5zM20,18h5v4h-5zM34,18h5v7h-5zM48,18h5v5h-5z" />
+        <path android:fillColor="#6B5233" android:pathData="M16,58l-5,-5 31,-31 5,5z" />
+        <path android:fillColor="#C8CCD4" android:pathData="M24,8l6,-4 20,14 -6,7z" />
+        <path android:fillColor="#969CA8" android:pathData="M56,40l4,-6 -14,-20 -6,6z" />
+    </group>
+</vector>

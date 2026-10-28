@@ -1,0 +1,86 @@
+# XcodeGen spec for the native iOS Merraria app.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes Merraria.xcodeproj (not committed)
+#   open Merraria.xcodeproj
+#
+# The non-UI layer (generated contract client, world list, invitations, the game bridge and the
+# touch-control mapping) is the local SwiftPM package in MerrariaCore/, tested on macOS with
+# `swift test --package-path MerrariaCore` (no simulator). The game itself is the web app's engine,
+# built into ../game/www (../scripts/build-game.sh) and shipped as a folder resource.
+# The swift-sdk is pinned by revision to feat/app-session (swift-sdk#84); the pin moves to the merge
+# commit once that PR lands. Keep it equal to the revision in MerrariaCore/Package.swift.
+name: Merraria
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: 551fc784e7545bcdbf358b4c348e6cd381b4512f
+  MerrariaCore:
+    path: MerrariaCore
+
+targets:
+  Merraria:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+      - path: Resources/Assets.xcassets
+      # The bundled web game, copied as a folder: `www/index.html` in the app bundle.
+      - path: ../game/www
+        type: folder
+        buildPhase: resources
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Merraria
+        UILaunchScreen: {}
+        # A landscape game: the whole app is landscape, on iPhone and iPad.
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: false
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`merraria://enrol#credential=…`).
+          - CFBundleURLName: network.calimero.merraria.enrol
+            CFBundleURLSchemes: [merraria]
+          # Invitation deep links: `calimero://com.calimero.merraria/join?invitation=…`.
+          - CFBundleURLName: network.calimero.merraria.invite
+            CFBundleURLSchemes: [calimero]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero wallet, Cloud
+        # manager and app registry). Point these at another environment to test against it.
+        MerrariaCallbackScheme: merraria
+        MerrariaCallbackHost: ""
+        MerrariaCallbackPath: /enrol
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.merraria
+        PRODUCT_NAME: Merraria
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: ""
+    dependencies:
+      - package: MerrariaCore
+        product: MerrariaCore
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+schemes:
+  Merraria:
+    build:
+      targets:
+        Merraria: all
