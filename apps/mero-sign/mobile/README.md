@@ -85,9 +85,26 @@ sign, by the web or here: the contract derives the signer from the caller's acco
   documents** — admin work, done on the web. The apps show roles read-only.
 - **Live updates** — pull to refresh, and agreements that are still syncing are re-read every 10 s.
 - **Setting your display name** — names shown are the ones set on the web (namespace member names).
-- The signed PDF on iOS is rewritten page by page with Core Graphics (vector content kept); form
-  fields, links and annotations of the original are not carried over. Android (PdfBox) keeps
-  everything, like the web's pdf-lib.
+
+## How the signature goes into the PDF
+
+All three draw it the same way as the web's `pdf-lib` `page.drawImage`: an image XObject added to
+the page's resources and painted by a new content stream (`q w 0 0 h x y cm /Name Do Q`), with the
+page's existing content wrapped in `q … Q`. Form fields, links, annotations and fonts are kept.
+
+- **Web (pdf-lib)** and **Android (PdfBox-Android)** write the whole file back out.
+- **iOS** writes an **incremental update**: the original bytes stay as they were, and the changed
+  page plus the new objects are added after them (`SignCore/PDFIncremental.swift`). It reads
+  classic xref tables, xref streams and object streams. Tested against a pdf-lib-written file and
+  read back with pdf-lib and pdf.js.
+- **iOS fallback**, only for files that writer refuses (encrypted, or a non-Flate filter in an
+  xref or object stream): the signature becomes a printable, locked `/Stamp` annotation whose
+  appearance draws the PNG, saved with PDFKit. Fields, values, links and annotations survive. But
+  PDFKit saves through Quartz: content streams are re-encoded, fonts are re-embedded as subsets,
+  and the form's `/Fields` entries are written as copies of the page widgets. Viewers that hide
+  annotations hide that stamp.
+- The placed box is mapped through the page's crop box and `/Rotate`, so the signature lands
+  upright where it was placed on rotated pages too. The web's call doesn't account for `/Rotate`.
 
 ## Build and test (no simulator or emulator needed)
 
