@@ -32,11 +32,12 @@ struct TeamsScreen: View {
                     .plainRow()
                 } else {
                     Section {
-                        ForEach(model.teams) { team in
+                        ForEach(Array(model.teams.enumerated()), id: \.element.id) { index, team in
                             NavigationLink(value: Router.Route.team(id: team.id, name: team.name)) {
                                 TeamRow(team: team)
                             }
                             .cardRow()
+                            .accessibilityIdentifier("teams.card.\(index)")
                         }
                     } header: {
                         SectionLabel("Teams")
@@ -56,6 +57,7 @@ struct TeamsScreen: View {
                     Image(systemName: "person.crop.circle")
                 }
                 .accessibilityLabel("Account")
+                .accessibilityIdentifier("teams.account")
             }
         }
         .refreshable { await model.load() }
@@ -96,23 +98,25 @@ struct AccountSheet: View {
     @ObservedObject var session: MeroAppSession
     @Environment(\.dismiss) private var dismiss
     @State private var confirm = false
+    private var account: String? { DemoMode.backend?.account ?? session.account }
+    private var hasRelay: Bool { DemoMode.backend?.hasRelay ?? session.hasRelay }
 
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 12) {
-                    Avatar(id: session.account ?? "", name: "Me", size: 44)
+                    Avatar(id: account ?? "", name: "Me", size: 44)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Signed in").font(Theme.heading(17)).foregroundStyle(Theme.ink)
-                        Text(session.hasRelay ? "Connected through your relay" : "No relay serves this account yet")
+                        Text(hasRelay ? "Connected through your relay" : "No relay serves this account yet")
                             .font(Theme.body(14))
                             .foregroundStyle(Theme.muted)
                     }
                 }
                 .card()
                 DetailsDisclosure(rows: [
-                    ("Account", session.account ?? "—"),
-                    ("Application", session.applicationId ?? "—"),
+                    ("Account", account ?? "—"),
+                    ("Application", DemoMode.applicationId ?? session.applicationId ?? "—"),
                 ])
                 .card()
                 Spacer()
@@ -129,7 +133,9 @@ struct AccountSheet: View {
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }.accessibilityIdentifier("sheet.done")
+                }
             }
             .confirmationDialog("Sign out of Mero Design?", isPresented: $confirm, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
@@ -169,13 +175,14 @@ struct BoardsScreen: View {
                     .plainRow()
                 } else {
                     Section {
-                        ForEach(model.boards) { board in
+                        ForEach(Array(model.boards.enumerated()), id: \.element.id) { index, board in
                             NavigationLink(
                                 value: Router.Route.board(teamId: model.teamId, contextId: board.contextId, name: board.name)
                             ) {
                                 BoardRow(board: board)
                             }
                             .cardRow()
+                            .accessibilityIdentifier("boards.card.\(index)")
                             .swipeActions(edge: .trailing) {
                                 ShareLink(item: URL(string: DesignFormat.boardLink(teamId: model.teamId, contextId: board.contextId))!) {
                                     Label("Share", systemImage: "square.and.arrow.up")

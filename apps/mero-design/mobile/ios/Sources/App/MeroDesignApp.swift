@@ -46,11 +46,14 @@ struct RootView: View {
     @State private var didRestore = false
     @State private var invitationNotice = false
 
+    /// The signed-in account's backend, or the demo's (Debug, `-MeroDemo YES`).
+    private var activeBackend: (any MeroAppBackend)? { DemoMode.backend ?? (session.isSignedIn ? session.backend : nil) }
+
     var body: some View {
         Group {
             if !didRestore || session.isRestoring {
                 Splash(text: "Restoring your session…")
-            } else if session.isSignedIn, let backend = session.backend {
+            } else if let backend = activeBackend {
                 NavigationStack(path: $router.path) {
                     TeamsScreen(session: session, backend: backend)
                         .navigationDestination(for: Router.Route.self) { route in
@@ -60,7 +63,7 @@ struct RootView: View {
                             case .board(let teamId, let contextId, let name):
                                 BoardScreen(
                                     backend: backend, teamId: teamId, contextId: contextId, name: name,
-                                    blobs: SessionBlobs(admin: session.client.admin))
+                                    blobs: DemoMode.blobs ?? SessionBlobs(admin: session.client.admin))
                             }
                         }
                 }
@@ -76,7 +79,7 @@ struct RootView: View {
         }
         .task {
             guard !didRestore else { return }
-            await session.restore()
+            if !DemoMode.isOn { await session.restore() }
             didRestore = true
         }
         .onChange(of: session.pendingInvitation) { pending in

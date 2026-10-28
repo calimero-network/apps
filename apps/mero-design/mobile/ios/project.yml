@@ -71,8 +71,28 @@ targets:
       - package: MeroKit
         product: MeroKitUI
 
+  # The scripted demo tour (Debug, `-MeroDemo YES`): see UITests/TourTests.swift.
+  MeroDesignUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: MeroDesign
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.design.uitests
+        TEST_TARGET_NAME: MeroDesign
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+
 schemes:
   MeroDesign:
     build:
       targets:
         MeroDesign: all
+    test:
+      config: Debug
+      targets:
+        - MeroDesignUITests

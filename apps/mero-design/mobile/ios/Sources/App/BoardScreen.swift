@@ -74,10 +74,12 @@ struct BoardScreen: View {
                     }
                     Button { fit(animated: true) } label: { Label("Fit to screen", systemImage: "viewfinder") }
                     Button { infoOpen = true } label: { Label("About this board", systemImage: "info.circle") }
+                        .accessibilityIdentifier("board.about")
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
                 .accessibilityLabel("Board options")
+                .accessibilityIdentifier("board.menu")
             }
         }
         .task { await model.open() }
@@ -151,11 +153,14 @@ struct BoardCanvasView: View {
                     }
                     .offset(x: p.x, y: p.y - 28)
                     .accessibilityLabel("Comment \(index + 1) by \(model.name(for: comment.author))")
+                    .accessibilityIdentifier("board.pin.\(index)")
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             .clipped()
             .contentShape(Rectangle())
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("board.canvas")
             .gesture(panAndZoom(center: CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)))
             .onTapGesture(count: 2, perform: onDoubleTap)
         }
@@ -286,6 +291,7 @@ private struct BottomBar: View {
                     .background(Theme.lime, in: Capsule())
             }
             .accessibilityHint(hasScreens ? "Plays the board's screens" : "Shows the whole board")
+            .accessibilityIdentifier("board.present")
             Button(action: comments) {
                 HStack(spacing: 6) {
                     Image(systemName: "bubble.left")
@@ -297,6 +303,7 @@ private struct BottomBar: View {
                 .frame(height: 44)
             }
             .accessibilityLabel(commentCount == 1 ? "1 comment" : "\(commentCount) comments")
+            .accessibilityIdentifier("board.comments")
             Button(action: fit) {
                 Image(systemName: "viewfinder")
                     .font(Theme.body(16, .semibold))
@@ -304,6 +311,7 @@ private struct BottomBar: View {
                     .frame(width: 44, height: 44)
             }
             .accessibilityLabel("Fit to screen")
+            .accessibilityIdentifier("board.fit")
         }
         .padding(4)
         .background(.regularMaterial, in: Capsule())
@@ -349,7 +357,11 @@ struct BoardInfoSheet: View {
             .background(Theme.ground)
             .navigationTitle("About this board")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }.accessibilityIdentifier("sheet.done")
+                }
+            }
         }
     }
 

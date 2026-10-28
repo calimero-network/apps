@@ -31,6 +31,7 @@ struct CommentsSheet: View {
                             CommentRow(model: model, number: index + 1, author: comment.author, content: comment.content, createdAt: comment.createdAt, replies: comment.replies.count)
                         }
                         .cardRow()
+                        .accessibilityIdentifier("comments.row.\(index)")
                     }
                 }
             }
@@ -156,6 +157,7 @@ struct CommentComposer: View {
                         .lineLimit(1...5)
                         .font(Theme.body(16))
                         .focused($focused)
+                        .accessibilityIdentifier("composer.field")
                         .padding(.horizontal, 14)
                         .padding(.vertical, 11)
                         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -176,6 +178,7 @@ struct CommentComposer: View {
                     }
                     .disabled(!canSend)
                     .accessibilityLabel("Send")
+                    .accessibilityIdentifier("composer.send")
                 }
             }
         }

@@ -60,6 +60,7 @@ struct PresentView: View {
                                 .background(.white.opacity(0.14), in: Circle())
                         }
                         .accessibilityLabel("Stop presenting")
+                        .accessibilityIdentifier("present.close")
                         VStack(alignment: .leading, spacing: 1) {
                             Text(slides.indices.contains(index) ? slides[index].name : "")
                                 .font(Theme.heading(16))
@@ -82,6 +83,7 @@ struct PresentView: View {
                                     .background(.white.opacity(0.14), in: Circle())
                             }
                             .accessibilityLabel("All screens")
+                            .accessibilityIdentifier("present.all")
                         }
                     }
                     .padding(.horizontal, 16)
@@ -190,6 +192,7 @@ private struct AllScreensSheet: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("present.thumb.\(i)")
                     }
                 }
                 .padding(16)
