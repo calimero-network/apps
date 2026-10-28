@@ -1,0 +1,72 @@
+# XcodeGen spec for the native iOS Mero Issue Tracker.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes MeroIssues.xcodeproj (not committed)
+#   open MeroIssues.xcodeproj
+#
+# The non-UI layer (generated contract client, models) is the local SwiftPM
+# package in Core/, tested with `swift test` on macOS. The swift-sdk is pinned
+# by revision to its `feat/app-session` branch (PR #84); move both pins (here
+# and Core/Package.swift) to the merge commit once it lands.
+name: MeroIssues
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: 122bb0d71bb43b823cb9d694c4e70678a2ef8c89
+  IssueTrackerCore:
+    path: Core
+
+targets:
+  MeroIssues:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Issues
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Light
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`mero-issues://enrol#credential=…`).
+          - CFBundleURLName: network.calimero.issues.enrol
+            CFBundleURLSchemes: [mero-issues]
+          # Invitation deep links: `calimero://com.calimero.mero-issue-tracker/join?invitation=…`.
+          - CFBundleURLName: network.calimero.issues.invite
+            CFBundleURLSchemes: [calimero]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
+        # wallet, Cloud manager and registry). See README.md.
+        IssuesCallbackScheme: mero-issues
+        IssuesCallbackHost: ""
+        IssuesCallbackPath: /enrol
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.issues
+        PRODUCT_NAME: MeroIssues
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: IssueTrackerCore
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+schemes:
+  MeroIssues:
+    build:
+      targets:
+        MeroIssues: all
