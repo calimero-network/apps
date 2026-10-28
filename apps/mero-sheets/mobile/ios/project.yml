@@ -1,0 +1,72 @@
+# XcodeGen spec for the native iOS Mero Sheets.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes MeroSheets.xcodeproj (not committed)
+#   open MeroSheets.xcodeproj
+#
+# The non-UI layer (generated contract client, models) is the local SwiftPM
+# package in Core/, tested with `swift test` on macOS. The swift-sdk is pinned
+# by revision to its `feat/app-session` branch (PR #84); move both pins (here
+# and Core/Package.swift) to the merge commit once it lands.
+name: MeroSheets
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: 551fc784e7545bcdbf358b4c348e6cd381b4512f
+  SheetsCore:
+    path: Core
+
+targets:
+  MeroSheets:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Sheets
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Light
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`mero-sheets://enrol#credential=…`).
+          - CFBundleURLName: network.calimero.sheets.enrol
+            CFBundleURLSchemes: [mero-sheets]
+          # Invitation deep links: `calimero://com.calimero.mero-sheets/join?invitation=…`.
+          - CFBundleURLName: network.calimero.sheets.invite
+            CFBundleURLSchemes: [calimero]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
+        # wallet, Cloud manager and registry). See README.md.
+        SheetsCallbackScheme: mero-sheets
+        SheetsCallbackHost: ""
+        SheetsCallbackPath: /enrol
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.sheets
+        PRODUCT_NAME: MeroSheets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: SheetsCore
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+schemes:
+  MeroSheets:
+    build:
+      targets:
+        MeroSheets: all

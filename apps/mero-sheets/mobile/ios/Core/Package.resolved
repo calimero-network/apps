@@ -1,0 +1,13 @@
+{
+  "pins" : [
+    {
+      "identity" : "swift-sdk",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/calimero-network/swift-sdk",
+      "state" : {
+        "revision" : "551fc784e7545bcdbf358b4c348e6cd381b4512f"
+      }
+    }
+  ],
+  "version" : 2
+}
