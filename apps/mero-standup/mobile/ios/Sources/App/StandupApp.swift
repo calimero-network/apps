@@ -15,7 +15,7 @@ struct StandupApp: App {
                 .environmentObject(session)
                 .tint(Palette.ink)
                 .preferredColorScheme(.light)
-                .task { await session.restore() }
+                .task { if !DemoMode.isOn { await session.restore() } }
                 .onOpenURL { url in Task { await session.handle(url) } }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                     if let url = activity.webpageURL { Task { await session.handle(url) } }
@@ -30,9 +30,13 @@ struct RootView: View {
     @AppStorage("openTeam") private var storedTeam = ""
     @State private var openTeam: TeamSummary?
 
+    /// The signed-in account's backend, or the demo's (Debug, `-MeroDemo YES`).
+    private var activeBackend: (any MeroAppBackend)? { DemoMode.backend ?? session.backend }
+    private var activeApplicationId: String? { DemoMode.applicationId ?? session.applicationId }
+
     var body: some View {
         Group {
-            if let backend = session.backend {
+            if let backend = activeBackend {
                 if let team = openTeam {
                     TeamView(
                         team: team, backend: backend,
@@ -42,7 +46,7 @@ struct RootView: View {
                     .id("\(team.contextId)|\(session.revision)")
                 } else {
                     TeamsView(
-                        backend: backend, applicationId: session.applicationId,
+                        backend: backend, applicationId: activeApplicationId,
                         onOpen: open, onSignOut: { signOut() }
                     )
                     .id(session.revision)
@@ -51,14 +55,14 @@ struct RootView: View {
                 SignInView(client: session.client)
             }
         }
-        .onAppear { openTeam = Self.decode(storedTeam) }
+        .onAppear { openTeam = DemoMode.isOn ? nil : Self.decode(storedTeam) }
         .sheet(
             isPresented: Binding(
-                get: { session.pendingInvitation != nil && session.backend != nil },
+                get: { session.pendingInvitation != nil && activeBackend != nil },
                 set: { if !$0 { session.dismissPendingInvitation() } })
         ) {
-            if let raw = session.pendingInvitation, let backend = session.backend {
-                InvitationSheet(raw: raw, backend: backend, applicationId: session.applicationId) { team in
+            if let raw = session.pendingInvitation, let backend = activeBackend {
+                InvitationSheet(raw: raw, backend: backend, applicationId: activeApplicationId) { team in
                     session.dismissPendingInvitation()
                     Task { await session.didJoinNamespace() }
                     open(team)

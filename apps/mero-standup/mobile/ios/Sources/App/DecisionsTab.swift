@@ -35,12 +35,14 @@ struct DecisionsTab: View {
                             TimelineMonth(team: team, title: month.title, items: month.items) { path.append($0) }
                         }
                     } else {
-                        ForEach(model.items, id: \.id) { decision in
+                        ForEach(Array(model.items.enumerated()), id: \.element.id) { index, decision in
                             DecisionCard(team: team, model: model, decision: decision, onTag: { tag in
                                 Task { await model.toggle(tag: tag) }
                             }, onOpen: { path.append($0) })
                             .contentShape(Rectangle())
                             .onTapGesture { path.append(decision.id) }
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("decisions.card.\(index)")
                             .swipeActions(edge: .trailing) {
                                 if decision.supersededBy.isEmpty {
                                     Button { onCompose(DecisionDraft(supersedes: decision)) } label: {
@@ -78,6 +80,7 @@ struct DecisionsTab: View {
                     Button { onCompose(DecisionDraft()) } label: {
                         Image(systemName: "plus").accessibilityLabel("Log a decision")
                     }
+                    .accessibilityIdentifier("decisions.compose")
                 }
             }
             .navigationDestination(for: String.self) { id in
@@ -93,6 +96,7 @@ struct DecisionsTab: View {
                 Text("Timeline").tag(true)
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("decisions.view")
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     Chip(title: "Standing only", icon: model.standingOnly ? "checkmark" : nil, selected: model.standingOnly) {
@@ -316,11 +320,11 @@ struct DecisionSheet: View {
                         .padding(12)
                         .background(Palette.limeSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
-                    LabelledEditor(label: "Title", placeholder: "Release every two weeks", text: $draft.title, limit: Limits.title, minLines: 1)
-                    LabelledEditor(label: "Decision", placeholder: "What exactly was decided", text: $draft.decision, limit: Limits.body)
-                    LabelledEditor(label: "Why", placeholder: "Context, options considered, why this one", text: $draft.rationale, limit: Limits.body)
+                    LabelledEditor(label: "Title", placeholder: "Release every two weeks", text: $draft.title, limit: Limits.title, minLines: 1, identifier: "decision.title")
+                    LabelledEditor(label: "Decision", placeholder: "What exactly was decided", text: $draft.decision, limit: Limits.body, identifier: "decision.body")
+                    LabelledEditor(label: "Why", placeholder: "Context, options considered, why this one", text: $draft.rationale, limit: Limits.body, identifier: "decision.why")
                     VStack(alignment: .leading, spacing: 8) {
-                        LabelledEditor(label: "Tags", placeholder: "infra, release process", text: $draft.tagsInput, limit: 400, minLines: 1)
+                        LabelledEditor(label: "Tags", placeholder: "infra, release process", text: $draft.tagsInput, limit: 400, minLines: 1, identifier: "decision.tags")
                             .textInputAutocapitalization(.never)
                         if !draft.tags.isEmpty {
                             ScrollView(.horizontal, showsIndicators: false) {
@@ -362,6 +366,7 @@ struct DecisionSheet: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(busy || !draft.isReady)
+                .accessibilityIdentifier("decision.log")
                 .padding(.horizontal, 20)
                 .padding(.vertical, 10)
                 .background(.bar)
@@ -397,7 +402,7 @@ private struct FlowChips: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(members, id: \.account) { member in
+                ForEach(Array(members.enumerated()), id: \.element.account) { index, member in
                     let on = selected.contains(member.account)
                     Button {
                         if on { selected.remove(member.account) } else { selected.insert(member.account) }
@@ -414,6 +419,7 @@ private struct FlowChips: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(on ? .isSelected : [])
+                    .accessibilityIdentifier("decision.with.\(index)")
                 }
             }
         }

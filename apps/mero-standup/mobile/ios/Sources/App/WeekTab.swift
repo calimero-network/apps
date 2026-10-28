@@ -19,8 +19,10 @@ struct WeekTab: View {
                     } else if model.week != nil, model.people.isEmpty {
                         Card { EmptyState(icon: "calendar", title: "No updates this week.") }
                     }
-                    ForEach(model.people) { person in
+                    ForEach(Array(model.people.enumerated()), id: \.element.id) { index, person in
                         PersonCard(team: team, model: model, person: person)
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("week.person.\(index)")
                     }
                 }
                 .padding(16)
@@ -60,6 +62,7 @@ struct WeekTab: View {
                     Image(systemName: "chevron.left").frame(width: 36, height: 36)
                 }
                 .accessibilityLabel("Previous week")
+                .accessibilityIdentifier("week.prev")
                 Spacer()
                 VStack(spacing: 2) {
                     Text(model.isThisWeek ? "This week" : "Week of").font(.headline).foregroundStyle(Palette.ink)
@@ -71,6 +74,7 @@ struct WeekTab: View {
                 }
                 .disabled(model.isThisWeek)
                 .accessibilityLabel("Next week")
+                .accessibilityIdentifier("week.next")
             }
             .font(.body.weight(.semibold))
             .foregroundStyle(Palette.ink)

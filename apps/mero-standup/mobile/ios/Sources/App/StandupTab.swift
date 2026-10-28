@@ -52,6 +52,7 @@ struct StandupTab: View {
                     Button { composing = true } label: {
                         Image(systemName: "square.and.pencil").accessibilityLabel("Post update")
                     }
+                    .accessibilityIdentifier("standup.compose")
                 }
             }
             .sheet(isPresented: $composing) { UpdateSheet(board: board) }
@@ -79,6 +80,8 @@ struct StandupTab: View {
                     Spacer()
                     Badge(title: "Posted")
                 }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("standup.mine")
                 UpdateFields(update: mine)
                 if !mine.helpers.isEmpty { Helpers(team: team, helpers: mine.helpers) }
                 HStack(spacing: 10) {
@@ -101,6 +104,7 @@ struct StandupTab: View {
                 }
                 Button { composing = true } label: { Label("Post update", systemImage: "square.and.pencil") }
                     .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("standup.post")
             }
         } else if board.isLoading {
             Card { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12) }
@@ -122,7 +126,7 @@ struct StandupTab: View {
                 .font(.subheadline).foregroundStyle(Palette.ink2)
             }
         }
-        ForEach(others, id: \.author) { update in
+        ForEach(Array(others.enumerated()), id: \.element.author) { index, update in
             Card {
                 HStack(spacing: 10) {
                     Avatar(account: update.author, name: update.authorName)
@@ -154,6 +158,8 @@ struct StandupTab: View {
             .contextMenu {
                 Button { onLogDecision(update.day) } label: { Label("Log decision", systemImage: "checkmark.seal") }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("standup.update.\(index)")
         }
     }
 
@@ -175,6 +181,8 @@ struct StandupTab: View {
 
     @ViewBuilder private var blockersSection: some View {
         SectionLabel(title: "Blocked right now")
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("standup.blockers")
         Card {
             if board.blockers.isEmpty {
                 Text("Nothing is blocking anyone.").font(.subheadline).foregroundStyle(Palette.ink2)
@@ -242,6 +250,7 @@ private struct WeekStrip: View {
                     Image(systemName: "chevron.left").frame(width: 30, height: 44)
                 }
                 .accessibilityLabel("Previous day")
+                .accessibilityIdentifier("standup.prevDay")
                 ForEach(board.weekDays, id: \.self) { day in
                     dayCell(day)
                 }
@@ -250,6 +259,7 @@ private struct WeekStrip: View {
                 }
                 .disabled(board.isToday)
                 .accessibilityLabel("Next day")
+                .accessibilityIdentifier("standup.nextDay")
             }
             .font(.body.weight(.semibold))
             .foregroundStyle(Palette.ink)
@@ -259,6 +269,7 @@ private struct WeekStrip: View {
                 if !board.isToday {
                     Button("Today") { Task { await board.select(board.today) } }
                         .font(.subheadline.weight(.semibold)).foregroundStyle(Palette.ink)
+                        .accessibilityIdentifier("standup.today")
                 }
             }
             .padding(.horizontal, 4)
@@ -345,11 +356,11 @@ private struct UpdateSheet: View {
                         Label("Started from your \(board.describe(from).lowercased()) update", systemImage: "arrow.uturn.forward")
                             .font(.footnote).foregroundStyle(Palette.ink2)
                     }
-                    LabelledEditor(label: "Done", placeholder: "What got done since your last update", text: $draft.done, minLines: 3)
+                    LabelledEditor(label: "Done", placeholder: "What got done since your last update", text: $draft.done, minLines: 3, identifier: "update.done")
                         .focused($focus, equals: .done)
-                    LabelledEditor(label: "Next", placeholder: "What you are on next", text: $draft.next)
+                    LabelledEditor(label: "Next", placeholder: "What you are on next", text: $draft.next, identifier: "update.next")
                         .focused($focus, equals: .next)
-                    LabelledEditor(label: "Blockers", placeholder: "Anything in your way? Leave empty if not", text: $draft.blockers, minLines: 1)
+                    LabelledEditor(label: "Blockers", placeholder: "Anything in your way? Leave empty if not", text: $draft.blockers, minLines: 1, identifier: "update.blockers")
                         .focused($focus, equals: .blockers)
                     Text("Start a line with - for a list. Links and `code` just work.")
                         .font(.footnote).foregroundStyle(Palette.ink3)
@@ -372,6 +383,7 @@ private struct UpdateSheet: View {
             .safeAreaInset(edge: .bottom) {
                 Button(action: post) { Text(busy ? "Posting…" : board.mine == nil ? "Post update" : "Save update") }
                     .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("update.post")
                     .disabled(busy || draft.isEmpty)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)

@@ -249,12 +249,14 @@ struct LabelledEditor: View {
     @Binding var text: String
     var limit: Int = Limits.field
     var minLines = 2
+    var identifier: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.ink)
             TextField(placeholder, text: $text, axis: .vertical)
                 .lineLimit(minLines...8)
+                .accessibilityIdentifier(identifier ?? "")
                 .padding(12)
                 .background(Palette.sunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .onChange(of: text) { value in

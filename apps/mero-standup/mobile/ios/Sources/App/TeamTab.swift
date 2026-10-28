@@ -42,6 +42,7 @@ struct TeamTab: View {
                         Label(creating ? "Creating…" : link == nil ? "Create invite link" : "Create another", systemImage: "link")
                     }
                     .disabled(creating)
+                    .accessibilityIdentifier("team.invite")
                     if let link {
                         Text(link).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle).foregroundStyle(Palette.ink2)
                             .textSelection(.enabled)

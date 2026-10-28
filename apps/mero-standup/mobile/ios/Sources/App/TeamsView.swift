@@ -36,9 +36,10 @@ struct TeamsView: View {
                                     : "Your account has no relay yet. Join a team with an invitation link first.")
                         }
                     } else {
-                        ForEach(model.teams) { team in
+                        ForEach(Array(model.teams.enumerated()), id: \.element.id) { index, team in
                             Button { onOpen(team) } label: { TeamRow(team: team) }
                                 .buttonStyle(.plain)
+                                .accessibilityIdentifier("teams.card.\(index)")
                         }
                     }
                     VStack(spacing: 10) {
@@ -66,6 +67,7 @@ struct TeamsView: View {
                     } label: {
                         Image(systemName: "person.crop.circle").accessibilityLabel("Account")
                     }
+                    .accessibilityIdentifier("teams.account")
                 }
             }
             .sheet(isPresented: $starting) {

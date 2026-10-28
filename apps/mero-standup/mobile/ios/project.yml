@@ -68,8 +68,29 @@ targets:
       - package: MeroKit
         product: MeroKitUI
 
+  # The scripted demo tour (`-MeroDemo YES`): screenshots + screen recording.
+  # Run with apps-capture's ios-capture.sh, or Cmd-U on the MeroStandup scheme.
+  MeroStandupUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: MeroStandup
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.standup.uitests
+        TEST_TARGET_NAME: MeroStandup
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+
 schemes:
   MeroStandup:
     build:
       targets:
         MeroStandup: all
+    test:
+      config: Debug
+      targets:
+        - MeroStandupUITests
