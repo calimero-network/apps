@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app mark: the Material "view_week" glyph (a pipeline's columns) in ink, centred in the adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="2"
+        android:scaleY="2"
+        android:translateX="30"
+        android:translateY="30">
+        <path
+            android:fillColor="#0B0B0C"
+            android:pathData="M5.33,20h-2.0C2.6,20 2,19.4 2,18.67V5.33C2,4.6 2.6,4 3.33,4h2.0c0.73,0 1.33,0.6 1.33,1.33v13.34C6.67,19.4 6.07,20 5.33,20zM11,20H9.0C8.27,20 7.67,19.4 7.67,18.67V5.33C7.67,4.6 8.27,4 9.0,4H11c0.73,0 1.33,0.6 1.33,1.33v13.34C12.33,19.4 11.73,20 11,20zM16.67,20h-2c-0.73,0 -1.33,-0.6 -1.33,-1.33V5.33C13.33,4.6 13.93,4 14.67,4h2C17.4,4 18,4.6 18,5.33v13.34C18,19.4 17.4,20 16.67,20zM20.67,4h0.0" />
+    </group>
+</vector>
