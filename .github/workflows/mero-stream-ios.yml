@@ -1,0 +1,102 @@
+# Native iOS Mero Stream (apps/mero-stream/mobile/ios): check the media-framing
+# test vectors still match the web app's encoder, test the core package
+# (generated client, framing, codecs, view models) on macOS, then generate the Xcode
+# project from project.yml and build the app for the iOS Simulator. The
+# swift-sdk is resolved from GitHub at the revision Core/Package.swift and
+# project.yml pin.
+name: Mero Stream iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-stream/mobile/ios/**
+      - apps/mero-stream/mobile/scripts/gen-frame-vectors.ts
+      - apps/mero-stream/app/src/lib/ephemeralFrames.ts
+      - .github/workflows/mero-stream-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-stream/mobile/ios/**
+      - apps/mero-stream/mobile/scripts/gen-frame-vectors.ts
+      - apps/mero-stream/app/src/lib/ephemeralFrames.ts
+      - .github/workflows/mero-stream-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-stream-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  vectors:
+    name: Frame vectors match the web encoder
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/mero-stream/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Regenerates the fixtures from app/src/lib/ephemeralFrames.ts; a diff
+      # means the web's framing changed and the native ports must follow.
+      - name: Regenerate and compare
+        run: |
+          node --experimental-strip-types scripts/gen-frame-vectors.ts
+          git diff --exit-code -- ios/Core/Tests/StreamCoreTests/Fixtures android/app/src/test/resources
+
+  core:
+    name: Core tests (macOS)
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/mero-stream/mobile/ios/Core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version
+      - name: Test
+        run: swift test
+
+  app:
+    name: Build app (iOS Simulator)
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-stream/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project MeroStream.xcodeproj \
+            -scheme MeroStream \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-stream-ios-logs
+          path: apps/mero-stream/mobile/ios/xcodebuild-*.log
+          if-no-files-found: warn
