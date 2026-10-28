@@ -336,7 +336,7 @@ jobs:
           CALIMERO_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
           CALIMERO_REGISTRY_URL: https://apps.calimero.network
           PACKAGE: ${{ needs.check.outputs.package }}
-        run: cargo mero publish "dist/$PACKAGE.mpk"
+        run: bash scripts/publish-bundle.sh "dist/$PACKAGE.mpk"
 
       - name: Summary
         env:

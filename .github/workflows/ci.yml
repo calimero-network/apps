@@ -436,6 +436,9 @@ jobs:
       - name: Assert the live-frontend history survives an app rename
         run: python3 scripts/tests/live-frontends-history-test.py
 
+      - name: Assert the publish script uploads straight to storage
+        run: bash scripts/publish-bundle.test.sh
+
       # The vitest copy-lint suite only scans string literals and JSX text in a
       # handful of files, so an em dash in a comment, a test name, a Rust doc
       # comment or a merobox YAML step slips past review every time. This scans
