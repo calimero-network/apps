@@ -347,6 +347,7 @@ struct IssueDetailScreen: View {
             TextField("Leave a comment…", text: $comment, axis: .vertical)
                 .lineLimit(1...5)
                 .focused($composerFocused)
+                .accessibilityIdentifier("detail.commentField")
                 .font(.system(size: 15))
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20))
@@ -367,6 +368,7 @@ struct IssueDetailScreen: View {
             }
             .disabled(!canSend)
             .accessibilityLabel("Comment")
+            .accessibilityIdentifier("detail.send")
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.vertical, 8)

@@ -1,4 +1,5 @@
 import IssueTrackerCore
+import MeroKit
 import MeroKitUI
 import SwiftUI
 
@@ -14,7 +15,7 @@ struct IssueTrackerApp: App {
                 .environmentObject(session)
                 .preferredColorScheme(.light)
                 .tint(Theme.ink)
-                .task { await session.restore() }
+                .task { if !DemoMode.isOn { await session.restore() } }
                 .onOpenURL { url in Task { await session.handle(url) } }
         }
     }
@@ -26,11 +27,13 @@ struct RootView: View {
     @EnvironmentObject private var session: MeroAppSession
     @State private var justJoined: String?
 
+    private var activeBackend: (any MeroAppBackend)? { DemoMode.backend ?? session.backend }
+
     var body: some View {
         Group {
-            if let backend = session.backend {
+            if let backend = activeBackend {
                 TrackerView(
-                    backend: backend, applicationId: session.applicationId, justJoined: $justJoined,
+                    backend: backend, applicationId: DemoMode.applicationId ?? session.applicationId, justJoined: $justJoined,
                     signOut: { Task { await session.signOut() } }
                 )
                 .id(session.revision)
@@ -49,7 +52,7 @@ struct RootView: View {
 
     private var pendingInvitation: Binding<IdentifiedString?> {
         Binding(
-            get: { session.backend == nil ? nil : session.pendingInvitation.map(IdentifiedString.init) },
+            get: { activeBackend == nil ? nil : session.pendingInvitation.map(IdentifiedString.init) },
             set: { if $0 == nil { session.dismissPendingInvitation() } })
     }
 }

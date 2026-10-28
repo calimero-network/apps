@@ -7,6 +7,9 @@ struct IssueRoute: Hashable {
 }
 
 enum StatusIcon {
+    /// `In progress` → `in-progress`, for accessibility identifiers.
+    static func slug(_ status: String) -> String { status.lowercased().replacingOccurrences(of: " ", with: "-") }
+
     static func name(_ status: String) -> String {
         switch status {
         case "In progress": return "circle.lefthalf.filled"
@@ -90,11 +93,13 @@ struct IssueList: View {
                            message: q.isEmpty ? "No issues match these filters." : "No issues match \"\(q)\".")
                     .listRowBackground(Color.clear)
             } else {
-                ForEach(model.sections) { section in
+                let sections = model.sections
+                ForEach(Array(sections.enumerated()), id: \.element.id) { s, section in
                     Section {
-                        ForEach(section.issues, id: \.id) { issue in
+                        ForEach(Array(section.issues.enumerated()), id: \.element.id) { i, issue in
                             Button { open(issue.id) } label: { IssueRow(issue: issue) }
                                 .buttonStyle(.plain)
+                                .accessibilityIdentifier("issues.row.\(sections.prefix(s).reduce(0) { $0 + $1.issues.count } + i)")
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) { closeAction(issue) }
                                 .contextMenu { MoveMenuItems(model: model, issue: issue) }
                         }
@@ -143,6 +148,7 @@ struct MoveMenuItems: View {
                     Theme.haptic()
                     Task { await model.move(issue.id, to: status) }
                 } label: { Label(status, systemImage: StatusIcon.name(status)) }
+                    .accessibilityIdentifier("move.\(StatusIcon.slug(status))")
             }
         }
     }
@@ -195,6 +201,7 @@ struct FilterBar: View {
                     .background(Theme.surface, in: Capsule())
                     .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
                 }
+                .accessibilityIdentifier("issues.filters")
                 chip("Status", \.status)
                 chip("Priority", \.priority)
                 chip("Assignee", \.assignee)
@@ -202,6 +209,7 @@ struct FilterBar: View {
                 if model.filters.isActive {
                     Button("Clear") { model.clearFilters() }
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+                        .accessibilityIdentifier("issues.clearFilters")
                 }
                 Text(model.visible.count == 1 ? "1 issue" : "\(model.visible.count) issues")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.text3).monospacedDigit()

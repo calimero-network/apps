@@ -49,6 +49,7 @@ struct BoardView: View {
                                 .overlay(Capsule().stroke(column == status ? Color.clear : Theme.line, lineWidth: 1))
                             }
                             .id(status)
+                            .accessibilityIdentifier("board.column.\(StatusIcon.slug(status))")
                             .accessibilityAddTraits(column == status ? .isSelected : [])
                         }
                     }
@@ -97,8 +98,9 @@ struct BoardColumn: View {
                     .padding(.vertical, 48)
                     .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.lineStrong, style: StrokeStyle(lineWidth: 1, dash: [4])))
                 }
-                ForEach(cards, id: \.id) { issue in
-                    BoardCard(model: model, issue: issue).onTapGesture { open(issue.id) }
+                ForEach(Array(cards.enumerated()), id: \.element.id) { i, issue in
+                    BoardCard(model: model, issue: issue, index: "\(StatusIcon.slug(status)).\(i)")
+                        .onTapGesture { open(issue.id) }
                 }
             }
             .padding(.horizontal, Theme.gutter)
@@ -111,6 +113,8 @@ struct BoardColumn: View {
 struct BoardCard: View {
     @ObservedObject var model: IssuesModel
     let issue: IssueView
+    /// `<status>.<row>`, for accessibility identifiers.
+    var index = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -130,6 +134,7 @@ struct BoardCard: View {
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Move to…")
+                .accessibilityIdentifier("board.move.\(index)")
             }
             Text(issue.title).font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.leading).lineLimit(3)
@@ -144,5 +149,7 @@ struct BoardCard: View {
         .card(padding: 14)
         .contentShape(Rectangle())
         .contextMenu { MoveMenuItems(model: model, issue: issue) }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("board.card.\(index)")
     }
 }

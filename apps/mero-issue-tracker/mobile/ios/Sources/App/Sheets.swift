@@ -10,6 +10,7 @@ struct SectionField: View {
     let placeholder: String
     @Binding var text: String
     var mono = false
+    var id = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -26,6 +27,7 @@ struct SectionField: View {
                 .padding(12)
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.line, lineWidth: 1))
+                .accessibilityIdentifier(id)
         }
     }
 }
@@ -57,7 +59,9 @@ struct SheetScaffold<Body: View>: View {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(busy).accessibilityIdentifier("sheet.cancel")
+                }
             }
             .safeAreaInset(edge: .bottom) {
                 Button(action: submit) {
@@ -68,6 +72,7 @@ struct SheetScaffold<Body: View>: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!canSubmit || busy)
+                .accessibilityIdentifier("sheet.action")
                 .padding(.horizontal, Theme.gutter)
                 .padding(.vertical, 10)
                 .background(.bar)
@@ -92,16 +97,23 @@ struct NewIssueSheet: View {
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
             }
             TextField("Issue title", text: $draft.title, axis: .vertical)
+                .accessibilityIdentifier("newIssue.title")
                 .font(Theme.heading(20))
                 .padding(12)
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.line, lineWidth: 1))
-            SectionField(n: 1, title: "Summary", placeholder: "What is broken, in one paragraph", text: $draft.summary)
-            SectionField(n: 2, title: "Impact", placeholder: "Who/what does it affect, why does severity matter", text: $draft.impact)
-            SectionField(n: 3, title: "Repro", placeholder: "Numbered steps and/or paste logs", text: $draft.repro, mono: true)
+            SectionField(
+                n: 1, title: "Summary", placeholder: "What is broken, in one paragraph", text: $draft.summary,
+                id: "newIssue.summary")
+            SectionField(
+                n: 2, title: "Impact", placeholder: "Who/what does it affect, why does severity matter", text: $draft.impact,
+                id: "newIssue.impact")
+            SectionField(
+                n: 3, title: "Repro", placeholder: "Numbered steps and/or paste logs", text: $draft.repro, mono: true,
+                id: "newIssue.repro")
             SectionField(
                 n: 4, title: "Resolution criteria", placeholder: "What does fixed mean? The agent will validate against this",
-                text: $draft.resolution)
+                text: $draft.resolution, id: "newIssue.resolution")
             VStack(alignment: .leading, spacing: 8) {
                 Text("PRIORITY").font(.system(size: 11, weight: .bold)).tracking(0.5).foregroundStyle(Theme.text3)
                 Picker("Priority", selection: $draft.priority) {
@@ -112,6 +124,7 @@ struct NewIssueSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("LABELS").font(.system(size: 11, weight: .bold)).tracking(0.5).foregroundStyle(Theme.text3)
                 TextField("sync, crdt…", text: $draft.labels)
+                    .accessibilityIdentifier("newIssue.labels")
                     .textInputAutocapitalization(.never)
                     .padding(12)
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
@@ -190,6 +203,7 @@ struct FilterSheet: View {
                     Text("All priorities").tag("")
                     ForEach(Tracker.priorities, id: \.self) { Text($0.capitalized).tag($0) }
                 }
+                .accessibilityIdentifier("filters.priority")
                 Section("Assignee") {
                     TextField("Filter by assignee…", text: $issues.filters.assignee).textInputAutocapitalization(.words)
                     suggestions(issues.knownAssignees, \.assignee)
@@ -207,7 +221,9 @@ struct FilterSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Clear") { issues.clearFilters() }.disabled(!issues.filters.isActive)
                 }
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.fontWeight(.semibold) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }.fontWeight(.semibold).accessibilityIdentifier("sheet.done")
+                }
             }
         }
         .presentationDetents([.medium, .large])
@@ -217,8 +233,9 @@ struct FilterSheet: View {
         if !values.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(values, id: \.self) { value in
+                    ForEach(Array(values.enumerated()), id: \.element) { i, value in
                         Button(value) { issues.filters[keyPath: key] = value }
+                            .accessibilityIdentifier("filters.\(key == \IssueFilters.label ? "label" : "assignee").\(i)")
                             .font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.ink)
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(issues.filters[keyPath: key] == value ? Theme.lime : Theme.sunken, in: Capsule())
@@ -385,6 +402,7 @@ struct InviteSheet: View {
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(busy)
+                    .accessibilityIdentifier("invite.generate")
                 }
                 if let error {
                     Label(error, systemImage: "exclamationmark.triangle").font(.system(size: 14)).foregroundStyle(Theme.danger)
@@ -395,7 +413,9 @@ struct InviteSheet: View {
             .background(Theme.ground.ignoresSafeArea())
             .navigationTitle("Invite to workspace")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("sheet.done") }
+            }
         }
         .presentationDetents([.medium, .large])
     }

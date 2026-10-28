@@ -65,8 +65,28 @@ targets:
       - package: MeroKit
         product: MeroKitUI
 
+  # The demo tour (`-MeroDemo YES`, Debug only): apps-capture records it.
+  MeroIssuesUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: MeroIssues
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.issues.uitests
+        TEST_TARGET_NAME: MeroIssues
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+
 schemes:
   MeroIssues:
     build:
       targets:
         MeroIssues: all
+    test:
+      config: Debug
+      targets:
+        - MeroIssuesUITests

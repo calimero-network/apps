@@ -25,6 +25,7 @@ struct WorkspaceScreen: View {
                         }
                         .padding(.vertical, 4)
                         Button { sheet = .invite } label: { Label("Invite people", systemImage: "person.badge.plus") }
+                            .accessibilityIdentifier("workspace.invite")
                     }
 
                     Section("Repositories") {

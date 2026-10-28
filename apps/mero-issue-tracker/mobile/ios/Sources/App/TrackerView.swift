@@ -163,6 +163,7 @@ struct RepoToolbar: ViewModifier {
                         }
                     }
                     .accessibilityLabel("Switch repository")
+                    .accessibilityIdentifier("repo.switcher")
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if canCreate {
@@ -177,6 +178,7 @@ struct RepoToolbar: ViewModifier {
                                 .background(Theme.lime, in: Circle())
                         }
                         .accessibilityLabel("New issue")
+                        .accessibilityIdentifier("issues.new")
                     }
                 }
             }
