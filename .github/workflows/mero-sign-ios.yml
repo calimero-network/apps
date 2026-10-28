@@ -1,0 +1,81 @@
+# Native iOS Mero Sign (apps/mero-sign/mobile/ios).
+#
+# - Logic: the SignCore package (generated contract client, private store and identity mapping, PDF stamping, signature ink, view models) is
+#   tested on macOS with `swift test`, against the swift-sdk's in-memory fakes.
+# - App: the Xcode project is generated from project.yml and the app is built for the iOS
+#   Simulator, unsigned. The swift-sdk is resolved from GitHub at the revision both pin.
+name: Mero Sign iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-sign/mobile/ios/**
+      - .github/workflows/mero-sign-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-sign/mobile/ios/**
+      - .github/workflows/mero-sign-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-sign-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  logic:
+    name: Logic tests (swift test)
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/mero-sign/mobile/ios/SignCore
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Test
+        run: swift test
+
+  app:
+    name: Build the app (iOS Simulator)
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-sign/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project MeroSign.xcodeproj \
+            -scheme MeroSign \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-sign-ios-logs
+          path: apps/mero-sign/mobile/ios/xcodebuild-*.log
+          if-no-files-found: warn
