@@ -1,0 +1,72 @@
+# Native iOS Mero Calendar (apps/mero-calendar/mobile/ios): run the calendar
+# layer's tests (the local CalendarCore package, on macOS with `swift test`),
+# then generate the Xcode project from project.yml and build the app for iOS.
+# The swift-sdk is resolved from GitHub at the revision Core/Package.swift and
+# project.yml pin.
+name: Mero Calendar iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-calendar/mobile/ios/**
+      - .github/workflows/mero-calendar-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-calendar/mobile/ios/**
+      - .github/workflows/mero-calendar-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-calendar-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-test:
+    name: Test core & build app
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-calendar/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Test CalendarCore (view models, contract client, private store)
+        working-directory: apps/mero-calendar/mobile/ios/Core
+        run: swift test 2>&1 | tee ../swift-test.log
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build the app (iOS, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project MeroCalendar.xcodeproj \
+            -scheme MeroCalendar \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-calendar-ios-logs
+          path: |
+            apps/mero-calendar/mobile/ios/swift-test.log
+            apps/mero-calendar/mobile/ios/xcodebuild-*.log
+          if-no-files-found: warn
