@@ -35,7 +35,7 @@ struct BattleshipsApp: App {
                 .environmentObject(session)
                 .preferredColorScheme(.light)
                 .tint(Palette.ink)
-                .task { await session.restore() }
+                .task { if !DemoMode.isOn { await session.restore() } }
                 .onOpenURL { url in Task { await session.handle(url) } }
         }
     }
@@ -59,18 +59,23 @@ struct RootView: View {
     @EnvironmentObject private var session: MeroAppSession
     @StateObject private var invitation = InvitationModel()
     @State private var path = NavigationPath()
-    private let store = KeychainBoardStore()
+    private let store: any BoardStore = DemoMode.boardStore ?? KeychainBoardStore()
+
+    /// The demo account's backend in demo mode (Debug, `-MeroDemo YES`), else the session's.
+    private var activeBackend: (any MeroAppBackend)? { DemoMode.backend ?? session.backend }
+
+    private var applicationId: String? { DemoMode.applicationId ?? session.applicationId }
 
     var body: some View {
         Group {
-            if session.isRestoring && session.backend == nil {
+            if session.isRestoring && activeBackend == nil {
                 ProgressView().tint(Palette.ink).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Palette.ground)
-            } else if let backend = session.backend {
+            } else if let backend = activeBackend {
                 let game = battleshipsBackend(backend)
                 NavigationStack(path: $path) {
                     LobbiesScreen(
-                        backend: game, applicationId: session.applicationId,
+                        backend: game, applicationId: applicationId,
                         openInvitation: { invitation.open($0) }, open: { path.append(Route.lobby($0)) }
                     )
                     .navigationDestination(for: Route.self) { route in
@@ -98,7 +103,7 @@ struct RootView: View {
         .sheet(isPresented: invitationShown) {
             InvitationSheet(model: invitation) { namespaceId, title in
                 var next = NavigationPath()
-                next.append(Route.lobby(AppNamespace(id: namespaceId, name: title, applicationId: session.applicationId ?? "")))
+                next.append(Route.lobby(AppNamespace(id: namespaceId, name: title, applicationId: applicationId ?? "")))
                 path = next
             }
             .environmentObject(session)
@@ -128,7 +133,7 @@ struct RootView: View {
 
     private var invitationShown: Binding<Bool> {
         Binding(
-            get: { invitation.stage != .idle && session.backend != nil },
+            get: { invitation.stage != .idle && activeBackend != nil },
             set: { if !$0 { invitation.reset() } })
     }
 }

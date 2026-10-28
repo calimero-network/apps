@@ -70,8 +70,29 @@ targets:
       - package: MeroKit
         product: MeroKitUI
 
+  # The demo tour (UITests/TourTests.swift): launches with `-MeroDemo YES` (Debug only) and
+  # screenshots every main screen on fixture data.
+  BattleshipsUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: Battleships
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.battleships.uitests
+        TEST_TARGET_NAME: Battleships
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+
 schemes:
   Battleships:
     build:
       targets:
         Battleships: all
+    test:
+      config: Debug
+      targets:
+        - BattleshipsUITests

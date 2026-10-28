@@ -31,7 +31,7 @@ struct LobbiesScreen: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Menu {
-                        if let account = session.account {
+                        if let account = DemoMode.backend?.account ?? session.account {
                             Text("Signed in as \(Names.short(account))")
                         }
                         Button(role: .destructive) { confirmSignOut = true } label: {
@@ -41,6 +41,7 @@ struct LobbiesScreen: View {
                         Image(systemName: "person.crop.circle").font(.system(size: 18)).foregroundStyle(Palette.ink)
                     }
                     .accessibilityLabel("Account")
+                    .accessibilityIdentifier("lobbies.account")
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
@@ -52,6 +53,7 @@ struct LobbiesScreen: View {
                             .background(Circle().fill(Palette.lime))
                     }
                     .accessibilityLabel("New lobby")
+                    .accessibilityIdentifier("lobbies.add")
                 }
             }
             .task { await model.load() }
@@ -99,8 +101,9 @@ struct LobbiesScreen: View {
                 }
             } else {
                 List {
-                    ForEach(model.lobbies) { lobby in
+                    ForEach(Array(model.lobbies.enumerated()), id: \.element.id) { index, lobby in
                         Button { open(lobby) } label: { LobbyRow(lobby: lobby) }
+                            .accessibilityIdentifier("lobbies.card.\(index)")
                             .listRowBackground(Palette.ground)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))

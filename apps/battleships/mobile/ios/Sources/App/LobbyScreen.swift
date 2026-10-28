@@ -44,6 +44,7 @@ struct LobbyScreen: View {
                     }
                 }
                 .accessibilityLabel("Invite players")
+                .accessibilityIdentifier("lobby.invite")
                 .disabled(inviting || model.lobbyContextId == nil)
             }
         }
@@ -56,6 +57,7 @@ struct LobbyScreen: View {
                     Label("New match", systemImage: "scope")
                 }
                 .buttonStyle(PrimaryButtonStyle())
+                .accessibilityIdentifier("lobby.newMatch")
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(Palette.ground.opacity(0.96).ignoresSafeArea())
@@ -100,6 +102,7 @@ struct LobbyScreen: View {
                         ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityIdentifier("lobby.tabs")
                     switch tab {
                     case .matches: matches
                     case .players: players
@@ -125,7 +128,7 @@ struct LobbyScreen: View {
                 action: model.opponents.isEmpty ? ("Invite players", invite) : ("New match", { choosing = true }))
         } else {
             VStack(spacing: 10) {
-                ForEach(model.myMatches, id: \.matchId) { match in
+                ForEach(Array(model.myMatches.enumerated()), id: \.element.matchId) { index, match in
                     Button {
                         if let ref = model.ref(for: match) {
                             Haptics.tap()
@@ -135,6 +138,7 @@ struct LobbyScreen: View {
                         MatchRow(match: match, opponent: model.opponent(in: match), me: model.me)
                     }
                     .disabled(model.ref(for: match) == nil)
+                    .accessibilityIdentifier("lobby.match.\(index)")
                 }
             }
         }
@@ -375,6 +379,7 @@ private struct ChallengeSheet: View {
         VStack(spacing: 0) {
             HStack {
                 Button("Cancel") { dismiss() }.foregroundStyle(Palette.ink)
+                    .accessibilityIdentifier("sheet.cancel")
                 Spacer()
                 Text("New match").font(.system(size: 16, weight: .semibold)).foregroundStyle(Palette.ink)
                 Spacer()
@@ -391,7 +396,7 @@ private struct ChallengeSheet: View {
                             action: ("Invite players", invite))
                     } else {
                         SectionLabel(text: "Challenge")
-                        ForEach(model.opponents, id: \.player) { entry in
+                        ForEach(Array(model.opponents.enumerated()), id: \.element.player) { index, entry in
                             PlayerRow(
                                 name: Names.player(entry.player, me: model.me), key: entry.player, isYou: false,
                                 busy: model.challenging == entry.player
@@ -406,6 +411,8 @@ private struct ChallengeSheet: View {
                                     }
                                 }
                             }
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("challenge.player.\(index)")
                         }
                         if let notice = model.notice {
                             Text(notice).font(.system(size: 14)).foregroundStyle(Palette.danger)
@@ -442,6 +449,7 @@ private struct InviteSheet: View {
                 Label("Share link", systemImage: "square.and.arrow.up")
             }
             .buttonStyle(PrimaryButtonStyle())
+            .accessibilityIdentifier("invite.share")
             Button {
                 UIPasteboard.general.string = link
                 copied = true

@@ -24,6 +24,8 @@ struct SquareLook: Equatable {
 struct BoardGrid: View {
     let looks: [SquareLook]
     var compact = false
+    /// Squares are identified `<prefix>.<label>` (`target.H6`), for UI tests.
+    var idPrefix = "board"
     var onTap: ((Coordinate) -> Void)?
 
     var body: some View {
@@ -71,6 +73,7 @@ struct BoardGrid: View {
         .onTapGesture { onTap?(cell) }
         .accessibilityElement()
         .accessibilityLabel("\(cell.label), \(look.spoken)")
+        .accessibilityIdentifier("\(idPrefix).\(cell.label)")
         .accessibilityAddTraits(onTap == nil ? [] : .isButton)
     }
 }

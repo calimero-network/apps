@@ -100,13 +100,13 @@ struct MatchScreen: View {
     private var placement: some View {
         VStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Place your fleet").font(Typeface.display(22)).foregroundStyle(Palette.ink)
+                Text("Place your fleet").accessibilityIdentifier("match.placing").font(Typeface.display(22)).foregroundStyle(Palette.ink)
                 Text("Tap a square to place the selected ship. Tap a placed ship to turn it. Ships can't touch.")
                     .font(.system(size: 15)).foregroundStyle(Palette.muted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Card(padding: 12) {
-                BoardGrid(looks: BoardLooks.placement(model.layout, selected: model.selectedShip)) { cell in
+                BoardGrid(looks: BoardLooks.placement(model.layout, selected: model.selectedShip), idPrefix: "place") { cell in
                     if model.tapPlacement(cell) { Haptics.tap() } else { Haptics.failure() }
                 }
             }
@@ -121,6 +121,7 @@ struct MatchScreen: View {
                         systemImage: model.horizontal ? "arrow.left.and.right" : "arrow.up.and.down")
                 }
                 .buttonStyle(SecondaryButtonStyle(compact: true))
+                .accessibilityIdentifier("match.orientation")
                 Button {
                     model.shuffle()
                     Haptics.tap()
@@ -128,6 +129,7 @@ struct MatchScreen: View {
                     Label("Shuffle", systemImage: "shuffle")
                 }
                 .buttonStyle(SecondaryButtonStyle(compact: true))
+                .accessibilityIdentifier("match.shuffle")
                 Button {
                     model.clearLayout()
                     Haptics.tap()
@@ -155,7 +157,7 @@ struct MatchScreen: View {
                 HStack(spacing: 12) {
                     ProgressView().tint(Palette.ink)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Fleet deployed").font(Typeface.display(18)).foregroundStyle(Palette.ink)
+                        Text("Fleet deployed").accessibilityIdentifier("match.waiting").font(Typeface.display(18)).foregroundStyle(Palette.ink)
                         Text("Waiting for \(opponentName) to place theirs.").font(.system(size: 15)).foregroundStyle(Palette.muted)
                     }
                 }
@@ -170,13 +172,14 @@ struct MatchScreen: View {
     private var battle: some View {
         VStack(spacing: 14) {
             TurnBanner(text: model.turnText, mine: model.isMyTurn)
+                .accessibilityIdentifier("match.turn")
             Picker("Board", selection: $waters) {
                 ForEach(Waters.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             Card(padding: 12) {
                 if waters == .theirs {
-                    BoardGrid(looks: BoardLooks.enemy(shots: model.shots, sunk: model.enemySunk, aim: model.aim)) { cell in
+                    BoardGrid(looks: BoardLooks.enemy(shots: model.shots, sunk: model.enemySunk, aim: model.aim), idPrefix: "target") { cell in
                         Task {
                             let wasAimed = model.aim == cell
                             await model.tapTarget(cell)
@@ -196,6 +199,7 @@ struct MatchScreen: View {
     private var finished: some View {
         VStack(spacing: 14) {
             ResultCard(outcome: model.outcome ?? .auditing, detail: model.endedText, opponent: opponentName)
+                .accessibilityIdentifier("match.result")
             Picker("Board", selection: $waters) {
                 ForEach(Waters.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
@@ -235,6 +239,7 @@ struct MatchScreen: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!model.layout.isComplete || model.busy)
+                .accessibilityIdentifier("match.deploy")
             }
         case .battle where model.aim != nil:
             bar {
@@ -263,12 +268,14 @@ struct MatchScreen: View {
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(model.busy)
+                    .accessibilityIdentifier("match.fire")
                 }
             }
         case .finished:
             bar {
                 HStack(spacing: 10) {
                     Button("Lobby") { dismiss() }.buttonStyle(SecondaryButtonStyle())
+                        .accessibilityIdentifier("match.lobby")
                     Button {
                         rematch()
                     } label: {

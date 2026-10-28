@@ -133,7 +133,7 @@ struct InvitationSheet: View {
     private func accept() {
         Haptics.tap()
         Task {
-            await model.accept(backend: { session.backend }, didJoin: { await session.didJoinNamespace() })
+            await model.accept(backend: { DemoMode.backend ?? session.backend }, didJoin: { await session.didJoinNamespace() })
             if case .joined = model.stage { Haptics.success() } else { Haptics.failure() }
         }
     }
