@@ -1,0 +1,107 @@
+# Native iOS Mero Pass (apps/mero-pass/mobile/ios).
+#
+# - Logic: the PassCore package (vault crypto, vault session, generated contract client, view
+#   models) is tested on macOS with `swift test`: the crypto against the web's test vectors
+#   (mobile/test-vectors), the models against the swift-sdk's in-memory fakes.
+# - Vectors: regenerated from the web's own crypto (packages/mero-pass) and diffed, so a change
+#   on the web that would break native vaults fails here.
+# - App: the Xcode project is generated from project.yml and the app is built for the iOS
+#   Simulator, unsigned. The swift-sdk is resolved from GitHub at the revision both pin.
+name: Mero Pass iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-pass/mobile/ios/**
+      - apps/mero-pass/mobile/test-vectors/**
+      - packages/mero-pass/src/**
+      - apps/mero-pass/app/src/lib/recoveryKey.ts
+      - apps/mero-pass/app/src/lib/shareLink.ts
+      - apps/mero-pass/app/src/lib/totp.ts
+      - apps/mero-pass/app/src/lib/health.ts
+      - .github/workflows/mero-pass-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-pass/mobile/ios/**
+      - apps/mero-pass/mobile/test-vectors/**
+      - .github/workflows/mero-pass-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-pass-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  vectors:
+    name: Test vectors match the web's crypto
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Regenerate and diff
+        run: |
+          node --experimental-transform-types --no-warnings apps/mero-pass/mobile/test-vectors/generate.mjs
+          git diff --exit-code apps/mero-pass/mobile/test-vectors/vectors.json
+
+  logic:
+    name: Logic tests (swift test)
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/mero-pass/mobile/ios/PassCore
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Test
+        run: swift test
+
+  app:
+    name: Build the app (iOS Simulator)
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-pass/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project MeroPass.xcodeproj \
+            -scheme MeroPass \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-pass-ios-logs
+          path: apps/mero-pass/mobile/ios/xcodebuild-*.log
+          if-no-files-found: warn

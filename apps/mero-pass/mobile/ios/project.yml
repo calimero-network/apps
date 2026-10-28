@@ -1,0 +1,74 @@
+# XcodeGen spec for the native iOS Mero Pass app.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes MeroPass.xcodeproj (not committed)
+#   open MeroPass.xcodeproj
+#
+# The logic (vault crypto, vault session, generated contract client, view
+# models) lives in the local PassCore package, which builds and tests on macOS
+# with `swift test --package-path PassCore`. The swift-sdk is pinned by
+# revision to the feat/app-session branch (swift-sdk#84); the pin moves to the
+# merge commit once that PR lands. Keep it identical to PassCore/Package.swift.
+name: MeroPass
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: 122bb0d71bb43b823cb9d694c4e70678a2ef8c89
+  PassCore:
+    path: PassCore
+
+targets:
+  MeroPass:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Mero Pass
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Light
+        # Unlocking the device key asks for Face ID (or Touch ID / the passcode).
+        NSFaceIDUsageDescription: Mero Pass uses Face ID to unlock your vaults on this phone.
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`mero-pass://enrol#credential=…`).
+          - CFBundleURLName: network.calimero.pass.enrol
+            CFBundleURLSchemes: [mero-pass]
+          # Invitation deep links: `calimero://com.calimero.mero-pass/join?invitation=…`.
+          - CFBundleURLName: network.calimero.pass.invite
+            CFBundleURLSchemes: [calimero]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
+        # wallet and Cloud manager). See ../README.md.
+        MeroPassCallbackScheme: mero-pass
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.pass
+        PRODUCT_NAME: MeroPass
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: PassCore
+        product: PassCore
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+schemes:
+  MeroPass:
+    build:
+      targets:
+        MeroPass: all
