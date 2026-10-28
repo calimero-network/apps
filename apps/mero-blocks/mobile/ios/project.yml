@@ -1,0 +1,88 @@
+# XcodeGen spec for the native iOS Mero Blocks app.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes MeroBlocks.xcodeproj (not committed)
+#   open MeroBlocks.xcodeproj
+#
+# The non-UI layer (generated contract client, the game bridge, view models) is the local SwiftPM
+# package in BlocksCore/, tested on macOS with `swift test --package-path BlocksCore` (no
+# simulator). The game page is ../game/assets/game, built by ../scripts/build-game.sh and copied
+# into the app as the `game` folder. The swift-sdk is pinned by revision to feat/app-session
+# (swift-sdk#84); the pin moves to the merge commit once that PR lands. Keep it equal to the
+# revision in BlocksCore/Package.swift.
+name: MeroBlocks
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: 551fc784e7545bcdbf358b4c348e6cd381b4512f
+  BlocksCore:
+    path: BlocksCore
+
+targets:
+  MeroBlocks:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+      - path: Resources/Assets.xcassets
+      # The game page, as a folder reference: the bundle gets game/index.html and game/game.js.
+      - path: ../game/assets/game
+        type: folder
+        buildPhase: resources
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Mero Blocks
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        # The shell is portrait; the game switches to landscape while it is on screen
+        # (AppDelegate.lock). All three are listed so that switch is allowed.
+        UISupportedInterfaceOrientations:
+          [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad:
+          [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown,
+           UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`mero-blocks://enrol#credential=…`).
+          - CFBundleURLName: network.calimero.blocks.enrol
+            CFBundleURLSchemes: [mero-blocks]
+          # Invitation deep links: `calimero://com.calimero.mero-blocks/join?invitation=…`.
+          - CFBundleURLName: network.calimero.blocks.invite
+            CFBundleURLSchemes: [calimero]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero wallet, Cloud
+        # manager and app registry). Point these at another environment to test against it.
+        MeroBlocksCallbackScheme: mero-blocks
+        MeroBlocksCallbackHost: ""
+        MeroBlocksCallbackPath: /enrol
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.blocks
+        PRODUCT_NAME: MeroBlocks
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: ""
+    dependencies:
+      - package: BlocksCore
+        product: BlocksCore
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+schemes:
+  MeroBlocks:
+    build:
+      targets:
+        MeroBlocks: all

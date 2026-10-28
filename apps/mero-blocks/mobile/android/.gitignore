@@ -1,0 +1,19 @@
+# The kotlin-sdk checkout scripts/fetch-sdk.sh makes (pinned by kotlin-sdk.ref).
+.sdk/
+
+.gradle/
+.kotlin/
+build/
+**/build/
+captures/
+.cxx/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Signing material
+*.jks
+*.keystore

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher foreground: the web app's grass block (app/public/icon-512.png), inside the adaptive
+     icon's 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path android:pathData="M256,94 L397,175 L256,256 L115,175 Z" android:fillColor="#FF6EDC82" />
+    <path android:pathData="M326,134 L397,175 L256,256 L185,215 Z" android:fillColor="#FF57C46A" />
+    <path android:pathData="M115,175 L256,256 L256,418 L115,337 Z" android:fillColor="#FF8A5A3B" />
+    <path android:pathData="M256,256 L397,175 L397,337 L256,418 Z" android:fillColor="#FF6D4529" />
+</vector>

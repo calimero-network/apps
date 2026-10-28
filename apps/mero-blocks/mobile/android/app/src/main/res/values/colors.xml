@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ground">#FFF5F6F3</color>
+    <color name="lime">#FFA5FF11</color>
+    <!-- The web app's icon background. -->
+    <color name="launcher_background">#FF0B0E14</color>
+</resources>

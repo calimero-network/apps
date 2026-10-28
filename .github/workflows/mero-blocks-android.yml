@@ -1,0 +1,115 @@
+# The native Android Mero Blocks app (apps/mero-blocks/mobile/android), and the game page both
+# native apps bundle (apps/mero-blocks/mobile/game).
+#
+# Android mirrors the Calimero Kotlin SDK's own CI (kotlin-sdk/.github/workflows/ci.yml): ktlint +
+# detekt, JVM unit tests, Android Lint, assembleDebug, then a check that the APK carries the game
+# page. The SDK is not on a registry yet, so the app builds it from source: scripts/fetch-sdk.sh
+# checks out the commit pinned in kotlin-sdk.ref and settings.gradle.kts includes it as a
+# composite build.
+#
+# The game job rebuilds the page from the web app's engine (apps/mero-blocks/app/src) and fails
+# when the committed bundle is stale, so an engine change on the web side shows up here.
+
+name: Mero Blocks Android
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-blocks/mobile/android/**
+      - apps/mero-blocks/mobile/game/**
+      - apps/mero-blocks/app/src/**
+      - .github/workflows/mero-blocks-android.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-blocks/mobile/android/**
+      - apps/mero-blocks/mobile/game/**
+      - apps/mero-blocks/app/src/**
+      - .github/workflows/mero-blocks-android.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-blocks-android-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  game:
+    name: Game page (fresh build, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Build and compare with the committed bundle
+        run: apps/mero-blocks/mobile/scripts/build-game.sh --check
+
+  build:
+    name: Lint, test & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-blocks/mobile/android
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Before the SDK checkout below, which carries a wrapper of its own.
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Fetch the pinned Kotlin SDK
+        run: ./scripts/fetch-sdk.sh
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: ktlint + detekt
+        run: ./gradlew ktlintCheck detekt --stacktrace
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Android Lint
+        run: ./gradlew lint --stacktrace
+
+      - name: Assemble
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: The game page is in the APK
+        run: |
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | tee apk.txt | grep -E "assets/game/(index\.html|game\.js)"
+          test "$(grep -cE 'assets/game/(index\.html|game\.js)' apk.txt)" -eq 2
+
+      - name: Upload the debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-blocks-android-debug-apk
+          path: apps/mero-blocks/mobile/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-blocks-android-reports
+          path: |
+            apps/mero-blocks/mobile/android/app/build/reports/
+            apps/mero-blocks/mobile/android/app/build/test-results/
+          if-no-files-found: ignore
