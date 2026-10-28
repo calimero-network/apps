@@ -1,0 +1,68 @@
+# Native iOS Mero Chess (apps/mero-chess/mobile/ios): test the non-UI layer (ChessCore, a local
+# SwiftPM package: generated contract client, board helpers, view models) on macOS, then generate
+# the Xcode project from project.yml and build the app for the iOS Simulator. The swift-sdk is
+# resolved from GitHub at the revision project.yml and ChessCore/Package.swift pin.
+name: Mero Chess iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-chess/mobile/ios/**
+      - .github/workflows/mero-chess-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-chess/mobile/ios/**
+      - .github/workflows/mero-chess-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-chess-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-test:
+    name: Test core & build (iOS Simulator)
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-chess/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Test ChessCore (macOS)
+        run: swift test --package-path ChessCore
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project MeroChess.xcodeproj \
+            -scheme MeroChess \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-chess-ios-logs
+          path: apps/mero-chess/mobile/ios/xcodebuild-*.log
+          if-no-files-found: warn
