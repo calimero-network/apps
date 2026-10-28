@@ -80,17 +80,19 @@ final class ChannelsModel: ObservableObject {
         guard joined else {
             return ChannelEntry(
                 id: contextId, groupId: group.groupId, name: fallbackName, kind: fallbackKind, isJoined: false,
-                unread: 0)
+                unread: 0, isPrivate: group.isPrivate)
         }
         let info = try? await api.getInfo(contextId)
         let unread = (try? await api.getUnreadCount(contextId)) ?? 0
+        let mentions = unread > 0 ? ((try? await api.getUnreadMentions(contextId)) ?? 0) : 0
         let kind = info?.kind ?? fallbackKind
         var name = fallbackName
         if let info {
             name = info.dmTitle(viewer: me) ?? (info.name.isEmpty ? fallbackName : info.name)
         }
         return ChannelEntry(
-            id: contextId, groupId: group.groupId, name: name, kind: kind, isJoined: true, unread: unread)
+            id: contextId, groupId: group.groupId, name: name, kind: kind, isJoined: true, unread: unread,
+            mentions: mentions, isPrivate: group.isPrivate)
     }
 
     nonisolated static func order(_ lhs: ChannelEntry, _ rhs: ChannelEntry) -> Bool {
@@ -115,7 +117,7 @@ final class ChannelsModel: ObservableObject {
     func create(name rawName: String, isPublic: Bool) async -> Bool {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "#", with: "")
-        if let problem = WorkspacesModel.nameProblem(name) {
+        if let problem = ChatFormat.channelNameProblem(name, existing: channels.map(\.name)) {
             errorText = problem
             return false
         }
@@ -134,7 +136,13 @@ final class ChannelsModel: ObservableObject {
 
     /// Clear a channel's badge once it has been opened.
     func markOpened(_ contextId: String) {
-        if let i = channels.firstIndex(where: { $0.id == contextId }) { channels[i].unread = 0 }
-        if let i = directMessages.firstIndex(where: { $0.id == contextId }) { directMessages[i].unread = 0 }
+        if let i = channels.firstIndex(where: { $0.id == contextId }) {
+            channels[i].unread = 0
+            channels[i].mentions = 0
+        }
+        if let i = directMessages.firstIndex(where: { $0.id == contextId }) {
+            directMessages[i].unread = 0
+            directMessages[i].mentions = 0
+        }
     }
 }

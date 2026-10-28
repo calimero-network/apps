@@ -34,6 +34,24 @@ final class DelegatedPathRequestLog: @unchecked Sendable {
     }
 }
 
+/// The query strings a handler saw.
+final class DelegatedPathQueryLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var queries: [String?] = []
+
+    func record(_ query: String?) {
+        lock.lock()
+        queries.append(query)
+        lock.unlock()
+    }
+
+    var all: [String?] {
+        lock.lock()
+        defer { lock.unlock() }
+        return queries
+    }
+}
+
 /// Governance and creation calls ``AccountAdmin`` handed to its deps.
 final class DelegatedPathDepsLog: @unchecked Sendable {
     private let lock = NSLock()
@@ -265,6 +283,46 @@ final class DelegatedPathTests: XCTestCase {
         }
     }
 
+    // MARK: - Blobs through AccountAdmin
+
+    func testAnAttachmentIsStoredOnTheRelayAgainstItsChannel() async throws {
+        let log = self.log
+        let blob = String(repeating: "ab", count: 32)
+        MockURLProtocol.setHandler { request in
+            let seen = log.record(request)
+            if seen.method == "PUT", seen.path == "/admin-api/blobs" {
+                return Self.stub(200, #"{"data":{"blob_id":"\#(blob)","size":4}}"#)
+            }
+            return Self.stub(404, #"{"error":"unexpected"}"#)
+        }
+        let backend = makeBackend(deps: DelegatedPathDepsLog())
+
+        let id = try await backend.uploadBlob(contextId: ctx, data: Data("png!".utf8))
+
+        XCTAssertEqual(id, blob)
+        let put = try XCTUnwrap(log.all.first)
+        XCTAssertEqual(put.body, Data("png!".utf8))
+    }
+
+    func testAnAttachmentIsReadThroughItsChannel() async throws {
+        let ctx = self.ctx
+        let blob = String(repeating: "ab", count: 32)
+        let queries = DelegatedPathQueryLog()
+        MockURLProtocol.setHandler { request in
+            queries.record(request.url?.query)
+            if request.httpMethod == "GET", request.url?.path == "/admin-api/blobs/\(blob)" {
+                return MockURLProtocol.Stub(status: 200, headers: ["Content-Type": "image/png"], body: Data([1, 2]))
+            }
+            return Self.stub(404, #"{"error":"unexpected"}"#)
+        }
+        let backend = makeBackend(deps: DelegatedPathDepsLog())
+
+        let data = try await backend.downloadBlob(blobId: blob, contextId: ctx)
+
+        XCTAssertEqual(data, Data([1, 2]))
+        XCTAssertEqual(queries.all, ["context_id=\(ctx)"], "a blob a peer holds is found only through its context")
+    }
+
     func testChannelGroupsAreTheNamespacesSubgroupsWithTheirContexts() async throws {
         serveRelayAdmin()
         let backend = makeBackend(deps: DelegatedPathDepsLog())
@@ -357,4 +415,10 @@ struct DelegatedPathContractOverride: ChatBackend {
         try await base.joinWorkspace(namespaceId: namespaceId, invitation: invitation)
     }
     func events(contextId: String) -> AsyncThrowingStream<ChatLiveEvent, Error> { base.events(contextId: contextId) }
+    func uploadBlob(contextId: String, data: Data) async throws -> String {
+        try await base.uploadBlob(contextId: contextId, data: data)
+    }
+    func downloadBlob(blobId: String, contextId: String) async throws -> Data {
+        try await base.downloadBlob(blobId: blobId, contextId: contextId)
+    }
 }

@@ -137,7 +137,7 @@ final class ChannelModelTests: XCTestCase {
         XCTAssertTrue(sent)
         let send = backend.recording.calls("send_message").first
         XCTAssertEqual(send?.path, .execute)
-        XCTAssertEqual(send?.args["message"], "hello")
+        XCTAssertEqual(send?.args["message"], "<p>hello</p>", "the web editor's HTML")
         XCTAssertEqual(model.messages.count, 4)
         let empty = await model.send("   ")
         XCTAssertFalse(empty)

@@ -135,8 +135,13 @@ enum LiveScenario {
         return LiveWorkspace(workspaces: workspaces, workspace: workspace, channels: channels, general: general)
     }
 
-    /// The first message whose text is `text`.
+    /// The first message that reads as `text`.
     static func message(_ text: String, in model: ChannelModel) -> ChatMessage? {
-        model.messages.first { $0.text == text }
+        model.messages.first { $0.plainText == text }
     }
+}
+
+extension ChatMessage {
+    /// What a person reads: bodies are stored as the web app's HTML (`<p>…</p>`).
+    var plainText: String { RichText.parse(html: text).plainText }
 }

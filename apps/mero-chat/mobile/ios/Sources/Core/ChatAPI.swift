@@ -33,6 +33,15 @@ struct ChatAPI: Sendable {
         static let updateReaction = "update_reaction"
         static let setProfile = "set_profile"
         static let markAsRead = "mark_as_read"
+        static let getUnreadMentions = "get_unread_mentions"
+        static let searchMessages = "search_messages"
+        static let saveDraft = "save_draft"
+        static let getDraft = "get_draft"
+        static let deleteDraft = "delete_draft"
+        static let updateInfo = "update_info"
+        static let getMemberRole = "get_member_role"
+        static let listRoles = "list_roles"
+        static let setMemberRole = "set_member_role"
     }
 
     // MARK: Argument encoding (pure, so tests pin it)
@@ -51,25 +60,53 @@ struct ChatAPI: Sendable {
     }
 
     /// `send_message(message, mentions, mentions_usernames, parent_message?, timestamp, files?, images?)`.
-    static func sendMessageArgs(text: String, timestamp: UInt64, parentMessage: String? = nil) -> JSONValue {
+    /// `mentions` are `UserId`s, `mentionsUsernames` the names as typed
+    /// (`everyone` / `here` for a broadcast), as `MessageInput.tsx` sends them.
+    /// `files` and `images` are left out when empty, as the web app leaves them `undefined`.
+    static func sendMessageArgs(
+        text: String, timestamp: UInt64, parentMessage: String? = nil, mentions: [String] = [],
+        mentionsUsernames: [String] = [], files: [ChatAttachment] = [], images: [ChatAttachment] = []
+    ) -> JSONValue {
         var args: [String: JSONValue] = [
             "message": .string(text),
-            "mentions": .array([]),
-            "mentions_usernames": .array([]),
+            "mentions": .array(mentions.map { .string($0) }),
+            "mentions_usernames": .array(mentionsUsernames.map { .string($0) }),
             "timestamp": .number(Double(timestamp)),
         ]
         if let parentMessage { args["parent_message"] = .string(parentMessage) }
+        if !files.isEmpty { args["files"] = .array(files.map(\.input)) }
+        if !images.isEmpty { args["images"] = .array(images.map(\.input)) }
         return .object(args)
     }
 
     /// `edit_message(message_id, new_message, timestamp, parent_id?)`.
-    static func editMessageArgs(messageId: String, text: String, timestamp: UInt64) -> JSONValue {
-        ["message_id": .string(messageId), "new_message": .string(text), "timestamp": .number(Double(timestamp))]
+    /// `parent_id` names the thread a reply is in.
+    static func editMessageArgs(messageId: String, text: String, timestamp: UInt64, parentId: String? = nil) -> JSONValue {
+        var args: [String: JSONValue] = [
+            "message_id": .string(messageId), "new_message": .string(text), "timestamp": .number(Double(timestamp)),
+        ]
+        if let parentId { args["parent_id"] = .string(parentId) }
+        return .object(args)
     }
 
     /// `delete_message(message_id, parent_id?)`.
-    static func deleteMessageArgs(messageId: String) -> JSONValue {
-        ["message_id": .string(messageId)]
+    static func deleteMessageArgs(messageId: String, parentId: String? = nil) -> JSONValue {
+        var args: [String: JSONValue] = ["message_id": .string(messageId)]
+        if let parentId { args["parent_id"] = .string(parentId) }
+        return .object(args)
+    }
+
+    /// `search_messages(query, cursor?, limit?)`: the web app sends `cursor: null` for the first page.
+    static func searchArgs(query: String, cursor: String?, limit: Int) -> JSONValue {
+        ["query": .string(query), "cursor": cursor.map { .string($0) } ?? .null, "limit": .number(Double(limit))]
+    }
+
+    /// `update_info(name?, description?)`: a field left out is kept.
+    static func updateInfoArgs(name: String?, description: String?) -> JSONValue {
+        var args: [String: JSONValue] = [:]
+        if let name { args["name"] = .string(name) }
+        if let description { args["description"] = .string(description) }
+        return .object(args)
     }
 
     /// `update_reaction(message_id, emoji, add)`.
@@ -77,9 +114,10 @@ struct ChatAPI: Sendable {
         ["message_id": .string(messageId), "emoji": .string(emoji), "add": .bool(add)]
     }
 
-    /// `set_profile(username, avatar)`: the web app sends `avatar: null` explicitly.
-    static func setProfileArgs(username: String) -> JSONValue {
-        ["username": .string(username), "avatar": .null]
+    /// `set_profile(username, avatar)`: the web app sends `avatar: null` explicitly
+    /// to keep the current picture. The name is written once; later calls change only the avatar.
+    static func setProfileArgs(username: String, avatar: String? = nil) -> JSONValue {
+        ["username": .string(username), "avatar": avatar.map { .string($0) } ?? .null]
     }
 
     /// `mark_as_read(timestamp)`.
@@ -106,9 +144,13 @@ struct ChatAPI: Sendable {
         return try ChatJSON.decode(ChannelInfo.self, value, method: Method.getInfo)
     }
 
-    func getMessages(_ contextId: String, limit: Int, offset: Int) async throws -> MessagePage {
+    /// A page of the channel, or of one thread when `parentMessage` names its root.
+    func getMessages(_ contextId: String, limit: Int, offset: Int, parentMessage: String? = nil) async throws
+        -> MessagePage
+    {
         let value = try await contract.query(
-            contextId: contextId, method: Method.getMessages, args: Self.getMessagesArgs(limit: limit, offset: offset))
+            contextId: contextId, method: Method.getMessages,
+            args: Self.getMessagesArgs(limit: limit, offset: offset, parentMessage: parentMessage))
         return try ChatJSON.decode(MessagePage.self, value, method: Method.getMessages)
     }
 
@@ -132,23 +174,94 @@ struct ChatAPI: Sendable {
         return Int(count)
     }
 
+    func getUnreadMentions(_ contextId: String) async throws -> Int {
+        let value = try await contract.query(contextId: contextId, method: Method.getUnreadMentions, args: [:])
+        guard let count = value?.doubleValue, count >= 0 else {
+            throw ChatError.badResponse(method: Method.getUnreadMentions, detail: "\(value ?? .null) is not a count")
+        }
+        return Int(count)
+    }
+
+    func searchMessages(_ contextId: String, query: String, cursor: String? = nil, limit: Int = 20) async throws
+        -> SearchPage
+    {
+        let value = try await contract.query(
+            contextId: contextId, method: Method.searchMessages,
+            args: Self.searchArgs(query: query, cursor: cursor, limit: limit))
+        return try ChatJSON.decode(SearchPage.self, value, method: Method.searchMessages)
+    }
+
+    /// The draft saved for `channel` (the channel's name, as `useDraft.ts` keys it).
+    func getDraft(_ contextId: String, channel: String) async throws -> String {
+        let value = try await contract.query(
+            contextId: contextId, method: Method.getDraft, args: ["channel": .string(channel)])
+        return value?.stringValue ?? ""
+    }
+
+    func getMemberRole(_ contextId: String, identity: String) async throws -> ChatRole {
+        let value = try await contract.query(
+            contextId: contextId, method: Method.getMemberRole, args: ["identity": .string(identity)])
+        return ChatRole(rawValue: value?.stringValue ?? "") ?? .user
+    }
+
+    /// Members with a role other than `User`. The contract returns `[[UserId, Role]]`.
+    func listRoles(_ contextId: String) async throws -> [String: ChatRole] {
+        let value = try await contract.query(contextId: contextId, method: Method.listRoles, args: [:])
+        let pairs = try ChatJSON.decode([[String]].self, value, method: Method.listRoles)
+        var roles: [String: ChatRole] = [:]
+        for pair in pairs where pair.count == 2 {
+            roles[pair[0]] = ChatRole(rawValue: pair[1]) ?? .user
+        }
+        return roles
+    }
+
     // MARK: Writes
 
     @discardableResult
-    func sendMessage(_ contextId: String, text: String) async throws -> SentMessage {
-        let args = Self.sendMessageArgs(text: text, timestamp: chatTimestamp(now()))
+    func sendMessage(
+        _ contextId: String, text: String, parentMessage: String? = nil, mentions: [String] = [],
+        mentionsUsernames: [String] = [], files: [ChatAttachment] = [], images: [ChatAttachment] = []
+    ) async throws -> SentMessage {
+        let args = Self.sendMessageArgs(
+            text: text, timestamp: chatTimestamp(now()), parentMessage: parentMessage, mentions: mentions,
+            mentionsUsernames: mentionsUsernames, files: files, images: images)
         let value = try await contract.execute(contextId: contextId, method: Method.sendMessage, args: args)
         return try ChatJSON.decode(SentMessage.self, value, method: Method.sendMessage)
     }
 
-    func editMessage(_ contextId: String, messageId: String, text: String) async throws {
-        let args = Self.editMessageArgs(messageId: messageId, text: text, timestamp: chatTimestamp(now()))
+    func editMessage(_ contextId: String, messageId: String, text: String, parentId: String? = nil) async throws {
+        let args = Self.editMessageArgs(
+            messageId: messageId, text: text, timestamp: chatTimestamp(now()), parentId: parentId)
         _ = try await contract.execute(contextId: contextId, method: Method.editMessage, args: args)
     }
 
-    func deleteMessage(_ contextId: String, messageId: String) async throws {
+    func deleteMessage(_ contextId: String, messageId: String, parentId: String? = nil) async throws {
         _ = try await contract.execute(
-            contextId: contextId, method: Method.deleteMessage, args: Self.deleteMessageArgs(messageId: messageId))
+            contextId: contextId, method: Method.deleteMessage,
+            args: Self.deleteMessageArgs(messageId: messageId, parentId: parentId))
+    }
+
+    func saveDraft(_ contextId: String, channel: String, text: String) async throws {
+        _ = try await contract.execute(
+            contextId: contextId, method: Method.saveDraft, args: ["channel": .string(channel), "text": .string(text)])
+    }
+
+    func deleteDraft(_ contextId: String, channel: String) async throws {
+        _ = try await contract.execute(
+            contextId: contextId, method: Method.deleteDraft, args: ["channel": .string(channel)])
+    }
+
+    /// Rename the channel or change its description (admins only; the contract refuses others).
+    func updateInfo(_ contextId: String, name: String? = nil, description: String? = nil) async throws {
+        _ = try await contract.execute(
+            contextId: contextId, method: Method.updateInfo,
+            args: Self.updateInfoArgs(name: name, description: description))
+    }
+
+    func setMemberRole(_ contextId: String, target: String, role: ChatRole) async throws {
+        _ = try await contract.execute(
+            contextId: contextId, method: Method.setMemberRole,
+            args: ["target": .string(target), "role": .string(role.rawValue)])
     }
 
     func updateReaction(_ contextId: String, messageId: String, emoji: String, add: Bool) async throws {
@@ -157,9 +270,10 @@ struct ChatAPI: Sendable {
             args: Self.updateReactionArgs(messageId: messageId, emoji: emoji, add: add))
     }
 
-    func setProfile(_ contextId: String, username: String) async throws {
+    func setProfile(_ contextId: String, username: String, avatar: String? = nil) async throws {
         _ = try await contract.execute(
-            contextId: contextId, method: Method.setProfile, args: Self.setProfileArgs(username: username))
+            contextId: contextId, method: Method.setProfile,
+            args: Self.setProfileArgs(username: username, avatar: avatar))
     }
 
     func markAsRead(_ contextId: String) async throws {

@@ -40,7 +40,7 @@ final class ChatLiveTests: XCTestCase {
             let sent = await channel.send(text)
             XCTAssertTrue(sent, "sending \(text): \(channel.errorText ?? "-")")
         }
-        XCTAssertEqual(channel.messages.map(\.text), texts, "the sender's model shows its messages in order")
+        XCTAssertEqual(channel.messages.map(\.plainText), texts, "the sender's model shows its messages in order")
         XCTAssertTrue(channel.messages.allSatisfy { channel.isMine($0) }, "sent as Alice's UserId")
 
         // History paging: a fresh model with a page of 2 reads the newest two,
@@ -48,11 +48,11 @@ final class ChatLiveTests: XCTestCase {
         let reopened = ChannelModel(channel: general, backend: alice.backend, pageSize: 2, pollInterval: 60)
         await reopened.loadInitial()
         XCTAssertNil(reopened.errorText)
-        XCTAssertEqual(reopened.messages.map(\.text), Array(texts.suffix(2)), "the newest page")
+        XCTAssertEqual(reopened.messages.map(\.plainText), Array(texts.suffix(2)), "the newest page")
         XCTAssertTrue(reopened.hasOlder, "an older message is left to page back to")
         await reopened.loadOlder()
         XCTAssertNil(reopened.errorText)
-        XCTAssertEqual(reopened.messages.map(\.text), texts, "the whole channel after paging back")
+        XCTAssertEqual(reopened.messages.map(\.plainText), texts, "the whole channel after paging back")
         XCTAssertEqual(reopened.messages.map(\.index), [0, 1, 2], "stable indices, ascending")
         XCTAssertFalse(reopened.hasOlder, "nothing older than index 0")
 
@@ -62,7 +62,7 @@ final class ChatLiveTests: XCTestCase {
         await reopened.edit(first, to: edited)
         XCTAssertNil(reopened.errorText, "editing")
         let afterEdit = try XCTUnwrap(reopened.messages.first { $0.id == first.id })
-        XCTAssertEqual(afterEdit.text, edited)
+        XCTAssertEqual(afterEdit.plainText, edited)
         XCTAssertNotNil(afterEdit.editedOn, "an edit is stamped")
 
         // React, then take the reaction back.
@@ -130,7 +130,7 @@ final class ChatLiveTests: XCTestCase {
 
         // Bob reads Alice's message.
         let bobChannel = ChannelModel(channel: bobSide.general, backend: bob.backend, pollInterval: 60)
-        try await eventually("Bob reads Alice's message", detail: "\(bobChannel.messages.map(\.text))") {
+        try await eventually("Bob reads Alice's message", detail: "\(bobChannel.messages.map(\.plainText))") {
             await bobChannel.loadInitial()
             return LiveScenario.message(hello, in: bobChannel) != nil
         }
@@ -176,7 +176,7 @@ final class ChatLiveTests: XCTestCase {
             return (founded.channels.channels.first { $0.id == general.id }?.unread ?? 0) >= 1
         }
         // ...her open channel reads it, from Bob, under his name...
-        try await eventually("Alice reads Bob's reply", detail: "\(aliceChannel.messages.map(\.text))") {
+        try await eventually("Alice reads Bob's reply", detail: "\(aliceChannel.messages.map(\.plainText))") {
             await aliceChannel.refreshNewest()
             return LiveScenario.message(reply, in: aliceChannel) != nil
         }
@@ -191,7 +191,7 @@ final class ChatLiveTests: XCTestCase {
             return founded.channels.channels.first { $0.id == general.id }?.unread == 0
         }
         // Alice's message is still hers, unedited.
-        XCTAssertEqual(aliceChannel.messages.first { $0.id == aliceMessage.id }?.text, hello)
+        XCTAssertEqual(aliceChannel.messages.first { $0.id == aliceMessage.id }?.plainText, hello)
     }
 
     // MARK: - 3. Live update

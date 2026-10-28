@@ -14,6 +14,12 @@ import MeroKit
 /// never skip messages. When a refresh finds a gap after the newest loaded
 /// message, `get_messages_from(start)` (the contract's resumable read) fills it.
 ///
+/// **Threads.** The same model opens one thread when it is given the
+/// thread's root: every read is `get_messages(parent_message:)` and every
+/// write names the parent, as `useThreadMessages.ts` does. A thread is read
+/// whole from its newest page back; `get_messages_from` (top level only) is
+/// not used there.
+///
 /// **Live updates.** The relay's SSE stream for the context, through the
 /// account's Bearer session; any non-presence event triggers a refresh of the
 /// newest page. With no session (or once the stream ends) the model polls.
@@ -35,8 +41,18 @@ final class ChannelModel: ObservableObject {
     @Published private(set) var isSending = false
     @Published private(set) var liveStatus: LiveStatus = .off
     @Published var errorText: String?
+    /// This account's role in the channel (`get_member_role`).
+    @Published private(set) var myRole: ChatRole = .user
+    /// The draft saved in the contract when the channel opened (`get_draft`).
+    @Published private(set) var savedDraft = ""
+    /// `UserId` -> avatar blob id, from `get_profiles`.
+    @Published private(set) var avatars: [String: String] = [:]
+    /// What is being uploaded now: "Uploading image…" / "Uploading file…" under the composer.
+    @Published private(set) var uploadStatus: String?
 
     let channel: ChannelEntry
+    /// The root of the open thread, or `nil` for the channel itself.
+    let thread: ChatMessage?
     /// This account's `UserId` in the contract (base58).
     let me: String
     let pageSize: Int
@@ -49,12 +65,17 @@ final class ChannelModel: ObservableObject {
     private var liveTask: Task<Void, Never>?
     private var refreshing = false
     private var refreshPending = false
+    private var draftTask: Task<Void, Never>?
+    /// How long typing pauses before the draft is saved (`useDraft.ts`: 4 s).
+    var draftDelay: TimeInterval = 4
 
     init(
-        channel: ChannelEntry, backend: any ChatBackend, pageSize: Int = ChatConstants.messagePageSize,
-        pollInterval: TimeInterval = 5, now: @escaping @Sendable () -> Date = { Date() }
+        channel: ChannelEntry, backend: any ChatBackend, thread: ChatMessage? = nil,
+        pageSize: Int = ChatConstants.messagePageSize, pollInterval: TimeInterval = 5,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.channel = channel
+        self.thread = thread
         self.backend = backend
         self.api = ChatAPI(contract: backend.contract, now: now)
         self.me = ChatIdentity.userId(accountHex: backend.account) ?? ""
@@ -64,7 +85,10 @@ final class ChannelModel: ObservableObject {
 
     deinit {
         liveTask?.cancel()
+        draftTask?.cancel()
     }
+
+    private var parentId: String? { thread?.id }
 
     // MARK: Display helpers
 
@@ -79,19 +103,67 @@ final class ChannelModel: ObservableObject {
 
     var myProfileName: String? { names[me] }
 
+    /// Your own messages, and anyone's for an admin or mod (the contract's rule).
+    func canDelete(_ message: ChatMessage) -> Bool {
+        !message.deleted && (isMine(message) || myRole.canModerate)
+    }
+
+    func canEdit(_ message: ChatMessage) -> Bool {
+        !message.deleted && isMine(message)
+    }
+
+    /// The composer's text as the HTML the web editor writes, mentions wrapped.
+    func html(_ text: String) -> String {
+        ChatComposerText.html(from: text, members: Array(names.values))
+    }
+
+    /// What the composer starts with when `message` is edited.
+    func composerText(for message: ChatMessage) -> String {
+        ChatComposerText.text(from: RichText.parse(html: message.text))
+    }
+
+    /// The members a mention can name, by display name.
+    var mentionCandidates: [(userId: String, name: String)] {
+        names.filter { $0.key != me }.map { (userId: $0.key, name: $0.value) }.sorted { $0.name < $1.name }
+    }
+
+    /// The `UserId`s and names a message mentions, as `MessageInput.tsx`
+    /// collects them: `@name` for a member whose display name it is, and
+    /// `@everyone` / `@here` as broadcast names with no id.
+    nonisolated static func mentions(in text: String, names: [String: String]) -> (ids: [String], usernames: [String]) {
+        var ids: [String] = []
+        var usernames: [String] = []
+        let byName = Dictionary(names.map { ($0.value.lowercased(), $0.key) }, uniquingKeysWith: { first, _ in first })
+        for token in text.split(whereSeparator: { $0.isWhitespace }) where token.hasPrefix("@") {
+            let name = token.dropFirst().trimmingCharacters(in: .punctuationCharacters).lowercased()
+            guard !name.isEmpty else { continue }
+            if name == "everyone" || name == "here" {
+                if !usernames.contains(name) { usernames.append(name) }
+            } else if let id = byName[name] {
+                if !ids.contains(id) { ids.append(id) }
+                if !usernames.contains(names[id] ?? name) { usernames.append(names[id] ?? name) }
+            }
+        }
+        return (ids, usernames)
+    }
+
     // MARK: History
 
     func loadInitial() async {
         isLoading = true
         defer { isLoading = false }
         do {
-            let page = try await api.getMessages(channel.id, limit: pageSize, offset: 0)
+            let page = try await api.getMessages(channel.id, limit: pageSize, offset: 0, parentMessage: parentId)
             messages = Self.merge([], page.messages)
             totalCount = page.totalCount
             hasOlder = (messages.first?.index ?? 0) > 0
             errorText = nil
             await loadProfiles()
-            try? await api.markAsRead(channel.id)
+            if thread == nil {
+                try? await api.markAsRead(channel.id)
+                myRole = (try? await api.getMemberRole(channel.id, identity: me)) ?? .user
+                savedDraft = (try? await api.getDraft(channel.id, channel: channel.name)) ?? ""
+            }
         } catch {
             errorText = ChatErrorText.describe(error)
         }
@@ -103,7 +175,8 @@ final class ChannelModel: ObservableObject {
         defer { isLoadingOlder = false }
         do {
             let offset = Self.olderOffset(totalCount: totalCount, lowestIndex: lowest)
-            let page = try await api.getMessages(channel.id, limit: pageSize, offset: offset)
+            let page = try await api.getMessages(
+                channel.id, limit: pageSize, offset: offset, parentMessage: parentId)
             totalCount = max(totalCount, page.totalCount)
             messages = Self.merge(messages, page.messages)
             let newLowest = messages.first?.index ?? 0
@@ -146,10 +219,10 @@ final class ChannelModel: ObservableObject {
 
     private func refreshOnce() async {
         do {
-            let page = try await api.getMessages(channel.id, limit: pageSize, offset: 0)
+            let page = try await api.getMessages(channel.id, limit: pageSize, offset: 0, parentMessage: parentId)
             let highest = messages.last?.index
             var merged = Self.merge(messages, page.messages)
-            if let highest, let freshLowest = page.messages.map(\.index).min(), freshLowest > highest + 1 {
+            if thread == nil, let highest, let freshLowest = page.messages.map(\.index).min(), freshLowest > highest + 1 {
                 let gap = Int(clamping: freshLowest - highest - 1)
                 let fill = try await api.getMessagesFrom(channel.id, start: highest + 1, limit: min(gap, 200))
                 merged = Self.merge(merged, fill.messages)
@@ -158,7 +231,7 @@ final class ChannelModel: ObservableObject {
             totalCount = max(totalCount, page.totalCount)
             messages = merged
             if !hasOlder, (messages.first?.index ?? 0) > 0 { hasOlder = true }
-            if arrived { try? await api.markAsRead(channel.id) }
+            if arrived, thread == nil { try? await api.markAsRead(channel.id) }
         } catch {
             errorText = ChatErrorText.describe(error)
         }
@@ -167,6 +240,7 @@ final class ChannelModel: ObservableObject {
     /// Re-read one message by its index (after an edit, a delete or a
     /// reaction on a message that may be older than the newest page).
     private func refreshMessage(at index: UInt64) async {
+        guard thread == nil else { return await refreshNewest() }
         if let page = try? await api.getMessagesFrom(channel.id, start: index, limit: 1) {
             messages = Self.merge(messages, page.messages)
         }
@@ -175,21 +249,43 @@ final class ChannelModel: ObservableObject {
     func loadProfiles() async {
         guard let profiles = try? await api.getProfiles(channel.id) else { return }
         var map: [String: String] = [:]
-        for profile in profiles where !profile.username.isEmpty { map[profile.identity] = profile.username }
+        var pictures: [String: String] = [:]
+        for profile in profiles where !profile.username.isEmpty {
+            map[profile.identity] = profile.username
+            if let avatar = profile.avatar, !avatar.isEmpty { pictures[profile.identity] = avatar }
+        }
         names = map
+        avatars = pictures
     }
 
     // MARK: Writes
 
+    /// Send the composer's text and its attachments (at most one image and one
+    /// file, as the web composer allows). Each attachment is uploaded as a blob
+    /// against this channel first; if any upload fails, nothing is sent.
     @discardableResult
-    func send(_ rawText: String) async -> Bool {
+    func send(_ rawText: String, attachments: [PendingAttachment] = []) async -> Bool {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return false }
+        guard !text.isEmpty || !attachments.isEmpty else { return false }
         isSending = true
-        defer { isSending = false }
+        defer {
+            isSending = false
+            uploadStatus = nil
+        }
         do {
-            try await api.sendMessage(channel.id, text: text)
+            var files: [ChatAttachment] = []
+            var images: [ChatAttachment] = []
+            for pending in attachments {
+                uploadStatus = pending.isImage ? "Uploading image…" : "Uploading file…"
+                let uploaded = try await upload(pending)
+                if pending.isImage { images.append(uploaded) } else { files.append(uploaded) }
+            }
+            let mentioned = Self.mentions(in: text, names: names)
+            try await api.sendMessage(
+                channel.id, text: text.isEmpty ? "" : html(text), parentMessage: parentId, mentions: mentioned.ids,
+                mentionsUsernames: mentioned.usernames, files: files, images: images)
             errorText = nil
+            if thread == nil { clearDraft() }
             await refreshNewest()
             return true
         } catch {
@@ -200,9 +296,9 @@ final class ChannelModel: ObservableObject {
 
     func edit(_ message: ChatMessage, to rawText: String) async {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isMine(message), !text.isEmpty, text != message.text else { return }
+        guard isMine(message), !text.isEmpty, html(text) != message.text else { return }
         do {
-            try await api.editMessage(channel.id, messageId: message.id, text: text)
+            try await api.editMessage(channel.id, messageId: message.id, text: html(text), parentId: parentId)
             await refreshMessage(at: message.index)
         } catch {
             errorText = ChatErrorText.describe(error)
@@ -210,9 +306,9 @@ final class ChannelModel: ObservableObject {
     }
 
     func delete(_ message: ChatMessage) async {
-        guard isMine(message) else { return }
+        guard canDelete(message) else { return }
         do {
-            try await api.deleteMessage(channel.id, messageId: message.id)
+            try await api.deleteMessage(channel.id, messageId: message.id, parentId: parentId)
             await refreshMessage(at: message.index)
         } catch {
             errorText = ChatErrorText.describe(error)
@@ -270,6 +366,123 @@ final class ChannelModel: ObservableObject {
         }
         await loadProfiles()
         return names[me] != nil
+    }
+
+    // MARK: Blobs
+
+    /// Upload one attachment against this channel and describe it as a message carries it.
+    func upload(_ pending: PendingAttachment) async throws -> ChatAttachment {
+        let blobId = try await backend.uploadBlob(contextId: channel.id, data: pending.data)
+        BlobCache.shared.store(pending.data, for: blobId)
+        return ChatAttachment(
+            name: pending.name, mimeType: pending.mimeType, size: UInt64(pending.data.count), blobId: blobId)
+    }
+
+    /// A blob of this channel (an attachment or an avatar), from the cache or the relay.
+    func blob(_ blobId: String) async throws -> Data {
+        if let cached = BlobCache.shared.data(for: blobId) { return cached }
+        let data = try await backend.downloadBlob(blobId: blobId, contextId: channel.id)
+        BlobCache.shared.store(data, for: blobId)
+        return data
+    }
+
+    /// Set this account's picture in the channel: upload it, then `set_profile`
+    /// with the name the channel already has (the contract keeps the first name).
+    @discardableResult
+    func setAvatar(_ image: PendingAttachment) async -> Bool {
+        guard let name = names[me] ?? nonEmpty(displayNameHint) else {
+            errorText = "Set your name in this channel first."
+            return false
+        }
+        uploadStatus = "Uploading image…"
+        defer { uploadStatus = nil }
+        do {
+            let blobId = try await backend.uploadBlob(contextId: channel.id, data: image.data)
+            BlobCache.shared.store(image.data, for: blobId)
+            try await api.setProfile(channel.id, username: name, avatar: blobId)
+            await loadProfiles()
+            return true
+        } catch {
+            errorText = ChatErrorText.describe(error)
+            return false
+        }
+    }
+
+    /// The name to register with an avatar when the channel has none for this account yet.
+    var displayNameHint = ""
+
+    private func nonEmpty(_ s: String) -> String? {
+        let t = s.trimmingCharacters(in: .whitespaces)
+        return t.isEmpty ? nil : t
+    }
+
+    // MARK: Channel details, roles, search
+
+    func channelInfo() async -> ChannelInfo? {
+        do {
+            return try await api.getInfo(channel.id)
+        } catch {
+            errorText = ChatErrorText.describe(error)
+            return nil
+        }
+    }
+
+    /// Members with a role other than `User`.
+    func roles() async -> [String: ChatRole] {
+        (try? await api.listRoles(channel.id)) ?? [:]
+    }
+
+    /// Change a member's role (the contract decides who may: admins anything, mods only bans).
+    @discardableResult
+    func setRole(of userId: String, to role: ChatRole) async -> Bool {
+        do {
+            try await api.setMemberRole(channel.id, target: userId, role: role)
+            return true
+        } catch {
+            errorText = ChatErrorText.describe(error)
+            return false
+        }
+    }
+
+    func search(_ query: String, cursor: String?) async -> SearchPage? {
+        do {
+            return try await api.searchMessages(channel.id, query: query, cursor: cursor)
+        } catch {
+            errorText = ChatErrorText.describe(error)
+            return nil
+        }
+    }
+
+    // MARK: Drafts
+
+    /// The composer changed: save it once typing pauses, or drop the saved
+    /// draft when it is emptied (`useDraft.ts`).
+    func draftChanged(_ text: String) {
+        guard thread == nil else { return }
+        draftTask?.cancel()
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let delay = UInt64(max(0, draftDelay) * 1_000_000_000)
+        let contextId = channel.id
+        let name = channel.name
+        let api = api
+        draftTask = Task {
+            try? await Task.sleep(nanoseconds: delay)
+            guard !Task.isCancelled else { return }
+            if trimmed.isEmpty {
+                try? await api.deleteDraft(contextId, channel: name)
+            } else {
+                try? await api.saveDraft(contextId, channel: name, text: text)
+            }
+        }
+    }
+
+    private func clearDraft() {
+        draftTask?.cancel()
+        savedDraft = ""
+        let api = api
+        let contextId = channel.id
+        let name = channel.name
+        draftTask = Task { try? await api.deleteDraft(contextId, channel: name) }
     }
 
     // MARK: Live updates

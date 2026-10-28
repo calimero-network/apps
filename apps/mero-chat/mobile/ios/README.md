@@ -35,13 +35,53 @@ the web app's (`https://links.calimero.network/com.calimero.chat/join?invitation
 `base58(deflate({invitation, groupAlias}))`), so a link made on the web joins
 here and the other way round.
 
+## Design
+
+The app draws Mero Chat the way the web app draws it below 1024px, from the
+same tokens (`packages/glass/src/glass.css`, `app/src/index.css`), light and
+dark, in Figtree (bundled, SIL OFL, `Resources/Fonts`):
+
+- **Landing:** a nav bar with the mark and "Mero Chat", the hero, a channel preview, the features, and the ink "Continue with Calimero" button pinned at the bottom.
+- **Workspace entry:** the web app's entry card (select, name yourself, create, join from a link).
+- **Sidebar:** a full-screen panel with the logo, the workspace switcher,
+  Browse Channels, CHANNELS (`#`, or a lock for a private channel) and DIRECT
+  MESSAGES. Unread badges are the web app's: ink with the mention count, or a
+  soft pill with the unread count.
+- **Channel:** the solid nav bar (back, `# name ⚙`, search, invite, theme,
+  settings); messages grouped as `Message/index.tsx` groups them, with
+  avatars in the same palette and hash. Bubbles have a squared top-left
+  corner, then "(edited)", the sent tick, reaction chips (yours on the wait
+  color) and "N replies · 37 minutes ago".
+- **Long-press:** the action bar (✅ 👍 😀, emoji, reply in thread, more) and
+  the more menu (Reactions, Copy text, Edit message, Delete message).
+- **Composer:** the white card with the B I U • 1. </> toolbar, the `@`
+  mention list, the emoji picker and the "Draft" badge.
+- **Overlays:** Thread, search, Settings, channel details with members and
+  roles, invite, create channel, and the reactions list.
+
+**Attachments and avatars** work as on the web. The composer's attach button
+offers a photo (sent as JPEG, so a browser shows it) or a file from Files. A
+message carries at most one image and one file, uploaded as blobs against the
+channel (`AccountAdmin.uploadBlob` on the relay, calimero-network/swift-sdk#79)
+and sent as `send_message`'s `images` / `files`. Images show as 80×80 tiles
+that open full screen. Files are chips that download and open the share sheet.
+Tap your picture in Settings to set it for the open channel
+(`set_profile(username, avatar)`). Blobs are read through the channel's
+context, so the relay can fetch one a peer holds.
+
+Message bodies are the web editor's HTML, both ways: `ChatRichText.swift`
+reads it into native text and writes the composer's marks back as the same
+HTML, with mentions wrapped the way `markdownParser.ts` wraps them.
+
 ## Layout
 
 ```
 project.yml          XcodeGen spec (the .xcodeproj is generated, not committed)
 Sources/Core/        chat layer: contract calls, invitations, backend, view models (no SwiftUI)
 Sources/App/         SwiftUI app: session, screens
+Resources/Fonts/     Figtree (the web app's face) and its licence
 Tests/               logic tests (compile Sources/Core directly, no host app)
+SnapshotTests/       every screen drawn with sample data, light and dark (hosted in the app)
 LiveTests/           live tests: Sources/Core against a real relay (target MeroChatLiveTests)
 ```
 
@@ -65,21 +105,21 @@ in Xcode (Signing & Capabilities).
 
 ### The SDK pin
 
-The delegated parity work in swift-sdk is unreleased, so `project.yml` pins the
-package to an exact commit of its default branch, at or after calimero-network/swift-sdk#50
-(namespace ops signed at schema 25; a relay on core rc.85+ refuses 24):
+`project.yml` pins the package to a swift-sdk release, 0.4.0: the first one
+with calimero-network/swift-sdk#79, which re-signs a join at schema 26 when the
+admitting relay is on core 0.11.0-rc.90 and says so, and adds blob upload and
+download for an account through the relay.
 
 ```yaml
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 5e35efef6674cfaa484afb34237a96b1625a8255
+    from: 0.4.0
 ```
 
-To bump it, change `revision` to the new commit, run `xcodegen generate`, and
-let Xcode re-resolve packages (File → Packages → Reset Package Caches if it
-holds on to the old one). Once swift-sdk tags a release with this surface,
-replace `revision:` with `from: <version>`.
+To bump it, change `from` to the new version, run `xcodegen generate`, and let
+Xcode re-resolve packages (File → Packages → Reset Package Caches if it holds on
+to the old one).
 
 ## Live tests (a real relay)
 
@@ -143,21 +183,44 @@ the Cloud manager names it for the account.
 > lands, sign-in against the hosted wallet needs `MeroChatCallbackHost` set to a
 > domain the app has an Associated Domains entitlement for.
 
+## Snapshot tests
+
+`MeroChatSnapshotTests` draws the sidebar, a channel, the landing page, the
+workspace entry card and the dialogs with sample data in a window inside the
+app, light and dark, and checks that each one draws. To look at them, pass
+an output directory:
+
+```sh
+TEST_RUNNER_MERO_SNAPSHOT_DIR=/tmp/mero-chat-snaps xcodebuild test -project MeroChat.xcodeproj \
+  -scheme MeroChat -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:MeroChatSnapshotTests CODE_SIGNING_ALLOWED=NO
+```
+
+## When the relay is too old
+
+A relay runs the chat the registry publishes for its runtime. The current
+`com.calimero.chat` needs runtime 0.12.0-rc.1, so a relay on core
+0.11.0-rc.90 can't install it: founding a workspace fails, and a channel
+created on an older chat already installed there fails in its `init`. The app
+says which: "Your relay runs Calimero 0.11.0-rc.90, which can't install this
+version of Mero Chat…" (`ChatErrorText.outdatedRelay`). Nothing on the phone
+can fix that; the relay has to be upgraded. Joining works on either release
+(see the SDK pin).
+
 ## Not supported yet
 
-- **Threads** (replies, `parent_message`): the contract and the API layer
-  support them; there is no thread screen.
-- **Attachments and avatars**: blob upload/download is not wired; messages with
-  attachments say so.
-- **Creating DMs**: DMs are listed and open like channels, but starting one
+- **Starting a DM**: DMs are listed and open like channels, but starting one
   needs the member directory and per-member metadata the web app writes; not
   built.
-- **Search, drafts, mentions, roles/moderation, channel settings, leaving**: not
-  in the mobile MVP.
-- **Presence** (typing): the SDK's `RelayPresenceClient` supports it; not used.
+- **Presence** (typing, online dots): the SDK's `RelayPresenceClient` supports
+  it; not used yet.
+- **Workspace admin** (workspace roles, capabilities, remove members),
+  **deleting a channel**, **leaving or deleting a workspace**: admin-API calls
+  the backend does not make yet.
+- **Notifications and push**: none while the app is closed.
 - **More than one relay**: listings and contract calls go to the one relay the
   Cloud manager names for the account. A workspace served only by a different
   relay does not show up.
 - **Universal links** for `https://links.calimero.network/…`: needs an
   Associated Domains entitlement on that domain. `calimero://com.calimero.chat/join?…`
-  deep links open the app; https links can be pasted into **Join with an invitation**.
+  deep links open the app; https links can be pasted into **Join with a link**.

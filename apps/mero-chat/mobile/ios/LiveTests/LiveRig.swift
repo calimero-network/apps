@@ -150,7 +150,8 @@ struct NoWalletAuthenticator: WebAuthenticating {
 /// **Session.** The certificate and the relay go into a ``CloudSignIn`` as the
 /// session the wallet + Cloud manager would have stored, and a
 /// ``MeroClient`` restores it (`restoreCloudSession`, the app's relaunch
-/// path): it attests the relay (a mock quote, accepted on loopback), logs in
+/// path): it attests the relay (a mock quote, which the SDK refuses unless
+/// `DcapRelayKeyVerifier(allowMock: true)`, so the rig opts in), logs in
 /// with the certificate (`account_proof`) and builds the account admin.
 /// ``backend`` is then built the way `SessionModel.rebuild` builds it.
 @MainActor
@@ -197,7 +198,9 @@ final class LiveAccount {
             relayUrl: withRelay ? rig.relayURL : nil, executorAccount: executor)
         let urlSession = URLSession(configuration: .ephemeral)
         let signIn = CloudSignIn(
-            config: CloudConfig(cloudBaseURL: LiveRig.noCloud, audience: .codeSigningId("network.calimero.chat")),
+            config: CloudConfig(
+                cloudBaseURL: LiveRig.noCloud, audience: .codeSigningId("network.calimero.chat"),
+                relayKeyVerifier: DcapRelayKeyVerifier(allowMock: true)),
             keyStore: .memory(keys), sessionStore: .memory(session), tokenStore: MemoryTokenStore(),
             nonces: MemoryWarrantNonceStore(), urlSession: urlSession, delegatedStore: .memory())
         let defaults = UserDefaults(suiteName: "network.calimero.chat.live.\(UUID().uuidString)") ?? .standard

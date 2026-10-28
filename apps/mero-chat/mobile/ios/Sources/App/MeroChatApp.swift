@@ -4,10 +4,13 @@ import SwiftUI
 @main
 struct MeroChatApp: App {
     @StateObject private var session = SessionModel()
+    @AppStorage(ThemeChoice.storageKey) private var theme = ThemeChoice.light.rawValue
 
     var body: some Scene {
         WindowGroup {
             RootView(session: session, client: session.client)
+                .preferredColorScheme((ThemeChoice(rawValue: theme) ?? .light).scheme)
+                .tint(Theme.accent)
                 .onOpenURL { url in
                     Task { await session.handle(url) }
                 }
@@ -15,7 +18,7 @@ struct MeroChatApp: App {
     }
 }
 
-/// Signed out → the Cloud sign-in screen. Signed in → the workspaces.
+/// Signed out → the landing page. Signed in → the workspace picker, then the workspace.
 struct RootView: View {
     @ObservedObject var session: SessionModel
     @ObservedObject var client: MeroClient
@@ -24,15 +27,26 @@ struct RootView: View {
     var body: some View {
         Group {
             if !didRestore || session.isRestoring {
-                ProgressView("Restoring your session…")
+                ZStack {
+                    GroundBackground()
+                    VStack(spacing: 14) {
+                        AppMark(size: 48)
+                        ProgressView().tint(Theme.accent)
+                        Text("Restoring your session…").font(Theme.font(13)).foregroundStyle(Theme.muted)
+                    }
+                }
             } else if client.isAuthenticated, let backend = session.backend {
-                WorkspacesScreen(session: session, backend: backend)
+                SignedInView(session: session, backend: backend)
                     .id(session.revision)
             } else if client.isAuthenticated {
-                // Signed in; the relay connection is still being set up.
-                VStack(spacing: 16) {
-                    ProgressView("Connecting to your relay…")
-                    Button("Sign out") { Task { await session.signOut() } }
+                ZStack {
+                    GroundBackground()
+                    VStack(spacing: 16) {
+                        ProgressView().tint(Theme.accent)
+                        Text("Connecting to your relay…").font(Theme.font(14)).foregroundStyle(Theme.ink(38))
+                        Button("Sign out") { Task { await session.signOut() } }
+                            .buttonStyle(SecondaryButtonStyle(fullWidth: false))
+                    }
                 }
             } else {
                 SignInView(session: session, client: client)
@@ -46,6 +60,48 @@ struct RootView: View {
         // The client replaced its transport/admin (sign-in, a join, sign-out).
         .onChange(of: client.sessionRevision) { _ in
             if didRestore { session.rebuild() }
+        }
+    }
+}
+
+/// The workspace picker until one is chosen, then that workspace.
+struct SignedInView: View {
+    @ObservedObject var session: SessionModel
+    let backend: DelegatedChatBackend
+    @StateObject private var workspaces: WorkspacesModel
+    @AppStorage("mero-chat:workspace") private var workspaceId = ""
+    @State private var picking = false
+
+    init(session: SessionModel, backend: DelegatedChatBackend) {
+        self.session = session
+        self.backend = backend
+        _workspaces = StateObject(
+            wrappedValue: WorkspacesModel(
+                backend: backend,
+                applicationId: { [weak session] in session?.applicationId },
+                displayName: { [weak session] in session?.displayName ?? "" }))
+    }
+
+    var body: some View {
+        Group {
+            if !picking, !session.displayName.isEmpty,
+                let workspace = workspaces.workspaces.first(where: { $0.id == workspaceId })
+            {
+                ChatShell(
+                    session: session, backend: backend, workspaces: workspaces, workspace: workspace,
+                    onChangeWorkspace: { picking = true }
+                )
+                .id(workspace.id)
+            } else {
+                WorkspacePicker(session: session, model: workspaces) { workspace in
+                    workspaceId = workspace.id
+                    picking = false
+                }
+            }
+        }
+        .task { await workspaces.load() }
+        .onChange(of: session.pendingInvitation) { link in
+            if link != nil { picking = true }
         }
     }
 }

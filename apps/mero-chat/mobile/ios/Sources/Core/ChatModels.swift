@@ -1,4 +1,5 @@
 import Foundation
+import MeroKit
 
 // MARK: - Contract wire types (com.calimero.chat, logic/src/lib.rs)
 //
@@ -6,8 +7,7 @@ import Foundation
 // the contract's snake_case. Numbers are decoded leniently (an integer or an
 // integral double) because a relay hands results back as generic JSON.
 
-/// One attachment on a message (`AttachmentPublic`). Read only: the app does
-/// not upload or download blobs yet.
+/// One attachment on a message (`AttachmentPublic`).
 struct ChatAttachment: Decodable, Equatable, Sendable {
     let name: String
     let mimeType: String
@@ -18,6 +18,23 @@ struct ChatAttachment: Decodable, Equatable, Sendable {
         case name, size
         case mimeType = "mime_type"
         case blobId = "blob_id"
+    }
+
+    init(name: String, mimeType: String, size: UInt64, blobId: String) {
+        self.name = name
+        self.mimeType = mimeType
+        self.size = size
+        self.blobId = blobId
+    }
+
+    var isImage: Bool { mimeType.hasPrefix("image/") }
+
+    /// `AttachmentInput`, as `send_message` takes it (`blob_id_str`, as `ChatContainer.tsx` sends it).
+    var input: JSONValue {
+        [
+            "name": .string(name), "mime_type": .string(mimeType), "size": .number(Double(size)),
+            "blob_id_str": .string(blobId),
+        ]
     }
 
     init(from decoder: Decoder) throws {
@@ -48,6 +65,8 @@ struct ChatMessage: Decodable, Equatable, Identifiable, Sendable {
     let reactions: [String: [String]]
     let deleted: Bool
     let threadCount: UInt32
+    /// When the newest reply landed (seconds), `0` with no replies.
+    let threadLastTimestamp: UInt64
     let parentMessageId: String?
 
     private enum CodingKeys: String, CodingKey {
@@ -55,6 +74,7 @@ struct ChatMessage: Decodable, Equatable, Identifiable, Sendable {
         case mentionsUsernames = "mentions_usernames"
         case editedOn = "edited_on"
         case threadCount = "thread_count"
+        case threadLastTimestamp = "thread_last_timestamp"
         case parentMessageId = "parent_message_id"
     }
 
@@ -75,6 +95,7 @@ struct ChatMessage: Decodable, Equatable, Identifiable, Sendable {
         self.reactions = reactions
         self.deleted = deleted
         self.threadCount = 0
+        self.threadLastTimestamp = 0
         self.parentMessageId = nil
     }
 
@@ -93,6 +114,7 @@ struct ChatMessage: Decodable, Equatable, Identifiable, Sendable {
         reactions = try c.decodeIfPresent([String: [String]].self, forKey: .reactions) ?? [:]
         deleted = try c.decodeIfPresent(Bool.self, forKey: .deleted) ?? false
         threadCount = UInt32(clamping: try c.lenientUInt64(.threadCount) ?? 0)
+        threadLastTimestamp = try c.lenientUInt64(.threadLastTimestamp) ?? 0
         parentMessageId = try c.decodeIfPresent(String.self, forKey: .parentMessageId)
     }
 
@@ -212,6 +234,72 @@ struct UserProfile: Decodable, Equatable, Sendable {
     }
 }
 
+/// `Role`: a member's standing in a channel. `User` is everyone not listed.
+enum ChatRole: String, Sendable, Hashable, CaseIterable {
+    case user = "User"
+    case mod = "Mod"
+    case admin = "Admin"
+    case banned = "Banned"
+
+    /// May change the channel's info and other members' roles.
+    var isAdmin: Bool { self == .admin }
+    /// May delete other members' messages.
+    var canModerate: Bool { self == .admin || self == .mod }
+}
+
+/// `SearchHit` (`search_messages`).
+struct SearchHit: Decodable, Equatable, Identifiable, Sendable {
+    let id: String
+    /// Set for a thread reply: the top-level message it replies to.
+    let parentMessageId: String?
+    let timestamp: UInt64
+    let sender: String
+    /// Plain text around the first match.
+    let snippet: String
+    /// The match inside `snippet`, in UTF-16 code units.
+    let matchStart: Int
+    let matchEnd: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case id, timestamp, sender, snippet
+        case parentMessageId = "parent_message_id"
+        case matchStart = "match_start"
+        case matchEnd = "match_end"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        parentMessageId = try c.decodeIfPresent(String.self, forKey: .parentMessageId)
+        timestamp = try c.lenientUInt64(.timestamp) ?? 0
+        sender = try c.decodeIfPresent(String.self, forKey: .sender) ?? ""
+        snippet = try c.decodeIfPresent(String.self, forKey: .snippet) ?? ""
+        matchStart = Int(try c.lenientUInt64(.matchStart) ?? 0)
+        matchEnd = Int(try c.lenientUInt64(.matchEnd) ?? 0)
+    }
+
+    /// `snippet` split around the match, safe for any offsets the relay sends.
+    var highlighted: (before: String, match: String, after: String) {
+        let units = Array(snippet.utf16)
+        let start = min(max(0, matchStart), units.count)
+        let end = min(max(start, matchEnd), units.count)
+        func text(_ range: Range<Int>) -> String { String(decoding: units[range], as: UTF16.self) }
+        return (text(0..<start), text(start..<end), text(end..<units.count))
+    }
+}
+
+/// `SearchPage` (`search_messages`).
+struct SearchPage: Decodable, Equatable, Sendable {
+    let hits: [SearchHit]
+    /// Pass back for the next page; `nil` once the oldest message was read.
+    let nextCursor: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case hits
+        case nextCursor = "next_cursor"
+    }
+}
+
 // MARK: - App models
 
 /// A workspace: a namespace this account is a member of.
@@ -228,6 +316,8 @@ struct ChannelGroupListing: Equatable, Sendable {
     let groupId: String
     let name: String?
     let contextIds: [String]
+    /// A restricted subgroup: only members it adds see it (the lock icon).
+    var isPrivate = false
 }
 
 /// A channel or DM as the lists show it.
@@ -240,6 +330,9 @@ struct ChannelEntry: Identifiable, Hashable, Sendable {
     /// Whether this account is a member of the channel's group (its contract calls work).
     let isJoined: Bool
     var unread: Int
+    /// Unread messages that mention this account (`get_unread_mentions`).
+    var mentions = 0
+    var isPrivate = false
 }
 
 /// The outcome of founding a workspace.
@@ -277,5 +370,39 @@ extension KeyedDecodingContainer {
                 forKey: key, in: self, debugDescription: "\(double) is not an unsigned integer")
         }
         return UInt64(double)
+    }
+}
+
+// MARK: - Attachments
+
+/// A file or image picked in the composer, not uploaded yet.
+struct PendingAttachment: Equatable, Sendable, Identifiable {
+    let id = UUID()
+    let name: String
+    let mimeType: String
+    let data: Data
+
+    var isImage: Bool { mimeType.hasPrefix("image/") }
+
+    static func == (lhs: PendingAttachment, rhs: PendingAttachment) -> Bool { lhs.id == rhs.id }
+}
+
+/// Blob bytes already fetched or uploaded this session, by blob id. A blob id
+/// is a content hash, so an entry never goes stale.
+final class BlobCache: @unchecked Sendable {
+    static let shared = BlobCache()
+
+    private let cache = NSCache<NSString, NSData>()
+
+    init(limitBytes: Int = 64 * 1024 * 1024) {
+        cache.totalCostLimit = limitBytes
+    }
+
+    func data(for blobId: String) -> Data? {
+        cache.object(forKey: blobId as NSString) as Data?
+    }
+
+    func store(_ data: Data, for blobId: String) {
+        cache.setObject(data as NSData, forKey: blobId as NSString, cost: data.count)
     }
 }

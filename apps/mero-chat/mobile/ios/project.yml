@@ -4,9 +4,8 @@
 #   xcodegen generate          # writes MeroChat.xcodeproj (not committed)
 #   open MeroChat.xcodeproj
 #
-# The SDK is consumed from GitHub, pinned to an exact commit of swift-sdk's
-# default branch (the delegated-account parity work is unreleased). To bump it,
-# change `revision` below and regenerate.
+# The SDK is consumed from GitHub, pinned to a swift-sdk release. To bump it,
+# change `from` below and regenerate.
 name: MeroChat
 
 options:
@@ -18,7 +17,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 7491c8b9db10149845dd2c94ca5aa68ca5ee687f
+    from: 0.4.0
 
 targets:
   MeroChat:
@@ -27,10 +26,14 @@ targets:
     sources:
       - Sources/Core
       - Sources/App
+      - path: Resources/Fonts
+        buildPhase: resources
     info:
       path: Sources/Generated-Info.plist
       properties:
         CFBundleDisplayName: Mero Chat
+        # Figtree, the web app's face (SIL Open Font License, Resources/Fonts/OFL.txt).
+        UIAppFonts: [Figtree-Variable.ttf]
         UILaunchScreen: {}
         CFBundleURLTypes:
           # The wallet returns here after Cloud sign-in (`mero-chat://enrol#credential=…`).
@@ -109,6 +112,26 @@ targets:
       - package: MeroKit
         product: MeroKitUI
 
+  # Snapshot tests: every screen drawn with sample data in a window inside the
+  # app (hosted), light and dark. They assert each screen draws; with
+  # TEST_RUNNER_MERO_SNAPSHOT_DIR set they also write PNGs there.
+  MeroChatSnapshotTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - SnapshotTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.chat.snapshots
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: "YES"
+    dependencies:
+      - target: MeroChat
+      # The host app already carries MeroKit; linking it again would load two copies.
+      - package: MeroKit
+        product: MeroKit
+        link: false
+
 schemes:
   MeroChat:
     build:
@@ -116,7 +139,9 @@ schemes:
         MeroChat: all
         MeroChatTests: [test]
         MeroChatLiveTests: [test]
+        MeroChatSnapshotTests: [test]
     test:
       targets:
         - MeroChatTests
         - MeroChatLiveTests
+        - MeroChatSnapshotTests

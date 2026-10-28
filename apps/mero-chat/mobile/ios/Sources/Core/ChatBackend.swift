@@ -39,6 +39,11 @@ protocol ChatBackend: Sendable {
 
     /// Live events for one context.
     func events(contextId: String) -> AsyncThrowingStream<ChatLiveEvent, Error>
+
+    /// Store `data` as a blob against `contextId` (an attachment or an avatar); its id.
+    func uploadBlob(contextId: String, data: Data) async throws -> String
+    /// A blob's bytes, fetched through `contextId` from whichever member holds it.
+    func downloadBlob(blobId: String, contextId: String) async throws -> Data
 }
 
 /// ``ChatBackend`` for a Calimero Cloud account, delegated end to end.
@@ -55,6 +60,8 @@ protocol ChatBackend: Sendable {
 ///   signs invitations with the device key; ``CloudSignIn/join(namespaceId:invitation:nodeURL:)``
 ///   is direct admission (`POST …/namespaces/{id}/admit`) through the relay the cloud routes to.
 /// - Live updates: SSE on the relay through the connection's Bearer ``Mero``.
+/// - Attachments and avatars: blobs stored on and read from the relay through
+///   the channel's context (``AccountAdmin/uploadBlob(_:)``, ``AccountAdmin/getBlob(_:contextId:)``).
 struct DelegatedChatBackend: ChatBackend {
     let account: String
     let contract: any ChatContract
@@ -102,8 +109,12 @@ struct DelegatedChatBackend: ChatBackend {
         var out: [ChannelGroupListing] = []
         for subgroup in subgroups {
             let contexts = (try? await admin.listGroupContexts(subgroup.groupId)) ?? []
+            let info = try? await admin.getGroupInfo(subgroup.groupId)
+            let visibility = info?.effectiveVisibility ?? info?.subgroupVisibility
             out.append(
-                ChannelGroupListing(groupId: subgroup.groupId, name: subgroup.name, contextIds: contexts.map(\.contextId)))
+                ChannelGroupListing(
+                    groupId: subgroup.groupId, name: subgroup.name, contextIds: contexts.map(\.contextId),
+                    isPrivate: visibility?.lowercased() == "restricted"))
         }
         return out
     }
@@ -149,6 +160,14 @@ struct DelegatedChatBackend: ChatBackend {
         let (_, outcome) = try await signIn.join(
             namespaceId: namespaceId, invitation: invitation, nodeURL: joinNodeURL)
         return JoinedWorkspace(published: outcome.published, relayURL: outcome.relayUrl)
+    }
+
+    func uploadBlob(contextId: String, data: Data) async throws -> String {
+        try await admin.uploadBlob(UploadBlobRequest(data: data, contextId: contextId)).blobId
+    }
+
+    func downloadBlob(blobId: String, contextId: String) async throws -> Data {
+        try await admin.getBlob(blobId, contextId: contextId)
     }
 
     func events(contextId: String) -> AsyncThrowingStream<ChatLiveEvent, Error> {
