@@ -1,0 +1,13 @@
+# XcodeGen output (regenerate with `xcodegen generate`)
+*.xcodeproj/
+Sources/Generated-Info.plist
+build/
+DerivedData/
+xcodebuild-*.log
+.build/
+PixartCore/.build/
+PixartCore/.swiftpm/
+*.xcresult
+.DS_Store
+xcuserdata/
+PixartCore/Package.resolved
