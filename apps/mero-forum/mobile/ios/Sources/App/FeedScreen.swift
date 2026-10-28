@@ -55,6 +55,7 @@ struct FeedScreen: View {
             }
             .padding(20)
             .accessibilityLabel("New post")
+            .accessibilityIdentifier("feed.compose")
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Palette.surface, for: .navigationBar)
@@ -69,6 +70,7 @@ struct FeedScreen: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showInfo = true } label: { Image(systemName: "info.circle") }
                     .accessibilityLabel("About this forum")
+                    .accessibilityIdentifier("feed.info")
             }
         }
         .navigationDestination(for: PostRoute.self) { route in
@@ -117,8 +119,8 @@ struct FeedScreen: View {
                 message: "Start the first discussion.", action: ("New post", { composing = true }))
                 .listRowSeparator(.hidden)
         case .loaded:
-            ForEach(model.posts, id: \.id) { post in
-                row(post)
+            ForEach(Array(model.posts.enumerated()), id: \.element.id) { index, post in
+                row(post).accessibilityIdentifier("feed.post.\(index)")
             }
             if model.hasMore {
                 HStack { Spacer(); ProgressView().tint(Palette.muted); Spacer() }
@@ -142,6 +144,7 @@ struct FeedScreen: View {
             moderate: { confirmRemove = post }
         )
         .background(NavigationLink(value: PostRoute(postId: post.id)) { EmptyView() }.opacity(0))
+        .accessibilityElement(children: .contain)
         .listRowInsets(EdgeInsets())
         .listRowSeparatorTint(Palette.hairline)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -191,6 +194,7 @@ struct SortTabs: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(option == sort ? .isSelected : [])
+                .accessibilityIdentifier("feed.tab.\(option.rawValue)")
             }
         }
         .background(Palette.surface)
@@ -318,7 +322,11 @@ struct ForumInfoSheet: View {
                 }
             }
             .forumNavigation("About this forum")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }.accessibilityIdentifier("sheet.done")
+                }
+            }
             .task { await model.loadModerators() }
             .onAppear { name = model.displayName }
             .confirmationDialog(

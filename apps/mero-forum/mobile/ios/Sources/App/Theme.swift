@@ -286,6 +286,7 @@ struct SheetBar: View {
     var body: some View {
         HStack {
             Button("Cancel", action: cancel)
+                .accessibilityIdentifier("sheet.cancel")
                 .font(.system(size: 16))
                 .foregroundStyle(Palette.ink)
                 .disabled(busy)
@@ -301,6 +302,7 @@ struct SheetBar: View {
             }
             .buttonStyle(PrimaryButtonStyle(compact: true))
             .disabled(!canAct || busy)
+            .accessibilityIdentifier("sheet.action")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

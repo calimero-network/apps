@@ -50,6 +50,8 @@ struct PostScreen: View {
                         delete: { confirm = .deletePost },
                         moderate: { confirm = .removePost }
                     )
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("thread.post")
                     .listRowInsets(EdgeInsets())
                     .listRowSeparatorTint(Palette.hairline)
                     replies(post)
@@ -152,6 +154,7 @@ struct PostScreen: View {
                     .font(.system(size: 16))
                     .lineLimit(1...5)
                     .focused($replying)
+                    .accessibilityIdentifier("thread.replyField")
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Palette.sunken))
@@ -162,6 +165,7 @@ struct PostScreen: View {
                 }
                 .buttonStyle(PrimaryButtonStyle(compact: true))
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isSending)
+                .accessibilityIdentifier("thread.send")
             }
             if replying {
                 Text(feed.displayName.isEmpty ? "Replying with your account id. Pick a name in About this forum." : "Replying as \(feed.displayName)")

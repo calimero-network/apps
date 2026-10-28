@@ -65,6 +65,7 @@ struct VoteControl: View {
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(up ? "Upvote" : "Downvote")
+        .accessibilityIdentifier(up ? "vote.up" : "vote.down")
         .accessibilityAddTraits(active ? .isSelected : [])
     }
 }
@@ -218,11 +219,13 @@ struct ComposeSheet: View {
                             .font(Typeface.display(20))
                             .lineLimit(1...4)
                             .focused($focus, equals: .title)
+                            .accessibilityIdentifier("compose.title")
                             .submitLabel(.next)
                         TextField("What do you want to talk about?", text: $text, axis: .vertical)
                             .font(.system(size: 17))
                             .lineLimit(6...)
                             .focused($focus, equals: .body)
+                            .accessibilityIdentifier("compose.body")
                         if let error {
                             Text(error).font(.system(size: 14)).foregroundStyle(Palette.danger)
                         }

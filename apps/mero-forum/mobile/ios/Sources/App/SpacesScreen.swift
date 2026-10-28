@@ -43,9 +43,10 @@ struct SpacesScreen: View {
                     Button("Join with a link") { sheet = .join }
                         .buttonStyle(SecondaryButtonStyle(compact: true))
                 case .loaded:
-                    ForEach(model.spaces) { space in
+                    ForEach(Array(model.spaces.enumerated()), id: \.element.id) { index, space in
                         NavigationLink(value: space) { SpaceCard(space: space) }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("spaces.card.\(index)")
                     }
                 }
             }
@@ -61,6 +62,7 @@ struct SpacesScreen: View {
                     Image(systemName: "person.crop.circle")
                 }
                 .accessibilityLabel("Account")
+                .accessibilityIdentifier("spaces.account")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
@@ -257,17 +259,18 @@ struct ProfileSheet: View {
     @EnvironmentObject private var session: MeroAppSession
     @Environment(\.dismiss) private var dismiss
     private let names = DefaultsNameStore()
+    private var account: String? { DemoMode.backend?.account ?? session.account }
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
                     HStack(spacing: 14) {
-                        Avatar(label: names.name.isEmpty ? "You" : names.name, seed: session.account ?? "you", size: 52)
+                        Avatar(label: names.name.isEmpty ? "You" : names.name, seed: account ?? "you", size: 52)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(names.name.isEmpty ? "No name yet" : names.name)
                                 .font(Typeface.display(20)).foregroundStyle(Palette.ink)
-                            Text(ForumFormat.handle(session.account ?? ""))
+                            Text(ForumFormat.handle(account ?? ""))
                                 .font(.system(size: 14)).foregroundStyle(Palette.muted)
                         }
                     }
@@ -277,8 +280,8 @@ struct ProfileSheet: View {
                 }
                 Section {
                     DetailsDisclosure(rows: [
-                        ("Account", session.account ?? ""),
-                        ("Application", session.applicationId ?? ""),
+                        ("Account", account ?? ""),
+                        ("Application", DemoMode.applicationId ?? session.applicationId ?? ""),
                     ])
                 }
                 Section {
@@ -294,7 +297,9 @@ struct ProfileSheet: View {
             }
             .forumNavigation("Account")
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }.accessibilityIdentifier("sheet.done")
+                }
             }
         }
         .presentationDetents([.medium, .large])

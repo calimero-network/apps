@@ -37,11 +37,12 @@ struct ForumsScreen: View {
                         symbol: "number", title: "No forums yet", message: "Start the first forum in this space.",
                         action: ("New forum", { showNew = true }))
                 case .loaded:
-                    ForEach(model.forums) { forum in
+                    ForEach(Array(model.forums.enumerated()), id: \.element.id) { index, forum in
                         Button { open(forum) } label: {
                             ForumCard(forum: forum, entering: model.entering == forum.id)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("forums.card.\(index)")
                         .contextMenu {
                             Button { invite = .forum(forum) } label: { Label("Invite to this forum", systemImage: "person.badge.plus") }
                         }

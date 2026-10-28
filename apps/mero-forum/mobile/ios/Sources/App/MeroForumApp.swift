@@ -37,7 +37,7 @@ struct MeroForumApp: App {
                 .environmentObject(session)
                 .preferredColorScheme(.light)
                 .tint(Palette.ink)
-                .task { await session.restore() }
+                .task { if !DemoMode.isOn { await session.restore() } }
                 .onOpenURL { url in Task { await session.handle(url) } }
         }
     }
@@ -50,12 +50,15 @@ struct RootView: View {
     @State private var path = NavigationPath()
     private let names = DefaultsNameStore()
 
+    /// The signed-in account's backend, or the demo's (Debug, `-MeroDemo YES`).
+    private var activeBackend: (any MeroAppBackend)? { DemoMode.backend ?? session.backend }
+
     var body: some View {
         Group {
-            if session.isRestoring && session.backend == nil {
+            if session.isRestoring && activeBackend == nil {
                 ProgressView().tint(Palette.ink).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Palette.ground)
-            } else if let backend = session.backend {
+            } else if let backend = activeBackend {
                 NavigationStack(path: $path) {
                     SpacesScreen(backend: backend, openInvitation: { invitation.open($0) })
                         .navigationDestination(for: AppNamespace.self) { space in
@@ -104,7 +107,7 @@ struct RootView: View {
 
     private var invitationShown: Binding<Bool> {
         Binding(
-            get: { invitation.stage != .idle && session.backend != nil },
+            get: { invitation.stage != .idle && activeBackend != nil },
             set: { if !$0 { invitation.reset() } })
     }
 }

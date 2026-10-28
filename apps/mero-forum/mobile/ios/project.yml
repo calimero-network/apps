@@ -69,8 +69,29 @@ targets:
       - package: MeroKit
         product: MeroKitUI
 
+  # The scripted demo tour (`-MeroDemo YES`): screenshots + screen recording.
+  # Run with apps-capture's ios-capture.sh, or Cmd-U on the MeroForum scheme.
+  MeroForumUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: MeroForum
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.forum.uitests
+        TEST_TARGET_NAME: MeroForum
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+
 schemes:
   MeroForum:
     build:
       targets:
         MeroForum: all
+    test:
+      config: Debug
+      targets:
+        - MeroForumUITests
