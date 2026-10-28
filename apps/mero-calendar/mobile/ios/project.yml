@@ -66,8 +66,28 @@ targets:
       - package: MeroKit
         product: MeroKitUI
 
+  # The scripted demo tour (Debug, `-MeroDemo YES`): see UITests/TourTests.swift.
+  MeroCalendarUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: MeroCalendar
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.calendar.uitests
+        TEST_TARGET_NAME: MeroCalendar
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+
 schemes:
   MeroCalendar:
     build:
       targets:
         MeroCalendar: all
+    test:
+      config: Debug
+      targets:
+        - MeroCalendarUITests

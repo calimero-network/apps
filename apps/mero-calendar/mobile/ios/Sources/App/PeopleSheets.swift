@@ -31,7 +31,11 @@ struct MembersSheet: View {
             }
             .navigationTitle("Members")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }.accessibilityIdentifier("sheet.done")
+                }
+            }
             .refreshable { await model.reload() }
         }
         .presentationDetents([.medium, .large])

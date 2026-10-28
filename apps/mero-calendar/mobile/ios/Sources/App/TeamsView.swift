@@ -40,7 +40,7 @@ struct TeamsView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
-                    if let account = session.account {
+                    if let account = DemoMode.backend?.account ?? session.account {
                         Text("Signed in as \(CalendarConstants.short(account, 10))")
                     }
                     Button(role: .destructive) {
@@ -52,6 +52,7 @@ struct TeamsView: View {
                     Image(systemName: "person.crop.circle").font(.system(size: 18, weight: .regular))
                 }
                 .accessibilityLabel("Account")
+                .accessibilityIdentifier("teams.account")
             }
         }
         .task { if !model.hasLoaded { await model.load() } }
@@ -99,13 +100,14 @@ struct TeamsView: View {
             .card()
         } else {
             LazyVStack(spacing: 10) {
-                ForEach(model.teams) { team in
+                ForEach(Array(model.teams.enumerated()), id: \.element.id) { index, team in
                     Button {
                         path.append(.team(team))
                     } label: {
                         TeamRow(title: team.name, subtitle: "Shared calendars", symbol: "calendar")
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("teams.card.\(index)")
                     .overlay(alignment: .trailing) {
                         Button { sheet = .invite(team) } label: {
                             Image(systemName: "person.badge.plus")
@@ -115,6 +117,7 @@ struct TeamsView: View {
                         }
                         .padding(.trailing, 30)
                         .accessibilityLabel("Invite")
+                        .accessibilityIdentifier("teams.invite.\(index)")
                     }
                     .contextMenu {
                         Button { path.append(.team(team)) } label: { Label("Open", systemImage: "calendar") }
@@ -333,7 +336,9 @@ struct InviteSheet: View {
             .navigationTitle("Invite to \(team.name)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }.accessibilityIdentifier("sheet.done")
+                }
             }
             .task { await load() }
         }

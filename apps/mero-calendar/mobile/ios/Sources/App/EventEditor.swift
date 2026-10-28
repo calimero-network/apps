@@ -46,6 +46,7 @@ struct EventEditor: View {
                     TextField("Title", text: $draft.title)
                         .font(Theme.heading(18))
                         .focused($titleFocused)
+                        .accessibilityIdentifier("editor.title")
                         .disabled(!editable)
                 }
 
@@ -126,12 +127,14 @@ struct EventEditor: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(editable ? "Cancel" : "Done") { dismiss() }
+                        .accessibilityIdentifier("sheet.cancel")
                 }
                 if editable {
                     ToolbarItem(placement: .confirmationAction) {
                         Button(saving ? "Saving…" : (draft.isNew ? "Create" : "Save")) { save() }
                             .fontWeight(.semibold)
                             .disabled(saving)
+                            .accessibilityIdentifier("sheet.action")
                     }
                 }
             }
@@ -150,7 +153,7 @@ struct EventEditor: View {
         if shown.isEmpty && draft.peers.isEmpty {
             Text("No teammates have joined yet.").font(Theme.body(14)).foregroundStyle(Theme.muted)
         }
-        ForEach(shown) { person in
+        ForEach(Array(shown.enumerated()), id: \.element.id) { index, person in
             Button {
                 Theme.haptic(.light)
                 draft.togglePeer(person.id)
@@ -170,6 +173,7 @@ struct EventEditor: View {
                 }
             }
             .disabled(!editable)
+            .accessibilityIdentifier("editor.invitee.\(index)")
         }
         // Invitees who are not (or no longer) in the member list.
         ForEach(draft.peers.filter { id in !people.contains { $0.id == id } }, id: \.self) { id in

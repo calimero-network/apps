@@ -87,7 +87,7 @@ struct CalendarsView: View {
             .card()
         } else {
             LazyVStack(spacing: 10) {
-                ForEach(model.calendars) { calendar in
+                ForEach(Array(model.calendars.enumerated()), id: \.element.id) { index, calendar in
                     Button {
                         open(calendar)
                     } label: {
@@ -97,6 +97,7 @@ struct CalendarsView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(model.opening != nil)
+                    .accessibilityIdentifier("calendars.card.\(index)")
                 }
             }
         }

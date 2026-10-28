@@ -33,6 +33,7 @@ struct CalendarScreen: View {
                     ForEach(CalendarMode.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                .accessibilityIdentifier("calendar.mode")
                 periodHeader
             }
             .padding(.horizontal, 16)
@@ -63,18 +64,21 @@ struct CalendarScreen: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button { showMembers = true } label: { Label("Members", systemImage: "person.2") }
+                        .accessibilityIdentifier("calendar.members")
                     Button { askName = true } label: { Label("Your name", systemImage: "person.crop.circle") }
                     Button { showDetails = true } label: { Label("Details", systemImage: "info.circle") }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
                 .accessibilityLabel("More")
+                .accessibilityIdentifier("calendar.more")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { create(model.focus) } label: {
                     Image(systemName: "plus").font(.system(size: 17, weight: .semibold))
                 }
                 .accessibilityLabel("New event")
+                .accessibilityIdentifier("calendar.add")
             }
         }
         .task { await model.start() }
@@ -131,6 +135,7 @@ struct CalendarScreen: View {
             }
             Button("Today") { withAnimation(.easeInOut(duration: 0.2)) { model.goToToday() } }
                 .buttonStyle(PillButtonStyle())
+                .accessibilityIdentifier("calendar.today")
         }
         .font(.system(size: 15, weight: .semibold))
         .foregroundStyle(Theme.ink)
@@ -170,6 +175,7 @@ struct MonthView: View {
                                 colors: model.events(on: day).prefix(3).map { Theme.eventColor($0.color) },
                                 number: math.calendar.component(.day, from: day)
                             )
+                            .accessibilityIdentifier("month.day.\(dayKey(day))")
                             .onTapGesture {
                                 Theme.haptic(.light)
                                 model.focus = math.startOfDay(day)
@@ -187,9 +193,10 @@ struct MonthView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .card()
                     } else {
-                        ForEach(items) { event in
+                        ForEach(Array(items.enumerated()), id: \.element.id) { index, event in
                             Button { open(event) } label: { EventRow(event: event, model: model, day: model.focus) }
                                 .buttonStyle(.plain)
+                                .accessibilityIdentifier("month.event.\(index)")
                         }
                     }
                 }
@@ -202,6 +209,12 @@ struct MonthView: View {
                 guard abs(value.translation.width) > abs(value.translation.height) * 1.5 else { return }
                 withAnimation(.easeInOut(duration: 0.2)) { model.step(value.translation.width < 0 ? 1 : -1) }
             })
+    }
+
+    /// `2026-10-28`, for the day cell's accessibility identifier.
+    private func dayKey(_ day: Date) -> String {
+        let c = model.math.calendar.dateComponents([.year, .month, .day], from: day)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
     private func dayHeading(_ day: Date) -> String {
@@ -268,11 +281,12 @@ struct AgendaView: View {
             .refreshable { await model.reload() }
         } else {
             List {
-                ForEach(sections, id: \.day) { section in
+                ForEach(Array(sections.enumerated()), id: \.element.day) { sectionIndex, section in
                     Section {
-                        ForEach(section.items) { event in
+                        ForEach(Array(section.items.enumerated()), id: \.element.id) { index, event in
                             Button { open(event) } label: { EventRow(event: event, model: model, day: section.day) }
                                 .buttonStyle(.plain)
+                                .accessibilityIdentifier("agenda.event.\(sectionIndex).\(index)")
                                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)

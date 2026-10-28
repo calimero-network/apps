@@ -34,7 +34,10 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if !didRestore || session.isRestoring {
+            if let demo = DemoMode.backend {
+                // Debug, `-MeroDemo YES`: the demo account, no sign-in.
+                SignedInView(session: session, backend: demo)
+            } else if !didRestore || session.isRestoring {
                 StatusScreen(text: "Restoring your session…")
             } else if session.isSignedIn, let backend = session.backend {
                 SignedInView(session: session, backend: backend)
@@ -49,7 +52,7 @@ struct RootView: View {
             }
         }
         .task {
-            guard !didRestore else { return }
+            guard !didRestore, !DemoMode.isOn else { return }
             await session.restore()
             didRestore = true
         }
