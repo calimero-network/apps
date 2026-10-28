@@ -58,6 +58,7 @@ struct DocumentScreen: View {
                     }
                 }
                 .accessibilityLabel("Comments")
+                .accessibilityIdentifier("doc.comments")
                 .disabled(model.phase != .ready)
                 ShareLink(item: URL(string: model.shareLink)!, subject: Text(model.title)) {
                     Image(systemName: "square.and.arrow.up")
@@ -100,13 +101,15 @@ struct DocumentScreen: View {
                             .foregroundStyle(Theme.faint)
                             .padding(.vertical, 24)
                     }
-                    ForEach(model.blocks) { block in
+                    ForEach(Array(model.blocks.enumerated()), id: \.element.id) { index, block in
                         BlockRow(
                             block: block, model: model, comments: model.countsByBlock[block.id] ?? 0,
                             highlighted: highlighted == block.id,
                             onComment: { comments = .block(block.id) },
                             onCopyLink: { copy(model.blockLink(block.id)) }
                         )
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("doc.block.\(index)")
                         .id(block.id)
                     }
                     DetailsDisclosure(rows: details)

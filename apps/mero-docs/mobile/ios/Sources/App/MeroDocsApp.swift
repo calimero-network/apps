@@ -66,7 +66,9 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if !didRestore || session.isRestoring {
+            if let backend = DemoMode.backend {
+                SignedInView(session: session, router: router, backend: backend)
+            } else if !didRestore || session.isRestoring {
                 Splash(text: "Restoring your session…")
             } else if session.isSignedIn, let backend = session.backend {
                 SignedInView(session: session, router: router, backend: backend)
@@ -82,7 +84,7 @@ struct RootView: View {
         }
         .task {
             guard !didRestore else { return }
-            await session.restore()
+            if !DemoMode.isOn { await session.restore() }
             didRestore = true
         }
         .onChange(of: session.pendingInvitation) { pending in
@@ -121,7 +123,7 @@ private struct SignedInView: View {
                                 folderName: models.model(
                                     Workspace(id: target.workspaceId, name: "", memberCount: 0), backend: backend
                                 ).folder(target.folderId)?.name ?? "",
-                                title: title, blobs: SessionBlobs(admin: session.client.admin), recents: models.recents),
+                                title: title, blobs: DemoMode.blobs ?? SessionBlobs(admin: session.client.admin), recents: models.recents),
                             focusBlock: target.blockId)
                     }
                 }

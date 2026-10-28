@@ -71,7 +71,9 @@ struct CommentsSheet: View {
             .navigationTitle(blockId == nil ? "Comments" : "Comments on block")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }.accessibilityIdentifier("sheet.done")
+                }
             }
         }
     }
@@ -100,6 +102,7 @@ struct CommentsSheet: View {
                     .lineLimit(1...5)
                     .font(Theme.body(16))
                     .focused($composing)
+                    .accessibilityIdentifier("comments.field")
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -118,6 +121,7 @@ struct CommentsSheet: View {
                 }
                 .disabled(!canSend)
                 .accessibilityLabel("Send")
+                .accessibilityIdentifier("comments.send")
             }
         }
         .padding(.horizontal, 16)

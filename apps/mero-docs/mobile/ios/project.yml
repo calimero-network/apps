@@ -69,8 +69,27 @@ targets:
       - package: MeroKit
         product: MeroKitUI
 
+  # The demo tour (`-MeroDemo YES`, Debug only): every main screen and sheet
+  # on fixture data, with a named screenshot at each stop.
+  MeroDocsUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: MeroDocs
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.docs.uitests
+        TEST_TARGET_NAME: MeroDocs
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+
 schemes:
   MeroDocs:
     build:
       targets:
         MeroDocs: all
+    test:
+      config: Debug
+      targets: [MeroDocsUITests]

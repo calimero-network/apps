@@ -32,9 +32,10 @@ struct WorkspacesScreen: View {
                     .plainRow()
                 } else {
                     Section {
-                        ForEach(model.workspaces) { ws in
+                        ForEach(Array(model.workspaces.enumerated()), id: \.element.id) { index, ws in
                             NavigationLink(value: Router.Route.workspace(ws)) { WorkspaceRow(workspace: ws) }
                                 .cardRow()
+                                .accessibilityIdentifier("workspaces.card.\(index)")
                         }
                     } header: {
                         SectionLabel("Workspaces")
@@ -54,6 +55,7 @@ struct WorkspacesScreen: View {
                     Image(systemName: "person.crop.circle")
                 }
                 .accessibilityLabel("Account")
+                .accessibilityIdentifier("workspaces.account")
             }
         }
         .refreshable { await model.load() }
@@ -94,22 +96,24 @@ struct AccountSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var confirm = false
 
+    private var account: String? { DemoMode.backend?.account ?? session.account }
+
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 12) {
-                    Avatar(id: session.account ?? "", name: "Me", size: 44)
+                    Avatar(id: account ?? "", name: "Me", size: 44)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Signed in").font(Theme.heading(17)).foregroundStyle(Theme.ink)
-                        Text(session.hasRelay ? "Connected through your relay" : "No relay serves this account yet")
+                        Text(DemoMode.isOn || session.hasRelay ? "Connected through your relay" : "No relay serves this account yet")
                             .font(Theme.body(14))
                             .foregroundStyle(Theme.muted)
                     }
                 }
                 .card()
                 DetailsDisclosure(rows: [
-                    ("Account", session.account ?? "–"),
-                    ("Application", session.applicationId ?? "–"),
+                    ("Account", account ?? "–"),
+                    ("Application", DemoMode.applicationId ?? session.applicationId ?? "–"),
                 ])
                 .card()
                 Spacer()
@@ -126,7 +130,9 @@ struct AccountSheet: View {
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }.accessibilityIdentifier("sheet.done")
+                }
             }
             .confirmationDialog("Sign out of Mero Docs?", isPresented: $confirm, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
@@ -190,13 +196,17 @@ struct WorkspaceScreen: View {
             let recent = model.recent
             if !recent.isEmpty {
                 Section {
-                    ForEach(recent) { row in DocLink(row: row, workspaceId: model.workspace.id, showFolder: true) }
+                    ForEach(Array(recent.enumerated()), id: \.element.id) { index, row in
+                        DocLink(row: row, workspaceId: model.workspace.id, showFolder: true, testId: "workspace.recent.\(index)")
+                    }
                 } header: {
                     SectionLabel("Recent")
                 }
             }
             Section {
-                ForEach(top) { folder in FolderLink(model: model, folder: folder) }
+                ForEach(Array(top.enumerated()), id: \.element.id) { index, folder in
+                    FolderLink(model: model, folder: folder, testId: "workspace.folder.\(index)")
+                }
             } header: {
                 SectionLabel("Folders")
             }
@@ -208,7 +218,9 @@ struct WorkspaceScreen: View {
                         .foregroundStyle(Theme.muted)
                         .plainRow()
                 } else {
-                    ForEach(all) { row in DocLink(row: row, workspaceId: model.workspace.id, showFolder: true) }
+                    ForEach(Array(all.enumerated()), id: \.element.id) { index, row in
+                        DocLink(row: row, workspaceId: model.workspace.id, showFolder: true, testId: "workspace.doc.\(index)")
+                    }
                 }
             } header: {
                 SectionLabel("Recently updated")
@@ -229,8 +241,10 @@ private struct SearchResultsSection: View {
                     message: "Nothing in this workspace matches \u{201C}\(model.query)\u{201D}.")
                 .plainRow()
             }
-            ForEach(model.results) { result in
-                DocLink(row: result.row, workspaceId: model.workspace.id, showFolder: true, snippet: result.snippet)
+            ForEach(Array(model.results.enumerated()), id: \.element.id) { index, result in
+                DocLink(
+                    row: result.row, workspaceId: model.workspace.id, showFolder: true, snippet: result.snippet,
+                    testId: "search.result.\(index)")
             }
         } header: {
             HStack {
@@ -260,7 +274,9 @@ struct FolderScreen: View {
                 }
                 if !subfolders.isEmpty {
                     Section {
-                        ForEach(subfolders) { f in FolderLink(model: model, folder: f) }
+                        ForEach(Array(subfolders.enumerated()), id: \.element.id) { index, f in
+                            FolderLink(model: model, folder: f, testId: "folder.sub.\(index)")
+                        }
                     } header: {
                         SectionLabel("Folders")
                     }
@@ -273,7 +289,9 @@ struct FolderScreen: View {
                             message: "Documents are written in Mero Docs on the web or desktop. Pull to refresh once one exists.")
                         .plainRow()
                     }
-                    ForEach(docs) { row in DocLink(row: row, workspaceId: model.workspace.id, showFolder: false) }
+                    ForEach(Array(docs.enumerated()), id: \.element.id) { index, row in
+                        DocLink(row: row, workspaceId: model.workspace.id, showFolder: false, testId: "folder.doc.\(index)")
+                    }
                 } header: {
                     if !docs.isEmpty { SectionLabel(docs.count == 1 ? "1 document" : "\(docs.count) documents") }
                 }
@@ -327,6 +345,7 @@ private struct IssueBanner: View {
 private struct FolderLink: View {
     @ObservedObject var model: WorkspaceModel
     let folder: Folder
+    var testId: String? = nil
 
     var body: some View {
         NavigationLink(value: Router.Route.folder(workspaceId: model.workspace.id, folderId: folder.id)) {
@@ -345,6 +364,7 @@ private struct FolderLink: View {
             .padding(.vertical, 2)
         }
         .cardRow()
+        .accessibilityIdentifier(testId ?? "")
     }
 
     private var restricted: Bool {
@@ -367,6 +387,7 @@ struct DocLink: View {
     let workspaceId: String
     let showFolder: Bool
     var snippet: String = ""
+    var testId: String? = nil
 
     var body: some View {
         let target = DocTarget(workspaceId: workspaceId, folderId: row.folderId, docId: row.doc.id)
@@ -389,6 +410,7 @@ struct DocLink: View {
             .padding(.vertical, 2)
         }
         .cardRow()
+        .accessibilityIdentifier(testId ?? "")
         .swipeActions(edge: .trailing) {
             ShareLink(item: URL(string: DocsFormat.docLink(target))!, subject: Text(row.title)) {
                 Label("Share", systemImage: "square.and.arrow.up")
