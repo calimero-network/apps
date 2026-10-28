@@ -335,11 +335,11 @@ public final class ArtworkModel: ObservableObject {
             images.merge(got) { a, _ in a }
         }
         missing = LayerStack.blobIds(ops).filter { images[$0] == nil }.count
-        let images = images
+        let snapshot = images
         let scale = min(1, Self.viewSide / Double(max(1, max(doc.width, doc.height))))
         let out = await Task.detached(priority: .userInitiated) {
             Renderer.composite(
-                width: Int(doc.width), height: Int(doc.height), background: doc.background, ops: ops, images: images,
+                width: Int(doc.width), height: Int(doc.height), background: doc.background, ops: ops, images: snapshot,
                 scale: scale)
         }.value
         guard token == renderToken else { return }
