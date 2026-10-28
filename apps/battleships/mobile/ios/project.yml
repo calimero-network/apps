@@ -1,0 +1,77 @@
+# XcodeGen spec for the native iOS Battleships app.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes Battleships.xcodeproj (not committed)
+#   open Battleships.xcodeproj
+#
+# The logic (the two generated contract clients, the board and its commit-reveal, the invitation
+# codec, the view models) lives in the local BattleshipsCore package, which builds and tests on
+# macOS with `swift test --package-path BattleshipsCore`. The swift-sdk is pinned by revision to
+# the feat/app-session branch (swift-sdk#84); the pin moves to the merge commit once that PR
+# lands. Keep it identical to BattleshipsCore/Package.swift.
+name: Battleships
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: 122bb0d71bb43b823cb9d694c4e70678a2ef8c89
+  BattleshipsCore:
+    path: BattleshipsCore
+
+targets:
+  Battleships:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+      - path: Resources/Fonts
+        buildPhase: resources
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Battleships
+        # Figtree, the web app's face (packages/glass; SIL Open Font License, Resources/Fonts/OFL.txt).
+        UIAppFonts: [Figtree-Variable.ttf]
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Light
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`battleships://enrol#credential=…`).
+          - CFBundleURLName: network.calimero.battleships.enrol
+            CFBundleURLSchemes: [battleships]
+          # Invitation deep links: `calimero://com.calimero.battleships/join?invitation=…`.
+          - CFBundleURLName: network.calimero.battleships.invite
+            CFBundleURLSchemes: [calimero]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero wallet and Cloud
+        # manager). See ../README.md.
+        BattleshipsCallbackScheme: battleships
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.battleships
+        PRODUCT_NAME: Battleships
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: BattleshipsCore
+        product: BattleshipsCore
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+schemes:
+  Battleships:
+    build:
+      targets:
+        Battleships: all

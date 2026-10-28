@@ -1,0 +1,80 @@
+# Native iOS Battleships (apps/battleships/mobile/ios): test the logic package
+# (BattleshipsCore: generated clients, commit-reveal, view models) with
+# `swift test` on macOS, then generate the Xcode project from project.yml and
+# build the app for the iOS Simulator. The swift-sdk is resolved from GitHub at
+# the revision project.yml and BattleshipsCore/Package.swift pin.
+name: Battleships iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/battleships/mobile/ios/**
+      - .github/workflows/battleships-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/battleships/mobile/ios/**
+      - .github/workflows/battleships-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: battleships-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-test:
+    name: Test core & build app (iOS Simulator)
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/battleships/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Test BattleshipsCore
+        run: swift test --package-path BattleshipsCore
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # Pick an available iPhone simulator by name (image-agnostic), as the
+      # swift-sdk's own UI workflow does.
+      - name: Pick a simulator
+        id: sim
+        run: |
+          DEVICE=$(xcrun simctl list devices available | grep -oE 'iPhone 1[0-9][^(]*' | head -1 | xargs)
+          echo "Using simulator: ${DEVICE:-iPhone 16}"
+          echo "device=${DEVICE:-iPhone 16}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        env:
+          DEVICE: ${{ steps.sim.outputs.device }}
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Battleships.xcodeproj \
+            -scheme Battleships \
+            -destination "platform=iOS Simulator,name=${DEVICE}" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: battleships-ios-logs
+          path: apps/battleships/mobile/ios/xcodebuild-*.log
+          if-no-files-found: warn
