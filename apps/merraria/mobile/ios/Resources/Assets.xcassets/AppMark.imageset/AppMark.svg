@@ -1,0 +1,13 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="merraria logo">
+  <rect x="2" y="2" width="60" height="60" rx="6" fill="#8a5a33"/>
+  <path d="M56 4h2a4 4 0 0 1 4 4v48a4 4 0 0 1-4 4h-2zM4 56h58v2a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#6c4426"/>
+  <rect x="12" y="34" width="4" height="4" fill="#6c4426"/><rect x="24" y="46" width="4" height="4" fill="#6c4426"/>
+  <rect x="38" y="38" width="4" height="4" fill="#6c4426"/><rect x="48" y="28" width="4" height="4" fill="#6c4426"/>
+  <path d="M2 8a6 6 0 0 1 6-6h48a6 6 0 0 1 6 6v10H2z" fill="#4f9c3a"/>
+  <rect x="2" y="2" width="60" height="5" rx="2.5" fill="#6fc454"/>
+  <rect x="8" y="18" width="5" height="6" fill="#4f9c3a"/><rect x="20" y="18" width="5" height="4" fill="#4f9c3a"/>
+  <rect x="34" y="18" width="5" height="7" fill="#4f9c3a"/><rect x="48" y="18" width="5" height="5" fill="#4f9c3a"/>
+  <path d="M16 58l-5-5 31-31 5 5z" fill="#6b5233"/>
+  <path d="M24 8l6-4 20 14-6 7z" fill="#c8ccd4"/>
+  <path d="M56 40l4-6-14-20-6 6z" fill="#969ca8"/>
+</svg>

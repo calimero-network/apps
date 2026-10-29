@@ -5,7 +5,7 @@ import { digTick, DigState, Inventory, place, withinReach } from "./engine/minin
 import { PlayerState, stepPlayer, TICK, tileIntersectsPlayer } from "./engine/physics";
 import { dayFactor } from "./engine/sim";
 import { generateWorld, spawnPoint } from "./engine/terrain";
-import { AIR, HOTBAR, STARTING_INVENTORY } from "./engine/tiles";
+import { AIR, HOTBAR, STARTING_INVENTORY, tileDef } from "./engine/tiles";
 import { TileStore } from "./engine/world";
 import { acceptWorldInvite, createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { APP_SLUG, inviteLink } from "./net/inviteLink";
@@ -29,6 +29,14 @@ import { invitePromptOpen, reportWorldLoaded, setInviteJoiner } from "./ui/invit
 import { Landing, LaunchChoice } from "./ui/landing";
 import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu } from "./ui/overlays";
+import {
+  applyNativeChrome,
+  frontTile,
+  installBridge,
+  isNativeHost,
+  NativeGameClient,
+  type NativeConfig,
+} from "./native/host";
 
 // ── Inbound invite links ──────────────────────────────────────────────────────
 //
@@ -40,7 +48,8 @@ import { PauseMenu } from "./ui/overlays";
 // `deep-link` event instead, which this also hears — in the game too. Either
 // way ui/invitePrompt.tsx asks before joining. A link addressed to another app
 // is dropped, not offered.
-primeInviteCapture("merraria", { slug: APP_SLUG });
+// (Not in the mobile apps' game-only mode: the app takes invitations itself.)
+if (!isNativeHost()) primeInviteCapture("merraria", { slug: APP_SLUG });
 
 /**
  * Set for one reload by an invite accepted in-game: the session already names
@@ -64,7 +73,7 @@ const SAVE_MS = 5000;
 const CONNECT_RETRY_MS = 2000;
 const WORLD_READY_MS = 60_000;
 
-async function fetchWorldMetaWhenReady(client: GameClient): Promise<WorldMeta> {
+async function fetchWorldMetaWhenReady(client: Pick<GameClient, "fetchWorldMeta">): Promise<WorldMeta> {
   const deadline = Date.now() + WORLD_READY_MS;
   for (;;) {
     try {
@@ -86,15 +95,20 @@ interface RemoteAvatar {
 }
 
 async function boot(): Promise<void> {
-  const captured = captureSessionFromHash();
+  // The iOS/Android apps' game-only mode (see native/host.ts): the app signed
+  // in and picked the world, so the session, landing and world picker below
+  // are skipped and contract calls go through the app. Null on the web.
+  const bridge = installBridge();
+  const native = bridge ? await bridge.request<NativeConfig>("config") : null;
+  const captured = native ? "none" : captureSessionFromHash();
   // Back from the wallet? The fragment then carries a device certificate
   // rather than node tokens: verify it, save it, learn the account's relay,
   // and the session is an ACCOUNT one from here on. Read once, before
   // anything renders, so the tab lands signed in instead of on the prompt.
-  const enrolment = await completeEnrolment();
+  const enrolment = native ? undefined : await completeEnrolment();
   // desktop SSO can hand over an expired token — refresh before going online
   // (a node matter; an account has no token to refresh)
-  await ensureFreshToken();
+  if (!native) await ensureFreshToken();
 
   const app = document.getElementById("app")!;
   const canvas = document.createElement("canvas");
@@ -113,14 +127,16 @@ async function boot(): Promise<void> {
   // as a dead end on open. Ask the node first; if it owns nothing there, drop
   // the world (keeping the login) and fall through to the picker, which is
   // already the right screen for "you are not in a world yet".
-  await dropWorldIfNotOurs();
+  if (!native) await dropWorldIfNotOurs();
 
   // Desktop SSO auto-enter: a full hash (tokens + context) means the desktop
   // already authenticated us — zero clicks, straight into the shared world.
   // Likewise a world just joined from an invite accepted in-game.
   let choice: LaunchChoice;
-  const enterJoined = takeEnterJoinedWorld();
-  if ((captured === "full" && hasConnection()) || (enterJoined && hasConnection() && getSession().contextId)) {
+  const enterJoined = native ? false : takeEnterJoinedWorld();
+  if (native) {
+    choice = { name: native.name || defaults.name };
+  } else if ((captured === "full" && hasConnection()) || (enterJoined && hasConnection() && getSession().contextId)) {
     choice = { name: defaults.name };
   } else {
     // The marketing landing page sits in front of the launcher. It skips
@@ -133,19 +149,19 @@ async function boot(): Promise<void> {
     const sawLanding = await showLandingOnce();
     choice = await new Landing(app).show(defaults, { chromeless: sawLanding, enrolment });
   }
-  localStorage.setItem("mt-name", choice.name);
+  if (!native) localStorage.setItem("mt-name", choice.name);
 
   // ---- world + net bootstrap -----------------------------------------
   // The landing only resolves once a node + world are connected; there is no
   // offline mode, so an unreachable world is a hard stop, not a fallback.
   const session = getSession();
-  if (!hasConnection() || !session.contextId) {
+  if (!native && (!hasConnection() || !session.contextId)) {
     showFatal(app, "Lost the node connection — go back and connect again.");
     return;
   }
-  const worldId = session.contextId;
+  const worldId = native ? native.contextId : session.contextId!;
 
-  const client = new GameClient();
+  const client = native ? new NativeGameClient(bridge!, worldId) : new GameClient();
   let seed: number;
   let createdAt = Math.floor(Date.now() / 1000);
   try {
@@ -158,8 +174,9 @@ async function boot(): Promise<void> {
     // and a reload with this contextId still stored walks straight back into
     // the same failure — the loop that made this unrecoverable without
     // clearing site data by hand.
-    clearWorld();
+    if (!native) clearWorld();
     showFatal(app, `Could not reach the shared world (${reason}).`);
+    bridge?.send({ type: "fatal", message: `Could not reach the shared world (${reason}).` });
     return;
   }
 
@@ -197,6 +214,7 @@ async function boot(): Promise<void> {
   let sel = spawn.sel ?? 0;
 
   hud.showGameHud();
+  if (native) applyNativeChrome();
   hud.setHotbarSel(sel);
   hud.updateInventory(inv);
   hud.setPlayers(choice.name, []);
@@ -229,7 +247,9 @@ async function boot(): Promise<void> {
   };
 
   myId = await client.resolveIdentity();
-  sync = new SyncEngine(client.exec, world, () => myId, {
+  // In the apps the identity is learnt from `join`, which may land after this.
+  const nativeClient = client instanceof NativeGameClient ? client : null;
+  sync = new SyncEngine(client.exec, world, () => myId ?? nativeClient?.identity ?? null, {
     onPlayers,
     onToast: (msg) => hud.toast(msg),
   });
@@ -249,6 +269,7 @@ async function boot(): Promise<void> {
     if (!connected) return;
     reportWorldLoaded(worldId);
     hud.toast("Connected to shared world");
+    bridge?.send({ type: "status", state: "connected" });
   });
 
   // ---- input -----------------------------------------------------------
@@ -269,7 +290,7 @@ async function boot(): Promise<void> {
     onInvite: async () => inviteLink(await createWorldInvite()),
     onZoomChange: (zoom) => renderer.setZoom(zoom),
   });
-  renderer.setZoom(menu.getZoom()); // restore the player's zoom choice
+  renderer.setZoom(native?.zoom ?? menu.getZoom()); // restore the player's zoom choice
 
   const toggleMenu = (): void => {
     keys.clear(); // an open menu swallows gameplay input
@@ -322,6 +343,60 @@ async function boot(): Promise<void> {
     if (e.button === 2) placeHeld = false;
   });
   window.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  // The apps' on-screen controls (native/host.ts). A tapped tile is the target
+  // until the player walks out of reach of it; until then the buttons act on
+  // the tile in front of the player.
+  let touchMove = 0;
+  let touchJump = false;
+  let tapped: { x: number; y: number } | null = null;
+  if (bridge) {
+    bridge.handlers = {
+      ...bridge.handlers,
+      input: (i) => {
+        touchMove = i.move;
+        touchJump = i.jump;
+        if (i.jumpPressed) jumpPressed = true;
+        digHeld = i.mine;
+        placeHeld = i.place && !i.mine;
+      },
+      target: (x, y) => {
+        tapped = renderer.screenToTile(x, y);
+      },
+      select: (slot) => {
+        if (slot < 0 || slot >= HOTBAR.length) return;
+        sel = slot;
+        hud.setHotbarSel(sel);
+      },
+      zoom: (value) => renderer.setZoom(Math.min(1.6, Math.max(0.6, value))),
+      pause: () => {
+        touchMove = 0;
+        touchJump = false;
+        jumpPressed = false;
+        digHeld = false;
+        placeHeld = false;
+        save();
+      },
+      leave: async () => {
+        save();
+        await sync?.leave();
+      },
+    };
+  }
+  let hudSent = "";
+  const sendHud = (): void => {
+    if (!bridge) return;
+    const slots = HOTBAR.map((id) => ({
+      id,
+      name: tileDef(id).name,
+      color: `#${tileDef(id).color.toString(16).padStart(6, "0")}`,
+      count: inv.count(id),
+    }));
+    const key = `${sel}|${slots.map((s) => s.count).join(",")}`;
+    if (key === hudSent) return;
+    hudSent = key;
+    bridge.send({ type: "hud", sel, slots });
+  };
 
   const editTile = (x: number, y: number, t: number): boolean => {
     if (!world.setTile(x, y, t)) return false;
@@ -393,9 +468,12 @@ async function boot(): Promise<void> {
     fps = fps * 0.95 + (1000 / Math.max(1, dtMs)) * 0.05;
 
     // physics
-    const move = (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) -
-      (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
-    const jump = keys.has("Space") || keys.has("KeyW") || keys.has("ArrowUp");
+    const move = Math.sign(
+      (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) -
+        (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) +
+        touchMove,
+    );
+    const jump = keys.has("Space") || keys.has("KeyW") || keys.has("ArrowUp") || touchJump;
     while (physicsAcc >= TICK) {
       stepPlayer(world, player, { move, jump, jumpPressed }, TICK);
       jumpPressed = false;
@@ -403,8 +481,11 @@ async function boot(): Promise<void> {
     }
 
     // dig / place at the mouse tile
-    const cursorTile = renderer.screenToTile(mouseX, mouseY);
     const centerY = player.y - 0.95;
+    if (tapped && !withinReach(player.x, centerY, tapped.x, tapped.y)) tapped = null;
+    const cursorTile = bridge
+      ? tapped ?? frontTile(player, (x, y) => world.getTile(x, y))
+      : renderer.screenToTile(mouseX, mouseY);
     const inReach = withinReach(player.x, centerY, cursorTile.x, cursorTile.y);
     let cursor: { x: number; y: number; progress: number } | null = null;
     if (inReach) {
@@ -496,6 +577,8 @@ async function boot(): Promise<void> {
         `  edits ${world.overrides.size}  peers ${remotes.size}\n` +
         `online${sync && sync.pending.size > 0 ? ` (${sync.pending.size} pending)` : ""}`,
     );
+
+    sendHud();
 
     if (saveAcc >= SAVE_MS) {
       saveAcc = 0;
