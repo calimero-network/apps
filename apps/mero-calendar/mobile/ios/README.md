@@ -100,10 +100,9 @@ Bundle id `network.calimero.calendar`, iOS 16+. CI:
 ### The SDK pin
 
 `Core/Package.swift` and `project.yml` pin the swift-sdk by revision to
-`122bb0d71bb43b823cb9d694c4e70678a2ef8c89`, the head of
-calimero-network/swift-sdk#84 (`feat/app-session`), which adds `MeroAppSession`,
-`MeroAppBackend` and the test fakes. Once that PR merges, both pins move to its
-merge commit (change the revision in both files and regenerate).
+`c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f`, the `main` merge commit of
+calimero-network/swift-sdk#84, which adds `MeroAppSession`, `MeroAppBackend`
+and the test fakes. To bump it, change the revision in both files and regenerate.
 
 ### Pointing it at another environment
 

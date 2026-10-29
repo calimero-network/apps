@@ -12,9 +12,9 @@ let package = Package(
         .library(name: "CalendarCore", targets: ["CalendarCore"]),
     ],
     dependencies: [
-        // calimero-network/swift-sdk#84 (feat/app-session). Moves to the merge
-        // commit once that PR lands; keep in step with project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "122bb0d71bb43b823cb9d694c4e70678a2ef8c89"),
+        // The main merge commit of calimero-network/swift-sdk#84 (app session);
+        // keep in step with project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
     ],
     targets: [
         // @generated from ../../../logic/res/abi.json — see README "Regenerate the client".

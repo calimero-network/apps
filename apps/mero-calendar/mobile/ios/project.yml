@@ -6,9 +6,8 @@
 #
 # Everything that is not SwiftUI (the generated contract client, the calendar
 # layer and the view models) is the local package in Core/, which `swift test`
-# checks on macOS. The swift-sdk is pinned by revision to calimero-network/swift-sdk#84
-# (feat/app-session); the pin moves to its merge commit once it lands. Keep it
-# equal to the one in Core/Package.swift.
+# checks on macOS. The swift-sdk is pinned by revision to the main merge commit
+# of calimero-network/swift-sdk#84. Keep it equal to the one in Core/Package.swift.
 name: MeroCalendar
 
 options:
@@ -20,7 +19,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 122bb0d71bb43b823cb9d694c4e70678a2ef8c89
+    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
   CalendarCore:
     path: Core
 

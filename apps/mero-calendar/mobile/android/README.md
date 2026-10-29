@@ -91,11 +91,11 @@ The gates CI runs (`.github/workflows/mero-calendar-android.yml`):
 
 ### The SDK pin
 
-The app session layer is on the kotlin-sdk branch `feat/app-session` (calimero-network/kotlin-sdk#67),
-not in a release yet, so the SDK is built from source as a Gradle composite build:
+The app session layer (calimero-network/kotlin-sdk#67) is on kotlin-sdk `main` but not in a release
+yet, so the SDK is built from source as a Gradle composite build:
 `settings.gradle.kts` includes the checkout and substitutes it for the `network.calimero:mero-core`
 / `mero-compose` / `mero-testkit` coordinates. `kotlin-sdk.ref` pins
-`0999426846c23c5821929c62547af3510c8b670b`; **once #67 merges, the pin moves to its merge commit.**
+`ea8ded7380b94676b6156231c3f5291a8a3d8dd8`, the merge commit of #67 on `main`.
 
 Which checkout: `-PmeroKotlinSdkDir=/path`, else `MERO_KOTLIN_SDK_DIR`, else `.sdk/kotlin-sdk`
 (made by `scripts/fetch-sdk.sh`). The Android Gradle Plugin and Kotlin versions in
