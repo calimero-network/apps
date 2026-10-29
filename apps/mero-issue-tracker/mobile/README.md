@@ -7,11 +7,11 @@ Symbols, mapped one to one) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `122bb0d` (`feat/app-session`, PR #84) |
-| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `0999426` (`feat/app-session`, PR #67) |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `c9ca1a0` (`main`, merge of PR #84) |
+| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `ea8ded7` (`main`, merge of PR #67) |
 
-The pins are the SDKs' app-session branches while those PRs are open; they move to the merge
-commits once they land (`ios/project.yml` + `ios/Core/Package.swift`, `android/kotlin-sdk.ref`).
+The pins are the SDKs' `main` merge commits of those PRs (`ios/project.yml` +
+`ios/Core/Package.swift`, `android/kotlin-sdk.ref`).
 
 ## Delegated execution only
 

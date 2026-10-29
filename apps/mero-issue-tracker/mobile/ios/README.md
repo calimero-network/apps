@@ -18,5 +18,5 @@ arrive on `calimero://com.calimero.mero-issue-tracker/join?invitation=…`. Set 
 in `project.yml` for a verified https callback, and `MeroCloudBaseURL` / `MeroWalletURL` /
 `MeroRegistryURL` for another environment (empty means the SDK's defaults).
 
-The swift-sdk is pinned by revision (`feat/app-session`, PR #84) in both `project.yml` and
-`Core/Package.swift`; move both to the merge commit once it lands.
+The swift-sdk is pinned by revision (`main`, the merge commit of PR #84) in both `project.yml` and
+`Core/Package.swift`; bump both together.
