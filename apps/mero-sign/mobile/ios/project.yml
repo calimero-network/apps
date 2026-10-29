@@ -1,0 +1,73 @@
+# XcodeGen spec for the native iOS Mero Sign app.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes MeroSign.xcodeproj (not committed)
+#   open MeroSign.xcodeproj
+#
+# The logic (generated contract client, private store and identity mapping,
+# PDF stamping, signature ink, view models) lives in the local SignCore
+# package, which builds and tests on macOS with `swift test --package-path SignCore`.
+# The swift-sdk is pinned by revision to its main merge commit of swift-sdk#84.
+# Keep it identical to SignCore/Package.swift.
+name: MeroSign
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+  SignCore:
+    path: SignCore
+
+targets:
+  MeroSign:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Mero Sign
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Light
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`mero-sign://enrol#credential=…`).
+          - CFBundleURLName: network.calimero.sign.enrol
+            CFBundleURLSchemes: [mero-sign]
+          # Invitation deep links: `calimero://com.calimero.mero-sign/join?invitation=…`.
+          - CFBundleURLName: network.calimero.sign.invite
+            CFBundleURLSchemes: [calimero]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
+        # wallet and Cloud manager). See README.md.
+        MeroSignCallbackScheme: mero-sign
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.sign
+        PRODUCT_NAME: MeroSign
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: SignCore
+        product: SignCore
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+      - sdk: PDFKit.framework
+
+schemes:
+  MeroSign:
+    build:
+      targets:
+        MeroSign: all
