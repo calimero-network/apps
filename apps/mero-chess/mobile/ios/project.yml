@@ -1,0 +1,80 @@
+# XcodeGen spec for the native iOS Mero Chess app.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes MeroChess.xcodeproj (not committed)
+#   open MeroChess.xcodeproj
+#
+# The non-UI layer (generated contract client, board helpers, view models) is the local SwiftPM
+# package in ChessCore/, tested on macOS with `swift test --package-path ChessCore` (no simulator).
+# The swift-sdk is pinned by revision to the main merge commit of swift-sdk#84. Keep it equal to
+# the revision in ChessCore/Package.swift.
+name: MeroChess
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+  ChessCore:
+    path: ChessCore
+
+targets:
+  MeroChess:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+      - path: Resources/Assets.xcassets
+      - path: Resources/Licenses
+        buildPhase: resources
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Mero Chess
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad:
+          [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown,
+           UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`mero-chess://enrol#credential=…`).
+          - CFBundleURLName: network.calimero.chess.enrol
+            CFBundleURLSchemes: [mero-chess]
+          # Invitation deep links: `calimero://com.calimero.mero-chess/join?invitation=…`.
+          - CFBundleURLName: network.calimero.chess.invite
+            CFBundleURLSchemes: [calimero]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero wallet, Cloud
+        # manager and app registry). Point these at another environment to test against it.
+        MeroChessCallbackScheme: mero-chess
+        MeroChessCallbackHost: ""
+        MeroChessCallbackPath: /enrol
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.chess
+        PRODUCT_NAME: MeroChess
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: ""
+    dependencies:
+      - package: ChessCore
+        product: ChessCore
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+schemes:
+  MeroChess:
+    build:
+      targets:
+        MeroChess: all
