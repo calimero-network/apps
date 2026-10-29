@@ -7,11 +7,10 @@ sent.** Uploading documents, placing fields and the semantic search stay on the 
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `551fc784` (in `ios/project.yml` and `ios/SignCore/Package.swift`) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `5574e5ca` (`android/kotlin-sdk.ref`, composite build) |
+| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` (in `ios/project.yml` and `ios/SignCore/Package.swift`) |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`android/kotlin-sdk.ref`, composite build) |
 
-The pins are the `feat/app-session` branches (swift-sdk#84, kotlin-sdk#67). They move to the merge
-commits once those PRs land.
+The pins are the `main` merge commits of swift-sdk#84 and kotlin-sdk#67.
 
 ## Delegated execution only
 
