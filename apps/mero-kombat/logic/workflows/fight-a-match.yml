@@ -19,7 +19,7 @@ e2e_mode: true
 nodes:
   count: 2
   # Matched to the calimero-sdk tag in the root Cargo.toml.
-  image: ghcr.io/calimero-network/merod:0.12.0-rc.3
+  image: ghcr.io/calimero-network/merod:1.0.0-rc.3
   prefix: kombat-node
   mdns: true
 

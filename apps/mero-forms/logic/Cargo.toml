@@ -30,7 +30,7 @@ category    = "productivity"
 tags        = ["forms", "surveys", "leads", "crm", "productivity"]
 github      = "https://github.com/calimero-network/apps"
 # Asserted equal to [workspace.metadata.mero-apps] in CI.
-min-runtime-version = "0.12.0-rc.3"
+min-runtime-version = "1.0.0-rc.3"
 # Cloudflare's Turnstile check, for a form whose captcha the node verifies
 # (`captcha_key = "turnstile"`). The namespace approves it at install.
 outbound    = ["https://challenges.cloudflare.com/turnstile/v0/"]
