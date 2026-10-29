@@ -1,0 +1,83 @@
+# The native Android Mero Design app (apps/mero-design/mobile/android).
+#
+# Mirrors the Calimero Kotlin SDK's own CI (kotlin-sdk/.github/workflows/ci.yml): ktlint + detekt,
+# JVM unit tests, Android Lint, assembleDebug. The SDK is not on a registry yet, so the app builds
+# it from source: scripts/fetch-sdk.sh checks out the commit pinned in kotlin-sdk.ref and
+# settings.gradle.kts includes it as a composite build.
+
+name: Mero Design Android
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-design/mobile/android/**
+      - .github/workflows/mero-design-android.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-design/mobile/android/**
+      - .github/workflows/mero-design-android.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-design-android-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Lint, test & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-design/mobile/android
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Before the SDK checkout below, which carries a wrapper of its own.
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Fetch the pinned Kotlin SDK
+        run: ./scripts/fetch-sdk.sh
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: ktlint + detekt
+        run: ./gradlew ktlintCheck detekt --stacktrace
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Android Lint
+        run: ./gradlew lint --stacktrace
+
+      - name: Assemble
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload the debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-design-android-debug-apk
+          path: apps/mero-design/mobile/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-design-android-reports
+          path: |
+            apps/mero-design/mobile/android/app/build/reports/
+            apps/mero-design/mobile/android/app/build/test-results/
+          if-no-files-found: ignore
