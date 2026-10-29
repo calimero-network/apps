@@ -6,8 +6,8 @@
 #
 # Everything that is not a view (the generated contract client, the helpers and
 # the view models) is the local Swift package in Core/, tested with
-# `swift test` on macOS. The swift-sdk is pinned by revision to `feat/app-session`
-# (PR #84); it moves to the merge commit once that PR lands. Keep it equal to
+# `swift test` on macOS. The swift-sdk is pinned by revision to its `main`
+# merge commit of PR #84. Keep it equal to
 # the revision in Core/Package.swift.
 name: MeroUpdates
 
@@ -20,7 +20,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 122bb0d71bb43b823cb9d694c4e70678a2ef8c89
+    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
   UpdatesCore:
     path: Core
 

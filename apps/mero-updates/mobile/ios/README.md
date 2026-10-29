@@ -26,8 +26,8 @@ open MeroUpdates.xcodeproj
 
 ## SDK pin
 
-`project.yml` and `Core/Package.swift` pin swift-sdk `122bb0d` (`feat/app-session`, PR #84).
-Once that PR merges, move both to the merge commit (or a release tag) together.
+`project.yml` and `Core/Package.swift` pin swift-sdk `c9ca1a0`, the `main` merge commit of PR #84.
+Move both together when bumping (to a newer commit or a release tag).
 
 ## Configuration
 

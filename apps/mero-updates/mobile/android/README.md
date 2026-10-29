@@ -22,10 +22,9 @@ Gradle properties (`-P` or `gradle.properties`): `meroCloudUrl`, `meroWalletUrl`
 
 ## SDK pin
 
-`kotlin-sdk.ref` pins kotlin-sdk `0999426846c23c5821929c62547af3510c8b670b`, the
-`feat/app-session` branch (kotlin-sdk PR #67: `MeroAppSession`, `MeroAppBackend`,
-`ContextContract`, mero-testkit's `InMemoryAppBackend`). It moves to the merge commit once that PR
-lands. `settings.gradle.kts` includes the checkout as a composite build.
+`kotlin-sdk.ref` pins kotlin-sdk `ea8ded7380b94676b6156231c3f5291a8a3d8dd8`, the `main`
+merge commit of kotlin-sdk PR #67 (`MeroAppSession`, `MeroAppBackend`, `ContextContract`,
+mero-testkit's `InMemoryAppBackend`). `settings.gradle.kts` includes the checkout as a composite build.
 
 ## Layout
 
