@@ -1,0 +1,68 @@
+# Native iOS Mero PixArt (apps/mero-pixart/mobile/ios): test the PixartCore package
+# (generated client, compositor, view models) on macOS, then generate the Xcode
+# project from project.yml and build the app for the iOS Simulator. The swift-sdk is
+# resolved from GitHub at the revision project.yml and PixartCore/Package.swift pin.
+name: Mero PixArt iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-pixart/mobile/ios/**
+      - .github/workflows/mero-pixart-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-pixart/mobile/ios/**
+      - .github/workflows/mero-pixart-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-pixart-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-test:
+    name: Test core & build app
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-pixart/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Test PixartCore (macOS)
+        run: swift test --package-path PixartCore
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build app (iOS Simulator)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project MeroPixart.xcodeproj \
+            -scheme MeroPixart \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-pixart-ios-logs
+          path: apps/mero-pixart/mobile/ios/xcodebuild-*.log
+          if-no-files-found: warn
