@@ -15,8 +15,8 @@ let package = Package(
         .library(name: "ModelsCore", targets: ["ModelsCore"]),
     ],
     dependencies: [
-        // swift-sdk `feat/app-session` (PR #84). Move to the merge commit once it lands.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "122bb0d71bb43b823cb9d694c4e70678a2ef8c89"),
+        // swift-sdk `main` merge commit of PR #84.
+        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
     ],
     targets: [
         .target(
