@@ -11,13 +11,12 @@ copy, icons and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, AVFoundation + VideoToolbox | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `122bb0d` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, CameraX + MediaCodec | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0999426` (`android/kotlin-sdk.ref`) |
+| iOS | `ios/` | SwiftUI, iOS 16+, AVFoundation + VideoToolbox | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, CameraX + MediaCodec | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`android/kotlin-sdk.ref`) |
 
-**SDK pins.** Both pin the SDKs' `feat/app-session` branches (swift-sdk PR #84, kotlin-sdk PR
-#67), which add `MeroAppSession`, `MeroAppBackend` and `ContextContract`. The pins move to the
-merge commits once those PRs land: `ios/Core/Package.swift` and `ios/project.yml` on iOS,
-`android/kotlin-sdk.ref` on Android.
+**SDK pins.** Both pin the SDKs' `main` merge commits of swift-sdk PR #84 and kotlin-sdk PR #67,
+which add `MeroAppSession`, `MeroAppBackend` and `ContextContract`. The pins live in
+`ios/Core/Package.swift` and `ios/project.yml` on iOS, `android/kotlin-sdk.ref` on Android.
 
 ## Delegated execution only
 
