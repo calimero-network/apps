@@ -29,9 +29,9 @@ include(":app")
 // ---------------------------------------------------------------------------
 //
 // The app-session layer this app is built on (MeroAppSession, MeroAppBackend, ContextContract)
-// is on the SDK's feat/app-session branch (kotlin-sdk#67), not in a published release yet. So the
+// came with kotlin-sdk#67 (merged to the SDK's main) and is not on Maven Central yet. So the
 // SDK is included as a build and its modules replace the `network.calimero:*` coordinates the app
-// declares. Which checkout (the pin moves to the merge commit once kotlin-sdk#67 lands):
+// declares. Which checkout:
 //   1. `-PmeroKotlinSdkDir=/path` (or `meroKotlinSdkDir=` in ~/.gradle/gradle.properties),
 //   2. the `MERO_KOTLIN_SDK_DIR` environment variable,
 //   3. `.sdk/kotlin-sdk`, the checkout `scripts/fetch-sdk.sh` makes at the SHA in `kotlin-sdk.ref`.
