@@ -8,8 +8,8 @@
 # builder, the view models) is the local SwiftPM package DesignCore/, which
 # `swift test --package-path DesignCore` builds and tests on macOS.
 #
-# The swift-sdk is pinned to the `feat/app-session` commit (PR #84) until it
-# merges; then move both pins (here and DesignCore/Package.swift) to the merge commit.
+# The swift-sdk is pinned to its `main` merge commit of PR #84. Keep both pins
+# (here and DesignCore/Package.swift) equal.
 name: MeroDesign
 
 options:
@@ -21,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 122bb0d71bb43b823cb9d694c4e70678a2ef8c89
+    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
   DesignCore:
     path: DesignCore
 
