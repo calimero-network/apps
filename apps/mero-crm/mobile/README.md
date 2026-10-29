@@ -7,10 +7,10 @@ Material Symbols on Android).
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+; non-UI code in the local package `ios/Core` | swift-sdk `MeroKit` + `MeroKitUI` at `122bb0d` (`feat/app-session`, PR #84) |
-| Android | `android/` | Compose + Material3, minSdk 26 | kotlin-sdk `mero-core` + `mero-compose` at `0999426` (`feat/app-session`, PR #67), composite build |
+| iOS | `ios/` | SwiftUI, iOS 16+; non-UI code in the local package `ios/Core` | swift-sdk `MeroKit` + `MeroKitUI` at `c9ca1a0` (merge commit of PR #84 on `main`) |
+| Android | `android/` | Compose + Material3, minSdk 26 | kotlin-sdk `mero-core` + `mero-compose` at `ea8ded7` (merge commit of PR #67 on `main`), composite build |
 
-**The SDK pins move to the merge commits once those two PRs merge**: `ios/project.yml` and
+**The SDK pins** are set in `ios/project.yml` and
 `ios/Core/Package.swift` (keep them equal), and `android/kotlin-sdk.ref`.
 
 ## Delegated execution only

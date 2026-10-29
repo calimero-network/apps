@@ -13,11 +13,10 @@ let package = Package(
         .library(name: "CrmCore", targets: ["CrmCore"])
     ],
     dependencies: [
-        // swift-sdk `feat/app-session` (PR #84). Moves to the merge commit once
-        // that PR lands; keep it equal to the revision in ../project.yml.
+        // swift-sdk `main`, the merge commit of PR #84. Keep it equal to the revision in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "122bb0d71bb43b823cb9d694c4e70678a2ef8c89")
+            revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f")
     ],
     targets: [
         // @generated from ../../../logic/res/abi.json; see ../../README.md "Regenerate the client".
