@@ -1,0 +1,107 @@
+# Native iOS Mero Vote (apps/mero-vote/mobile/ios).
+#
+# - Vectors: mobile/test-vectors/vectors.json is regenerated from the web client's own crypto
+#   (generate.mjs imports app/src/crypto/{protocol,verify}.ts) and must be unchanged, so the
+#   native ports are always pinned to what the web client builds today.
+# - Logic: the VoteCore package (ristretto255 + the ballot protocol, generated contract client,
+#   view models, invitation codec) is tested on macOS with `swift test`, against the shared
+#   vectors and the swift-sdk's in-memory fakes.
+# - App: the Xcode project is generated from project.yml and the app is built for the iOS
+#   Simulator, unsigned. The swift-sdk is resolved from GitHub at the revision both pin.
+name: Mero Vote iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-vote/mobile/ios/**
+      - apps/mero-vote/mobile/test-vectors/**
+      - apps/mero-vote/app/src/crypto/**
+      - .github/workflows/mero-vote-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-vote/mobile/ios/**
+      - apps/mero-vote/mobile/test-vectors/**
+      - apps/mero-vote/app/src/crypto/**
+      - .github/workflows/mero-vote-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-vote-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  vectors:
+    name: Vectors match the web client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - name: Install the web app's crypto dependencies
+        run: pnpm install --frozen-lockfile --filter mero-vote --ignore-scripts
+      - name: Regenerate
+        run: node apps/mero-vote/mobile/test-vectors/generate.mjs
+      - name: Unchanged
+        run: git diff --exit-code -- apps/mero-vote/mobile/test-vectors/vectors.json
+
+  logic:
+    name: Logic tests (swift test)
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/mero-vote/mobile/ios/VoteCore
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Test
+        run: swift test
+
+  app:
+    name: Build the app (iOS Simulator)
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-vote/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project MeroVote.xcodeproj \
+            -scheme MeroVote \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-vote-ios-logs
+          path: apps/mero-vote/mobile/ios/xcodebuild-*.log
+          if-no-files-found: warn

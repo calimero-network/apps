@@ -1,0 +1,48 @@
+// swift-tools-version: 5.9
+// Mero Vote's logic, outside the app target so it builds and tests on macOS
+// with `swift test` (no simulator): the ballot cryptography, the generated
+// contract client, the invitation codec and the view models the SwiftUI
+// screens bind.
+//
+// The swift-sdk pin must match the one in ../project.yml (one revision for both).
+import PackageDescription
+
+let package = Package(
+    name: "VoteCore",
+    platforms: [
+        .iOS(.v16),
+        .macOS(.v13),
+    ],
+    products: [
+        .library(name: "VoteCore", targets: ["VoteCore", "VoteCrypto"]),
+    ],
+    dependencies: [
+        // The main merge commit of swift-sdk#84.
+        .package(
+            url: "https://github.com/calimero-network/swift-sdk",
+            revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
+    ],
+    targets: [
+        // ristretto255 and the mero-vote protocol, with no dependencies but
+        // CryptoKit's SHA-2. Pinned to the web client by ../../test-vectors.
+        // Always optimised, even in a Debug build: field arithmetic at -Onone
+        // is ~15x slower, which turns a two-second ballot into half a minute.
+        .target(name: "VoteCrypto", swiftSettings: [.unsafeFlags(["-O"])]),
+        // `VoteClient.swift` is generated (../../scripts/regenerate-client.sh).
+        .target(
+            name: "VoteCore",
+            dependencies: [
+                "VoteCrypto",
+                .product(name: "MeroKit", package: "swift-sdk"),
+            ]),
+        .testTarget(name: "VoteCryptoTests", dependencies: ["VoteCrypto"]),
+        .testTarget(
+            name: "VoteCoreTests",
+            dependencies: [
+                "VoteCore",
+                "VoteCrypto",
+                .product(name: "MeroKit", package: "swift-sdk"),
+                .product(name: "MeroKitTestSupport", package: "swift-sdk"),
+            ]),
+    ]
+)
