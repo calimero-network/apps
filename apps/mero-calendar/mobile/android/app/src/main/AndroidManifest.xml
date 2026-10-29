@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MeroCalendar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              Calimero Cloud sign-in: the wallet redirects to the enrolment callback
+              (BuildConfig.ENROL_CALLBACK_URL, default mero-calendar://enrol) with the device
+              certificate in the fragment. Scheme and host come from the `meroEnrolCallback`
+              Gradle property, so this filter always matches what the app asks the wallet for.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${enrolScheme}" android:host="${enrolHost}" />
+            </intent-filter>
+
+            <!--
+              Team invitations, in the form the web app shares them:
+              https://links.calimero.network/com.calimero.mero-calendar/join?invitation=…
+              Not autoVerify: links.calimero.network does not publish this app's
+              assetlinks.json, so Android offers the app in the chooser instead.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="links.calimero.network"
+                    android:pathPrefix="/com.calimero.mero-calendar/join" />
+            </intent-filter>
+
+            <!-- The desktop launcher's form: calimero://com.calimero.mero-calendar/join?invitation=… -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="calimero"
+                    android:host="com.calimero.mero-calendar" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
