@@ -1,0 +1,84 @@
+# XcodeGen spec for the native iOS Mero Stream app.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes MeroStream.xcodeproj (not committed)
+#   open MeroStream.xcodeproj
+#
+# Everything that is not a view or a camera (the generated contract client,
+# the web app's media framing, slots, G.711, the H.264 helpers and the view
+# models) is the local Swift package in Core/, tested with `swift test` on
+# macOS. The swift-sdk is pinned by revision to its `main` merge commit of
+# PR #84. Keep it equal to the revision in Core/Package.swift.
+name: MeroStream
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+  StreamCore:
+    path: Core
+
+targets:
+  MeroStream:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+      - path: Resources/Fonts
+        buildPhase: resources
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Stream
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad:
+          [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown]
+        # Power Grotesk, the web app's display face (app/public/fonts/powerGrotesk).
+        UIAppFonts: [PowerGrotesk-Regular.otf, PowerGrotesk-Bold.otf]
+        # Asked the first time you turn the camera or the mic on in a call.
+        NSCameraUsageDescription: "Mero Stream shows your camera to the people in a call when you turn it on."
+        NSMicrophoneUsageDescription: "Mero Stream sends your voice to the people in a call when you unmute."
+        # Keep sending audio while the screen locks mid-call.
+        UIBackgroundModes: [audio]
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`mero-stream://enrol#credential=…`).
+          - CFBundleURLName: network.calimero.stream.enrol
+            CFBundleURLSchemes: [mero-stream]
+          # Invitation deep links: `calimero://com.calimero.mero-stream/join?invitation=…`.
+          - CFBundleURLName: network.calimero.stream.invite
+            CFBundleURLSchemes: [calimero]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
+        # wallet, Cloud manager and registry). See README.md.
+        StreamCallbackScheme: mero-stream
+        StreamCallbackHost: ""
+        StreamCallbackPath: /enrol
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.stream
+        PRODUCT_NAME: MeroStream
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: StreamCore
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+schemes:
+  MeroStream:
+    build:
+      targets:
+        MeroStream: all

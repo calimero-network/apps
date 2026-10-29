@@ -1,0 +1,103 @@
+{
+  "source": "apps/mero-stream/app/src/lib/ephemeralFrames.ts (encodeFragments), via mobile/scripts/gen-frame-vectors.ts",
+  "maxPayloadAvc": 16333,
+  "cases": [
+    {
+      "name": "delta-small",
+      "frame": {
+        "msgSeq": 7,
+        "track": 0,
+        "isKeyframe": false,
+        "width": 640,
+        "height": 480,
+        "timestampUs": 1234567,
+        "createdAtMs": 1761650000123,
+        "startedAtMs": 1761649990000,
+        "codec": "avc1.42001f",
+        "bytes": "032241607f9ebddcfb1a39587796b5d4f31231506f8eadcc"
+      },
+      "fragments": [
+        "4d530200000700000000018002e00187d6120000000000fbc0852a9a0100007099852a9a0100000b617663312e343230303166032241607f9ebddcfb1a39587796b5d4f31231506f8eadcc"
+      ]
+    },
+    {
+      "name": "keyframe-portrait",
+      "frame": {
+        "msgSeq": 4294967295,
+        "track": 0,
+        "isKeyframe": true,
+        "width": 480,
+        "height": 640,
+        "timestampUs": 0,
+        "createdAtMs": 1761650000999,
+        "startedAtMs": 1761650000000,
+        "codec": "avc1.42c01f",
+        "bytes": "c8e7062544"
+      },
+      "fragments": [
+        "4d53020001ffffffff0001e0018002000000000000000067c4852a9a01000080c0852a9a0100000b617663312e343263303166c8e7062544"
+      ]
+    },
+    {
+      "name": "audio-ulaw",
+      "frame": {
+        "msgSeq": 1,
+        "track": 1,
+        "isKeyframe": true,
+        "width": 0,
+        "height": 0,
+        "timestampUs": 200000,
+        "createdAtMs": 1761650001000,
+        "startedAtMs": 1761650000000,
+        "codec": "ulaw",
+        "bytes": "0928476685a4c3e201203f5e7d9cbbda"
+      },
+      "fragments": [
+        "4d5302010101000000000100000000400d03000000000068c4852a9a01000080c0852a9a01000004756c61770928476685a4c3e201203f5e7d9cbbda"
+      ]
+    },
+    {
+      "name": "empty",
+      "frame": {
+        "msgSeq": 2,
+        "track": 0,
+        "isKeyframe": false,
+        "width": 640,
+        "height": 480,
+        "timestampUs": 1,
+        "createdAtMs": 2,
+        "startedAtMs": 3,
+        "codec": "avc1.42001f",
+        "bytes": ""
+      },
+      "fragments": [
+        "4d530200000200000000018002e0010100000000000000020000000000000003000000000000000b617663312e343230303166"
+      ]
+    }
+  ],
+  "multi": {
+    "frame": {
+      "msgSeq": 9,
+      "track": 0,
+      "isKeyframe": true,
+      "width": 640,
+      "height": 480,
+      "timestampUs": 5,
+      "createdAtMs": 6,
+      "startedAtMs": 7,
+      "codec": "avc1.42001f",
+      "byteLength": 40000,
+      "patternSeed": 1
+    },
+    "fragmentLengths": [
+      16384,
+      16384,
+      7385
+    ],
+    "headersHex": [
+      "4d530200010900000000038002e0010500000000000000060000000000000007000000000000000b617663312e343230303166",
+      "4d530200010900000001038002e0010500000000000000060000000000000007000000000000000b617663312e343230303166",
+      "4d530200010900000002038002e0010500000000000000060000000000000007000000000000000b617663312e343230303166"
+    ]
+  }
+}
