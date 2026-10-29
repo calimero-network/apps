@@ -8,10 +8,10 @@ byte-compatible with the web's crypto.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen; logic in the local `PassCore` package | swift-sdk `122bb0d71bb43b823cb9d694c4e70678a2ef8c89` (`feat/app-session`, swift-sdk#84) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `0999426846c23c5821929c62547af3510c8b670b` (`feat/app-session`, kotlin-sdk#67), composite build |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen; logic in the local `PassCore` package | swift-sdk `c9ca1a0` (`main` merge commit of swift-sdk#84) |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `ea8ded7` (`main` merge commit of kotlin-sdk#67), composite build |
 
-The SDK pins are the open app-session PRs. Once those merge, move the pins to the merge commits:
+The SDK pins are the `main` merge commits of those app-session PRs. To bump them, change
 `revision:` in `ios/project.yml` and `ios/PassCore/Package.swift` (keep the two identical), and
 `android/kotlin-sdk.ref`.
 

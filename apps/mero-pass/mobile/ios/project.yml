@@ -7,8 +7,8 @@
 # The logic (vault crypto, vault session, generated contract client, view
 # models) lives in the local PassCore package, which builds and tests on macOS
 # with `swift test --package-path PassCore`. The swift-sdk is pinned by
-# revision to the feat/app-session branch (swift-sdk#84); the pin moves to the
-# merge commit once that PR lands. Keep it identical to PassCore/Package.swift.
+# revision to its main merge commit of swift-sdk#84. Keep it identical to
+# PassCore/Package.swift.
 name: MeroPass
 
 options:
@@ -20,7 +20,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 122bb0d71bb43b823cb9d694c4e70678a2ef8c89
+    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
   PassCore:
     path: PassCore
 
