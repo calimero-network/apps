@@ -32,7 +32,7 @@ HERE=$(pwd)
 # builds and caches merod per this value. It moves with the workspace's core pin,
 # because a bundle built against a release refuses to install on an older
 # runtime; core's fleet-bump rewrites it with the other pins on every release.
-CORE_REF=ce4e6585243e5e789e7e719aaffbff79e1f5f0e2
+CORE_REF=6da14e0ec4288a7e0123b714e1d5180ec900d23d
 export CORE_REF
 
 ENV_FILE="$HERE/.relay.env"
