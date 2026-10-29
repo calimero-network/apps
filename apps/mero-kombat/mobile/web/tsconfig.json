@@ -1,0 +1,21 @@
+{
+  "// note": "Type-checks the game-only page together with the engine it imports from the web app.",
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [],
+    "noUncheckedIndexedAccess": false,
+    "composite": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": [
+    "src"
+  ]
+}
