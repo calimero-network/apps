@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": [],
+    "typeRoots": ["../../app/node_modules/@types"],
+    "baseUrl": ".",
+    "paths": { "three": ["../../app/node_modules/@types/three"], "three/*": ["../../app/node_modules/@types/three/*"], "fflate": ["../../app/node_modules/fflate"] }
+  },
+  "include": ["src"]
+}
