@@ -70,19 +70,55 @@ very little use; people want to **look**, **comment** and **share** from a phone
 
 These block several apps at once, so they come before the app work:
 
-1. **Blobs over the relay.** swift-sdk's `AccountAdmin` (the relay-scoped surface the delegated apps use) has only `deleteBlob`; upload and download sit on the node-login `AdminApi`. Mero Chat's attachments and avatars are blocked on this too, as are all of Tier 3.
+1. **Blobs over the relay.** Both SDKs have blob upload and download through the relay (swift-sdk #79, kotlin-sdk #57); Mero Chat's attachments and avatars and all of Tier 3 can build on it.
 2. **Push.** APNs/FCM delivery for relay events (chat mentions, hyperfeed approvals, standup reminders, your turn in chess and battleships). Today the apps use SSE while open and 5-second polling otherwise.
 3. **Multi-service bundles and multi-context identity** (battleships, mero-docs, mero-sign).
 4. **A WebView host kit:** one native shell (sign-in, relay session, deep links) that hosts a web app's view-only or game mode and bridges contract calls to the SDK. Tier 3 and Tier 4 mostly reuse it, so it is built once.
 5. **Universal links** on `links.calimero.network` for every app's invitations, and an https wallet callback (both are open in Mero Chat).
 
+## How we build them: one template, not ten hand-written apps
+
+Mero Chat mobile is ~10k lines across both platforms, and very little of it is chat. The cost is
+that everything is written twice by hand:
+
+- **The contract layer.** `ChatAPI.swift` and `ChatContract.kt` copy method names, argument keys
+  and limits by hand from `lib.rs` and the web data source. The web apps generate theirs from
+  `logic/res/abi.json` with `calimero-abi-codegen`, and every app here has that ABI.
+- **The session.** Chat's `SessionModel` / `ChatBackend` (Cloud sign-in, relay lookup, restore,
+  deep links, invitations, namespaces, SSE with polling fallback) is generic, and MeroKitUI /
+  mero-compose already hold most of the pieces.
+- **The test rig and project setup.** Fakes, the live relay rig, XcodeGen, Gradle, SDK pins and two
+  CI workflows, all per app.
+
+So before Tier 1, three things move out of the apps:
+
+1. **SDKs: `ContextContract` and `MeroAppSession`.** `ContextContract` is relay query for views
+   and warrant intents for writes, bound to a context as `ContextContractCalling`.
+   `MeroAppSession` is chat's session minus chat: sign-in, restore, deep links, namespaces,
+   subgroups, contexts, invitations, live events. In-memory fakes go in MeroKitTestSupport /
+   mero-testkit. Swift and Kotlin get the same API. Chat then migrates onto it.
+2. **Codegen: `calimero-abi-codegen --target swift|kotlin`.** Codable / `@Serializable` types for
+   every ABI type and a typed async client per app, calling `ContextContractCalling`. Same wire
+   shape as the TS client (optional arguments omitted, not `null`). Chat's hand-written contract
+   layer is deleted in favour of it.
+3. **Template: `scripts/new-mobile-app <app>`.** Scaffolds `apps/<app>/mobile/{ios,android,e2e}`:
+   project files, SDK pins, generated clients, a root view on `MeroAppSession`, a test target on
+   the fakes, and CI through one reusable workflow per platform. Shared Calimero-styled components
+   (rows, empty/error states, composer, avatar, icons) live in MeroKitUI / mero-compose.
+
+After that, a Tier 1 app is its generated client, its view models and its screens. mero-forum is
+the pilot for the template. The WebView host kit for Tiers 3 and 4 is built on `MeroAppSession`,
+with a bridge so the web app's generated client calls through the native session.
+
 ## Suggested order
 
-1. Finish Mero Chat (threads, attachments, DMs, push, glass design); see below.
-2. SDK: blobs over the relay, push, WebView host kit.
-3. Tier 1: mero-forum, mero-standup, mero-chess, mero-calendar (then the rest of Tier 1).
-4. mero-pass with AutoFill (the strongest reason to install a phone app).
-5. Tier 4 games on the host kit (mero-blocks first), then Tier 3 viewers.
+1. SDK `ContextContract` + `MeroAppSession` and native codegen (in parallel); chat migrates onto both.
+2. The `new-mobile-app` template and shared components.
+3. Finish Mero Chat (threads, attachments, DMs, push, glass design) on the template; see below.
+4. SDK: push and the WebView host kit.
+5. Tier 1: mero-forum (pilot), mero-standup, mero-chess, mero-calendar (then the rest of Tier 1).
+6. mero-pass with AutoFill (the strongest reason to install a phone app).
+7. Tier 4 games on the host kit (mero-blocks first), then Tier 3 viewers.
 
 ## Mero Chat on iOS: where it stands (2026-10-26)
 
