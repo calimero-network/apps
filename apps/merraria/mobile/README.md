@@ -6,10 +6,10 @@ Symbols ↔ Material Symbols), controls and flows, and both are landscape-only.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen, WKWebView | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `551fc78` (`feat/app-session`, swift-sdk#84), in `ios/project.yml` and `ios/MerrariaCore/Package.swift` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, WebView | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `5574e5c` (`feat/app-session`, kotlin-sdk#67), composite build at the SHA in `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen, WKWebView | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` (swift-sdk#84 merge commit on `main`), in `ios/project.yml` and `ios/MerrariaCore/Package.swift` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, WebView | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (kotlin-sdk#67 merge commit on `main`), composite build at the SHA in `android/kotlin-sdk.ref` |
 
-**The SDK pins move to the merge commits once swift-sdk#84 and kotlin-sdk#67 land.** Bumping is one
+**The SDK pins are the `main` merge commits of swift-sdk#84 and kotlin-sdk#67.** Bumping is one
 line per platform (iOS: both `revision:` values; Android: `kotlin-sdk.ref`).
 
 ## How it is put together
