@@ -12,9 +12,8 @@ let package = Package(
         .library(name: "KombatCore", targets: ["KombatCore"]),
     ],
     dependencies: [
-        // feat/app-session (swift-sdk#84). Moves to the merge commit once that PR lands; keep it
-        // equal to the revision in ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "551fc784e7545bcdbf358b4c348e6cd381b4512f"),
+        // The main merge commit of swift-sdk#84; keep it equal to the revision in ../project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
     ],
     targets: [
         // Sources/KombatCore/Generated/KombatClient.swift is generated from ../../../logic/res/abi.json
