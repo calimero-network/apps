@@ -6,10 +6,8 @@ icons (SF Symbols / Material Icons) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `122bb0d` (`feat/app-session`, swift-sdk#84), in `ios/project.yml` and `ios/BattleshipsCore/Package.swift` |
-| Android | `android/` | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0999426` (`feat/app-session`, kotlin-sdk#67), composite build from `android/kotlin-sdk.ref` |
-
-The SDK pins move to the merge commits once swift-sdk#84 and kotlin-sdk#67 land.
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` (merge commit of swift-sdk#84 on `main`), in `ios/project.yml` and `ios/BattleshipsCore/Package.swift` |
+| Android | `android/` | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (merge commit of kotlin-sdk#67 on `main`), composite build from `android/kotlin-sdk.ref` |
 
 ## Delegated execution only
 
