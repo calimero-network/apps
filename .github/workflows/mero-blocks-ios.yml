@@ -1,0 +1,78 @@
+# Native iOS Mero Blocks (apps/mero-blocks/mobile/ios): test the non-UI layer (BlocksCore, a local
+# SwiftPM package: generated contract client, the game bridge, view models) on macOS, then generate
+# the Xcode project from project.yml, build the app for the iOS Simulator and check the game page
+# (../game/assets/game) is inside it. The swift-sdk is resolved from GitHub at the revision
+# project.yml and BlocksCore/Package.swift pin.
+name: Mero Blocks iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-blocks/mobile/ios/**
+      - apps/mero-blocks/mobile/game/**
+      - .github/workflows/mero-blocks-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-blocks/mobile/ios/**
+      - apps/mero-blocks/mobile/game/**
+      - .github/workflows/mero-blocks-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-blocks-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-test:
+    name: Test core & build (iOS Simulator)
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-blocks/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Test BlocksCore (macOS)
+        run: swift test --package-path BlocksCore
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project MeroBlocks.xcodeproj \
+            -scheme MeroBlocks \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: The game page is in the app
+        run: |
+          app="$(find build/DerivedData/Build/Products -name MeroBlocks.app -maxdepth 2 | head -1)"
+          test -s "$app/game/index.html"
+          test -s "$app/game/game.js"
+          ls -la "$app/game"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-blocks-ios-logs
+          path: apps/mero-blocks/mobile/ios/xcodebuild-*.log
+          if-no-files-found: warn
