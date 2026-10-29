@@ -1,0 +1,95 @@
+# XcodeGen spec for the native iOS Mero Docs app.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes MeroDocs.xcodeproj (not committed)
+#   open MeroDocs.xcodeproj
+#
+# Everything that is not a view (the generated contract client, the document
+# reader, comment threads, the view models) is the local SwiftPM package DocsCore/, which
+# `swift test --package-path DocsCore` builds and tests on macOS.
+#
+# The swift-sdk is pinned to its `main` merge commit of PR #84. Keep both pins
+# (here and DocsCore/Package.swift) equal.
+name: MeroDocs
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+  DocsCore:
+    path: DocsCore
+
+targets:
+  MeroDocs:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+      - path: Resources/Assets.xcassets
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Mero Docs
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIUserInterfaceStyle: Light
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`mero-docs://enrol#credential=…`).
+          - CFBundleURLName: network.calimero.docs.enrol
+            CFBundleURLSchemes: [mero-docs]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
+        # wallet and Cloud manager). See README.md.
+        MeroDocsCallbackScheme: mero-docs
+        MeroDocsCallbackHost: ""
+        MeroDocsCallbackPath: /enrol
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.docs
+        PRODUCT_NAME: MeroDocs
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - package: DocsCore
+        product: DocsCore
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+  # The demo tour (`-MeroDemo YES`, Debug only): every main screen and sheet
+  # on fixture data, with a named screenshot at each stop.
+  MeroDocsUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: MeroDocs
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.docs.uitests
+        TEST_TARGET_NAME: MeroDocs
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+
+schemes:
+  MeroDocs:
+    build:
+      targets:
+        MeroDocs: all
+    test:
+      config: Debug
+      targets: [MeroDocsUITests]

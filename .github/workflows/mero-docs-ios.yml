@@ -1,0 +1,68 @@
+# Native iOS Mero Docs (apps/mero-docs/mobile/ios): test the DocsCore package
+# (generated client, document reader, comments, view models) on macOS, then generate the Xcode
+# project from project.yml and build the app for the iOS Simulator. The swift-sdk is
+# resolved from GitHub at the revision project.yml and DocsCore/Package.swift pin.
+name: Mero Docs iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-docs/mobile/ios/**
+      - .github/workflows/mero-docs-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-docs/mobile/ios/**
+      - .github/workflows/mero-docs-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-docs-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-test:
+    name: Test core & build app
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-docs/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Test DocsCore (macOS)
+        run: swift test --package-path DocsCore
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build app (iOS Simulator)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project MeroDocs.xcodeproj \
+            -scheme MeroDocs \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-docs-ios-logs
+          path: apps/mero-docs/mobile/ios/xcodebuild-*.log
+          if-no-files-found: warn
