@@ -1,0 +1,80 @@
+# XcodeGen spec for the native iOS Mero Updates app.
+#
+#   brew install xcodegen
+#   xcodegen generate          # writes MeroUpdates.xcodeproj (not committed)
+#   open MeroUpdates.xcodeproj
+#
+# Everything that is not a view (the generated contract client, the helpers and
+# the view models) is the local Swift package in Core/, tested with
+# `swift test` on macOS. The swift-sdk is pinned by revision to its `main`
+# merge commit of PR #84. Keep it equal to
+# the revision in Core/Package.swift.
+name: MeroUpdates
+
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    url: https://github.com/calimero-network/swift-sdk
+    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+  UpdatesCore:
+    path: Core
+
+targets:
+  MeroUpdates:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+      - path: Resources/Fonts
+        buildPhase: resources
+    info:
+      path: Sources/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Mero Updates
+        # Power Grotesk, the web app's display face (app/public/fonts/powerGrotesk).
+        UIAppFonts: [PowerGrotesk-Regular.otf, PowerGrotesk-Bold.otf]
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Light
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad:
+          [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        CFBundleURLTypes:
+          # The wallet returns here after Cloud sign-in (`mero-updates://enrol#credential=…`).
+          - CFBundleURLName: network.calimero.updates.enrol
+            CFBundleURLSchemes: [mero-updates]
+          # Invitation deep links: `calimero://com.calimero.mero-updates/join?invitation=…`.
+          - CFBundleURLName: network.calimero.updates.invite
+            CFBundleURLSchemes: [calimero]
+        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
+        # wallet, Cloud manager and registry). See README.md.
+        UpdatesCallbackScheme: mero-updates
+        UpdatesCallbackHost: ""
+        UpdatesCallbackPath: /enrol
+        MeroCloudBaseURL: ""
+        MeroWalletURL: ""
+        MeroRegistryURL: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.updates
+        PRODUCT_NAME: MeroUpdates
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: UpdatesCore
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
+
+schemes:
+  MeroUpdates:
+    build:
+      targets:
+        MeroUpdates: all

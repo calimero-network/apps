@@ -1,0 +1,78 @@
+# Native iOS Mero Updates (apps/mero-updates/mobile/ios): test the core package
+# (generated client, helpers, view models) on macOS, then generate the Xcode
+# project from project.yml and build the app for the iOS Simulator. The
+# swift-sdk is resolved from GitHub at the revision Core/Package.swift and
+# project.yml pin.
+name: Mero Updates iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-updates/mobile/ios/**
+      - .github/workflows/mero-updates-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-updates/mobile/ios/**
+      - .github/workflows/mero-updates-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-updates-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  core:
+    name: Core tests (macOS)
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/mero-updates/mobile/ios/Core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version
+      - name: Test
+        run: swift test
+
+  app:
+    name: Build app (iOS Simulator)
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-updates/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project MeroUpdates.xcodeproj \
+            -scheme MeroUpdates \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-updates-ios-logs
+          path: apps/mero-updates/mobile/ios/xcodebuild-*.log
+          if-no-files-found: warn
