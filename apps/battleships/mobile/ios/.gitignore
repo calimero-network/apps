@@ -1,0 +1,7 @@
+*.xcodeproj/
+Sources/Generated-Info.plist
+BattleshipsCore/.build/
+BattleshipsCore/.swiftpm/
+.build/
+DerivedData/
+xcuserdata/
