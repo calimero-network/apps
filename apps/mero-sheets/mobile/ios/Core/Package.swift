@@ -11,11 +11,11 @@ let package = Package(
         .library(name: "SheetsCore", targets: ["SheetsCore"])
     ],
     dependencies: [
-        // swift-sdk `feat/app-session` (PR #84). Moves to the merge commit once it lands;
+        // swift-sdk `main` merge commit of PR #84;
         // keep in step with `packages.MeroKit.revision` in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "551fc784e7545bcdbf358b4c348e6cd381b4512f")
+            revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f")
     ],
     targets: [
         .target(

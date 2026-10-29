@@ -21,5 +21,4 @@ Package `network.calimero.sheets`. Sign-in returns to `meroEnrolCallback` (defau
 `calimero://com.calimero.mero-sheets/join?…`. Pass `-PmeroCloudUrl`, `-PmeroWalletUrl` or
 `-PmeroRegistryUrl` for another environment.
 
-`kotlin-sdk.ref` pins the SDK's `feat/app-session` branch (PR #67); move it to the merge commit
-once it lands.
+`kotlin-sdk.ref` pins the SDK's `main` merge commit of PR #67.
