@@ -150,7 +150,7 @@ public enum DocsFormat {
         {
             return "You can read this folder but not comment in it. Ask a workspace admin for edit access."
         }
-        if text.contains("noRelay") || lower.contains("no relay") || error is LoginRequired {
+        if error is SignedOutError || text.contains("noRelay") || lower.contains("no relay") || error is LoginRequired {
             return "Your session ended. Sign in again."
         }
         if error is UnavailableError { return "The cluster is busy. Try again in a moment." }

@@ -6,7 +6,7 @@ They have the same screens, copy, icons (SF Symbols and the matching Material ic
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `a1ec644` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands) |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands) |
 | Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (merge commit of PR #67 on `main`), composite build from `android/kotlin-sdk.ref` |
 
 **To bump a pin**, change it in every place it is set. On iOS that means
@@ -46,7 +46,7 @@ editor and its CRDT binding live. What both apps do:
 
 Not on the phone: editing a document or its title, creating or moving documents and folders,
 tags, archive, saved views, members, roles and sharing settings, presence cursors. On iOS an
-invitation link (Calimero 1.0's org invite token, in the SDK's `InvitationLinkPayload` shape) asks
+invitation link (Calimero 1.0's org invite token, in the SDK's `OrgInvitation` link shape) asks
 to join and redeems it (`POST /invites/{token}/redeem`); Android still shows a note to accept it on
 the web or desktop.
 

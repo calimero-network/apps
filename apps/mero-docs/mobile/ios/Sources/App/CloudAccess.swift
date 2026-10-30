@@ -255,7 +255,11 @@ struct ApprovalsSheet: View {
                     Button("Review") {
                         deciding = key
                         Task {
-                            _ = await session.requestConsent(request)
+                            do {
+                                _ = try await session.requestConsent(request(session.callback.url))
+                            } catch {
+                                self.error = MeroClient.describe(error)
+                            }
                             deciding = nil
                             await load()
                         }
