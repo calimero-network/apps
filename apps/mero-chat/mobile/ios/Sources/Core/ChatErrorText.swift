@@ -29,7 +29,7 @@ enum ChatErrorText {
             return error.message.isEmpty ? error.appCode : error.message
         case let error as CalimeroError:
             return error.message.isEmpty ? error.code : "\(error.message) (\(error.status))"
-        case AccountError.noRelay, AccountError.notSignedIn:
+        case is SignedOutError, AccountError.notSignedIn:
             return ChatError.noRelay.errorDescription ?? "You're signed out."
         case let error as AccountError:
             return error.errorDescription ?? "\(error)"

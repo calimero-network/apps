@@ -10,7 +10,7 @@ The phone holds no node and never talks JSON-RPC. It signs in to a Calimero
 1.0 cluster with a passkey and talks to it over the sealed channel
 (`calimero/sealed-http/v2`, opened only after the node's attestation is
 verified). `SessionModel` drives MeroKitUI's `MeroClient`; `CloudChatBackend`
-runs over the SDK's `CloudAppBackend`:
+runs over the SDK's `CalimeroAppBackend`:
 
 | What | How (SDK call) | Wire |
 | --- | --- | --- |
@@ -52,8 +52,8 @@ stable `index`, with `get_messages_from(start)` filling any gap after a burst.
 
 `https://links.calimero.network/com.calimero.chat/join?invitation=<token>`, the
 token being `base58(deflate(json))` of
-`{"invitation":{"orgId":"…","token":"inv_…"},"namespaceId":"…","groupAlias":"…"}`
-(the SDK's `InvitationLinkPayload` plus the workspace's name). The invite token
+`{"invitation":"inv_…","namespaceId":"…","name":"…"}` (the SDK's
+`OrgInvitation`, the same payload kotlin-sdk writes). The invite token
 is a bearer secret: anyone with the link can join until it expires. Pre-1.0
 links (signed group invitations) are refused; the web app's links interoperate
 again once it is ported to 1.0.
@@ -135,7 +135,7 @@ in Xcode (Signing & Capabilities).
 ### The SDK pin
 
 `project.yml` pins the package by revision to
-`a1ec644130d4405a1bab7547654b1442cc559b49`, the head of the swift-sdk's
+`35148e4de782c065f777e80c592d9548acd645cd`, the head of the swift-sdk's
 Calimero 1.0 port (calimero-network/swift-sdk#85, branch `feat/calimero-1.0`).
 It moves to that PR's merge commit (and then a release) once it lands.
 
@@ -143,7 +143,7 @@ It moves to that PR's merge commit (and then a release) once it lands.
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: a1ec644130d4405a1bab7547654b1442cc559b49
+    revision: 35148e4de782c065f777e80c592d9548acd645cd
 ```
 
 To bump it, change `revision`, run `xcodegen generate`, and let Xcode

@@ -4,7 +4,7 @@ import MeroKitTestSupport
 import XCTest
 
 /// ``CloudChatBackend`` over the swift-sdk's app layer: what the chat screens
-/// ask becomes the `MeroAppBackend` calls `CloudAppBackend` maps onto the 1.0
+/// ask becomes the `MeroAppBackend` calls `CalimeroAppBackend` maps onto the 1.0
 /// API (orgs, teams, app instances, invites, `/views` and `/intents`).
 final class CloudBackendTests: XCTestCase {
     private let org = String(repeating: "0a", count: 32)
@@ -52,7 +52,7 @@ final class CloudBackendTests: XCTestCase {
         let app = seeded()
         let backend = CloudChatBackend(app: app)
         let invitation = try await backend.createInvitation(namespaceId: org)
-        XCTAssertEqual(invitation.orgId, org)
+        XCTAssertEqual(invitation.namespaceId, org)
         XCTAssertTrue(invitation.token.hasPrefix("inv_"))
 
         let joiner = InMemoryAppBackend(account: String(repeating: "cd", count: 32))

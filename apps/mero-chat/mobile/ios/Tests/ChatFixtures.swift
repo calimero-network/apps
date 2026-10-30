@@ -90,5 +90,5 @@ enum ChatFixtures {
         """
 
     /// A 1.0 org invitation to ``namespaceId``.
-    static let orgInvitation = OrgInvitation(orgId: namespaceId, token: "inv_3k9Qx2")
+    static let orgInvitation = OrgInvitation(namespaceId: namespaceId, token: "inv_3k9Qx2")
 }

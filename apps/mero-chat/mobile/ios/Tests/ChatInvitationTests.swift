@@ -32,14 +32,16 @@ final class ChatInvitationTests: XCTestCase {
         let parsed = try XCTUnwrap(ChatInvitation.parse(link))
         XCTAssertEqual(parsed.workspaceName, "Team")
         XCTAssertEqual(parsed.namespaceId, ChatFixtures.namespaceId)
-        XCTAssertEqual(parsed.invitation, ChatFixtures.orgInvitation)
+        XCTAssertEqual(parsed.invitation.token, ChatFixtures.orgInvitation.token)
 
         let token = try XCTUnwrap(InviteLink.token(fromPasted: link))
         let json = try XCTUnwrap(InviteCodec.decode(token: token))
         let root = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
-        XCTAssertEqual(root["invitation"]?["orgId"]?.stringValue, ChatFixtures.namespaceId)
-        XCTAssertEqual(root["invitation"]?["token"]?.stringValue, "inv_3k9Qx2")
+        XCTAssertEqual(root["invitation"]?.stringValue, "inv_3k9Qx2")
         XCTAssertEqual(root["namespaceId"]?.stringValue, ChatFixtures.namespaceId)
+        XCTAssertEqual(root["name"]?.stringValue, "Team")
+        // The SDK reads the same link.
+        XCTAssertEqual(OrgInvitation.parse(link, expectedSlug: ChatConstants.packageName)?.name, "Team")
     }
 
     func testDecodesTheCalimeroDeepLinkAndRefusesAnotherApps() throws {
@@ -52,7 +54,7 @@ final class ChatInvitationTests: XCTestCase {
     }
 
     func testAcceptsAnEnvelopeAndPrefersGroupName() throws {
-        let enveloped = #"{"data":{"invitation":{"orgId":"org1","token":"inv_x"},"groupName":"New","groupAlias":"Old"}}"#
+        let enveloped = #"{"data":{"invitation":"inv_x","namespaceId":"org1","groupName":"New","groupAlias":"Old"}}"#
         let parsed = try XCTUnwrap(ChatInvitation.parse(json: enveloped))
         XCTAssertEqual(parsed.workspaceName, "New")
         XCTAssertEqual(parsed.namespaceId, "org1")
@@ -62,6 +64,6 @@ final class ChatInvitationTests: XCTestCase {
         XCTAssertNil(ChatInvitation.parse(""))
         XCTAssertNil(ChatInvitation.parse("hello"))
         XCTAssertNil(ChatInvitation.parse(json: #"{"invitation":{"nope":1}}"#))
-        XCTAssertNil(ChatInvitation.parse(json: #"{"invitation":{"orgId":"o","token":""}}"#))
+        XCTAssertNil(ChatInvitation.parse(json: #"{"invitation":"","namespaceId":"o"}"#))
     }
 }

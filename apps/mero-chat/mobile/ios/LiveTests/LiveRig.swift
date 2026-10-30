@@ -96,14 +96,14 @@ final class LiveAccount {
         guard signedUp, let cloud = client.cloud, let account = client.account else {
             throw LiveFailure("\(label): sign-up on \(rig.nodeURL) failed: \(client.errorMessage ?? "no reason")")
         }
-        let app = CloudAppBackend(
+        let app = CalimeroAppBackend(
             client: cloud, account: account, packageName: ChatConstants.packageName,
             packageVersion: rig.packageVersion)
         let backend = CloudChatBackend(
             app: app,
             privateTeams: { org in
                 guard let info = try? await cloud.getOrg(org) else { return [] }
-                return Set(info.teams.values.filter { $0.join == .invite }.map(\.teamId))
+                return Set(info.teams.values.filter { $0.join == .invite }.map { teamGroupId(org: org, team: $0.teamId) })
             })
         return LiveAccount(label: label, accountId: account, client: client, backend: backend)
     }

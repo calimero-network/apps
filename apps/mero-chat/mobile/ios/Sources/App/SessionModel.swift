@@ -9,7 +9,7 @@ import Combine
 /// The signed-in account on a Calimero 1.0 cluster: passkey sign-in through
 /// MeroKitUI's ``MeroClient`` (Calimero Cloud, or a development node with mock
 /// attestation), and the ``ChatBackend`` built over the SDK's
-/// `CloudAppBackend` (orgs, teams, app instances, sealed `/views` and
+/// `CalimeroAppBackend` (orgs, teams, app instances, sealed `/views` and
 /// `/intents`).
 @MainActor
 final class SessionModel: ObservableObject {
@@ -142,14 +142,14 @@ final class SessionModel: ObservableObject {
         guard key != lastKey else { return }
         lastKey = key
         if let cloud = client.cloud, let account = client.account {
-            let app = CloudAppBackend(
+            let app = CalimeroAppBackend(
                 client: cloud, account: account, packageName: ChatConstants.packageName,
                 packageVersion: client.config.packageVersion)
             backend = CloudChatBackend(
                 app: app,
                 privateTeams: { org in
                     guard let info = try? await cloud.getOrg(org) else { return [] }
-                    return Set(info.teams.values.filter { $0.join == .invite }.map(\.teamId))
+                    return Set(info.teams.values.filter { $0.join == .invite }.map { teamGroupId(org: org, team: $0.teamId) })
                 })
         } else {
             backend = nil

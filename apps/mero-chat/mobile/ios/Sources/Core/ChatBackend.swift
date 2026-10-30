@@ -47,7 +47,7 @@ protocol ChatBackend: Sendable {
 }
 
 /// ``ChatBackend`` on the swift-sdk's app layer (`MeroAppBackend`; in the app
-/// `MeroKitUI.CloudAppBackend` over a `CalimeroClient`, in tests
+/// `MeroKitUI.CalimeroAppBackend` over a `CalimeroClient`, in tests
 /// `InMemoryAppBackend`):
 ///
 /// - Contract calls: ``AppChatContract`` over the backend's `ContextContract`
@@ -61,7 +61,7 @@ protocol ChatBackend: Sendable {
 struct CloudChatBackend: ChatBackend {
     let app: any MeroAppBackend
     /// The ids of an org's teams that only admit by invitation (private
-    /// channels). The app reads them from `GET /orgs/{org}`; `nil` treats
+    /// channels), as `{org}/{team}` group ids. The app reads them from `GET /orgs/{org}`; `nil` treats
     /// every channel as open.
     let privateTeams: (@Sendable (_ orgId: String) async -> Set<String>)?
 
