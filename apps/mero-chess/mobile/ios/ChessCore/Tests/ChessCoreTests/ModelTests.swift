@@ -273,10 +273,15 @@ final class LobbyModelTests: XCTestCase {
         let link = try ChessInvitation(invitation: invitation, namespaceId: club, contextId: "c9").link()
         let json = try XCTUnwrap(InviteCodec.decode(token: XCTUnwrap(InviteLink.token(fromPasted: link))))
         let root = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
-        XCTAssertEqual(root["invitation"]?["orgId"]?.stringValue, club)
-        XCTAssertEqual(root["invitation"]?["token"]?.stringValue, invitation.token)
+        XCTAssertEqual(root["invitation"]?.stringValue, invitation.token)
+        XCTAssertEqual(OrgInvitation.parse(link, expectedSlug: ChessConstants.packageName)?.contextId, "c9")
         XCTAssertEqual(root["namespaceId"]?.stringValue, club)
         XCTAssertEqual(root["contextId"]?.stringValue, "c9")
+    }
+
+    func testObjectShapedInvitationIsRefused() {
+        let json = #"{"invitation":{"orgId":"n","token":"inv_x"},"namespaceId":"n","contextId":"c"}"#
+        XCTAssertNil(ChessInvitation.parse(json: json))
     }
 
     func testPreOneSignedInvitationIsRefused() {

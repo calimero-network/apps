@@ -1,11 +1,10 @@
 import Foundation
 import MeroKit
 
-/// An invitation to one table, in the web app's form (`app/src/utils/invitation.ts`), so a link
-/// made on the phone opens in the browser and the other way round:
+/// An invitation to one table, as the swift-sdk's `OrgInvitation` link payload, so a link made on
+/// the phone opens in the browser and the other way round:
 ///
-/// - payload: JSON `{"invitation": {"orgId": "…", "token": "inv_…"}, "namespaceId": "…", "contextId": "…"}`
-///   (the swift-sdk's `InvitationLinkPayload`)
+/// - payload: JSON `{"invitation": "inv_…", "namespaceId": "<org>", "contextId": "<table>", "name": "<club, optional>"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.mero-chess/join?invitation=<token>`
 ///
@@ -16,26 +15,21 @@ import MeroKit
 public struct ChessInvitation: Sendable, Identifiable {
     public var id: String { contextId }
 
+    /// The invite, with ``contextId`` set.
     public let invitation: OrgInvitation
     public let namespaceId: String
     public let contextId: String
 
     public init(invitation: OrgInvitation, namespaceId: String, contextId: String) {
-        self.invitation = invitation
+        self.invitation = OrgInvitation(
+            namespaceId: namespaceId, token: invitation.token, contextId: contextId, name: invitation.name)
         self.namespaceId = namespaceId
         self.contextId = contextId
     }
 
-    private struct Payload: Encodable {
-        let invitation: OrgInvitation
-        let namespaceId: String
-        let contextId: String
-    }
-
     /// The shareable link.
     public func link() throws -> String {
-        let token = try InviteCodec.encode(Payload(invitation: invitation, namespaceId: namespaceId, contextId: contextId))
-        return InviteLink.invitation(token: token, slug: ChessConstants.packageName)
+        try invitation.link(slug: ChessConstants.packageName)
     }
 
     /// A pasted link, a deep link or a bare token; nil when it is not a Mero Chess invitation
@@ -47,16 +41,18 @@ public struct ChessInvitation: Sendable, Identifiable {
         return parse(json: json)
     }
 
-    /// The decoded payload, checked as the web app's `parseInvitationPayload` checks it.
+    /// The decoded payload: the token from the string `invitation`, the org from `namespaceId`,
+    /// the table from `contextId`.
     public static func parse(json: String) -> ChessInvitation? {
         guard let value = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)),
             case .object(let fields) = value,
             let namespaceId = fields["namespaceId"]?.stringValue, !namespaceId.isEmpty,
             let contextId = fields["contextId"]?.stringValue, !contextId.isEmpty,
-            let inner = fields["invitation"],
-            let token = inner["token"]?.stringValue, !token.isEmpty
+            let token = fields["invitation"]?.stringValue, !token.isEmpty
         else { return nil }
-        let invitation = OrgInvitation(orgId: inner["orgId"]?.stringValue ?? namespaceId, token: token)
-        return ChessInvitation(invitation: invitation, namespaceId: namespaceId, contextId: contextId)
+        let name = fields["name"]?.stringValue
+        return ChessInvitation(
+            invitation: OrgInvitation(namespaceId: namespaceId, token: token, name: name), namespaceId: namespaceId,
+            contextId: contextId)
     }
 }
