@@ -8,22 +8,46 @@ byte-compatible with the web's crypto.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen; logic in the local `PassCore` package | swift-sdk `c9ca1a0` (`main` merge commit of swift-sdk#84) |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen; logic in the local `PassCore` package | swift-sdk `6c5f116` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands) |
 | Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `ea8ded7` (`main` merge commit of kotlin-sdk#67), composite build |
 
 The SDK pins are the `main` merge commits of those app-session PRs. To bump them, change
 `revision:` in `ios/project.yml` and `ios/PassCore/Package.swift` (keep the two identical), and
 `android/kotlin-sdk.ref`.
 
-## Delegated execution only
+## How the apps reach Calimero
 
-Neither app runs or logs into a node. Both are built on the SDKs' `MeroAppSession`: the person
-signs in with their Calimero account (the wallet certifies this device's key), the Cloud manager
-names the account's relay, and everything goes through that relay. Views go through the relay's
-account-scoped query, writes are warrants the device key signs. A team is a namespace founded
-through the relay; a vault is an open subgroup with one context running the contract, created
-with `init(name)`, as on the web. Live updates come from `MeroAppBackend.events(contextId)`, with a
-5-second poll when the relay cannot stream and while the phone waits for a vault key.
+**iOS runs on Calimero 1.0.** The app talks to a node of a Calimero Cloud cluster over the sealed
+channel (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and signs in with
+a passkey; it runs no node. `MeroAppSession` builds the SDK's `CloudAppBackend`, and the view
+models keep their `MeroAppBackend` calls, each of which maps one to one:
+
+| The app | `MeroAppBackend` | Calimero 1.0 |
+| --- | --- | --- |
+| team | namespace | organization (metadata `package = com.calimero.mero-pass`) |
+| vault | subgroup (open) | team (`join: everyone`) |
+| vault's contract | context | app instance (`/apps/{app}/views`, `/intents`, `/events`) |
+| invitation | `OrgInvitation` | org invite token, redeemed at `/invites/{token}/redeem` |
+
+Sign-in (`ios/Sources/App/CloudAccess.swift`, the same file in every ported app):
+
+- **Calimero Cloud:** a node URL of your cluster (from cloud.calimero.network; `MeroNodeURL` in
+  `ios/project.yml` prefills it), then *Sign in with passkey* or *Create an account*. The device's
+  passkey belongs to the cluster's relying party: add the `webcredentials:<rp-id>` associated
+  domain to the app for a real cluster.
+- **Development node:** a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by
+  default), mock attestation allowed (`allowMock`), with a software passkey the SDK keeps for it.
+- **Approvals** (Security → Account): node releases and app upgrades waiting for you, per org and
+  for your own apps. *Review* opens the node's consent page in the system browser, which returns
+  to `mero-pass://consent`. The app's own session cannot approve anything.
+
+**Android still runs on 0.x** (delegated execution through the account's relay, wallet sign-in);
+its port follows the kotlin-sdk's.
+
+A vault's app instance is created with `init(name)`, as on the web. Live updates come from
+`MeroAppBackend.events(contextId)`, with a 5-second poll when the stream is not available and
+while the phone waits for a vault key. Device approvals and key rotation inside a vault are the
+vault contract's own calls, not the node's consent page, so they work the same on both platforms.
 
 ## Crypto, compatible with web vaults
 
@@ -83,7 +107,8 @@ against an in-memory vault that enforces the contract's rules, test for test wit
 
 ## Screens
 
-1. **Sign in**: what Mero Pass is, and "Sign in with Calimero". An invitation that arrived while
+1. **Sign in**: what Mero Pass is; on iOS a Calimero Cloud passkey (sign in or create an account) or
+   a development node. An invitation that arrived while
    signed out is named here.
 2. **Unlock**: Face ID / fingerprint; the first unlock makes this phone's key.
 3. **Vaults** (tab): your teams as cards (vault and member counts); New team, Join with a link;
@@ -119,16 +144,18 @@ confirmation codes, deny, revoke, rotate, recovery keys: create, auto-adopt, res
 all 8 kinds (list, filter by kind and tag, search, detail, reveal, copy, TOTP, strength, add,
 edit with field-level updates, previous values and restore, trash, restore, delete forever),
 share links, password health (weak, reused, old), activity, members and roles, the default role,
-invitation links in the web's format both ways
-(`https://links.calimero.network/com.calimero.mero-pass/join?invitation=…` and `calimero://…`).
+invitation links (`https://links.calimero.network/com.calimero.mero-pass/join?invitation=…` and
+`calimero://…`). On iOS the payload is the SDK's 1.0 `OrgInvitation` JSON (`{"invitation": "inv_…",
+"namespaceId", "name"?, "contextId"?}`) plus `kind`, `vaultId` and `vaultName`; a pre-1.0 signed
+invitation is refused. Android and the web app still write the 0.x payload until their ports.
 
 Left out, and why:
 
 - **Private vault.** The web marks a personal namespace in its group metadata and closes it to
   newcomers (default capabilities 0); `MeroAppBackend` cannot read or write group metadata or
   capabilities, so a phone shows a personal vault as a team of one and cannot create one.
-- **Invite-only vaults.** Creating or redeeming one needs a subgroup invitation, which only a
-  node can mint (the web hides this for accounts too). A phone creates open vaults; an
+- **Invite-only vaults.** Creating or redeeming one needs a team invitation, which
+  `MeroAppBackend` cannot mint or redeem (it admits to orgs only). A phone creates open vaults; an
   invite-only vault link admits to the team and says the vault itself could not be joined.
 - **Team-level members, roles and removal** (the web's Team › People tab, TEE badges, member
   names from `@calimero-apps/names`): `MeroAppBackend` has no group-member reads or role
@@ -200,13 +227,11 @@ in-memory vault, and mirror each other test for test.
 
 ## Configuration
 
-- **Sign-in callback**: `mero-pass://enrol` (iOS `MeroPassCallbackScheme` in `project.yml`,
-  Android `meroEnrolCallback` in `gradle.properties`). The hosted wallet currently returns only to
-  `https://` callbacks, so production sign-in needs that wallet change or a verified https
-  callback, as for Mero Chat.
-- **Environment**: empty values use the SDK defaults (hosted Cloud manager, wallet, registry).
-  iOS: `MeroCloudBaseURL`, `MeroWalletURL`, `MeroRegistryURL` in `project.yml`. Android:
-  `-PmeroCloudUrl=… -PmeroWalletUrl=… -PmeroRegistryUrl=…`.
+- **iOS (1.0)**: `MeroNodeURL` (a node of your Cloud cluster; empty: the sign-in screen asks) and
+  `MeroDevNodeURL` (the development node it offers) in `project.yml`; the node's consent page
+  returns to `mero-pass://consent` (`MeroPassCallbackScheme`).
+- **Android (0.x)**: sign-in returns to `mero-pass://enrol` (`meroEnrolCallback` in
+  `gradle.properties`); `-PmeroCloudUrl=… -PmeroWalletUrl=… -PmeroRegistryUrl=…`.
 - **Share links** point at `https://mero-pass.vercel.app/share`.
 - **Font**: the web app ships no display face of its own, so headings use the system face,
   semibold.

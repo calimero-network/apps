@@ -7,7 +7,6 @@ import SwiftUI
 struct SignInView: View {
     @EnvironmentObject private var session: MeroAppSession
     var invitedTo: String?
-    @State private var busy = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,30 +38,7 @@ struct SignInView: View {
             }
             .padding(.horizontal, 28)
             Spacer()
-            VStack(spacing: 12) {
-                if let error = session.client.errorMessage {
-                    Text(error).font(.system(size: 14)).foregroundStyle(Palette.danger).multilineTextAlignment(.center)
-                }
-                Button {
-                    Haptics.tap()
-                    busy = true
-                    Task {
-                        await session.signIn()
-                        busy = false
-                    }
-                } label: {
-                    if busy {
-                        ProgressView().tint(Palette.ink)
-                    } else {
-                        Label("Sign in with Calimero", systemImage: "person.crop.circle.badge.checkmark")
-                    }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(busy)
-                Text("You'll approve this device in your Calimero wallet.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Palette.muted)
-            }
+            CloudSignInPanel(style: .app)
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
         }

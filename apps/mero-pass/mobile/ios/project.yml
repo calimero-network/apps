@@ -7,8 +7,9 @@
 # The logic (vault crypto, vault session, generated contract client, view
 # models) lives in the local PassCore package, which builds and tests on macOS
 # with `swift test --package-path PassCore`. The swift-sdk is pinned by
-# revision to its main merge commit of swift-sdk#84. Keep it identical to
-# PassCore/Package.swift.
+# revision to the head of its Calimero 1.0 port (swift-sdk#85, branch
+# feat/calimero-1.0), moving to the merge commit once that lands. Keep it
+# identical to PassCore/Package.swift.
 name: MeroPass
 
 options:
@@ -20,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    revision: 6c5f1167d1e586f556f59c326de5f51d034e80dd
   PassCore:
     path: PassCore
 
@@ -39,18 +40,27 @@ targets:
         # Unlocking the device key asks for Face ID (or Touch ID / the passcode).
         NSFaceIDUsageDescription: Mero Pass uses Face ID to unlock your vaults on this phone.
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`mero-pass://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.pass.enrol
+          # The node's consent page returns here (`mero-pass://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.pass.consent
             CFBundleURLSchemes: [mero-pass]
           # Invitation deep links: `calimero://com.calimero.mero-pass/join?invitation=…`.
           - CFBundleURLName: network.calimero.pass.invite
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
-        # wallet and Cloud manager). See ../README.md.
+        # Which cluster sign-in uses (Calimero 1.0). MeroNodeURL: a node of your
+        # Calimero Cloud cluster (from the cloud.calimero.network console); empty =
+        # the sign-in screen asks. MeroDevNodeURL: what the "Development node"
+        # field starts with (`merod local`, mock attestation allowed). See README.
         MeroPassCallbackScheme: mero-pass
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        MeroNodeURL: ""
+        MeroDevNodeURL: "http://localhost:2501"
+        NSLocalNetworkUsageDescription: "Connect to a Calimero development node on your local network."
+        # http only to a node on the local network (localhost, *.local, an IP literal).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    # A passkey on a real cluster belongs to its relying party (the node's --rp-id).
+    # To sign in with the device's passkey there, add an entitlements file with
+    # `com.apple.developer.associated-domains: [webcredentials:<rp-id>]`. A
+    # development node uses a software passkey and needs neither.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.pass

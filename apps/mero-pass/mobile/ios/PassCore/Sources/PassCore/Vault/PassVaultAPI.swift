@@ -20,7 +20,7 @@ public struct PassTransport: PassGenerated.ContextContractCalling {
 }
 
 extension PassClient {
-    /// The vault client for one context, over the account's relay.
+    /// The vault client for one context, over the account's node session.
     public static func make(contract: any ContextContract, contextId: String) -> PassClient {
         PassClient(transport: PassTransport(contract.bound(to: contextId)))
     }
