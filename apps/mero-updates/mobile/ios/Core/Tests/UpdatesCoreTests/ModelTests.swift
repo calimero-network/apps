@@ -71,7 +71,7 @@ final class CompaniesModelTests: XCTestCase {
         let model = CompaniesModel(backend: fake.backend)
         let company = await model.create(name: "X")
         XCTAssertNil(company)
-        XCTAssertEqual(model.error?.hasPrefix("The relay can't be reached"), true)
+        XCTAssertEqual(model.error?.hasPrefix("The cluster can't be reached"), true)
     }
 }
 

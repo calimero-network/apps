@@ -6,39 +6,67 @@ copy, icons (SF Symbols / Material, mapped) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `35148e4` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands) |
 | Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`android/kotlin-sdk.ref`) |
 
-**SDK pins.** Both pin the SDKs' `main` merge commits of swift-sdk PR #84 and kotlin-sdk PR
-#67, which add `MeroAppSession`, `MeroAppBackend` and `ContextContract`. The pins are set in
+**SDK pins.** iOS pins the head of swift-sdk#85 (the Calimero 1.0 port of `MeroAppSession`,
+`MeroAppBackend` and `ContextContract`); Android the `main` merge commit of kotlin-sdk PR #67. The pins are set in
 `Core/Package.swift` and `project.yml` on iOS, `kotlin-sdk.ref` on Android.
 
-## Delegated execution only
+## How the apps reach Calimero
 
-Neither app runs or logs into a node. The person signs in with their Calimero account (the
-wallet certifies the phone's device key), the Cloud manager names the relay that serves the
-account, and everything goes through that relay through the SDKs' `MeroAppSession`:
+**iOS runs on Calimero 1.0.** The app talks to a node of a Calimero Cloud cluster over the sealed
+channel (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and signs in with
+a passkey; it runs no node. `MeroAppSession` builds the SDK's `CloudAppBackend`, and the view
+models keep their `MeroAppBackend` calls, each of which maps one to one:
+
+| The app | `MeroAppBackend` | Calimero 1.0 |
+| --- | --- | --- |
+| company | namespace | organization (metadata `package = com.calimero.mero-updates`) |
+| audience | subgroup (open) | team (`join: everyone`) |
+| audience's context | context | app instance (`/apps/{app}/views`, `/intents`, `/events`) |
+| invitation | `OrgInvitation` | org invite token, redeemed at `/invites/{token}/redeem` |
+
+Sign-in (`ios/Sources/App/CloudAccess.swift`, the same file in every ported app):
+
+- **Calimero Cloud:** a node URL of your cluster (from cloud.calimero.network; `MeroNodeURL` in
+  `ios/project.yml` prefills it), then *Sign in with passkey* or *Create an account*. The device's
+  passkey belongs to the cluster's relying party: add the `webcredentials:<rp-id>` associated
+  domain to the app for a real cluster.
+- **Development node:** a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by
+  default), mock attestation allowed (`allowMock`), with a software passkey the SDK keeps for it.
+- **Approvals** (Companies → account menu): node releases and app upgrades waiting for you, per org and
+  for your own apps. *Review* opens the node's consent page in the system browser, which returns
+  to `mero-updates://consent`. The app's own session cannot approve anything.
+
+**Android still runs on 0.x** (delegated execution through the account's relay, wallet sign-in);
+its port follows the kotlin-sdk's.
+
+What both apps do (on Android, through the relay; on iOS, through the cluster's node):
 
 - **Reads** (the contract's `read_only` views) are the relay's account-scoped query; **writes**
-  are warrants the device key signs. The generated `UpdatesClient` decides which per method.
+  are warrants the device key signs (on iOS: `/apps/{app}/views` and `/intents`). The generated `UpdatesClient` decides which per method.
 - **Companies and audiences** are what the web app makes: a company is a namespace founded for
   the app; an audience is an open subgroup of it with one context, which holds the updates.
   Opening an audience joins its context when the account is not in it yet.
-- **Invitations** use the web app's format, so a link from either side opens on the other:
-  `https://links.calimero.network/com.calimero.mero-updates/join?invitation=<base58(deflate(json))>`
-  with `{invitation, kind, groupId, groupAlias, audienceId?, contextId?, audienceName?}`. The
-  namespace joined is read from inside the signed invitation. The older `?invite=` links are read
-  too. Redeemed by direct admission through the relay.
+- **Invitations**: `https://links.calimero.network/com.calimero.mero-updates/join?invitation=<base58(deflate(json))>`.
+  On iOS the payload is the SDK's 1.0 `OrgInvitation` JSON plus this app's landing fields,
+  `{"invitation": "inv_…", "namespaceId", "contextId"?, "name"?, "kind", "audienceId"?, "audienceName"?}`, redeemed with
+  `POST /invites/{token}/redeem`; pre-1.0 signed invitations are refused. Android and the web app
+  still write the 0.x `{invitation, kind, groupId, …}` payload (redeemed through the relay) until
+  their ports. The older `?invite=` links are read too.
 - **Drafts** (`save_draft` / `list_drafts` / `delete_draft`) use the contract's `#[app::private]`
-  storage exactly as the web does. On a phone the executing node is the account's relay, so a
-  draft lives in that node's private storage and never replicates to investors. The payload is
+  storage exactly as the web does. On Android the executing node is the account's relay, so a
+  draft lives in that node's private storage and never replicates to investors; on iOS (1.0) the
+  call runs on the cluster's leader for the app. The payload is
   the web composer's JSON, so either client opens a draft the other saved on the same node.
-- **Live updates** come from the relay's event stream (coalesced, 250 ms), with a poll as a
+- **Live updates** come from the app instance's event stream (coalesced, 250 ms), with a poll as a
   fallback, like the web's `AudienceShell` revision.
 
 ## Screens
 
-1. **Sign in**: what the app is, "Sign in with Calimero".
+1. **Sign in**: what the app is; on iOS a Calimero Cloud passkey (sign in or create an account)
+   or a development node.
 2. **Companies**: your companies, a new company, join with a pasted invitation link; an opened
    invitation link asks "Join …?" first and lands in the audience (or company) it names.
 3. **Company**: its audiences, a new audience (born open, with its context), "Invite people"
