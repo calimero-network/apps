@@ -7,11 +7,20 @@ import SwiftUI
 struct SpacesScreen: View {
     @EnvironmentObject private var session: MeroAppSession
     @StateObject private var model: SpacesModel
+    @StateObject private var approvals: ApprovalsModel
     let openInvitation: (String) -> Void
     @State private var sheet: SpacesSheet?
 
-    init(backend: any MeroAppBackend, openInvitation: @escaping (String) -> Void) {
+    init(backend: any MeroAppBackend, session: MeroAppSession, openInvitation: @escaping (String) -> Void) {
         _model = StateObject(wrappedValue: SpacesModel(backend: backend))
+        _approvals = StateObject(
+            wrappedValue: ApprovalsModel(
+                packageName: ForumConstants.packageName, appName: "Mero Forum",
+                fetch: { [weak session] org in
+                    guard let session else { throw CancellationError() }
+                    return try await session.pendingApprovals(org: org)
+                },
+                consent: { [weak session] request in await session?.requestConsent(request) }))
         self.openInvitation = openInvitation
     }
 
@@ -21,7 +30,7 @@ struct SpacesScreen: View {
                 if !model.hasRelay {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                        Text("Your account has no relay yet. Join a space from an invitation link to get one.")
+                        Text("You're not connected to your cluster. Sign in again, or join a space from an invitation link.")
                             .font(.system(size: 14))
                     }
                     .foregroundStyle(Palette.ink)
@@ -29,6 +38,7 @@ struct SpacesScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.limeSoft))
                 }
+                ApprovalsCard(model: approvals, orgs: model.spaces.map(\.id))
                 switch model.phase {
                 case .loading:
                     ForEach(0..<3, id: \.self) { _ in SkeletonCard() }
@@ -53,8 +63,14 @@ struct SpacesScreen: View {
             .padding(16)
         }
         .background(Palette.ground)
-        .refreshable { await model.load() }
-        .task { await model.load() }
+        .refreshable {
+            await model.load()
+            await approvals.load(orgs: model.spaces.map(\.id))
+        }
+        .task {
+            await model.load()
+            if DemoMode.backend == nil { await approvals.load(orgs: model.spaces.map(\.id)) }
+        }
         .forumNavigation("Spaces")
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {

@@ -8,7 +8,7 @@ public enum ForumConstants {
     public static let packageName = "com.calimero.mero-forum"
     /// One page of the feed or of a thread, as on the web.
     public static let pageSize: UInt32 = 20
-    /// How often an open forum is re-read when the relay cannot stream events.
+    /// How often an open forum is re-read when the node's event stream is down.
     public static let pollInterval: Duration = .seconds(10)
     /// The contract's limits (`MAX_TITLE`, `MAX_BODY`, `MAX_NICKNAME`).
     public static let maxTitle = 300
@@ -34,13 +34,13 @@ public struct ForumTransport: ForumGenerated.ContextContractCalling {
 }
 
 extension ForumClient {
-    /// The forum client for one context, over the account's relay.
+    /// The forum client for one app instance, over the account's sealed session.
     public static func make(contract: any ContextContract, contextId: String) -> ForumClient {
         ForumClient(transport: ForumTransport(contract.bound(to: contextId)))
     }
 }
 
-/// Where a forum lives: the space (namespace), the forum (subgroup) and its context.
+/// Where a forum lives: the space (org), the forum (team) and its app instance.
 public struct ForumRef: Hashable, Sendable {
     public let namespaceId: String
     public let spaceName: String
@@ -104,16 +104,17 @@ public final class MemoryNameStore: NameStore, @unchecked Sendable {
 public enum ForumErrorText {
     public static func describe(_ error: Error) -> String {
         if let account = error as? AccountError, case .noRelay = account {
-            return "No relay serves your account yet. Join a space from an invitation link to get one."
+            return "You're not connected to your cluster. Sign in again."
         }
+        if let text = cluster(error) { return text }
         if let url = error as? URLError {
             switch url.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
                 return "You're offline. Check your connection and try again."
             case .timedOut:
-                return "The relay took too long to answer. Try again."
+                return "Your cluster took too long to answer. Try again."
             default:
-                return "Couldn't reach the relay. Try again."
+                return "Couldn't reach your cluster. Try again."
             }
         }
         if error is DecodingError {
@@ -127,5 +128,20 @@ public enum ForumErrorText {
             return "A forum needs at least one moderator."
         }
         return text.isEmpty ? "Something went wrong. Try again." : text
+    }
+
+    /// The Calimero 1.0 node's typed errors, in words.
+    static func cluster(_ error: Error) -> String? {
+        switch error {
+        case is ConfirmCancelled: return "The passkey prompt was cancelled."
+        case is LoginRequired: return "Your session ended. Sign in again."
+        case is ReleaseDeadlineError:
+            return "A newer node release needs approval before anything can change. Review it under Spaces."
+        case is ConsentStale: return "That approval request is out of date. Try again."
+        case is NotFound: return "This isn't available to you (yet)."
+        case let error as UnavailableError:
+            return "Your cluster is unavailable right now (\(error.reason)). Try again shortly."
+        default: return nil
+        }
     }
 }

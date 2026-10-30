@@ -159,6 +159,6 @@ final class InvitationModelTests: XCTestCase {
         let model = InvitationModel()
         model.open(try ForumInvitation(invitation: InMemoryAppBackend.invitation(namespaceId: ns)).token())
         await model.accept(backend: { backend }, didJoin: {})
-        XCTAssertEqual(model.stage, .failed("The relay took too long to answer. Try again."))
+        XCTAssertEqual(model.stage, .failed("Your cluster took too long to answer. Try again."))
     }
 }

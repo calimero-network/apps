@@ -85,13 +85,28 @@ final class ForumInvitationTests: XCTestCase {
         XCTAssertNotNil(ForumInvitation.parse("  \(token)\n"))
     }
 
-    func testWebPayloadShapes() throws {
+    func testPayloadShapes() throws {
         let envelope = String(decoding: try JSONEncoder().encode(signed), as: UTF8.self)
-        let camel = envelope.replacingOccurrences(of: "inviter_signature", with: "inviterSignature")
-        let parsed = try XCTUnwrap(ForumInvitation.parse(json: #"{"data":{"invitation":\#(camel),"groupName":"Ops"}}"#))
+        let parsed = try XCTUnwrap(ForumInvitation.parse(json: #"{"data":{"invitation":\#(envelope),"groupName":"Ops"}}"#))
         XCTAssertEqual(parsed.spaceName, "Ops")
         XCTAssertEqual(parsed.namespaceId, ns)
+        XCTAssertEqual(parsed.invitation, signed)
         XCTAssertNotNil(ForumInvitation.parse(json: envelope))
+    }
+
+    func testLinkCarriesTheSDKPayload() throws {
+        let token = try ForumInvitation(invitation: signed, spaceName: "Design").token()
+        let json = try XCTUnwrap(InviteCodec.decode(token: token))
+        let root = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+        XCTAssertEqual(root["invitation"]?["orgId"]?.stringValue, ns)
+        XCTAssertEqual(root["invitation"]?["token"]?.stringValue, signed.token)
+        XCTAssertEqual(root["namespaceId"]?.stringValue, ns)
+        XCTAssertEqual(root["groupAlias"]?.stringValue, "Design")
+    }
+
+    func testPreOneSignedInvitationIsRefused() {
+        let json = #"{"invitation":{"invitation":{"group_id":[1,2]},"inviter_signature":"5a5a"},"groupAlias":"Old"}"#
+        XCTAssertNil(ForumInvitation.parse(json: json))
     }
 
     func testRefusesOtherAppsAndGarbage() throws {
