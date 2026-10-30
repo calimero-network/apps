@@ -109,24 +109,19 @@ final class DemoBackend: MeroAppBackend, ContextContract, @unchecked Sendable {
         }
     }
 
-    func createInvitation(namespaceId: String) async throws -> SignedGroupOpenInvitation {
+    func createInvitation(namespaceId: String) async throws -> OrgInvitation {
         try await pause()
-        let group = (try? Hex.decode(namespaceId, label: "namespaceId", bytes: 32)).map { $0.map(Int.init) }
-        return SignedGroupOpenInvitation(
-            invitation: GroupInvitationFromAdmin(
-                inviterIdentity: Array(repeating: 7, count: 32), groupId: group ?? Array(repeating: 0, count: 32),
-                expirationTimestamp: 4_102_444_800, secretSalt: Array(repeating: 3, count: 32)),
-            inviterSignature: String(repeating: "5a", count: 64))
+        return OrgInvitation(orgId: namespaceId, token: "inv_demo_" + String(namespaceId.prefix(12)))
     }
 
-    func joinNamespace(namespaceId: String, invitation: SignedGroupOpenInvitation) async throws -> AppJoinedNamespace {
+    func joinNamespace(namespaceId: String, invitation: OrgInvitation) async throws -> AppJoinedNamespace {
         try await pause()
         locked {
             if !namespaces.contains(where: { $0.id == namespaceId }) {
                 namespaces.append(AppNamespace(id: namespaceId, name: nil, applicationId: applicationId))
             }
         }
-        return AppJoinedNamespace(namespaceId: namespaceId, published: true, relayURL: "https://relay.demo")
+        return AppJoinedNamespace(namespaceId: namespaceId, published: true, nodeURL: "https://node.demo")
     }
 
     /// Open, never yields: every screen reloads after its own writes, so nothing needs pushing.

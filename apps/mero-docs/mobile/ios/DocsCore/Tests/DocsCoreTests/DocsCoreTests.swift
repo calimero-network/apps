@@ -263,3 +263,12 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(none.images["ab"], .unavailable)
     }
 }
+
+final class ErrorTextTests: XCTestCase {
+    func testCalimero10ErrorsReadAsWords() {
+        XCTAssertEqual(DocsFormat.errorText(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertEqual(DocsFormat.errorText(AppError("Folder is archived")), "Folder is archived")
+        XCTAssertEqual(
+            DocsFormat.errorText(AppError("", details: ["code": .string("NotAMember")])), "NotAMember")
+    }
+}

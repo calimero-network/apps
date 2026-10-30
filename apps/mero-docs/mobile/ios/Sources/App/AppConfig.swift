@@ -3,39 +3,34 @@ import Foundation
 import MeroKit
 import MeroKitUI
 
-/// Where the app signs in and which cloud it routes through, read from the
-/// Info.plist keys `project.yml` sets. An empty value means the SDK's default
-/// (the hosted Calimero wallet and Cloud manager).
+/// Which Calimero 1.0 cluster the app talks to, from the Info.plist keys
+/// `project.yml` sets (see ../README.md): `MeroNodeURL` (a node of your Cloud
+/// cluster; empty = the sign-in screen asks) and `MeroDevNodeURL` (the
+/// development node the sign-in screen offers).
 enum AppConfig {
-    /// The app scheme the wallet returns to (`mero-docs://enrol#credential=…`).
+    /// The app scheme the node's consent page returns to (`mero-docs://consent?…`).
     static var callbackScheme: String { string("MeroDocsCallbackScheme") ?? "mero-docs" }
 
-    /// An https host the wallet returns to instead (a verified Associated Domain). Unset by default.
+    /// An https host the consent page returns to instead (a verified Associated Domain). Unset by default.
     static var callbackHost: String? { string("MeroDocsCallbackHost") }
-    static var callbackPath: String { string("MeroDocsCallbackPath") ?? "/enrol" }
+    static var callbackPath: String { string("MeroDocsCallbackPath") ?? "/consent" }
 
     static var callback: CloudCallback {
         if let host = callbackHost { return .https(host: host, path: callbackPath) }
-        return .scheme(callbackScheme)
+        return .scheme(callbackScheme, path: "consent")
     }
 
     static var config: MeroProviderConfig {
-        var config = MeroProviderConfig()
-        if let cloud = string("MeroCloudBaseURL").flatMap(URL.init(string:)) { config.cloudBaseURL = cloud }
-        if let registry = string("MeroRegistryURL") { config.registryURL = registry }
-        return config
+        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: DocsFormat.packageName)
     }
 
-    static var walletURL: URL? { string("MeroWalletURL").flatMap(URL.init(string:)) }
-
-    /// The Keychain service the device key, the account session and the relay tokens live under.
+    /// The Keychain service the session and the development passkey live under.
     static let keychainService = "network.calimero.docs"
 
     @MainActor
     static func makeSession() -> MeroAppSession {
         MeroAppSession(
-            packageName: DocsFormat.packageName, callback: callback, config: config, walletURL: walletURL,
-            keychainService: keychainService)
+            packageName: DocsFormat.packageName, callback: callback, config: config, keychainService: keychainService)
     }
 
     private static func string(_ key: String) -> String? {
@@ -45,13 +40,13 @@ enum AppConfig {
     }
 }
 
-/// Image bytes through the signed-in client's admin surface: the account's
-/// relay serves a blob of a folder's docs context the account is in.
+/// Image bytes through the signed-in backend: a blob of the folder's docs app
+/// instance (`GET /apps/{app}/blobs/{id}` on Calimero 1.0).
 struct SessionBlobs: BlobLoading {
-    let admin: (any AdminSurface)?
+    let backend: (any MeroAppBackend)?
 
     func blob(id: String, contextId: String) async throws -> Data {
-        guard let admin else { throw URLError(.userAuthenticationRequired) }
-        return try await admin.getBlob(id, contextId: contextId)
+        guard let backend else { throw URLError(.userAuthenticationRequired) }
+        return try await backend.getBlob(blobId: id, contextId: contextId)
     }
 }
