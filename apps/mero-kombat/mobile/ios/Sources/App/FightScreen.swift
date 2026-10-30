@@ -120,8 +120,8 @@ struct ArenaScreen: View {
     }
 
     init(backend: any MeroAppBackend, ref: ArenaRef, store: PlayerStore) {
-        let presence = (backend as? DelegatedAppBackend)?.connection.presence.map {
-            RelayPresenceChannel(client: $0, contextId: ref.contextId) as any PresenceChannel
+        let presence = (backend as? CalimeroAppBackend).map {
+            CalimeroPresenceChannel(client: $0.client, contextId: ref.contextId) as any PresenceChannel
         }
         _model = StateObject(wrappedValue: ArenaModel(backend: backend, ref: ref, store: store, presence: presence))
     }
@@ -502,7 +502,7 @@ struct ArenaDetailsSheet: View {
                     DetailRow(
                         label: "Sent from this phone",
                         value: "\(model.meter.sent) sent · \(model.meter.ok) confirmed · \(model.meter.failed) failed")
-                    DetailRow(label: "Presence", value: model.hasPresence ? "Through your relay" : "Unavailable on this session")
+                    DetailRow(label: "Presence", value: model.hasPresence ? "Through your cluster" : "Unavailable on this session")
                 } header: {
                     Text("Chain")
                 }
