@@ -3,29 +3,35 @@ import MeroKit
 import MeroKitUI
 import StreamCore
 
-/// Where the app signs in and which cloud it routes through, read from the
-/// Info.plist keys `project.yml` sets. Empty means the SDK's default (the
-/// hosted Calimero wallet, Cloud manager and registry).
+/// Which Calimero 1.0 cluster the app talks to and where the node's consent
+/// page returns to, read from the Info.plist keys `project.yml` sets. Empty
+/// means "not set": with no node URL, sign-in asks for one.
 enum AppConfig {
     /// The registry package: what streams are founded with and links carry.
     static let packageName = StreamInvitation.packageName
 
-    /// The wallet callback: `mero-stream://enrol`, or a verified https host.
+    /// Where the consent page returns: `mero-stream://consent`, or a verified https host.
     static var callback: CloudCallback {
-        if let host = string("StreamCallbackHost") { return .https(host: host, path: string("StreamCallbackPath") ?? "/enrol") }
-        return .scheme(string("StreamCallbackScheme") ?? "mero-stream")
+        if let host = string("StreamCallbackHost") {
+            return .https(host: host, path: string("StreamCallbackPath") ?? "/consent")
+        }
+        return .scheme(string("StreamCallbackScheme") ?? "mero-stream", path: "consent")
     }
 
+    /// A node of the cluster (Calimero Cloud's console lists them), the rest of
+    /// the cluster for failover, and how far to trust it: production
+    /// attestation, or mock attestation for a `merod local` cluster.
     static var config: MeroProviderConfig {
-        var config = MeroProviderConfig()
-        if let cloud = string("MeroCloudBaseURL").flatMap(URL.init(string:)) { config.cloudBaseURL = cloud }
-        if let registry = string("MeroRegistryURL") { config.registryURL = registry }
-        return config
+        let allowMock = string("MeroAllowMock").map { ["1", "yes", "true"].contains($0.lowercased()) } ?? false
+        return MeroProviderConfig(
+            nodeURL: string("MeroNodeURL"),
+            nodes: (string("MeroNodes") ?? "").split(separator: ",").map {
+                $0.trimmingCharacters(in: .whitespaces)
+            }.filter { !$0.isEmpty },
+            policy: allowMock ? .development : .production, packageVersion: string("MeroPackageVersion"))
     }
 
-    static var walletURL: URL? { string("MeroWalletURL").flatMap(URL.init(string:)) }
-
-    /// The Keychain service the device key and the account session live under.
+    /// The Keychain service the account session (and a development cluster's soft passkey) live under.
     static let keychainService = "network.calimero.stream"
 
     private static func string(_ key: String) -> String? {

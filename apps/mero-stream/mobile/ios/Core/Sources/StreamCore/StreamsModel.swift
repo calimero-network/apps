@@ -57,7 +57,7 @@ public final class StreamsModel: ObservableObject {
     @Published public private(set) var hasLoaded = false
     @Published public private(set) var isWorking = false
     @Published public var error: String?
-    /// Set when a stream was founded but the cloud would not host it.
+    /// Something to point out that is not an error.
     @Published public var notice: String?
 
     public let backend: any MeroAppBackend
@@ -66,14 +66,7 @@ public final class StreamsModel: ObservableObject {
         self.backend = backend
     }
 
-    public var hasRelay: Bool { backend.hasRelay }
-
     public func load() async {
-        guard backend.hasRelay else {
-            streams = []
-            hasLoaded = true
-            return
-        }
         isLoading = true
         defer {
             isLoading = false
@@ -108,11 +101,6 @@ public final class StreamsModel: ObservableObject {
         defer { isWorking = false }
         do {
             let founded = try await backend.foundNamespace(name: trimmed)
-            if !founded.haEnabled {
-                notice =
-                    founded.haError
-                    ?? "The cloud is not hosting this stream yet, so people you invite can't find it until it is."
-            }
             let stream = StreamSummary(id: founded.namespaceId, name: trimmed, memberCount: 1, roomCount: 0)
             streams = (streams.filter { $0.id != stream.id } + [stream])
                 .sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
@@ -129,17 +117,15 @@ public final class StreamsModel: ObservableObject {
         isWorking = true
         defer { isWorking = false }
         do {
-            let signed = try await backend.createInvitation(namespaceId: stream.id)
-            return try StreamInvitation(
-                invitation: signed, kind: .namespace, namespaceId: stream.id, namespaceName: stream.title
-            ).link()
+            let invitation = try await backend.createInvitation(namespaceId: stream.id)
+            return try StreamInvitation(invitation: invitation, kind: .namespace, namespaceName: stream.title).link()
         } catch {
             self.error = ErrorText.describe(error)
             return nil
         }
     }
 
-    /// Redeem an invitation. Nil with ``error`` set when the relay refused.
+    /// Redeem an invitation. Nil with ``error`` set when the node refused.
     public func join(_ invitation: StreamInvitation) async -> InvitationLanding? {
         isWorking = true
         defer { isWorking = false }

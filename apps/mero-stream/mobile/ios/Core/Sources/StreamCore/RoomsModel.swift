@@ -108,7 +108,7 @@ public final class RoomsModel: ObservableObject {
         status = "Joining the room…"
         var lastError: Error?
         // Membership of a stream you just joined can take a moment to reach
-        // the relay; the web waits for it the same way.
+        // every node of the cluster; the web waits for it the same way.
         for attempt in 0..<4 {
             do {
                 try await backend.joinContext(contextId: contextId)
@@ -128,7 +128,7 @@ public final class RoomsModel: ObservableObject {
     public func inviteLink(for room: RoomSummary) async -> String? {
         await mint(key: "invite:\(room.id)") { signed in
             StreamInvitation(
-                invitation: signed, kind: .room, namespaceId: stream.id, namespaceName: stream.title, roomId: room.id,
+                invitation: signed, kind: .room, namespaceName: stream.title, roomId: room.id,
                 contextId: room.contextId, roomName: room.title)
         }
     }
@@ -136,7 +136,7 @@ public final class RoomsModel: ObservableObject {
     /// A link that joins the whole stream and lands on its rooms.
     public func streamInviteLink() async -> String? {
         await mint(key: "invite") { signed in
-            StreamInvitation(invitation: signed, kind: .namespace, namespaceId: stream.id, namespaceName: stream.title)
+            StreamInvitation(invitation: signed, kind: .namespace, namespaceName: stream.title)
         }
     }
 

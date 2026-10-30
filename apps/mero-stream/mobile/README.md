@@ -11,18 +11,47 @@ copy, icons and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, AVFoundation + VideoToolbox | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` |
+| iOS | `ios/` | SwiftUI, iOS 16+, AVFoundation + VideoToolbox | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (head of `feat/calimero-1.0`, PR #85). **Calimero 1.0.** |
 | Android | `android/` | Jetpack Compose + Material 3, minSdk 26, CameraX + MediaCodec | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`android/kotlin-sdk.ref`) |
 
-**SDK pins.** Both pin the SDKs' `main` merge commits of swift-sdk PR #84 and kotlin-sdk PR #67,
-which add `MeroAppSession`, `MeroAppBackend` and `ContextContract`. The pins live in
-`ios/Core/Package.swift` and `ios/project.yml` on iOS, `android/kotlin-sdk.ref` on Android.
+**SDK pins.** iOS pins the head of swift-sdk's Calimero 1.0 branch (`feat/calimero-1.0`, PR #85;
+the pin moves to that PR's merge commit once it lands), in `ios/Core/Package.swift` and
+`ios/project.yml`. Android pins the `main` merge commit of kotlin-sdk PR #67
+(`android/kotlin-sdk.ref`) and **still speaks the 0.x API** until kotlin-sdk is ported; the rest of
+this section describes it, and "Calimero 1.0 on iOS" below what iOS does instead.
 
-## Delegated execution only
+## Calimero 1.0 on iOS
 
-Neither app runs or logs into a node. The person signs in with their Calimero account (the
+- **Sign in** with a passkey on the cluster (`MeroAppSession.signIn()`), or **create an account**
+  (`signUp(name:)`). The session is kept in the Keychain and refreshed at launch; every request goes
+  over the sealed channel to an attested node.
+- **The cluster** is `MeroNodeURL` in `ios/project.yml` (plus `MeroNodes` for failover). Left
+  empty, the sign-in screen asks for one. **Development**: "Choose your cluster" / "Change" takes any
+  node URL and a "Development cluster" switch (`allowMock`, for `merod local`, nodes on
+  `http://127.0.0.1:2501-2503`); the app keeps a soft passkey for that node and creates its account
+  on the first sign-in. Or set `MeroNodeURL` and `MeroAllowMock: "YES"`.
+- **Words**: a stream is an **organization**; a room is a **team** in it holding one **app
+  instance** (its call).
+- **Media** rides the room's **presence** on the cluster (`CalimeroMediaChannel`:
+  `POST /apps/{app}/presence`, read back off `/apps/{app}/presence/stream`). 1.0 presence state is
+  at most **4 KiB**, so `LiveFrames.maxSliceBytes` is 4096 (a frame is more fragments; the framing
+  is unchanged and still matches the web's vectors at 16 KiB). An entry lapses after 7 s without a
+  refresh; a live call publishes far more often than that.
+- **Invitations**: the link's payload is swift-sdk's `OrgInvitation`,
+  `{invitation: "inv_…", namespaceId, contextId?, name?}`, plus `kind`, `roomId` and
+  `namespaceName`. Joining redeems the token. Android and the web still mint the 0.x signed
+  invitation, so links do not cross between them and iOS until they are ported.
+- **Approvals**: a node release or app upgrade that waits for the account (or a stream it owns)
+  shows under "Needs your approval" on Streams; "Review" opens the **node's consent page in the
+  system browser**, which returns to `mero-stream://consent`.
+- A real cluster's passkeys need the `webcredentials:<rp-id>` Associated Domain of that cluster; it
+  is not set in `project.yml` yet.
+
+## Android (0.x): delegated execution
+
+The Android app runs and logs into no node. The person signs in with their Calimero account (the
 wallet certifies the phone's device key), the Cloud manager names the relay that serves the
-account, and everything goes through that relay with the SDKs' `MeroAppSession`:
+account, and everything goes through that relay with the SDK's `MeroAppSession`:
 
 - **Streams and rooms** are what the web app makes: a stream is a namespace founded for the app;
   a room is an open subgroup in it plus the context that is its call, created with
@@ -63,7 +92,7 @@ each other; a browser neither sends nor plays audio, and the mute control only a
 
 ## Screens
 
-1. **Sign in**: what the app is, "Sign in with Calimero".
+1. **Sign in**: what the app is; on iOS "Sign in with a passkey" / "Create an account" on the cluster, on Android "Sign in with Calimero".
 2. **Streams**: your streams with room and member counts; create one (sheet), join with a link
    (sheet), invite to a stream (swipe or long press, system share sheet), pull to refresh. An
    opened invitation link asks "Join this stream?" / "Join this call?" first.
@@ -127,8 +156,10 @@ cd android && ./scripts/fetch-sdk.sh
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
-Sign-in callback: `mero-stream://enrol` (iOS `project.yml` `StreamCallback*`, Android
-`meroEnrolCallback`). Empty `MeroCloudBaseURL` / `meroCloudUrl` etc. mean the SDK's defaults.
+iOS: the cluster is `MeroNodeURL` / `MeroNodes` / `MeroAllowMock` in `project.yml` (or chosen on
+the sign-in screen); the consent page returns to `mero-stream://consent` (`StreamCallback*`).
+Android: sign-in returns to `mero-stream://enrol` (`meroEnrolCallback`); an empty `meroCloudUrl`
+etc. means the SDK's defaults.
 
 ## CI
 

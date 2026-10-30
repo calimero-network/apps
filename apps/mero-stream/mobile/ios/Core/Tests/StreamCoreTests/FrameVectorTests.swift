@@ -50,14 +50,33 @@ final class FrameVectorTests: XCTestCase {
             timestampUs: f.timestampUs, createdAtMs: f.createdAtMs, startedAtMs: f.startedAtMs, codec: f.codec, bytes: bytes)
     }
 
+    /// The web's vectors were written for 0.x presence slices (16 KiB); 1.0
+    /// presence takes 4 KiB, which ``LiveFrames/maxSliceBytes`` now is. The
+    /// framing is the same at either size.
+    static let webSlice = 16_384
+
     func testPayloadCapacityMatchesTheWeb() throws {
-        XCTAssertEqual(LiveFrames.maxPayloadBytes(codec: "avc1.42001f"), try vectors().maxPayloadAvc)
+        let codec = "avc1.42001f"
+        XCTAssertEqual(Self.webSlice - LiveFrames.headerFixedBytes - codec.utf8.count, try vectors().maxPayloadAvc)
+        XCTAssertEqual(LiveFrames.maxPayloadBytes(codec: codec), 4_096 - 40 - 11)
+    }
+
+    func testEverySliceFitsCalimero10Presence() throws {
+        let slices = try LiveFrames.encodeFragments(
+            LiveFrame(
+                msgSeq: 1, track: 0, isKeyframe: true, width: 640, height: 480, timestampUs: 0, createdAtMs: 0,
+                startedAtMs: 0, codec: "avc1.42001f", bytes: Self.pattern(50_000, seed: 3)))
+        XCTAssertEqual(slices.count, 13)
+        XCTAssertTrue(slices.allSatisfy { $0.count <= 4_096 })
+        let reassembler = FrameReassembler()
+        let out = slices.compactMap(LiveFrames.decodeFragment).compactMap { reassembler.push("a", $0) }
+        XCTAssertEqual(out.first?.bytes.count, 50_000)
     }
 
     func testEncodesExactlyWhatTheWebEncodes() throws {
         for c in try vectors().cases {
             let bytes = try XCTUnwrap([UInt8](hex: c.frame.bytes ?? ""))
-            let encoded = try LiveFrames.encodeFragments(frame(c.frame, bytes: bytes))
+            let encoded = try LiveFrames.encodeFragments(frame(c.frame, bytes: bytes), sliceBytes: Self.webSlice)
             XCTAssertEqual(encoded.map(\.hex), c.fragments, c.name)
         }
     }
@@ -76,7 +95,7 @@ final class FrameVectorTests: XCTestCase {
         let multi = try vectors().multi
         let bytes = Self.pattern(try XCTUnwrap(multi.frame.byteLength), seed: try XCTUnwrap(multi.frame.patternSeed))
         let source = frame(multi.frame, bytes: bytes)
-        let slices = try LiveFrames.encodeFragments(source)
+        let slices = try LiveFrames.encodeFragments(source, sliceBytes: Self.webSlice)
         XCTAssertEqual(slices.map(\.count), multi.fragmentLengths)
         XCTAssertEqual(slices.map { Array($0.prefix(51)).hex }, multi.headersHex)
 

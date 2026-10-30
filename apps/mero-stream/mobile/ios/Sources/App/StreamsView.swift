@@ -7,6 +7,7 @@ import SwiftUI
 /// to, and each room in it is one video call.
 struct StreamsView: View {
     @StateObject private var model: StreamsModel
+    @StateObject private var approvals: ApprovalsModel
     @EnvironmentObject private var nav: Navigator
     @EnvironmentObject private var session: MeroAppSession
     let onSignOut: () -> Void
@@ -14,8 +15,9 @@ struct StreamsView: View {
     @State private var joining = false
     @State private var shared: SharedLink?
 
-    init(backend: any MeroAppBackend, onSignOut: @escaping () -> Void) {
+    init(session: MeroAppSession, backend: any MeroAppBackend, onSignOut: @escaping () -> Void) {
         _model = StateObject(wrappedValue: StreamsModel(backend: backend))
+        _approvals = StateObject(wrappedValue: ApprovalsModel(session: session))
         self.onSignOut = onSignOut
     }
 
@@ -40,6 +42,8 @@ struct StreamsView: View {
             }
             .listRowSeparator(.hidden)
 
+            ApprovalsSection(model: approvals)
+
             if !model.hasLoaded {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
                     .listRowBackground(Color.clear).listRowSeparator(.hidden)
@@ -47,13 +51,9 @@ struct StreamsView: View {
                 VStack(spacing: 12) {
                     EmptyState(
                         symbol: "square.stack.3d.up", title: "No streams yet",
-                        message: model.hasRelay
-                            ? "Create one to start a call, or open an invitation link someone sent you."
-                            : "Your account has no relay yet. Join a stream with an invitation link first.")
-                    if model.hasRelay {
-                        Button { creating = true } label: { Label("Create stream", systemImage: "plus") }
-                            .buttonStyle(PrimaryButtonStyle())
-                    }
+                        message: "Create one to start a call, or open an invitation link someone sent you.")
+                    Button { creating = true } label: { Label("Create stream", systemImage: "plus") }
+                        .buttonStyle(PrimaryButtonStyle())
                     Button { joining = true } label: { Label("Join with a link", systemImage: "link") }
                         .buttonStyle(SecondaryButtonStyle())
                 }
@@ -84,8 +84,8 @@ struct StreamsView: View {
         .scrollContentBackground(.hidden)
         .screenBackground()
         .streamNavigation("Streams")
-        .refreshable { await model.load() }
-        .task { await model.load() }
+        .refreshable { await loadAll() }
+        .task { await loadAll() }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
@@ -97,11 +97,9 @@ struct StreamsView: View {
                     Image(systemName: "person.crop.circle").accessibilityLabel("Account")
                 }
             }
-            if model.hasRelay {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { creating = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("Create stream")
-                }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { creating = true } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Create stream")
             }
         }
         .overlay {
@@ -125,7 +123,7 @@ struct StreamsView: View {
         .sheet(isPresented: $joining) {
             JoinLinkSheet(model: model) { landing in
                 joining = false
-                // A relayless account now has the admitting relay.
+                // Re-read what the account sees now that it is in the stream.
                 Task { await session.didJoinNamespace() }
                 switch landing {
                 case .stream(let stream): nav.path = [stream]
@@ -136,6 +134,12 @@ struct StreamsView: View {
             }
         }
         .sheet(item: $shared) { link in ShareLinkSheet(text: link.url).presentationDetents([.medium, .large]) }
+    }
+
+    /// The streams, then what waits for approval in the account and in each stream.
+    private func loadAll() async {
+        await model.load()
+        await approvals.refresh(orgs: model.streams.map(\.id))
     }
 
     private func invite(_ stream: StreamSummary) {

@@ -42,7 +42,7 @@ public struct CallStats: Equatable, Sendable {
 public final class CallModel: ObservableObject {
     public nonisolated static let peerTimeoutMs: UInt64 = 6_000
     public nonisolated static let keyframeIntervalMs: UInt64 = 2_000
-    /// A phone publishes each slice as a signed relay POST, so it starts lower
+    /// A phone publishes each slice as a presence POST to the node, so it starts lower
     /// than the web's 25 fps / 1.5 Mbps; the shared split applies on top.
     public nonisolated static let baseEncoding = Encoding(fps: 15, bitrate: 1_000_000)
     public nonisolated static let joinRetryDelaysMs: [UInt64] = [500, 1_000, 2_000, 3_000, 5_000]
@@ -344,7 +344,7 @@ public final class CallModel: ObservableObject {
         Task { [weak self] in await self?.pump(channel) }
     }
 
-    /// One slice at a time, in order: the relay drops a slice whose seq is
+    /// One slice at a time, in order: the node drops a slice whose seq is
     /// below one it has already applied, so concurrent publishes would race.
     private func pump(_ channel: any MediaChannel) async {
         defer { pumping = false }

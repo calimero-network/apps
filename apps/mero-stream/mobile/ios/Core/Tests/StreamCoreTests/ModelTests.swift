@@ -231,12 +231,14 @@ final class CallModelTests: XCTestCase {
         XCTAssertTrue(model.takeKeyframeRequest())
         let unit = [UInt8](repeating: 7, count: 20_000)
         model.sendVideo(unit, isKeyframe: true, timestampUs: 33, width: 480, height: 640, codec: "avc1.42c01f")
-        await waitUntil(channel.slicesPublished.count == 2)
+        // 20 kB in 1.0 presence's 4 KiB slices: five fragments.
+        await waitUntil(channel.slicesPublished.count == 5)
+        XCTAssertTrue(channel.slicesPublished.allSatisfy { $0.count <= 4_096 })
         let published = channel.slicesPublished.compactMap(LiveFrames.decodeFragment)
-        XCTAssertEqual(published.count, 2)
+        XCTAssertEqual(published.count, 5)
         let reassembler = FrameReassembler()
-        XCTAssertNil(reassembler.push("x", published[0]))
-        let frame = try XCTUnwrap(reassembler.push("x", published[1]))
+        for fragment in published.dropLast() { XCTAssertNil(reassembler.push("x", fragment)) }
+        let frame = try XCTUnwrap(reassembler.push("x", published[4]))
         XCTAssertEqual(frame.bytes, unit)
         XCTAssertEqual(frame.track, 0)
         XCTAssertEqual(frame.width, 480)

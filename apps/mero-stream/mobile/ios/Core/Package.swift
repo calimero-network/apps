@@ -13,11 +13,11 @@ let package = Package(
         .library(name: "StreamCore", targets: ["StreamCore"])
     ],
     dependencies: [
-        // The swift-sdk `main` merge commit of PR #84; keep it equal to the
-        // revision in ../project.yml.
+        // The head of swift-sdk's Calimero 1.0 branch (PR #85); moves to its
+        // merge commit once it lands. Keep it equal to the revision in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f")
+            revision: "6c5f1167d1e586f556f59c326de5f51d034e80dd")
     ],
     targets: [
         .target(
