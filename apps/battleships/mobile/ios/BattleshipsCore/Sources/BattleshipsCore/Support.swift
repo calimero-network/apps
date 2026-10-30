@@ -41,7 +41,7 @@ public protocol BattleshipsBackend: Sendable {
 }
 
 /// ``BattleshipsBackend`` over any ``MeroAppBackend``: an instance is created with
-/// `createContext(…, service:)` (Calimero 1.0's `POST /apps {package, service}`), then tagged with
+/// `createServiceContext` (Calimero 1.0's `POST /apps {package, service}`), then tagged with
 /// its service in its metadata (`{"name", "service"}`) so every member can tell the lobby from
 /// the matches. Reading the service asks `readService` first (the node's app record), then the
 /// instance's metadata.
@@ -62,8 +62,8 @@ public struct ServiceBattleshipsBackend: BattleshipsBackend {
     public func createServiceContext(
         groupId: String, applicationId: String, service: String, name: String, initArgs: JSONValue
     ) async throws -> String {
-        let id = try await app.createContext(
-            groupId: groupId, applicationId: applicationId, name: name, initArgs: initArgs, service: service)
+        let id = try await app.createServiceContext(
+            groupId: groupId, applicationId: applicationId, service: service, name: name, initArgs: initArgs)
         // Best effort: an untagged instance is still found by the node's record, or as the only one.
         try? await tagService?(id, name, service)
         return id
@@ -153,9 +153,7 @@ public enum ErrorText {
             default: break
             }
         }
-        if let error = error as? AccountError, case .noRelay = error {
-            return "You're signed out. Sign in again."
-        }
+        if error is SignedOutError { return "You're signed out. Sign in again." }
         // Calimero 1.0's typed errors (`CalimeroError`).
         if error is LoginRequired { return "Your session ended. Sign in again." }
         if error is UnavailableError { return "The cluster is busy. Try again in a moment." }

@@ -2,12 +2,11 @@ import Foundation
 import MeroKit
 
 /// A lobby invitation: Calimero 1.0's org invite token in the SDK's link shape
-/// (`MeroKitUI.InvitationLinkPayload`), plus the lobby's name and the inviter's key.
-/// (Kotlin `LobbyInvitation`.)
+/// (``OrgInvitation``), plus the inviter's player key. (Kotlin `LobbyInvitation`.)
 ///
-/// - payload: `{"invitation": {"orgId": "<org>", "token": "inv_…"}, "namespaceId": "<org>",
-///   "__lobbyName": "<lobby name>", "__inviterKey": "<player key>"}`; the SDK reads the first two
-///   fields and ignores the rest
+/// - payload: `{"invitation": "inv_…", "namespaceId": "<org>", "name": "<lobby name>",
+///   "__lobbyName": "<lobby name>", "__inviterKey": "<player key>"}`; the SDK reads the first
+///   three and ignores the rest
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.battleships/join?invitation=<token>`
 ///
@@ -27,7 +26,7 @@ public struct LobbyInvitation: Sendable {
     }
 
     /// The org (lobby) it admits to.
-    public var namespaceId: String { invitation.orgId }
+    public var namespaceId: String { invitation.namespaceId }
 
     public var title: String {
         if let lobbyName, !lobbyName.isEmpty { return lobbyName }
@@ -37,13 +36,13 @@ public struct LobbyInvitation: Sendable {
     // MARK: Encoding
 
     public func token() throws -> String {
-        var payload: [String: JSONValue] = [
-            "invitation": .object(["orgId": .string(invitation.orgId), "token": .string(invitation.token)]),
-            "namespaceId": .string(invitation.orgId),
-        ]
-        if let lobbyName = lobbyName?.trimmingCharacters(in: .whitespaces), !lobbyName.isEmpty {
-            payload[Self.lobbyNameKey] = .string(lobbyName)
-        }
+        let name = lobbyName?.trimmingCharacters(in: .whitespaces)
+        let base = OrgInvitation(
+            namespaceId: invitation.namespaceId, token: invitation.token, contextId: invitation.contextId,
+            name: name?.isEmpty == false ? name : nil)
+        guard case .object(var payload) = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(base))
+        else { return try base.encoded() }
+        if let name = base.name { payload[Self.lobbyNameKey] = .string(name) }
         if let inviterKey, Self.isKey(inviterKey) { payload[Self.inviterKeyKey] = .string(inviterKey) }
         return try InviteCodec.encode(JSONValue.object(payload))
     }
@@ -73,15 +72,13 @@ public struct LobbyInvitation: Sendable {
     public static func parse(json: String) -> LobbyInvitation? {
         guard let root = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)),
             case .object(let fields) = root,
-            let token = fields["invitation"]?["token"]?.stringValue, !token.isEmpty
+            let base = try? JSONDecoder().decode(OrgInvitation.self, from: Data(json.utf8))
         else { return nil }
-        let org = fields["invitation"]?["orgId"]?.stringValue ?? fields["namespaceId"]?.stringValue ?? ""
-        guard !org.isEmpty else { return nil }
-        let name = fields[lobbyNameKey]?.stringValue?.trimmingCharacters(in: .whitespaces)
+        let name = [fields[lobbyNameKey]?.stringValue, base.name]
+            .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty }
         let key = fields[inviterKeyKey]?.stringValue.flatMap { isKey($0) ? $0 : nil }
-        return LobbyInvitation(
-            invitation: OrgInvitation(orgId: org, token: token), lobbyName: name?.isEmpty == false ? name : nil,
-            inviterKey: key)
+        return LobbyInvitation(invitation: base, lobbyName: name, inviterKey: key)
     }
 
     static func isKey(_ value: String) -> Bool {

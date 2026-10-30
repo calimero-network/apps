@@ -6,7 +6,7 @@ icons (SF Symbols / Material Icons) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `a1ec644` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands), in `ios/project.yml`, `ios/BattleshipsCore/Package.swift` and `Package.resolved` |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands), in `ios/project.yml`, `ios/BattleshipsCore/Package.swift` and `Package.resolved` |
 | Android | `android/` | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (merge commit of kotlin-sdk#67 on `main`), composite build from `android/kotlin-sdk.ref` |
 
 ## How the apps reach Calimero
@@ -77,7 +77,7 @@ arguments, then `set_match_context_id`. The lobby context is found by its servic
 being first.
 
 **Services on iOS (1.0).** An instance is created per service with
-`MeroAppBackend.createContext(…, service:)` and tagged with its service in its metadata
+`MeroAppBackend.createServiceContext` and tagged with its service in its metadata
 (`{"name", "service"}`), so the lobby is found by service, never by being first
 (`ServiceBattleshipsBackend`). Android still goes through the 0.x account admin
 (`admin.createContext(CreateContextRequest(serviceName:))`).
@@ -109,9 +109,9 @@ refuses; it is read leniently.
 
 ## Invitations
 
-iOS links carry Calimero 1.0's org invite token in the SDK's shape (`InvitationLinkPayload`):
+iOS links carry Calimero 1.0's org invite token in the SDK's shape (`OrgInvitation`):
 `https://links.calimero.network/com.calimero.battleships/join?invitation=<base58(deflate(json))>`
-with `{"invitation": {"orgId", "token"}, "namespaceId", "__lobbyName", "__inviterKey"}`. Pre-1.0
+with `{"invitation": "inv_…", "namespaceId", "name", "__lobbyName", "__inviterKey"}`. Pre-1.0
 signed invitations are not read (a 1.0 cluster cannot redeem them). Android and the web app still
 write the 0.x `{"invitations": [{"groupId", "invitation", "groupAlias"}]}` payload until their
 ports. `calimero://com.calimero.battleships/join?…` and pasted links open the same join sheet.

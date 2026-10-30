@@ -20,7 +20,7 @@ let package = Package(
         // Keep it identical to ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "a1ec644130d4405a1bab7547654b1442cc559b49"),
+            revision: "6c5f1167d1e586f556f59c326de5f51d034e80dd"),
     ],
     targets: [
         // `scripts/codegen.sh`: one module per service. Each generated file declares its own

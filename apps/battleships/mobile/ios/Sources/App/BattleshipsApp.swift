@@ -110,7 +110,7 @@ struct RootView: View {
     /// The package's two services: instances are created per service and tagged with it. On a
     /// Calimero 1.0 cluster the node's app record (and the tag in its metadata) says which is which.
     private func battleshipsBackend(_ backend: any MeroAppBackend) -> any BattleshipsBackend {
-        guard let cloud = backend as? CloudAppBackend else { return ServiceBattleshipsBackend(app: backend) }
+        guard let cloud = backend as? CalimeroAppBackend else { return ServiceBattleshipsBackend(app: backend) }
         let client = cloud.client
         return ServiceBattleshipsBackend(
             app: cloud,

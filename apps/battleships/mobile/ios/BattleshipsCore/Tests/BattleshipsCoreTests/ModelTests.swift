@@ -21,8 +21,8 @@ final class FakeBattleshipsBackend: BattleshipsBackend, @unchecked Sendable {
     func createServiceContext(
         groupId: String, applicationId: String, service: String, name: String, initArgs: JSONValue
     ) async throws -> String {
-        let id = try await memory.createContext(
-            groupId: groupId, applicationId: applicationId, name: name, initArgs: initArgs, service: service)
+        let id = try await memory.createServiceContext(
+            groupId: groupId, applicationId: applicationId, service: service, name: name, initArgs: initArgs)
         record(id, service: service, groupId: groupId, initArgs: initArgs)
         return id
     }
@@ -365,14 +365,16 @@ final class InvitationTests: XCTestCase {
         let token = try LobbyInvitation(invitation: invite, lobbyName: "Harbour").token()
         let json = try XCTUnwrap(InviteCodec.decode(token: token))
         let value = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
-        XCTAssertEqual(value["invitation"]?["orgId"]?.stringValue, ns, "InvitationLinkPayload reads the org here")
-        XCTAssertEqual(value["invitation"]?["token"]?.stringValue, invite.token)
-        XCTAssertEqual(value["namespaceId"]?.stringValue, ns)
+        XCTAssertEqual(value["invitation"]?.stringValue, invite.token)
+        XCTAssertEqual(value["namespaceId"]?.stringValue, ns, "OrgInvitation reads the org here")
+        XCTAssertEqual(value["name"]?.stringValue, "Harbour")
+        let sdk = try XCTUnwrap(OrgInvitation.decode(token))
+        XCTAssertEqual(sdk.namespaceId, ns)
         XCTAssertEqual(value["__lobbyName"]?.stringValue, "Harbour")
     }
 
     func testReadsRawJSONAndRefusesOtherAppsAndPre10Invitations() throws {
-        let json = #"{"invitation":{"orgId":"\#(ns)","token":"inv_abc"},"namespaceId":"\#(ns)"}"#
+        let json = #"{"invitation":"inv_abc","namespaceId":"\#(ns)"}"#
         XCTAssertEqual(LobbyInvitation.parse(json)?.namespaceId, ns)
         XCTAssertEqual(LobbyInvitation.parse(json)?.invitation.token, "inv_abc")
         let token = try XCTUnwrap(InviteCodec.encode(json: json))
@@ -408,7 +410,7 @@ final class ServiceBackendTests: XCTestCase {
         let id = try await backend.createServiceContext(
             groupId: ns, applicationId: memory.applicationId, service: Battleships.lobbyService, name: "lobby",
             initArgs: .object([:]))
-        XCTAssertTrue(memory.log.contains { $0.hasPrefix("createContext") && $0.hasSuffix("service=lobby") })
+        XCTAssertTrue(memory.log.contains { $0.hasPrefix("createContext") && $0.contains("#lobby") })
         let service = try await backend.serviceName(contextId: id)
         XCTAssertEqual(service, Battleships.lobbyService)
     }

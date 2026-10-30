@@ -169,8 +169,9 @@ struct ApprovalsSheet: View {
     @EnvironmentObject private var session: MeroAppSession
     @Environment(\.dismiss) private var dismiss
     let style: CloudStyle
-    /// The orgs to look in (id, name); the person's own apps are always included.
-    let orgs: [(id: String, name: String)]
+    /// The orgs to look in (id, name); `nil`: every org of this app the account is in. The
+    /// person's own apps are always included.
+    var orgs: [(id: String, name: String)]? = nil
     @State private var sections: [Section] = []
     @State private var loading = true
     @State private var error: String?
@@ -254,7 +255,11 @@ struct ApprovalsSheet: View {
                     Button("Review") {
                         deciding = key
                         Task {
-                            _ = await session.requestConsent(request)
+                            do {
+                                _ = try await session.requestConsent(request(session.callback.url))
+                            } catch {
+                                self.error = MeroClient.describe(error)
+                            }
                             deciding = nil
                             await load()
                         }
@@ -275,6 +280,10 @@ struct ApprovalsSheet: View {
             next.append(
                 Section(
                     id: "account", title: "Your apps", scope: .account, approvals: try await session.pendingApprovals()))
+            var orgs = self.orgs ?? []
+            if self.orgs == nil, let backend = session.backend {
+                orgs = try await backend.listNamespaces().map { ($0.id, $0.name ?? "Organization") }
+            }
             for org in orgs {
                 let approvals = try await session.pendingApprovals(org: org.id)
                 next.append(Section(id: org.id, title: org.name, scope: .org(org.id), approvals: approvals))
