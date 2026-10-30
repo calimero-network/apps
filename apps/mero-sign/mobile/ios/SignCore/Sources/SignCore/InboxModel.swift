@@ -22,8 +22,6 @@ public final class InboxModel: ObservableObject {
         self.directory = directory
     }
 
-    public var hasRelay: Bool { directory.backend.hasRelay }
-
     public func entries(in bucket: InboxBucket) -> [DocumentEntry] {
         entries.filter { $0.bucket == bucket }
             .sorted { $0.document.uploadedAt > $1.document.uploadedAt }

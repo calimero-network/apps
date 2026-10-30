@@ -137,12 +137,33 @@ final class InvitationCodecTests: XCTestCase {
         XCTAssertNil(SignInvitation.parse("hello"))
     }
 
-    func testReadsAnEnvelopeAndSnakeCase() throws {
-        let signed = InMemoryAppBackend.invitation(namespaceId: IDs.workspace)
-        let inner = String(decoding: try JSONEncoder().encode(signed), as: UTF8.self)
-        let json = "{\"data\":{\"invitation\":\(inner),\"context_name\":\"NDA\"}}"
+    func testReadsTheOrgInvitationPayload() throws {
+        let json = #"{"invitation":"inv_abc","namespaceId":"org1","name":"NDA","workspaceName":"Acme","extra":1}"#
         let parsed = try XCTUnwrap(SignInvitation.parse(json: json))
+        XCTAssertEqual(parsed.namespaceId, "org1")
+        XCTAssertEqual(parsed.invitation.token, "inv_abc")
         XCTAssertEqual(parsed.contextName, "NDA")
+        XCTAssertEqual(parsed.workspaceName, "Acme")
         XCTAssertNil(parsed.contextId)
     }
+
+    func testTheLinkCarriesAnOrgInviteAndPre10InvitationsAreRefused() throws {
+        let invite = SignInvitation(invitation: OrgInvitation(namespaceId: "org1", token: "inv_abc"), contextId: "app1")
+        let json = try XCTUnwrap(InviteCodec.decode(token: try invite.token()))
+        XCTAssertTrue(json.contains(#""invitation":"inv_abc""#))
+        XCTAssertTrue(json.contains(#""namespaceId":"org1""#))
+        // The SDK reads the same link as a plain OrgInvitation.
+        XCTAssertEqual(OrgInvitation.decode(try invite.token())?.contextId, "app1")
+        let old = #"{"invitation":{"invitation":{"group_id":[170]},"inviter_signature":"sig"},"contextId":"c"}"#
+        XCTAssertNil(SignInvitation.parse(json: old))
+    }
+
+    func testTheNodesErrorsReadAsWords() {
+        XCTAssertEqual(
+            SignErrorText.describe(ReleaseDeadlineError("deadline", details: ["release": "2.3.110"])),
+            "Your cluster takes no new work until node release 2.3.110 is approved. Review it under Needs your approval.")
+        XCTAssertEqual(SignErrorText.describe(NotFound("no such app")), "This isn't shared with you, or it was deleted.")
+        XCTAssertEqual(SignErrorText.describe(LoginRequired("expired")), "Your session ended. Sign in again.")
+    }
+
 }

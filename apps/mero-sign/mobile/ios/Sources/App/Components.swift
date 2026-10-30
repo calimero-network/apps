@@ -102,10 +102,17 @@ struct AccountMenu: View {
     var openInvitation: (() -> Void)?
     @State private var confirmSignOut = false
 
+    /// " on <host>", or " on <host> (development)" for a mock-attested cluster.
+    private var nodeLine: String {
+        guard let url = session.client.nodeURL else { return "" }
+        let host = URL(string: url)?.host ?? url
+        return session.client.allowMock ? " on \(host) (development)" : " on \(host)"
+    }
+
     var body: some View {
         Menu {
             if let account = session.account {
-                Section("Signed in as \(SignIds.short(account))") {
+                Section("Signed in as \(SignIds.short(account))\(nodeLine)") {
                     Button {
                         UIPasteboard.general.string = account
                     } label: {
@@ -130,20 +137,5 @@ struct AccountMenu: View {
         .confirmationDialog("Sign out of Mero Sign?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { Task { await session.signOut() } }
         }
-    }
-}
-
-/// "No relay yet" above a list.
-struct NoRelayBanner: View {
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "antenna.radiowaves.left.and.right.slash").foregroundStyle(Palette.wait)
-            Text("No relay serves your account yet. Open an invitation link you were sent to get one.")
-                .font(.system(size: 14))
-                .foregroundStyle(Palette.ink)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.waitSoft))
     }
 }

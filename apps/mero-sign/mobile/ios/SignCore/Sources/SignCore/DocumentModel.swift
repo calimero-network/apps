@@ -216,7 +216,7 @@ public final class DocumentModel: ObservableObject {
             let newHash = DocumentHash.sha256Hex(signed)
             let blobId = SignIds.blobHex(try await admin.uploadBlob(signed, contextId: agreement.contextId))
             guard !blobId.isEmpty else {
-                throw SignModelError.message("Your relay returned a blob id this app can't use.")
+                throw SignModelError.message("Your cluster returned a blob id this app can't use.")
             }
             try await client.signDocument(
                 documentId: documentId, baseHash: entry.document.hash, pdfBlobIdStr: blobId,

@@ -30,8 +30,6 @@ public final class AgreementsModel: ObservableObject {
 
     public init(directory: AgreementDirectory) { self.directory = directory }
 
-    public var hasRelay: Bool { directory.backend.hasRelay }
-
     public func load() async {
         if sections.isEmpty { phase = .loading }
         do {
