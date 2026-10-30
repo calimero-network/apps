@@ -34,7 +34,7 @@ category    = "productivity"
 tags        = ["standup", "decisions", "team", "productivity"]
 github      = "https://github.com/calimero-network/apps"
 # Asserted equal to [workspace.metadata.mero-apps] in CI.
-min-runtime-version = "0.12.0-rc.3"
+min-runtime-version = "1.0.0-rc.4"
 # The registered login callback origin, compared by EXACT origin, so no
 # trailing slash. ⚠️ Resolves to nothing until the Vercel project exists:
 # Root Directory `apps/mero-standup/app`, project named `mero-standup`.
