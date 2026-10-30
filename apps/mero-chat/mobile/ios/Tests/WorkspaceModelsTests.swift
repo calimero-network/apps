@@ -27,7 +27,7 @@ final class WorkspaceModelsTests: XCTestCase {
         XCTAssertEqual(unfiltered.workspaces.count, 2, "with no id known yet, nothing is hidden")
     }
 
-    func testARelaylessAccountListsNothingAndSaysSo() async {
+    func testADisconnectedAccountListsNothingAndSaysSo() async {
         let backend = FakeChatBackend()
         backend.hasRelay = false
         let model = workspacesModel(backend)
@@ -84,7 +84,7 @@ final class WorkspaceModelsTests: XCTestCase {
     func testJoiningRedeemsTheInvitationsNamespace() async throws {
         let backend = FakeChatBackend()
         let model = workspacesModel(backend)
-        let link = try ChatInvitation(invitation: ChatFixtures.signedInvitation(), workspaceName: "Design").link()
+        let link = try ChatInvitation(invitation: ChatFixtures.orgInvitation, workspaceName: "Design").link()
 
         let joined = await model.join(invitation: link)
 
@@ -93,16 +93,16 @@ final class WorkspaceModelsTests: XCTestCase {
         XCTAssertTrue(model.notice?.contains("Design") ?? false)
     }
 
-    func testAJoinTheRelayRefusesShowsTheStepsReason() async throws {
+    func testAJoinTheNodeRefusesShowsItsReason() async throws {
         let backend = FakeChatBackend()
-        backend.failure = BootstrapFailure(step: .notInvited, reason: "Ask for a fresh invitation.")
+        backend.failure = CalimeroError(status: 410, code: "INVITE_EXPIRED", message: "Ask for a fresh invitation.")
         let model = workspacesModel(backend)
-        let link = try ChatInvitation(invitation: ChatFixtures.signedInvitation(), workspaceName: nil).link()
+        let link = try ChatInvitation(invitation: ChatFixtures.orgInvitation, workspaceName: nil).link()
 
         let joined = await model.join(invitation: link)
 
         XCTAssertNil(joined)
-        XCTAssertEqual(model.errorText, "Ask for a fresh invitation.")
+        XCTAssertEqual(model.errorText, "Ask for a fresh invitation. (410)")
     }
 
     func testSomethingThatIsNotAnInvitationIsRefused() async {

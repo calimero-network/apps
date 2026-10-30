@@ -73,7 +73,7 @@ final class FakeChatBackend: ChatBackend, @unchecked Sendable {
     var groups: [String: [ChannelGroupListing]] = [:]
     var members: Set<String> = []
     var founded = FoundedWorkspace(namespaceId: String(repeating: "ab", count: 32), haEnabled: true, haError: nil)
-    var joinResult = JoinedWorkspace(published: true, relayURL: "https://relay.test")
+    var joinResult = JoinedWorkspace(published: true, nodeURL: "https://node.test")
     var failure: Error?
     var liveEvents: [ChatLiveEvent] = []
 
@@ -133,12 +133,12 @@ final class FakeChatBackend: ChatBackend, @unchecked Sendable {
         return "ctx-\(groupId)"
     }
 
-    func createInvitation(namespaceId: String) async throws -> SignedGroupOpenInvitation {
+    func createInvitation(namespaceId: String) async throws -> OrgInvitation {
         try check("createInvitation \(namespaceId)")
-        return try ChatFixtures.signedInvitation()
+        return ChatFixtures.orgInvitation
     }
 
-    func joinWorkspace(namespaceId: String, invitation: SignedGroupOpenInvitation) async throws -> JoinedWorkspace {
+    func joinWorkspace(namespaceId: String, invitation: OrgInvitation) async throws -> JoinedWorkspace {
         try check("joinWorkspace \(namespaceId)")
         joinedNamespaces.append(namespaceId)
         return joinResult

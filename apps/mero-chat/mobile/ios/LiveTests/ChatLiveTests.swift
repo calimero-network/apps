@@ -2,29 +2,28 @@ import Foundation
 import MeroKit
 import XCTest
 
-/// The app's chat layer against a REAL relay: a merod with delegated access
-/// and a mock TEE (`mobile/e2e/relay.yml`), nothing faked but the cloud.
+/// The app's chat layer against a REAL Calimero 1.0 node: `merod local`
+/// (`--dev`, mock attestation), nothing faked.
 ///
-/// Every account is minted offline and reaches the relay only the delegated
-/// way — relay query for reads, signed warrants on `/intents` for writes,
-/// governance and context intents for workspaces and channels, `/admit` for
-/// joins, SSE on the account's Bearer session for live updates. The tests
-/// drive the app's own models (`WorkspacesModel`, `ChannelsModel`,
-/// `ChannelModel`) and assert on what they publish.
+/// Every account signs up with a software passkey over the sealed channel
+/// and reaches the node the 1.0 way: `/apps/{app}/views` for reads,
+/// `/apps/{app}/intents` for writes, orgs and teams for workspaces and
+/// channels, `/invites/{token}/redeem` for joins, sealed SSE for live
+/// updates. The tests drive the app's own models (`WorkspacesModel`,
+/// `ChannelsModel`, `ChannelModel`) and assert on what they publish.
 ///
-/// Skipped unless `MERO_E2E_RELAY_URL` and `MERO_E2E_APP_ID` are set (see
-/// ``LiveRig``). CI: `.github/workflows/mero-chat-ios-live.yml`.
+/// Skipped unless `MERO_E2E_NODE_URL` is set (see ``LiveRig``).
 @MainActor
 final class ChatLiveTests: XCTestCase {
     // MARK: - 1. Founder flow
 
     /// Alice founds a workspace (real mock attestation, `#general` made as in
     /// production), then in `#general`: sends, pages history back through
-    /// `/query`, edits, reacts and un-reacts, deletes, sets her name, and has
+    /// `/views`, edits, reacts and un-reacts, deletes, sets her name, and has
     /// nothing unread.
-    func testFounderFlowAgainstTheRelay() async throws {
+    func testFounderFlowAgainstTheNode() async throws {
         let rig = try LiveRig.require()
-        let alice = try await LiveAccount.mint("alice", rig: rig, withRelay: true)
+        let alice = try await LiveAccount.mint("alice", rig: rig)
         let founded = try await LiveScenario.foundWorkspace(alice, rig: rig)
         let general = founded.general
 
@@ -104,14 +103,14 @@ final class ChatLiveTests: XCTestCase {
     // MARK: - 2. Invite + join
 
     /// Alice invites; Bob, a second offline account on his own device key,
-    /// redeems the link by direct admission at the relay, lists the workspace
+    /// redeems the invite token on the node, lists the workspace
     /// and `#general`, joins it, reads Alice's message and replies; Alice reads
     /// the reply (and Bob's name), with an unread badge until she opens it.
     /// Bob cannot edit Alice's message: the app does not offer it, and the
     /// contract refuses it when asked directly, in words.
     func testInviteJoinAndReplyAcrossTwoAccounts() async throws {
         let rig = try LiveRig.require()
-        let alice = try await LiveAccount.mint("alice", rig: rig, withRelay: true)
+        let alice = try await LiveAccount.mint("alice", rig: rig)
         let founded = try await LiveScenario.foundWorkspace(alice, rig: rig)
         let general = founded.general
 
@@ -123,7 +122,7 @@ final class ChatLiveTests: XCTestCase {
         let aliceMessage = try XCTUnwrap(LiveScenario.message(hello, in: aliceChannel))
 
         let link = try await LiveScenario.invite(founded)
-        let bob = try await LiveAccount.mint("bob", rig: rig, withRelay: false)
+        let bob = try await LiveAccount.mint("bob", rig: rig)
         XCTAssertNotEqual(bob.accountId, alice.accountId)
         let bobSide = try await LiveScenario.join(
             bob, link: link, workspaceId: founded.workspace.id, channelId: general.id, displayName: "Bob", rig: rig)
@@ -196,16 +195,16 @@ final class ChatLiveTests: XCTestCase {
 
     // MARK: - 3. Live update
 
-    /// Alice has `#general` open with live updates on (SSE through the relay
-    /// on her Bearer session); Bob sends; Alice's model shows it without her
+    /// Alice has `#general` open with live updates on (sealed SSE from the
+    /// node); Bob sends; Alice's model shows it without her
     /// reading again, while the stream is still the live mechanism (not the
     /// polling fallback, which starts only if the stream ends).
     func testBobsMessageReachesAlicesOpenChannelLive() async throws {
         let rig = try LiveRig.require()
-        let alice = try await LiveAccount.mint("alice", rig: rig, withRelay: true)
+        let alice = try await LiveAccount.mint("alice", rig: rig)
         let founded = try await LiveScenario.foundWorkspace(alice, rig: rig)
         let link = try await LiveScenario.invite(founded)
-        let bob = try await LiveAccount.mint("bob", rig: rig, withRelay: false)
+        let bob = try await LiveAccount.mint("bob", rig: rig)
         let bobSide = try await LiveScenario.join(
             bob, link: link, workspaceId: founded.workspace.id, channelId: founded.general.id, displayName: "Bob",
             rig: rig)
@@ -217,7 +216,7 @@ final class ChatLiveTests: XCTestCase {
         let open = ChannelModel(channel: founded.general, backend: alice.backend)
         await open.loadInitial()
         XCTAssertNil(open.errorText)
-        XCTAssertTrue(alice.backend.canSubscribe, "the relay's Bearer session is up, so the stream is used")
+        XCTAssertTrue(alice.backend.canSubscribe, "a 1.0 session always streams")
         open.startLive()
         defer { open.stopLive() }
         XCTAssertEqual(open.liveStatus, .streaming)
@@ -250,7 +249,7 @@ final class ChatLiveTests: XCTestCase {
             "Bob's message did not reach Alice's open channel within 30s (live status \(open.liveStatus), "
                 + "resent: \(resent), error: \(open.errorText ?? "-"))")
         XCTAssertEqual(
-            status, .streaming, "the update arrived only after the relay's event stream ended (polling fallback)")
+            status, .streaming, "the update arrived only after the node's event stream ended (polling fallback)")
         XCTAssertEqual(LiveScenario.message(text, in: open)?.sender, bob.userId)
     }
 }

@@ -89,7 +89,6 @@ enum ChatFixtures {
         151,89,7,130,139,78,42,174,163,58,39,180,126]}
         """
 
-    static func signedInvitation() throws -> SignedGroupOpenInvitation {
-        try JSONDecoder().decode(SignedGroupOpenInvitation.self, from: Data(signedInvitationJSON.utf8))
-    }
+    /// A 1.0 org invitation to ``namespaceId``.
+    static let orgInvitation = OrgInvitation(orgId: namespaceId, token: "inv_3k9Qx2")
 }

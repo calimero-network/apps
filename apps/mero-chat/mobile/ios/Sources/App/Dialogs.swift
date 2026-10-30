@@ -282,11 +282,11 @@ struct SettingsDialog: View {
                 if let error = channel?.errorText {
                     Banner(kind: .error, text: error) { channel?.errorText = nil }
                 }
-                if let relay = session.client.relayURL {
+                if let node = session.nodeURL {
                     card {
                         VStack(alignment: .leading, spacing: 2) {
-                            Theme.label("Relay", size: 10, opacity: 35)
-                            Text(relay).font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.ink2)
+                            Theme.label(session.isDevelopment ? "Node (development)" : "Cluster", size: 10, opacity: 35)
+                            Text(node).font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.ink2)
                                 .textSelection(.enabled)
                         }
                     }

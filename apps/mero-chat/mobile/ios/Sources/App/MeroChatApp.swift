@@ -11,6 +11,7 @@ struct MeroChatApp: App {
             RootView(session: session, client: session.client)
                 .preferredColorScheme((ThemeChoice(rawValue: theme) ?? .light).scheme)
                 .tint(Theme.accent)
+                // Invitation links, and the consent page sending the person back.
                 .onOpenURL { url in
                     Task { await session.handle(url) }
                 }
@@ -43,7 +44,7 @@ struct RootView: View {
                     GroundBackground()
                     VStack(spacing: 16) {
                         ProgressView().tint(Theme.accent)
-                        Text("Connecting to your relay…").font(Theme.font(14)).foregroundStyle(Theme.ink(38))
+                        Text("Connecting to your cluster…").font(Theme.font(14)).foregroundStyle(Theme.ink(38))
                         Button("Sign out") { Task { await session.signOut() } }
                             .buttonStyle(SecondaryButtonStyle(fullWidth: false))
                     }
@@ -57,7 +58,7 @@ struct RootView: View {
             await session.restore()
             didRestore = true
         }
-        // The client replaced its transport/admin (sign-in, a join, sign-out).
+        // The client signed in, refreshed into another account or signed out.
         .onChange(of: client.sessionRevision) { _ in
             if didRestore { session.rebuild() }
         }
@@ -67,12 +68,12 @@ struct RootView: View {
 /// The workspace picker until one is chosen, then that workspace.
 struct SignedInView: View {
     @ObservedObject var session: SessionModel
-    let backend: DelegatedChatBackend
+    let backend: CloudChatBackend
     @StateObject private var workspaces: WorkspacesModel
     @AppStorage("mero-chat:workspace") private var workspaceId = ""
     @State private var picking = false
 
-    init(session: SessionModel, backend: DelegatedChatBackend) {
+    init(session: SessionModel, backend: CloudChatBackend) {
         self.session = session
         self.backend = backend
         _workspaces = StateObject(

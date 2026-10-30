@@ -2,12 +2,19 @@ import MeroKitUI
 import SwiftUI
 
 /// The landing page at phone width: a nav bar with the Mero Chat mark, the
-/// hero, a glimpse of a channel, what the app does, and the connect button
-/// pinned at the bottom. On the phone "connect" is signing in with the
-/// Calimero account; the wallet certifies a key this device keeps.
+/// hero, a glimpse of a channel, what the app does, and sign-in pinned at the
+/// bottom: a Calimero 1.0 cluster's node URL and the device's passkey (or a
+/// new account), or a development node (`merod local`) with mock attestation
+/// and a software passkey kept for it.
 struct SignInView: View {
     @ObservedObject var session: SessionModel
     @ObservedObject var client: MeroClient
+    @AppStorage("signin.clusterURL") private var clusterURL = AppConfig.clusterURL ?? ""
+    @AppStorage("signin.devNodeURL") private var devNodeURL = AppConfig.devNodeURL
+    @State private var name = ""
+    @State private var mode: Mode = .signIn
+
+    enum Mode { case signIn, create, development }
 
     var body: some View {
         ZStack {
@@ -39,7 +46,8 @@ struct SignInView: View {
                 .accessibilityIdentifier("signInTitle")
             Spacer()
             Button {
-                Task { await session.signIn() }
+                mode = .signIn
+                submit()
             } label: {
                 Text("Sign in")
                     .font(Theme.font(15, .semibold))
@@ -49,7 +57,7 @@ struct SignInView: View {
                     .background(Capsule().fill(Color(light: 0xE3E9FF, dark: 0x1C2650)))
             }
             .buttonStyle(.plain)
-            .disabled(client.isLoading)
+            .disabled(client.isLoading || clusterURL.trimmingCharacters(in: .whitespaces).isEmpty)
             .accessibilityIdentifier("signInHeaderButton")
         }
         .padding(.horizontal, 20)
@@ -70,7 +78,7 @@ struct SignInView: View {
             .background(Capsule().fill(Color(light: 0xE3E9FF, dark: 0x1C2650)))
 
             (Text("Team chat on ").foregroundColor(Theme.ink)
-                + Text("your own nodes.").foregroundColor(Theme.accent))
+                + Text("your own cluster.").foregroundColor(Theme.accent))
                 .font(Theme.font(34, .heavy))
                 .tracking(-0.8)
                 .lineSpacing(2)
@@ -145,8 +153,8 @@ struct SignInView: View {
         VStack(alignment: .leading, spacing: 16) {
             feature("bubble.left.and.bubble.right.fill", "Channels, threads and DMs",
                     "Everything your team expects from a chat app.")
-            feature("externaldrive.fill.badge.checkmark", "Messages stay on your nodes",
-                    "No central server ever holds your conversations.")
+            feature("externaldrive.fill.badge.checkmark", "Messages stay on your cluster",
+                    "Attested nodes your organization runs hold your conversations.")
             feature("laptopcomputer.and.iphone", "iOS, web and desktop",
                     "Pick up the same workspace on any device.")
         }
@@ -168,35 +176,111 @@ struct SignInView: View {
     }
 
     private var footer: some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             if let error = client.errorMessage {
                 Banner(kind: .error, text: error)
                     .accessibilityIdentifier("signInError")
             }
-            Button {
-                Task { await session.signIn() }
-            } label: {
+            switch mode {
+            case .signIn, .create:
+                urlField("Cluster URL (from cloud.calimero.network)", text: $clusterURL)
+                    .accessibilityIdentifier("signInClusterURL")
+                if mode == .create {
+                    TextField("Your name", text: $name)
+                        .textFieldStyle(ChatFieldStyle())
+                        .textInputAutocapitalization(.words)
+                }
+            case .development:
+                urlField("http://localhost:2501", text: $devNodeURL)
+                    .accessibilityIdentifier("signInDevNodeURL")
+                TextField("Your name", text: $name)
+                    .textFieldStyle(ChatFieldStyle())
+                    .textInputAutocapitalization(.words)
+            }
+            Button(action: submit) {
                 HStack(spacing: 8) {
                     if client.isLoading { ProgressView().tint(Theme.onInk) }
-                    Text("Continue with Calimero")
+                    Text(primaryTitle)
                 }
                 .frame(minHeight: 50)
             }
             .buttonStyle(InkButtonStyle(fullWidth: true))
-            .disabled(client.isLoading)
+            .disabled(client.isLoading || !canSubmit)
             .accessibilityIdentifier("signInButton")
+            HStack {
+                switch mode {
+                case .signIn: Button("Create an account") { mode = .create }
+                case .create: Button("I have an account") { mode = .signIn }
+                case .development: Button("Use Calimero Cloud") { mode = .signIn }
+                }
+                Spacer()
+                if mode != .development {
+                    Button("Development node") { mode = .development }
+                        .accessibilityIdentifier("signInDevelopment")
+                }
+            }
+            .font(Theme.font(13, .semibold))
+            .foregroundStyle(Theme.accent)
+            .disabled(client.isLoading)
             HStack(spacing: 6) {
                 Image(systemName: "person.badge.key.fill").font(.system(size: 11))
-                Text("Approve this device with your passkey in the Calimero wallet.")
+                Text(
+                    mode == .development
+                        ? "Mock attestation is allowed for this node; a passkey is kept on this device for it."
+                        : "Sign in with this device's passkey. The node's attestation is verified first.")
             }
             .font(Theme.font(12))
             .foregroundStyle(Theme.muted)
-            .multilineTextAlignment(.center)
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 8)
         .background(Theme.surfaceSolid.opacity(0.92).ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
+    }
+
+    private func urlField(_ placeholder: String, text: Binding<String>) -> some View {
+        TextField(placeholder, text: text)
+            .textFieldStyle(ChatFieldStyle())
+            .keyboardType(.URL)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+    }
+
+    private var primaryTitle: String {
+        switch mode {
+        case .signIn: return "Sign in with passkey"
+        case .create: return "Create account"
+        case .development: return "Connect"
+        }
+    }
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private var canSubmit: Bool {
+        switch mode {
+        case .signIn: return !clusterURL.trimmingCharacters(in: .whitespaces).isEmpty
+        case .create: return !clusterURL.trimmingCharacters(in: .whitespaces).isEmpty && !trimmedName.isEmpty
+        case .development: return !devNodeURL.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
+
+    private func submit() {
+        guard canSubmit else { return }
+        Task {
+            switch mode {
+            case .signIn:
+                session.connect(nodeURL: clusterURL, allowMock: false)
+                await session.signIn()
+            case .create:
+                session.connect(nodeURL: clusterURL, allowMock: false)
+                await session.signUp(name: trimmedName)
+                if session.displayName.isEmpty { session.displayName = trimmedName }
+            case .development:
+                session.connect(nodeURL: devNodeURL, allowMock: true)
+                await session.signInOrSignUp(name: trimmedName.isEmpty ? nil : trimmedName)
+                if session.displayName.isEmpty, !trimmedName.isEmpty { session.displayName = trimmedName }
+            }
+        }
     }
 }

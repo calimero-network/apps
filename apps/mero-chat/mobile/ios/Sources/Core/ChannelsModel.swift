@@ -3,8 +3,8 @@ import Foundation
 import MeroKit
 
 /// Creating a channel the way the web app does (`utils/createChannel.ts`): one
-/// subgroup per channel under the namespace (its visibility is the channel's
-/// public/private flag), the channel's single context inside it, then the
+/// team per channel in the org (`join: everyone`, or `invite` for a private
+/// channel), the channel's single app instance inside it, then the
 /// creator's `set_profile`.
 struct ChannelCreator: Sendable {
     let backend: any ChatBackend
@@ -27,7 +27,7 @@ struct ChannelCreator: Sendable {
 
 /// One workspace's channels and DMs.
 ///
-/// Every channel is a subgroup of the namespace holding one context; a DM is
+/// Every channel is a team in the org holding one app instance; a DM is
 /// the same with a `DM_CONTEXT_` name and `context_type: "Dm"`. A channel the
 /// account is not a member of yet (an open channel someone else made) is
 /// listed with a Join action: its contract calls only work after joining.

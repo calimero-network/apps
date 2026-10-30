@@ -4,36 +4,66 @@ A native SwiftUI client for [Mero Chat](../../) on the same contract as the web
 app (`com.calimero.chat`, [`logic/src/lib.rs`](../../logic/src/lib.rs)), built on
 [MeroKit / MeroKitUI](https://github.com/calimero-network/swift-sdk).
 
-## Delegated only
+## On Calimero 1.0
 
-The phone holds no node and never talks JSON-RPC. It holds a device key that
-your Calimero account certifies, and a relay runs the contract for it:
+The phone holds no node and never talks JSON-RPC. It signs in to a Calimero
+1.0 cluster with a passkey and talks to it over the sealed channel
+(`calimero/sealed-http/v2`, opened only after the node's attestation is
+verified). `SessionModel` drives MeroKitUI's `MeroClient`; `CloudChatBackend`
+runs over the SDK's `CloudAppBackend`:
 
 | What | How (SDK call) | Wire |
 | --- | --- | --- |
-| Sign in | `MeroClient.signInWithCloud` → wallet enrolment in the system auth sheet | wallet `account-enroll`, cloud `getAccountRelays` |
-| Session | `CloudSignIn.keychain(service: "network.calimero.chat")` | device key, account session and relay tokens in the Keychain |
-| Read a view (`get_messages`, `get_info`, `get_profiles`, `get_unread_count`) | `RelayClient.query` | `POST /admin-api/contexts/{id}/query` (account-scoped, Bearer) |
-| Write (`send_message`, `edit_message`, `delete_message`, `update_reaction`, `set_profile`, `mark_as_read`) | `RelayClient.execute` | signed warrant, `POST /admin-api/contexts/{id}/intents` |
-| List workspaces / channels | `AccountAdmin` reads | relay's caller-scoped admin API |
-| Create a workspace | `CloudSignIn.foundNamespace` (+ `#general`) | governance intents (namespace founding), HA in the cloud |
-| Create a channel | `AccountAdmin.createGroupInNamespace` + `createContext` | governance root op + `POST /admin-api/groups/{id}/context-intents` |
-| Join an open channel | `AccountAdmin.joinContext` | `MemberJoinedOpen` governance intent |
-| Invite | `CloudSignIn.createNamespaceInvitation` (signed with the device key) | none until redeemed |
-| Join from an invitation | `CloudSignIn.join` | direct admission, `POST …/namespaces/{id}/admit` on the relay the cloud routes to |
-| Live updates | `CloudConnection.mero.events(contextIds:)` | SSE on the relay with the account's Bearer session; polling every 5 s when no session is up |
+| Sign in / create account | `MeroClient.connect(nodeURL:allowMock:)` + `signIn()` / `signUp(name:)` (a dev node: `signInOrSignUp`) | `/auth/passkey/{login,register}/{begin,finish}` |
+| Session | `KeychainCloudSessionStore(service: "network.calimero.chat")`, `MeroClient.restore()` | session + refresh token in the Keychain, `/auth/refresh` |
+| Read a view (`get_messages`, `get_info`, `get_profiles`, `get_unread_count`) | `ContextContract.query` (`CloudContextContract`) | `POST /apps/{app}/views` |
+| Write (`send_message`, `edit_message`, `delete_message`, `update_reaction`, `set_profile`, `mark_as_read`) | `ContextContract.execute` | `POST /apps/{app}/intents` |
+| List workspaces / channels | `listNamespaces` / `listSubgroups` | the account's **orgs** running chat (`GET /auth/me`), their **teams** (`GET /orgs/{org}`) |
+| Create a workspace | `foundNamespace` (+ `#general`) | `POST /orgs` + org metadata `{name, package}` |
+| Create a channel | `createSubgroup` + `createContext` | `POST /orgs/{org}/teams {join: everyone \| invite}` + `POST /apps {package, org, access: team}` |
+| Join an open channel | `joinContext` | open teams inherit org membership; `GET /apps/{app}` checks it |
+| Invite | `createInvitation` | `POST /orgs/{org}/invites` → an invite token |
+| Join from an invitation | `joinNamespace` | `POST /invites/{token}/redeem` |
+| Live updates | `events(contextId:)` | `GET /apps/{app}/events` (sealed SSE); polling every 5 s once the stream ends |
+| Attachments and avatars | `uploadBlob` / `getBlob` | `/apps/{app}/blobs` |
+| Approvals (an update of Mero Chat, a node release) | `CalimeroClient.pendingApprovals(org:)` + `MeroClient.requestConsent` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
 
-There is no node login, no admin password and no "node URL" anywhere in the app.
+Channels follow the web app's model, in 1.0 terms: a workspace is an **org**,
+each channel is a **team** in it with one **app instance** of chat (a team
+that only admits by invitation is a private channel); a DM is the same with a
+`DM_CONTEXT_…` name and `context_type: "Dm"`. History is paged with
+`get_messages(limit: 20, offset)` like the web app, ordered by each message's
+stable `index`, with `get_messages_from(start)` filling any gap after a burst.
 
-Channels follow the web app's model: each channel is a subgroup of the
-workspace's namespace with one context in it (subgroup visibility is the
-public/private flag); a DM is the same with a `DM_CONTEXT_…` name and
-`context_type: "Dm"`. History is paged with `get_messages(limit: 20, offset)`
-like the web app, ordered by each message's stable `index`, with
-`get_messages_from(start)` filling any gap after a burst. Invitation links are
-the web app's (`https://links.calimero.network/com.calimero.chat/join?invitation=…`,
-`base58(deflate({invitation, groupAlias}))`), so a link made on the web joins
-here and the other way round.
+### Sign-in
+
+- **Calimero Cloud**: enter the cluster's node URL (from
+  cloud.calimero.network; bake it in with `CalimeroClusterURL`), then **Sign in
+  with passkey** or **Create an account**. The node's TDX attestation is
+  verified (`CloudPolicy.production`). The device's passkey needs the
+  cluster's relying party as an associated domain (`webcredentials:<rp-id>`,
+  see `project.yml`).
+- **Development node**: a `merod local` node URL (default
+  `http://localhost:2501`, `DefaultNodeURL`). The client allows mock
+  attestation (`allowMock`) and makes and keeps a software passkey for that
+  node.
+
+### Invitations
+
+`https://links.calimero.network/com.calimero.chat/join?invitation=<token>`, the
+token being `base58(deflate(json))` of
+`{"invitation":{"orgId":"…","token":"inv_…"},"namespaceId":"…","groupAlias":"…"}`
+(the SDK's `InvitationLinkPayload` plus the workspace's name). The invite token
+is a bearer secret: anyone with the link can join until it expires. Pre-1.0
+links (signed group invitations) are refused; the web app's links interoperate
+again once it is ported to 1.0.
+
+### Approvals
+
+Node releases and upgrades of an app instance are approved only on the node's
+own consent page. The workspace picker lists what waits for the signed-in
+person (updates of Mero Chat, node releases their org approves); **Review**
+opens the page in the system browser, which returns to `mero-chat://consent`.
 
 ## Design
 
@@ -41,7 +71,7 @@ The app draws Mero Chat the way the web app draws it below 1024px, from the
 same tokens (`packages/glass/src/glass.css`, `app/src/index.css`), light and
 dark, in Figtree (bundled, SIL OFL, `Resources/Fonts`):
 
-- **Landing:** a nav bar with the mark and "Mero Chat", the hero, a channel preview, the features, and the ink "Continue with Calimero" button pinned at the bottom.
+- **Landing:** a nav bar with the mark and "Mero Chat", the hero, a channel preview, the features, and sign-in pinned at the bottom (cluster URL and passkey, create an account, or a development node).
 - **Workspace entry:** the web app's entry card (select, name yourself, create, join from a link).
 - **Sidebar:** a full-screen panel with the logo, the workspace switcher,
   Browse Channels, CHANNELS (`#`, or a lock for a private channel) and DIRECT
@@ -62,12 +92,11 @@ dark, in Figtree (bundled, SIL OFL, `Resources/Fonts`):
 **Attachments and avatars** work as on the web. The composer's attach button
 offers a photo (sent as JPEG, so a browser shows it) or a file from Files. A
 message carries at most one image and one file, uploaded as blobs against the
-channel (`AccountAdmin.uploadBlob` on the relay, calimero-network/swift-sdk#79)
-and sent as `send_message`'s `images` / `files`. Images show as 80×80 tiles
+channel's app instance (`/apps/{app}/blobs`) and sent as `send_message`'s `images` / `files`. Images show as 80×80 tiles
 that open full screen. Files are chips that download and open the share sheet.
 Tap your picture in Settings to set it for the open channel
-(`set_profile(username, avatar)`). Blobs are read through the channel's
-context, so the relay can fetch one a peer holds.
+(`set_profile(username, avatar)`). Blobs are read through the channel's app
+instance.
 
 Message bodies are the web editor's HTML, both ways: `ChatRichText.swift`
 reads it into native text and writes the composer's marks back as the same
@@ -82,7 +111,7 @@ Sources/App/         SwiftUI app: session, screens
 Resources/Fonts/     Figtree (the web app's face) and its licence
 Tests/               logic tests (compile Sources/Core directly, no host app)
 SnapshotTests/       every screen drawn with sample data, light and dark (hosted in the app)
-LiveTests/           live tests: Sources/Core against a real relay (target MeroChatLiveTests)
+LiveTests/           live tests: Sources/Core against a real 1.0 node (target MeroChatLiveTests)
 ```
 
 ## Build and run
@@ -95,9 +124,9 @@ cd apps/mero-chat/mobile/ios
 xcodegen generate
 open MeroChat.xcodeproj          # run the MeroChat scheme on a simulator or device
 
-# or from the command line, as CI does:
-xcodebuild test -project MeroChat.xcodeproj -scheme MeroChat \
-  -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO
+# or a device build from the command line (no simulator):
+xcodebuild build-for-testing -project MeroChat.xcodeproj -scheme MeroChat \
+  -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
 ```
 
 Bundle id `network.calimero.chat`, iOS 16+. For a device build, set your team
@@ -105,83 +134,56 @@ in Xcode (Signing & Capabilities).
 
 ### The SDK pin
 
-`project.yml` pins the package to a swift-sdk release, 0.4.0: the first one
-with calimero-network/swift-sdk#79, which re-signs a join at schema 26 when the
-admitting relay is on core 0.11.0-rc.90 and says so, and adds blob upload and
-download for an account through the relay.
+`project.yml` pins the package by revision to
+`a1ec644130d4405a1bab7547654b1442cc559b49`, the head of the swift-sdk's
+Calimero 1.0 port (calimero-network/swift-sdk#85, branch `feat/calimero-1.0`).
+It moves to that PR's merge commit (and then a release) once it lands.
 
 ```yaml
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    from: 0.4.0
+    revision: a1ec644130d4405a1bab7547654b1442cc559b49
 ```
 
-To bump it, change `from` to the new version, run `xcodegen generate`, and let
-Xcode re-resolve packages (File → Packages → Reset Package Caches if it holds on
-to the old one).
+To bump it, change `revision`, run `xcodegen generate`, and let Xcode
+re-resolve packages (File → Packages → Reset Package Caches if it holds on to
+the old one).
 
-## Live tests (a real relay)
+## Live tests (a real 1.0 node)
 
-`MeroChatLiveTests` runs the chat layer against a real merod relay, booted by
-[`../e2e/run-relay.sh`](../e2e) (one node: embedded auth, device-key login,
-delegated access, mock TEE, mero-chat installed). Nothing is faked but the
-cloud: each test mints its accounts offline (a BIP39 root certifies a fresh
-device key, as the wallet does), restores that session through `MeroClient`
-exactly as `SessionModel` does, and drives `WorkspacesModel`,
-`ChannelsModel` and `ChannelModel`:
+`MeroChatLiveTests` runs the chat layer against a real Calimero 1.0
+development node (`merod local`: `--dev`, mock attestation) with chat
+installed (`meroctl app install --path mero-chat.mpk`). Nothing is faked: each
+test signs up its accounts with a software passkey over the sealed channel,
+builds the backend exactly as `SessionModel` does, and drives
+`WorkspacesModel`, `ChannelsModel` and `ChannelModel`:
 
 | Case | Test | What it asserts |
 | --- | --- | --- |
-| Founder flow | `testFounderFlowAgainstTheRelay` | founding through the relay lists the workspace with its name and chat's app id; `#general` is created and joined; send ×3, paging back with `get_messages(limit: 2, offset)`, edit (stamped), react / un-react, delete (blanked, slot kept), `set_profile`, no unread |
-| Invite + join | `testInviteJoinAndReplyAcrossTwoAccounts` | the app's invitation link parses back; a relayless second account redeems it at `/admit`, gains the relay, lists the workspace and `#general`, joins, reads the founder's message and replies; the founder sees an unread badge, the reply under Bob's name, and the badge clears; Bob's edit of Alice's message is not offered and is refused by the contract |
+| Founder flow | `testFounderFlowAgainstTheNode` | founding lists the workspace with its name; `#general` is created and joined; send ×3, paging back with `get_messages(limit: 2, offset)`, edit (stamped), react / un-react, delete (blanked, slot kept), `set_profile`, no unread |
+| Invite + join | `testInviteJoinAndReplyAcrossTwoAccounts` | the app's invitation link parses back; a second account redeems the invite token, lists the workspace and `#general`, joins, reads the founder's message and replies; the founder sees an unread badge, the reply under Bob's name, and the badge clears; Bob's edit of Alice's message is not offered and is refused by the contract |
 | Live update | `testBobsMessageReachesAlicesOpenChannelLive` | with `#general` open and live, Bob's message shows up in Alice's model while it is still on the SSE stream (not the polling fallback) |
 
-They skip themselves unless `MERO_E2E_RELAY_URL` and `MERO_E2E_APP_ID` are
-set, or `../e2e/.relay.env` exists, so the ordinary test run stays offline.
-xcodebuild forwards only `TEST_RUNNER_`-prefixed variables to the test
-process, so pass them that way:
-
-```sh
-cd apps/mero-chat/mobile/e2e && MEROD_BIN=/path/to/merod ./run-relay.sh   # writes .relay.env
-cd ../ios && xcodegen generate
-set -a; . ../e2e/.relay.env; set +a
-TEST_RUNNER_MERO_E2E_RELAY_URL=$MERO_E2E_RELAY_URL TEST_RUNNER_MERO_E2E_APP_ID=$MERO_E2E_APP_ID \
-  TEST_RUNNER_MERO_E2E_RELAY_ACCOUNT=$MERO_E2E_RELAY_ACCOUNT \
-  xcodebuild test -project MeroChat.xcodeproj -scheme MeroChat \
-  -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:MeroChatLiveTests CODE_SIGNING_ALLOWED=NO
-```
-
-Where the app would ask the cloud or the registry, the tests stand in:
-`DelegatedChatBackend` takes the application to found with
-(`MERO_E2E_APP_ID`, version `MERO_E2E_APP_VERSION`, default `0.0.0`) and the
-relay to send joins to; both are `nil` in the app. The relay's own account
-(the executor a founding warrant names, which the Cloud manager reports in
-the app) is `MERO_E2E_RELAY_ACCOUNT`, which `run-relay.sh` writes; without it the rig
-reads it once with the operator login (`MERO_E2E_RELAY_ADMIN_USER` /
-`MERO_E2E_RELAY_ADMIN_PASSWORD`, default `dev` / `dev-password`). CI:
-[`.github/workflows/mero-chat-ios-live.yml`](../../../../.github/workflows/mero-chat-ios-live.yml).
+They skip themselves unless `MERO_E2E_NODE_URL` is set (optionally
+`MERO_E2E_NODES`, `MERO_E2E_PACKAGE_VERSION`), so the ordinary test run stays
+offline. xcodebuild forwards only `TEST_RUNNER_`-prefixed variables to the test
+process (`TEST_RUNNER_MERO_E2E_NODE_URL=http://127.0.0.1:2501`). They were
+ported from the 0.x relay rig and have not been run against a 1.0 node yet.
 
 ## Pointing it at another environment
 
-`project.yml` sets these Info.plist keys; an empty value means the SDK default
-(the hosted Calimero wallet, Cloud manager and registry):
+`project.yml` sets these Info.plist keys:
 
 | Key | Default | What |
 | --- | --- | --- |
-| `MeroWalletURL` | `https://wallet.cloud.calimero.network/account-enroll` | the wallet's enrolment page |
-| `MeroCloudBaseURL` | `https://manager.cloud.calimero.network` | relay discovery, routing, HA |
-| `MeroRegistryURL` | `https://apps.calimero.network` | where `com.calimero.chat` resolves |
-| `MeroChatCallbackScheme` | `mero-chat` | the app scheme the wallet returns to (`mero-chat://enrol`) |
-| `MeroChatCallbackHost` / `MeroChatCallbackPath` | unset / `/enrol` | a verified https callback instead (Associated Domains, iOS 17.4+) |
+| `CalimeroClusterURL` | empty | the Calimero Cloud cluster's node URL; empty: the sign-in screen asks |
+| `DefaultNodeURL` | `http://localhost:2501` | the development node the sign-in screen prefills |
+| `MeroPackageVersion` | empty | the Mero Chat version new channels run; empty: the latest |
+| `MeroChatCallbackScheme` | `mero-chat` | where the consent page returns (`mero-chat://consent`) |
+| `MeroChatCallbackHost` / `MeroChatCallbackPath` | unset / `/consent` | a verified https return instead (Associated Domains, iOS 17.4+) |
 
-Edit them in `project.yml` and regenerate. The relay itself is not configured:
-the Cloud manager names it for the account.
-
-> The hosted wallet currently returns only to `https://` callbacks; app-scheme
-> callbacks are a pending wallet change (see the swift-sdk README). Until it
-> lands, sign-in against the hosted wallet needs `MeroChatCallbackHost` set to a
-> domain the app has an Associated Domains entitlement for.
+Edit them in `project.yml` and regenerate.
 
 ## Snapshot tests
 
@@ -196,31 +198,24 @@ TEST_RUNNER_MERO_SNAPSHOT_DIR=/tmp/mero-chat-snaps xcodebuild test -project Mero
   -only-testing:MeroChatSnapshotTests CODE_SIGNING_ALLOWED=NO
 ```
 
-## When the relay is too old
+## When the app instance is too old
 
-A relay runs the chat the registry publishes for its runtime. The current
-`com.calimero.chat` needs runtime 0.12.0-rc.1, so a relay on core
-0.11.0-rc.90 can't install it: founding a workspace fails, and a channel
-created on an older chat already installed there fails in its `init`. The app
-says which: "Your relay runs Calimero 0.11.0-rc.90, which can't install this
-version of Mero Chat…" (`ChatErrorText.outdatedRelay`). Nothing on the phone
-can fix that; the relay has to be upgraded. Joining works on either release
-(see the SDK pin).
+A channel created against an older Mero Chat installed on the cluster fails
+in its `init` (`unknown field \`context_type\``). The app says so
+(`ChatErrorText.outdatedChat`); the app instance has to be upgraded, which
+the owner approves on the consent page (see Approvals).
 
 ## Not supported yet
 
 - **Starting a DM**: DMs are listed and open like channels, but starting one
   needs the member directory and per-member metadata the web app writes; not
   built.
-- **Presence** (typing, online dots): the SDK's `RelayPresenceClient` supports
-  it; not used yet.
+- **Presence** (typing, online dots): 1.0 has `/apps/{app}/presence`; not used yet.
 - **Workspace admin** (workspace roles, capabilities, remove members),
-  **deleting a channel**, **leaving or deleting a workspace**: admin-API calls
-  the backend does not make yet.
+  **deleting a channel**, **leaving or deleting a workspace**: `MeroAppBackend`
+  has the calls on 1.0, but the app doesn't offer them yet.
 - **Notifications and push**: none while the app is closed.
-- **More than one relay**: listings and contract calls go to the one relay the
-  Cloud manager names for the account. A workspace served only by a different
-  relay does not show up.
+- **More than one cluster**: the app signs in to one cluster at a time.
 - **Universal links** for `https://links.calimero.network/…`: needs an
   Associated Domains entitlement on that domain. `calimero://com.calimero.chat/join?…`
   deep links open the app; https links can be pasted into **Join with a link**.

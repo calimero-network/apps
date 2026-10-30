@@ -4,8 +4,10 @@
 #   xcodegen generate          # writes MeroChat.xcodeproj (not committed)
 #   open MeroChat.xcodeproj
 #
-# The SDK is consumed from GitHub, pinned to a swift-sdk release. To bump it,
-# change `from` below and regenerate.
+# The SDK is consumed from GitHub, pinned by revision to the head of its
+# Calimero 1.0 port (calimero-network/swift-sdk#85, branch feat/calimero-1.0);
+# it moves to the merge commit once that lands. To bump it, change `revision`
+# below and regenerate.
 name: MeroChat
 
 options:
@@ -17,7 +19,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    from: 0.4.0
+    revision: a1ec644130d4405a1bab7547654b1442cc559b49
 
 targets:
   MeroChat:
@@ -36,23 +38,36 @@ targets:
         UIAppFonts: [Figtree-Variable.ttf]
         UILaunchScreen: {}
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`mero-chat://enrol#credential=…`).
+          # The node's consent page returns here after an approval
+          # (`mero-chat://consent?request_id=…&result=…`).
           # ASWebAuthenticationSession intercepts it itself; registering it also
-          # lets `onOpenURL` finish a sign-in that arrives outside the sheet.
-          - CFBundleURLName: network.calimero.chat.enrol
+          # lets `onOpenURL` see a return that arrives outside the sheet.
+          - CFBundleURLName: network.calimero.chat.consent
             CFBundleURLSchemes: [mero-chat]
           # Invitation deep links: `calimero://com.calimero.chat/join?invitation=…`.
           - CFBundleURLName: network.calimero.chat.invite
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
-        # wallet and Cloud manager). Point these at another environment to test
-        # against it; see README.md.
+        # The consent page's return. An https host (Associated Domains, iOS
+        # 17.4+) replaces the scheme when set.
         MeroChatCallbackScheme: mero-chat
         MeroChatCallbackHost: ""
-        MeroChatCallbackPath: /enrol
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        MeroChatCallbackPath: /consent
+        # The Calimero Cloud cluster to sign in to: a node URL from the
+        # console. Empty: the sign-in screen asks for one. See README.md.
+        CalimeroClusterURL: ""
+        # The development node (`merod local`) the sign-in screen prefills.
+        DefaultNodeURL: "http://localhost:2501"
+        # The Mero Chat version new channels run. Empty: the latest.
+        MeroPackageVersion: ""
+        NSLocalNetworkUsageDescription: "Connect to a Calimero development node on your local network."
+        # Plain http only to a node on the local network (merod local --dev);
+        # everything else stays https under ATS.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    # Signing in with the device's passkey on a real cluster needs the
+    # cluster's relying party as an associated domain: add an entitlements
+    # file with `com.apple.developer.associated-domains: [webcredentials:<rp-id>]`.
+    # A development node uses a software passkey and needs neither.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.chat
@@ -87,14 +102,12 @@ targets:
       - package: MeroKit
         product: MeroKitTestSupport
 
-  # Live tests: the same chat layer against a REAL relay (mobile/e2e/relay.yml).
-  # Their own target, not MeroChatTests: they drive the session the app's
-  # SessionModel builds (MeroKitUI's MeroClient over a CloudSignIn), while the
-  # logic tests deliberately link no UI module and route URLSession through
-  # MockURLProtocol. Every case skips itself unless MERO_E2E_RELAY_URL and
-  # MERO_E2E_APP_ID are set (see LiveTests/LiveRig.swift), so running the whole
-  # scheme offline stays green. CI: .github/workflows/mero-chat-ios-live.yml
-  # runs `-only-testing:MeroChatLiveTests`.
+  # Live tests: the same chat layer against a REAL Calimero 1.0 development
+  # node (`merod local`). Their own target, not MeroChatTests: they drive the
+  # session the app's SessionModel builds (MeroKitUI's MeroClient and
+  # CloudAppBackend), while the logic tests deliberately link no UI module.
+  # Every case skips itself unless MERO_E2E_NODE_URL is set (see
+  # LiveTests/LiveRig.swift), so running the whole scheme offline stays green.
   MeroChatLiveTests:
     type: bundle.unit-test
     platform: iOS

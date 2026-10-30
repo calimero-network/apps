@@ -1,180 +1,136 @@
 import Foundation
 import MeroKit
 
-/// Everything the chat screens need from a signed-in account, and nothing a
-/// node would offer: there is no node here.
+/// Everything the chat screens need from a signed-in account on a Calimero
+/// 1.0 cluster. In 1.0 words a workspace is an **org**, a channel-group is a
+/// **team** in it and a channel is an **app instance** of chat in that team.
 ///
-/// ``DelegatedChatBackend`` is the real one. Tests substitute a fake.
+/// ``CloudChatBackend`` is the real one. Tests substitute a fake.
 protocol ChatBackend: Sendable {
     /// The account, 64 hex.
     var account: String { get }
-    /// The contract in a context: relay query for reads, warrants for writes.
+    /// The contract in an app instance: `/views` for reads, `/intents` for writes.
     var contract: any ChatContract { get }
-    /// Whether a relay serves this account (else only joining works).
+    /// Whether the account is connected to its cluster (always, once signed in on 1.0).
     var hasRelay: Bool { get }
-    /// Whether ``events(contextId:)`` streams (the relay's Bearer session is up);
-    /// when not, the channel screen polls.
+    /// Whether ``events(contextId:)`` streams (sealed SSE); when not, the channel screen polls.
     var canSubscribe: Bool { get }
 
-    /// The namespaces this account is in.
+    /// The orgs this account is in that run chat.
     func listWorkspaces() async throws -> [Workspace]
-    /// The channel-groups (subgroups) of a namespace and the contexts in each.
+    /// The channel-groups (teams) of an org and the app instances in each.
     func listChannelGroups(namespaceId: String) async throws -> [ChannelGroupListing]
-    /// Whether the account is a member of the context's group (its calls work).
+    /// Whether the account can reach the app instance (its calls work).
     func isMember(contextId: String) async throws -> Bool
-    /// Join an open channel: `MemberJoinedOpen` on its group, through the relay.
+    /// Join an open channel: open teams inherit org membership, so this checks it is reachable.
     func joinChannel(contextId: String) async throws
 
-    /// Found a namespace through the relay, named `name`.
+    /// Found an org for chat, named `name`.
     func foundWorkspace(name: String) async throws -> FoundedWorkspace
-    /// Create a channel's subgroup under the namespace (a root op through the relay).
+    /// Create a channel's team in the org (`join: everyone`, or `invite` when private).
     func createChannelGroup(namespaceId: String, name: String, isPublic: Bool) async throws -> String
-    /// Create the channel's context in `groupId` (a context intent through the relay).
+    /// Create the channel's app instance in team `groupId` (`POST /apps`).
     func createContext(groupId: String, applicationId: String, name: String, initArgs: JSONValue) async throws -> String
 
-    /// Mint an invitation to a namespace, signed with the device key.
-    func createInvitation(namespaceId: String) async throws -> SignedGroupOpenInvitation
-    /// Redeem an invitation: direct admission through an admitting relay.
-    func joinWorkspace(namespaceId: String, invitation: SignedGroupOpenInvitation) async throws -> JoinedWorkspace
+    /// Mint an invite token to an org (`POST /orgs/{org}/invites`).
+    func createInvitation(namespaceId: String) async throws -> OrgInvitation
+    /// Redeem an invitation (`POST /invites/{token}/redeem`).
+    func joinWorkspace(namespaceId: String, invitation: OrgInvitation) async throws -> JoinedWorkspace
 
-    /// Live events for one context.
+    /// Live events for one app instance.
     func events(contextId: String) -> AsyncThrowingStream<ChatLiveEvent, Error>
 
     /// Store `data` as a blob against `contextId` (an attachment or an avatar); its id.
     func uploadBlob(contextId: String, data: Data) async throws -> String
-    /// A blob's bytes, fetched through `contextId` from whichever member holds it.
+    /// A blob's bytes, fetched through the app instance `contextId`.
     func downloadBlob(blobId: String, contextId: String) async throws -> Data
 }
 
-/// ``ChatBackend`` for a Calimero Cloud account, delegated end to end.
+/// ``ChatBackend`` on the swift-sdk's app layer (`MeroAppBackend`; in the app
+/// `MeroKitUI.CloudAppBackend` over a `CalimeroClient`, in tests
+/// `InMemoryAppBackend`):
 ///
-/// - Contract calls: ``RelayChatContract`` over the connection's ``RelayClient``
-///   (relay query / warrant intents).
-/// - Listings: the account's admin (``AccountAdmin``), whose reads are the
-///   relay's caller-scoped admin API.
-/// - Channels: ``AccountAdmin`` turns `createGroupInNamespace`,
-///   `setSubgroupVisibility`, `createContext` and `joinContext` into governance
-///   and context intents posted to the namespace's relay.
-/// - Workspaces: ``CloudSignIn/foundNamespace(_:name:package:application:defaultCapabilities:registryURL:)``
-///   founds through the relay; ``CloudSignIn/createNamespaceInvitation(_:namespaceId:invitedRole:validForSeconds:)``
-///   signs invitations with the device key; ``CloudSignIn/join(namespaceId:invitation:nodeURL:)``
-///   is direct admission (`POST …/namespaces/{id}/admit`) through the relay the cloud routes to.
-/// - Live updates: SSE on the relay through the connection's Bearer ``Mero``.
-/// - Attachments and avatars: blobs stored on and read from the relay through
-///   the channel's context (``AccountAdmin/uploadBlob(_:)``, ``AccountAdmin/getBlob(_:contextId:)``).
-struct DelegatedChatBackend: ChatBackend {
-    let account: String
-    let contract: any ChatContract
-    let connection: CloudConnection
-    let admin: any AdminSurface
-    let signIn: CloudSignIn
-    /// What a new workspace is founded with. `nil` (the app) resolves chat's
-    /// package from the registry; the live tests name the bundle installed on
-    /// their relay, which the registry does not list.
-    let foundingApplication: FoundingApplication?
-    /// Where to send a join. `nil` (the app) asks the Cloud manager for the
-    /// admitting relay; the live tests, which have no cloud, name their relay.
-    let joinNodeURL: String?
+/// - Contract calls: ``AppChatContract`` over the backend's `ContextContract`
+///   (`POST /apps/{app}/views` and `/intents`, sealed).
+/// - Workspaces: `listNamespaces` / `foundNamespace` (orgs whose metadata names chat).
+/// - Channel-groups: `listSubgroups` (teams and their app instances); a team
+///   that only admits by invitation is a private channel (``privateTeams``).
+/// - Invitations: org invite tokens, redeemed at `POST /invites/{token}/redeem`.
+/// - Live updates: `events(contextId:)` (`GET /apps/{app}/events`, sealed SSE).
+/// - Attachments and avatars: `/apps/{app}/blobs`.
+struct CloudChatBackend: ChatBackend {
+    let app: any MeroAppBackend
+    /// The ids of an org's teams that only admit by invitation (private
+    /// channels). The app reads them from `GET /orgs/{org}`; `nil` treats
+    /// every channel as open.
+    let privateTeams: (@Sendable (_ orgId: String) async -> Set<String>)?
 
-    init(
-        connection: CloudConnection, admin: any AdminSurface, signIn: CloudSignIn,
-        foundingApplication: FoundingApplication? = nil, joinNodeURL: String? = nil
-    ) {
-        self.account = connection.session.account
-        self.connection = connection
-        self.admin = admin
-        self.signIn = signIn
-        self.foundingApplication = foundingApplication
-        self.joinNodeURL = joinNodeURL
-        if let relay = connection.relay {
-            contract = RelayChatContract(relay: relay)
-        } else {
-            contract = NoRelayChatContract()
-        }
+    init(app: any MeroAppBackend, privateTeams: (@Sendable (_ orgId: String) async -> Set<String>)? = nil) {
+        self.app = app
+        self.privateTeams = privateTeams
     }
 
-    var hasRelay: Bool { connection.relay != nil }
-    var canSubscribe: Bool { connection.mero != nil }
+    var account: String { app.account }
+    var contract: any ChatContract { AppChatContract(inner: app.contract) }
+    var hasRelay: Bool { app.hasRelay }
+    var canSubscribe: Bool { app.canSubscribe }
 
     func listWorkspaces() async throws -> [Workspace] {
-        try await admin.listNamespaces().map {
-            Workspace(
-                id: $0.namespaceId, name: $0.name ?? ChatIdentity.short($0.namespaceId),
-                applicationId: $0.targetApplicationId)
+        try await app.listNamespaces().map {
+            Workspace(id: $0.id, name: $0.name ?? ChatIdentity.short($0.id), applicationId: $0.applicationId)
         }
     }
 
     func listChannelGroups(namespaceId: String) async throws -> [ChannelGroupListing] {
-        let subgroups = try await admin.listSubgroups(namespaceId)
-        var out: [ChannelGroupListing] = []
-        for subgroup in subgroups {
-            let contexts = (try? await admin.listGroupContexts(subgroup.groupId)) ?? []
-            let info = try? await admin.getGroupInfo(subgroup.groupId)
-            let visibility = info?.effectiveVisibility ?? info?.subgroupVisibility
-            out.append(
-                ChannelGroupListing(
-                    groupId: subgroup.groupId, name: subgroup.name, contextIds: contexts.map(\.contextId),
-                    isPrivate: visibility?.lowercased() == "restricted"))
+        let subgroups = try await app.listSubgroups(namespaceId: namespaceId)
+        let restricted = await privateTeams?(namespaceId) ?? []
+        return subgroups.map {
+            ChannelGroupListing(
+                groupId: $0.groupId, name: $0.name, contextIds: $0.contextIds,
+                isPrivate: restricted.contains($0.groupId))
         }
-        return out
     }
 
     func isMember(contextId: String) async throws -> Bool {
-        !(try await admin.getContextIdentitiesOwned(contextId).identities.isEmpty)
+        try await app.isMember(contextId: contextId)
     }
 
     func joinChannel(contextId: String) async throws {
-        _ = try await admin.joinContext(contextId)
+        try await app.joinContext(contextId: contextId)
     }
 
     func foundWorkspace(name: String) async throws -> FoundedWorkspace {
-        let founded = try await signIn.foundNamespace(
-            connection, name: name, package: ChatConstants.packageName, application: foundingApplication)
-        return FoundedWorkspace(
-            namespaceId: founded.namespaceId, haEnabled: founded.haEnabled, haError: founded.haError)
+        let founded = try await app.foundNamespace(name: name)
+        return FoundedWorkspace(namespaceId: founded.namespaceId, haEnabled: founded.haEnabled, haError: founded.haError)
     }
 
     func createChannelGroup(namespaceId: String, name: String, isPublic: Bool) async throws -> String {
-        let visibility = isPublic ? "open" : "restricted"
-        let created = try await admin.createGroupInNamespace(
-            namespaceId, request: CreateGroupInNamespaceRequest(groupName: name, visibility: visibility))
-        // The web app sets it again explicitly; a failure there is not fatal.
-        try? await admin.setSubgroupVisibility(
-            created.groupId, request: SetSubgroupVisibilityRequest(subgroupVisibility: visibility))
-        return created.groupId
+        try await app.createSubgroup(namespaceId: namespaceId, name: name, isPublic: isPublic)
     }
 
     func createContext(groupId: String, applicationId: String, name: String, initArgs: JSONValue) async throws -> String {
-        let created = try await admin.createContext(
-            CreateContextRequest(
-                applicationId: applicationId, groupId: groupId, initializationParams: ChatJSON.bytes(initArgs),
-                name: name))
-        return created.contextId
+        try await app.createContext(groupId: groupId, applicationId: applicationId, name: name, initArgs: initArgs)
     }
 
-    func createInvitation(namespaceId: String) async throws -> SignedGroupOpenInvitation {
-        try await signIn.createNamespaceInvitation(connection, namespaceId: namespaceId)
+    func createInvitation(namespaceId: String) async throws -> OrgInvitation {
+        try await app.createInvitation(namespaceId: namespaceId)
     }
 
-    func joinWorkspace(namespaceId: String, invitation: SignedGroupOpenInvitation) async throws -> JoinedWorkspace {
-        let (_, outcome) = try await signIn.join(
-            namespaceId: namespaceId, invitation: invitation, nodeURL: joinNodeURL)
-        return JoinedWorkspace(published: outcome.published, relayURL: outcome.relayUrl)
+    func joinWorkspace(namespaceId: String, invitation: OrgInvitation) async throws -> JoinedWorkspace {
+        let joined = try await app.joinNamespace(namespaceId: namespaceId, invitation: invitation)
+        return JoinedWorkspace(published: joined.published, nodeURL: joined.nodeURL)
     }
 
     func uploadBlob(contextId: String, data: Data) async throws -> String {
-        try await admin.uploadBlob(UploadBlobRequest(data: data, contextId: contextId)).blobId
+        try await app.uploadBlob(contextId: contextId, data: data).blobId
     }
 
     func downloadBlob(blobId: String, contextId: String) async throws -> Data {
-        try await admin.getBlob(blobId, contextId: contextId)
+        try await app.getBlob(blobId: blobId, contextId: contextId)
     }
 
     func events(contextId: String) -> AsyncThrowingStream<ChatLiveEvent, Error> {
-        guard let mero = connection.mero else {
-            return AsyncThrowingStream { $0.finish() }
-        }
-        let upstream = mero.events(contextIds: [contextId])
+        let upstream = app.events(contextId: contextId)
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {

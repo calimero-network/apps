@@ -302,28 +302,29 @@ struct SearchPage: Decodable, Equatable, Sendable {
 
 // MARK: - App models
 
-/// A workspace: a namespace this account is a member of.
+/// A workspace: an org (a namespace before 1.0) this account is a member of.
 struct Workspace: Identifiable, Hashable, Sendable {
-    /// The namespace id, 64 hex.
+    /// The org id.
     let id: String
     let name: String
-    /// The application the namespace runs (what a new channel is created with).
+    /// The package a new channel's app instance is created from.
     let applicationId: String
 }
 
-/// One channel-group a namespace holds: a subgroup with (normally) one context.
+/// One channel-group an org holds: a team with (normally) one app instance.
 struct ChannelGroupListing: Equatable, Sendable {
     let groupId: String
     let name: String?
     let contextIds: [String]
-    /// A restricted subgroup: only members it adds see it (the lock icon).
+    /// A team that admits only by invitation: only members it adds see it (the lock icon).
     var isPrivate = false
 }
 
 /// A channel or DM as the lists show it.
 struct ChannelEntry: Identifiable, Hashable, Sendable {
-    /// The context id.
+    /// The app instance id.
     let id: String
+    /// Its team.
     let groupId: String
     let name: String
     let kind: ChannelKind
@@ -338,17 +339,17 @@ struct ChannelEntry: Identifiable, Hashable, Sendable {
 /// The outcome of founding a workspace.
 struct FoundedWorkspace: Equatable, Sendable {
     let namespaceId: String
-    /// Whether the cloud agreed to host the namespace (invitations need it).
+    /// Always true on 1.0 (every org lives on the cluster).
     let haEnabled: Bool
     let haError: String?
 }
 
 /// The outcome of redeeming an invitation.
 struct JoinedWorkspace: Equatable, Sendable {
-    /// NOT "joined": membership lands once peers apply the op.
+    /// Whether the node accepted the redemption.
     let published: Bool
-    /// The relay that admitted the account.
-    let relayURL: String
+    /// The node that redeemed it.
+    let nodeURL: String
 }
 
 /// A live event for a context, as far as the app cares.
