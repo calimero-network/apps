@@ -5,7 +5,7 @@ import XCTest
 
 final class InvitationTests: XCTestCase {
     private let org = String(repeating: "07", count: 32)
-    private var invitation: OrgInvitation { OrgInvitation(orgId: org, token: "inv_abc123") }
+    private var invitation: OrgInvitation { OrgInvitation(namespaceId: org, token: "inv_abc123") }
 
     func testLinkRoundTrip() throws {
         let invite = TrackerInvitation(invitation: invitation, workspaceName: "Platform team")
@@ -13,7 +13,7 @@ final class InvitationTests: XCTestCase {
         let back = try XCTUnwrap(TrackerInvitation.parse(link))
         XCTAssertEqual(back.workspaceName, "Platform team")
         XCTAssertEqual(back.namespaceId, org)
-        XCTAssertEqual(back.invitation, invitation)
+        XCTAssertEqual(back.invitation.token, "inv_abc123")
         XCTAssertNotNil(TrackerInvitation.parse("calimero://com.calimero.mero-issue-tracker/join?invitation=\(try invite.token())"))
         XCTAssertNotNil(TrackerInvitation.parse(try invite.token()))
     }
@@ -22,10 +22,21 @@ final class InvitationTests: XCTestCase {
         let token = try TrackerInvitation(invitation: invitation, workspaceName: "Ops").token()
         let json = try XCTUnwrap(InviteCodec.decode(token: token))
         let root = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
-        XCTAssertEqual(root["invitation"]?["orgId"]?.stringValue, org)
-        XCTAssertEqual(root["invitation"]?["token"]?.stringValue, "inv_abc123")
+        XCTAssertEqual(root["invitation"]?.stringValue, "inv_abc123")
         XCTAssertEqual(root["namespaceId"]?.stringValue, org)
+        XCTAssertEqual(root["name"]?.stringValue, "Ops")
         XCTAssertEqual(root["groupAlias"]?.stringValue, "Ops")
+        // The SDK reads the same link, ignoring the tracker's extra fields.
+        let sdk = try XCTUnwrap(OrgInvitation.decode(token))
+        XCTAssertEqual(sdk, OrgInvitation(namespaceId: org, token: "inv_abc123", name: "Ops"))
+    }
+
+    func testAnSDKLinkIsRead() throws {
+        let link = try OrgInvitation(namespaceId: org, token: "inv_z", contextId: "app1", name: "Core")
+            .link(slug: Tracker.packageName)
+        let back = try XCTUnwrap(TrackerInvitation.parse(link))
+        XCTAssertEqual(back.workspaceName, "Core")
+        XCTAssertEqual(back.invitation.contextId, "app1")
     }
 
     func testAnotherAppsLinkIsRefused() throws {
@@ -34,13 +45,16 @@ final class InvitationTests: XCTestCase {
         XCTAssertNil(TrackerInvitation.parse("not an invitation"))
     }
 
-    func testEnvelopeAndNamesAreRead() throws {
+    func testEnvelopeAndLegacyNamesAreRead() throws {
         let named = try XCTUnwrap(
             TrackerInvitation.parse(
-                json: #"{"data":{"invitation":{"orgId":"\#(org)","token":"inv_x"},"groupName":"Ops","groupAlias":"x"}}"#))
+                json: #"{"data":{"invitation":"inv_x","namespaceId":"\#(org)","groupName":"Ops","groupAlias":"x"}}"#))
         XCTAssertEqual(named.workspaceName, "Ops")
         XCTAssertEqual(named.invitation.token, "inv_x")
-        let bare = try XCTUnwrap(TrackerInvitation.parse(json: #"{"orgId":"\#(org)","token":"inv_y"}"#))
+        let preferred = try XCTUnwrap(
+            TrackerInvitation.parse(json: #"{"invitation":"inv_y","namespaceId":"\#(org)","name":"New","groupAlias":"Old"}"#))
+        XCTAssertEqual(preferred.workspaceName, "New")
+        let bare = try XCTUnwrap(TrackerInvitation.parse(json: #"{"invitation":"inv_y","namespaceId":"\#(org)"}"#))
         XCTAssertNil(bare.workspaceName)
     }
 

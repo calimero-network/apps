@@ -24,7 +24,7 @@ Bundle id `network.calimero.issues`.
 
 The phone holds no node. It signs in to a Calimero 1.0 cluster with a passkey and talks to it over
 the sealed channel (`calimero/sealed-http/v2`, opened only after the node's attestation is
-verified). The swift-sdk's `CloudAppBackend` maps the app layer onto the 1.0 API:
+verified). The swift-sdk's `CalimeroAppBackend` maps the app layer onto the 1.0 API:
 
 | What | SDK | Wire |
 | --- | --- | --- |
@@ -34,7 +34,7 @@ verified). The swift-sdk's `CloudAppBackend` maps the app layer onto the 1.0 API
 | Issues, comments, statuses | generated client over `contract.bound(to:)` | `POST /apps/{app}/views` (reads), `POST /apps/{app}/intents` (writes) |
 | Live updates | `events(contextId:)`, polling as a fallback | `GET /apps/{app}/events` (sealed SSE) |
 | Invite / join | `createInvitation` / `joinNamespace` + `session.didJoinNamespace()` | `POST /orgs/{org}/invites` → invite token; `POST /invites/{token}/redeem` |
-| Approvals | `session.pendingApprovals(org:)` + `session.requestConsent(_:)` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
+| Approvals | `session.pendingApprovals(org:)` + `session.client.requestConsent(_:callback:)` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
 
 In the app's words a **workspace** is a Calimero org and a **repository** an app instance.
 
@@ -53,8 +53,8 @@ In the app's words a **workspace** is a Calimero org and a **repository** an app
 A link is `https://links.calimero.network/com.calimero.mero-issue-tracker/join?invitation=<token>`
 (or `calimero://com.calimero.mero-issue-tracker/join?invitation=…`), the token being
 `base58(deflate(json))` of
-`{"invitation":{"orgId":"…","token":"inv_…"},"namespaceId":"…","groupAlias":"…","kind":"namespace"}`:
-the SDK's `InvitationLinkPayload` plus the workspace's name. The invite token is a bearer secret;
+`{"invitation":"inv_…","namespaceId":"…","name":"…","groupAlias":"…","kind":"namespace"}`:
+the SDK's `OrgInvitation` payload (the workspace's name in `name`) plus the web app's legacy fields. The invite token is a bearer secret;
 anyone holding the link can join until it expires. Pre-1.0 (signed group) links are refused.
 
 ### Approvals
@@ -76,7 +76,7 @@ returns to `mero-issues://consent`.
 
 ### The SDK pin
 
-The swift-sdk is pinned by revision to `a1ec644130d4405a1bab7547654b1442cc559b49`, the head of its
+The swift-sdk is pinned by revision to `35148e4de782c065f777e80c592d9548acd645cd`, the head of its
 Calimero 1.0 port (calimero-network/swift-sdk#85, branch `feat/calimero-1.0`), in `project.yml`,
 `Core/Package.swift` and `Core/Package.resolved`. It moves to that PR's merge commit once it lands;
 bump all three together.

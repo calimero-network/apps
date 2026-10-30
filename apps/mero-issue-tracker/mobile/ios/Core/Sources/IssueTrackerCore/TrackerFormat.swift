@@ -131,7 +131,7 @@ public enum TrackerFormat {
     public static func errorText(_ error: Error) -> String {
         if let text = clusterErrorText(error) { return text }
         let text = String(describing: error)
-        if text.contains("noRelay") || text.contains("notSignedIn") {
+        if error is SignedOutError || text.contains("notSignedIn") {
             return "You're signed out. Sign in again to reach your cluster."
         }
         if let urlError = error as? URLError {

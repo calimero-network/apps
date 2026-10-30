@@ -111,7 +111,7 @@ final class DemoBackend: MeroAppBackend, ContextContract, @unchecked Sendable {
 
     func createInvitation(namespaceId: String) async throws -> OrgInvitation {
         try await pause()
-        return OrgInvitation(orgId: namespaceId, token: "inv_demo" + String(namespaceId.prefix(12)))
+        return OrgInvitation(namespaceId: namespaceId, token: "inv_demo" + String(namespaceId.prefix(12)))
     }
 
     func joinNamespace(namespaceId: String, invitation: OrgInvitation) async throws -> AppJoinedNamespace {

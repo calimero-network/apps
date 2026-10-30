@@ -37,7 +37,10 @@ struct TrackerView: View {
                     guard let session else { throw CancellationError() }
                     return try await session.pendingApprovals(org: org)
                 },
-                consent: { [weak session] request in await session?.requestConsent(request) }))
+                consent: { [weak session] request in
+                    guard let session else { return nil }
+                    return await session.client.requestConsent(request, callback: session.callback)
+                }))
         _justJoined = justJoined
         self.signOut = signOut
     }
