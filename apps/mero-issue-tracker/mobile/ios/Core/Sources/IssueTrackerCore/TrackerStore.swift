@@ -1,7 +1,7 @@
 import Foundation
 
 /// What the app remembers on this device: the open workspace and repo, and the
-/// names of repos (a repo's name is a context label the relay does not return,
+/// names of repos (a repo's name is a context label the cluster does not return,
 /// see README "SDK gaps").
 public protocol TrackerStore: AnyObject, Sendable {
     func repoName(_ contextId: String) -> String?

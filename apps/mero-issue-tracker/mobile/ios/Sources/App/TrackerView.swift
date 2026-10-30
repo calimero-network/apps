@@ -1,5 +1,6 @@
 import IssueTrackerCore
 import MeroKit
+import MeroKitUI
 import SwiftUI
 
 enum TrackerTab: Hashable { case issues, board, workspace }
@@ -13,6 +14,7 @@ enum TrackerSheet: Identifiable {
 /// and one issues model for the open repo (shared by the list and the board).
 struct TrackerView: View {
     @StateObject private var workspace: WorkspaceModel
+    @StateObject private var approvals: ApprovalsModel
     @State private var issues: IssuesModel?
     @State private var tab: TrackerTab = .issues
     @State private var sheet: TrackerSheet?
@@ -20,9 +22,25 @@ struct TrackerView: View {
     @Binding var justJoined: String?
     let signOut: () -> Void
 
-    init(backend: any MeroAppBackend, applicationId: String?, justJoined: Binding<String?>, signOut: @escaping () -> Void) {
+    init(
+        backend: any MeroAppBackend, applicationId: String?, justJoined: Binding<String?>, session: MeroAppSession,
+        signOut: @escaping () -> Void
+    ) {
         _workspace = StateObject(
             wrappedValue: WorkspaceModel(backend: backend, applicationId: applicationId, store: DefaultsTrackerStore()))
+        // What waits for approval: an update of the tracker, a node release.
+        // Reviewing opens the node's consent page in the system browser.
+        _approvals = StateObject(
+            wrappedValue: ApprovalsModel(
+                packageName: Tracker.packageName, appName: "Mero Issue Tracker",
+                fetch: { [weak session] org in
+                    guard let session else { throw CancellationError() }
+                    return try await session.pendingApprovals(org: org)
+                },
+                consent: { [weak session] request in
+                    guard let session else { return nil }
+                    return await session.client.requestConsent(request, callback: session.callback)
+                }))
         _justJoined = justJoined
         self.signOut = signOut
     }
@@ -35,17 +53,18 @@ struct TrackerView: View {
             BoardScreen(workspace: workspace, issues: issues, sheet: $sheet)
                 .tabItem { Label("Board", systemImage: "rectangle.split.3x1") }
                 .tag(TrackerTab.board)
-            WorkspaceScreen(workspace: workspace, sheet: $sheet, signOut: signOut)
+            WorkspaceScreen(workspace: workspace, approvals: approvals, sheet: $sheet, signOut: signOut)
                 .tabItem { Label("Workspace", systemImage: "person.2") }
                 .tag(TrackerTab.workspace)
         }
         .task {
             workspace.markSyncing(justJoined)
             await workspace.load()
+            if DemoMode.backend == nil { await approvals.load(orgs: workspace.workspaces.map(\.id)) }
         }
         .task(id: workspace.activeRepoId) { await openRepo(workspace.activeRepoId) }
         .task(id: workspace.isSyncing) {
-            // A just-joined workspace: its repos arrive with the namespace's data.
+            // A just-joined workspace: its repos may take a moment to show up.
             var waited = false
             while workspace.isSyncing, !Task.isCancelled {
                 waited = true
