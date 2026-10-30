@@ -7,7 +7,8 @@
 # The logic (the two generated contract clients, the board and its commit-reveal, the invitation
 # codec, the view models) lives in the local BattleshipsCore package, which builds and tests on
 # macOS with `swift test --package-path BattleshipsCore`. The swift-sdk is pinned by revision to
-# its `main` merge commit of swift-sdk#84. Keep it identical to BattleshipsCore/Package.swift.
+# the head of its Calimero 1.0 port (swift-sdk#85, branch feat/calimero-1.0); it moves to the merge
+# commit once that lands. Keep it identical to BattleshipsCore/Package.swift.
 name: Battleships
 
 options:
@@ -19,7 +20,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    revision: a1ec644130d4405a1bab7547654b1442cc559b49
   BattleshipsCore:
     path: BattleshipsCore
 
@@ -41,18 +42,27 @@ targets:
         UIUserInterfaceStyle: Light
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`battleships://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.battleships.enrol
+          # The node's consent page returns here (`battleships://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.battleships.consent
             CFBundleURLSchemes: [battleships]
           # Invitation deep links: `calimero://com.calimero.battleships/join?invitation=…`.
           - CFBundleURLName: network.calimero.battleships.invite
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero wallet and Cloud
-        # manager). See ../README.md.
+        # Which cluster sign-in uses (Calimero 1.0). MeroNodeURL: a node of your Calimero Cloud
+        # cluster (from the cloud.calimero.network console); empty = the sign-in screen asks.
+        # MeroDevNodeURL: what the "Development node" field starts with (`merod local`'s first
+        # node, mock attestation allowed). See ../README.md.
         BattleshipsCallbackScheme: battleships
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        MeroNodeURL: ""
+        MeroDevNodeURL: "http://localhost:2501"
+        NSLocalNetworkUsageDescription: "Connect to a Calimero development node on your local network."
+        # http only to a node on the local network (localhost, *.local, an IP literal).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    # A passkey on a real cluster belongs to its relying party (the node's --rp-id). To sign in with
+    # the device's passkey there, add an entitlements file with
+    # `com.apple.developer.associated-domains: [webcredentials:<rp-id>]` (served
+    # apple-app-site-association). A development node uses a software passkey and needs neither.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.battleships

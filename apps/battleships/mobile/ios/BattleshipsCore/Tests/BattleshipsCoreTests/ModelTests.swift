@@ -21,7 +21,8 @@ final class FakeBattleshipsBackend: BattleshipsBackend, @unchecked Sendable {
     func createServiceContext(
         groupId: String, applicationId: String, service: String, name: String, initArgs: JSONValue
     ) async throws -> String {
-        let id = try await memory.createContext(groupId: groupId, applicationId: applicationId, name: name, initArgs: initArgs)
+        let id = try await memory.createContext(
+            groupId: groupId, applicationId: applicationId, name: name, initArgs: initArgs, service: service)
         record(id, service: service, groupId: groupId, initArgs: initArgs)
         return id
     }
@@ -359,31 +360,32 @@ final class InvitationTests: XCTestCase {
         XCTAssertEqual(parsed.inviterKey, me)
     }
 
-    func testTheTokenIsTheShapeTheWebReaderTakes() throws {
-        let signed = InMemoryAppBackend.invitation(namespaceId: ns)
-        let token = try LobbyInvitation(invitation: signed, lobbyName: "Harbour").token()
+    func testTheTokenIsTheSDKsLinkShape() throws {
+        let invite = InMemoryAppBackend.invitation(namespaceId: ns)
+        let token = try LobbyInvitation(invitation: invite, lobbyName: "Harbour").token()
         let json = try XCTUnwrap(InviteCodec.decode(token: token))
         let value = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
-        let first = try XCTUnwrap(value["invitations"]?.arrayValue?.first)
-        XCTAssertEqual(first["groupId"]?.stringValue, ns, "readLobbyInvitation reads the namespace from here")
-        XCTAssertNotNil(first["invitation"]?["inviter_signature"])
+        XCTAssertEqual(value["invitation"]?["orgId"]?.stringValue, ns, "InvitationLinkPayload reads the org here")
+        XCTAssertEqual(value["invitation"]?["token"]?.stringValue, invite.token)
+        XCTAssertEqual(value["namespaceId"]?.stringValue, ns)
         XCTAssertEqual(value["__lobbyName"]?.stringValue, "Harbour")
     }
 
-    func testReadsTheSingleShapeAndRefusesOtherApps() throws {
-        let signed = InMemoryAppBackend.invitation(namespaceId: ns)
-        let json = try XCTUnwrap(String(data: JSONEncoder().encode(signed), encoding: .utf8))
+    func testReadsRawJSONAndRefusesOtherAppsAndPre10Invitations() throws {
+        let json = #"{"invitation":{"orgId":"\#(ns)","token":"inv_abc"},"namespaceId":"\#(ns)"}"#
         XCTAssertEqual(LobbyInvitation.parse(json)?.namespaceId, ns)
+        XCTAssertEqual(LobbyInvitation.parse(json)?.invitation.token, "inv_abc")
         let token = try XCTUnwrap(InviteCodec.encode(json: json))
         XCTAssertNil(LobbyInvitation.parse("https://links.calimero.network/com.calimero.chat/join?invitation=\(token)"))
         XCTAssertNotNil(LobbyInvitation.parse("calimero://com.calimero.battleships/join?invitation=\(token)"))
         XCTAssertNil(LobbyInvitation.parse("hello"))
+        let pre10 = #"{"invitation":{"group_id":[1,2]},"inviter_signature":"ff"}"#
+        XCTAssertNil(LobbyInvitation.parse(pre10), "a 1.0 cluster cannot redeem a signed group invitation")
     }
 
     @MainActor
     func testJoiningRedeemsTheNamespace() async throws {
         let backend = InMemoryAppBackend()
-        backend.hasRelay = false
         let link = try LobbyInvitation(invitation: InMemoryAppBackend.invitation(namespaceId: ns), lobbyName: "Harbour").link()
         let model = InvitationModel()
         XCTAssertTrue(model.open(link))
@@ -392,7 +394,36 @@ final class InvitationTests: XCTestCase {
         await model.accept(backend: { backend }, didJoin: { joined = true })
         XCTAssertTrue(joined)
         XCTAssertEqual(model.stage, .joined(namespaceId: ns, title: "Harbour"))
-        XCTAssertTrue(backend.hasRelay)
+        XCTAssertTrue(backend.log.contains { $0.hasPrefix("joinNamespace \(ns)") })
+    }
+}
+
+final class ServiceBackendTests: XCTestCase {
+    func testCreatesPerServiceAndTagsTheInstance() async throws {
+        let memory = InMemoryAppBackend()
+        let ns = try await memory.foundNamespace(name: "Harbour").namespaceId
+        let tags = Tags()
+        let backend = ServiceBattleshipsBackend(
+            app: memory, tagService: { id, _, service in tags.set(id, service) }, readService: { tags.get($0) })
+        let id = try await backend.createServiceContext(
+            groupId: ns, applicationId: memory.applicationId, service: Battleships.lobbyService, name: "lobby",
+            initArgs: .object([:]))
+        XCTAssertTrue(memory.log.contains { $0.hasPrefix("createContext") && $0.hasSuffix("service=lobby") })
+        let service = try await backend.serviceName(contextId: id)
+        XCTAssertEqual(service, Battleships.lobbyService)
+    }
+
+    func testFallsBackToTheInstanceMetadata() async throws {
+        let backend = ServiceBattleshipsBackend(app: InMemoryAppBackend())
+        let service = try await backend.serviceName(contextId: "nope")
+        XCTAssertNil(service)
+    }
+
+    final class Tags: @unchecked Sendable {
+        private let lock = NSLock()
+        private var map: [String: String] = [:]
+        func set(_ id: String, _ service: String) { lock.lock(); map[id] = service; lock.unlock() }
+        func get(_ id: String) -> String? { lock.lock(); defer { lock.unlock() }; return map[id] }
     }
 }
 

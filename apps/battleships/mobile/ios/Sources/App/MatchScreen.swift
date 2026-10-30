@@ -66,7 +66,7 @@ struct MatchScreen: View {
         case .loading:
             VStack(spacing: 12) {
                 ProgressView().tint(Palette.ink)
-                Text(model.syncing ? "Waiting for the match to reach your relay…" : "Opening the match…")
+                Text(model.syncing ? "Waiting for the match to start…" : "Opening the match…")
                     .font(.system(size: 15)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
