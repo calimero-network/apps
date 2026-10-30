@@ -87,14 +87,15 @@ final class TeamInvitationTests: XCTestCase {
         let token = try XCTUnwrap(InviteLink.token(fromPasted: link))
         let json = try XCTUnwrap(InviteCodec.decode(token: token))
         let root = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
-        XCTAssertEqual(root["invitation"]?["orgId"]?.stringValue, Fixture.teamId)
-        XCTAssertEqual(root["invitation"]?["token"]?.stringValue, invitation.token)
+        XCTAssertEqual(root["invitation"]?.stringValue, invitation.token)
         XCTAssertEqual(root["namespaceId"]?.stringValue, Fixture.teamId)
-        XCTAssertEqual(root["__teamName"]?.stringValue, "Ops")
+        XCTAssertEqual(root["name"]?.stringValue, "Ops")
+        // The SDK reads the same link.
+        XCTAssertEqual(OrgInvitation.parse(link, expectedSlug: CalendarConstants.packageName)?.name, "Ops")
     }
 
     func testPayloadWithTheNodeEnvelopeAndTeamName() throws {
-        let json = #"{"data":{"invitation":{"orgId":"\#(Fixture.teamId)","token":"inv_abc"},"groupName":null,"__teamName":"Ops"}}"#
+        let json = #"{"data":{"invitation":"inv_abc","namespaceId":"\#(Fixture.teamId)","groupName":null,"__teamName":"Ops"}}"#
         let parsed = try XCTUnwrap(TeamInvitation.parse(json: json))
         XCTAssertEqual(parsed.namespaceId, Fixture.teamId)
         XCTAssertEqual(parsed.invitation.token, "inv_abc")
@@ -108,7 +109,7 @@ final class TeamInvitationTests: XCTestCase {
 
     func testAnotherAppsLinkIsRefused() throws {
         let signed = MeroKitTestSupportShim.invitation(namespaceId: Fixture.teamId)
-        let token = try InviteCodec.encode(["invitation": signed])
+        let token = try signed.encoded()
         XCTAssertNil(TeamInvitation.parse("https://links.calimero.network/com.calimero.chat/join?invitation=\(token)"))
         XCTAssertNotNil(TeamInvitation.parse("calimero://com.calimero.mero-calendar/join?invitation=\(token)"))
         XCTAssertNotNil(TeamInvitation.parse(token))

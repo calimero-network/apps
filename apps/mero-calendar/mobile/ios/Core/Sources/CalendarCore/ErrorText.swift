@@ -33,6 +33,7 @@ public enum ErrorText {
     /// The Calimero 1.0 node's typed errors, in words.
     static func cluster(_ error: Error) -> String? {
         switch error {
+        case is SignedOutError: return "You're signed out. Sign in again."
         case is ConfirmCancelled: return "The passkey prompt was cancelled."
         case is LoginRequired: return "Your session ended. Sign in again."
         case is ReleaseDeadlineError:

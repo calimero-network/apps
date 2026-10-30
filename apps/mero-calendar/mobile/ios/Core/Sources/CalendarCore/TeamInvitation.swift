@@ -1,45 +1,37 @@
 import Foundation
 import MeroKit
 
-/// A team invitation on Calimero 1.0: an org invite token, in the SDK's
-/// link payload (`MeroKitUI.InvitationLinkPayload`) plus the team's name.
+/// A team invitation on Calimero 1.0: an org invite token in the swift-sdk's
+/// link payload (`OrgInvitation`, shared with kotlin-sdk), the team's name in
+/// its `name`:
 ///
-/// - payload: `{"invitation": {"orgId": "…", "token": "inv_…"}, "namespaceId": "<org>", "__teamName": "<name>"}`
+/// - payload: `{"invitation": "inv_…", "namespaceId": "<org>", "contextId"?: "…", "name"?: "<team>"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.mero-calendar/join?invitation=<token>`
 ///
 /// The invite token is a bearer secret the org's node minted
 /// (`POST /orgs/{org}/invites`); joining redeems it (`POST /invites/{token}/redeem`).
-/// Reading accepts the name under `__teamName` (or `teamName` / `groupName` /
-/// `groupAlias`), a link, a `calimero://` link or a bare token. A pre-1.0
-/// signed group invitation is refused: it can't be redeemed on a 1.0 cluster.
+/// Reading takes an optional `data` envelope, the name under `name` (or the
+/// web app's `__teamName` / `teamName` / `groupName` / `groupAlias`), a link,
+/// a `calimero://` link or a bare token. A pre-1.0 signed group invitation is
+/// refused: it can't be redeemed on a 1.0 cluster.
 public struct TeamInvitation: Sendable {
     public let invitation: OrgInvitation
-    public let teamName: String?
 
     public init(invitation: OrgInvitation, teamName: String?) {
-        self.invitation = invitation
-        self.teamName = teamName
+        self.invitation = OrgInvitation(
+            namespaceId: invitation.namespaceId, token: invitation.token, contextId: invitation.contextId,
+            name: teamName ?? invitation.name)
     }
 
     /// The org it admits to.
-    public var namespaceId: String { invitation.orgId }
-
-    private struct Payload: Encodable {
-        let invitation: OrgInvitation
-        let namespaceId: String
-        let teamName: String?
-        enum CodingKeys: String, CodingKey {
-            case invitation, namespaceId
-            case teamName = "__teamName"
-        }
-    }
+    public var namespaceId: String { invitation.namespaceId }
+    /// The team's name, for the "Join …?" prompt (unsigned: a hint only).
+    public var teamName: String? { invitation.name }
 
     /// The shareable link.
     public func link() throws -> String {
-        let token = try InviteCodec.encode(
-            Payload(invitation: invitation, namespaceId: invitation.orgId, teamName: teamName))
-        return InviteLink.invitation(token: token, slug: CalendarConstants.packageName)
+        try invitation.link(slug: CalendarConstants.packageName)
     }
 
     /// Read a pasted link, a deep link or a bare token; `nil` when it is no
@@ -55,14 +47,14 @@ public struct TeamInvitation: Sendable {
     public static func parse(json: String) -> TeamInvitation? {
         guard let root = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)) else { return nil }
         let payload = root["data"] ?? root
-        let name = ["__teamName", "teamName", "groupName", "groupAlias"].lazy
+        guard let token = payload["invitation"]?.stringValue, !token.isEmpty,
+            let org = payload["namespaceId"]?.stringValue, !org.isEmpty
+        else { return nil }
+        let name = ["name", "__teamName", "teamName", "groupName", "groupAlias"].lazy
             .compactMap { payload[$0]?.stringValue?.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty }
-        let wrapped: JSONValue = payload["invitation"] ?? payload
-        guard let token = wrapped["token"]?.stringValue, !token.isEmpty
-        else { return nil }
-        let org = wrapped["orgId"]?.stringValue ?? payload["namespaceId"]?.stringValue
-        guard let org, !org.isEmpty else { return nil }
-        return TeamInvitation(invitation: OrgInvitation(orgId: org, token: token), teamName: name)
+        return TeamInvitation(
+            invitation: OrgInvitation(namespaceId: org, token: token, contextId: payload["contextId"]?.stringValue),
+            teamName: name)
     }
 }
