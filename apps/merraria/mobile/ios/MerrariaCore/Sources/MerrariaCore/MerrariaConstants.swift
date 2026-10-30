@@ -30,7 +30,7 @@ public enum MerrariaConstants {
 public func nowSeconds() -> UInt64 { UInt64(Date().timeIntervalSince1970) }
 
 public enum MerrariaError: Error, LocalizedError, Equatable {
-    case noRelay
+    case signedOut
     case noApplication
     case notAnInvitation
     case noWorld
@@ -38,11 +38,11 @@ public enum MerrariaError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .noRelay: return "Your account has no relay yet. Join a world from an invitation link first."
-        case .noApplication: return "Merraria is still being looked up in the app registry. Try again in a moment."
+        case .signedOut: return "You're signed out. Sign in again to play."
+        case .noApplication: return "Merraria is not published on this cluster yet."
         case .notAnInvitation: return "That is not a Merraria invitation link."
         case .noWorld: return "The invitation does not name a world, and none was found in it yet. Try again in a moment."
-        case .noNamespace: return "This world's namespace is not known on this device yet. Refresh the list and try again."
+        case .noNamespace: return "This world's organization is not known on this device yet. Refresh the list and try again."
         }
     }
 }
@@ -51,11 +51,24 @@ public enum MerrariaError: Error, LocalizedError, Equatable {
 public enum MerrariaText {
     /// An error as one readable sentence.
     public static func error(_ error: Error) -> String {
-        if let error = error as? MeroError {
-            if case .http(let http) = error, let body = http.bodyText, !body.isEmpty {
-                return "\(error.localizedDescription) (\(body.prefix(200)))"
-            }
-            return error.localizedDescription
+        switch error {
+        case let error as ReleaseDeadlineError:
+            let release = error.release.isEmpty ? "a node release" : "node release \(error.release)"
+            return "Your cluster takes no new work until \(release) is approved. Review it under Needs your approval."
+        case is NotFound:
+            return "This isn't shared with you, or it was deleted."
+        case is LoginRequired, is SignedOutError:
+            return "Your session ended. Sign in again."
+        case is WrongNode:
+            return "This node doesn't serve your world. Try another node of the cluster."
+        case let error as UnavailableError:
+            return "Your cluster is busy (\(error.reason)). Try again shortly."
+        case let error as AppError:
+            return error.message.isEmpty ? error.appCode : error.message
+        case let error as CalimeroError:
+            return error.message.isEmpty ? error.code : error.message
+        default:
+            break
         }
         if let error = error as? LocalizedError, let text = error.errorDescription { return text }
         if let error = error as? URLError { return error.localizedDescription }

@@ -21,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    revision: 6c5f1167d1e586f556f59c326de5f51d034e80dd
   MerrariaCore:
     path: MerrariaCore
 
@@ -48,20 +48,24 @@ targets:
         UIStatusBarHidden: true
         UIViewControllerBasedStatusBarAppearance: false
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`merraria://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.merraria.enrol
+          # The node's consent page returns here (`merraria://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.merraria.consent
             CFBundleURLSchemes: [merraria]
           # Invitation deep links: `calimero://com.calimero.merraria/join?invitation=…`.
           - CFBundleURLName: network.calimero.merraria.invite
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero wallet, Cloud
-        # manager and app registry). Point these at another environment to test against it.
+        # The Calimero 1.0 cluster. MeroNodeURL: a node from Calimero Cloud's
+        # console (empty = sign-in asks for one); MeroNodes: the cluster's other
+        # nodes, comma-separated, for failover; MeroAllowMock: YES only for a
+        # `merod local` cluster (mock attestation). See ../README.md.
+        MeroNodeURL: ""
+        MeroNodes: ""
+        MeroAllowMock: "NO"
+        MeroPackageVersion: ""
+        # Where the node's consent page returns to.
         MerrariaCallbackScheme: merraria
         MerrariaCallbackHost: ""
-        MerrariaCallbackPath: /enrol
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        MerrariaCallbackPath: /consent
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.merraria

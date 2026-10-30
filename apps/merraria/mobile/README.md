@@ -6,11 +6,38 @@ Symbols ↔ Material Symbols), controls and flows, and both are landscape-only.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen, WKWebView | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` (swift-sdk#84 merge commit on `main`), in `ios/project.yml` and `ios/MerrariaCore/Package.swift` |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen, WKWebView | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (head of `feat/calimero-1.0`, swift-sdk#85; moves to its merge commit once it lands), in `ios/project.yml` and `ios/MerrariaCore/Package.swift`. **Calimero 1.0.** |
 | Android | `android/` | Jetpack Compose + Material 3, minSdk 26, WebView | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (kotlin-sdk#67 merge commit on `main`), composite build at the SHA in `android/kotlin-sdk.ref` |
 
-**The SDK pins are the `main` merge commits of swift-sdk#84 and kotlin-sdk#67.** Bumping is one
+**The iOS app runs on Calimero 1.0; the Android app (kotlin-sdk#67's `main` merge commit) still
+speaks the 0.x API until kotlin-sdk is ported.** Bumping is one
 line per platform (iOS: both `revision:` values; Android: `kotlin-sdk.ref`).
+
+## Calimero 1.0 on iOS
+
+- **Sign in** with a passkey on the world's cluster (`MeroAppSession.signIn()`, the device's
+  platform passkey), or **create an account** (`signUp(name:)`). The session (a 15-minute access
+  token and a 30-day refresh token) is kept in the Keychain and refreshed at launch. Every request
+  goes over the sealed channel to an attested node.
+- **The cluster** is `MeroNodeURL` in `ios/project.yml` (a node from Calimero Cloud's console, plus
+  `MeroNodes` for failover). Left empty, the sign-in screen asks for one.
+- **Development**: on the sign-in screen, "Choose your cluster" (or "Change") takes any node URL
+  and a "Development cluster" switch, which trusts mock attestation (`allowMock`) as `merod local`
+  serves it (`cargo run -p merod -- local`, nodes on `http://127.0.0.1:2501-2503`). The app then
+  keeps a soft passkey for that node and creates its account on the first sign-in. Or set
+  `MeroNodeURL` and `MeroAllowMock: "YES"` in `project.yml`.
+- **Words**: a world is its own **organization**, holding one open **team** and the world's **app instance**. The bridge protocol between the game page and the app is unchanged.
+- **Invitations** are org invite tokens (`POST /orgs/{org}/invites`, redeemed with
+  `POST /invites/{token}/redeem`). The link keeps its URL; its payload is swift-sdk's
+  `OrgInvitation`, `{"invitation": "inv_…", "namespaceId": "…", "contextId"?: "…", "name"?: "…"}` plus the world's `groupId` (team),
+  which every 1.0 client of the package reads. Android and the web still use the 0.x signed
+  invitation until they are ported, so links do not cross between them and iOS yet.
+- **Approvals**: when a node release or an app upgrade waits for the account (or an organization it
+  owns), the worlds list shows it under "Needs your approval". "Review" opens the **node's consent page in
+  the system browser**; the page returns to `merraria://consent`. The app never approves by itself.
+  A call refused because a release deadline has passed says so in words.
+- A real cluster's passkeys need the app to carry the `webcredentials:<rp-id>` Associated Domain of
+  that cluster; it is not set in `project.yml` yet.
 
 ## How it is put together
 
@@ -45,7 +72,7 @@ WKWebView / Android WebView from files bundled in the app:
 
 ## Screens
 
-1. **Sign in** — what the game is, "Sign in with Calimero", an invited banner when a link is waiting.
+1. **Sign in** — what the game is; on iOS "Sign in with a passkey" / "Create an account" on the cluster (Android: "Sign in with Calimero"); an invited banner when a link is waiting.
 2. **Worlds** — every world the account is in, with its player count; pull to refresh; swipe a row to
    share an invitation; empty and no-relay states. The + menu has **Create world** (sheet: name and
    seed, as on the web) and **Join with a link** (sheet: paste a link).
@@ -91,11 +118,12 @@ cd android
 The model tests run against the SDKs' fakes (`InMemoryAppBackend`, `RecordingContextContract`). The
 web side of the bridge is tested in `../app/tests/nativeHost.test.ts`.
 
-## Sign-in callback
+## Callbacks
 
-Both apps default to `merraria://enrol` (iOS: `MerrariaCallback*` keys in `project.yml`; Android:
-`meroEnrolCallback` in `gradle.properties`). The hosted wallet returns only to `https://` callbacks
-today, so production sign-in needs that wallet change or a verified https callback, as for Mero Chat.
+iOS: the node's consent page returns to `merraria://consent` (`MerrariaCallback*` keys in
+`project.yml`); the cluster is `MeroNodeURL` / `MeroNodes` / `MeroAllowMock`. Android: sign-in
+returns to `merraria://enrol` (`meroEnrolCallback` in `gradle.properties`); the hosted wallet returns
+only to `https://` callbacks today, so production sign-in needs a verified https callback.
 
 ## Not in the apps (and why)
 
