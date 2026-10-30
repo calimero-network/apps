@@ -19,6 +19,14 @@ final class FormatAndInvitationTests: XCTestCase {
         XCTAssertEqual(ModelsFormat.until(1_800_000_000_000 + 86_400_000, now: now, timeZone: utc), "16 Jan, 08:00")
     }
 
+    func testTheNodesErrorsReadAsWords() {
+        XCTAssertEqual(
+            ModelsFormat.errorText(ReleaseDeadlineError("deadline", details: ["release": "2.3.110"])),
+            "Your cluster takes no new work until node release 2.3.110 is approved. Review it under Needs your approval.")
+        XCTAssertEqual(ModelsFormat.errorText(NotFound("no such app")), "This isn't shared with you, or it was deleted.")
+        XCTAssertEqual(ModelsFormat.errorText(LoginRequired("expired")), "Your session ended. Sign in again.")
+    }
+
     func testALinkRoundTripsInTheWebFormat() async throws {
         let backend = Fixtures.backend()
         let link = try await ModelsInvitation.mint(backend: backend, namespaceId: Fixtures.studio, contextId: Fixtures.scene)
@@ -26,11 +34,13 @@ final class FormatAndInvitationTests: XCTestCase {
         let parsed = try XCTUnwrap(ModelsInvitation.parse(link))
         XCTAssertEqual(parsed.namespaceId, Fixtures.studio)
         XCTAssertEqual(parsed.contextId, Fixtures.scene)
-        // The payload keys are the web's.
+        XCTAssertEqual(parsed.invitation, InMemoryAppBackend.invitation(namespaceId: Fixtures.studio))
+        // The payload is the 1.0 link shape: an org invite token, the org and the scene.
         let token = try XCTUnwrap(InviteLink.token(fromPasted: link))
         let json = try XCTUnwrap(InviteCodec.decode(token: token))
         XCTAssertTrue(json.contains("\"namespaceId\""))
-        XCTAssertTrue(json.contains("\"inviter_signature\""))
+        XCTAssertTrue(json.contains("\"orgId\""))
+        XCTAssertTrue(json.contains("\"token\":\"inv_"))
     }
 
     func testAnotherAppsLinkIsRefused() async throws {
@@ -54,6 +64,14 @@ final class FormatAndInvitationTests: XCTestCase {
         XCTAssertEqual(model.stage, .joined(namespaceId: Fixtures.studio, contextId: Fixtures.scene))
         XCTAssertTrue(backend.log.contains("joinNamespace \(Fixtures.studio)"))
         XCTAssertTrue(backend.log.contains("joinContext \(Fixtures.scene)"))
+    }
+
+    func testRawJSONParsesAndALinkWithoutASceneIsRefused() throws {
+        let json = #"{"invitation":{"orgId":"org1","token":"inv_x"},"namespaceId":"org1","contextId":"app1","extra":1}"#
+        let parsed = try XCTUnwrap(ModelsInvitation.parse(json))
+        XCTAssertEqual(parsed.namespaceId, "org1")
+        XCTAssertEqual(parsed.contextId, "app1")
+        XCTAssertNil(ModelsInvitation.parse(#"{"invitation":{"orgId":"org1","token":"inv_x"},"namespaceId":"org1"}"#))
     }
 
     func testABadLinkFails() {

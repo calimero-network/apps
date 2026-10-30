@@ -11,7 +11,7 @@ public enum LoadState: Equatable, Sendable {
 
 // MARK: - Studios
 
-/// A studio: a namespace running Mero Models. Everyone invited to it can open
+/// A studio: an organization running Mero Models. Everyone invited to it can open
 /// every scene in it.
 public struct Studio: Identifiable, Equatable, Sendable {
     public let id: String
@@ -49,7 +49,7 @@ public final class StudiosModel: ObservableObject {
 
 // MARK: - Scenes
 
-/// A scene: one context in the studio, as the web's "New scene" makes it.
+/// A scene: one app instance in the studio, as the web's "New scene" makes it.
 public struct SceneSummary: Identifiable, Equatable, Sendable {
     public var id: String { contextId }
     public let contextId: String
@@ -60,8 +60,8 @@ public struct SceneSummary: Identifiable, Equatable, Sendable {
     public var role: String?
 }
 
-/// A studio's scenes: the contexts directly in its root group, and those in
-/// any subgroup. (Kotlin `ScenesModel`.)
+/// A studio's scenes: the organization's own app instances (in no team), and
+/// those in each of its teams. (Kotlin `ScenesModel`.)
 @MainActor
 public final class ScenesModel: ObservableObject {
     @Published public private(set) var scenes: [SceneSummary] = []

@@ -8,6 +8,7 @@ struct StudiosScreen: View {
     @ObservedObject var session: MeroAppSession
     @ObservedObject var invitation: InvitationModel
     @StateObject private var model: StudiosModel
+    @StateObject private var approvals: ApprovalsModel
     @State private var showAccount = false
     @State private var showJoin = false
 
@@ -15,10 +16,12 @@ struct StudiosScreen: View {
         self.session = session
         self.invitation = invitation
         _model = StateObject(wrappedValue: StudiosModel(backend: backend))
+        _approvals = StateObject(wrappedValue: ApprovalsModel(session: session))
     }
 
     var body: some View {
         List {
+            ApprovalsSection(model: approvals)
             switch model.state {
             case .idle:
                 LoadingRows().listRowInsets(EdgeInsets()).plainRow()
@@ -31,7 +34,7 @@ struct StudiosScreen: View {
                     EmptyState(
                         icon: "cube.transparent",
                         title: "No studios yet",
-                        message: "Start a scene in Mero Models on the web or desktop, or join one with an invitation link.",
+                        message: "Start a scene in Mero Models on the web, or join a studio with an invitation link.",
                         action: ("Join with a link", { showJoin = true }))
                     .plainRow()
                 } else {
@@ -68,8 +71,8 @@ struct StudiosScreen: View {
                 .accessibilityLabel("Account")
             }
         }
-        .refreshable { await model.load() }
-        .task { await model.load() }
+        .refreshable { await load() }
+        .task { await load() }
         .onChange(of: invitation.stage) { stage in
             if case .joined = stage { Task { await model.load() } }
         }
@@ -87,6 +90,14 @@ struct StudiosScreen: View {
             }
             .presentationDetents([.medium])
         }
+    }
+}
+
+extension StudiosScreen {
+    /// The studios, then what waits for approval in the account and in each studio.
+    fileprivate func load() async {
+        await model.load()
+        await approvals.refresh(orgs: model.studios.map(\.id))
     }
 }
 
@@ -163,6 +174,12 @@ struct AccountSheet: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @State private var confirm = false
 
+    private var nodeLine: String {
+        guard let url = session.client.nodeURL else { return "Not connected to a cluster" }
+        let host = URL(string: url)?.host ?? url
+        return session.client.allowMock ? "Development cluster at \(host)" : "Connected to \(host)"
+    }
+
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
@@ -170,7 +187,7 @@ struct AccountSheet: View {
                     Avatar(id: session.account ?? "", name: "Me", size: 44)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Signed in").font(Theme.heading(17)).foregroundStyle(Theme.ink)
-                        Text(session.hasRelay ? "Connected through your relay" : "No relay serves this account yet")
+                        Text(nodeLine)
                             .font(Theme.body(14))
                             .foregroundStyle(Theme.muted)
                     }
@@ -179,7 +196,8 @@ struct AccountSheet: View {
                 .card()
                 DetailsDisclosure(rows: [
                     ("Account", session.account ?? "—"),
-                    ("Application", session.applicationId ?? "—"),
+                    ("Package", session.applicationId ?? "—"),
+                    ("Node", session.client.nodeURL ?? "—"),
                 ])
                 .card()
                 Spacer()
