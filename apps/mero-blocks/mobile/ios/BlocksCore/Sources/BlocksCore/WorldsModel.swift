@@ -122,10 +122,10 @@ public final class WorldsModel: ObservableObject {
         }
     }
 
-    /// A new world: its own namespace, an open subgroup, and the context with the contract's
+    /// A new world: its own organization, an open team, and the app instance with the contract's
     /// `init` arguments (`name`, `seed`, `now`).
     public func create(name rawName: String, seed: UInt64?) async throws -> WorldRef {
-        guard backend.hasRelay else { throw BlocksError.noRelay }
+        guard backend.hasRelay else { throw BlocksError.signedOut }
         guard let applicationId, !applicationId.isEmpty else { throw BlocksError.noApplication }
         let name = BlocksText.worldName(rawName)
         let seed = seed ?? UInt64.random(in: BlocksConstants.seedRange)
@@ -136,16 +136,12 @@ public final class WorldsModel: ObservableObject {
             initArgs: .object(["name": .string(name), "seed": .number(Double(seed)), "now": .number(Double(nowSeconds()))]))
         let ref = WorldRef(contextId: contextId, namespaceId: founded.namespaceId, groupId: groupId, name: name)
         worlds.insert(WorldEntry(ref: ref, online: 0), at: 0)
-        if !founded.haEnabled {
-            notice =
-                "The cloud is not hosting this world yet\(founded.haError.map { " (\($0))" } ?? ""). You can play, but friends may not be able to join while you are offline."
-        }
         return ref
     }
 
-    /// Redeem an invitation: join the world's namespace. `didJoin` runs after (the session
-    /// reconnects to the admitting relay there when the account had none). The world's context
-    /// is joined when it is opened (``GameModel/prepare()``).
+    /// Redeem an invitation: redeem its token, joining the world's organization. `didJoin` runs
+    /// after (the session re-reads what the account sees). The world's app instance is entered
+    /// when it is opened (``GameModel/prepare()``).
     public func join(_ invitation: BlocksInvitation, didJoin: () async -> Void) async throws -> WorldRef {
         let namespaceId = invitation.namespaceId
         _ = try await backend.joinNamespace(namespaceId: namespaceId, invitation: invitation.invitation)
@@ -162,11 +158,12 @@ public final class WorldsModel: ObservableObject {
 
     /// A link that admits someone to `ref`'s world.
     public func inviteLink(_ ref: WorldRef) async throws -> String {
-        let signed = try await backend.createInvitation(namespaceId: ref.namespaceId)
-        return try BlocksInvitation(invitation: signed, name: ref.name, contextId: ref.contextId, groupId: ref.groupId).link()
+        let invitation = try await backend.createInvitation(namespaceId: ref.namespaceId)
+        return try BlocksInvitation(invitation: invitation, name: ref.name, contextId: ref.contextId, groupId: ref.groupId)
+            .link()
     }
 
-    /// Leave a world: leave its namespace, which is that world alone.
+    /// Leave a world: leave its organization, which is that world alone.
     public func leave(_ ref: WorldRef) async throws {
         try await backend.leaveNamespace(namespaceId: ref.namespaceId)
         worlds.removeAll { $0.id == ref.contextId }

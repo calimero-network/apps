@@ -9,15 +9,21 @@ enum Fixtures {
     static let me = String(repeating: "ab", count: 32)
     static let device = String(repeating: "de", count: 32)
 
-    /// A token minted by the web app's own `encodeInvite` (app/src/net/inviteCodec.ts:
-    /// `bs58(deflateSync(JSON, { level: 9 }))`) for `{invitation, groupAlias: "Lime Valley",
-    /// contextId: "c"×64, groupId: "b"×64}`, around the swift-sdk's chat vector invitation
-    /// (group id = bytes 1…32).
-    static let webToken =
+    /// A 0.x token minted by the web app's own `encodeInvite` (app/src/net/inviteCodec.ts) around
+    /// a signed group invitation. Calimero 1.0 refuses it.
+    static let legacyWebToken =
         "7AFNTiMbuC1rQX6sQZrCxrz8XFBVKtQDKdMiR8LFqwvyQgcAA4XhtpgMvEfNRGNdS7wfvMbvXHUkin1Muc2rvHvWw5doEVRkA8kqvekckd8i44TAFRo2"
         + "nqu393v5Nvqibt9sAPcedipQwZ2U8xTfFZ5R3hnbRikgPQ7edPWzNAiw3fsy7ngpq1SM4JzhEctVt25vA6JtmiA85u34vQBgJd9Dkuie2K2MwAwSQx"
         + "NgiogEagrqbWuetiedN5u8iCdUfcsicugJi1irX9ZRoD7ZnDHyCCUMPsfjV6e5HhUEMik45vMjZ2B5iCrmVj1HvNUboqgDh6UL5VNZ3cmbFkHC9bGMgi"
     static let webNamespace = (1...32).map { String(format: "%02x", $0) }.joined()
+
+    /// A 1.0 link token: the org invite for `webNamespace`, the world's app instance ("c"×64) and
+    /// team ("b"×64), named "Lime Valley".
+    static let webToken = try! InviteCodec.encode(
+        [
+            "invitation": "inv_lime", "namespaceId": .string(webNamespace), "contextId": .string(String(repeating: "c", count: 64)),
+            "name": "Lime Valley", "groupId": .string(String(repeating: "b", count: 64)),
+        ] as JSONValue)
 
     static func meta() -> JSONValue { .object(["name": "Lime Valley", "seed": 1337, "createdAt": 1_730_000_000]) }
 }
@@ -37,30 +43,39 @@ final class InvitationTests: XCTestCase {
 
     func testRefusesAnotherAppsLinkAndJunk() {
         XCTAssertNil(BlocksInvitation.parse(InviteLink.invitation(token: Fixtures.webToken, slug: "com.calimero.chat")))
+        XCTAssertNil(BlocksInvitation.parse(Fixtures.legacyWebToken), "a pre-1.0 signed invitation")
         XCTAssertNil(BlocksInvitation.parse("hello"))
         XCTAssertNil(BlocksInvitation.parse(""))
     }
 
-    /// What the phone mints, the web app reads: its `parsePayload` wants `invitation` with a
-    /// signature, the name under `groupAlias`, and `contextId` / `groupId` strings.
-    func testMintsTheWebAppsPayload() throws {
+    /// What the phone mints is an ``OrgInvitation`` any 1.0 client reads, plus the world's team.
+    func testMintsTheOrgInvitationPayload() throws {
         let original = try XCTUnwrap(BlocksInvitation.parse(Fixtures.webToken))
         let minted = BlocksInvitation(
             invitation: original.invitation, name: "Ana's world", contextId: "ctx-1", groupId: "grp-1")
         let json = try XCTUnwrap(InviteCodec.decode(token: try minted.token()))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
-        XCTAssertEqual(object["groupAlias"] as? String, "Ana's world")
+        XCTAssertEqual(object["invitation"] as? String, "inv_lime")
+        XCTAssertEqual(object["namespaceId"] as? String, Fixtures.webNamespace)
+        XCTAssertEqual(object["name"] as? String, "Ana's world")
         XCTAssertEqual(object["contextId"] as? String, "ctx-1")
         XCTAssertEqual(object["groupId"] as? String, "grp-1")
-        let signed = try XCTUnwrap(object["invitation"] as? [String: Any])
-        XCTAssertNotNil(signed["inviter_signature"] ?? signed["inviterSignature"])
-        XCTAssertNotNil(signed["invitation"] as? [String: Any])
+        XCTAssertEqual(OrgInvitation.decode(try minted.token())?.contextId, "ctx-1")
 
         let back = try XCTUnwrap(BlocksInvitation.parse(try minted.link()))
         XCTAssertEqual(back.name, "Ana's world")
         XCTAssertEqual(back.contextId, "ctx-1")
         XCTAssertEqual(back.namespaceId, Fixtures.webNamespace)
     }
+
+    func testTheNodesErrorsReadAsWords() {
+        XCTAssertEqual(
+            BlocksText.error(ReleaseDeadlineError("deadline", details: ["release": "2.3.110"])),
+            "Your cluster takes no new work until node release 2.3.110 is approved. Review it under Needs your approval.")
+        XCTAssertEqual(BlocksText.error(NotFound("no such app")), "This isn't shared with you, or it was deleted.")
+        XCTAssertEqual(BlocksText.error(LoginRequired("expired")), "Your session ended. Sign in again.")
+    }
+
 }
 
 @MainActor
@@ -96,13 +111,6 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertTrue(BlocksConstants.seedRange.contains(UInt64(seed)))
     }
 
-    func testSaysWhenTheCloudWillNotHostTheWorld() async throws {
-        backend.haEnabled = false
-        let model = WorldsModel(backend: backend, applicationId: backend.applicationId)
-        _ = try await model.create(name: "Solo", seed: 1)
-        XCTAssertNotNil(model.notice)
-    }
-
     func testListsEveryWorldWithWhoIsPlaying() async throws {
         backend.recording.setHandler { call in
             call.method == "get_players"
@@ -123,7 +131,7 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertEqual(backend.recording.calls("get_players").first?.path, .query)
     }
 
-    func testWithNoRelayThereIsNothingToList() async {
+    func testSignedOutThereIsNothingToList() async {
         backend.hasRelay = false
         let model = WorldsModel(backend: backend, applicationId: backend.applicationId)
         await model.load()
@@ -132,9 +140,9 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertFalse(model.hasRelay)
         do {
             _ = try await model.create(name: "x", seed: 1)
-            XCTFail("created with no relay")
+            XCTFail("created while signed out")
         } catch {
-            XCTAssertEqual(error as? BlocksError, .noRelay)
+            XCTAssertEqual(error as? BlocksError, .signedOut)
         }
     }
 
@@ -147,8 +155,7 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertNil(model.error)
     }
 
-    func testJoinsFromTheWebAppsInvitation() async throws {
-        backend.hasRelay = false
+    func testJoinsFromAnInvitation() async throws {
         let invitation = try XCTUnwrap(BlocksInvitation.parse(Fixtures.webToken))
         let model = WorldsModel(backend: backend, applicationId: backend.applicationId)
         var didJoin = false
@@ -158,7 +165,6 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertEqual(ref.namespaceId, Fixtures.webNamespace)
         XCTAssertEqual(ref.name, "Lime Valley")
         XCTAssertEqual(backend.log, ["joinNamespace \(Fixtures.webNamespace)"])
-        XCTAssertTrue(backend.hasRelay, "the admitting relay is the account's now")
     }
 
     func testInvitesWithALinkForThatWorld() async throws {

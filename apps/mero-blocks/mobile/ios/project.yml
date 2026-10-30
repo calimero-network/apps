@@ -21,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    revision: 6c5f1167d1e586f556f59c326de5f51d034e80dd
   BlocksCore:
     path: BlocksCore
 
@@ -50,20 +50,24 @@ targets:
           [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown,
            UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`mero-blocks://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.blocks.enrol
+          # The node's consent page returns here (`mero-blocks://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.blocks.consent
             CFBundleURLSchemes: [mero-blocks]
           # Invitation deep links: `calimero://com.calimero.mero-blocks/join?invitation=…`.
           - CFBundleURLName: network.calimero.blocks.invite
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero wallet, Cloud
-        # manager and app registry). Point these at another environment to test against it.
+        # The Calimero 1.0 cluster. MeroNodeURL: a node from Calimero Cloud's
+        # console (empty = sign-in asks for one); MeroNodes: the cluster's other
+        # nodes, comma-separated, for failover; MeroAllowMock: YES only for a
+        # `merod local` cluster (mock attestation). See ../README.md.
+        MeroNodeURL: ""
+        MeroNodes: ""
+        MeroAllowMock: "NO"
+        MeroPackageVersion: ""
+        # Where the node's consent page returns to.
         MeroBlocksCallbackScheme: mero-blocks
         MeroBlocksCallbackHost: ""
-        MeroBlocksCallbackPath: /enrol
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        MeroBlocksCallbackPath: /consent
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.blocks
