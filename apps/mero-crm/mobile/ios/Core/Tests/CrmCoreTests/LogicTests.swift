@@ -166,7 +166,7 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(Account.short(hex), "ababab…abab")
     }
 
-    func testInvitationRoundTripsInTheWebFormatAndRefusesOtherApps() throws {
+    func testInvitationRoundTripsInTheSDKLinkShapeAndRefusesOtherApps() throws {
         let ns = String(repeating: "12", count: 32)
         let signed = InMemoryAppBackend.invitation(namespaceId: ns)
         let link = try CrmInvitation(invitation: signed, workspaceName: "Acme Inc").link()
@@ -177,8 +177,14 @@ final class LogicTests: XCTestCase {
         let token = try XCTUnwrap(InviteLink.token(fromPasted: link))
         XCTAssertNotNil(CrmInvitation.parse(token))
         let json = try XCTUnwrap(InviteCodec.decode(token: token))
-        XCTAssertTrue(json.contains("\"kind\":\"namespace\""))
-        XCTAssertTrue(json.contains("\"groupAlias\":\"Acme Inc\""))
+        let value = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+        XCTAssertEqual(value["invitation"]?.stringValue, signed.token)
+        XCTAssertEqual(value["namespaceId"]?.stringValue, ns)
+        XCTAssertEqual(value["name"]?.stringValue, "Acme Inc")
+        XCTAssertEqual(OrgInvitation.decode(token)?.name, "Acme Inc", "the SDK reads the same link")
+        XCTAssertEqual(parsed.invitation.token, signed.token)
+        let pre10 = #"{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"ff"},"groupId":"12"}"#
+        XCTAssertNil(CrmInvitation.parse(json: pre10), "a 1.0 cluster cannot redeem a signed group invitation")
         XCTAssertNil(CrmInvitation.parse(link.replacingOccurrences(of: "com.calimero.mero-crm", with: "com.calimero.chat")))
         XCTAssertNil(CrmInvitation.parse("not a link"))
     }

@@ -7,28 +7,53 @@ Material Symbols on Android).
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+; non-UI code in the local package `ios/Core` | swift-sdk `MeroKit` + `MeroKitUI` at `c9ca1a0` (merge commit of PR #84 on `main`) |
+| iOS | `ios/` | SwiftUI, iOS 16+; non-UI code in the local package `ios/Core` | swift-sdk `MeroKit` + `MeroKitUI` at `6c5f116` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands) |
 | Android | `android/` | Compose + Material3, minSdk 26 | kotlin-sdk `mero-core` + `mero-compose` at `ea8ded7` (merge commit of PR #67 on `main`), composite build |
 
 **The SDK pins** are set in `ios/project.yml` and
 `ios/Core/Package.swift` (keep them equal), and `android/kotlin-sdk.ref`.
 
-## Delegated execution only
+## How the apps reach Calimero
 
-Neither app runs a node. Sign-in, the account's relay, deep links and invitations are the SDKs'
-`MeroAppSession`; namespaces, contexts, invitations and live events are `MeroAppBackend`; every
-contract call goes through the generated `CrmClient` over `contract.bound(to: contextId)`
-(views with `query`, writes with `execute`).
+**iOS runs on Calimero 1.0.** The app talks to a node of a Calimero Cloud cluster over the sealed
+channel (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and signs in with
+a passkey; it runs no node. `MeroAppSession` builds the SDK's `CloudAppBackend`, and the view
+models keep their `MeroAppBackend` calls, each of which maps one to one:
 
-A **workspace** is a namespace; a **pipeline** is a context directly in it, as the web app's
+| The app | `MeroAppBackend` | Calimero 1.0 |
+| --- | --- | --- |
+| workspace | namespace | organization (metadata `package = com.calimero.mero-crm`) |
+| pipeline | context | app instance (`/apps/{app}/views`, `/intents`, `/events`) |
+| invitation | `OrgInvitation` | org invite token (`POST /orgs/{org}/invites`, redeemed at `/invites/{token}/redeem`) |
+
+Sign-in (`ios/Sources/App/CloudAccess.swift`, the same file in every ported app):
+
+- **Calimero Cloud:** a node URL of your cluster (from cloud.calimero.network; `MeroNodeURL` in
+  `ios/project.yml` prefills it), then *Sign in with passkey* or *Create an account*. The device's
+  passkey belongs to the cluster's relying party: add the `webcredentials:<rp-id>` associated
+  domain to the app for a real cluster.
+- **Development node:** a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by
+  default), mock attestation allowed (`allowMock`), with a software passkey the SDK keeps for it.
+- **Approvals** (Workspaces → account menu): node releases and app upgrades waiting for you, per org and
+  for your own apps. *Review* opens the node's consent page in the system browser, which returns
+  to `mero-crm://consent`. The app's own session cannot approve anything.
+
+**Android still runs on 0.x** (delegated execution through the account's relay, wallet sign-in);
+its port follows the kotlin-sdk's.
+
+On both platforms every contract call goes through the generated `CrmClient` over
+`contract.bound(to: contextId)` (views with `query`, writes with `execute`).
+
+A **workspace** is a namespace (an org on 1.0); a **pipeline** is a context (an app instance) directly in it, as the web app's
 `addPipeline` creates them. The whole pipeline (stages, deals, people, activities, automations,
 settings) is read in one round and every screen derives from that snapshot, like the web's
-`useCrm`; a context event re-reads it (coalesced), and the app polls when the relay cannot stream.
+`useCrm`; a context event re-reads it (coalesced), and the app polls when it cannot stream.
 A pipeline still replicating to a new member shows "Syncing…" and retries, not an error.
 
 ## Screens
 
-1. **Sign in** — what the app is, Sign in with Calimero.
+1. **Sign in** — what the app is; on iOS a Calimero Cloud passkey (sign in or create an account) or a
+   development node.
 2. **Workspaces** — your workspaces with their pipelines; New workspace (name, first pipeline,
    currency), Add pipeline, Join with an invitation (paste a link), and the deep-link invitation
    sheet. Account menu with Sign out.
@@ -67,9 +92,11 @@ All 33 contract methods are wired; `add_automation`, `set_automation_enabled` an
 
 Same: pipeline, deals, deal page with the assistant (the rules in `app/src/utils/crm.ts`, ported
 one for one in `Assistant`/`Insights` and tested against the same cases), people, to-dos,
-insights, stages, settings, workspaces, invitations in the web's link format
-(`links.calimero.network/com.calimero.mero-crm/join?invitation=…`, payload
-`{invitation, groupAlias, groupId, kind}`), so links work across web and phone.
+insights, stages, settings, workspaces, invitations
+(`links.calimero.network/com.calimero.mero-crm/join?invitation=…`). On iOS the payload is the
+SDK's 1.0 `OrgInvitation` shape, `{"invitation": "inv_…", "namespaceId", "name"}`; Android and the
+web app still write the 0.x `{invitation, groupAlias, groupId, kind}` until their ports, so links
+cross between them again once those land. Pre-1.0 signed invitations are refused on iOS.
 
 Left out, and why:
 
@@ -116,9 +143,10 @@ The generated `ContextContractCalling` is bridged to the SDK's bound contract by
 
 ## Configuration
 
-- iOS: Info.plist keys in `ios/project.yml` — `CrmCallbackScheme` (default `mero-crm`, the wallet
-  returns to `mero-crm://enrol`), `CrmCallbackHost` / `CrmCallbackPath` for a verified https
-  callback, `MeroCloudBaseURL`, `MeroWalletURL`, `MeroRegistryURL` (empty: the hosted defaults).
+- iOS: Info.plist keys in `ios/project.yml` — `MeroNodeURL` (your Cloud cluster's node; empty:
+  the sign-in screen asks), `MeroDevNodeURL` (the development node it offers), `CrmCallbackScheme`
+  (default `mero-crm`; the consent page returns to `mero-crm://consent`), `CrmCallbackHost` /
+  `CrmCallbackPath` for a verified https return.
 - Android: Gradle properties in `android/gradle.properties` — `meroEnrolCallback` (default
   `mero-crm://enrol`, also the manifest's intent filter), `meroCloudUrl`, `meroWalletUrl`,
   `meroRegistryUrl`.

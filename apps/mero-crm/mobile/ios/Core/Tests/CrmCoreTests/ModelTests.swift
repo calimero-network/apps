@@ -55,7 +55,6 @@ final class ModelTests: XCTestCase {
 
     func testJoiningRedeemsTheInvitationAndListsTheWorkspace() async throws {
         let backend = backend(Script())
-        backend.hasRelay = false
         let store = MemoryStore()
         let model = WorkspacesModel(backend: backend, applicationId: "app", names: LocalNames(store: store))
         let ns = String(repeating: "34", count: 32)
@@ -63,7 +62,6 @@ final class ModelTests: XCTestCase {
         let joined = await model.join(invitation)
         XCTAssertEqual(joined, ns)
         XCTAssertTrue(backend.log.contains("joinNamespace \(ns)"))
-        XCTAssertTrue(backend.hasRelay)
         XCTAssertEqual(model.workspace(ns)?.title, "Globex")
 
         let link = await model.inviteLink(for: try XCTUnwrap(model.workspace(ns)))
@@ -93,7 +91,7 @@ final class ModelTests: XCTestCase {
 
     func testAContextStillSyncingIsWarmingUpNotAnError() async {
         let script = Script()
-        script.failRead = MeroError.network("Context state not initialized, awaiting state sync")
+        script.failRead = AppError("Context state not initialized, awaiting state sync")
         let m = model(script, backend(script))
         await m.load()
         XCTAssertTrue(m.warmingUp)
@@ -197,12 +195,12 @@ final class ModelTests: XCTestCase {
         let m = model(script, backend)
         await m.load()
         backend.recording.setRawHandler { call in
-            if call.path == .execute { throw AccountError.noRelay(method: call.method) }
+            if call.path == .execute { throw SignedOutError(method: call.method) }
             return try script.answer(call)
         }
         do { let r = await m.deleteDeal(deal("d1")); XCTAssertFalse(r) }
         XCTAssertEqual(m.notice?.isError, true)
-        XCTAssertEqual(m.notice?.text, ErrorText.describe(AccountError.noRelay(method: "delete_deal")))
+        XCTAssertEqual(m.notice?.text, ErrorText.describe(SignedOutError(method: "delete_deal")))
     }
 
     func testStagesReorderAndSettingsValidate() async throws {
