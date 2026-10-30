@@ -34,13 +34,13 @@ final class FormatAndInvitationTests: XCTestCase {
         let parsed = try XCTUnwrap(ModelsInvitation.parse(link))
         XCTAssertEqual(parsed.namespaceId, Fixtures.studio)
         XCTAssertEqual(parsed.contextId, Fixtures.scene)
-        XCTAssertEqual(parsed.invitation, InMemoryAppBackend.invitation(namespaceId: Fixtures.studio))
+        XCTAssertEqual(parsed.invitation.token, InMemoryAppBackend.invitation(namespaceId: Fixtures.studio).token)
         // The payload is the 1.0 link shape: an org invite token, the org and the scene.
         let token = try XCTUnwrap(InviteLink.token(fromPasted: link))
         let json = try XCTUnwrap(InviteCodec.decode(token: token))
         XCTAssertTrue(json.contains("\"namespaceId\""))
-        XCTAssertTrue(json.contains("\"orgId\""))
-        XCTAssertTrue(json.contains("\"token\":\"inv_"))
+        XCTAssertTrue(json.contains("\"invitation\":\"inv_"))
+        XCTAssertEqual(OrgInvitation.decode(token)?.contextId, Fixtures.scene)
     }
 
     func testAnotherAppsLinkIsRefused() async throws {
@@ -67,11 +67,13 @@ final class FormatAndInvitationTests: XCTestCase {
     }
 
     func testRawJSONParsesAndALinkWithoutASceneIsRefused() throws {
-        let json = #"{"invitation":{"orgId":"org1","token":"inv_x"},"namespaceId":"org1","contextId":"app1","extra":1}"#
+        let json = #"{"invitation":"inv_x","namespaceId":"org1","contextId":"app1","extra":1}"#
         let parsed = try XCTUnwrap(ModelsInvitation.parse(json))
         XCTAssertEqual(parsed.namespaceId, "org1")
         XCTAssertEqual(parsed.contextId, "app1")
-        XCTAssertNil(ModelsInvitation.parse(#"{"invitation":{"orgId":"org1","token":"inv_x"},"namespaceId":"org1"}"#))
+        XCTAssertNil(ModelsInvitation.parse(#"{"invitation":"inv_x","namespaceId":"org1"}"#))
+        let old = #"{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"s"},"namespaceId":"aa","contextId":"cc"}"#
+        XCTAssertNil(ModelsInvitation.parse(old))
     }
 
     func testABadLinkFails() {

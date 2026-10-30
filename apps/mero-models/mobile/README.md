@@ -7,7 +7,7 @@ same code.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `a1ec644` (head of `feat/calimero-1.0`, PR #85; moves to its merge commit once it lands). **Calimero 1.0.** |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (head of `feat/calimero-1.0`, PR #85; moves to its merge commit once it lands). **Calimero 1.0.** |
 | Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`main` merge commit of PR #67), composite build from `android/kotlin-sdk.ref` |
 | Viewport | `viewer/` | three.js 0.185 + the web studio's drawing code, bundled into one local file | |
 
@@ -62,11 +62,12 @@ The phone is for looking at scenes, not modelling them. What both apps do:
   Live: the node's event stream (`/apps/{app}/events`), or a 5 s poll when it cannot stream (the
   web's interval).
 - **Share**: mints an invitation to the studio and shares
-  `https://links.calimero.network/com.calimero.mero-models/join?invitation=…` (payload
-  `{invitation, namespaceId, contextId}`, `base58(deflate(JSON))`). On iOS `invitation` is the
-  1.0 org invite, `{"orgId": "…", "token": "inv_…"}`, the shape every 1.0 client of the package
-  reads (swift-sdk's `InvitationLinkPayload`). Android still mints the 0.x signed invitation; the
-  two do not open each other's links until Android is ported.
+  `https://links.calimero.network/com.calimero.mero-models/join?invitation=…`
+  (`base58(deflate(JSON))`). On iOS the payload is swift-sdk's `OrgInvitation`,
+  `{"invitation": "inv_…", "namespaceId": "<studio>", "contextId": "<scene>"}`, the shape every
+  1.0 client of the package reads. Android still mints the 0.x `{invitation, namespaceId,
+  contextId}` with a signed invitation; the two do not open each other's links until Android is
+  ported.
 - **Invitations**: such a link opened on the phone (or pasted under "Join with a link") asks to
   join, redeems it, and opens the scene.
 - **About this scene**: counts, your role, and the ids behind a Details disclosure.

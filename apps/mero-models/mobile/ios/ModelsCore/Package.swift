@@ -16,7 +16,7 @@ let package = Package(
     ],
     dependencies: [
         // swift-sdk Calimero 1.0 branch head (PR #85); moves to its merge commit once it lands.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "a1ec644130d4405a1bab7547654b1442cc559b49"),
+        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "6c5f1167d1e586f556f59c326de5f51d034e80dd"),
     ],
     targets: [
         .target(

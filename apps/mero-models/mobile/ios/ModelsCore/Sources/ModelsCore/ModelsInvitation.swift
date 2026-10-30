@@ -1,46 +1,36 @@
 import Foundation
 import MeroKit
 
-/// An invitation link in the shape every Calimero 1.0 app shares (the SDK's
-/// `MeroKitUI.InvitationLinkPayload`, mirrored as ``Payload`` so this package
-/// needs only `MeroKit`), so a link minted here opens in any client of
-/// the package. (Kotlin `ModelsInvitation`.)
+/// An invitation link: swift-sdk's ``OrgInvitation``, the payload every Calimero 1.0 app shares,
+/// so a link minted here opens in any client of the package. (Kotlin `ModelsInvitation`.)
 ///
-/// - payload: `{"invitation": {"orgId": "<studio>", "token": "inv_…"}, "namespaceId": "<studio>", "contextId": "<scene>"}`
+/// - payload: `{"invitation": "inv_…", "namespaceId": "<studio>", "contextId": "<scene>"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.mero-models/join?invitation=<token>`
 ///
-/// The invite token admits to the studio (the organization); `contextId` only
-/// says which scene (app instance) to open afterwards.
+/// The invite token admits to the studio (the organization); `contextId` only says which scene
+/// (app instance) to open afterwards.
 public struct ModelsInvitation: Sendable {
     public let invitation: OrgInvitation
     public let contextId: String
 
     public init(invitation: OrgInvitation, contextId: String) {
-        self.invitation = invitation
+        self.invitation = OrgInvitation(
+            namespaceId: invitation.namespaceId, token: invitation.token, contextId: contextId, name: invitation.name)
         self.contextId = contextId
     }
 
-    /// The studio it admits to: the organization the node minted the token
-    /// for, so a tampered wrapper cannot redirect a join.
-    public var namespaceId: String { invitation.orgId }
-
-    /// The link's JSON: `MeroKitUI.InvitationLinkPayload`'s shape. Decoding
-    /// ignores any other field.
-    struct Payload: Codable {
-        var invitation: OrgInvitation
-        var namespaceId: String
-        var contextId: String?
-    }
+    /// The studio it admits to: the organization the node minted the token for.
+    public var namespaceId: String { invitation.namespaceId }
 
     /// The shareable token.
     public func token() throws -> String {
-        try InviteCodec.encode(Payload(invitation: invitation, namespaceId: namespaceId, contextId: contextId))
+        try invitation.encoded()
     }
 
     /// The shareable link.
     public func link() throws -> String {
-        InviteLink.invitation(token: try token(), slug: ModelsFormat.packageName)
+        try invitation.link(slug: ModelsFormat.packageName)
     }
 
     /// Mint a link to a scene: an invite token to its studio, plus the scene to open.
@@ -56,24 +46,18 @@ public struct ModelsInvitation: Sendable {
         guard !trimmed.isEmpty else { return nil }
         if trimmed.hasPrefix("{") { return parse(json: trimmed) }
         guard let token = InviteLink.token(fromPasted: trimmed, expectedSlug: ModelsFormat.packageName),
-            let payload = try? InviteCodec.decode(Payload.self, from: token)
+            let json = InviteCodec.decode(token: token)
         else { return nil }
-        return from(payload)
+        return parse(json: json)
     }
 
-    /// The payload as JSON: an invite token and a scene to open. The node judges the rest.
+    /// The payload as JSON: an ``OrgInvitation`` that names a scene. The node judges the rest; a
+    /// pre-1.0 signed invitation is refused.
     public static func parse(json: String) -> ModelsInvitation? {
-        guard let payload = try? JSONDecoder().decode(Payload.self, from: Data(json.utf8)) else {
-            return nil
-        }
-        return from(payload)
-    }
-
-    private static func from(_ payload: Payload) -> ModelsInvitation? {
-        guard !payload.invitation.orgId.isEmpty, !payload.invitation.token.isEmpty,
-            let contextId = payload.contextId, !contextId.isEmpty
+        guard let invitation = try? JSONDecoder().decode(OrgInvitation.self, from: Data(json.utf8)),
+            let contextId = invitation.contextId, !contextId.isEmpty
         else { return nil }
-        return ModelsInvitation(invitation: payload.invitation, contextId: contextId)
+        return ModelsInvitation(invitation: invitation, contextId: contextId)
     }
 }
 
