@@ -1,44 +1,32 @@
 import Foundation
 import MeroKit
 
-/// A team invitation in the link shape every Calimero 1.0 app shares (the
-/// SDK's `MeroKitUI.InvitationLinkPayload`), plus the team's name to show:
+/// A team invitation: swift-sdk's ``OrgInvitation``, the link payload every Calimero 1.0 app
+/// shares, with the team's name to show as its `name`:
 ///
-/// - payload: `{"invitation": {"orgId": "<team>", "token": "inv_…"}, "namespaceId": "<team>", "__teamName"?: "<team name>"}`
+/// - payload: `{"invitation": "inv_…", "namespaceId": "<team>", "name"?: "<team name>"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.mero-pixart/join?invitation=<token>`
 ///
 /// A PixArt team is a Calimero organization. (Kotlin `PixartInvitation`.)
 public struct PixartInvitation: Sendable {
     public let invitation: OrgInvitation
-    public let teamName: String?
 
     public init(invitation: OrgInvitation, teamName: String? = nil) {
-        self.invitation = invitation
-        self.teamName = teamName
+        self.invitation = OrgInvitation(
+            namespaceId: invitation.namespaceId, token: invitation.token, contextId: invitation.contextId,
+            name: teamName?.nilIfBlank ?? invitation.name?.nilIfBlank)
     }
 
     /// The team (organization) it admits to: the one the node minted the token for.
-    public var namespaceId: String { invitation.orgId }
+    public var namespaceId: String { invitation.namespaceId }
+    public var teamName: String? { invitation.name }
 
     public var title: String { teamName ?? "a team" }
 
-    private struct Payload: Codable {
-        var invitation: OrgInvitation
-        var namespaceId: String?
-        var teamName: String?
-        var groupName: String?
-        enum CodingKeys: String, CodingKey {
-            case invitation, namespaceId, groupName
-            case teamName = "__teamName"
-        }
-    }
-
     /// The shareable link.
     public func link() throws -> String {
-        let token = try InviteCodec.encode(
-            Payload(invitation: invitation, namespaceId: namespaceId, teamName: teamName?.nilIfBlank))
-        return InviteLink.invitation(token: token, slug: PixartFormat.packageName)
+        try invitation.link(slug: PixartFormat.packageName)
     }
 
     /// A link (https or `calimero://`), a bare token, or raw JSON; `nil` when
@@ -53,13 +41,10 @@ public struct PixartInvitation: Sendable {
         return parse(json: json)
     }
 
-    /// The decoded payload: an org invite token, and the team's name when the link carries one.
+    /// The decoded payload: an ``OrgInvitation``. A pre-1.0 signed invitation is refused.
     public static func parse(json: String) -> PixartInvitation? {
-        guard let payload = try? JSONDecoder().decode(Payload.self, from: Data(json.utf8)),
-            !payload.invitation.orgId.isEmpty, !payload.invitation.token.isEmpty
-        else { return nil }
-        return PixartInvitation(
-            invitation: payload.invitation, teamName: (payload.teamName ?? payload.groupName)?.nilIfBlank)
+        guard let invitation = try? JSONDecoder().decode(OrgInvitation.self, from: Data(json.utf8)) else { return nil }
+        return PixartInvitation(invitation: invitation)
     }
 }
 

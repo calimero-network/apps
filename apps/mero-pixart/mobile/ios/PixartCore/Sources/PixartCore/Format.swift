@@ -61,7 +61,7 @@ public enum PixartFormat {
             return "Your cluster takes no new work until \(release) is approved. Review it under Needs your approval."
         case is NotFound:
             return "This isn't shared with you, or it was deleted."
-        case is LoginRequired:
+        case is LoginRequired, is SignedOutError:
             return "Your session ended. Sign in again."
         case is WrongNode:
             return "This node doesn't serve your team. Try another node of the cluster."

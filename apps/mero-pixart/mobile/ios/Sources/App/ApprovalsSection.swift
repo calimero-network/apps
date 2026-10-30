@@ -12,7 +12,13 @@ extension ApprovalsModel {
                 guard let session else { throw CancellationError() }
                 return try await session.pendingApprovals(org: org)
             },
-            consent: { [weak session] request in await session?.requestConsent(request) })
+            consent: { [weak session] build in
+                guard let session, let started = try? await session.requestConsent(build(session.callback.url))
+                else { return nil }
+                // The page's return (handled by the session) answers at once; else ask the node.
+                if let result = session.consentResult, result.requestId == started.requestId { return result }
+                return try? await session.client.cloud?.consentResult(started.requestId)
+            })
     }
 }
 

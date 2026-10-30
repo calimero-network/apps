@@ -130,25 +130,25 @@ final class InvitationTests: XCTestCase {
         XCTAssertEqual(PixartFormat.errorText(LoginRequired("expired")), "Your session ended. Sign in again.")
     }
 
-    /// An org invite token, as `POST /orgs/{org}/invites` mints it.
-    static let signedJSON = #"{"orgId":"aaaa","token":"inv_abc"}"#
+    /// The link payload (swift-sdk's `OrgInvitation`) for an org invite token.
+    static let payloadJSON = #"{"invitation":"inv_abc","namespaceId":"aaaa","name":"Studio"}"#
 
     func testTheLinkPayloadParses() throws {
-        let payload = #"{"invitation":\#(Self.signedJSON),"namespaceId":"aaaa","groupName":"g","__teamName":"Studio"}"#
+        let payload = Self.payloadJSON
         let inv = try XCTUnwrap(PixartInvitation.parse(json: payload))
         XCTAssertEqual(inv.namespaceId, "aaaa")
         XCTAssertEqual(inv.title, "Studio")
     }
 
     func testALinkRoundTripsAndOtherAppsAreRefused() throws {
-        let inv = try XCTUnwrap(PixartInvitation.parse(json: #"{"invitation":\#(Self.signedJSON)}"#))
+        let inv = try XCTUnwrap(PixartInvitation.parse(json: #"{"invitation":"inv_abc","namespaceId":"aaaa"}"#))
         let link = try PixartInvitation(invitation: inv.invitation, teamName: "Studio").link()
         XCTAssertTrue(link.contains("com.calimero.mero-pixart/join?invitation="))
         XCTAssertEqual(PixartInvitation.parse(link)?.teamName, "Studio")
         XCTAssertNil(PixartInvitation.parse(link.replacingOccurrences(of: "mero-pixart", with: "mero-chat")))
         // The 1.0 link shape: the org invite and the org.
         let json = try XCTUnwrap(InviteCodec.decode(token: try XCTUnwrap(InviteLink.token(fromPasted: link))))
-        XCTAssertTrue(json.contains(#""token":"inv_abc""#))
+        XCTAssertTrue(json.contains(#""invitation":"inv_abc""#))
         XCTAssertTrue(json.contains(#""namespaceId":"aaaa""#))
     }
 
@@ -160,7 +160,7 @@ final class InvitationTests: XCTestCase {
     func testAcceptJoinsTheTeam() async throws {
         let (backend, _) = Fixtures.backend()
         let model = InvitationModel()
-        let inv = try XCTUnwrap(PixartInvitation.parse(json: #"{"invitation":\#(Self.signedJSON),"__teamName":"Studio"}"#))
+        let inv = try XCTUnwrap(PixartInvitation.parse(json: Self.payloadJSON))
         XCTAssertTrue(model.open(try inv.link()))
         XCTAssertEqual(model.stage, .confirm(title: "Studio"))
         var joined = false

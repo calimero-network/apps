@@ -6,7 +6,7 @@ and the matching Material icons) and behaviour.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `a1ec644` (head of `feat/calimero-1.0`, PR #85; moves to its merge commit once it lands). **Calimero 1.0.** |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (head of `feat/calimero-1.0`, PR #85; moves to its merge commit once it lands). **Calimero 1.0.** |
 | Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`main` merge commit of PR #67), composite build from `android/kotlin-sdk.ref` |
 
 **The iOS app runs on Calimero 1.0; the Android app still speaks the 0.x API until kotlin-sdk is
@@ -29,10 +29,11 @@ equal); on Android, `android/kotlin-sdk.ref`.
 - **Words**: a PixArt team is a Calimero **organization**; a project is one of its Calimero
   **teams**, holding one **app instance** of `com.calimero.mero-pixart`.
 - **Invitations** are org invite tokens (`POST /orgs/{org}/invites`, redeemed with
-  `POST /invites/{token}/redeem`). The link keeps its URL; its `invitation` is
-  `{"orgId": "…", "token": "inv_…"}`, the shape every 1.0 client of the package reads (swift-sdk's
-  `InvitationLinkPayload`). Android and the web still use the 0.x signed invitation until they are
-  ported, so links do not cross between them and iOS yet.
+  `POST /invites/{token}/redeem`). The link keeps its URL; its payload is swift-sdk's
+  `OrgInvitation`, `{"invitation": "inv_…", "namespaceId": "<team>", "name": "<team name>"}`, the
+  shape every 1.0 client of the package reads. Android and the web still use the 0.x signed
+  invitation (with `__teamName`) until they are ported, so links do not cross between them and iOS
+  yet.
 - **Approvals**: when a node release or an app upgrade waits for the account (or an organization it
   owns), the teams list shows it under "Needs your approval". "Review" opens the **node's consent page in
   the system browser**; the page returns to `mero-pixart://consent`. The app never approves by itself.
