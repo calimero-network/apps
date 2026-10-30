@@ -239,13 +239,13 @@ final class LobbyModelTests: XCTestCase {
         XCTAssertEqual(initArgs["title"], .string("Chess table"))
     }
 
-    func testCreateNeedsARelay() async {
+    func testCreateNeedsAConnectedAccount() async {
         let backend = InMemoryAppBackend(account: Fixtures.me)
         backend.hasRelay = false
         let lobby = LobbyModel(backend: backend, applicationId: backend.applicationId)
         do {
             _ = try await lobby.create(title: "x", clubId: nil)
-            XCTFail("created without a relay")
+            XCTFail("created while disconnected")
         } catch {
             XCTAssertEqual(error as? ChessError, .noRelay)
         }
@@ -265,6 +265,23 @@ final class LobbyModelTests: XCTestCase {
         XCTAssertEqual(ref, TableRef(contextId: "c9", namespaceId: club))
         XCTAssertEqual(backend.log, ["joinNamespace \(club)"])
         XCTAssertTrue(backend.hasRelay)
+    }
+
+    func testLinkCarriesTheSDKPayload() throws {
+        let club = "club1"
+        let invitation = InMemoryAppBackend.invitation(namespaceId: club)
+        let link = try ChessInvitation(invitation: invitation, namespaceId: club, contextId: "c9").link()
+        let json = try XCTUnwrap(InviteCodec.decode(token: XCTUnwrap(InviteLink.token(fromPasted: link))))
+        let root = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+        XCTAssertEqual(root["invitation"]?["orgId"]?.stringValue, club)
+        XCTAssertEqual(root["invitation"]?["token"]?.stringValue, invitation.token)
+        XCTAssertEqual(root["namespaceId"]?.stringValue, club)
+        XCTAssertEqual(root["contextId"]?.stringValue, "c9")
+    }
+
+    func testPreOneSignedInvitationIsRefused() {
+        let json = #"{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"5a"},"namespaceId":"n","contextId":"c"}"#
+        XCTAssertNil(ChessInvitation.parse(json: json))
     }
 
     func testAnotherAppsLinkIsNotAChessInvitation() throws {

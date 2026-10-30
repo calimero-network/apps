@@ -2,7 +2,7 @@ import Foundation
 import MeroChessGenerated
 import MeroKit
 
-/// A table to open: its context and the namespace ("club") it lives in.
+/// A table to open: its app instance (context) and the org ("club", namespace) it lives in.
 public struct TableRef: Hashable, Sendable, Identifiable {
     public let contextId: String
     public let namespaceId: String?
@@ -55,8 +55,8 @@ public struct TableEntry: Identifiable, Equatable, Sendable {
 
 /// The lobby: every table in every club this account belongs to, and making and joining tables.
 ///
-/// A table is one context, created directly in its namespace (not a subgroup), exactly as the web
-/// app's `ContextPicker` does, so the namespace invitation the table mints is the one that admits
+/// A table is one app instance (context), created directly in its org (not in a team), exactly as
+/// the web app's `ContextPicker` does, so the org invitation the table mints is the one that admits
 /// to it.
 @MainActor
 public final class LobbyModel: ObservableObject {
@@ -155,9 +155,8 @@ public final class LobbyModel: ObservableObject {
         return ref
     }
 
-    /// Redeem an invitation: join its namespace, which admits to every table directly in it.
-    /// `didJoin` runs after (the session reconnects to the admitting relay there when the account
-    /// had none). The table may take a moment to sync; the table screen polls until it reads.
+    /// Redeem an invitation: join its org (`POST /invites/{token}/redeem`), which admits to every
+    /// table directly in it. `didJoin` runs after (the session re-reads what the account sees). The table may take a moment to sync; the table screen polls until it reads.
     public func join(_ invitation: ChessInvitation, didJoin: () async -> Void) async throws -> TableRef {
         _ = try await backend.joinNamespace(namespaceId: invitation.namespaceId, invitation: invitation.invitation)
         await didJoin()

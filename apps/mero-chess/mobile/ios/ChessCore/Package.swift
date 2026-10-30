@@ -11,9 +11,9 @@ let package = Package(
         .library(name: "ChessCore", targets: ["ChessCore"]),
     ],
     dependencies: [
-        // main, the merge commit of swift-sdk#84 (app session); keep it equal to the revision in
-        // ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
+        // The head of swift-sdk's Calimero 1.0 port (swift-sdk#85, feat/calimero-1.0); moves to its
+        // merge commit once that lands. Keep it equal to the revision in ../project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "a1ec644130d4405a1bab7547654b1442cc559b49"),
     ],
     targets: [
         // Generated from ../../../logic/res/abi.json by @calimero/abi-codegen. Never edit by hand:

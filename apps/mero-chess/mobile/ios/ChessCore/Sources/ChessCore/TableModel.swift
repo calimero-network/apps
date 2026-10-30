@@ -288,7 +288,7 @@ public final class TableModel: ObservableObject {
 
     // MARK: Inviting
 
-    /// A link that admits someone to this table's namespace and opens this table.
+    /// A link that admits someone to this table's org (club) and opens this table.
     public func inviteLink() async throws -> String {
         guard let namespaceId else { throw ChessError.noNamespace }
         let signed = try await backend.createInvitation(namespaceId: namespaceId)
@@ -307,7 +307,7 @@ public enum ChessError: Error, LocalizedError, Equatable {
         case .noNamespace: return "This table's club is not known on this device yet. Open it from Tables and try again."
         case .noApplication: return "Mero Chess is still being looked up in the app registry. Try again in a moment."
         case .notAnInvitation: return "That is not a Mero Chess invitation link."
-        case .noRelay: return "Your account has no relay yet. Join a table from an invitation link first."
+        case .noRelay: return "You're not connected to your cluster. Sign in again, or join a table from an invitation link."
         }
     }
 }
