@@ -7,16 +7,43 @@ engine** (`../app/src/game`, unchanged) running in a WebView, bundled into the a
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI + WKWebView, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` (swift-sdk#84 merge commit on `main`), in `ios/project.yml` and `ios/KombatCore/Package.swift` |
+| iOS | `ios/` | SwiftUI + WKWebView, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (head of `feat/calimero-1.0`, swift-sdk#85; moves to its merge commit once it lands), in `ios/project.yml` and `ios/KombatCore/Package.swift`. **Calimero 1.0.** |
 | Android | `android/` | Jetpack Compose + Material 3 + WebView, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (kotlin-sdk#67 merge commit on `main`), composite build at the SHA in `android/kotlin-sdk.ref` |
 | Game page | `web/` | TypeScript, built with the web app's Vite | the web app's engine, imported as is |
 
-**The SDK pins are the `main` merge commits of swift-sdk#84 and kotlin-sdk#67.** Bumping is one
+**The iOS app runs on Calimero 1.0; the Android app (kotlin-sdk#67's `main` merge commit) still
+speaks the 0.x API until kotlin-sdk is ported.** Bumping is one
 line per platform (iOS: both `revision:` values; Android: `kotlin-sdk.ref`).
 
-## Delegated execution only
+## Calimero 1.0 on iOS
 
-Neither app runs or logs into a node. The person signs in with their Calimero account (the wallet
+- **Sign in** with a passkey on the arena's cluster (`MeroAppSession.signIn()`, the device's
+  platform passkey), or **create an account** (`signUp(name:)`). The session (a 15-minute access
+  token and a 30-day refresh token) is kept in the Keychain and refreshed at launch. Every request
+  goes over the sealed channel to an attested node.
+- **The cluster** is `MeroNodeURL` in `ios/project.yml` (a node from Calimero Cloud's console, plus
+  `MeroNodes` for failover). Left empty, the sign-in screen asks for one.
+- **Development**: on the sign-in screen, "Choose your cluster" (or "Change") takes any node URL
+  and a "Development cluster" switch, which trusts mock attestation (`allowMock`) as `merod local`
+  serves it (`cargo run -p merod -- local`, nodes on `http://127.0.0.1:2501-2503`). The app then
+  keeps a soft passkey for that node and creates its account on the first sign-in. Or set
+  `MeroNodeURL` and `MeroAllowMock: "YES"` in `project.yml`.
+- **Words**: an arena lives in an **organization** (one link admits to every arena in it) and is an **app instance** of `com.calimero.mero-kombat` there. The fighters' positions travel as the arena's **1.0 presence** (`CalimeroPresenceChannel`: `POST /apps/{app}/presence`, read off `/apps/{app}/presence/stream`; at most 4 KiB a slice, which a fighter's JSON slice is far under). The bridge protocol between the game page and the app is unchanged.
+- **Invitations** are org invite tokens (`POST /orgs/{org}/invites`, redeemed with
+  `POST /invites/{token}/redeem`). The link keeps its URL; its payload is swift-sdk's
+  `OrgInvitation`, `{"invitation": "inv_…", "namespaceId": "…", "contextId"?: "…", "name"?: "…"}`,
+  which every 1.0 client of the package reads. Android and the web still use the 0.x signed
+  invitation until they are ported, so links do not cross between them and iOS yet.
+- **Approvals**: when a node release or an app upgrade waits for the account (or an organization it
+  owns), the arenas list shows it under "Needs your approval". "Review" opens the **node's consent page in
+  the system browser**; the page returns to `mero-kombat://consent`. The app never approves by itself.
+  A call refused because a release deadline has passed says so in words.
+- A real cluster's passkeys need the app to carry the `webcredentials:<rp-id>` Associated Domain of
+  that cluster; it is not set in `project.yml` yet.
+
+## Android (0.x): delegated execution
+
+The Android app runs and logs into no node. The person signs in with their Calimero account (the wallet
 certifies this device's key), and everything goes through the account's relay via the SDKs'
 `MeroAppSession` / `MeroAppBackend`:
 
@@ -71,7 +98,7 @@ confirmed transaction count and the last round trip.
 
 ## Screens
 
-1. **Sign in**: what the app is, "Sign in with Calimero", "Practice vs CPU", an invited banner.
+1. **Sign in**: what the app is; on iOS "Sign in with a passkey" / "Create an account" on the cluster (Android: "Sign in with Calimero"); "Practice vs CPU"; an invited banner.
 2. **Arenas**: Practice vs CPU first, then every arena (both fighters, title, players, tx count,
    state); pull to refresh; swipe to invite; empty and no-relay states. The + menu has **New arena**
    (sheet: title, namespace) and **Join with a link**.
@@ -110,12 +137,13 @@ cd ../android
 
 View-model tests run against the SDKs' fakes (`InMemoryAppBackend`, `RecordingContextContract`).
 
-## Sign-in callback
+## Callbacks
 
-Both apps default to `mero-kombat://enrol` (iOS: `MeroKombatCallback*` keys in `project.yml`;
-Android: `meroEnrolCallback` in `gradle.properties`). The hosted wallet returns only to `https://`
-callbacks today, so production sign-in needs that wallet change or a verified https callback, as for
-Mero Chat. Cloud, wallet and registry URLs are overridable the same way.
+iOS: the node's consent page returns to `mero-kombat://consent` (`MeroKombatCallback*` keys in
+`project.yml`); the cluster is `MeroNodeURL` / `MeroNodes` / `MeroAllowMock`. Android: sign-in
+returns to `mero-kombat://enrol` (`meroEnrolCallback` in `gradle.properties`); the hosted wallet
+returns only to `https://` callbacks today, so production sign-in needs a verified https callback.
+Cloud, wallet and registry URLs are overridable the same way.
 
 ## Not in the apps (and why)
 

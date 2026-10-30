@@ -12,39 +12,42 @@ public protocol PresenceChannel: Sendable {
     func slices() -> AsyncThrowingStream<String, Error>
 }
 
-/// Bytes in, bytes out: the page's slice is JSON already.
-struct PassThroughCodec: Codec {
-    func encode(_ value: [UInt8]) throws -> [UInt8] { value }
-    func decode(_ bytes: [UInt8]) throws -> [UInt8] { bytes }
-}
-
-/// Presence through the account's relay (`RelayPresenceClient`): each slice is a statement the
-/// device key signs and the relay gossips. A phone has no node, so this is the only path.
-public struct RelayPresenceChannel: PresenceChannel {
-    let client: RelayPresenceClient
+/// Presence on a Calimero 1.0 cluster: the arena app instance's presence
+/// (`POST /apps/{app}/presence`, read off `/apps/{app}/presence/stream`). One entry per account and
+/// device, newest `seq` wins, at most 4 KiB, gone 7 s after its last refresh. Nothing is stored.
+public final class CalimeroPresenceChannel: PresenceChannel, @unchecked Sendable {
+    let client: CalimeroClient
     let contextId: String
+    private let lock = NSLock()
+    private var seq = 0
 
-    public init(client: RelayPresenceClient, contextId: String) {
+    public init(client: CalimeroClient, contextId: String) {
         self.client = client
         self.contextId = contextId
     }
 
+    private func nextSeq() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        seq += 1
+        return seq
+    }
+
     public func publish(_ sliceJSON: String) async throws {
-        try await client.set(contextId: contextId, state: Array(sliceJSON.utf8), codec: PassThroughCodec())
+        try await client.publishPresence(contextId, seq: nextSeq(), state: Data(sliceJSON.utf8))
     }
 
     public func retract() async {
-        try? await client.set(contextId: contextId, state: nil, codec: PassThroughCodec())
+        try? await client.publishPresence(contextId, seq: nextSeq(), state: nil)
     }
 
     public func slices() -> AsyncThrowingStream<String, Error> {
-        let entries = client.subscribe(contextId: contextId, codec: PassThroughCodec())
+        let events = client.presenceStream(contextId)
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    for try await entry in entries {
-                        guard !entry.removed, let bytes = entry.state else { continue }
-                        continuation.yield(String(decoding: bytes, as: UTF8.self))
+                    for try await event in events {
+                        for slice in Self.slices(event) { continuation.yield(slice) }
                     }
                     continuation.finish()
                 } catch {
@@ -54,10 +57,26 @@ public struct RelayPresenceChannel: PresenceChannel {
             continuation.onTermination = { _ in task.cancel() }
         }
     }
+
+    /// The slices one stream event carries: a `snapshot` (an array of entries) or one `presence`
+    /// diff. Entries without state (someone left) carry no slice.
+    static func slices(_ event: CloudEvent) -> [String] {
+        let entries: [JSONValue]
+        switch event.data {
+        case .array(let list): entries = list
+        case .object: entries = [event.data]
+        default: return []
+        }
+        return entries.compactMap { entry in
+            guard let hex = entry["state"]?.stringValue, let data = try? Hex.decodeUnsized(hex, label: "presence state")
+            else { return nil }
+            return String(decoding: data, as: UTF8.self)
+        }
+    }
 }
 
 /// The web app's publishing rule, natively: one slice in flight at a time, and while one is,
-/// only the newest waits behind it. At 15 slices a second a slow relay drops stale frames instead
+/// only the newest waits behind it. At 15 slices a second a slow node drops stale frames instead
 /// of queueing them, so the opponent always sees where this fighter is NOW. (Kotlin `SlicePublisher`.)
 public actor SlicePublisher {
     private let channel: any PresenceChannel

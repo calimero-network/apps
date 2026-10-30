@@ -7,7 +7,7 @@ import SwiftUI
 struct MeroKombatApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: KombatConstants.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: AppConfig.keychainService)
+        keychainService: AppConfig.keychainService)
 
     var body: some Scene {
         WindowGroup {
@@ -49,13 +49,13 @@ struct RootView: View {
                         onPractice: { path = [.practice] })
                 } else if let backend = session.backend {
                     LobbyScreen(
-                        backend: backend, applicationId: session.applicationId, account: session.account ?? "",
+                        session: session, backend: backend, applicationId: session.applicationId, account: session.account ?? "",
                         onOpen: { path = [.arena($0)] }, onPractice: { path = [.practice] }, onJoin: { joining = $0 },
                         onSignOut: { Task { await session.signOut() } }
                     )
                     .id(session.revision)
                 } else {
-                    Splash(text: "Connecting to your relay…") {
+                    Splash(text: "Connecting to your cluster…") {
                         Button("Sign out") { Task { await session.signOut() } }
                             .buttonStyle(SecondaryButtonStyle(fullWidth: false))
                     }
@@ -70,7 +70,7 @@ struct RootView: View {
                         ArenaScreen(backend: backend, ref: ref, store: store)
                             .id("\(ref.contextId)-\(session.revision)")
                     } else {
-                        Splash(text: "Connecting to your relay…")
+                        Splash(text: "Connecting to your cluster…")
                     }
                 }
             }
@@ -85,7 +85,7 @@ struct RootView: View {
         .onChange(of: didRestore) { _ in pickUpInvitation() }
         .sheet(item: $joining) { invitation in
             JoinSheet(invitation: invitation) {
-                guard let backend = session.backend else { throw KombatError.noRelay }
+                guard let backend = session.backend else { throw KombatError.signedOut }
                 let lobby = LobbyModel(backend: backend, applicationId: session.applicationId)
                 let ref = try await lobby.join(invitation) { await session.didJoinNamespace() }
                 path = [.arena(ref)]

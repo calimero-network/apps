@@ -2,31 +2,37 @@ import Foundation
 import MeroKit
 import MeroKitUI
 
-/// Where the app signs in and which cloud it routes through, read from the Info.plist keys
-/// `project.yml` sets. An empty value means the SDK's default (the hosted Calimero wallet, Cloud
-/// manager and app registry).
+/// Which Calimero 1.0 cluster the app talks to and where the consent page
+/// returns to, read from the Info.plist keys `project.yml` sets. An empty
+/// value means "not set": with no node URL, sign-in asks for one.
 enum AppConfig {
-    /// The app scheme the wallet returns to (`mero-kombat://enrol#credential=…`).
+    /// The app scheme the node's consent page returns to (`mero-kombat://consent?request_id=…&result=…`).
     static var callbackScheme: String { string("MeroKombatCallbackScheme") ?? "mero-kombat" }
 
-    /// An https host the wallet returns to instead (a verified Associated Domain, iOS 17.4+).
+    /// An https host the consent page returns to instead (a verified Associated Domain). Unset by default.
     static var callbackHost: String? { string("MeroKombatCallbackHost") }
-    static var callbackPath: String { string("MeroKombatCallbackPath") ?? "/enrol" }
+    static var callbackPath: String { string("MeroKombatCallbackPath") ?? "/consent" }
 
     static var callback: CloudCallback {
         if let host = callbackHost { return .https(host: host, path: callbackPath) }
-        return .scheme(callbackScheme)
+        return .scheme(callbackScheme, path: callbackPath.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
     }
 
+    /// A node of the app's cluster (Calimero Cloud's console lists them), the
+    /// rest of the cluster for failover, and how far to trust it: production
+    /// attestation, or mock attestation for a `merod local` cluster.
     static var config: MeroProviderConfig {
-        MeroProviderConfig(
-            registryURL: string("MeroRegistryURL") ?? ApplicationRegistry.defaultURL,
-            cloudBaseURL: string("MeroCloudBaseURL").flatMap { URL(string: $0) })
+        let allowMock = string("MeroAllowMock").map { ["1", "yes", "true"].contains($0.lowercased()) } ?? false
+        let policy: CloudPolicy = allowMock ? .development : .production
+        return MeroProviderConfig(
+            nodeURL: string("MeroNodeURL"),
+            nodes: (string("MeroNodes") ?? "").split(separator: ",").map {
+                $0.trimmingCharacters(in: .whitespaces)
+            }.filter { !$0.isEmpty },
+            policy: policy, packageVersion: string("MeroPackageVersion"))
     }
 
-    static var walletURL: URL? { string("MeroWalletURL").flatMap { URL(string: $0) } }
-
-    /// The Keychain service the device key, the account session and the relay tokens live under.
+    /// The Keychain service the account session (and a development cluster's soft passkey) live under.
     static let keychainService = "network.calimero.kombat"
 
     private static func string(_ key: String) -> String? {

@@ -128,9 +128,9 @@ public final class LobbyModel: ObservableObject {
         }
     }
 
-    /// A new arena: in `namespaceId`, or in a new namespace named after the arena when nil.
+    /// A new arena: in organization `namespaceId`, or in a new one named after the arena when nil.
     public func create(title: String, namespaceId: String?) async throws -> ArenaRef {
-        guard backend.hasRelay else { throw KombatError.noRelay }
+        guard backend.hasRelay else { throw KombatError.signedOut }
         guard let applicationId, !applicationId.isEmpty else { throw KombatError.noApplication }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = trimmed.isEmpty ? KombatConstants.defaultTitle : String(trimmed.prefix(64))
@@ -149,9 +149,9 @@ public final class LobbyModel: ObservableObject {
         return ref
     }
 
-    /// Redeem an invitation: join its namespace, which admits to every arena directly in it.
-    /// `didJoin` runs after (the session reconnects to the admitting relay there when the account
-    /// had none). The arena may take a moment to sync; the arena screen polls until it reads.
+    /// Redeem an invitation: redeem its token, joining the organization, which admits to every
+    /// arena directly in it. `didJoin` runs after (the session re-reads what the account sees).
+    /// The arena screen polls until it reads.
     public func join(_ invitation: KombatInvitation, didJoin: () async -> Void) async throws -> ArenaRef {
         _ = try await backend.joinNamespace(namespaceId: invitation.namespaceId, invitation: invitation.invitation)
         await didJoin()
@@ -161,8 +161,8 @@ public final class LobbyModel: ObservableObject {
     /// A link that admits someone to `ref`'s namespace and opens that arena.
     public func inviteLink(_ ref: ArenaRef) async throws -> String {
         guard let namespaceId = ref.namespaceId else { throw KombatError.noNamespace }
-        let signed = try await backend.createInvitation(namespaceId: namespaceId)
-        return try KombatInvitation(invitation: signed, namespaceId: namespaceId, contextId: ref.contextId).link()
+        let invitation = try await backend.createInvitation(namespaceId: namespaceId)
+        return try KombatInvitation(invitation: invitation, contextId: ref.contextId).link()
     }
 
     public func dismissError() { error = nil }

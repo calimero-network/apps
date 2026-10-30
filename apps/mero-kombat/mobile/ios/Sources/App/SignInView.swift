@@ -1,13 +1,17 @@
+import MeroKit
 import MeroKitUI
 import SwiftUI
 
-/// Signed out: what the app is, the one button that signs in with a Calimero account, and
-/// practice, which needs no account. Two columns: the phone is held sideways.
+/// Signed out: what the app is, a passkey on the cluster, and practice, which needs no account.
+/// A developer can point the app at another node (a `merod local` cluster with mock
+/// attestation). Two columns: the phone is held sideways.
 struct SignInView: View {
     @ObservedObject var session: MeroAppSession
     @ObservedObject var client: MeroClient
     let invited: Bool
     let onPractice: () -> Void
+    @State private var showCreate = false
+    @State private var showNode = false
 
     var body: some View {
         ZStack {
@@ -18,13 +22,13 @@ struct SignInView: View {
                         AppMark(size: 56)
                         Text("Mero Kombat").font(Theme.heading(34)).foregroundStyle(Theme.ink)
                         Text(
-                            "A one-on-one fighting game where every punch is a transaction. Two fighters, best of three rounds, no game server."
+                            "A one-on-one fighting game where every punch is a transaction on your attested Calimero cluster. Two fighters, best of three rounds, no game server."
                         )
                         .font(Theme.body(16)).foregroundStyle(Theme.ink2)
                         VStack(alignment: .leading, spacing: 12) {
                             Point(icon: "server.rack", text: "No game server")
                             Point(icon: "bolt.fill", text: "Every blow is a transaction")
-                            Point(icon: "person.crop.circle", text: "Your Calimero account")
+                            Point(icon: "person.badge.key", text: "Your Calimero account, with a passkey")
                         }
                         .card()
                     }
@@ -44,17 +48,35 @@ struct SignInView: View {
                         if let message = client.errorMessage {
                             ErrorBanner(message: message) {}
                         }
-                        Button {
-                            Haptics.tap()
-                            Task { await session.signIn() }
-                        } label: {
-                            HStack(spacing: 10) {
-                                if client.isLoading { ProgressView().tint(Theme.ink) }
-                                Text(client.isLoading ? "Signing in…" : "Sign in with Calimero")
+                        if client.nodeURL == nil {
+                            Button {
+                                showNode = true
+                            } label: {
+                                Label("Choose your cluster", systemImage: "server.rack")
                             }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .accessibilityIdentifier("chooseNodeButton")
+                        } else {
+                            Button {
+                                Haptics.tap()
+                                Task { await signIn() }
+                            } label: {
+                                HStack(spacing: 10) {
+                                    if client.isLoading {
+                                        ProgressView().tint(Theme.ink)
+                                    } else {
+                                        Image(systemName: "person.badge.key")
+                                    }
+                                    Text(client.isLoading ? "Waiting for your passkey…" : "Sign in with a passkey")
+                                }
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .disabled(client.isLoading)
+                            .accessibilityIdentifier("signInButton")
+                            Button("Create an account") { showCreate = true }
+                                .buttonStyle(SecondaryButtonStyle())
+                                .disabled(client.isLoading)
                         }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(client.isLoading)
 
                         Button {
                             Haptics.tap()
@@ -64,8 +86,15 @@ struct SignInView: View {
                         }
                         .buttonStyle(SecondaryButtonStyle())
 
-                        Text("The Calimero wallet approves this device. Practice needs no account.")
-                            .font(Theme.body(13)).foregroundStyle(Theme.muted)
+                        HStack(spacing: 6) {
+                            Text(nodeLine).font(Theme.body(13)).foregroundStyle(Theme.muted).lineLimit(2)
+                            Spacer(minLength: 0)
+                            if client.nodeURL != nil {
+                                Button("Change") { showNode = true }
+                                    .font(Theme.body(13, .semibold))
+                                    .accessibilityIdentifier("changeNodeButton")
+                            }
+                        }
                     }
                     .frame(maxWidth: 340)
                     .padding(.top, 74)
@@ -77,6 +106,39 @@ struct SignInView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showCreate) {
+            CreateAccountSheet { name in
+                showCreate = false
+                Task { await session.signUp(name: name) }
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showNode) {
+            NodeSheet(current: client.nodeURL ?? "", allowMock: client.allowMock) { url, allowMock in
+                showNode = false
+                session.connect(nodeURL: url, allowMock: allowMock)
+            }
+            .presentationDetents([.large])
+        }
+    }
+
+    private var nodeLine: String {
+        guard let url = client.nodeURL else { return "Choose the cluster your arenas run on to sign in. Practice needs no account." }
+        let host = URL(string: url)?.host ?? url
+        return client.allowMock
+            ? "Development cluster at \(host) (mock attestation). Practice needs no account."
+            : "Signing in to \(host). Practice needs no account."
+    }
+
+    /// A platform passkey on a real cluster. On a development cluster the app keeps a soft passkey
+    /// for the node, and the first sign-in creates its account.
+    private func signIn() async {
+        if client.allowMock {
+            await client.signInOrSignUp()
+            session.rebuild()
+        } else {
+            await session.signIn()
+        }
     }
 
     private struct Point: View {
@@ -88,6 +150,101 @@ struct SignInView: View {
                 Image(systemName: icon).font(.system(size: 17, weight: .medium)).foregroundStyle(Theme.ink)
                     .frame(width: 24)
                 Text(text).font(Theme.body(15, .medium)).foregroundStyle(Theme.ink)
+            }
+        }
+    }
+}
+
+/// A name for a new account, then a new passkey.
+private struct CreateAccountSheet: View {
+    let submit: (String) -> Void
+    @State private var name = ""
+    @SwiftUI.Environment(\.dismiss) private var dismiss
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Your name is what your opponents see. A new passkey on this phone signs you in from now on.")
+                    .font(Theme.body(15))
+                    .foregroundStyle(Theme.muted)
+                TextField("Your name", text: $name)
+                    .font(Theme.body(15))
+                    .textContentType(.name)
+                    .focused($focused)
+                    .card(padding: 14)
+                Button("Create the passkey") {
+                    Haptics.tap()
+                    submit(name.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Spacer()
+            }
+            .padding(16)
+            .background(Theme.ground)
+            .navigationTitle("Create an account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) { Button("Cancel") { dismiss() } }
+            }
+            .onAppear { focused = true }
+        }
+    }
+}
+
+/// The node to talk to: one of the cluster's nodes from Calimero Cloud's
+/// console, or a development cluster (`merod local`) with mock attestation.
+private struct NodeSheet: View {
+    let submit: (_ url: String, _ allowMock: Bool) -> Void
+    @State private var url: String
+    @State private var allowMock: Bool
+    @SwiftUI.Environment(\.dismiss) private var dismiss
+
+    init(current: String, allowMock: Bool, submit: @escaping (_ url: String, _ allowMock: Bool) -> Void) {
+        self.submit = submit
+        _url = State(initialValue: current)
+        _allowMock = State(initialValue: allowMock)
+    }
+
+    private var trimmed: String { url.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Paste the address of a node in your cluster. The app checks the node's attestation before it sends anything.")
+                    .font(Theme.body(15))
+                    .foregroundStyle(Theme.muted)
+                TextField("https://node.example.calimero.network", text: $url)
+                    .font(Theme.body(15))
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .card(padding: 14)
+                Toggle(isOn: $allowMock) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Development cluster").font(Theme.body(15, .medium)).foregroundStyle(Theme.ink)
+                        Text("Trust mock attestation, as `merod local` serves. Never for a real cluster.")
+                            .font(Theme.body(13))
+                            .foregroundStyle(Theme.muted)
+                    }
+                }
+                .tint(Theme.ink)
+                .card(padding: 14)
+                Button("Use this node") {
+                    Haptics.tap()
+                    submit(trimmed, allowMock)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(URL(string: trimmed)?.scheme == nil)
+                Spacer()
+            }
+            .padding(16)
+            .background(Theme.ground)
+            .navigationTitle("Your cluster")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) { Button("Cancel") { dismiss() } }
             }
         }
     }

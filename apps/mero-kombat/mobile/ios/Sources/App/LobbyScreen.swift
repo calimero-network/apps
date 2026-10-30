@@ -1,8 +1,9 @@
 import KombatCore
 import MeroKit
+import MeroKitUI
 import SwiftUI
 
-/// The arenas: practice first, then every arena in every namespace this account is in.
+/// The arenas: practice first, then every arena in every organization this account is in.
 struct LobbyScreen: View {
     let account: String
     let onOpen: (ArenaRef) -> Void
@@ -10,6 +11,7 @@ struct LobbyScreen: View {
     let onJoin: (KombatInvitation) -> Void
     let onSignOut: () -> Void
     @StateObject private var model: LobbyModel
+    @StateObject private var approvals: ApprovalsModel
     @State private var creating = false
     @State private var pasting = false
     @State private var showingAccount = false
@@ -17,7 +19,7 @@ struct LobbyScreen: View {
     @State private var actionError: String?
 
     init(
-        backend: any MeroAppBackend, applicationId: String?, account: String, onOpen: @escaping (ArenaRef) -> Void,
+        session: MeroAppSession, backend: any MeroAppBackend, applicationId: String?, account: String, onOpen: @escaping (ArenaRef) -> Void,
         onPractice: @escaping () -> Void, onJoin: @escaping (KombatInvitation) -> Void,
         onSignOut: @escaping () -> Void
     ) {
@@ -27,6 +29,7 @@ struct LobbyScreen: View {
         self.onJoin = onJoin
         self.onSignOut = onSignOut
         _model = StateObject(wrappedValue: LobbyModel(backend: backend, applicationId: applicationId))
+        _approvals = StateObject(wrappedValue: ApprovalsModel(session: session))
     }
 
     var body: some View {
@@ -34,6 +37,7 @@ struct LobbyScreen: View {
             // Landscape: a centred column, not rows stretched across the whole phone.
             let side = max(16, (geometry.size.width - 720) / 2)
             List {
+                ApprovalsSection(model: approvals, side: side)
                 if let message = model.error ?? actionError {
                     ErrorBanner(message: message) {
                         model.dismissError()
@@ -54,13 +58,6 @@ struct LobbyScreen: View {
                     HStack { Spacer(); ProgressView().tint(Theme.ink); Spacer() }
                         .padding(.vertical, 40)
                         .plainRow(side)
-                } else if !model.hasRelay {
-                    EmptyState(
-                        title: "Join your first arena",
-                        text: "Your account has no relay yet. Open an invitation link someone sent you, or paste it here.",
-                        action: "Join with a link"
-                    ) { pasting = true }
-                    .plainRow(side)
                 } else if model.arenas.isEmpty {
                     EmptyState(
                         title: "No arenas yet",
@@ -115,8 +112,8 @@ struct LobbyScreen: View {
                 .accessibilityLabel("New arena")
             }
         }
-        .refreshable { await model.load() }
-        .task { await model.load() }
+        .refreshable { await loadAll() }
+        .task { await loadAll() }
         .sheet(isPresented: $creating) {
             NewArenaSheet(namespaces: model.namespaces) { title, namespaceId in
                 let ref = try await model.create(title: title, namespaceId: namespaceId)
@@ -143,6 +140,14 @@ struct LobbyScreen: View {
                 actionError = KombatText.error(error)
             }
         }
+    }
+}
+
+extension LobbyScreen {
+    /// The arenas, then what waits for approval in the account and in each organization.
+    fileprivate func loadAll() async {
+        await model.load()
+        await approvals.refresh(orgs: model.namespaces.map(\.id))
     }
 }
 
