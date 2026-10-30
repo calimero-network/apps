@@ -8,6 +8,7 @@ struct LobbyScreen: View {
     let onOpen: (TableRef) -> Void
     let onJoin: (ChessInvitation) -> Void
     let onSignOut: () -> Void
+    @ObservedObject var approvals: ApprovalsModel
     @StateObject private var model: LobbyModel
     @State private var creating = false
     @State private var pasting = false
@@ -16,13 +17,15 @@ struct LobbyScreen: View {
     @State private var actionError: String?
 
     init(
-        backend: any MeroAppBackend, applicationId: String?, account: String, onOpen: @escaping (TableRef) -> Void,
+        backend: any MeroAppBackend, applicationId: String?, account: String, approvals: ApprovalsModel,
+        onOpen: @escaping (TableRef) -> Void,
         onJoin: @escaping (ChessInvitation) -> Void, onSignOut: @escaping () -> Void
     ) {
         self.account = account
         self.onOpen = onOpen
         self.onJoin = onJoin
         self.onSignOut = onSignOut
+        self.approvals = approvals
         _model = StateObject(wrappedValue: LobbyModel(backend: backend, applicationId: applicationId))
     }
 
@@ -35,6 +38,7 @@ struct LobbyScreen: View {
                 }
                 .plainRow()
             }
+            ApprovalsCard(model: approvals, orgs: model.clubs.map(\.id)).plainRow()
             if !model.loaded {
                 HStack { Spacer(); ProgressView().tint(Theme.ink); Spacer() }
                     .padding(.vertical, 48)
@@ -42,7 +46,7 @@ struct LobbyScreen: View {
             } else if !model.hasRelay {
                 EmptyState(
                     piece: "wN", title: "Join your first table",
-                    text: "Your account has no relay yet. Open an invitation link someone sent you, or paste it here.",
+                    text: "You're not connected to your cluster. Sign in again, or open an invitation link someone sent you.",
                     action: "Join with a link"
                 ) { pasting = true }
                 .plainRow()
@@ -93,8 +97,14 @@ struct LobbyScreen: View {
                 .accessibilityLabel("New table")
             }
         }
-        .refreshable { await model.load() }
-        .task { await model.load() }
+        .refreshable {
+            await model.load()
+            await approvals.load(orgs: model.clubs.map(\.id))
+        }
+        .task {
+            await model.load()
+            await approvals.load(orgs: model.clubs.map(\.id))
+        }
         .sheet(isPresented: $creating) {
             NewTableSheet(clubs: model.clubs) { title, clubId in
                 let ref = try await model.create(title: title, clubId: clubId)

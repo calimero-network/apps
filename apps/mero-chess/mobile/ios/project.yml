@@ -6,8 +6,15 @@
 #
 # The non-UI layer (generated contract client, board helpers, view models) is the local SwiftPM
 # package in ChessCore/, tested on macOS with `swift test --package-path ChessCore` (no simulator).
-# The swift-sdk is pinned by revision to the main merge commit of swift-sdk#84. Keep it equal to
-# the revision in ChessCore/Package.swift.
+# The swift-sdk is pinned by revision to the head of its Calimero 1.0 port (swift-sdk#85, branch
+# feat/calimero-1.0); it moves to the merge commit once that lands. Keep it equal to the revision
+# in ChessCore/Package.swift.
+#
+# Sign-in (Calimero 1.0): the cluster's node URL and a passkey, over the sealed channel after the
+# node's attestation is verified; or a development node (`merod local`) with mock attestation and
+# a software passkey. Tables are app instances in the account's orgs ("clubs"); invitation links
+# carry an org invite token; app upgrades and node releases are approved on the node's consent
+# page in the system browser (the Tables screen lists what waits).
 name: MeroChess
 
 options:
@@ -19,7 +26,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    revision: 35148e4de782c065f777e80c592d9548acd645cd
   ChessCore:
     path: ChessCore
 
@@ -42,20 +49,34 @@ targets:
           [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown,
            UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`mero-chess://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.chess.enrol
+          # The node's consent page returns here after an approval
+          # (`mero-chess://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.chess.consent
             CFBundleURLSchemes: [mero-chess]
           # Invitation deep links: `calimero://com.calimero.mero-chess/join?invitation=…`.
           - CFBundleURLName: network.calimero.chess.invite
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero wallet, Cloud
-        # manager and app registry). Point these at another environment to test against it.
+        # The consent page's return. An https host (Associated Domains, iOS 17.4+) replaces the
+        # scheme when set.
         MeroChessCallbackScheme: mero-chess
         MeroChessCallbackHost: ""
-        MeroChessCallbackPath: /enrol
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        MeroChessCallbackPath: /consent
+        # The Calimero Cloud cluster to sign in to: a node URL from the console. Empty: the
+        # sign-in screen asks for one.
+        CalimeroClusterURL: ""
+        # The development cluster (`merod local`) the sign-in screen prefills.
+        DefaultNodeURL: "http://localhost:2501"
+        # The Mero Chess version new tables run. Empty: the latest.
+        MeroPackageVersion: ""
+        NSLocalNetworkUsageDescription: "Connect to a Calimero development node on your local network."
+        # Plain http only to a node on the local network (merod local --dev); everything else
+        # stays https under ATS.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    # Signing in with the device's passkey on a real cluster needs the cluster's relying party as
+    # an associated domain: add an entitlements file with
+    # `com.apple.developer.associated-domains: [webcredentials:<rp-id>]`. A development cluster
+    # uses a software passkey and needs neither.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.chess
