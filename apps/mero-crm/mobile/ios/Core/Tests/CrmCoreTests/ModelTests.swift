@@ -55,7 +55,6 @@ final class ModelTests: XCTestCase {
 
     func testJoiningRedeemsTheInvitationAndListsTheWorkspace() async throws {
         let backend = backend(Script())
-        backend.hasRelay = false
         let store = MemoryStore()
         let model = WorkspacesModel(backend: backend, applicationId: "app", names: LocalNames(store: store))
         let ns = String(repeating: "34", count: 32)
@@ -63,7 +62,6 @@ final class ModelTests: XCTestCase {
         let joined = await model.join(invitation)
         XCTAssertEqual(joined, ns)
         XCTAssertTrue(backend.log.contains("joinNamespace \(ns)"))
-        XCTAssertTrue(backend.hasRelay)
         XCTAssertEqual(model.workspace(ns)?.title, "Globex")
 
         let link = await model.inviteLink(for: try XCTUnwrap(model.workspace(ns)))
@@ -93,7 +91,7 @@ final class ModelTests: XCTestCase {
 
     func testAContextStillSyncingIsWarmingUpNotAnError() async {
         let script = Script()
-        script.failRead = MeroError.network("Context state not initialized, awaiting state sync")
+        script.failRead = AppError("Context state not initialized, awaiting state sync")
         let m = model(script, backend(script))
         await m.load()
         XCTAssertTrue(m.warmingUp)

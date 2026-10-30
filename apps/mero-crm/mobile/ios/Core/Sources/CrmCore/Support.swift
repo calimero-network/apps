@@ -22,7 +22,7 @@ public struct CrmTransport: CrmGenerated.ContextContractCalling {
 }
 
 extension CrmClient {
-    /// The client for one pipeline (one context), over the account's relay.
+    /// The client for one pipeline (one context), over the account's node session.
     public init(backend: any MeroAppBackend, contextId: String) {
         self.init(transport: CrmTransport(backend.contract.bound(to: contextId)))
     }
@@ -85,16 +85,18 @@ public enum CrmError: LocalizedError, Equatable {
 public enum ErrorText {
     public static func describe(_ error: Error) -> String {
         switch error {
-        case AccountError.noRelay:
-            return "No relay serves your account yet. Join a workspace with an invitation link first."
-        case AccountError.intentRefused(let reason, _, let status):
-            return "The relay refused this (\(status)): \(reason)"
+        case AccountError.noRelay, AccountError.notSignedIn:
+            return "You're signed out. Sign in again."
+        case is LoginRequired:
+            return "Your session ended. Sign in again."
         case let error as URLError:
-            return "The relay can't be reached (\(error.code.rawValue)). Check your connection and try again."
-        case MeroError.network(let message):
-            return "The relay can't be reached: \(message)"
-        case MeroError.authRevoked:
-            return "Your session was revoked. Sign out and sign in again."
+            return "The cluster can't be reached (\(error.code.rawValue)). Check your connection and try again."
+        case let error as UnavailableError:
+            return "The cluster is busy (\(error.reason)). Try again in a moment."
+        case let error as AppError:
+            return error.message.isEmpty ? error.appCode : error.message
+        case let error as CalimeroError:
+            return error.message.isEmpty ? "The node refused this (\(error.code))." : error.message
         case is DecodingError:
             return "The pipeline answered in a shape this app does not read. It may run a different version of Mero CRM."
         case let error as LocalizedError:
