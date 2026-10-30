@@ -95,6 +95,7 @@ struct AccountSheet: View {
     @ObservedObject var session: MeroAppSession
     @Environment(\.dismiss) private var dismiss
     @State private var confirm = false
+    @State private var approvals = false
 
     private var account: String? { DemoMode.backend?.account ?? session.account }
 
@@ -105,7 +106,7 @@ struct AccountSheet: View {
                     Avatar(id: account ?? "", name: "Me", size: 44)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Signed in").font(Theme.heading(17)).foregroundStyle(Theme.ink)
-                        Text(DemoMode.isOn || session.hasRelay ? "Connected through your relay" : "No relay serves this account yet")
+                        Text(DemoMode.isOn ? "Demo workspace" : (session.client.nodeURL.map { "Connected to \($0)" } ?? "Not connected"))
                             .font(Theme.body(14))
                             .foregroundStyle(Theme.muted)
                     }
@@ -116,6 +117,15 @@ struct AccountSheet: View {
                     ("Application", DemoMode.applicationId ?? session.applicationId ?? "–"),
                 ])
                 .card()
+                if !DemoMode.isOn {
+                    Button {
+                        approvals = true
+                    } label: {
+                        Label("Approvals", systemImage: "checkmark.seal")
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .accessibilityIdentifier("account.approvals")
+                }
                 Spacer()
                 Button(role: .destructive) {
                     confirm = true
@@ -134,6 +144,7 @@ struct AccountSheet: View {
                     Button("Done") { dismiss() }.accessibilityIdentifier("sheet.done")
                 }
             }
+            .sheet(isPresented: $approvals) { ApprovalsSheet(style: .app).environmentObject(session) }
             .confirmationDialog("Sign out of Mero Docs?", isPresented: $confirm, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     dismiss()
@@ -335,7 +346,7 @@ private struct IssueBanner: View {
 
     private var message: String {
         switch issue {
-        case .noContext: return "This folder hasn't reached your relay yet. Pull to refresh in a moment."
+        case .noContext: return "This folder isn't ready yet. Pull to refresh in a moment."
         case .noAccess: return "This folder is restricted. Ask a workspace admin to add you."
         case .failed(let m): return "Couldn't read this folder. \(m)"
         }

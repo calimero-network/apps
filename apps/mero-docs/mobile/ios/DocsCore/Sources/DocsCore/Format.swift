@@ -1,4 +1,5 @@
 import Foundation
+import MeroKit
 
 /// A document a link names. (== Kotlin `DocTarget`.)
 public struct DocTarget: Equatable, Hashable, Sendable {
@@ -149,9 +150,11 @@ public enum DocsFormat {
         {
             return "You can read this folder but not comment in it. Ask a workspace admin for edit access."
         }
-        if text.contains("noRelay") || lower.contains("no relay") {
-            return "Your account has no relay yet. Join a workspace from an invitation on the web, or try again shortly."
+        if error is SignedOutError || text.contains("noRelay") || lower.contains("no relay") || error is LoginRequired {
+            return "Your session ended. Sign in again."
         }
+        if error is UnavailableError { return "The cluster is busy. Try again in a moment." }
+        if let app = error as? AppError { return app.message.isEmpty ? app.appCode : app.message }
         if let url = error as? URLError, url.code == .notConnectedToInternet {
             return "You're offline. Check your connection and try again."
         }

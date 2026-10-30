@@ -2,7 +2,7 @@ import DocsCore
 import MeroKitUI
 import SwiftUI
 
-/// Sign in with a Calimero account: the wallet certifies this phone's key.
+/// Sign in with a Calimero account: a passkey on your Calimero Cloud cluster, or a development node.
 struct SignInView: View {
     @ObservedObject var session: MeroAppSession
     @ObservedObject var client: MeroClient
@@ -28,29 +28,8 @@ struct SignInView: View {
                 }
                 .padding(.top, 28)
                 Spacer()
-                if let error = client.errorMessage {
-                    Text(error)
-                        .font(Theme.body(14))
-                        .foregroundStyle(Theme.danger)
-                        .padding(.bottom, 12)
-                        .accessibilityIdentifier("signInError")
-                }
-                Button {
-                    Haptics.tap()
-                    Task { await session.signIn() }
-                } label: {
-                    HStack(spacing: 10) {
-                        if client.isLoading { ProgressView().tint(Theme.ink) }
-                        Text(client.isLoading ? "Waiting for the wallet…" : "Sign in with Calimero")
-                    }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(client.isLoading)
-                .accessibilityIdentifier("signInButton")
-                Text("Your documents stay end-to-end encrypted on your workspace's nodes. This phone holds no node; it signs in through your account's relay.")
-                    .font(Theme.body(12))
-                    .foregroundStyle(Theme.faint)
-                    .padding(.top, 14)
+                CloudSignInPanel(style: .app)
+                    .environmentObject(session)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 16)

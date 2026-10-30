@@ -565,7 +565,7 @@ public enum DocsError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .folderNotReady: return "This folder hasn't reached your relay yet. Try again in a moment."
+        case .folderNotReady: return "This folder isn't ready yet. Try again in a moment."
         }
     }
 }
