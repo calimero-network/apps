@@ -55,10 +55,26 @@ public enum PixartFormat {
 
     /// Words a person can act on, from an error.
     public static func errorText(_ error: Error) -> String {
-        let text = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
-        if text.contains("noRelay") || text.lowercased().contains("no relay") {
-            return "Your account has no relay yet. Join a team from an invitation link, or try again shortly."
+        switch error {
+        case let error as ReleaseDeadlineError:
+            let release = error.release.isEmpty ? "a node release" : "node release \(error.release)"
+            return "Your cluster takes no new work until \(release) is approved. Review it under Needs your approval."
+        case is NotFound:
+            return "This isn't shared with you, or it was deleted."
+        case is LoginRequired, is SignedOutError:
+            return "Your session ended. Sign in again."
+        case is WrongNode:
+            return "This node doesn't serve your team. Try another node of the cluster."
+        case let error as UnavailableError:
+            return "Your cluster is busy (\(error.reason)). Try again shortly."
+        case let error as AppError:
+            return error.message.isEmpty ? error.appCode : error.message
+        case let error as CalimeroError:
+            return error.message.isEmpty ? error.code : error.message
+        default:
+            break
         }
+        let text = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
         if let url = error as? URLError, url.code == .notConnectedToInternet {
             return "You're offline. Check your connection and try again."
         }
@@ -66,9 +82,8 @@ public enum PixartFormat {
     }
 }
 
-/// Bytes stored as blobs on a project's context. `MeroAppBackend` has no blob
-/// call yet, so the app reads them through the signed-in client's admin
-/// surface (`getBlob(_:contextId:)`, which the account's relay serves).
+/// Bytes stored as blobs of a project's app instance, read with
+/// `MeroAppBackend.getBlob(blobId:contextId:)` (`/apps/{app}/blobs` on the node).
 public protocol BlobLoading: Sendable {
     func blob(id: String, contextId: String) async throws -> Data
 }

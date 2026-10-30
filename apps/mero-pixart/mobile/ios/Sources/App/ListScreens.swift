@@ -7,15 +7,18 @@ import SwiftUI
 struct TeamsScreen: View {
     @ObservedObject var session: MeroAppSession
     @StateObject private var model: TeamsModel
+    @StateObject private var approvals: ApprovalsModel
     @State private var showAccount = false
 
     init(session: MeroAppSession, backend: any MeroAppBackend) {
         self.session = session
         _model = StateObject(wrappedValue: TeamsModel(backend: backend))
+        _approvals = StateObject(wrappedValue: ApprovalsModel(session: session))
     }
 
     var body: some View {
         List {
+            ApprovalsSection(model: approvals)
             switch model.state {
             case .idle:
                 LoadingRows().listRowInsets(EdgeInsets()).plainRow()
@@ -28,7 +31,7 @@ struct TeamsScreen: View {
                     EmptyState(
                         icon: "person.3",
                         title: "No teams yet",
-                        message: "Create a team in Mero PixArt on the web or desktop, or open an invitation link on this phone. It shows up here.")
+                        message: "Create a team in Mero PixArt on the web, or open an invitation link on this phone. It shows up here.")
                     .plainRow()
                 } else {
                     Section {
@@ -58,12 +61,20 @@ struct TeamsScreen: View {
                 .accessibilityLabel("Account")
             }
         }
-        .refreshable { await model.load() }
-        .task { await model.load() }
+        .refreshable { await loadAll() }
+        .task { await loadAll() }
         .sheet(isPresented: $showAccount) {
             AccountSheet(session: session)
                 .presentationDetents([.medium])
         }
+    }
+}
+
+extension TeamsScreen {
+    /// The list, then what waits for approval in the account and in each organization shown.
+    fileprivate func loadAll() async {
+        await model.load()
+        await approvals.refresh(orgs: model.teams.map(\.id))
     }
 }
 
@@ -97,6 +108,12 @@ struct AccountSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var confirm = false
 
+    private var nodeLine: String {
+        guard let url = session.client.nodeURL else { return "Not connected to a cluster" }
+        let host = URL(string: url)?.host ?? url
+        return session.client.allowMock ? "Development cluster at \(host)" : "Connected to \(host)"
+    }
+
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
@@ -104,7 +121,7 @@ struct AccountSheet: View {
                     Avatar(id: session.account ?? "", name: "Me", size: 44)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Signed in").font(Theme.heading(17)).foregroundStyle(Theme.ink)
-                        Text(session.hasRelay ? "Connected through your relay" : "No relay serves this account yet")
+                        Text(nodeLine)
                             .font(Theme.body(14))
                             .foregroundStyle(Theme.muted)
                     }
@@ -112,7 +129,8 @@ struct AccountSheet: View {
                 .card()
                 DetailsDisclosure(rows: [
                     ("Account", session.account ?? "—"),
-                    ("Application", session.applicationId ?? "—"),
+                    ("Package", session.applicationId ?? "—"),
+                    ("Node", session.client.nodeURL ?? "—"),
                 ])
                 .card()
                 Spacer()
