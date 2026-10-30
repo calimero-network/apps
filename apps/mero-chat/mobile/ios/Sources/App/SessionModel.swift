@@ -2,18 +2,28 @@ import Foundation
 import MeroKit
 import MeroKitUI
 
-/// The signed-in account, delegated only: Calimero Cloud enrolment (the
-/// wallet certifies this device's key), the account's relay from the Cloud
-/// manager, and the ``ChatBackend`` built over that relay.
-///
-/// There is no node login and no node URL anywhere: ``MeroClient`` is only
-/// ever driven through its Cloud entry points (`signInWithCloud`,
-/// `restoreCloudSession`, `handleEnrolmentCallback`, `logout`).
+#if canImport(Combine)
+import Combine
+#endif
+
+/// The signed-in account on a Calimero 1.0 cluster: passkey sign-in through
+/// MeroKitUI's ``MeroClient`` (Calimero Cloud, or a development node with mock
+/// attestation), and the ``ChatBackend`` built over the SDK's
+/// `CalimeroAppBackend` (orgs, teams, app instances, sealed `/views` and
+/// `/intents`).
 @MainActor
 final class SessionModel: ObservableObject {
     let client: MeroClient
 
-    @Published private(set) var backend: DelegatedChatBackend?
+    @Published private(set) var backend: CloudChatBackend?
+    /// What waits for this person's approval (consent page in the system browser).
+    private(set) lazy var approvals = ApprovalsModel(
+        packageName: ChatConstants.packageName, appName: "Mero Chat",
+        fetch: { [weak self] org in
+            guard let self else { throw CancellationError() }
+            return try await self.pendingApprovals(org: org)
+        },
+        consent: { [weak self] request in await self?.requestConsent(request) })
     /// Bumped whenever ``backend`` is rebuilt, so screens re-read.
     @Published private(set) var revision = 0
     @Published private(set) var isRestoring = false
@@ -27,43 +37,65 @@ final class SessionModel: ObservableObject {
 
     private static let displayNameKey = "chat-username"
     private var lastKey = ""
+    #if canImport(Combine)
+    private var watching: AnyCancellable?
+    #endif
 
     init(client: MeroClient? = nil) {
-        if let client {
-            self.client = client
-        } else {
-            let cloud = CloudSignIn.keychain(
-                config: CloudConfig(walletURL: AppConfig.walletURL, cloudBaseURL: AppConfig.cloudBaseURL),
-                service: AppConfig.keychainService)
-            self.client = MeroClient(
-                cloud: cloud,
-                config: MeroProviderConfig(
-                    packageName: ChatConstants.packageName, registryURL: AppConfig.registryURL,
-                    cloudBaseURL: AppConfig.cloudBaseURL))
-        }
+        self.client =
+            client
+            ?? MeroClient(
+                config: AppConfig.providerConfig,
+                store: KeychainCloudSessionStore(service: AppConfig.keychainService))
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey) ?? ""
+        #if canImport(Combine)
+        watching = self.client.objectWillChange.sink { [weak self] _ in
+            Task { @MainActor in self?.rebuild() }
+        }
+        #endif
     }
 
     var isSignedIn: Bool { client.isAuthenticated }
     var account: String? { client.account }
-    /// Chat's registry-derived application id, once resolved.
-    var applicationId: String? { client.applicationId }
+    /// Chat's package: what a workspace (org) is founded for and a channel's
+    /// app instance created from.
+    var applicationId: String? { client.config.packageName }
+    /// The node the session talks to.
+    var nodeURL: String? { client.nodeURL }
+    /// Whether that node is a development one (mock attestation allowed).
+    var isDevelopment: Bool { client.allowMock }
 
-    /// Reconnect the stored Cloud session, if there is one. A session that had
-    /// no relay asks the Cloud manager again first: joining elsewhere may have
-    /// earned the account one.
+    /// Reconnect the stored session (refresh token in the Keychain), if there is one.
     func restore() async {
         isRestoring = true
         defer { isRestoring = false }
-        if let stored = await client.cloudSignIn.restoreSession(), stored.isRelayless {
-            _ = try? await client.cloudSignIn.refreshRelay()
-        }
-        _ = await client.restoreCloudSession()
+        _ = await client.restore()
         rebuild()
     }
 
+    /// Talk to `nodeURL` from now on: a Calimero Cloud cluster, or with
+    /// `allowMock` a development node (`merod local`).
+    func connect(nodeURL: String, allowMock: Bool) {
+        client.connect(nodeURL: nodeURL, allowMock: allowMock)
+        rebuild()
+    }
+
+    /// Sign in with the device's passkey (a development node: the soft one kept for it).
     func signIn() async {
-        await client.signInWithCloud(callback: AppConfig.callback)
+        _ = await client.signIn()
+        rebuild()
+    }
+
+    /// Create an account named `name` with a new passkey.
+    func signUp(name: String) async {
+        _ = await client.signUp(name: name)
+        rebuild()
+    }
+
+    /// A development node: sign in with the soft passkey kept for it, or
+    /// create the account on first use.
+    func signInOrSignUp(name: String?) async {
+        _ = await client.signInOrSignUp(name: name)
         rebuild()
     }
 
@@ -72,39 +104,53 @@ final class SessionModel: ObservableObject {
         rebuild()
     }
 
-    /// A URL the system handed the app: a wallet callback that finishes a
-    /// sign-in, or an invitation link.
+    /// A URL the system handed the app: an invitation link, or the node's
+    /// consent page sending the person back (nothing to do: the approval
+    /// sheet reads the result itself).
     func handle(_ url: URL) async {
-        if await client.handleEnrolmentCallback(url) {
-            rebuild()
-            return
-        }
+        if consentReturn(url) != nil { return }
         if ChatInvitation.parse(url.absoluteString) != nil {
             pendingInvitation = url.absoluteString
         }
     }
 
-    /// After redeeming an invitation: a session that had no relay now has the
-    /// admitting one, so reconnect to it.
+    /// After redeeming an invitation: re-read what the account sees.
     func didJoinWorkspace() async {
-        guard backend?.hasRelay != true else { return }
-        _ = await client.restoreCloudSession()
-        rebuild()
+        revision += 1
+    }
+
+    // MARK: Approvals
+
+    /// What waits for this person's approval in `org` (or their own apps).
+    func pendingApprovals(org: String?) async throws -> PendingApprovals {
+        guard let cloud = client.cloud else { throw AccountError.notSignedIn("sign in first") }
+        return try await cloud.pendingApprovals(org: org)
+    }
+
+    /// Open the node's consent page in the system browser; the decision.
+    func requestConsent(_ request: @escaping (String) -> ConsentRequest) async -> ConsentResult? {
+        await client.requestConsent(request, callback: AppConfig.callback)
     }
 
     /// Rebuild the backend from the client's current session. A no-op when
     /// nothing about the session changed, so open screens are not reset.
     func rebuild() {
-        let connection = client.isAuthenticated && client.isDelegated ? client.connection : nil
-        let account: String = connection?.session.account ?? "-"
-        let relay: String = connection?.session.relayUrl ?? "-"
-        let hasSession: Bool = connection?.mero != nil
-        let hasAdmin: Bool = client.admin != nil
-        let key = "\(client.sessionRevision)|\(account)|\(relay)|\(hasSession)|\(hasAdmin)"
+        let key = [
+            "\(client.sessionRevision)", client.account ?? "-", client.nodeURL ?? "-",
+            client.cloud == nil ? "0" : "1",
+        ].joined(separator: "|")
         guard key != lastKey else { return }
         lastKey = key
-        if let connection, let admin = client.admin {
-            backend = DelegatedChatBackend(connection: connection, admin: admin, signIn: client.cloudSignIn)
+        if let cloud = client.cloud, let account = client.account {
+            let app = CalimeroAppBackend(
+                client: cloud, account: account, packageName: ChatConstants.packageName,
+                packageVersion: client.config.packageVersion)
+            backend = CloudChatBackend(
+                app: app,
+                privateTeams: { org in
+                    guard let info = try? await cloud.getOrg(org) else { return [] }
+                    return Set(info.teams.values.filter { $0.join == .invite }.map { teamGroupId(org: org, team: $0.teamId) })
+                })
         } else {
             backend = nil
         }

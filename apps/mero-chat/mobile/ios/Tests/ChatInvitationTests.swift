@@ -1,7 +1,7 @@
 import MeroKit
 import XCTest
 
-/// Invitations in the web app's format, both directions.
+/// Invitations in the 1.0 link format, and pre-1.0 web links refused.
 final class ChatInvitationTests: XCTestCase {
     /// What the web app shares for the rc32 fixture invitation named "Design Team":
     /// `bs58.encode(fflate.deflateSync(JSON.stringify({ invitation, groupAlias })))`,
@@ -19,57 +19,51 @@ final class ChatInvitationTests: XCTestCase {
         RrazTw1SKEzn1e8JGjFfU
         """
 
-    func testDecodesATokenTheWebAppProduced() throws {
-        let parsed = try XCTUnwrap(ChatInvitation.parse(webToken))
-        XCTAssertEqual(parsed.workspaceName, "Design Team")
-        XCTAssertEqual(parsed.namespaceId, ChatFixtures.namespaceId)
-        XCTAssertEqual(parsed.invitation.inviterAccount, ChatFixtures.account)
-        XCTAssertEqual(parsed.invitation.invitation.admitters, [ChatFixtures.account])
+    func testAPreOneTokenTheWebAppProducedIsRefused() {
+        // A signed group invitation can't be redeemed on a 1.0 cluster.
+        XCTAssertNil(ChatInvitation.parse(webToken))
+        XCTAssertNil(ChatInvitation.parse(json: ChatFixtures.signedInvitationJSON))
     }
 
-    func testDecodesTheWebAppsLinkAndTheCalimeroDeepLink() throws {
-        let https = "https://links.calimero.network/com.calimero.chat/join?invitation=\(webToken)"
-        let deep = "calimero://com.calimero.chat/join?invitation=\(webToken)"
-        XCTAssertEqual(ChatInvitation.parse(https)?.namespaceId, ChatFixtures.namespaceId)
-        XCTAssertEqual(ChatInvitation.parse(deep)?.namespaceId, ChatFixtures.namespaceId)
-    }
-
-    func testRefusesAnotherAppsInvitationLink() {
-        let foreign = "https://links.calimero.network/com.calimero.mero-docs/join?invitation=\(webToken)"
-        XCTAssertNil(ChatInvitation.parse(foreign))
-    }
-
-    func testOurLinkRoundTripsAndKeepsTheSignedBytes() throws {
-        let signed = try ChatFixtures.signedInvitation()
-        let link = try ChatInvitation(invitation: signed, workspaceName: "Team").link()
+    func testOurLinkRoundTripsInTheSDKsPayload() throws {
+        let link = try ChatInvitation(invitation: ChatFixtures.orgInvitation, workspaceName: "Team").link()
         XCTAssertTrue(link.hasPrefix("https://links.calimero.network/com.calimero.chat/join?invitation="), link)
 
         let parsed = try XCTUnwrap(ChatInvitation.parse(link))
         XCTAssertEqual(parsed.workspaceName, "Team")
         XCTAssertEqual(parsed.namespaceId, ChatFixtures.namespaceId)
-        // The signature covers the inner invitation exactly: it must survive unchanged.
-        let before = try JSONEncoder().encode(signed)
-        let after = try JSONEncoder().encode(parsed.invitation)
-        XCTAssertEqual(
-            try JSONDecoder().decode(JSONValue.self, from: before),
-            try JSONDecoder().decode(JSONValue.self, from: after))
+        XCTAssertEqual(parsed.invitation.token, ChatFixtures.orgInvitation.token)
+
+        let token = try XCTUnwrap(InviteLink.token(fromPasted: link))
+        let json = try XCTUnwrap(InviteCodec.decode(token: token))
+        let root = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+        XCTAssertEqual(root["invitation"]?.stringValue, "inv_3k9Qx2")
+        XCTAssertEqual(root["namespaceId"]?.stringValue, ChatFixtures.namespaceId)
+        XCTAssertEqual(root["name"]?.stringValue, "Team")
+        // The SDK reads the same link.
+        XCTAssertEqual(OrgInvitation.parse(link, expectedSlug: ChatConstants.packageName)?.name, "Team")
     }
 
-    func testAcceptsTheOtherPayloadShapesTheWebAppAccepts() throws {
-        let signed = ChatFixtures.signedInvitationJSON
-        // A bare signed invitation, and one under a `data` envelope with `groupName`.
-        XCTAssertEqual(ChatInvitation.parse(json: signed)?.namespaceId, ChatFixtures.namespaceId)
-        let enveloped = #"{"data":{"invitation":\#(signed),"groupName":"New","groupAlias":"Old"}}"#
-        XCTAssertEqual(ChatInvitation.parse(json: enveloped)?.workspaceName, "New")
-        // camelCase `inviterSignature`.
-        let camel = signed.replacingOccurrences(of: "\"inviter_signature\"", with: "\"inviterSignature\"")
-        let parsed = try XCTUnwrap(ChatInvitation.parse(json: camel))
-        XCTAssertTrue(parsed.invitation.inviterSignature.hasPrefix("80ff4f74"))
+    func testDecodesTheCalimeroDeepLinkAndRefusesAnotherApps() throws {
+        let token = try ChatInvitation(invitation: ChatFixtures.orgInvitation, workspaceName: nil).token()
+        XCTAssertEqual(
+            ChatInvitation.parse("calimero://com.calimero.chat/join?invitation=\(token)")?.namespaceId,
+            ChatFixtures.namespaceId)
+        XCTAssertNil(ChatInvitation.parse("https://links.calimero.network/com.calimero.mero-docs/join?invitation=\(token)"))
+        XCTAssertNotNil(ChatInvitation.parse(token))
+    }
+
+    func testAcceptsAnEnvelopeAndPrefersGroupName() throws {
+        let enveloped = #"{"data":{"invitation":"inv_x","namespaceId":"org1","groupName":"New","groupAlias":"Old"}}"#
+        let parsed = try XCTUnwrap(ChatInvitation.parse(json: enveloped))
+        XCTAssertEqual(parsed.workspaceName, "New")
+        XCTAssertEqual(parsed.namespaceId, "org1")
     }
 
     func testRejectsWhatIsNotAnInvitation() {
         XCTAssertNil(ChatInvitation.parse(""))
         XCTAssertNil(ChatInvitation.parse("hello"))
         XCTAssertNil(ChatInvitation.parse(json: #"{"invitation":{"nope":1}}"#))
+        XCTAssertNil(ChatInvitation.parse(json: #"{"invitation":"","namespaceId":"o"}"#))
     }
 }

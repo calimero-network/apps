@@ -20,8 +20,8 @@ import MeroKit
 /// whole from its newest page back; `get_messages_from` (top level only) is
 /// not used there.
 ///
-/// **Live updates.** The relay's SSE stream for the context, through the
-/// account's Bearer session; any non-presence event triggers a refresh of the
+/// **Live updates.** The app instance's event stream (`GET /apps/{app}/events`,
+/// sealed SSE); any non-presence event triggers a refresh of the
 /// newest page. With no session (or once the stream ends) the model polls.
 @MainActor
 final class ChannelModel: ObservableObject {
@@ -378,7 +378,7 @@ final class ChannelModel: ObservableObject {
             name: pending.name, mimeType: pending.mimeType, size: UInt64(pending.data.count), blobId: blobId)
     }
 
-    /// A blob of this channel (an attachment or an avatar), from the cache or the relay.
+    /// A blob of this channel (an attachment or an avatar), from the cache or the app instance.
     func blob(_ blobId: String) async throws -> Data {
         if let cached = BlobCache.shared.data(for: blobId) { return cached }
         let data = try await backend.downloadBlob(blobId: blobId, contextId: channel.id)

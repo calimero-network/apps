@@ -33,7 +33,10 @@ struct WorkspacePicker: View {
                     .frame(maxWidth: .infinity)
             }
         }
-        .task { await model.load() }
+        .task {
+            await model.load()
+            await session.approvals.load(orgs: model.workspaces.map(\.id))
+        }
         .onChange(of: session.pendingInvitation) { link in
             guard let link else { return }
             session.pendingInvitation = nil
@@ -81,12 +84,12 @@ struct WorkspacePicker: View {
         if model.isLoading && model.workspaces.isEmpty {
             VStack(spacing: 14) {
                 ProgressView().tint(Theme.accent).scaleEffect(1.2)
-                Text("Connecting to your relay…").font(Theme.font(14)).foregroundStyle(Theme.ink(38))
+                Text("Loading your workspaces…").font(Theme.font(14)).foregroundStyle(Theme.ink(38))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
         } else if !model.hasRelay {
-            title("Welcome to MeroChat", sub: "No relay serves this account yet. Join a workspace from an invitation link to get one.")
+            title("Welcome to MeroChat", sub: "You're not connected to your cluster. Sign in again, or join a workspace from an invitation link.")
             Button("Join with an invitation") { go(.join(prefill: "")) }
                 .buttonStyle(InkButtonStyle())
             footer
@@ -99,6 +102,7 @@ struct WorkspacePicker: View {
             footer
         } else {
             title("Select workspace", sub: "Pick the workspace you want to join.")
+            ApprovalsCard(model: session.approvals, orgs: model.workspaces.map(\.id))
             Theme.label("Server", size: 10.9, opacity: 35).padding(.bottom, 8)
             VStack(spacing: 6) {
                 ForEach(model.workspaces) { workspace in

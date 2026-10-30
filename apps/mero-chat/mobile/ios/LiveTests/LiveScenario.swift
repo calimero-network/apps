@@ -16,7 +16,7 @@ struct LiveWorkspace {
 @MainActor
 enum LiveScenario {
     /// Found a workspace as `founder` the way the Workspaces screen does
-    /// (`WorkspacesModel.create`: founding through the relay, then `#general`
+    /// (`WorkspacesModel.create`: founding an org, then `#general`
     /// as the web app makes it), and open its channel list.
     ///
     /// The founder registers no display name here (`displayName` is empty),
@@ -36,7 +36,7 @@ enum LiveScenario {
             throw LiveFailure("founding \(name) failed: \(workspaces.errorText ?? "no reason given")")
         }
         XCTAssertNil(workspaces.errorText)
-        // There is no cloud, so HA is refused and said so; #general must not be.
+        // Founding must not report a #general failure.
         let notice = workspaces.notice ?? ""
         XCTAssertFalse(notice.contains("#general"), "the founding note: \(notice)")
 
@@ -74,10 +74,9 @@ enum LiveScenario {
     }
 
     /// Redeem `link` as `member` the way the Join sheet does
-    /// (`WorkspacesModel.join`: direct admission at the relay's `/admit`),
-    /// reconnect as `SessionModel.didJoinWorkspace` does, then find the
-    /// workspace and the channel `channelId` and join it (`ChannelsModel.join`,
-    /// `MemberJoinedOpen` + `set_profile(displayName)`).
+    /// (`WorkspacesModel.join`: `POST /invites/{token}/redeem`), then find the
+    /// workspace and the channel `channelId` and join it (`ChannelsModel.join`:
+    /// open teams inherit org membership, then `set_profile(displayName)`).
     static func join(
         _ member: LiveAccount, link: String, workspaceId: String, channelId: String, displayName: String,
         rig: LiveRig
@@ -85,7 +84,6 @@ enum LiveScenario {
         let appId = rig.appId
         let before = WorkspacesModel(
             backend: member.backend, applicationId: { appId }, displayName: { displayName })
-        XCTAssertFalse(before.hasRelay, "a brand-new account has no relay until it joins")
         await before.load()
         XCTAssertTrue(before.workspaces.isEmpty)
 
@@ -98,7 +96,6 @@ enum LiveScenario {
         XCTAssertEqual(before.notice?.hasPrefix("Joined "), true, "the join was published: \(before.notice ?? "-")")
 
         try await member.didJoinWorkspace()
-        XCTAssertTrue(member.backend.hasRelay, "the admitting relay is the account's relay now")
 
         let workspaces = WorkspacesModel(
             backend: member.backend, applicationId: { appId }, displayName: { displayName })

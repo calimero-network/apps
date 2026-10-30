@@ -6,7 +6,7 @@ import SwiftUI
 /// and picking a channel closes it.
 struct ChatShell: View {
     @ObservedObject var session: SessionModel
-    let backend: DelegatedChatBackend
+    let backend: CloudChatBackend
     @ObservedObject var workspaces: WorkspacesModel
     let workspace: Workspace
     let onChangeWorkspace: () -> Void
@@ -18,7 +18,7 @@ struct ChatShell: View {
     @State private var dialog: ShellDialog?
 
     init(
-        session: SessionModel, backend: DelegatedChatBackend, workspaces: WorkspacesModel, workspace: Workspace,
+        session: SessionModel, backend: CloudChatBackend, workspaces: WorkspacesModel, workspace: Workspace,
         onChangeWorkspace: @escaping () -> Void
     ) {
         self.session = session
