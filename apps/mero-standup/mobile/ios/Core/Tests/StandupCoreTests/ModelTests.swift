@@ -55,8 +55,7 @@ final class TeamsModelTests: XCTestCase {
     func testJoinRedeemsTheNamespaceAndOpensTheNamedTeam() async throws {
         let fake = FakeTeam()
         let ns = String(repeating: "cd", count: 32)
-        let invitation = StandupInvitation(
-            invitation: InMemoryAppBackend.invitation(namespaceId: ns), namespaceId: ns, contextId: "ctx-9")
+        let invitation = StandupInvitation(invitation: InMemoryAppBackend.invitation(namespaceId: ns), contextId: "ctx-9")
         let model = TeamsModel(backend: fake.backend, applicationId: "app")
         let joined = await model.join(invitation)
         let team = try XCTUnwrap(joined)

@@ -132,7 +132,7 @@ public final class TeamsModel: ObservableObject {
         defer { isWorking = false }
         do {
             _ = try await backend.joinNamespace(namespaceId: invitation.namespaceId, invitation: invitation.invitation)
-            let team = TeamSummary(namespaceId: invitation.namespaceId, contextId: invitation.contextId, name: "")
+            let team = TeamSummary(namespaceId: invitation.namespaceId, contextId: invitation.contextId, name: invitation.name ?? "")
             if !teams.contains(where: { $0.contextId == team.contextId }) { teams.append(team) }
             error = nil
             return team

@@ -21,7 +21,7 @@ extension UpdateView: Identifiable {
 public enum ErrorText {
     public static func describe(_ error: Error) -> String {
         switch error {
-        case AccountError.noRelay, AccountError.notSignedIn:
+        case is SignedOutError, AccountError.notSignedIn:
             return "You're signed out. Sign in again to reach your team."
         case is ConfirmCancelled:
             return "The passkey prompt was cancelled."

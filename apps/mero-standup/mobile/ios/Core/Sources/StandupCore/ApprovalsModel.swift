@@ -12,7 +12,7 @@ import Combine
 /// approve anything.
 ///
 /// The app hands it `MeroAppSession.pendingApprovals(org:)` and
-/// `MeroAppSession.requestConsent(_:)`; tests hand it fakes.
+/// `MeroClient.requestConsent(_:callback:)`; tests hand it fakes.
 @MainActor
 public final class ApprovalsModel: ObservableObject {
     /// One thing to approve.

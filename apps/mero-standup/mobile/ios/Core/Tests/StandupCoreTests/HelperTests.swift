@@ -162,31 +162,45 @@ final class DigestTests: XCTestCase {
 
 final class InvitationTests: XCTestCase {
     func testRoundTripsThroughTheLinkPayload() throws {
-        let signed = InMemoryAppBackend.invitation(namespaceId: String(repeating: "ab", count: 32))
-        let link = try StandupInvitation(invitation: signed, namespaceId: "ns-1", contextId: "ctx-1").link()
+        let minted = OrgInvitation(namespaceId: "ns-1", token: "inv_abc", contextId: "ctx-1", name: "Platform")
+        let link = try StandupInvitation(invitation: minted).link()
         XCTAssertTrue(link.hasPrefix("https://links.calimero.network/com.calimero.mero-standup/join?invitation="))
         let parsed = try XCTUnwrap(StandupInvitation.parse(link))
         XCTAssertEqual(parsed.namespaceId, "ns-1")
         XCTAssertEqual(parsed.contextId, "ctx-1")
-        XCTAssertEqual(parsed.invitation, signed)
+        XCTAssertEqual(parsed.name, "Platform")
+        XCTAssertEqual(parsed.invitation, minted)
+        // The SDK reads the same link.
+        XCTAssertEqual(OrgInvitation.parse(link, expectedSlug: StandupInvitation.packageName), minted)
         // The desktop launcher's form opens too.
         let token = try XCTUnwrap(InviteLink.token(fromPasted: link))
         XCTAssertNotNil(StandupInvitation.parse("calimero://com.calimero.mero-standup/join?invitation=\(token)"))
     }
 
-    func testRefusesAnotherAppsLinkAndJunk() throws {
-        let signed = InMemoryAppBackend.invitation(namespaceId: String(repeating: "ab", count: 32))
-        let link = try StandupInvitation(invitation: signed, namespaceId: "ns", contextId: "ctx").link()
-        XCTAssertNil(StandupInvitation.parse(link.replacingOccurrences(of: "com.calimero.mero-standup", with: "com.calimero.chat")))
-        XCTAssertNil(StandupInvitation.parse("hello"))
-        XCTAssertNil(StandupInvitation.parse(json: #"{"namespaceId":"n","contextId":"c","invitation":{}}"#))
+    func testPayloadIsTheSDKShape() throws {
+        let link = try StandupInvitation(
+            invitation: OrgInvitation(namespaceId: "org-1", token: "inv_x"), contextId: "c"
+        ).link()
+        let json = try XCTUnwrap(InviteCodec.decode(token: XCTUnwrap(InviteLink.token(fromPasted: link))))
+        let root = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+        XCTAssertEqual(root["invitation"]?.stringValue, "inv_x")
+        XCTAssertEqual(root["namespaceId"]?.stringValue, "org-1")
+        XCTAssertEqual(root["contextId"]?.stringValue, "c")
     }
 
-    func testReadsTheSDKPayloadAndRefusesPreOneLinks() throws {
+    func testReadsLegacyNameKeyAndIgnoresExtraFields() throws {
         let parsed = try XCTUnwrap(
-            StandupInvitation.parse(json: #"{"invitation":{"orgId":"org-1","token":"inv_x"},"namespaceId":"org-1","contextId":"c"}"#))
-        XCTAssertEqual(parsed.invitation, OrgInvitation(orgId: "org-1", token: "inv_x"))
-        XCTAssertEqual(parsed.namespaceId, "org-1")
+            StandupInvitation.parse(
+                json: #"{"invitation":"inv_x","namespaceId":"org-1","contextId":"c","teamName":"Core","extra":1}"#))
+        XCTAssertEqual(parsed.invitation.token, "inv_x")
+        XCTAssertEqual(parsed.name, "Core")
+    }
+
+    func testRefusesAnotherAppsLinkJunkAndPreOneLinks() throws {
+        let link = try StandupInvitation(invitation: InMemoryAppBackend.invitation(namespaceId: "ns"), contextId: "ctx").link()
+        XCTAssertNil(StandupInvitation.parse(link.replacingOccurrences(of: "com.calimero.mero-standup", with: "com.calimero.chat")))
+        XCTAssertNil(StandupInvitation.parse("hello"))
+        XCTAssertNil(StandupInvitation.parse(json: #"{"namespaceId":"n","contextId":"c","invitation":""}"#))
         // A pre-1.0 signed group invitation can't be redeemed on a 1.0 cluster.
         XCTAssertNil(
             StandupInvitation.parse(

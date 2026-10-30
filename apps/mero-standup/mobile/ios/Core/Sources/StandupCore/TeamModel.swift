@@ -103,8 +103,13 @@ public final class TeamModel: ObservableObject {
 
     /// An invitation link to this team's org: an invite token in the SDK's link payload.
     public func inviteLink() async throws -> String {
-        let signed = try await backend.createInvitation(namespaceId: namespaceId)
-        return try StandupInvitation(invitation: signed, namespaceId: namespaceId, contextId: contextId).link()
+        let minted = try await backend.createInvitation(namespaceId: namespaceId)
+        let name = teamName.trimmingCharacters(in: .whitespaces)
+        return try StandupInvitation(
+            invitation: OrgInvitation(
+                namespaceId: minted.namespaceId, token: minted.token, contextId: contextId,
+                name: name.isEmpty ? nil : name)
+        ).link()
     }
 
     /// Follow the team while the screen is up: the node's event stream when

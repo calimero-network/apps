@@ -18,7 +18,7 @@ project.yml                    XcodeGen spec (the .xcodeproj is not committed)
 
 The phone holds no node. It signs in to a Calimero 1.0 cluster with a passkey and talks to it over
 the sealed channel (`calimero/sealed-http/v2`, opened only after the node's attestation is
-verified). The swift-sdk's `CloudAppBackend` maps the app layer onto the 1.0 API:
+verified). The swift-sdk's `CalimeroAppBackend` maps the app layer onto the 1.0 API:
 
 | What | SDK | Wire |
 | --- | --- | --- |
@@ -44,8 +44,9 @@ verified). The swift-sdk's `CloudAppBackend` maps the app layer onto the 1.0 API
 
 A link is `https://links.calimero.network/com.calimero.mero-standup/join?invitation=<token>`, the
 token being `base58(deflate(json))` of
-`{"invitation":{"orgId":"…","token":"inv_…"},"namespaceId":"…","contextId":"…"}`, which is the
-SDK's `InvitationLinkPayload`. The invite token is a bearer secret. Pre-1.0 links (signed group
+`{"invitation":"inv_…","namespaceId":"<org>","contextId":"<team app instance>","name":"<team name>"}`,
+which is the SDK's `OrgInvitation` (`name` is optional, a legacy `teamName` is read too, and
+extra fields are ignored). The invite token is a bearer secret. Pre-1.0 links (signed group
 invitations) are refused.
 
 ### Approvals
@@ -66,7 +67,7 @@ open MeroStandup.xcodeproj
 
 ## SDK pin
 
-`project.yml` and `Core/Package.swift` pin swift-sdk `a1ec644130d4405a1bab7547654b1442cc559b49`,
+`project.yml` and `Core/Package.swift` pin swift-sdk `35148e4de782c065f777e80c592d9548acd645cd`,
 the head of its Calimero 1.0 port (calimero-network/swift-sdk#85, branch `feat/calimero-1.0`). It
 moves to that PR's merge commit once it lands. Bump both together.
 
