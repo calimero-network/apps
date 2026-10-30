@@ -22,7 +22,7 @@ public enum LoadPhase: Equatable, Sendable {
     case failed(String)
 }
 
-/// Workspaces (namespaces) and their repos (contexts), the web app's sidebar:
+/// Workspaces (Calimero orgs) and their repos (app instances), the web app's sidebar:
 /// switching, founding a workspace, adding a repo, inviting and joining.
 @MainActor
 public final class WorkspaceModel: ObservableObject {

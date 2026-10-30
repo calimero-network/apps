@@ -63,7 +63,7 @@ final class IssuesModelTests: XCTestCase {
         fake.failWrites = URLError(.timedOut)
         await m.move("i1", to: "Done")
         XCTAssertEqual(m.column("Open").map(\.id), ["i1"])
-        XCTAssertEqual(m.notice, "The relay took too long to answer. Try again.")
+        XCTAssertEqual(m.notice, "Your cluster took too long to answer. Try again.")
     }
 
     func testCreateSendsTheFourSections() async throws {
@@ -92,6 +92,6 @@ final class IssuesModelTests: XCTestCase {
         let m = model(fake)
         await m.load()
         guard case .failed(let text) = m.phase else { return XCTFail("expected failure") }
-        XCTAssertTrue(text.contains("No relay"))
+        XCTAssertTrue(text.contains("signed out"))
     }
 }
