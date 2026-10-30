@@ -72,7 +72,7 @@ public final class CalendarModel: ObservableObject {
         hasLoaded = true
     }
 
-    /// Follow the context: the relay's event stream when it is up, polling
+    /// Follow the app instance: the node's event stream when it is up, polling
     /// every `pollInterval` otherwise. Runs until cancelled.
     public func runLive() async {
         if backend.canSubscribe {

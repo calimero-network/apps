@@ -15,7 +15,7 @@ public struct CalendarItem: Identifiable, Hashable, Sendable, Codable {
     public var color: String
     /// Invited accounts, 64 hex each.
     public var peers: [String]
-    /// Private: lives on this device only (never sent to the relay).
+    /// Private: lives on this device only (never sent to the cluster).
     public var isPrivate: Bool
 
     public init(
@@ -70,7 +70,7 @@ public struct CalendarPerson: Identifiable, Hashable, Sendable {
     }
 }
 
-/// A team: a namespace running Mero Calendar.
+/// A team: a Calimero org running Mero Calendar.
 public struct Team: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String

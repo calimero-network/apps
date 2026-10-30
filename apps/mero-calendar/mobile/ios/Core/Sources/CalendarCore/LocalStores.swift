@@ -29,9 +29,9 @@ public final class MemoryStore: KeyValueStore, @unchecked Sendable {
 /// the phone's copy of the web app's `api/privateStore.ts`.
 ///
 /// On a node a private event is the contract's `#[app::private]` storage. An
-/// account has no node: its calls run on a relay, which has no private storage
+/// account has no node: its calls run on a replicated app instance, which has no private storage
 /// for the accounts it serves. So for an account "private" can only mean the
-/// device the person holds. Keyed by account + team (namespace), each record
+/// device the person holds. Keyed by account + team (org), each record
 /// carrying its calendar's context id, exactly as the web app keys them.
 public final class PrivateEventStore: @unchecked Sendable {
     public static let prefix = "mc-private-events"
@@ -110,7 +110,7 @@ public final class PrivateEventStore: @unchecked Sendable {
     }
 }
 
-/// Names the person gave things on this device: a fallback when the relay
+/// Names the person gave things on this device: a fallback when the cluster
 /// returns no name (as the web app's `utils/teamName.ts`), and the display name
 /// they use in each calendar (`mc-username-<context>`).
 public final class NameBook: @unchecked Sendable {

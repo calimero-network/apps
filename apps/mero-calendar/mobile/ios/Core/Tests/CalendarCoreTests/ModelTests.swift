@@ -58,7 +58,7 @@ final class TeamsModelTests: XCTestCase {
         }
     }
 
-    func testRelaylessAccountListsNothing() async {
+    func testDisconnectedAccountListsNothing() async {
         let backend = Fixture.backend()
         backend.hasRelay = false
         let model = TeamsModel(backend: backend, names: NameBook(store: MemoryStore()))

@@ -39,7 +39,7 @@ public struct CalendarRepository: Sendable {
     }
 
     /// Create an event. A private one, and a peerless one (which the contract
-    /// would route to its private storage, which a relay does not have), stays
+    /// would route to its node-local private storage, which a replicated 1.0 app instance can't offer), stays
     /// on this device; anything shared goes to `create_event`. Returns its id.
     @discardableResult
     public func create(_ event: CalendarItem, at now: Date = Date()) async throws -> String {

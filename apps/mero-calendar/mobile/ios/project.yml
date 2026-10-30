@@ -6,8 +6,10 @@
 #
 # Everything that is not SwiftUI (the generated contract client, the calendar
 # layer and the view models) is the local package in Core/, which `swift test`
-# checks on macOS. The swift-sdk is pinned by revision to the main merge commit
-# of calimero-network/swift-sdk#84. Keep it equal to the one in Core/Package.swift.
+# checks on macOS. The swift-sdk is pinned by revision to the head of its
+# Calimero 1.0 port (calimero-network/swift-sdk#85, branch feat/calimero-1.0);
+# it moves to the merge commit once that lands. Keep it equal to the one in
+# Core/Package.swift (and Core/Package.resolved).
 name: MeroCalendar
 
 options:
@@ -19,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    revision: 35148e4de782c065f777e80c592d9548acd645cd
   CalendarCore:
     path: Core
 
@@ -35,20 +37,34 @@ targets:
         CFBundleDisplayName: Mero Calendar
         UILaunchScreen: {}
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`mero-calendar://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.calendar.enrol
+          # The node's consent page returns here after an approval
+          # (`mero-calendar://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.calendar.consent
             CFBundleURLSchemes: [mero-calendar]
           # Invitation deep links: `calimero://com.calimero.mero-calendar/join?invitation=…`.
           - CFBundleURLName: network.calimero.calendar.invite
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
-        # wallet, Cloud manager and registry). See README.md.
+        # The consent page's return. An https host (Associated Domains, iOS
+        # 17.4+) replaces the scheme when set.
         MeroCalendarCallbackScheme: mero-calendar
         MeroCalendarCallbackHost: ""
-        MeroCalendarCallbackPath: /enrol
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        MeroCalendarCallbackPath: /consent
+        # The Calimero Cloud cluster to sign in to: a node URL from the
+        # console. Empty: the sign-in screen asks for one. See README.md.
+        CalimeroClusterURL: ""
+        # The development cluster (`merod local`) the sign-in screen prefills.
+        DefaultNodeURL: "http://localhost:2501"
+        # The Mero Calendar version new calendars run. Empty: the latest.
+        MeroPackageVersion: ""
+        NSLocalNetworkUsageDescription: "Connect to a Calimero development node on your local network."
+        # Plain http only to a node on the local network (merod local --dev);
+        # everything else stays https under ATS.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    # Signing in with the device's passkey on a real cluster needs the
+    # cluster's relying party as an associated domain: add an entitlements
+    # file with `com.apple.developer.associated-domains: [webcredentials:<rp-id>]`.
+    # A development cluster uses a software passkey and needs neither.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.calendar
