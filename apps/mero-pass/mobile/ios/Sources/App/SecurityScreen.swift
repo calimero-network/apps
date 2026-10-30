@@ -13,6 +13,7 @@ struct SecurityScreen: View {
     @StateObject private var model = SecurityModel(preferences: DefaultsPreferences())
     @State private var restoreCode = ""
     @State private var confirmSignOut = false
+    @State private var approvals = false
     @State private var confirmReplace = false
 
     var body: some View {
@@ -124,12 +125,17 @@ struct SecurityScreen: View {
             }
 
             Section {
+                Button {
+                    approvals = true
+                } label: {
+                    Label("Approvals", systemImage: "checkmark.seal")
+                }
                 Button(role: .destructive) {
                     confirmSignOut = true
                 } label: {
                     Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                 }
-                DetailsDisclosure(rows: [("Account", backend.account), ("Relay", backend.hasRelay ? "Connected" : "None yet")])
+                DetailsDisclosure(rows: [("Account", backend.account), ("Node", session.client.nodeURL ?? "Not connected")])
             } header: {
                 SectionLabel(text: "Account")
             }
@@ -143,6 +149,7 @@ struct SecurityScreen: View {
         } message: {
             Text("The old code stops opening your vaults.")
         }
+        .sheet(isPresented: $approvals) { ApprovalsSheet(style: .app) }
         .confirmationDialog("Sign out of Mero Pass?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out") {
                 keeper.lock()

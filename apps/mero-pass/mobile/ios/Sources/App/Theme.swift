@@ -391,3 +391,10 @@ extension View {
             .toolbarBackground(.visible, for: .navigationBar)
     }
 }
+
+extension CloudStyle {
+    /// The sign-in and approvals views in Mero Pass' colours.
+    static let app = CloudStyle(
+        ink: Palette.ink, muted: Palette.muted, accent: Palette.lime, onAccent: Palette.ink, danger: Palette.danger,
+        field: Palette.surface, hairline: Palette.hairline)
+}

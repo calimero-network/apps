@@ -5,7 +5,7 @@ import MeroKit
 public enum PassConstants {
     /// The registry package and invitation-link slug (`APP_PACKAGE` / `APP_SLUG` on the web).
     public static let packageName = "com.calimero.mero-pass"
-    /// How often an open vault is re-read when the relay cannot stream events,
+    /// How often an open vault is re-read when the node cannot stream events,
     /// and while this device waits for the vault key (the web's 5 seconds).
     public static let pollInterval: Duration = .seconds(5)
     /// Auto-lock choices in minutes, and the default (the web's `AUTO_LOCK_CHOICES`).
@@ -45,17 +45,17 @@ public enum PassErrorText {
     public static func describe(_ error: Error) -> String {
         if let model = error as? PassModelError { return model.errorDescription ?? "Something went wrong." }
         if let session = error as? VaultSessionError { return session.errorDescription ?? "Something went wrong." }
-        if let account = error as? AccountError, case .noRelay = account {
-            return "No relay serves your account yet. Join a team from an invitation link to get one."
-        }
+        if error is SignedOutError { return "You're signed out. Sign in again." }
+        if error is LoginRequired { return "Your session ended. Sign in again." }
+        if let busy = error as? UnavailableError { return "The cluster is busy (\(busy.reason)). Try again in a moment." }
         if let url = error as? URLError {
             switch url.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
                 return "You're offline. Check your connection and try again."
             case .timedOut:
-                return "The relay took too long to answer. Try again."
+                return "The cluster took too long to answer. Try again."
             default:
-                return "Couldn't reach the relay. Try again."
+                return "Couldn't reach the cluster. Try again."
             }
         }
         if error is DecodingError {
@@ -71,10 +71,10 @@ public enum PassErrorText {
     /// The web's `TRANSIENT`: refusals that clear on their own while a vault
     /// just joined syncs, said in words.
     private static let transient: [([String], String)] = [
-        (["not a member of this context"], "Your relay has not finished joining the vault yet."),
-        (["awaiting state sync", "uninitialized"], "Your relay is still downloading the vault from its peers."),
-        (["group key not yet delivered", "groupkeypending"], "Your relay is still waiting for the team key from a peer."),
-        (["no owned identity"], "Your relay has no identity in the vault yet."),
+        (["not a member of this context"], "Your account has not finished joining the vault yet."),
+        (["awaiting state sync", "uninitialized"], "The vault is still being set up on the cluster."),
+        (["group key not yet delivered", "groupkeypending"], "The vault is still waiting for the team key."),
+        (["no owned identity"], "Your account has no identity in the vault yet."),
     ]
 
     private static let reworded: [([String], String)] = [

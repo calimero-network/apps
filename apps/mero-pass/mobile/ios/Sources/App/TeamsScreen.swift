@@ -50,7 +50,6 @@ struct TeamsScreen: View {
                     } label: {
                         Label("New team", systemImage: "plus")
                     }
-                    .disabled(!model.hasRelay)
                     Button {
                         joining = true
                     } label: {
@@ -97,10 +96,8 @@ struct TeamsScreen: View {
                 EmptyState(
                     symbol: "person.3",
                     title: "No teams yet",
-                    message: model.hasRelay
-                        ? "Start one, or open an invitation link someone sent you."
-                        : "Open an invitation link someone sent you to join their team.",
-                    action: model.hasRelay ? ("New team", { creating = true }) : ("Join with a link", { joining = true }))
+                    message: "Start one, or open an invitation link someone sent you.",
+                    action: ("New team", { creating = true }))
                     .listRowBackground(Color.clear)
             } else {
                 Section {

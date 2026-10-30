@@ -49,7 +49,7 @@ public struct VaultRef: Hashable, Sendable {
     }
 }
 
-/// A readable label, given whatever the relay told us (the web's `displayName`).
+/// A readable label, given whatever the node told us (the web's `displayName`).
 public func displayName(_ candidates: [String?], id: String, fallback: String) -> String {
     for candidate in candidates {
         if let trimmed = candidate?.nilIfBlank { return trimmed }
@@ -284,8 +284,7 @@ public final class InvitationModel: ObservableObject {
         return true
     }
 
-    /// Join. `backend` is read again after `didJoin`, which may hand the
-    /// session the admitting relay.
+    /// Join (`POST /invites/{token}/redeem`). `backend` is read again after `didJoin`.
     public func accept(
         backend: @escaping @MainActor () -> (any MeroAppBackend)?,
         didJoin: @escaping @MainActor () async -> Void
