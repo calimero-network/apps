@@ -1,45 +1,48 @@
 import Foundation
 import MeroKit
 
-/// An invitation to one world, in the web app's form (`app/src/net/inviteCodec.ts`), so a link made
-/// on the phone opens in the browser and the other way round:
+/// An invitation to one world: swift-sdk's ``OrgInvitation`` (the link payload every Calimero 1.0
+/// app shares), plus the world's team:
 ///
-/// - payload: JSON `{"invitation": <SignedGroupOpenInvitation>, "groupAlias": "…", "contextId": "…", "groupId": "…"}`
+/// - payload: JSON `{"invitation": "inv_…", "namespaceId": "…", "contextId"?: "…", "name"?: "…", "groupId"?: "…"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.merraria/join?invitation=<token>`
 ///
-/// The invitation admits to the world's namespace (one namespace per world); `groupId` is the open
-/// subgroup the world lives in and `contextId` the world itself. Both are optional on the wire, as
-/// on the web: an invitation without them opens the namespace's first world.
+/// The invite token admits to the world's organization (one per world); `groupId` is the open team
+/// the world lives in and `contextId` the world's app instance. Both are optional: an invitation
+/// without them opens the organization's first world.
 public struct WorldInvitation: Sendable, Identifiable {
     public var id: String { namespaceId + (contextId ?? "") }
 
-    public let invitation: SignedGroupOpenInvitation
-    public let worldName: String?
-    public let contextId: String?
+    public let invitation: OrgInvitation
     public let groupId: String?
 
-    public init(invitation: SignedGroupOpenInvitation, worldName: String?, contextId: String?, groupId: String?) {
-        self.invitation = invitation
-        self.worldName = worldName
-        self.contextId = contextId
+    public init(invitation: OrgInvitation, worldName: String?, contextId: String?, groupId: String?) {
+        self.invitation = OrgInvitation(
+            namespaceId: invitation.namespaceId, token: invitation.token, contextId: contextId ?? invitation.contextId,
+            name: worldName ?? invitation.name)
         self.groupId = groupId
     }
 
-    /// The namespace the invitation admits to.
-    public var namespaceId: String { AppInvitation(invitation: invitation).namespaceId }
+    /// The organization the invitation admits to: the one the node minted the token for.
+    public var namespaceId: String { invitation.namespaceId }
+    public var worldName: String? { invitation.name }
+    public var contextId: String? { invitation.contextId }
 
-    private struct Payload: Encodable {
-        let invitation: SignedGroupOpenInvitation
-        let groupAlias: String?
+    private struct Payload: Codable {
+        let invitation: String
+        let namespaceId: String
         let contextId: String?
+        let name: String?
         let groupId: String?
     }
 
     /// The shareable token.
     public func token() throws -> String {
         try InviteCodec.encode(
-            Payload(invitation: invitation, groupAlias: worldName, contextId: contextId, groupId: groupId))
+            Payload(
+                invitation: invitation.token, namespaceId: namespaceId, contextId: contextId, name: worldName,
+                groupId: groupId))
     }
 
     /// The shareable link.
@@ -48,7 +51,7 @@ public struct WorldInvitation: Sendable, Identifiable {
     }
 
     /// A pasted link, a deep link or a bare token; nil when it is not a Merraria invitation (another
-    /// app's link is refused: redeeming it would join that app's namespace).
+    /// app's link is refused: redeeming it would join that app's organization).
     public static func parse(_ input: String) -> WorldInvitation? {
         guard let token = InviteLink.token(fromPasted: input, expectedSlug: MerrariaConstants.packageName),
             let json = InviteCodec.decode(token: token)
@@ -56,18 +59,18 @@ public struct WorldInvitation: Sendable, Identifiable {
         return parse(json: json)
     }
 
-    /// The decoded payload: the wrapped form or a bare signed invitation, as the web's `decodeInvite`.
+    /// The decoded payload. Only an ``OrgInvitation`` (an `inv_…` token and its organization) is an
+    /// invitation; a pre-1.0 signed one is not.
     public static func parse(json: String) -> WorldInvitation? {
-        guard let app = AppInvitation.decode(json: json) else { return nil }
-        let value = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
-        let inner = value?["data"] ?? value
-        func text(_ key: String) -> String? {
-            guard let raw = inner?[key]?.stringValue?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else {
-                return nil
-            }
-            return raw
+        let data = Data(json.utf8)
+        guard let invitation = try? JSONDecoder().decode(OrgInvitation.self, from: data) else { return nil }
+        let groupId = (try? JSONDecoder().decode(Payload.self, from: data))?.groupId
+        func trimmed(_ value: String?) -> String? {
+            guard let value = value?.trimmingCharacters(in: .whitespaces), !value.isEmpty else { return nil }
+            return value
         }
         return WorldInvitation(
-            invitation: app.invitation, worldName: app.name, contextId: text("contextId"), groupId: text("groupId"))
+            invitation: invitation, worldName: trimmed(invitation.name), contextId: trimmed(invitation.contextId),
+            groupId: trimmed(groupId))
     }
 }
