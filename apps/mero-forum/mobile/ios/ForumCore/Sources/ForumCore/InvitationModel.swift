@@ -48,8 +48,8 @@ public final class InvitationModel: ObservableObject {
         return true
     }
 
-    /// Join. `backend` is read again after `didJoin`, which may hand the
-    /// session the admitting relay.
+    /// Join: redeem the org invite token. `backend` is read again after
+    /// `didJoin`, which re-reads what the account sees.
     public func accept(
         backend: @escaping @MainActor () -> (any MeroAppBackend)?,
         didJoin: @escaping @MainActor () async -> Void

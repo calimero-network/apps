@@ -1,20 +1,23 @@
 import Foundation
 import MeroKit
 
-/// An invitation in the web app's format (`app/src/lib/inviteCodec.ts`), so a
-/// link minted on either side opens on the other:
+/// An invitation on Calimero 1.0: the SDK's ``OrgInvitation`` link payload,
+/// plus the forum's own fields beside it (which the SDK's decoder ignores):
 ///
-/// - payload: `{"invitation": <SignedGroupOpenInvitation>, "kind": "namespace" | "forum",
-///   "groupId": "<namespace>", "groupAlias": "<space name>", "forumId", "forumName", "contextId"}`
+/// - payload: `{"invitation": "inv_…", "namespaceId": "<org>", "contextId"?, "name": "<space name>",
+///   "kind": "namespace" | "forum", "forumId", "forumName"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.mero-forum/join?invitation=<token>`
 ///
-/// The signed invitation always grants the NAMESPACE (forum access is inherited
-/// from it); `forumId` / `contextId` only say where to land afterwards.
+/// The invite token always admits to the ORG (the space; forum access is
+/// inherited from it, as open teams are); `forumId` / `contextId` only say
+/// where to land afterwards. It is a bearer secret the org's node minted
+/// (`POST /orgs/{org}/invites`); joining redeems it (`POST /invites/{token}/redeem`).
+/// A pre-1.0 signed group invitation is refused: a 1.0 cluster can't redeem it.
 public struct ForumInvitation: Sendable {
     public enum Kind: String, Sendable { case space = "namespace", forum }
 
-    public let invitation: SignedGroupOpenInvitation
+    public let invitation: OrgInvitation
     public let kind: Kind
     public let spaceName: String?
     public let forumId: String?
@@ -22,7 +25,7 @@ public struct ForumInvitation: Sendable {
     public let contextId: String?
 
     public init(
-        invitation: SignedGroupOpenInvitation, kind: Kind = .space, spaceName: String? = nil,
+        invitation: OrgInvitation, kind: Kind = .space, spaceName: String? = nil,
         forumId: String? = nil, forumName: String? = nil, contextId: String? = nil
     ) {
         self.invitation = invitation
@@ -33,11 +36,8 @@ public struct ForumInvitation: Sendable {
         self.contextId = contextId
     }
 
-    /// The namespace it admits to: the hex of its SIGNED `group_id`, never a
-    /// field beside it, so a tampered wrapper cannot redirect a join.
-    public var namespaceId: String {
-        Hex.encode(invitation.invitation.groupId.map { UInt8(truncatingIfNeeded: $0) })
-    }
+    /// The org (space) it admits to.
+    public var namespaceId: String { invitation.namespaceId }
 
     /// What to call it in a prompt: the forum for a forum invite, else the space.
     public var title: String {
@@ -48,23 +48,25 @@ public struct ForumInvitation: Sendable {
 
     // MARK: Encoding
 
+    /// The SDK's payload (`invitation` the token, `namespaceId`, `contextId`,
+    /// `name`) with `kind` / `forumId` / `forumName` beside it.
     private struct Payload: Encodable {
-        let invitation: SignedGroupOpenInvitation
+        let invitation: String
+        let namespaceId: String
+        let contextId: String?
+        let name: String?
         let kind: String
-        let groupId: String
-        let groupAlias: String?
         let forumId: String?
         let forumName: String?
-        let contextId: String?
     }
 
     /// The shareable token.
     public func token() throws -> String {
         try InviteCodec.encode(
             Payload(
-                invitation: invitation, kind: kind.rawValue, groupId: namespaceId,
-                groupAlias: spaceName?.nilIfEmpty, forumId: forumId, forumName: forumName?.nilIfEmpty,
-                contextId: contextId))
+                invitation: invitation.token, namespaceId: namespaceId, contextId: contextId?.nilIfEmpty,
+                name: spaceName?.nilIfEmpty, kind: kind.rawValue, forumId: forumId,
+                forumName: forumName?.nilIfEmpty))
     }
 
     /// The shareable link.
@@ -105,38 +107,25 @@ public struct ForumInvitation: Sendable {
         return nil
     }
 
-    /// Parse the decoded payload JSON (the web's `parsePayload`).
+    /// Parse the decoded payload JSON: the token from the string
+    /// `invitation`, the org from `namespaceId`. A pre-1.0 signed invitation
+    /// (an object under `invitation`) is refused.
     public static func parse(json: String) -> ForumInvitation? {
         guard let parsed = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)) else { return nil }
         let inner = parsed["data"] ?? parsed
-        if let wrapped = inner["invitation"], isSignedInvitation(wrapped), let signed = decodeSigned(wrapped) {
-            let kind: Kind = inner["kind"]?.stringValue == "forum" ? .forum : .space
-            return ForumInvitation(
-                invitation: signed, kind: kind,
-                spaceName: (inner["groupName"]?.stringValue ?? inner["groupAlias"]?.stringValue)?.nilIfEmpty,
-                forumId: inner["forumId"]?.stringValue?.nilIfEmpty,
-                forumName: inner["forumName"]?.stringValue?.nilIfEmpty,
-                contextId: inner["contextId"]?.stringValue?.nilIfEmpty)
-        }
-        if isSignedInvitation(inner), let signed = decodeSigned(inner) {
-            return ForumInvitation(invitation: signed)
-        }
-        return nil
-    }
-
-    private static func isSignedInvitation(_ value: JSONValue) -> Bool {
-        guard case .object(let fields) = value, case .object? = fields["invitation"] else { return false }
-        return fields["inviter_signature"]?.stringValue != nil || fields["inviterSignature"]?.stringValue != nil
-    }
-
-    private static func decodeSigned(_ value: JSONValue) -> SignedGroupOpenInvitation? {
-        guard case .object(var fields) = value else { return nil }
-        if fields["inviter_signature"] == nil, let camel = fields["inviterSignature"] {
-            fields["inviter_signature"] = camel
-            fields.removeValue(forKey: "inviterSignature")
-        }
-        guard let data = try? JSONEncoder().encode(JSONValue.object(fields)) else { return nil }
-        return try? JSONDecoder().decode(SignedGroupOpenInvitation.self, from: data)
+        guard let token = inner["invitation"]?.stringValue?.nilIfEmpty,
+            let org = inner["namespaceId"]?.stringValue?.nilIfEmpty
+        else { return nil }
+        let kind: Kind = inner["kind"]?.stringValue == "forum" ? .forum : .space
+        let name = ["name", "groupName", "groupAlias", "spaceName"].lazy
+            .compactMap { inner[$0]?.stringValue?.nilIfEmpty }.first
+        let contextId = inner["contextId"]?.stringValue?.nilIfEmpty
+        return ForumInvitation(
+            invitation: OrgInvitation(namespaceId: org, token: token, contextId: contextId, name: name), kind: kind,
+            spaceName: name,
+            forumId: inner["forumId"]?.stringValue?.nilIfEmpty,
+            forumName: inner["forumName"]?.stringValue?.nilIfEmpty,
+            contextId: contextId)
     }
 }
 

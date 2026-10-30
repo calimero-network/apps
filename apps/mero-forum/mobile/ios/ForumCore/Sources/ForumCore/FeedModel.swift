@@ -100,7 +100,7 @@ public final class FeedModel: ObservableObject {
         if let list = try? await client.moderators() { moderators = list }
     }
 
-    /// Re-read whenever the forum changes: live events from the relay, or a
+    /// Re-read whenever the forum changes: live events from the node, or a
     /// poll when it cannot stream. Runs until the task is cancelled.
     public func watch() async {
         if backend.canSubscribe {

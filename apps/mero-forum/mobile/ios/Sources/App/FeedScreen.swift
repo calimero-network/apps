@@ -240,7 +240,7 @@ struct ForumInfoSheet: View {
                         }
                     }
                     .padding(.vertical, 4)
-                    Text("\(model.forum.forumName) lives on the members' own nodes. Posts replicate peer to peer, with no server in between.")
+                    Text("\(model.forum.forumName) lives on your space's Calimero cluster, reached over an attested, sealed channel.")
                         .font(.system(size: 15)).foregroundStyle(Palette.inkSoft)
                     Button { inviting = true } label: {
                         Label("Invite people to this forum", systemImage: "person.badge.plus")
