@@ -4,22 +4,19 @@ import Security
 import SwiftUI
 import VoteCore
 
-/// Where sign-in goes, from Info.plist (empty = the SDK's defaults).
-enum AppConfig {
-    static var callback: CloudCallback { .scheme(string("MeroVoteCallbackScheme") ?? "mero-vote") }
+/// The app's voting-group reference, not MeroKit's (an org/team id) of the same name.
+typealias GroupRef = VoteCore.GroupRef
 
-    static var config: MeroProviderConfig {
-        MeroProviderConfig(
-            packageName: VoteConstants.packageName,
-            registryURL: string("MeroRegistryURL"),
-            cloudBaseURL: string("MeroCloudBaseURL").flatMap(URL.init(string:)))
+/// Which Calimero 1.0 cluster the app talks to, from Info.plist: `MeroNodeURL` (a node of
+/// your Cloud cluster; empty = the sign-in screen asks) and `MeroDevNodeURL`. See ../README.md.
+enum AppConfig {
+    /// Where the node's consent page returns (`mero-vote://consent`).
+    static var callback: CloudCallback {
+        .scheme(CloudSettings.string("MeroVoteCallbackScheme") ?? "mero-vote", path: "consent")
     }
 
-    static var walletURL: URL? { string("MeroWalletURL").flatMap(URL.init(string:)) }
-
-    private static func string(_ key: String) -> String? {
-        let value = (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespaces)
-        return value?.isEmpty == false ? value : nil
+    static var config: MeroProviderConfig {
+        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: VoteConstants.packageName)
     }
 }
 
@@ -27,7 +24,7 @@ enum AppConfig {
 struct MeroVoteApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: VoteConstants.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: "network.calimero.vote")
+        keychainService: "network.calimero.vote")
 
     var body: some Scene {
         WindowGroup {

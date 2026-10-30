@@ -144,13 +144,22 @@ final class GroupModelTests: XCTestCase {
         XCTAssertTrue(backend.recording.calls("create_poll").isEmpty)
     }
 
-    func testInviteLinkIsTheWebFormatAndNamesThisGroup() async throws {
+    func testInviteLinkIsTheSDKFormatAndNamesThisGroup() async throws {
         let (_, _, model) = scripted()
         let link = try await model.inviteLink()
         XCTAssertTrue(link.hasPrefix("https://links.calimero.network/com.calimero.mero-vote/join?invitation="))
         let parsed = try XCTUnwrap(VoteInvitation.parse(link))
         XCTAssertEqual(parsed.contextId, ctx)
         XCTAssertEqual(parsed.namespaceId, ns)
+        let sdk = try XCTUnwrap(OrgInvitation.parse(link, expectedSlug: VoteConstants.packageName))
+        XCTAssertEqual(sdk.namespaceId, ns)
+        XCTAssertEqual(sdk.contextId, ctx)
+    }
+
+    func testRefusesPre10SignedInvitations() {
+        let pre10 = #"{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"ff"},"namespaceId":"ab","contextId":"cd"}"#
+        XCTAssertNil(VoteInvitation.parse(pre10))
+        XCTAssertNil(VoteInvitation.parse(#"{"invitation":"inv_x","namespaceId":"ab"}"#), "no voting group named")
     }
 }
 

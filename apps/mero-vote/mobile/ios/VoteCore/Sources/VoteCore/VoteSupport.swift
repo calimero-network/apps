@@ -5,7 +5,7 @@ import MeroKit
 public enum VoteConstants {
     /// The registry package and invitation-link slug (`APP_SLUG` on the web).
     public static let packageName = "com.calimero.mero-vote"
-    /// How often an open screen is re-read when the relay cannot stream events.
+    /// How often an open screen is re-read when the node cannot stream events.
     public static let pollInterval: Duration = .seconds(10)
     /// The contract's limits.
     public static let maxOptions = 16
@@ -16,7 +16,7 @@ public enum VoteConstants {
 }
 
 extension VoteClient {
-    /// The vote client for one context, over the account's relay.
+    /// The vote client for one context, over the account's node session.
     public static func make(contract: any ContextContract, contextId: String) -> VoteClient {
         VoteClient(transport: contract.bound(to: contextId))
     }
@@ -68,17 +68,18 @@ public enum VoteModelError: Error, LocalizedError, Equatable {
 public enum VoteErrorText {
     public static func describe(_ error: Error) -> String {
         if let model = error as? VoteModelError, case .message(let text) = model { return text }
-        if let account = error as? AccountError, case .noRelay = account {
-            return "No relay serves your account yet. Join a voting group from an invitation link to get one."
-        }
+        if error is SignedOutError { return "You're signed out. Sign in again." }
+        if error is LoginRequired { return "Your session ended. Sign in again." }
+        if let busy = error as? UnavailableError { return "The cluster is busy (\(busy.reason)). Try again in a moment." }
+        if let app = error as? AppError { return app.message.isEmpty ? app.appCode : app.message }
         if let url = error as? URLError {
             switch url.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
                 return "You're offline. Check your connection and try again."
             case .timedOut:
-                return "The relay took too long to answer. Try again."
+                return "The cluster took too long to answer. Try again."
             default:
-                return "Couldn't reach the relay. Try again."
+                return "Couldn't reach the cluster. Try again."
             }
         }
         if error is DecodingError {

@@ -93,7 +93,7 @@ public final class GroupModel: ObservableObject {
         }
     }
 
-    /// Re-read whenever the group changes: live events, or a poll when the relay cannot stream.
+    /// Re-read whenever the group changes: live events, or a poll when the node cannot stream.
     public func watch() async {
         await VoteWatch.run(backend: backend, contextId: group.contextId) { [weak self] in await self?.refresh() }
     }

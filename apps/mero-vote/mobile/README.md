@@ -7,22 +7,44 @@ web client does.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | swift-sdk `c9ca1a0` (`main` merge commit of swift-sdk#84) |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | swift-sdk `35148e4` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands) |
 | Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `ea8ded7` (`main` merge commit of kotlin-sdk#67), composite build |
 
 The SDK pins are the `main` merge commits of those app-session PRs. To bump them, change
 `revision:` in `ios/project.yml` and `ios/VoteCore/Package.swift` (keep the two identical), and
 `android/kotlin-sdk.ref`.
 
-## Delegated execution only
+## How the apps reach Calimero
 
-Neither app runs or logs into a node. Both are built on the SDKs' `MeroAppSession`: the person
-signs in with their Calimero account (the wallet certifies this device's key), the Cloud manager
-names the account's relay, and everything goes through that relay. Views are the relay's
-account-scoped query, writes are warrants the device key signs. A workspace is a namespace founded
-through the relay; a voting group is a context directly in it (as on the web, so one namespace
-invitation covers both). Live updates come from `MeroAppBackend.events(contextId)`, with a
-10-second poll when the relay cannot stream.
+**iOS runs on Calimero 1.0.** The app talks to a node of a Calimero Cloud cluster over the sealed
+channel (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and signs in with
+a passkey; it runs no node. `MeroAppSession` builds the SDK's `CloudAppBackend`, and the view
+models keep their `MeroAppBackend` calls, each of which maps one to one:
+
+| The app | `MeroAppBackend` | Calimero 1.0 |
+| --- | --- | --- |
+| workspace | namespace | organization (metadata `package = com.calimero.mero-vote`) |
+| voting group | context | org-wide app instance (`/apps/{app}/views`, `/intents`, `/events`) |
+| invitation | `OrgInvitation` | org invite token, redeemed at `/invites/{token}/redeem` |
+
+Sign-in (`ios/Sources/App/CloudAccess.swift`, the same file in every ported app):
+
+- **Calimero Cloud:** a node URL of your cluster (from cloud.calimero.network; `MeroNodeURL` in
+  `ios/project.yml` prefills it), then *Sign in with passkey* or *Create an account*. The device's
+  passkey belongs to the cluster's relying party: add the `webcredentials:<rp-id>` associated
+  domain to the app for a real cluster.
+- **Development node:** a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by
+  default), mock attestation allowed (`allowMock`), with a software passkey the SDK keeps for it.
+- **Approvals** (Account sheet): node releases and app upgrades waiting for you, per org and
+  for your own apps. *Review* opens the node's consent page in the system browser, which returns
+  to `mero-vote://consent`. The app's own session cannot approve anything.
+
+**Android still runs on 0.x** (delegated execution through the account's relay, wallet sign-in);
+its port follows the kotlin-sdk's.
+
+A voting group sits directly in its workspace (as on the web), so one workspace invitation covers
+both. Live updates come from `MeroAppBackend.events(contextId)`, with a 10-second poll when the
+stream is not available.
 
 ## The cryptography on the phone
 
@@ -66,8 +88,8 @@ Chaum–Pedersen proofs) and publish proven partial decryptions. See `../README.
 
 ## Screens
 
-1. **Sign in**: what Mero Vote is (encrypted here, shared key, audited by everyone) and "Sign in
-   with Calimero". An invitation that arrived while signed out is named here.
+1. **Sign in**: what Mero Vote is (encrypted here, shared key, audited by everyone); on iOS a
+   Calimero Cloud passkey (sign in or create an account) or a development node. An invitation that arrived while signed out is named here.
 2. **Voting groups**: each workspace with its voting groups (newest poll's question, poll count,
    how many are open); New workspace (founds the namespace and its first group), New group in a
    workspace, Join with a link, Account (ids behind Details, Sign out). Pull to refresh.
@@ -92,8 +114,10 @@ Same as the web: workspaces and voting groups (create; join by invitation), the 
 name, creating polls with every option the web has, the whole key ceremony including complaints,
 casting and replacing a ballot, close and seal, partial decryption, the result, the node's audit,
 the independent re-verification, the transcript download (shared as a file), the public anchor,
-trustee key backup and restore (same file format), invitation links in the web's format both ways
+trustee key backup and restore (same file format), invitation links
 (`https://links.calimero.network/com.calimero.mero-vote/join?invitation=…` and `calimero://…`).
+The keys are the web's (`invitation`, `namespaceId`, `contextId`); on iOS `invitation` is now the
+1.0 invite token (the SDK's `OrgInvitation`), and a pre-1.0 signed invitation is refused.
 
 Left out, and why:
 
@@ -146,13 +170,11 @@ The view-model tests on both platforms run against the SDKs' fakes (`InMemoryApp
 
 ## Configuration
 
-- **Sign-in callback**: `mero-vote://enrol` (iOS `MeroVoteCallbackScheme` in `project.yml`,
-  Android `meroEnrolCallback` in `gradle.properties`). The hosted wallet currently returns only to
-  `https://` callbacks, so production sign-in needs that wallet change or a verified https
-  callback, as for the other native apps.
-- **Environment**: empty values use the SDK defaults (hosted Cloud manager, wallet, registry).
-  iOS: `MeroCloudBaseURL`, `MeroWalletURL`, `MeroRegistryURL` in `project.yml`. Android:
-  `-PmeroCloudUrl=… -PmeroWalletUrl=… -PmeroRegistryUrl=…`.
+- **iOS (1.0)**: `MeroNodeURL` (a node of your Cloud cluster; empty: the sign-in screen asks) and
+  `MeroDevNodeURL` (the development node it offers) in `project.yml`; the node's consent page
+  returns to `mero-vote://consent` (`MeroVoteCallbackScheme`).
+- **Android (0.x)**: sign-in returns to `mero-vote://enrol` (`meroEnrolCallback` in
+  `gradle.properties`); `-PmeroCloudUrl=… -PmeroWalletUrl=… -PmeroRegistryUrl=…`.
 - **Font**: Power Grotesk, converted from the web's WOFF2 files.
 
 ## CI

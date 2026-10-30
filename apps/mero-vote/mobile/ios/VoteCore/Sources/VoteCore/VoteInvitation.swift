@@ -1,38 +1,33 @@
 import Foundation
 import MeroKit
 
-/// An invitation in the web app's format (`app/src/utils/invitation.ts`), so a
-/// link minted on either side opens on the other:
+/// An invitation: Calimero 1.0's org invite token in the SDK's link shape
+/// (``OrgInvitation``), the same keys the web app's 0.x links used:
 ///
-/// - payload: `{"invitation": <SignedGroupOpenInvitation>, "namespaceId": "<hex>", "contextId": "<hex>"}`
+/// - payload: `{"invitation": "inv_…", "namespaceId": "<org>", "contextId": "<app instance>"}`
 /// - token: `base58(deflate(payload))` (MeroKit `InviteCodec`)
 /// - link: `https://links.calimero.network/com.calimero.mero-vote/join?invitation=<token>`
 ///
-/// The signed invitation grants the NAMESPACE; `contextId` says which voting
-/// group in it to open once joined. (Kotlin `VoteInvitation`.)
+/// The token grants the ORG (redeemed with `POST /invites/{token}/redeem`, which
+/// joins the org it belongs to); `contextId` says which voting group in it to open
+/// once joined. A pre-1.0 signed invitation is refused: a 1.0 cluster cannot redeem it.
+/// (Kotlin `VoteInvitation`.)
 public struct VoteInvitation: Sendable {
-    public let invitation: SignedGroupOpenInvitation
+    public let invitation: OrgInvitation
     public let contextId: String
 
-    public init(invitation: SignedGroupOpenInvitation, contextId: String) {
+    public init(invitation: OrgInvitation, contextId: String) {
         self.invitation = invitation
         self.contextId = contextId
     }
 
-    /// The namespace it admits to: the hex of its SIGNED `group_id`, never the
-    /// field beside it, so a tampered wrapper cannot redirect a join.
-    public var namespaceId: String {
-        Hex.encode(invitation.invitation.groupId.map { UInt8(truncatingIfNeeded: $0) })
-    }
-
-    private struct Payload: Encodable {
-        let invitation: SignedGroupOpenInvitation
-        let namespaceId: String
-        let contextId: String
-    }
+    /// The org it admits to.
+    public var namespaceId: String { invitation.namespaceId }
 
     public func token() throws -> String {
-        try InviteCodec.encode(Payload(invitation: invitation, namespaceId: namespaceId, contextId: contextId))
+        try OrgInvitation(
+            namespaceId: invitation.namespaceId, token: invitation.token, contextId: contextId, name: invitation.name
+        ).encoded()
     }
 
     public func link() throws -> String {
@@ -51,18 +46,13 @@ public struct VoteInvitation: Sendable {
         return parse(json: json)
     }
 
-    /// The web's `parseInvitationPayload`: both ids present, and the invitation
-    /// shaped like the signed envelope.
+    /// Both ids present, and the invitation an invite token (the SDK's
+    /// ``OrgInvitation`` decoding refuses a 0.x signed envelope).
     public static func parse(json: String) -> VoteInvitation? {
-        guard let value = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)),
-            let contextId = value["contextId"]?.stringValue?.nilIfEmpty,
-            value["namespaceId"]?.stringValue?.nilIfEmpty != nil,
-            let wrapped = value["invitation"], case .object(let fields) = wrapped,
-            fields["inviter_signature"] != nil,
-            let data = try? JSONEncoder().encode(wrapped),
-            let signed = try? JSONDecoder().decode(SignedGroupOpenInvitation.self, from: data)
+        guard let invitation = try? JSONDecoder().decode(OrgInvitation.self, from: Data(json.utf8)),
+            let contextId = invitation.contextId?.nilIfEmpty
         else { return nil }
-        return VoteInvitation(invitation: signed, contextId: contextId)
+        return VoteInvitation(invitation: invitation, contextId: contextId)
     }
 }
 
@@ -103,8 +93,7 @@ public final class InvitationModel: ObservableObject {
         return true
     }
 
-    /// Join. `backend` is read again after `didJoin`, which may hand the
-    /// session the admitting relay.
+    /// Join (`POST /invites/{token}/redeem`). `backend` is read again after `didJoin`.
     public func accept(
         backend: @escaping @MainActor () -> (any MeroAppBackend)?,
         didJoin: @escaping @MainActor () async -> Void
