@@ -16,11 +16,22 @@ extension MeroAppBackend {
     }
 }
 
-/// Image bytes stored as blobs on the board's context. `MeroAppBackend` has no
-/// blob call yet, so the app reads them through the signed-in client's admin
-/// surface (`getBlob(_:contextId:)`, which the account's relay serves).
+/// Image bytes stored as blobs on the board's app instance.
 public protocol BlobLoading: Sendable {
     func blob(id: String, contextId: String) async throws -> Data
+}
+
+/// Blobs through the signed-in backend: on Calimero 1.0, `GET /apps/{app}/blobs/{id}`.
+public struct BackendBlobs: BlobLoading {
+    public let backend: any MeroAppBackend
+
+    public init(backend: any MeroAppBackend) {
+        self.backend = backend
+    }
+
+    public func blob(id: String, contextId: String) async throws -> Data {
+        try await backend.getBlob(blobId: id, contextId: contextId)
+    }
 }
 
 /// No blobs: images are drawn as placeholders.

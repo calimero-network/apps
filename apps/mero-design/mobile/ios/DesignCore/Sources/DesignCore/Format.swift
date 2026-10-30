@@ -1,4 +1,5 @@
 import Foundation
+import MeroKit
 
 public enum DesignFormat {
     /// The app's registry package, the deep-link slug and the invitation path
@@ -54,12 +55,29 @@ public enum DesignFormat {
 
     /// Words a person can act on, from an error.
     public static func errorText(_ error: Error) -> String {
+        if let cluster = clusterText(error) { return cluster }
         let text = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
         if text.contains("view-only") { return "You have view-only access to this board. Ask an admin for edit access to comment." }
-        if text.contains("noRelay") || text.lowercased().contains("no relay") {
-            return "Your account has no relay yet. Join a team from an invitation link, or try again shortly."
+        if text.lowercased().contains("signed out") || text.lowercased().contains("not signed in") {
+            return "You're signed out. Sign in again to see your boards."
         }
         if let url = error as? URLError, url.code == .notConnectedToInternet { return "You're offline. Check your connection and try again." }
         return text
+    }
+
+    /// The Calimero 1.0 node's typed errors, in words.
+    static func clusterText(_ error: Error) -> String? {
+        switch error {
+        case is ConfirmCancelled: return "The passkey prompt was cancelled."
+        case is LoginRequired: return "Your session ended. Sign in again."
+        case is SignedOutError: return "You're signed out. Sign in again to see your boards."
+        case is ReleaseDeadlineError:
+            return "A newer node release needs approval before anything can change. Review it on the Teams screen."
+        case is ConsentStale: return "That approval request is out of date. Try again."
+        case is NotFound: return "This isn't available to you (yet)."
+        case let error as UnavailableError:
+            return "Your cluster is unavailable right now (\(error.reason)). Try again shortly."
+        default: return nil
+        }
     }
 }

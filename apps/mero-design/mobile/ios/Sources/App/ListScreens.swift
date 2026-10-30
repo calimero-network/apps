@@ -7,15 +7,32 @@ import SwiftUI
 struct TeamsScreen: View {
     @ObservedObject var session: MeroAppSession
     @StateObject private var model: TeamsModel
+    @StateObject private var approvals: ApprovalsModel
     @State private var showAccount = false
 
     init(session: MeroAppSession, backend: any MeroAppBackend) {
         self.session = session
         _model = StateObject(wrappedValue: TeamsModel(backend: backend))
+        _approvals = StateObject(
+            wrappedValue: ApprovalsModel(
+                packageName: DesignFormat.packageName, appName: "Mero Design",
+                fetch: { [weak session] org in
+                    guard let session else { throw CancellationError() }
+                    return try await session.pendingApprovals(org: org)
+                },
+                consent: { [weak session] request in
+                    guard let session else { return nil }
+                    return await session.client.requestConsent(request, callback: session.callback)
+                }))
     }
+
+    private var orgs: [String] { model.teams.map(\.id) }
 
     var body: some View {
         List {
+            if !approvals.items.isEmpty || approvals.error != nil {
+                ApprovalsCard(model: approvals, orgs: orgs).plainRow()
+            }
             switch model.state {
             case .idle:
                 LoadingRows().listRowInsets(EdgeInsets()).plainRow()
@@ -28,7 +45,7 @@ struct TeamsScreen: View {
                     EmptyState(
                         icon: "person.3",
                         title: "No teams yet",
-                        message: "Create a team in Mero Design on the web or desktop, or accept an invitation there. It shows up here.")
+                        message: "Create a team in Mero Design on the web, or open an invitation link someone sent you. It shows up here.")
                     .plainRow()
                 } else {
                     Section {
@@ -60,8 +77,14 @@ struct TeamsScreen: View {
                 .accessibilityIdentifier("teams.account")
             }
         }
-        .refreshable { await model.load() }
-        .task { await model.load() }
+        .refreshable {
+            await model.load()
+            await approvals.load(orgs: orgs)
+        }
+        .task {
+            await model.load()
+            if DemoMode.backend == nil { await approvals.load(orgs: orgs) }
+        }
         .sheet(isPresented: $showAccount) {
             AccountSheet(session: session)
                 .presentationDetents([.medium])
@@ -99,7 +122,8 @@ struct AccountSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var confirm = false
     private var account: String? { DemoMode.backend?.account ?? session.account }
-    private var hasRelay: Bool { DemoMode.backend?.hasRelay ?? session.hasRelay }
+    private var isConnected: Bool { DemoMode.backend?.hasRelay ?? session.hasRelay }
+    private var nodeURL: String { DemoMode.isOn ? "Demo" : session.client.nodeURL ?? "—" }
 
     var body: some View {
         NavigationStack {
@@ -108,7 +132,7 @@ struct AccountSheet: View {
                     Avatar(id: account ?? "", name: "Me", size: 44)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Signed in").font(Theme.heading(17)).foregroundStyle(Theme.ink)
-                        Text(hasRelay ? "Connected through your relay" : "No relay serves this account yet")
+                        Text(isConnected ? "Connected to your Calimero cluster" : "Not connected to a cluster")
                             .font(Theme.body(14))
                             .foregroundStyle(Theme.muted)
                     }
@@ -116,7 +140,8 @@ struct AccountSheet: View {
                 .card()
                 DetailsDisclosure(rows: [
                     ("Account", account ?? "—"),
-                    ("Application", DemoMode.applicationId ?? session.applicationId ?? "—"),
+                    ("Node", nodeURL),
+                    ("Package", DemoMode.applicationId ?? session.applicationId ?? "—"),
                 ])
                 .card()
                 Spacer()

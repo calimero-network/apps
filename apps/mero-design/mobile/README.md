@@ -4,27 +4,35 @@ Native iOS and Android viewers for Mero Design, next to the web editor (`../app`
 contract (`../logic`, package `com.calimero.mero-design`). They have the same screens, copy, icons
 (SF Symbols and the matching Material icons) and behaviour.
 
+> **Calimero 1.0:** the iOS app runs on Calimero core 1.0 (passkeys, sealed channel, orgs, teams
+> and app instances; see [On Calimero 1.0 (iOS)](#on-calimero-10-ios)). The Android app still
+> speaks the 0.x API (wallet, relays) until kotlin-sdk is ported; the rest of this page describes
+> the shared screens.
+
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` (merge commit of PR #84 on `main`) |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `35148e4` (head of the 1.0 port, PR #85 `feat/calimero-1.0`; moves to its merge commit once it lands) |
 | Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (merge commit of PR #67 on `main`), composite build from `android/kotlin-sdk.ref` |
 
 **To bump a pin**, change it in every place it is set. On iOS that means
-`ios/project.yml` and `ios/DesignCore/Package.swift`; on Android, `android/kotlin-sdk.ref`.
+`ios/project.yml`, `ios/DesignCore/Package.swift` and `ios/DesignCore/Package.resolved`; on Android, `android/kotlin-sdk.ref`.
 
 ## View only
 
 The phone is for looking at boards, not editing them: the editor (tools, selection handles,
 properties, layers) is too big for a phone. What both apps do:
 
-- **Sign in** with a Calimero account (`MeroAppSession`): the wallet certifies the phone's key.
-  The session is kept in the Keychain / Keystore and restored at launch.
-- **Teams**: the account's namespaces running Mero Design. Pull to refresh.
+- **Sign in** with a Calimero account (`MeroAppSession`). iOS: a passkey on the cluster (or a
+  development node); Android: the wallet certifies the phone's key. The session is kept in the
+  Keychain / Keystore and restored at launch.
+- **Teams**: the account's orgs (0.x: namespaces) running Mero Design. Pull to refresh. On iOS,
+  anything waiting for the person's approval (an update of Mero Design, a node release) shows on
+  top; **Review** opens the node's consent page in the system browser.
 - **Boards**: a team's boards (one subgroup with one context each, as the web app makes them),
   named by the board's own `get_board`, with its description and layer count. Swipe a board to
   share its link. Pull to refresh.
 - **Board**: the board drawn read-only. Pinch to zoom, drag to pan, double-tap (or the fit
-  button) to fit it. Live: it follows the relay's event stream, or polls every 5 s when the relay
+  button) to fit it. Live: it follows the node's (Android: relay's) event stream, or polls every 5 s when it
   cannot stream. Opening a board this account is not in yet joins its context (an open subgroup).
 - **Present**: full screen, swipe between the board's screens in the web app's order (numbered
   `screen/Name @n` first, then reading order). A long screen fills the width and scrolls. "All
@@ -42,9 +50,9 @@ properties, layers) is too big for a phone. What both apps do:
   Details disclosure.
 
 Not on the phone: creating or editing shapes, layers, screens or the board; deleting comments;
-creating teams or boards; team settings and roles; exports. Invitations are not redeemed on the
-phone yet (the web app's invitation token is deflate + base58 and the SDK has no decoder for it);
-an invitation link shows a note to accept it on the web or desktop.
+creating teams or boards; team settings and roles; exports. On iOS an invitation link that opens
+the app asks "Join this team?" and redeems it (`POST /invites/{token}/redeem`); on Android it
+shows a note to accept it on the web or desktop.
 
 ## How a board is drawn
 
@@ -53,7 +61,7 @@ already drawn without Fabric by the web app's own SVG export (`app/src/utils/svg
 both apps port that: `rect` (corner radius), `circle`, `line` and `arrow` (with the web's
 arrowhead), `path` (SVG path data; the triangle, diamond, star and cloud shapes are regenerated at
 their size), `text` (plain, and the box and sticky containers with the web's word wrap), `image`
-(the blob, read through the account's relay), opacity, rotation about the top-left corner, drop
+(the blob, read from the app instance's blobs), opacity, rotation about the top-left corner, drop
 shadows and the six stroke styles. Hidden layers are left out, as in every web export.
 
 The part that turns elements into drawable nodes (`BoardScene`, in DesignCore on iOS and
@@ -64,12 +72,36 @@ Known gaps: an `svg` element (an imported SVG file) is drawn as the web export's
 because neither platform rasterises arbitrary SVG markup without a web view; text uses the
 platform's sans, serif or monospace face for the web's font families.
 
-## Delegated execution only
+## On Calimero 1.0 (iOS)
 
-Neither app runs or logs into a node. `MeroAppSession` signs in, finds the account's relay, and
-gives a `MeroAppBackend`: namespaces, subgroups, membership and events go through it, contract
-reads through the relay's query and writes as signed warrants. Images are read with the signed-in
-client's `admin.getBlob(blobId, contextId)`, because `MeroAppBackend` has no blob call yet.
+The phone holds no node. It signs in to a Calimero 1.0 cluster with a passkey and talks to it
+over the sealed channel (`calimero/sealed-http/v2`, opened only after the node's attestation is
+verified). `MeroAppSession` gives a `MeroAppBackend` (the swift-sdk's `CalimeroAppBackend`):
+
+| What | Wire |
+| --- | --- |
+| Sign in / create account / restore | `/auth/passkey/{login,register}/{begin,finish}`, `/auth/refresh` |
+| Teams | the account's orgs running Mero Design (`GET /auth/me`) |
+| Boards | the org's teams (`GET /orgs/{org}`), one app instance per board |
+| Contract reads / writes | `POST /apps/{app}/views` / `POST /apps/{app}/intents` |
+| Live updates | `GET /apps/{app}/events` (sealed SSE), polling as a fallback |
+| Images | `MeroAppBackend.getBlob` → `/apps/{app}/blobs` |
+| Join from an invitation link | `POST /invites/{token}/redeem` |
+| Approvals | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
+
+**Sign-in.** *Calimero Cloud*: enter the cluster's node URL (from cloud.calimero.network; bake
+it in with `CalimeroClusterURL` in `ios/project.yml`), then **Sign in with passkey** or **Create
+an account**. The device's passkey needs the cluster's relying party as an associated domain
+(`webcredentials:<rp-id>`). *Development node*: a `merod local` node URL (default
+`http://localhost:2501`, `DefaultNodeURL`); mock attestation is allowed and the SDK keeps a
+software passkey for that node.
+
+The consent page returns to `mero-design://consent` (`MeroDesignCallbackScheme`, or an https
+host with `MeroDesignCallbackHost` / `MeroDesignCallbackPath`). `MeroPackageVersion` sets the
+version new app instances run (empty: the latest).
+
+Android still uses delegated execution (0.x): `MeroAppSession` finds the account's relay;
+contract reads go through the relay's query and writes as signed warrants.
 
 ## Generated contract client
 
@@ -100,9 +132,12 @@ cd android
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
-Sign-in returns to `mero-design://enrol`. Point the apps at another environment with the
-`MeroCloudBaseURL` / `MeroWalletURL` / `MeroRegistryURL` Info.plist keys in `ios/project.yml`, or
-`-PmeroCloudUrl=` / `-PmeroWalletUrl=` / `-PmeroRegistryUrl=` / `-PmeroEnrolCallback=` on Android.
+iOS: build for a device with `xcodebuild build -project MeroDesign.xcodeproj -scheme MeroDesign
+-destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO`; the cluster is chosen at sign-in
+(see above).
+
+Android sign-in returns to `mero-design://enrol`. Point it at another environment with
+`-PmeroCloudUrl=` / `-PmeroWalletUrl=` / `-PmeroRegistryUrl=` / `-PmeroEnrolCallback=`.
 The hosted wallet currently returns only to `https://` callbacks, so production sign-in needs that
 wallet change or a verified https callback (as in Mero Chat).
 

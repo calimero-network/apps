@@ -158,7 +158,7 @@ public final class BoardModel: ObservableObject {
     let now: () -> Date
     private var fetching: Set<String> = []
     /// What this phone wrote that a read has not shown yet: kept on screen
-    /// until the relay's state catches up.
+    /// until the cluster's state catches up.
     private var pendingComments: [Comment] = []
     private var pendingReplies: [String: [CommentReply]] = [:]
     private var refreshing = false
@@ -166,7 +166,7 @@ public final class BoardModel: ObservableObject {
 
     /// A pointer counts as here for this long after it last moved (the web's window).
     public static let viewerWindowMs: UInt64 = 10_000
-    /// How often to re-read when the relay cannot stream events.
+    /// How often to re-read when the node cannot stream events.
     public static let pollInterval: UInt64 = 5_000_000_000
 
     public init(
@@ -235,7 +235,7 @@ public final class BoardModel: ObservableObject {
         } while dirty
     }
 
-    /// Follow the board until the task is cancelled: the relay's events when it
+    /// Follow the board until the task is cancelled: the node's events when it
     /// streams them, polling otherwise (and after a stream ends).
     public func live() async {
         if backend.canSubscribe {
