@@ -8,19 +8,42 @@ change a single cell's value.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI + Swift Charts, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `c9ca1a0` (`main` merge commit of PR #84) |
+| iOS | [`ios/`](ios/README.md) | SwiftUI + Swift Charts, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `6c5f116` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands) |
 | Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `ea8ded7` (`main` merge commit of PR #67) |
 
 The pins are the SDKs' `main` merge commits of those PRs; bump them together in
 `ios/project.yml` + `ios/Core/Package.swift` and `android/kotlin-sdk.ref`.
 
-## Delegated execution only
+## How the apps reach Calimero
 
-No node runs on the phone. Both apps use the SDKs' `MeroAppSession`: Calimero Cloud sign-in (the
-wallet certifies the device key), the account's relay from the Cloud manager, and a
-`MeroAppBackend` over that relay. Reads go through the relay's account-scoped query, writes are
-warrants the device key signs, and live updates are the relay's event stream for the open
-spreadsheet, with 5-second polling when the stream is not available.
+**iOS runs on Calimero 1.0.** The app talks to a node of a Calimero Cloud cluster over the sealed
+channel (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and signs in with
+a passkey; it runs no node. `MeroAppSession` builds the SDK's `CloudAppBackend`, and the view
+models keep their `MeroAppBackend` calls, each of which maps one to one:
+
+| The app | `MeroAppBackend` | Calimero 1.0 |
+| --- | --- | --- |
+| workspace | namespace | organization (metadata `package = com.calimero.mero-sheets`) |
+| spreadsheet | context | org-wide app instance (`/apps/{app}/views`, `/intents`, `/events`) |
+| invitation | `OrgInvitation` | org invite token, redeemed at `/invites/{token}/redeem` |
+
+Sign-in (`ios/Sources/App/CloudAccess.swift`, the same file in every ported app):
+
+- **Calimero Cloud:** a node URL of your cluster (from cloud.calimero.network; `MeroNodeURL` in
+  `ios/project.yml` prefills it), then *Sign in with passkey* or *Create an account*. The device's
+  passkey belongs to the cluster's relying party: add the `webcredentials:<rp-id>` associated
+  domain to the app for a real cluster.
+- **Development node:** a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by
+  default), mock attestation allowed (`allowMock`), with a software passkey the SDK keeps for it.
+- **Approvals** (Workspace tab → Account): node releases and app upgrades waiting for you, per org and
+  for your own apps. *Review* opens the node's consent page in the system browser, which returns
+  to `mero-sheets://consent`. The app's own session cannot approve anything.
+
+**Android still runs on 0.x** (delegated execution through the account's relay, wallet sign-in);
+its port follows the kotlin-sdk's.
+
+Live updates are the open spreadsheet's event stream, with 5-second polling when the stream is not
+available.
 
 The model is the web app's (`app/src/lib/workspaces.ts`):
 
@@ -28,10 +51,12 @@ The model is the web app's (`app/src/lib/workspaces.ts`):
 - a **spreadsheet** is one context bound directly to the namespace root, so a workspace invitation
   covers every spreadsheet in it. Creating one is `createContext`, then `init_project(name)` and a
   first tab, `Sheet 1`, as on the web. Its name is the workbook's own (`get_project`);
-- **invitations** are the web app's links,
-  `https://links.calimero.network/com.calimero.mero-sheets/join?invitation=<base58(deflate(payload))>`,
-  with payload `{invitation, groupAlias, groupId, kind: "namespace", contextId?, projectName?, roomName?}`
-  (`app/src/lib/inviteCodec.ts`). The spreadsheet open when Invite was pressed rides along and is
+- **invitations** are links,
+  `https://links.calimero.network/com.calimero.mero-sheets/join?invitation=<base58(deflate(payload))>`.
+  On iOS the payload is the SDK's 1.0 `OrgInvitation` JSON, `{"invitation": "inv_…", "namespaceId",
+  "name"?, "contextId"?}`, plus `projectName` / `roomName`; pre-1.0 signed invitations are refused.
+  Android and the web app still write the 0.x `{invitation, groupAlias, groupId, kind, …}`
+  (`app/src/lib/inviteCodec.ts`) until their ports. The spreadsheet open when Invite was pressed rides along and is
   opened after joining; `calimero://` links work too.
 
 ### Where values come from (no recalculation on the phone)
@@ -40,7 +65,7 @@ The contract computes every cell on read: `get_all_cells` returns each cell's `c
 evaluated on the node by the Rust engine in `logic/crates/recalc`. The web compiles the same engine
 to WASM (`recalc-wasm`) only to echo an edit before the node answers. The phones show the node's
 values as they are and do not recompute: after a value is changed, the cell shows what was typed
-until the re-read (immediately after the write, then on each relay event) brings the recalculated
+until the re-read (immediately after the write, then on each event) brings the recalculated
 results. Two small pure pieces of the engine are ported, because the grid needs them to place and
 show what the node stored:
 
@@ -51,7 +76,8 @@ show what the node stored:
 
 ## Screens
 
-1. **Sign in**: Sign in with Calimero.
+1. **Sign in**: on iOS a Calimero Cloud passkey (sign in or create an account) or a development
+   node.
 2. **Spreadsheets** tab: the open workspace's spreadsheets, pull to refresh, swipe a row to invite
    people to it. The title switches workspaces (and makes a new one); the lime + makes a spreadsheet.
 3. **Spreadsheet** (pushed): the workbook's tabs as chips (linked tabs marked), and the grid: a
@@ -108,8 +134,8 @@ Left out, and why:
   this device gave is used until the workbook answers. No metadata call is needed.
 - **Generated client.** Generated with `--transport-import`, so it takes the SDK's
   `ContextContractCalling` and `contract.bound(to: contextId)` goes straight in, no adapter.
-- **No service name on `createContext`.** The sheets bundle has one service, so the relay's default
-  is the right one.
+- **One service.** The sheets bundle has one service, so `createContext` (the package's default
+  service) is the right call; no `createServiceContext`.
 
 ## Regenerate the contract clients
 

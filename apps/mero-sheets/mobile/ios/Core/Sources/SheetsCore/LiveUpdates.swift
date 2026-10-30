@@ -1,9 +1,8 @@
 import Foundation
 import MeroKit
 
-/// Re-read a repo when it changes: on each of the relay's events for the
-/// context, or every few seconds when the stream is not available (no relay
-/// session yet) or ends. Runs until the calling task is cancelled.
+/// Re-read a repo when it changes: on each of the app instance's events, or
+/// every few seconds when the stream is not available (signed out) or ends. Runs until the calling task is cancelled.
 public enum LiveUpdates {
     public static func follow(
         backend: any MeroAppBackend, contextId: String, interval: TimeInterval = MeroSheets.pollInterval,
