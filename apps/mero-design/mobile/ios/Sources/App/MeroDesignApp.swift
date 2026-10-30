@@ -13,6 +13,7 @@ struct MeroDesignApp: App {
             RootView(session: session, router: router)
                 .tint(Theme.ink)
                 .preferredColorScheme(.light)
+                // Board links, invitation links, and the consent page sending the person back.
                 .onOpenURL { url in
                     if let link = DesignFormat.parseBoardLink(url.absoluteString) {
                         router.open(teamId: link.teamId, contextId: link.contextId)
@@ -44,7 +45,8 @@ struct RootView: View {
     @ObservedObject var session: MeroAppSession
     @ObservedObject var router: Router
     @State private var didRestore = false
-    @State private var invitationNotice = false
+    @State private var joining = false
+    @State private var joinError: String?
 
     /// The signed-in account's backend, or the demo's (Debug, `-MeroDemo YES`).
     private var activeBackend: (any MeroAppBackend)? { DemoMode.backend ?? (session.isSignedIn ? session.backend : nil) }
@@ -63,13 +65,13 @@ struct RootView: View {
                             case .board(let teamId, let contextId, let name):
                                 BoardScreen(
                                     backend: backend, teamId: teamId, contextId: contextId, name: name,
-                                    blobs: DemoMode.blobs ?? SessionBlobs(admin: session.client.admin))
+                                    blobs: DemoMode.blobs ?? BackendBlobs(backend: backend))
                             }
                         }
                 }
                 .id(session.revision)
             } else if session.isSignedIn {
-                Splash(text: "Connecting to your relay…") {
+                Splash(text: "Connecting to your cluster…") {
                     Button("Sign out") { Task { await session.signOut() } }
                         .buttonStyle(SecondaryButtonStyle(fullWidth: false))
                 }
@@ -82,13 +84,48 @@ struct RootView: View {
             if !DemoMode.isOn { await session.restore() }
             didRestore = true
         }
-        .onChange(of: session.pendingInvitation) { pending in
-            if pending != nil { invitationNotice = true }
-        }
-        .alert("Open the invitation on the web", isPresented: $invitationNotice) {
-            Button("OK") { session.dismissPendingInvitation() }
+        .alert(
+            "Join this team?",
+            isPresented: Binding(
+                get: { session.pendingInvitation != nil && session.isSignedIn && !joining }, set: { _ in })
+        ) {
+            Button("Join") { Task { await join() } }
+            Button("Not now", role: .cancel) { session.dismissPendingInvitation() }
         } message: {
-            Text("This app views boards in teams you are already in. Accept the invitation in Mero Design on the web or desktop, and the team appears here.")
+            Text("You were invited to a team on Mero Design. Its boards show up here once you join.")
+        }
+        .alert(
+            "Couldn't join", isPresented: Binding(get: { joinError != nil }, set: { if !$0 { joinError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(joinError ?? "")
+        }
+        .overlay {
+            if joining {
+                ZStack {
+                    Color.black.opacity(0.15).ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        ProgressView().tint(Theme.ink)
+                        Text("Joining…").font(Theme.body(14, .semibold))
+                    }
+                    .card(padding: 24)
+                }
+            }
+        }
+    }
+
+    /// Redeem the invitation link that opened the app (`POST /invites/{token}/redeem`).
+    private func join() async {
+        joining = true
+        defer { joining = false }
+        do {
+            let joined = try await session.redeemPendingInvitation()
+            Haptics.success()
+            router.path = [.team(id: joined.namespaceId, name: "Boards")]
+        } catch {
+            session.dismissPendingInvitation()
+            joinError = DesignFormat.errorText(error)
         }
     }
 }
