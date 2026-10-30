@@ -161,14 +161,14 @@ final class DigestTests: XCTestCase {
 }
 
 final class InvitationTests: XCTestCase {
-    func testRoundTripsThroughTheWebFormat() throws {
+    func testRoundTripsThroughTheLinkPayload() throws {
         let signed = InMemoryAppBackend.invitation(namespaceId: String(repeating: "ab", count: 32))
         let link = try StandupInvitation(invitation: signed, namespaceId: "ns-1", contextId: "ctx-1").link()
         XCTAssertTrue(link.hasPrefix("https://links.calimero.network/com.calimero.mero-standup/join?invitation="))
         let parsed = try XCTUnwrap(StandupInvitation.parse(link))
         XCTAssertEqual(parsed.namespaceId, "ns-1")
         XCTAssertEqual(parsed.contextId, "ctx-1")
-        XCTAssertEqual(parsed.invitation.inviterSignature, signed.inviterSignature)
+        XCTAssertEqual(parsed.invitation, signed)
         // The desktop launcher's form opens too.
         let token = try XCTUnwrap(InviteLink.token(fromPasted: link))
         XCTAssertNotNil(StandupInvitation.parse("calimero://com.calimero.mero-standup/join?invitation=\(token)"))
@@ -180,6 +180,17 @@ final class InvitationTests: XCTestCase {
         XCTAssertNil(StandupInvitation.parse(link.replacingOccurrences(of: "com.calimero.mero-standup", with: "com.calimero.chat")))
         XCTAssertNil(StandupInvitation.parse("hello"))
         XCTAssertNil(StandupInvitation.parse(json: #"{"namespaceId":"n","contextId":"c","invitation":{}}"#))
+    }
+
+    func testReadsTheSDKPayloadAndRefusesPreOneLinks() throws {
+        let parsed = try XCTUnwrap(
+            StandupInvitation.parse(json: #"{"invitation":{"orgId":"org-1","token":"inv_x"},"namespaceId":"org-1","contextId":"c"}"#))
+        XCTAssertEqual(parsed.invitation, OrgInvitation(orgId: "org-1", token: "inv_x"))
+        XCTAssertEqual(parsed.namespaceId, "org-1")
+        // A pre-1.0 signed group invitation can't be redeemed on a 1.0 cluster.
+        XCTAssertNil(
+            StandupInvitation.parse(
+                json: #"{"namespaceId":"n","contextId":"c","invitation":{"invitation":{},"inviter_signature":"5a"}}"#))
     }
 }
 

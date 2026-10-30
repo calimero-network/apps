@@ -42,7 +42,7 @@ final class TeamsModelTests: XCTestCase {
         XCTAssertNil(model.error)
     }
 
-    func testRelaylessAccountHasNoTeamsAndNoError() async {
+    func testDisconnectedAccountHasNoTeamsAndNoError() async {
         let fake = FakeTeam()
         fake.backend.hasRelay = false
         let model = TeamsModel(backend: fake.backend, applicationId: nil)
@@ -70,7 +70,7 @@ final class TeamsModelTests: XCTestCase {
         let model = TeamsModel(backend: fake.backend, applicationId: "app")
         let team = await model.create(name: "X")
         XCTAssertNil(team)
-        XCTAssertEqual(model.error?.hasPrefix("The relay can't be reached"), true)
+        XCTAssertEqual(model.error?.hasPrefix("Your cluster can't be reached"), true)
     }
 }
 

@@ -7,7 +7,7 @@ import SwiftUI
 struct StandupApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: AppConfig.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: AppConfig.keychainService)
+        keychainService: AppConfig.keychainService)
 
     var body: some Scene {
         WindowGroup {
@@ -16,6 +16,7 @@ struct StandupApp: App {
                 .tint(Palette.ink)
                 .preferredColorScheme(.light)
                 .task { if !DemoMode.isOn { await session.restore() } }
+                // Invitation links, and the consent page sending the person back.
                 .onOpenURL { url in Task { await session.handle(url) } }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                     if let url = activity.webpageURL { Task { await session.handle(url) } }

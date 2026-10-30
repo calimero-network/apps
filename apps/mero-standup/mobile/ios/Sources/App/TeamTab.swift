@@ -112,8 +112,8 @@ struct TeamTab: View {
 
                 Section {
                     DisclosureGroup {
-                        DetailRow(label: "Team (context) id", value: team.contextId)
-                        DetailRow(label: "Namespace id", value: team.namespaceId)
+                        DetailRow(label: "Team (app instance) id", value: team.contextId)
+                        DetailRow(label: "Organization id", value: team.namespaceId)
                         if let me = team.me { DetailRow(label: "Your account", value: me) }
                     } label: {
                         Label("Details", systemImage: "info.circle").foregroundStyle(Palette.ink2)

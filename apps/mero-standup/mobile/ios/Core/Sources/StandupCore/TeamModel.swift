@@ -101,13 +101,13 @@ public final class TeamModel: ObservableObject {
         myName = trimmed
     }
 
-    /// An invitation link to this team's namespace, in the web app's format.
+    /// An invitation link to this team's org: an invite token in the SDK's link payload.
     public func inviteLink() async throws -> String {
         let signed = try await backend.createInvitation(namespaceId: namespaceId)
         return try StandupInvitation(invitation: signed, namespaceId: namespaceId, contextId: contextId).link()
     }
 
-    /// Follow the team while the screen is up: the relay's event stream when
+    /// Follow the team while the screen is up: the node's event stream when
     /// it has one, coalesced (one post can arrive as several events), and a
     /// poll either way, since a dropped stream would otherwise leave the board
     /// stale with nothing saying so. Runs until cancelled.
