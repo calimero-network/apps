@@ -6,7 +6,7 @@ import SwiftUI
 struct MeroSheetsApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: MeroSheets.packageName, callback: AppConfig.callback, config: AppConfig.providerConfig,
-        walletURL: AppConfig.walletURL, keychainService: AppConfig.keychainService)
+        keychainService: AppConfig.keychainService)
 
     var body: some Scene {
         WindowGroup {
@@ -67,7 +67,6 @@ struct IdentifiedString: Identifiable {
 
 struct SignInView: View {
     @EnvironmentObject private var session: MeroAppSession
-    @State private var signingIn = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -79,31 +78,14 @@ struct SignInView: View {
                     .frame(width: 76, height: 76)
                     .background(Theme.lime, in: RoundedRectangle(cornerRadius: 22))
                 Text("Mero Sheets").font(Theme.heading(28)).foregroundStyle(Theme.ink)
-                Text("Collaborative spreadsheets, peer to peer. Open your team\u{2019}s sheets, read the numbers and charts, and update a value on the go.")
+                Text("Collaborative spreadsheets for your team. Open your team\u{2019}s sheets, read the numbers and charts, and update a value on the go.")
                     .font(.system(size: 16)).foregroundStyle(Theme.text2).multilineTextAlignment(.center)
             }
             .padding(.horizontal, 32)
             Spacer()
             VStack(spacing: 12) {
-                if let error = session.client.errorMessage, !signingIn {
-                    Text(error).font(.system(size: 14)).foregroundStyle(Theme.danger).multilineTextAlignment(.center)
-                }
-                Button {
-                    Theme.haptic()
-                    signingIn = true
-                    Task {
-                        await session.signIn()
-                        signingIn = false
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        if signingIn { ProgressView().tint(Theme.ink) }
-                        Text(signingIn ? "Waiting for the wallet…" : "Sign in with Calimero")
-                    }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(signingIn)
-                Text("Your spreadsheets live with your team, not on a server. Sign-in approves this phone with your Calimero account.")
+                CloudSignInPanel(style: .app)
+                Text("Your spreadsheets live with your team on its Calimero cluster, not on a vendor's server.")
                     .font(.system(size: 13)).foregroundStyle(Theme.text3).multilineTextAlignment(.center)
             }
             .padding(.horizontal, 24)

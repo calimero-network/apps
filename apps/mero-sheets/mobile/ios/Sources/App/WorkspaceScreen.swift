@@ -8,6 +8,7 @@ struct WorkspaceScreen: View {
     let signOut: () -> Void
     let open: (String) -> Void
     @State private var confirmSignOut = false
+    @State private var approvals = false
 
     var body: some View {
         NavigationStack {
@@ -66,6 +67,7 @@ struct WorkspaceScreen: View {
                         Avatar(seed: workspace.account, size: 28)
                         Text(SheetsFormat.truncateKey(workspace.account)).font(Theme.mono).foregroundStyle(Theme.text2)
                     }
+                    Button { approvals = true } label: { Label("Approvals", systemImage: "checkmark.seal") }
                     Button(role: .destructive) { confirmSignOut = true } label: {
                         Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                     }
@@ -81,6 +83,9 @@ struct WorkspaceScreen: View {
             .tint(Theme.ink)
             .navigationTitle("Workspace")
             .refreshable { await workspace.load() }
+            .sheet(isPresented: $approvals) {
+                ApprovalsSheet(style: .app, orgs: workspace.workspaces.map { ($0.id, WorkspaceModel.displayName($0)) })
+            }
             .confirmationDialog("Sign out of Mero Sheets?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive, action: signOut)
             }
@@ -88,8 +93,8 @@ struct WorkspaceScreen: View {
     }
 
     private var detailRows: [(String, String)] {
-        var rows = [("Account", workspace.account), ("Relay", workspace.hasRelay ? "Connected" : "None yet")]
-        if let id = workspace.activeWorkspaceId { rows.append(("Workspace (namespace)", id)) }
+        var rows = [("Account", workspace.account), ("Node", workspace.hasRelay ? "Connected" : "Not connected")]
+        if let id = workspace.activeWorkspaceId { rows.append(("Workspace (org)", id)) }
                 return rows
     }
 }

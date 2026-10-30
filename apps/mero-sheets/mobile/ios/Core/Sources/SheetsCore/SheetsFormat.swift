@@ -1,10 +1,11 @@
 import Foundation
+import MeroKit
 
 /// Names and fixed values shared with the web app (`app/src/config.ts`).
 public enum MeroSheets {
     /// The registry package: what workspaces are founded with and invitation links carry.
     public static let packageName = "com.calimero.mero-sheets"
-    /// How often to re-read while the relay's event stream is not available.
+    /// How often to re-read while the node's event stream is not available.
     public static let pollInterval: TimeInterval = 5
     /// The tab a new spreadsheet starts with, as on the web.
     public static let firstSheetName = "Sheet 1"
@@ -46,15 +47,17 @@ public enum SheetsFormat {
     /// Plain words for a failure.
     public static func errorText(_ error: Error) -> String {
         let text = String(describing: error)
-        if text.contains("noRelay") {
-            return "No relay serves this account yet. Join a workspace from an invitation link to get one."
-        }
+        if error is SignedOutError || text.contains("noRelay") { return "You're signed out. Sign in again." }
+        if error is LoginRequired { return "Your session ended. Sign in again." }
+        if let busy = error as? UnavailableError { return "The cluster is busy (\(busy.reason)). Try again in a moment." }
+        if let app = error as? AppError { return app.message.isEmpty ? app.appCode : app.message }
+        if let node = error as? CalimeroError, !node.message.isEmpty { return node.message }
         if let urlError = error as? URLError {
             switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost:
                 return "You are offline. Check your connection and try again."
             case .timedOut:
-                return "The relay took too long to answer. Try again."
+                return "The cluster took too long to answer. Try again."
             default:
                 break
             }

@@ -1,3 +1,4 @@
+import MeroKit
 import XCTest
 
 @testable import SheetsCore
@@ -61,5 +62,13 @@ final class FormatTests: XCTestCase {
         XCTAssertEqual(ChartModel.niceTicks(min: 0, max: 9), [0, 2, 4, 6, 8, 10])
         XCTAssertEqual(ChartModel.formatTick(1_500_000), "1.5M")
         XCTAssertEqual(ChartModel.formatTick(1234.567), "1,234.57")
+    }
+}
+
+final class ErrorTextTests: XCTestCase {
+    func testCalimero10ErrorsReadAsWords() {
+        XCTAssertEqual(SheetsFormat.errorText(SignedOutError(method: "get_cells")), "You're signed out. Sign in again.")
+        XCTAssertEqual(SheetsFormat.errorText(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertEqual(SheetsFormat.errorText(AppError("Sheet not found")), "Sheet not found")
     }
 }

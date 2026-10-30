@@ -1,24 +1,23 @@
 import Foundation
 import MeroKit
 import MeroKitUI
+import SheetsCore
 
-/// Where the app signs in and which cloud it routes through, read from the
-/// Info.plist keys `project.yml` sets. An empty value means the SDK's default
-/// (the hosted Calimero wallet and Cloud manager).
+/// Which Calimero 1.0 cluster the app talks to, read from the Info.plist keys
+/// `project.yml` sets: `MeroNodeURL` (a node of your Cloud cluster; empty = the
+/// sign-in screen asks) and `MeroDevNodeURL` (the development node it offers).
 enum AppConfig {
+    /// Where the node's consent page returns: `mero-sheets://consent`, or a verified https host.
     static var callback: CloudCallback {
-        if let host = string("SheetsCallbackHost") { return .https(host: host, path: string("SheetsCallbackPath") ?? "/enrol") }
-        return .scheme(string("SheetsCallbackScheme") ?? "mero-sheets")
+        if let host = string("SheetsCallbackHost") {
+            return .https(host: host, path: string("SheetsCallbackPath") ?? "/consent")
+        }
+        return .scheme(string("SheetsCallbackScheme") ?? "mero-sheets", path: "consent")
     }
 
     static var providerConfig: MeroProviderConfig {
-        var config = MeroProviderConfig()
-        if let cloud = string("MeroCloudBaseURL").flatMap(URL.init(string:)) { config.cloudBaseURL = cloud }
-        if let registry = string("MeroRegistryURL") { config.registryURL = registry }
-        return config
+        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: MeroSheets.packageName)
     }
-
-    static var walletURL: URL? { string("MeroWalletURL").flatMap(URL.init(string:)) }
 
     static let keychainService = "network.calimero.sheets"
 

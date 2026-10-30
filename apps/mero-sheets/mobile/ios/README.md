@@ -13,10 +13,13 @@ cd Core && swift test          # models against MeroKitTestSupport's InMemoryApp
 cd .. && xcodegen generate && open MeroSheets.xcodeproj
 ```
 
-Bundle id `network.calimero.sheets`. Sign-in returns to `mero-sheets://enrol`; invitation links
-arrive on `calimero://com.calimero.mero-sheets/join?invitation=…`. Set `SheetsCallbackHost`
-in `project.yml` for a verified https callback, and `MeroCloudBaseURL` / `MeroWalletURL` /
-`MeroRegistryURL` for another environment (empty means the SDK's defaults).
+Bundle id `network.calimero.sheets`. Sign-in (Calimero 1.0) is a passkey on your Calimero Cloud
+cluster (`MeroNodeURL` in `project.yml` prefills its node; empty: the sign-in screen asks) or a
+development node (`MeroDevNodeURL`, `merod local`, mock attestation allowed). A real cluster's
+passkey needs the `webcredentials:<rp-id>` associated domain. The node's consent page returns to
+`mero-sheets://consent` (set `SheetsCallbackHost` for a verified https return); invitation links
+arrive on `calimero://com.calimero.mero-sheets/join?invitation=…`.
 
-The swift-sdk is pinned by revision (the `main` merge commit of PR #84) in both `project.yml`
-and `Core/Package.swift`; keep the two equal.
+The swift-sdk is pinned by revision (`35148e4`, the head of swift-sdk#85, `feat/calimero-1.0`;
+it moves to the merge commit once that lands) in `project.yml`, `Core/Package.swift` and
+`Core/Package.resolved`; keep them equal.
