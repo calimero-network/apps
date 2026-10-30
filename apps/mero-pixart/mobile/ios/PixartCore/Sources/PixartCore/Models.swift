@@ -11,7 +11,7 @@ public enum LoadState: Equatable, Sendable {
 
 // MARK: - Teams
 
-/// A team: a namespace running Mero PixArt.
+/// A team: a Calimero organization running Mero PixArt.
 public struct Team: Identifiable, Equatable, Sendable {
     public let id: String
     public let name: String
@@ -46,7 +46,7 @@ public final class TeamsModel: ObservableObject {
 
 // MARK: - Projects
 
-/// A project: a subgroup of the team with one context running the artwork.
+/// A project: a team of the organization with one app instance running the artwork.
 public struct ProjectSummary: Identifiable, Equatable, Sendable {
     public var id: String { contextId }
     public let contextId: String
@@ -144,8 +144,8 @@ public final class ProjectsModel: ObservableObject {
 
     /// A link that invites someone to this team, in the web's format.
     public func inviteLink(teamName: String) async throws -> String {
-        let signed = try await backend.createInvitation(namespaceId: teamId)
-        return try PixartInvitation(invitation: signed, teamName: teamName.nilIfBlank).link()
+        let invitation = try await backend.createInvitation(namespaceId: teamId)
+        return try PixartInvitation(invitation: invitation, teamName: teamName.nilIfBlank).link()
     }
 }
 
@@ -188,7 +188,7 @@ public final class ArtworkModel: ObservableObject {
     public static let viewSide = 3072.0
     /// An export is at most this many.
     public static let exportSide = 8192.0
-    /// How often to re-read when the relay cannot stream events.
+    /// How often to re-read when the node cannot stream events.
     public static let pollInterval: UInt64 = 5_000_000_000
 
     public init(backend: any MeroAppBackend, teamId: String, contextId: String, name: String = "", blobs: BlobStore) {
@@ -205,8 +205,8 @@ public final class ArtworkModel: ObservableObject {
     public var account: String { backend.account }
     public var hasOverrides: Bool { !overrides.isEmpty }
 
-    /// Join the project's context when this account is not in it yet (an open
-    /// subgroup of the team), then read and draw it.
+    /// Make sure this account reaches the project's app instance (open teams'
+    /// members inherit it), then read and draw it.
     public func open() async {
         phase = .loading
         if let member = try? await backend.isMember(contextId: contextId), !member {
@@ -248,7 +248,7 @@ public final class ArtworkModel: ObservableObject {
         } while dirty
     }
 
-    /// Follow the project until the task is cancelled: the relay's events
+    /// Follow the project until the task is cancelled: the node's events
     /// when it streams them, polling otherwise (and after a stream ends).
     public func live() async {
         if backend.canSubscribe {

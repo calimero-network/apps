@@ -9,8 +9,10 @@
 # package PixartCore/, which `swift test --package-path PixartCore` builds and
 # tests on macOS.
 #
-# The swift-sdk is pinned to its `main` merge commit of PR #84; keep both pins
-# (here and PixartCore/Package.swift) equal.
+# The swift-sdk is pinned to the head of its Calimero 1.0 branch
+# (calimero-network/swift-sdk#85, `feat/calimero-1.0`); the pin moves to that
+# PR's merge commit once it lands. Keep both pins (here and
+# PixartCore/Package.swift) equal.
 name: MeroPixart
 
 options:
@@ -22,7 +24,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    revision: a1ec644130d4405a1bab7547654b1442cc559b49
   PixartCore:
     path: PixartCore
 
@@ -41,21 +43,25 @@ targets:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`mero-pixart://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.pixart.enrol
+          # The node's consent page returns here (`mero-pixart://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.pixart.consent
             CFBundleURLSchemes: [mero-pixart]
           # Deep links: `calimero://com.calimero.mero-pixart/project?team=…&project=…`
           # and invitations, `calimero://com.calimero.mero-pixart/join?invitation=…`.
           - CFBundleURLName: network.calimero.pixart.links
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
-        # wallet and Cloud manager). See README.md.
+        # The Calimero 1.0 cluster. MeroNodeURL: a node from Calimero Cloud's
+        # console (empty = sign-in asks for one); MeroNodes: the cluster's other
+        # nodes, comma-separated, for failover; MeroAllowMock: YES only for a
+        # `merod local` cluster (mock attestation). See ../README.md.
+        MeroNodeURL: ""
+        MeroNodes: ""
+        MeroAllowMock: "NO"
+        MeroPackageVersion: ""
+        # Where the node's consent page returns to.
         MeroPixartCallbackScheme: mero-pixart
         MeroPixartCallbackHost: ""
-        MeroPixartCallbackPath: /enrol
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        MeroPixartCallbackPath: /consent
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.pixart

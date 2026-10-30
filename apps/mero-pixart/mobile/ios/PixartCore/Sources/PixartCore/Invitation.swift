@@ -1,43 +1,43 @@
 import Foundation
 import MeroKit
 
-/// A team invitation in the web app's format (`utils/invitation.ts`,
-/// `InviteModal`, `InvitationPrompt`), so a link minted on either side opens
-/// on the other:
+/// A team invitation in the link shape every Calimero 1.0 app shares (the
+/// SDK's `MeroKitUI.InvitationLinkPayload`), plus the team's name to show:
 ///
-/// - payload: `{"invitation": <SignedGroupOpenInvitation>, "groupName"?: …, "__teamName"?: "<team name>"}`
+/// - payload: `{"invitation": {"orgId": "<team>", "token": "inv_…"}, "namespaceId": "<team>", "__teamName"?: "<team name>"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.mero-pixart/join?invitation=<token>`
 ///
-/// (Kotlin `PixartInvitation`.)
+/// A PixArt team is a Calimero organization. (Kotlin `PixartInvitation`.)
 public struct PixartInvitation: Sendable {
-    public let invitation: SignedGroupOpenInvitation
+    public let invitation: OrgInvitation
     public let teamName: String?
 
-    public init(invitation: SignedGroupOpenInvitation, teamName: String? = nil) {
+    public init(invitation: OrgInvitation, teamName: String? = nil) {
         self.invitation = invitation
         self.teamName = teamName
     }
 
-    /// The team it admits to: the hex of its SIGNED `group_id`.
-    public var namespaceId: String {
-        Hex.encode(invitation.invitation.groupId.map { UInt8(truncatingIfNeeded: $0) })
-    }
+    /// The team (organization) it admits to: the one the node minted the token for.
+    public var namespaceId: String { invitation.orgId }
 
     public var title: String { teamName ?? "a team" }
 
-    private struct Payload: Encodable {
-        let invitation: SignedGroupOpenInvitation
-        let teamName: String?
+    private struct Payload: Codable {
+        var invitation: OrgInvitation
+        var namespaceId: String?
+        var teamName: String?
+        var groupName: String?
         enum CodingKeys: String, CodingKey {
-            case invitation
+            case invitation, namespaceId, groupName
             case teamName = "__teamName"
         }
     }
 
     /// The shareable link.
     public func link() throws -> String {
-        let token = try InviteCodec.encode(Payload(invitation: invitation, teamName: teamName?.nilIfBlank))
+        let token = try InviteCodec.encode(
+            Payload(invitation: invitation, namespaceId: namespaceId, teamName: teamName?.nilIfBlank))
         return InviteLink.invitation(token: token, slug: PixartFormat.packageName)
     }
 
@@ -53,30 +53,13 @@ public struct PixartInvitation: Sendable {
         return parse(json: json)
     }
 
-    /// The decoded payload (the web's `parseTeamInvitation`).
+    /// The decoded payload: an org invite token, and the team's name when the link carries one.
     public static func parse(json: String) -> PixartInvitation? {
-        guard let root = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)) else { return nil }
-        let name = (root["__teamName"]?.stringValue ?? root["groupName"]?.stringValue)?.nilIfBlank
-        if let wrapped = root["invitation"], isEnvelope(wrapped), let signed = decodeSigned(wrapped) {
-            return PixartInvitation(invitation: signed, teamName: name)
-        }
-        if isEnvelope(root), let signed = decodeSigned(root) { return PixartInvitation(invitation: signed, teamName: name) }
-        return nil
-    }
-
-    private static func isEnvelope(_ value: JSONValue) -> Bool {
-        guard case .object(let fields) = value, case .object? = fields["invitation"] else { return false }
-        return fields["inviter_signature"]?.stringValue != nil || fields["inviterSignature"]?.stringValue != nil
-    }
-
-    private static func decodeSigned(_ value: JSONValue) -> SignedGroupOpenInvitation? {
-        guard case .object(var fields) = value else { return nil }
-        if fields["inviter_signature"] == nil, let camel = fields["inviterSignature"] {
-            fields["inviter_signature"] = camel
-            fields.removeValue(forKey: "inviterSignature")
-        }
-        guard let data = try? JSONEncoder().encode(JSONValue.object(fields)) else { return nil }
-        return try? JSONDecoder().decode(SignedGroupOpenInvitation.self, from: data)
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: Data(json.utf8)),
+            !payload.invitation.orgId.isEmpty, !payload.invitation.token.isEmpty
+        else { return nil }
+        return PixartInvitation(
+            invitation: payload.invitation, teamName: (payload.teamName ?? payload.groupName)?.nilIfBlank)
     }
 }
 
@@ -110,7 +93,8 @@ public final class InvitationModel: ObservableObject {
         return true
     }
 
-    /// Join the team. `didJoin` may hand the session the admitting relay.
+    /// Join the team: redeem the invite token on the node. `didJoin` re-reads
+    /// what the account sees.
     public func accept(
         backend: @escaping @MainActor () -> (any MeroAppBackend)?,
         didJoin: @escaping @MainActor () async -> Void

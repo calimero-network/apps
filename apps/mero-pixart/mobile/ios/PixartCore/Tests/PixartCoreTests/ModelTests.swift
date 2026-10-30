@@ -121,11 +121,20 @@ final class ModelTests: XCTestCase {
 
 @MainActor
 final class InvitationTests: XCTestCase {
-    static let signedJSON =
-        #"{"invitation":{"inviter_identity":[1,2],"group_id":[170,170],"expiration_timestamp":9,"secret_salt":[3]},"inviter_signature":"sig"}"#
 
-    func testTheWebsPayloadParses() throws {
-        let payload = #"{"invitation":\#(Self.signedJSON),"groupName":"g","__teamName":"Studio"}"#
+    func testTheNodesErrorsReadAsWords() {
+        XCTAssertEqual(
+            PixartFormat.errorText(ReleaseDeadlineError("deadline", details: ["release": "2.3.110"])),
+            "Your cluster takes no new work until node release 2.3.110 is approved. Review it under Needs your approval.")
+        XCTAssertEqual(PixartFormat.errorText(NotFound("no such app")), "This isn't shared with you, or it was deleted.")
+        XCTAssertEqual(PixartFormat.errorText(LoginRequired("expired")), "Your session ended. Sign in again.")
+    }
+
+    /// An org invite token, as `POST /orgs/{org}/invites` mints it.
+    static let signedJSON = #"{"orgId":"aaaa","token":"inv_abc"}"#
+
+    func testTheLinkPayloadParses() throws {
+        let payload = #"{"invitation":\#(Self.signedJSON),"namespaceId":"aaaa","groupName":"g","__teamName":"Studio"}"#
         let inv = try XCTUnwrap(PixartInvitation.parse(json: payload))
         XCTAssertEqual(inv.namespaceId, "aaaa")
         XCTAssertEqual(inv.title, "Studio")
@@ -137,6 +146,15 @@ final class InvitationTests: XCTestCase {
         XCTAssertTrue(link.contains("com.calimero.mero-pixart/join?invitation="))
         XCTAssertEqual(PixartInvitation.parse(link)?.teamName, "Studio")
         XCTAssertNil(PixartInvitation.parse(link.replacingOccurrences(of: "mero-pixart", with: "mero-chat")))
+        // The 1.0 link shape: the org invite and the org.
+        let json = try XCTUnwrap(InviteCodec.decode(token: try XCTUnwrap(InviteLink.token(fromPasted: link))))
+        XCTAssertTrue(json.contains(#""token":"inv_abc""#))
+        XCTAssertTrue(json.contains(#""namespaceId":"aaaa""#))
+    }
+
+    func testAPre10SignedInvitationIsRefused() {
+        let old = #"{"invitation":{"invitation":{"group_id":[170,170]},"inviter_signature":"sig"}}"#
+        XCTAssertNil(PixartInvitation.parse(json: old))
     }
 
     func testAcceptJoinsTheTeam() async throws {
@@ -150,5 +168,6 @@ final class InvitationTests: XCTestCase {
         XCTAssertTrue(joined)
         XCTAssertEqual(model.stage, .joined(teamId: "aaaa", name: "Studio"))
         XCTAssertFalse(model.open("https://example.com"))
+        XCTAssertTrue(backend.log.contains("joinNamespace aaaa"))
     }
 }
