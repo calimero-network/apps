@@ -7,7 +7,7 @@ import SwiftUI
 struct StreamApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: AppConfig.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: AppConfig.keychainService)
+        keychainService: AppConfig.keychainService)
 
     var body: some Scene {
         WindowGroup {
@@ -52,7 +52,7 @@ struct RootView: View {
         Group {
             if let backend = session.backend {
                 NavigationStack(path: $nav.path) {
-                    StreamsView(backend: backend, onSignOut: signOut)
+                    StreamsView(session: session, backend: backend, onSignOut: signOut)
                         .navigationDestination(for: StreamSummary.self) { stream in
                             RoomsView(stream: stream, backend: backend, applicationId: session.applicationId)
                         }
@@ -84,10 +84,10 @@ struct RootView: View {
         }
     }
 
-    /// The call's media channel: the account's presence through its relay.
+    /// The call's media channel: the room's presence on the cluster.
     private func mediaChannel() -> (any MediaChannel)? {
-        guard let connection = session.client.connection, let presence = connection.presence else { return nil }
-        return RelayMediaChannel(presence: presence, selfAuthor: connection.relay?.authorKey)
+        guard let client = session.client.cloud else { return nil }
+        return CalimeroMediaChannel(client: client, account: session.account)
     }
 
     private func land(_ landing: InvitationLanding) {

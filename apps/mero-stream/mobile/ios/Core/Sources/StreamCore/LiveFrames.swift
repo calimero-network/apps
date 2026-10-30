@@ -26,8 +26,10 @@ import Foundation
 /// by the web's own `encodeFragments`; the tests check this encoder writes
 /// them exactly.
 public enum LiveFrames {
-    /// `EPHEMERAL_MAX_BYTES` in core: one presence slice.
-    public static let maxSliceBytes = 16_384
+    /// `MAX_STATE_BYTES` in core 1.0's presence: one slice. (0.x relays took
+    /// 16 KiB; ``encodeFragments(_:sliceBytes:)`` still writes that size for
+    /// the web's vectors.)
+    public static let maxSliceBytes = 4_096
     public static let version: UInt8 = 2
     public static let headerFixedBytes = 40
     public static let maxFragments = 255
@@ -41,10 +43,10 @@ public enum LiveFrames {
     }
 
     /// Split one frame into presence-sized slices. A zero-byte frame is still one slice.
-    public static func encodeFragments(_ frame: LiveFrame) throws -> [[UInt8]] {
+    public static func encodeFragments(_ frame: LiveFrame, sliceBytes: Int = maxSliceBytes) throws -> [[UInt8]] {
         guard frame.codec.allSatisfy({ $0.isASCII }) else { throw LiveFrameError.nonASCIICodec(frame.codec) }
         let codec = Array(frame.codec.utf8)
-        let capacity = maxSliceBytes - headerFixedBytes - codec.count
+        let capacity = sliceBytes - headerFixedBytes - codec.count
         guard capacity > 0, codec.count <= 255 else { throw LiveFrameError.codecTooLong(codec.count) }
         let count = max(1, (frame.bytes.count + capacity - 1) / capacity)
         guard count <= maxFragments else { throw LiveFrameError.tooManyFragments(count) }
