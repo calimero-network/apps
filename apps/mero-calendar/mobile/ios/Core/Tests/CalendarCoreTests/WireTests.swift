@@ -81,13 +81,29 @@ final class TeamInvitationTests: XCTestCase {
         XCTAssertEqual(parsed.teamName, "Design")
     }
 
-    func testWebPayloadWithTheNodeEnvelopeAndTeamName() throws {
-        let signed = MeroKitTestSupportShim.invitation(namespaceId: Fixture.teamId)
-        let inner = String(decoding: try JSONEncoder().encode(signed), as: UTF8.self)
-        let json = #"{"invitation":\#(inner),"groupName":null,"__teamName":"Ops"}"#
+    func testLinkCarriesTheSDKPayload() throws {
+        let invitation = MeroKitTestSupportShim.invitation(namespaceId: Fixture.teamId)
+        let link = try TeamInvitation(invitation: invitation, teamName: "Ops").link()
+        let token = try XCTUnwrap(InviteLink.token(fromPasted: link))
+        let json = try XCTUnwrap(InviteCodec.decode(token: token))
+        let root = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+        XCTAssertEqual(root["invitation"]?["orgId"]?.stringValue, Fixture.teamId)
+        XCTAssertEqual(root["invitation"]?["token"]?.stringValue, invitation.token)
+        XCTAssertEqual(root["namespaceId"]?.stringValue, Fixture.teamId)
+        XCTAssertEqual(root["__teamName"]?.stringValue, "Ops")
+    }
+
+    func testPayloadWithTheNodeEnvelopeAndTeamName() throws {
+        let json = #"{"data":{"invitation":{"orgId":"\#(Fixture.teamId)","token":"inv_abc"},"groupName":null,"__teamName":"Ops"}}"#
         let parsed = try XCTUnwrap(TeamInvitation.parse(json: json))
         XCTAssertEqual(parsed.namespaceId, Fixture.teamId)
+        XCTAssertEqual(parsed.invitation.token, "inv_abc")
         XCTAssertEqual(parsed.teamName, "Ops")
+    }
+
+    func testPreOneSignedInvitationIsRefused() {
+        let json = #"{"invitation":{"invitation":{"group_id":[1,2]},"inviter_signature":"5a5a"},"__teamName":"Old"}"#
+        XCTAssertNil(TeamInvitation.parse(json: json))
     }
 
     func testAnotherAppsLinkIsRefused() throws {
@@ -101,7 +117,7 @@ final class TeamInvitationTests: XCTestCase {
 }
 
 enum MeroKitTestSupportShim {
-    static func invitation(namespaceId: String) -> SignedGroupOpenInvitation {
+    static func invitation(namespaceId: String) -> OrgInvitation {
         InMemoryAppBackend.invitation(namespaceId: namespaceId)
     }
 }

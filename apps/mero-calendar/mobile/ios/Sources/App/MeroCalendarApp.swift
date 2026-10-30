@@ -7,13 +7,14 @@ import SwiftUI
 struct MeroCalendarApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: CalendarConstants.packageName, callback: AppConfig.callback, config: AppConfig.providerConfig,
-        walletURL: AppConfig.walletURL, keychainService: AppConfig.keychainService)
+        keychainService: AppConfig.keychainService)
 
     var body: some Scene {
         WindowGroup {
             RootView(session: session, client: session.client)
                 .preferredColorScheme(.light)
                 .tint(Theme.ink)
+                // Invitation links, and the consent page sending the person back.
                 .onOpenURL { url in Task { await session.handle(url) } }
         }
     }
@@ -43,7 +44,7 @@ struct RootView: View {
                 SignedInView(session: session, backend: backend)
                     .id(session.revision)
             } else if session.isSignedIn {
-                StatusScreen(text: "Connecting to your relay…") {
+                StatusScreen(text: "Connecting to your cluster…") {
                     Button("Sign out") { Task { await session.signOut() } }
                         .buttonStyle(SecondaryButtonStyle(fullWidth: false))
                 }
@@ -93,6 +94,7 @@ struct SignedInView: View {
     @ObservedObject var session: MeroAppSession
     let backend: any MeroAppBackend
     @StateObject private var teams: TeamsModel
+    @StateObject private var approvals: ApprovalsModel
     @State private var path: [Route] = []
     @State private var joining = false
     @State private var joinError: String?
@@ -104,11 +106,19 @@ struct SignedInView: View {
             wrappedValue: TeamsModel(
                 backend: backend, names: DeviceStores.names,
                 didJoin: { [weak session] in await session?.didJoinNamespace() }))
+        _approvals = StateObject(
+            wrappedValue: ApprovalsModel(
+                packageName: CalendarConstants.packageName, appName: "Mero Calendar",
+                fetch: { [weak session] org in
+                    guard let session else { throw CancellationError() }
+                    return try await session.pendingApprovals(org: org)
+                },
+                consent: { [weak session] request in await session?.requestConsent(request) }))
     }
 
     var body: some View {
         NavigationStack(path: $path) {
-            TeamsView(session: session, model: teams, path: $path)
+            TeamsView(session: session, model: teams, approvals: approvals, path: $path)
                 .navigationDestination(for: Route.self) { route in
                     switch route {
                     case .team(let team):

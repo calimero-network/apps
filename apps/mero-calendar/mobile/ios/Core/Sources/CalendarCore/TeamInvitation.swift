@@ -1,42 +1,44 @@
 import Foundation
 import MeroKit
 
-/// A team invitation in the web app's form (`app/src/pages/teams/TeamsPage.tsx`,
-/// `components/common/invitation-prompt/InvitationPrompt.tsx`):
+/// A team invitation on Calimero 1.0: an org invite token, in the SDK's
+/// link payload (`MeroKitUI.InvitationLinkPayload`) plus the team's name.
 ///
-/// - payload: `{"invitation": <SignedGroupOpenInvitation>, "__teamName": "<name>"}`
+/// - payload: `{"invitation": {"orgId": "…", "token": "inv_…"}, "namespaceId": "<org>", "__teamName": "<name>"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.mero-calendar/join?invitation=<token>`
 ///
-/// Reading accepts what the web app's `parseTeamInvitation` accepts: the
-/// wrapped payload or a bare signed invitation, the name under `__teamName`
-/// (or `groupName` / `groupAlias`), a link, a `calimero://` link or a bare token.
+/// The invite token is a bearer secret the org's node minted
+/// (`POST /orgs/{org}/invites`); joining redeems it (`POST /invites/{token}/redeem`).
+/// Reading accepts the name under `__teamName` (or `teamName` / `groupName` /
+/// `groupAlias`), a link, a `calimero://` link or a bare token. A pre-1.0
+/// signed group invitation is refused: it can't be redeemed on a 1.0 cluster.
 public struct TeamInvitation: Sendable {
-    public let invitation: SignedGroupOpenInvitation
+    public let invitation: OrgInvitation
     public let teamName: String?
 
-    public init(invitation: SignedGroupOpenInvitation, teamName: String?) {
+    public init(invitation: OrgInvitation, teamName: String?) {
         self.invitation = invitation
         self.teamName = teamName
     }
 
-    /// The namespace it admits to: the hex of its signed `group_id`.
-    public var namespaceId: String {
-        Hex.encode(invitation.invitation.groupId.map { UInt8(truncatingIfNeeded: $0) })
-    }
+    /// The org it admits to.
+    public var namespaceId: String { invitation.orgId }
 
     private struct Payload: Encodable {
-        let invitation: SignedGroupOpenInvitation
+        let invitation: OrgInvitation
+        let namespaceId: String
         let teamName: String?
         enum CodingKeys: String, CodingKey {
-            case invitation
+            case invitation, namespaceId
             case teamName = "__teamName"
         }
     }
 
     /// The shareable link.
     public func link() throws -> String {
-        let token = try InviteCodec.encode(Payload(invitation: invitation, teamName: teamName))
+        let token = try InviteCodec.encode(
+            Payload(invitation: invitation, namespaceId: invitation.orgId, teamName: teamName))
         return InviteLink.invitation(token: token, slug: CalendarConstants.packageName)
     }
 
@@ -53,30 +55,14 @@ public struct TeamInvitation: Sendable {
     public static func parse(json: String) -> TeamInvitation? {
         guard let root = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)) else { return nil }
         let payload = root["data"] ?? root
-        let name = ["__teamName", "groupName", "groupAlias"].lazy
+        let name = ["__teamName", "teamName", "groupName", "groupAlias"].lazy
             .compactMap { payload[$0]?.stringValue?.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty }
-        if let wrapped = payload["invitation"], isSigned(wrapped), let signed = decode(wrapped) {
-            return TeamInvitation(invitation: signed, teamName: name)
-        }
-        if isSigned(payload), let signed = decode(payload) {
-            return TeamInvitation(invitation: signed, teamName: name)
-        }
-        return nil
-    }
-
-    private static func isSigned(_ value: JSONValue) -> Bool {
-        guard case .object(let fields) = value, case .object? = fields["invitation"] else { return false }
-        return fields["inviter_signature"]?.stringValue != nil || fields["inviterSignature"]?.stringValue != nil
-    }
-
-    private static func decode(_ value: JSONValue) -> SignedGroupOpenInvitation? {
-        guard case .object(var fields) = value else { return nil }
-        if fields["inviter_signature"] == nil, let camel = fields["inviterSignature"] {
-            fields["inviter_signature"] = camel
-            fields.removeValue(forKey: "inviterSignature")
-        }
-        guard let data = try? JSONEncoder().encode(JSONValue.object(fields)) else { return nil }
-        return try? JSONDecoder().decode(SignedGroupOpenInvitation.self, from: data)
+        let wrapped: JSONValue = payload["invitation"] ?? payload
+        guard let token = wrapped["token"]?.stringValue, !token.isEmpty
+        else { return nil }
+        let org = wrapped["orgId"]?.stringValue ?? payload["namespaceId"]?.stringValue
+        guard let org, !org.isEmpty else { return nil }
+        return TeamInvitation(invitation: OrgInvitation(orgId: org, token: token), teamName: name)
     }
 }

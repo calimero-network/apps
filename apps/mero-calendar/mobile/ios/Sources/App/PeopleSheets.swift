@@ -109,12 +109,12 @@ struct CalendarDetailsSheet: View {
             List {
                 row("Calendar", model.calendar.name)
                 row("Team", model.team.name)
-                row("Calendar id (context)", model.calendar.id)
-                row("Group id", model.calendar.groupId)
-                row("Team id (namespace)", model.team.id)
+                row("Calendar id (app instance)", model.calendar.id)
+                row("Calendar team id", model.calendar.groupId)
+                row("Team id (organization)", model.team.id)
                 row("Your account", model.me)
                 Section {
-                    Text("Private events are kept on this device and are never sent to your relay or your team.")
+                    Text("Private events are kept on this device and are never sent to your cluster or your team.")
                         .font(Theme.body(13)).foregroundStyle(Theme.muted)
                 }
             }

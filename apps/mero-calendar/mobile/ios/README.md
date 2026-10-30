@@ -5,34 +5,71 @@ web app (`com.calimero.mero-calendar`, [`logic/`](../../logic)), built on the
 swift-sdk's `MeroAppSession` (MeroKit / MeroKitUI). Its Android twin is
 [`../android`](../android); both have the same screens, copy and flows.
 
-## Delegated only
+## On Calimero 1.0
 
-The phone holds no node and never talks JSON-RPC. It holds a device key your
-Calimero account certifies, and the account's relay works for it:
+The phone holds no node. It signs in to a Calimero 1.0 cluster with a passkey
+and talks to it over the sealed channel (`calimero/sealed-http/v2`, opened only
+after the node's attestation is verified). The swift-sdk's `CloudAppBackend`
+maps the app layer onto the 1.0 API:
 
 | What | SDK | Wire |
 | --- | --- | --- |
-| Sign in / restore / sign out | `MeroAppSession.signIn()` / `restore()` / `signOut()` | wallet `account-enroll`, cloud `getAccountRelays`; keys in the Keychain (`network.calimero.calendar`) |
-| Teams | `MeroAppBackend.listNamespaces()` | the account's namespaces running Mero Calendar |
-| Create a team | `foundNamespace(name:)` | namespace founding through the relay, hosted by the cloud |
-| Calendars in a team | `listSubgroups(namespaceId:)` + `listContexts(groupId:)` | one open subgroup per calendar with one context in it (the web app's model), plus any context straight in the team |
-| Create a calendar | `createSubgroup(…, isPublic: true)` + `createContext(…, initArgs: {})` | governance op + context intent |
-| Open a calendar | `isMember` / `joinContext` (retried for 20 s, 90 s right after joining the team) | `MemberJoinedOpen` |
-| Invite / join | `createInvitation` / `joinNamespace` + `session.didJoinNamespace()` | signed invitation; direct admission at the admitting relay |
-| Read events / members | generated `CalendarClient` over `contract.bound(to:)` → `query` | `POST /admin-api/contexts/{id}/query` |
-| Create / edit / delete events, set your name | generated `CalendarClient` → `execute` | warrant on `POST /admin-api/contexts/{id}/intents` |
-| Live updates | `events(contextId:)`; 10 s polling when the relay session can't stream | SSE |
+| Sign in / create account / restore / sign out | `MeroAppSession.connect(nodeURL:allowMock:)`, `signIn()` / `signUp(name:)` / `restore()` / `signOut()` | `/auth/passkey/{login,register}/{begin,finish}`, `/auth/refresh`; session in the Keychain (`network.calimero.calendar`) |
+| Teams | `MeroAppBackend.listNamespaces()` | the account's **orgs** running Mero Calendar (`GET /auth/me`) |
+| Create a team | `foundNamespace(name:)` | `POST /orgs` + org metadata `{name, package}` |
+| Calendars in a team | `listSubgroups(namespaceId:)` + `listContexts(groupId:)` | the org's **teams** (`GET /orgs/{org}`), one **app instance** per calendar, plus any instance straight in the org |
+| Create a calendar | `createSubgroup(…, isPublic: true)` + `createContext(…, initArgs: {})` | `POST /orgs/{org}/teams {join: everyone}` + `POST /apps {package, org, access: team}` |
+| Open a calendar | `isMember` / `joinContext` (retried for 20 s, 90 s right after joining the team) | `GET /apps/{app}`; open teams inherit org membership |
+| Invite / join | `createInvitation` / `joinNamespace` + `session.didJoinNamespace()` | `POST /orgs/{org}/invites` → invite token; `POST /invites/{token}/redeem` |
+| Read events / members | generated `CalendarClient` over `contract.bound(to:)` → `query` | `POST /apps/{app}/views` |
+| Create / edit / delete events, set your name | generated `CalendarClient` → `execute` | `POST /apps/{app}/intents` |
+| Live updates | `events(contextId:)`; 10 s polling as a fallback | `GET /apps/{app}/events` (sealed SSE) |
+| Approvals (an update of Mero Calendar, a node release) | `session.pendingApprovals(org:)` + `session.requestConsent(_:)` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
+
+In the app's words a **team** is a Calimero org, a **calendar** is a team in
+that org with one app instance of Mero Calendar.
+
+### Sign-in
+
+- **Calimero Cloud**: enter the cluster's node URL (from
+  cloud.calimero.network; bake it in with `CalimeroClusterURL`), then **Sign in
+  with passkey** or **Create an account**. The node's TDX attestation is
+  verified (`CloudPolicy.production`). The device's passkey needs the
+  cluster's relying party as an associated domain (`webcredentials:<rp-id>`,
+  see `project.yml`).
+- **Development node**: a `merod local` node URL (default
+  `http://localhost:2501`, `DefaultNodeURL`). The client allows mock
+  attestation (`allowMock`) and makes and keeps a software passkey for that
+  node, so no associated domain is needed.
+
+### Invitations
+
+An invitation link is
+`https://links.calimero.network/com.calimero.mero-calendar/join?invitation=<token>`,
+the token being `base58(deflate(json))` of
+`{"invitation":{"orgId":"…","token":"inv_…"},"namespaceId":"…","__teamName":"…"}`
+(the SDK's `InvitationLinkPayload` plus the team's name). The invite token is a
+bearer secret: anyone holding the link can join until it expires. Pre-1.0 links
+(signed group invitations) are refused.
+
+### Approvals
+
+Releases of the node and upgrades of an app instance are approved only on the
+node's own consent page. **Your Teams** shows what waits for the signed-in
+person (upgrades of Mero Calendar, node releases their org approves); **Review**
+opens the page in the system browser, which returns to
+`mero-calendar://consent`.
 
 ## Private events
 
 The contract keeps private events in `#[app::private]` storage, which is
-node-local. An account has no node, and a relay has no private storage for the
-accounts it serves, so the web app keeps an account's private events in the
-browser (`app/src/api/privateStore.ts`). The phone does the same: a private
+node-local. On 1.0 an app instance runs replicated across the cluster (calls
+run on its Raft leader), so there is no one node to keep them on; the web app
+keeps an account's private events in the browser (`app/src/api/privateStore.ts`). The phone does the same: a private
 event, and a peerless one (which the contract would route to private storage),
 is stored on the device only (`PrivateEventStore`, keyed by account + team,
 each record carrying its calendar's context id; ids `local-…`). It is never
-sent to the relay. `get_private_events` / `create_private_event` are not called.
+sent to the cluster. `get_private_events` / `create_private_event` are not called.
 
 Editing a device-local event so that it is not private and has someone invited
 promotes it: `create_event`, then the local copy is dropped (the contract's own
@@ -61,7 +98,7 @@ for the four event writes, and passes everything else through byte for byte.
 ## Screens
 
 Sign in → **Your Teams** (create, join with a link, invite from a team's
-context menu, pull to refresh, empty and relayless states) → a **team's
+context menu, pull to refresh, pending approvals, empty states) → a **team's
 calendars** (new calendar, invite, Details) → the **calendar**: Month (grid with
 event dots, the selected day's events below), Week and Day (hour grid, all-day
 strip, overlapping events side by side, the current time), Agenda (by day,
@@ -78,7 +115,7 @@ Core/                        local SwiftPM package, checked on macOS with `swift
   Sources/CalendarGenerated/ the generated contract client
   Sources/CalendarCore/      HexIdTransport, EventTime, CalendarRepository, PrivateEventStore,
                              TeamInvitation, CalendarMath, EventDraft, and the view models
-                             (TeamsModel, CalendarsModel, CalendarModel)
+                             (TeamsModel, CalendarsModel, CalendarModel, ApprovalsModel)
   Tests/CalendarCoreTests/   view-model and wire tests against InMemoryAppBackend
 Sources/App/                 SwiftUI screens
 ```
@@ -99,27 +136,32 @@ Bundle id `network.calimero.calendar`, iOS 16+. CI:
 
 ### The SDK pin
 
-`Core/Package.swift` and `project.yml` pin the swift-sdk by revision to
-`c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f`, the `main` merge commit of
-calimero-network/swift-sdk#84, which adds `MeroAppSession`, `MeroAppBackend`
-and the test fakes. To bump it, change the revision in both files and regenerate.
+`Core/Package.swift`, `Core/Package.resolved` and `project.yml` pin the
+swift-sdk by revision to `a1ec644130d4405a1bab7547654b1442cc559b49`, the head
+of its Calimero 1.0 port (calimero-network/swift-sdk#85, branch
+`feat/calimero-1.0`). It moves to that PR's merge commit once it lands. To bump
+it, change the revision in all three files and regenerate.
 
 ### Pointing it at another environment
 
-`project.yml` sets these Info.plist keys; empty means the SDK default:
-`MeroWalletURL`, `MeroCloudBaseURL`, `MeroRegistryURL`,
-`MeroCalendarCallbackScheme` (`mero-calendar`, so `mero-calendar://enrol`) and
-`MeroCalendarCallbackHost` / `MeroCalendarCallbackPath` for a verified https
-callback (Associated Domains). The hosted wallet currently returns only to
-`https://` callbacks; see the swift-sdk README.
+`project.yml` sets these Info.plist keys:
+
+- `CalimeroClusterURL`: the cluster's node URL. Empty: the sign-in screen asks.
+- `DefaultNodeURL`: the development node the sign-in screen prefills.
+- `MeroPackageVersion`: the version new calendars run. Empty: the latest.
+- `MeroCalendarCallbackScheme` (`mero-calendar`, so `mero-calendar://consent`)
+  or `MeroCalendarCallbackHost` / `MeroCalendarCallbackPath` for a verified
+  https return (Associated Domains): where the consent page sends the person back.
 
 ## Not supported yet
 
 - **Booking links**: the web app offers them only to a node login (a guest's
-  browser calls the owner's node under an access grant); an account has no node.
+  browser calls the owner's node under an access grant); the phone has no node.
+- **Passkey step-up** (`412 CONFIRM_REQUIRED`) is handled by the SDK with the
+  device's passkey; the app adds no UI of its own for it.
 - **Year view** (the web app's year grid).
 - **Deleting or leaving a team or calendar, member roles and capabilities**:
-  `MeroAppBackend` has no call for them yet. Members shows the calendar's
+  `MeroAppBackend` has the calls on 1.0, but the app doesn't offer them yet. Members shows the calendar's
   `get_members` names.
 - **Universal links** for `https://links.calimero.network/…`: needs an
   Associated Domains entitlement; `calimero://com.calimero.mero-calendar/join?…`

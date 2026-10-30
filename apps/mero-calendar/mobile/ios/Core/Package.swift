@@ -14,7 +14,7 @@ let package = Package(
     dependencies: [
         // The main merge commit of calimero-network/swift-sdk#84 (app session);
         // keep in step with project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
+        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "a1ec644130d4405a1bab7547654b1442cc559b49"),
     ],
     targets: [
         // @generated from ../../../logic/res/abi.json — see README "Regenerate the client".

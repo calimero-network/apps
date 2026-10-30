@@ -6,6 +6,7 @@ import SwiftUI
 struct TeamsView: View {
     @ObservedObject var session: MeroAppSession
     @ObservedObject var model: TeamsModel
+    @ObservedObject var approvals: ApprovalsModel
     @Binding var path: [Route]
     @State private var sheet: TeamsSheet?
     @State private var notice: String?
@@ -19,13 +20,17 @@ struct TeamsView: View {
                 if let error = model.error {
                     Banner(text: error) { Task { await model.load() } }
                 }
+                ApprovalsCard(model: approvals, orgs: model.teams.map(\.id))
                 content
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 24)
         }
         .background(Theme.ground.ignoresSafeArea())
-        .refreshable { await model.load() }
+        .refreshable {
+            await model.load()
+            await approvals.load(orgs: model.teams.map(\.id))
+        }
         .navigationTitle("Your Teams")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -55,7 +60,10 @@ struct TeamsView: View {
                 .accessibilityIdentifier("teams.account")
             }
         }
-        .task { if !model.hasLoaded { await model.load() } }
+        .task {
+            if !model.hasLoaded { await model.load() }
+            if DemoMode.backend == nil { await approvals.load(orgs: model.teams.map(\.id)) }
+        }
         .sheet(item: $sheet) { which in
             switch which {
             case .create:
@@ -84,7 +92,7 @@ struct TeamsView: View {
         } else if !model.hasRelay {
             EmptyStateView(
                 symbol: "link", title: "Join your first team",
-                message: "Your account isn't on a relay yet. Open an invitation link to join a team."
+                message: "You're not connected to your cluster. Sign in again, or open an invitation link to join a team."
             ) {
                 Button("Join with a link") { sheet = .join }.buttonStyle(PrimaryButtonStyle())
             }
