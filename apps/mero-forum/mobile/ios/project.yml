@@ -15,8 +15,9 @@
 # the cluster's node URL, the device's passkey; development: a `merod local`
 # node with mock attestation and a soft passkey) over the sealed channel. A
 # space is a Calimero org, a forum a team in it with one app instance.
-# Invitation links carry an org invite token
-# (`{"invitation":{"orgId","token"},"namespaceId",…}`), redeemed at
+# Invitation links carry the SDK's OrgInvitation payload
+# (`{"invitation":"inv_…","namespaceId","contextId"?,"name"?}` plus the
+# forum's kind/forumId/forumName), the token redeemed at
 # `POST /invites/{token}/redeem`. Pending approvals (an update of Mero Forum,
 # a node release) show on Spaces; "Review" opens the node's consent page in
 # the system browser, which returns to `mero-forum://consent`.
@@ -31,7 +32,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: a1ec644130d4405a1bab7547654b1442cc559b49
+    revision: 35148e4de782c065f777e80c592d9548acd645cd
   ForumCore:
     path: ForumCore
 

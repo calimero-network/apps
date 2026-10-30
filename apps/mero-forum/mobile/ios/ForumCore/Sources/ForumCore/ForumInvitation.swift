@@ -1,11 +1,11 @@
 import Foundation
 import MeroKit
 
-/// An invitation on Calimero 1.0: an org invite token in the SDK's link
-/// payload (`MeroKitUI.InvitationLinkPayload`), plus where to land:
+/// An invitation on Calimero 1.0: the SDK's ``OrgInvitation`` link payload,
+/// plus the forum's own fields beside it (which the SDK's decoder ignores):
 ///
-/// - payload: `{"invitation": {"orgId": "…", "token": "inv_…"}, "namespaceId": "<org>",
-///   "kind": "namespace" | "forum", "groupAlias": "<space name>", "forumId", "forumName", "contextId"}`
+/// - payload: `{"invitation": "inv_…", "namespaceId": "<org>", "contextId"?, "name": "<space name>",
+///   "kind": "namespace" | "forum", "forumId", "forumName"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.mero-forum/join?invitation=<token>`
 ///
@@ -36,9 +36,8 @@ public struct ForumInvitation: Sendable {
         self.contextId = contextId
     }
 
-    /// The org (space) it admits to: the invitation's own `orgId`, never a
-    /// field beside it.
-    public var namespaceId: String { invitation.orgId }
+    /// The org (space) it admits to.
+    public var namespaceId: String { invitation.namespaceId }
 
     /// What to call it in a prompt: the forum for a forum invite, else the space.
     public var title: String {
@@ -49,23 +48,25 @@ public struct ForumInvitation: Sendable {
 
     // MARK: Encoding
 
+    /// The SDK's payload (`invitation` the token, `namespaceId`, `contextId`,
+    /// `name`) with `kind` / `forumId` / `forumName` beside it.
     private struct Payload: Encodable {
-        let invitation: OrgInvitation
+        let invitation: String
         let namespaceId: String
+        let contextId: String?
+        let name: String?
         let kind: String
-        let groupAlias: String?
         let forumId: String?
         let forumName: String?
-        let contextId: String?
     }
 
     /// The shareable token.
     public func token() throws -> String {
         try InviteCodec.encode(
             Payload(
-                invitation: invitation, namespaceId: namespaceId, kind: kind.rawValue,
-                groupAlias: spaceName?.nilIfEmpty, forumId: forumId, forumName: forumName?.nilIfEmpty,
-                contextId: contextId))
+                invitation: invitation.token, namespaceId: namespaceId, contextId: contextId?.nilIfEmpty,
+                name: spaceName?.nilIfEmpty, kind: kind.rawValue, forumId: forumId,
+                forumName: forumName?.nilIfEmpty))
     }
 
     /// The shareable link.
@@ -106,22 +107,25 @@ public struct ForumInvitation: Sendable {
         return nil
     }
 
-    /// Parse the decoded payload JSON.
+    /// Parse the decoded payload JSON: the token from the string
+    /// `invitation`, the org from `namespaceId`. A pre-1.0 signed invitation
+    /// (an object under `invitation`) is refused.
     public static func parse(json: String) -> ForumInvitation? {
         guard let parsed = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)) else { return nil }
         let inner = parsed["data"] ?? parsed
-        let wrapped: JSONValue = inner["invitation"] ?? inner
-        guard let token = wrapped["token"]?.stringValue, !token.isEmpty,
-            let org = (wrapped["orgId"]?.stringValue ?? inner["namespaceId"]?.stringValue)?.nilIfEmpty
+        guard let token = inner["invitation"]?.stringValue?.nilIfEmpty,
+            let org = inner["namespaceId"]?.stringValue?.nilIfEmpty
         else { return nil }
         let kind: Kind = inner["kind"]?.stringValue == "forum" ? .forum : .space
+        let name = ["name", "groupName", "groupAlias", "spaceName"].lazy
+            .compactMap { inner[$0]?.stringValue?.nilIfEmpty }.first
+        let contextId = inner["contextId"]?.stringValue?.nilIfEmpty
         return ForumInvitation(
-            invitation: OrgInvitation(orgId: org, token: token), kind: kind,
-            spaceName: (inner["groupName"]?.stringValue ?? inner["groupAlias"]?.stringValue
-                ?? inner["spaceName"]?.stringValue)?.nilIfEmpty,
+            invitation: OrgInvitation(namespaceId: org, token: token, contextId: contextId, name: name), kind: kind,
+            spaceName: name,
             forumId: inner["forumId"]?.stringValue?.nilIfEmpty,
             forumName: inner["forumName"]?.stringValue?.nilIfEmpty,
-            contextId: inner["contextId"]?.stringValue?.nilIfEmpty)
+            contextId: contextId)
     }
 }
 

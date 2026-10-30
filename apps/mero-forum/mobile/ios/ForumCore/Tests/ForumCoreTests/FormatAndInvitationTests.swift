@@ -86,22 +86,33 @@ final class ForumInvitationTests: XCTestCase {
     }
 
     func testPayloadShapes() throws {
-        let envelope = String(decoding: try JSONEncoder().encode(signed), as: UTF8.self)
-        let parsed = try XCTUnwrap(ForumInvitation.parse(json: #"{"data":{"invitation":\#(envelope),"groupName":"Ops"}}"#))
+        let parsed = try XCTUnwrap(
+            ForumInvitation.parse(json: #"{"data":{"invitation":"inv_abc","namespaceId":"\#(ns)","groupName":"Ops"}}"#))
         XCTAssertEqual(parsed.spaceName, "Ops")
         XCTAssertEqual(parsed.namespaceId, ns)
-        XCTAssertEqual(parsed.invitation, signed)
-        XCTAssertNotNil(ForumInvitation.parse(json: envelope))
+        XCTAssertEqual(parsed.invitation.token, "inv_abc")
+        let named = try XCTUnwrap(
+            ForumInvitation.parse(json: #"{"invitation":"inv_abc","namespaceId":"\#(ns)","name":"Design","groupAlias":"Old"}"#))
+        XCTAssertEqual(named.spaceName, "Design")
+        XCTAssertNil(ForumInvitation.parse(json: #"{"invitation":{"orgId":"\#(ns)","token":"inv_abc"}}"#))
     }
 
     func testLinkCarriesTheSDKPayload() throws {
-        let token = try ForumInvitation(invitation: signed, spaceName: "Design").token()
+        let invite = ForumInvitation(
+            invitation: signed, kind: .forum, spaceName: "Design", forumId: "f1", forumName: "General", contextId: ctx)
+        let token = try invite.token()
+        let sdk = try XCTUnwrap(OrgInvitation.decode(token))
+        XCTAssertEqual(sdk.namespaceId, ns)
+        XCTAssertEqual(sdk.token, signed.token)
+        XCTAssertEqual(sdk.contextId, ctx)
+        XCTAssertEqual(sdk.name, "Design")
         let json = try XCTUnwrap(InviteCodec.decode(token: token))
         let root = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
-        XCTAssertEqual(root["invitation"]?["orgId"]?.stringValue, ns)
-        XCTAssertEqual(root["invitation"]?["token"]?.stringValue, signed.token)
-        XCTAssertEqual(root["namespaceId"]?.stringValue, ns)
-        XCTAssertEqual(root["groupAlias"]?.stringValue, "Design")
+        XCTAssertEqual(root["invitation"]?.stringValue, signed.token)
+        XCTAssertEqual(root["kind"]?.stringValue, "forum")
+        XCTAssertEqual(root["forumId"]?.stringValue, "f1")
+        let sdkLink = try OrgInvitation(namespaceId: ns, token: "inv_x", name: "Ops").link(slug: ForumConstants.packageName)
+        XCTAssertEqual(ForumInvitation.parse(sdkLink)?.spaceName, "Ops")
     }
 
     func testPreOneSignedInvitationIsRefused() {

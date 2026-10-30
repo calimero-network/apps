@@ -19,7 +19,7 @@ let package = Package(
         // main, the merge commit of swift-sdk#84 (app session).
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "a1ec644130d4405a1bab7547654b1442cc559b49"),
+            revision: "35148e4de782c065f777e80c592d9548acd645cd"),
     ],
     targets: [
         // `node abi-codegen -i ../../logic/res/abi.json --target swift --client-name ForumClient`.

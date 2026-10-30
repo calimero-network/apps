@@ -103,7 +103,7 @@ public final class MemoryNameStore: NameStore, @unchecked Sendable {
 /// A failure, in words a person can act on.
 public enum ForumErrorText {
     public static func describe(_ error: Error) -> String {
-        if let account = error as? AccountError, case .noRelay = account {
+        if error is SignedOutError {
             return "You're not connected to your cluster. Sign in again."
         }
         if let text = cluster(error) { return text }
