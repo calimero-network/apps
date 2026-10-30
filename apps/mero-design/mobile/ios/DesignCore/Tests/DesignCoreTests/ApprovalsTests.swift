@@ -75,5 +75,8 @@ final class ApprovalsTests: XCTestCase {
         XCTAssertEqual(DesignFormat.errorText(ConfirmCancelled()), "The passkey prompt was cancelled.")
         XCTAssertTrue(DesignFormat.errorText(ReleaseDeadlineError("deadline passed")).contains("needs approval"))
         XCTAssertEqual(DesignFormat.errorText(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertEqual(
+            DesignFormat.errorText(SignedOutError(method: "listNamespaces")),
+            "You're signed out. Sign in again to see your boards.")
     }
 }

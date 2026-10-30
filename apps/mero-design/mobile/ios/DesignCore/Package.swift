@@ -15,7 +15,7 @@ let package = Package(
     ],
     dependencies: [
         // swift-sdk `main`, the merge commit of PR #84. Keep it equal to ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "a1ec644130d4405a1bab7547654b1442cc559b49"),
+        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "35148e4de782c065f777e80c592d9548acd645cd"),
     ],
     targets: [
         .target(

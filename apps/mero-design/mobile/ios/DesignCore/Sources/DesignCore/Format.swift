@@ -58,7 +58,7 @@ public enum DesignFormat {
         if let cluster = clusterText(error) { return cluster }
         let text = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
         if text.contains("view-only") { return "You have view-only access to this board. Ask an admin for edit access to comment." }
-        if text.contains("noRelay") || text.lowercased().contains("no relay") || text.lowercased().contains("not signed in") {
+        if text.lowercased().contains("signed out") || text.lowercased().contains("not signed in") {
             return "You're signed out. Sign in again to see your boards."
         }
         if let url = error as? URLError, url.code == .notConnectedToInternet { return "You're offline. Check your connection and try again." }
@@ -70,6 +70,7 @@ public enum DesignFormat {
         switch error {
         case is ConfirmCancelled: return "The passkey prompt was cancelled."
         case is LoginRequired: return "Your session ended. Sign in again."
+        case is SignedOutError: return "You're signed out. Sign in again to see your boards."
         case is ReleaseDeadlineError:
             return "A newer node release needs approval before anything can change. Review it on the Teams screen."
         case is ConsentStale: return "That approval request is out of date. Try again."

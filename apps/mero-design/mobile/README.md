@@ -11,7 +11,7 @@ contract (`../logic`, package `com.calimero.mero-design`). They have the same sc
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `a1ec644` (head of the 1.0 port, PR #85 `feat/calimero-1.0`; moves to its merge commit once it lands) |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `35148e4` (head of the 1.0 port, PR #85 `feat/calimero-1.0`; moves to its merge commit once it lands) |
 | Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (merge commit of PR #67 on `main`), composite build from `android/kotlin-sdk.ref` |
 
 **To bump a pin**, change it in every place it is set. On iOS that means
@@ -76,7 +76,7 @@ platform's sans, serif or monospace face for the web's font families.
 
 The phone holds no node. It signs in to a Calimero 1.0 cluster with a passkey and talks to it
 over the sealed channel (`calimero/sealed-http/v2`, opened only after the node's attestation is
-verified). `MeroAppSession` gives a `MeroAppBackend` (the swift-sdk's `CloudAppBackend`):
+verified). `MeroAppSession` gives a `MeroAppBackend` (the swift-sdk's `CalimeroAppBackend`):
 
 | What | Wire |
 | --- | --- |

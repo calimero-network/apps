@@ -85,7 +85,7 @@ struct RootView: View {
             didRestore = true
         }
         .alert(
-            "Join this team?",
+            session.pendingOrgInvitation?.name.map { "Join \($0)?" } ?? "Join this team?",
             isPresented: Binding(
                 get: { session.pendingInvitation != nil && session.isSignedIn && !joining }, set: { _ in })
         ) {
@@ -120,9 +120,10 @@ struct RootView: View {
         joining = true
         defer { joining = false }
         do {
-            let joined = try await session.redeemPendingInvitation()
+            let name = session.pendingOrgInvitation?.name ?? "Boards"
+            guard let org = try await session.redeemPendingInvitation() else { return }
             Haptics.success()
-            router.path = [.team(id: joined.namespaceId, name: "Boards")]
+            router.path = [.team(id: org, name: name)]
         } catch {
             session.dismissPendingInvitation()
             joinError = DesignFormat.errorText(error)
